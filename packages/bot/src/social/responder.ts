@@ -39,6 +39,7 @@ export const RETRY_AFTER_MS = [60_000, 300_000];
 
 import type { TypoRecall } from '../language/expression.ts';
 import type { ChatHistory, StoredMessage } from '../memory/history.ts';
+import { ioErrorCode, TRANSIENT_IO_CODES } from '../memory/transient-io.ts';
 import { ModelUnreachable } from '../language/llm.ts';
 import type { ChatMessage, OpenAIMessage, PromptResult } from '../language/prompt.ts';
 import { PENDING_REASON } from '../proactive/proactive.ts';
@@ -98,7 +99,7 @@ export interface ResponderDeps {
     /** 她看到了却决定不回（看心情不回、收尾后的附和）：给他最后一条消息点个表情回应（ADR 0083，配置 reactions）；不传就什么都不做 */
     react?: (messageId: number, text: string) => void;
     /** 实际发送内容与聊天记录表示不同时转换（图片表情编号 -> 可读描述）。 */
-    historyContent?: (sent: string) => string;
+    historyContent?: (sent: string, messageId: number) => string;
     /**
      * 整条只有内部标记（比如单独一行的 <<记住>> / <<日记>> / <<同意工作>>）的气泡：不发、不进记录，但里面的标记要处理，由这里交给调用方。
      * 10-28 的「只有内部标记的气泡不发」把这类气泡在到发送函数之前就跳过了，标记从此再没被处理过——写在单独一行的 <<日记>> 全丢了
@@ -167,6 +168,8 @@ export interface InitiateRequest {
     canDecline?: boolean;
     /** 只想一想（ADR 0101，内心）：生成之后不清理、不检查、不发送、不 commit，把模型原文还给调用方；占用回复器的方式和主动找他一样（正在回消息、有没回的消息就不想） */
     think?: boolean;
+    /** 宿主取消这一次主动请求；停止时会与回复器生命周期信号合并。 */
+    signal?: AbortSignal;
 }
 
 export type InitiateOutcome =
@@ -191,8 +194,8 @@ export interface Responder {
     whenIdle(): Promise<void>;
     /** 没在生成，或者正等着到点看到消息时 resolve（模拟器用：这时可以把虚拟时钟往前拨） */
     whenQuiet(): Promise<void>;
-    /** 停下，之后不再生成、不再发送（见文件开头） */
-    stop(): void;
+    /** 立即停止派发；仅已有传输及其历史收尾需要drain，idle/纯生成同步返回。 */
+    stop(): Promise<void> | undefined;
 }
 
 /** 默认的等待：真实定时器 */
@@ -214,6 +217,9 @@ const clock = (ms: number) => new Date(ms).toTimeString().slice(0, 8);
 export function createResponder(deps: ResponderDeps): Responder {
     let running: Promise<void> | null = null;
     let pending = false;
+    const lifecycle = new AbortController();
+    const sends = new Set<Promise<void>>();
+    let drain: Promise<void> | undefined;
     /** 聊天记录的前多少条已经被某次发出的回复“看到”过；之后还有对方的消息就要回复 */
     let seen = 0;
     /** 最近一次收到消息的时间；这一串连发里第一条的收到时间（开始生成时清掉） */
@@ -234,7 +240,7 @@ export function createResponder(deps: ResponderDeps): Responder {
      * 撤回失败（超过两分钟、NapCat 报错）：错的留着，补发「*对的词」，和不撤回时一样，两条都进聊天记录
      */
     /** 整条只有内部标记（单独一行的 <<记住>> / <<日记>> / <<同意工作>>…）：没有东西可发，也不进聊天记录 */
-    const markerOnly = (part: string) => !(deps.historyContent?.(part) ?? part).trim();
+    const markerOnly = (part: string) => !(deps.historyContent?.(part, 0) ?? part).trim();
     /**
      * 这类气泡里的标记还是要处理（absorb），而且一开始就处理完：不因为中途他插话、后面的不发就丢，也不为它「打字」。
      * 以前回复路径把它当一条消息发给发送函数（发送函数里处理标记、返回 0）并往聊天记录里留一行空的，还要为它打字；
@@ -247,7 +253,46 @@ export function createResponder(deps: ResponderDeps): Responder {
         }
     }
 
-    async function sendBubble(part: string, recall: TypoRecall | undefined, replyTo?: number): Promise<{ messageId: number; content: string }> {
+    function ackWarning(error: unknown, step: string): void {
+        const code = ioErrorCode(error);
+        try { deps.log(`QQ 发送已经确认；${step}未确认（${TRANSIENT_IO_CODES.has(code) ? code : 'Error'}），保留已发结果，不重发`); } catch { /* 诊断不能把已发送改判成失败。 */ }
+    }
+
+    /** QQ ACK 已发生；本地历史失败必须单独诊断，不能退回可重试的发送失败。 */
+    function recordConfirmed(bubble: { messageId: number; content: string }): void {
+        try {
+            let content = bubble.content;
+            try { content = deps.historyContent?.(content, bubble.messageId) ?? content; }
+            catch (error) { ackWarning(error, '历史表示转换'); }
+            const entry: StoredMessage = { time: new Date(now()).toISOString(), role: 'assistant', content, messageId: bubble.messageId };
+            const matches = (row: StoredMessage) => row.role === 'assistant' && row.messageId === entry.messageId && row.time === entry.time && row.content === entry.content;
+            let before: number | undefined;
+            try { before = deps.history.load(deps.userId).filter(matches).length; } catch { /* 无基线时不猜测发布成功。 */ }
+            try { deps.history.append(deps.userId, entry); }
+            catch (error) {
+                let confirmed = false;
+                try { confirmed = before !== undefined && deps.history.load(deps.userId).filter(matches).length > before; } catch { /* 未读回确认。 */ }
+                if (!confirmed) ackWarning(error, '本地历史追加');
+            }
+        } catch (error) { ackWarning(error, '本地历史记录'); }
+    }
+
+    /** 在调用可注入send之前登记所有权；包含ACK后的历史/副索引同步收尾。 */
+    async function sendBubble(part: string, recall: TypoRecall | undefined, replyTo?: number, requestedSignal?: AbortSignal): Promise<{ messageId: number; content: string } | undefined> {
+        const signal = requestedSignal ? AbortSignal.any([lifecycle.signal, requestedSignal]) : lifecycle.signal;
+        if (stopped || signal.aborted) return undefined;
+        let settled!: () => void;
+        const owned = new Promise<void>(resolve => { settled = resolve; });
+        sends.add(owned);
+        try {
+            const bubble = await emitBubble(part, recall, replyTo, signal);
+            if (bubble) recordConfirmed(bubble);
+            return bubble;
+        } finally { sends.delete(owned); settled(); }
+    }
+
+    async function emitBubble(part: string, recall: TypoRecall | undefined, replyTo?: number, signal?: AbortSignal): Promise<{ messageId: number; content: string } | undefined> {
+        if (signal?.aborted) return undefined;
         const quoted = replyTo === undefined ? undefined : { replyTo };
         if (!recall) return { messageId: await deps.send(deps.userId, part, quoted), content: part };
         const wrongId = await deps.send(deps.userId, recall.wrong, quoted);
@@ -256,10 +301,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             await deps.recallOwn!(wrongId);
         } catch (error) {
             deps.log(`撤回自己打错的那条失败，补一条改口：${error instanceof Error ? error.message : String(error)}`);
-            deps.history.append(deps.userId, {
-                time: new Date(now()).toISOString(), role: 'assistant',
-                content: deps.historyContent?.(recall.wrong) ?? recall.wrong, messageId: wrongId,
-            });
+            recordConfirmed({ messageId: wrongId, content: recall.wrong });
             // 补「*对的词」：有时引用刚才那条错的（ADR 0136）
             const fixQuote = deps.quoteFix?.(wrongId) ? { replyTo: wrongId } : undefined;
             return { messageId: await deps.send(deps.userId, recall.fix, fixQuote), content: recall.fix };
@@ -269,8 +311,10 @@ export function createResponder(deps: ResponderDeps): Responder {
         return { messageId: await deps.send(deps.userId, part, quoted), content: part };
     }
 
-    async function sleepTyping(ms: number): Promise<void> {
-        if (!deps.typing || ms < TYPING_MIN_MS) return sleep(ms);
+    async function sleepTyping(ms: number, signal?: AbortSignal): Promise<void> {
+        signal ??= lifecycle.signal;
+        if (signal.aborted) return;
+        if (!deps.typing || ms < TYPING_MIN_MS) { await sleep(ms); return; }
         const seed = `${deps.userId} ${Math.floor(now() / 1000)}`;
         if (deps.hesitate !== false && ms >= HESITATE_MIN_TYPING_MS && pick(seed, 'hesitate', [0, 999]) < HESITATE_CHANCE * 1000) {
             const before = Math.round(ms * 0.45);
@@ -396,12 +440,17 @@ export function createResponder(deps: ResponderDeps): Responder {
             setPhase({ phase: 'generating' });
 
             const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { woken: decision?.woken, ...(failingSince !== undefined ? { offlineSince: failingSince } : {}) });
+            if (stopped) return;
             promptMaxBubbles = prompt.maxBubbles;
             deps.onPrompt?.(prompt);
             const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
             deps.log(`生成回复：${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}${prompt.note ? `，${prompt.note}` : ''}`);
 
-            reply = deps.clean(await deps.generate(prompt.messages));
+            if (stopped) return;
+            const raw = await deps.generate(prompt.messages);
+            if (stopped) { deps.log('已停止，这次生成的回复不发'); return; }
+            reply = deps.clean(raw);
+            if (stopped) return;
             if (deps.review) reply = await deps.review(reply, prompt.messages);
             if (stopped) {
                 deps.log('已停止，这次生成的回复不发');
@@ -452,11 +501,9 @@ export function createResponder(deps: ResponderDeps): Responder {
                 deps.log(`已停止，剩下 ${parts.length - i} 条不发`);
                 break;
             }
-            const { messageId, content } = await sendBubble(part, recall?.index === i ? recall : undefined, i === 0 ? quoteId : undefined);
-            deps.history.append(deps.userId, {
-                time: new Date(now()).toISOString(), role: 'assistant',
-                content: deps.historyContent?.(content) ?? content, messageId,
-            });
+            const bubble = await sendBubble(part, recall?.index === i ? recall : undefined, i === 0 ? quoteId : undefined);
+            if (!bubble) break;
+            const { content } = bubble;
             sent.push(content);
         }
         seen = input;
@@ -548,19 +595,13 @@ export function createResponder(deps: ResponderDeps): Responder {
                 deps.log(`已停止，剩下 ${parts.length - i} 条不发`);
                 break;
             }
-            let bubble: { messageId: number; content: string };
+            let bubble: { messageId: number; content: string } | undefined;
             try {
                 bubble = await sendBubble(part, recall?.index === i ? recall : undefined);
             } catch (error) {
                 return { result: 'failed', reason: `发送失败：${error instanceof Error ? error.message : String(error)}`, ...(messageIds.length ? { messageIds } : {}) };
             }
-            const historyContent = deps.historyContent?.(bubble.content) ?? bubble.content;
-            if (historyContent.trim()) {
-                deps.history.append(deps.userId, {
-                    time: new Date(now()).toISOString(), role: 'assistant',
-                    content: historyContent, messageId: bubble.messageId,
-                });
-            }
+            if (!bubble) break;
             messageIds.push(bubble.messageId);
             sent.push(bubble.content);
         }
@@ -602,6 +643,7 @@ export function createResponder(deps: ResponderDeps): Responder {
             const skip = (reason: string) => Promise.resolve<InitiateOutcome>({ result: 'skipped', reason });
             if (stopped) return skip('已停止');
             if (running) return skip('正在回消息');
+            request = { ...request, signal: request.signal ? AbortSignal.any([lifecycle.signal, request.signal]) : lifecycle.signal };
             // 按「不回」处理过的（看心情没回的「哈哈」）不挡主动消息
             const stored = deps.history.load(deps.userId);
             if (pendingMessages(stored).length && !deps.timing?.skip(stored)) return skip(PENDING_REASON);
@@ -625,8 +667,11 @@ export function createResponder(deps: ResponderDeps): Responder {
             stopped = true;
             pending = false;
             retryToken++;
+            lifecycle.abort();
             setPhase({ phase: 'idle' });
             interruptWait?.();
+            if (sends.size) drain ??= Promise.allSettled([...sends]).then(() => undefined);
+            return drain;
         },
     };
 }

@@ -1055,8 +1055,9 @@ export function apply(ctx: Context, config: Config) {
     );
     if (unmountMobileCompanion) ctx.on('dispose', unmountMobileCompanion);
     ctx.on('dispose', () => {
-        app.stop();
+        const drained = app.stop();
         setConsoleState({ running: false, status: undefined });
+        return drained;
     });
 
     ctx.middleware((session, next) => {

@@ -92,8 +92,11 @@ test('正常抽取保存 v1 和完成进度，重建后不重复模型调用或�
 test('模型抽取期间发现状态损坏，结果返回后也不回写世界或覆盖坏文件', async () => {
     const dir = fixture(); const path = join(dir, '10001-boyfriend.json');
     let release!: (text: string) => void; let worlds = 0;
-    const keeper = promiseKeeper(options(dir, { extract: () => new Promise(resolve => { release = resolve; }), onWorldActions: () => { worlds++; } }));
+    let entered!: () => void;
+    const extracting = new Promise<void>(resolve => { entered = resolve; });
+    const keeper = promiseKeeper(options(dir, { extract: () => new Promise(resolve => { release = resolve; entered(); }), onWorldActions: () => { worlds++; } }));
     const running = keeper.sync();
+    await extracting;
     const original = 'PRIVATE_BODY bad json'; writeFileSync(path, original);
     assert.equal(keeper.available(), false);
     release('{"add":[],"resolved":[],"world":[{"kind":"feed_cat","at":"2026-10-14T09:01"}]}');

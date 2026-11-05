@@ -318,6 +318,8 @@ export interface PromiseKeeper {
     available(): boolean;
     /** 把结束了、还没抽的片段抽一遍，过期的忘掉；同一时间只跑一次 */
     sync(): Promise<void>;
+    /** 关闭后台抽取；不等不合作的纯模型请求，已提交事实保留。idle同步undefined。 */
+    stop(): Promise<void> | undefined;
     /** 这一轮时间块里的那一行（没有就是 undefined） */
     describe(contact: Contact, chat: readonly TimedMessage[], now: Date): string | undefined;
     /** 这一轮挂在心上的事（ADR 0023）：意图行、时间块用 */
@@ -331,6 +333,20 @@ export interface PromiseKeeper {
 }
 
 export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
+    let stopped = false;
+    let stoppedDrain: Promise<void> | undefined;
+    const lifetime = new AbortController();
+    const checkRunning = () => { if (stopped) throw new Error('承诺抽取已停止'); };
+    const extract = async (messages: OpenAIMessage[]): Promise<string> => {
+        checkRunning();
+        let cancel!: () => void;
+        const interrupted = new Promise<never>((_, reject) => { cancel = () => reject(new Error('承诺抽取已停止')); lifetime.signal.addEventListener('abort', cancel, { once: true }); });
+        try {
+            // 先装取消监听，extract内同步stop也不能错过；race持有晚reject处理。
+            const value = await Promise.race([Promise.resolve().then(() => { checkRunning(); return options.extract(messages); }), interrupted]);
+            checkRunning(); return value;
+        } finally { lifetime.signal.removeEventListener('abort', cancel); }
+    };
     const now = options.now ?? Date.now;
     mkdirSync(options.dir, { recursive: true });
     const path = (contact: Contact) => join(options.dir, `${contact.qq}-${contact.tier}.json`);
@@ -363,11 +379,13 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         }
     };
     const save = (contact: Contact, state: KeeperState) => {
+        checkRunning();
         // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
         const keepFrom = now() - 30 * DAY_MS;
         for (const id of Object.keys(state.extracted)) if (Number(id.slice(3)) < keepFrom) delete state.extracted[id];
         for (const id of Object.keys(state.early)) if (Number(id.slice(3)) < keepFrom || state.extracted[id] === true) delete state.early[id];
         if (paused.has(path(contact)) || !validPromiseState(state)) throw new PromiseStateUnavailable('承诺状态无效，拒绝写入');
+        checkRunning();
         writeJsonAtomic(path(contact), state);
         recovered(contact, '写');
     };
@@ -389,11 +407,13 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
     const today = (at: Date) => (options.schedule ? herDay(options.schedule, at) : new Date(at.getFullYear(), at.getMonth(), at.getDate()));
 
     async function syncContact(contact: Contact): Promise<void> {
+        if (stopped) return;
         const state = load(contact);
-        if (!state) return;
-        const log = (message: string) => options.log(`[${contact.qq}] 她答应的事：${message}`);
-        const loopLog = (message: string) => options.log(`[${contact.qq}] 挂着的事：${message}`);
+        if (!state || stopped) return;
+        const log = (message: string) => { if (!stopped) options.log(`[${contact.qq}] 她答应的事：${message}`); };
+        const loopLog = (message: string) => { if (!stopped) options.log(`[${contact.qq}] 挂着的事：${message}`); };
         const names = options.names(contact);
+        if (stopped) return;
         const day = today(new Date(now()));
         const before = state.promises.length;
         for (const item of state.promises.filter(p => forgotten(p, day))) log(`过了日子没做，忘了「${logBody(item.what)}」`);
@@ -407,6 +427,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         /** 这一轮没连上模型：后面的片段、还没结束的那段都不再抽 */
         let offline = false;
         for (const episode of closed) {
+            if (stopped) return;
             // 只有一方说话的片段、太早的片段（刚上线时）不用抽
             const said = formatDate(today(episode.end));
             if (!episode.messages.some(m => m.role === 'assistant') || !episode.messages.some(m => m.role === 'user') || daysFrom(said, day) > NEXT_TIME_DAYS) {
@@ -418,8 +439,11 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             // 这一段先抽出来的约见面不给模型（整段抽是这一段的定论，抽完整个替换）
             const pending = state.promises.filter(p => !earlyIn(episode.id)(p));
             try {
-                result = parsePromises(await options.extract(promisePrompt(episodeTranscript(episode, names), pending, names, state.loops)));
+                const raw = await extract(promisePrompt(episodeTranscript(episode, names), pending, names, state.loops));
+                if (stopped) return;
+                result = parsePromises(raw);
             } catch (error) {
+                if (stopped) return;
                 if (error instanceof ModelUnreachable) {
                     // 没连上模型（断网、DNS）不算这一段的失败次数，不然断网一会儿她答应的事就丢了；后面的片段也连不上，这一轮先停
                     log(`片段 ${episode.id} 没连上模型，等网络好了再抽：${error.message}`);
@@ -433,14 +457,16 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 log(`片段 ${episode.id} 抽取失败（第 ${tries} 次${tries >= 3 ? '，不再抽' : '，下次再抽'}）：${error instanceof Error ? error.message : String(error)}`);
                 continue;
             }
-            if (paused.has(path(contact))) return;
+            if (stopped || paused.has(path(contact))) return;
             try {
                 options.onWorldActions?.(contact, episode, result.world);
             } catch (error) {
+                if (stopped) return;
                 // 模型结果是好的，但事实文件没写成：不标已抽，下次重试同一片段，不能只在内存里生效。
                 log(`片段 ${episode.id} 的世界动作写入失败（下次再试）：${error instanceof Error ? error.message : String(error)}`);
                 continue;
             }
+            if (stopped) return;
             for (const id of result.resolved) {
                 const item = state.promises.find(p => p.id === id);
                 if (item) {
@@ -488,13 +514,17 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         // 还没结束的这一段（ADR 0047 调整）：聊着聊着约了见面、马上就见，等不到片段结束（安静 45 分钟）再抽；
         // 两个人都说过话、最近几句里有约见面和时间的字眼、又多了新消息，就先抽一次，只记约好的见面。
         // 每次先抽都用新结果整个替换这一段先记下的（改时间、不去了跟着变）；片段结束后整段抽是定论，同样整个替换
+        if (stopped) return;
         const open = splitEpisodes(options.history.load(contact.qq)).at(-1);
+        if (stopped) return;
         if (!offline && open && now() - open.end.getTime() < EPISODE_GAP_MS && state.extracted[open.id] !== true
             && (state.early[open.id] ?? 0) < open.messages.length
             && open.messages.some(m => m.role === 'assistant') && open.messages.some(m => m.role === 'user') && mentionsMeetup(open.messages)) {
             try {
                 const pending = state.promises.filter(p => !earlyIn(open.id)(p));
-                const result = parsePromises(await options.extract(promisePrompt(episodeTranscript(open, names), pending, names, state.loops)));
+                const raw = await extract(promisePrompt(episodeTranscript(open, names), pending, names, state.loops));
+                if (stopped) return;
+                const result = parsePromises(raw);
                 if (paused.has(path(contact))) return;
                 const said = formatDate(today(open.end));
                 const earlier = state.promises.filter(earlyIn(open.id));
@@ -514,6 +544,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 state.promises = [...pending, ...next];
                 state.early[open.id] = open.messages.length;
             } catch (error) {
+                if (stopped) return;
                 // 没连上模型下一轮再试；别的错这几条消息不再试，片段结束后照常整段抽
                 if (!(error instanceof ModelUnreachable)) state.early[open.id] = open.messages.length;
                 log(`还没结束的片段 ${open.id} 先抽约见面没抽成：${error instanceof Error ? error.message : String(error)}`);
@@ -526,17 +557,25 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
     let running: Promise<void> | undefined;
     return {
         sync: () => {
-            running ??= (async () => {
+            if (stopped) return stoppedDrain ?? Promise.resolve();
+            // 先发布running，再启动用户回调，保证同步stop也拿到同一个drain。
+            running ??= Promise.resolve().then(async () => {
                 for (const contact of options.contacts) {
+                    if (stopped) break;
                     try { await syncContact(contact); }
                     catch (error) {
+                        if (stopped) break;
                         // 暂时的写失败：这一轮的改动没落盘，状态文件还是上一版，下一轮同一批片段会再抽一遍（抽取本来就幂等重试）
                         if (isTransientIoError(error)) transient(contact, '写', error);
                         else pause(contact, error);
                     }
                 }
-            })().finally(() => { running = undefined; });
+            }).finally(() => { running = undefined; });
             return running;
+        },
+        stop: () => {
+            if (!stopped) { stopped = true; stoppedDrain = running; lifetime.abort(); }
+            return stoppedDrain;
         },
         available,
         describe: (contact, chat, at) => {
