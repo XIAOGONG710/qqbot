@@ -8,6 +8,7 @@ SillyTavern 只用来编写、试聊角色并定义数据格式（角色卡 / �
 ## 规则
 
 - 用户要求：每项任务完成并通过适用检查后，进行一次本地 Git 提交；只提交该任务的改动，不夹带无关文件，不自动推送。
+- 用户要求：每项任务尽可能使用多个子代理并行处理独立审查、复现和开发；明确文件所有权，避免并发修改同一文件，由主代理统一整合、验证和提交，不牺牲审查深度。
 - 工程决策遵循根目录 `思维链工作流.txt`：先取证再动手，小步提交，每步可验证，重要决策写 ADR（`docs/adr/`）。
 - `vendor/SillyTavern`、`vendor/NapCatQQ` 是上游子模块，**默认不修改**，只作参考与工具。
   自有代码写在 `packages/`，不挂载进 SillyTavern，也不 import 它的代码；拼提示词的行为以 ST 源码为准自行实现。
@@ -28,6 +29,6 @@ SillyTavern 只用来编写、试聊角色并定义数据格式（角色卡 / �
 - GitHub CLI v2.103.3，官方 `gh_2.103.3_windows_amd64.zip` 解压到 `%LOCALAPPDATA%\Programs\gh`（`bin\` 已加入用户 PATH，新终端生效）。
   安装前核对过：zip 的 SHA-256（`98d0cfa7…0a22e0`）与 GitHub Release 资产摘要、官方 `checksums.txt` 三者一致；`gh.exe` 的 Authenticode 签名有效（GitHub, Inc.）。
   登录账号须是 XIAOGONG710（令牌存于 Windows 凭据管理器）。
-  注意：从 Codex 桌面应用里的命令写到 `AppData` 下的文件和用户 PATH 会被应用隔离，在普通终端里看不到；
+  注意：从 Claude / Codex 桌面应用里的命令写到 `AppData` 下的文件和用户 PATH 会被应用隔离，在普通终端里看不到；
   装到 `AppData` 下的工具要在用户自己的终端里装（例如在终端面板运行安装脚本）。
 - 长期记忆服务 Hindsight 装在 `runtime/hindsight/`（Python 3.12 由 uv 安装），来源核对、VC++ 运行库的处理和启动方法见 `docs/hindsight.md`。
