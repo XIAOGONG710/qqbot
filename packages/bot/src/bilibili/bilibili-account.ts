@@ -271,10 +271,10 @@ export interface BiliAccount {
     /** 账号昵称和 uid（日志里认得出是哪个号） */
     readonly name: string;
     readonly mid: number;
-    search(keyword: string, order?: SearchOrder): Promise<BiliVideo[]>;
+    search(keyword: string, order?: SearchOrder, signal?: AbortSignal): Promise<BiliVideo[]>;
     /** 她的号能用的官方表情包（评论区的那套）：小黄脸、热词系列、tv_小电视、颜文字…… */
     emotePackages?(): Promise<EmotePack[]>;
-    subtitle(video: Pick<BiliVideo, 'bvid'> & { cid?: number }): Promise<SubtitleResult>;
+    subtitle(video: Pick<BiliVideo, 'bvid'> & { cid?: number }, signal?: AbortSignal): Promise<SubtitleResult>;
     postComment(input: { aid: number; bvid: string; text: string; at?: { name: string; uid: number } }): Promise<{ rpid: string }>;
     /** 刚发的评论在公开的「最新」第一页里能不能找到（找不到不等于没发出去：可能在审核，也可能翻页看不到） */
     commentVisible(input: { aid: number; rpid: string }): Promise<boolean>;
@@ -399,6 +399,28 @@ export function parseSystemNotices(data: unknown): SystemNotice[] {
 const WBI_REFRESH_MS = 6 * 3_600_000;
 const SUBTITLE_PREFERRED = /^(ai-)?zh/;
 
+/** Per-call cancellation for pure search/subtitle chains. Shared account
+ * mutation requests retain their original transport and ACK ownership. */
+function readRequest(request: BiliRequest, signal?: AbortSignal): BiliRequest {
+    if (!signal) return request;
+    const read = async <T>(run: () => Promise<T>): Promise<T> => {
+        signal.throwIfAborted();
+        let abort!: () => void;
+        const cancelled = new Promise<never>((_, reject) => { abort = () => reject(signal.reason); signal.addEventListener('abort', abort, { once: true }); });
+        try {
+            const result = await Promise.race([Promise.resolve().then(() => { signal.throwIfAborted(); return run(); }), cancelled]);
+            signal.throwIfAborted(); return result;
+        } finally { signal.removeEventListener('abort', abort); }
+    };
+    return async (url, init) => {
+        const response = await read(() => request(url, { ...init, signal: AbortSignal.any([signal, init.signal]) }));
+        return new Proxy(response, { get(target, property) {
+            if (property === 'text') return () => read(() => target.text());
+            return Reflect.get(target, property, target) as unknown;
+        } });
+    };
+}
+
 /**
  * 用凭证打开账号：先请求 nav 确认登录有效、拿到昵称和 WBI 钥匙；没登录（isLogin 为假）返回 undefined，调用方只写一行日志、不启用账号层。
  * 请求失败（风控、断网）会抛，调用方当作「这次起不来」。
@@ -408,28 +430,31 @@ export async function openAccount(request: BiliRequest, credential: BiliCredenti
     const headers = { ...BASE_HEADERS, Cookie: cookieHeader(credential) };
     let keys: WbiKeys | undefined;
     let keysAt = 0;
-    const loadNav = async () => {
-        const { data } = await call(request, 'https://api.bilibili.com/x/web-interface/nav', { headers });
+    const loadNav = async (read: BiliRequest = request, signal?: AbortSignal) => {
+        const { data } = await call(read, 'https://api.bilibili.com/x/web-interface/nav', { headers });
+        signal?.throwIfAborted();
         keys = wbiKeysFrom(data) ?? keys;
         keysAt = now();
         return rec(data);
     };
     const nav = await loadNav();
     if (nav.isLogin !== true) return undefined;
-    const ensureKeys = async () => { if (!keys || now() - keysAt > WBI_REFRESH_MS) await loadNav(); return keys; };
+    const ensureKeys = async (read: BiliRequest = request, signal?: AbortSignal) => { if (!keys || now() - keysAt > WBI_REFRESH_MS) await loadNav(read, signal); signal?.throwIfAborted(); return keys; };
     /** 带签名的 GET：拿不到钥匙就原样发（B 站有的接口还认） */
-    const signedGet = async (base: string, params: Record<string, string | number>) => {
-        const k = await ensureKeys();
+    const signedGet = async (base: string, params: Record<string, string | number>, signal?: AbortSignal) => {
+        const read = readRequest(request, signal);
+        const k = await ensureKeys(read, signal);
         const query = k ? wbiSign(params, k, Math.floor(now() / 1000)) : Object.entries(params).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join('&');
-        return (await call(request, `${base}?${query}`, { headers })).data;
+        signal?.throwIfAborted(); return (await call(read, `${base}?${query}`, { headers })).data;
     };
 
     return {
         name: str(nav.uname),
         mid: num(nav.mid),
 
-        async search(keyword, order = 'totalrank') {
-            const data = rec(await signedGet('https://api.bilibili.com/x/web-interface/wbi/search/type', { search_type: 'video', keyword, order, page: 1, page_size: 20 }));
+        async search(keyword, order = 'totalrank', signal) {
+            const data = rec(await signedGet('https://api.bilibili.com/x/web-interface/wbi/search/type', { search_type: 'video', keyword, order, page: 1, page_size: 20 }, signal));
+            signal?.throwIfAborted();
             const videos: BiliVideo[] = [];
             for (const raw of Array.isArray(data.result) ? data.result : []) {
                 const item = rec(raw);
@@ -444,21 +469,25 @@ export async function openAccount(request: BiliRequest, credential: BiliCredenti
             return videos;
         },
 
-        async subtitle(video) {
+        async subtitle(video, signal) {
+            const read = readRequest(request, signal); signal?.throwIfAborted();
             let cid = video.cid ?? 0;
             if (!cid) {
-                const view = rec((await call(request, `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(video.bvid)}`, { headers })).data);
+                const view = rec((await call(read, `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(video.bvid)}`, { headers })).data);
+                signal?.throwIfAborted();
                 cid = num(view.cid);
                 if (!cid) return { status: 'none' };
             }
-            const player = rec(await signedGet('https://api.bilibili.com/x/player/wbi/v2', { bvid: video.bvid, cid }));
+            const player = rec(await signedGet('https://api.bilibili.com/x/player/wbi/v2', { bvid: video.bvid, cid }, signal));
+            signal?.throwIfAborted();
             const tracks = (Array.isArray(rec(player.subtitle).subtitles) ? rec(player.subtitle).subtitles as unknown[] : []).map(rec).filter(track => str(track.subtitle_url));
             if (!tracks.length) return player.need_login_subtitle === true ? { status: 'needLogin' } : { status: 'none' };
             const track = tracks.find(candidate => SUBTITLE_PREFERRED.test(str(candidate.lan))) ?? tracks[0]!;
             const url = str(track.subtitle_url).replace(/^\/\//, 'https://').replace(/^http:/, 'https:');
-            const response = await request(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+            const response = await read(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
             if (!response.ok) throw new BiliApiError(`字幕文件返回 ${response.status}`, response.status);
             const body = rec(JSON.parse(await response.text()));
+            signal?.throwIfAborted();
             const lines = (Array.isArray(body.body) ? body.body : []).map(item => str(rec(item).content)).filter(Boolean);
             return lines.length ? { status: 'ok', lan: str(track.lan), lines } : { status: 'none' };
         },
