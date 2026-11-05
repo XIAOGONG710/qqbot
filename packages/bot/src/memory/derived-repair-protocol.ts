@@ -42,7 +42,22 @@ export interface RepairCheckpointEvidence {
     /** Fixed classification, never a provider exception/message. */
     blockedReason?: 'dispatch-uncertain' | 'provider-rejected' | 'evidence-mismatch' | 'operation-failed';
 }
-export interface RepairJournal { lease: RepairLease; phase: RepairPhase; evidence: RepairCheckpointEvidence }
+/** Confirms only that a known obsolete refresh has stopped; never clears contamination. */
+export interface RefreshSettlementEvidence {
+    observedGeneration: string;
+    operationId: string;
+    operationType: 'refresh_mental_model';
+    modelId: 'relationship';
+    status: 'completed';
+    outcome: 'content_written' | 'content_unchanged';
+    quiescentWatermark: string;
+    operations: { pending: 0; processing: 0; failed: 0; cancelled: 0 };
+    pendingConsolidation: 0;
+    failedConsolidation: 0;
+    modelIdentityHash: string;
+    configurationHash: string;
+}
+export interface RepairJournal { lease: RepairLease; phase: RepairPhase; evidence: RepairCheckpointEvidence; settlement?: RefreshSettlementEvidence }
 export interface FinalEvidence {
     sourceManifestHash: string;
     progressHash: string;
@@ -112,7 +127,22 @@ export function isRepairCheckpointEvidence(value: unknown): value is RepairCheck
         && (value.blockedReason === undefined || value.blockedReason === 'dispatch-uncertain' || value.blockedReason === 'provider-rejected' || value.blockedReason === 'evidence-mismatch' || value.blockedReason === 'operation-failed');
 }
 export function isRepairJournal(value: unknown): value is RepairJournal {
-    return object(value) && isRepairLease(value.lease) && REPAIR_PHASES.includes(value.phase as RepairPhase) && isRepairCheckpointEvidence(value.evidence);
+    return object(value) && isRepairLease(value.lease) && REPAIR_PHASES.includes(value.phase as RepairPhase) && isRepairCheckpointEvidence(value.evidence)
+        && (value.settlement === undefined || isRefreshSettlementEvidence(value.settlement)
+            && value.settlement.observedGeneration !== value.lease.generation && value.settlement.operationId === value.evidence.refreshOperationId
+            && value.settlement.modelIdentityHash === value.evidence.modelIdentityHash && value.settlement.configurationHash === value.evidence.safeConfigHash
+            && (value.phase === 'refresh-pending' || value.phase === 'blocked'));
+}
+export function isRefreshSettlementEvidence(value: unknown): value is RefreshSettlementEvidence {
+    const keys = ['observedGeneration', 'operationId', 'operationType', 'modelId', 'status', 'outcome', 'quiescentWatermark', 'operations',
+        'pendingConsolidation', 'failedConsolidation', 'modelIdentityHash', 'configurationHash'];
+    return object(value) && Object.keys(value).length === keys.length && Object.keys(value).every(key => keys.includes(key))
+        && repairUuid(value.observedGeneration) && repairUuid(value.operationId) && value.operationType === 'refresh_mental_model'
+        && value.modelId === 'relationship' && value.status === 'completed' && (value.outcome === 'content_written' || value.outcome === 'content_unchanged')
+        && timestamp(value.quiescentWatermark) && repairHash(value.modelIdentityHash) && repairHash(value.configurationHash)
+        && value.pendingConsolidation === 0 && value.failedConsolidation === 0 && object(value.operations)
+        && Object.keys(value.operations).length === 4 && ['pending', 'processing', 'failed', 'cancelled'].every(key =>
+            Object.hasOwn(value.operations as object, key) && (value.operations as Record<string, unknown>)[key] === 0);
 }
 export function isFinalEvidence(value: unknown): value is FinalEvidence {
     if (!object(value)) return false;

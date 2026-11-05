@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { isSafeRepairModel, type DerivedRepairApi, type RepairModelEvidence, type RepairStats } from './hindsight.ts';
 import {
     repairFingerprint, repairHash, repairModelIdentityHash, repairSourceManifestHash, repairUuid,
-    type FinalEvidence, type RepairCandidate, type RepairCheckpointEvidence, type RepairJournal, type RepairLease, type RepairPhase, type RepairReceipt,
+    type FinalEvidence, type RefreshSettlementEvidence, type RepairCandidate, type RepairCheckpointEvidence, type RepairJournal, type RepairLease, type RepairPhase, type RepairReceipt,
 } from './derived-repair-protocol.ts';
 
 type Model = RepairModelEvidence;
@@ -13,6 +13,8 @@ export interface RepairStateStore {
     beginRepair(bank: string, input: { expectedGeneration: string; eventSetHash: string; sourceManifestHash: string; sourceManifest: RepairCandidate['sourceManifest']; owner: RepairCandidate['owner']; progressHash: string }): RepairLease;
     checkpoint(lease: RepairLease, phase: RepairPhase, evidence: RepairCheckpointEvidence): void;
     commitVerifiedRepair(lease: RepairLease, evidence: FinalEvidence): RepairReceipt;
+    repairJournals(bank: string): readonly RepairJournal[];
+    settleRefresh(lease: RepairLease, evidence: RefreshSettlementEvidence): void;
 }
 export type RepairResult = 'repaired' | 'clean' | 'waiting' | 'blocked' | 'stale' | 'stopped' | 'unavailable';
 export interface DerivedRepairOptions {
@@ -132,6 +134,45 @@ export class DerivedRepair {
             && model.trigger.min_refresh_interval_seconds === candidate.expectedCadence;
     }
 
+    async #settleOld(candidate: RepairCandidate, unresolved: readonly string[]): Promise<'settled' | RepairResult> {
+        const { api, store } = this.#options;
+        const journal = store.repairJournals(candidate.bankId).find(item => unresolved.includes(item.lease.repairId)
+            && item.lease.generation !== candidate.generation && !item.settlement && item.phase === 'refresh-pending'
+            && repairUuid(item.evidence.refreshOperationId));
+        if (!journal) return 'blocked';
+        const operationId = journal.evidence.refreshOperationId!;
+        const op = await this.#read(() => api.repairRefreshOperation(candidate.bankId, operationId));
+        if (!this.#current(candidate)) return this.#stopped ? 'stopped' : 'stale';
+        if (op.operation_id !== operationId || op.operation_type !== 'refresh_mental_model' || op.mental_model_id !== MODEL) return 'blocked';
+        if (op.status === 'pending' || op.status === 'processing') return 'waiting';
+        if (op.status !== 'completed' || op.outcome !== 'content_written' && op.outcome !== 'content_unchanged') return 'blocked';
+        // This proves only that the old request has terminated. Never restore its policy or accept its content.
+        const model = await this.#read(() => api.repairModel(candidate.bankId, MODEL));
+        if (!this.#current(candidate)) return this.#stopped ? 'stopped' : 'stale';
+        if (!this.#safe(candidate, model) || journal.evidence.safeConfigHash !== model.configuration_hash
+            || journal.evidence.modelIdentityHash !== candidate.modelIdentityHash
+            || journal.evidence.originalAutomatic !== candidate.expectedAutomatic || journal.evidence.originalCadence !== candidate.expectedCadence) return 'blocked';
+        const stats = await this.#idle(candidate);
+        if (!stats) return this.#stopped ? 'stopped' : 'waiting';
+        if (!this.#current(candidate)) return 'stale';
+        store.settleRefresh(journal.lease, {
+            observedGeneration: candidate.generation, operationId, operationType: 'refresh_mental_model', modelId: MODEL,
+            status: 'completed', outcome: op.outcome, quiescentWatermark: stats.last_memory_write_at!,
+            operations: { pending: 0, processing: 0, failed: 0, cancelled: 0 }, pendingConsolidation: 0, failedConsolidation: 0,
+            modelIdentityHash: candidate.modelIdentityHash, configurationHash: model.configuration_hash,
+        });
+        return 'settled';
+    }
+
+    #inheritsPaused(candidate: RepairCandidate, model: Model): boolean {
+        if (!this.#safe(candidate, model)) return false;
+        return this.#options.store.repairJournals(candidate.bankId).some(journal => journal.lease.generation !== candidate.generation
+            && journal.settlement !== undefined && journal.evidence.originalAutomatic === candidate.expectedAutomatic
+            && journal.evidence.originalCadence === candidate.expectedCadence && journal.evidence.modelIdentityHash === candidate.modelIdentityHash
+            && journal.evidence.safeConfigHash === model.configuration_hash && journal.settlement.configurationHash === model.configuration_hash
+            && journal.settlement.modelIdentityHash === candidate.modelIdentityHash);
+    }
+
     async #run(candidate: RepairCandidate): Promise<RepairResult> {
         const { api, store } = this.#options;
         if (candidate.bankId.endsWith('-common') || !candidate.sourceManifest.length
@@ -139,7 +180,7 @@ export class DerivedRepair {
             || new Set(candidate.sourceManifest.map(item => item.documentId)).size !== candidate.sourceManifest.length
             || candidate.sourceManifest.some(item => !/^ep--?\d+$/.test(item.documentId) || !repairHash(item.episodeDigest) || !repairHash(item.contentHash) || !Number.isSafeInteger(item.count) || item.count < 1)
             || !Number.isSafeInteger(candidate.expectedCadence) || candidate.expectedCadence < 0 || typeof candidate.expectedAutomatic !== 'boolean') return 'blocked';
-        const snapshot = store.snapshot(candidate.bankId);
+        let snapshot = store.snapshot(candidate.bankId);
         if (!snapshot.dirty) return 'clean';
         if (snapshot.owners.length !== 1 || snapshot.owners[0]!.allDocuments || snapshot.owners[0]!.qq !== candidate.owner.qq || snapshot.owners[0]!.tier !== candidate.owner.tier
             || snapshot.documents.some(id => !candidate.sourceManifest.some(item => item.documentId === id))) return 'blocked';
@@ -147,7 +188,14 @@ export class DerivedRepair {
         let journal = snapshot.repair;
         const matching = journal && journal.lease.generation === candidate.generation && journal.lease.eventSetHash === candidate.eventSetHash
             && journal.lease.sourceManifestHash === candidate.sourceManifestHash && journal.lease.progressHash === candidate.progressHash ? journal.lease.repairId : undefined;
-        if (snapshot.unresolvedRepairIds.some(id => id !== matching)) return 'blocked';
+        if (snapshot.unresolvedRepairIds.some(id => id !== matching)) {
+            const result = await this.#settleOld(candidate, snapshot.unresolvedRepairIds.filter(id => id !== matching));
+            if (result !== 'settled') return result;
+            snapshot = store.snapshot(candidate.bankId);
+            if (!this.#current(candidate)) return this.#stopped ? 'stopped' : 'stale';
+            if (snapshot.unresolvedRepairIds.some(id => id !== matching)) return 'waiting';
+            journal = snapshot.repair;
+        }
         if (!journal || journal.lease.generation !== candidate.generation || journal.lease.eventSetHash !== candidate.eventSetHash
             || journal.lease.sourceManifestHash !== candidate.sourceManifestHash || journal.lease.progressHash !== candidate.progressHash) {
             const lease = store.beginRepair(candidate.bankId, { expectedGeneration: candidate.generation, eventSetHash: candidate.eventSetHash,
@@ -169,8 +217,8 @@ export class DerivedRepair {
                     const stats = await this.#idle(candidate); if (!stats) return 'waiting';
                     const inventory = await this.#inventory(candidate); if (!inventory) return 'waiting';
                     const model = await this.#read(() => api.repairModel(candidate.bankId, MODEL)); if (!this.#current(candidate)) return 'stale';
-                    if (!this.#identity(candidate, model) || model.trigger.refresh_after_consolidation !== candidate.expectedAutomatic
-                        || model.trigger.min_refresh_interval_seconds !== candidate.expectedCadence) return this.#blocked(lease, 'evidence-mismatch');
+                    if (!this.#identity(candidate, model) || model.trigger.min_refresh_interval_seconds !== candidate.expectedCadence
+                        || model.trigger.refresh_after_consolidation !== candidate.expectedAutomatic && !this.#inheritsPaused(candidate, model)) return this.#blocked(lease, 'evidence-mismatch');
                     this.#checkpoint(lease, 'pause-dispatched', { initialWatermark: stats.last_memory_write_at!, inventoryHash: inventory,
                         modelIdentityHash: candidate.modelIdentityHash, originalAutomatic: candidate.expectedAutomatic, originalCadence: candidate.expectedCadence });
                     await this.#mutation(() => api.repairConfigureModel(candidate.bankId, MODEL), configured => {
@@ -206,6 +254,8 @@ export class DerivedRepair {
                     this.#checkpoint(lease, 'refresh-dispatched', {});
                     await this.#mutation(() => api.repairRefreshModel(candidate.bankId, MODEL), id => {
                         if (!repairUuid(id)) throw new Error('missing operation identity');
+                        if (store.repairJournals(candidate.bankId).some(previous => previous.lease.repairId !== lease.repairId
+                            && previous.evidence.refreshOperationId === id)) throw new Error('operation identity already owned');
                         this.#checkpoint(lease, 'refresh-pending', { refreshOperationId: id });
                     }); break;
                 }

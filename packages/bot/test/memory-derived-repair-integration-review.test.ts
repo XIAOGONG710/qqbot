@@ -15,6 +15,7 @@ const contact = { qq: 10001, tier: 'classmate' }, names = { char: 'Synthetic Cha
 const now = Date.parse('2026-11-05T12:30:00Z'), watermark = '2026-11-05T12:00:00.000001Z';
 const old = 'SYNTHETIC_WITHDRAWN_MODEL', fresh = 'SYNTHETIC_REBUILT_MODEL';
 const tick = () => new Promise<void>(done => setImmediate(done));
+async function until(check: () => boolean) { const end = Date.now() + 4000; while (!check()) { assert.ok(Date.now() < end, 'synthetic timeout'); await tick(); } }
 function fixture() {
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-repair-integration-')); roots.push(dir);
     const history = new ChatHistory(dir), docs = new Map<string, MemoryItem>(), models = new Map<string, RepairModelEvidence>();
@@ -32,12 +33,11 @@ function fixture() {
         repairModel: async (bank, id) => structuredClone(models.get(`${bank}/${id}`)!),
         repairConfigureModel: async (bank, id) => configure(bank, id, false),
         repairClearModel: async (bank, id) => { calls.push('clear'); const model = models.get(`${bank}/${id}`)!; model.content = ''; return structuredClone(model); },
-        repairRefreshModel: async () => { calls.push('refresh'); return operation; },
+        repairRefreshModel: async () => { calls.push('refresh'); return randomUUID(); },
         repairRefreshOperation: async (bank, id) => { if (completed) { const model = models.get(`${bank}/relationship`)!; model.content = fresh; model.last_refreshed_at = '2026-11-05T13:00:00Z'; }
             return { operation_id: id, operation_type: 'refresh_mental_model', mental_model_id: 'relationship', status: completed ? 'completed' : 'pending', outcome: completed ? 'content_written' : null }; },
         repairRestoreAutomatic: async (bank, id, cadence, enabled = true) => configure(bank, id, enabled, cadence),
     };
-    const operation = randomUUID();
     function configure(bank: string, id: string, enabled: boolean, cadence = 1800) {
         const model = models.get(`${bank}/${id}`)!; model.trigger = { ...structuredClone(RELATIONSHIP_MODEL.trigger), refresh_after_consolidation: enabled, min_refresh_interval_seconds: cadence };
         model.safe_configuration = isSafeRepairModel(model); model.configuration_hash = repairModelConfigHash(model); return structuredClone(model);
@@ -144,5 +144,88 @@ test('关系重建收据不等于所有旧观察已净化：恢复原始事实�
         ];
         const result = await f.memory.recall(contact, [], new Date(now), { query: 'synthetic', ignore: [] });
         assert.ok(result?.includes('SYNTHETIC_SAFE_RAW_FACT')); assert.ok(!result?.includes(old));
+    } finally { await f.memory.stop(); }
+});
+
+test('真实同步新撤回遇旧UUID刷新：先保持屏障，完成旧任务后独立重建新来源', async () => {
+    const f = fixture();
+    try {
+        await f.sync(); f.recall(); await f.sync();
+        const first = f.store.snapshot(f.memory.bankId(contact)); assert.equal(first.repair?.phase, 'refresh-pending');
+        f.recall(17); await f.sync();
+        assert.equal(f.store.snapshot(f.memory.bankId(contact)).dirty, true);
+        assert.equal(f.calls.filter(call => call === 'refresh').length, 1);
+        f.complete(); await f.sync();
+        const final = f.store.snapshot(f.memory.bankId(contact));
+        assert.equal(final.dirty, false); assert.notEqual(final.generation, first.generation);
+        assert.equal(f.calls.filter(call => call === 'refresh').length, 2);
+        assert.equal(f.calls.filter(call => call === 'clear').length, 2);
+        const state = JSON.parse(readFileSync(join(f.dir, 'derived.json'), 'utf8'));
+        const oldJournal = state.banks[f.memory.bankId(contact)].journals[first.repair!.lease.repairId];
+        assert.ok(oldJournal.settlement); assert.equal(oldJournal.phase, 'refresh-pending');
+        assert.ok(!readFileSync(join(f.dir, 'derived.json'), 'utf8').includes(old));
+        f.memory.relationship(contact); await tick(); await tick(); assert.ok(f.memory.relationship(contact)?.includes(fresh));
+        assert.equal(f.store.snapshot(f.memory.commonBankId()).dirty, true);
+    } finally { await f.memory.stop(); }
+});
+
+test('新污染和旧UUID均跨重启持久，旧任务完成后继续新世代修复', async () => {
+    const f = fixture(); let restart: LongTermMemory | undefined;
+    try {
+        await f.sync(); f.recall(); await f.sync(); f.recall(17); await f.sync(); await f.memory.stop();
+        restart = f.make(); f.complete(); await f.sync(restart);
+        assert.equal(f.store.snapshot(restart.bankId(contact)).dirty, false);
+        assert.equal(f.calls.filter(call => call === 'refresh').length, 2);
+        assert.equal(f.store.snapshot(restart.commonBankId()).dirty, true);
+    } finally { await f.memory.stop(); await restart?.stop(); }
+});
+
+test('仲裁读取await期间再撤回，不确认陈旧世代；下一轮核对最新来源后重建', async () => {
+    const f = fixture(); let entered = false, release!: () => void; const held = new Promise<void>(done => { release = done; });
+    const query = f.api.repairRefreshOperation;
+    try {
+        await f.sync(); f.recall(); await f.sync(); f.recall(17); await f.sync(); f.complete();
+        const before = f.store.snapshot(f.memory.bankId(contact));
+        f.api.repairRefreshOperation = async (...args) => { const result = await query(...args); entered = true; await held; return result; };
+        const job = f.sync(); await until(() => entered); f.recall(18); release(); await job;
+        const stale = f.store.snapshot(f.memory.bankId(contact)); assert.equal(stale.dirty, true); assert.notEqual(stale.generation, before.generation);
+        assert.equal(f.calls.filter(call => call === 'refresh').length, 1);
+        f.api.repairRefreshOperation = query; await f.sync(); assert.equal(f.store.snapshot(f.memory.bankId(contact)).dirty, false);
+        assert.equal(f.calls.filter(call => call === 'refresh').length, 2);
+    } finally { release(); await f.memory.stop(); }
+});
+
+test('旧任务仲裁纯读不阻停止，晚返回不能发布settlement；重启重新核验', async () => {
+    const f = fixture(); let restart: LongTermMemory | undefined, entered = false, release!: () => void;
+    const held = new Promise<void>(done => { release = done; }), query = f.api.repairRefreshOperation;
+    try {
+        await f.sync(); f.recall(); await f.sync(); f.recall(17); await f.sync(); f.complete();
+        const oldId = f.store.snapshot(f.memory.bankId(contact)).repair!.lease.repairId;
+        f.api.repairRefreshOperation = async (...args) => { const result = await query(...args); entered = true; await held; return result; };
+        const job = f.sync(); await until(() => entered); let drained = false;
+        await Promise.resolve(f.memory.stop()).then(() => { drained = true; }); assert.equal(drained, true); await job;
+        const read = () => JSON.parse(readFileSync(join(f.dir, 'derived.json'), 'utf8')).banks[f.memory.bankId(contact)].journals[oldId];
+        assert.equal(read().settlement, undefined); release(); await tick(); assert.equal(read().settlement, undefined);
+        f.api.repairRefreshOperation = query; restart = f.make(); await f.sync(restart);
+        assert.equal(f.store.snapshot(restart.bankId(contact)).dirty, false);
+    } finally { release(); await f.memory.stop(); await restart?.stop(); }
+});
+
+test('供应商复用旧刷新UUID不能以旧completed冒充新重建，保未知派发且不盲重试', async () => {
+    const f = fixture(), refresh = f.api.repairRefreshModel, query = f.api.repairRefreshOperation;
+    let firstId: string | undefined, previous: Awaited<ReturnType<typeof query>> | undefined;
+    f.api.repairRefreshModel = async (...args) => { const id = await refresh(...args); return firstId ??= id; };
+    f.api.repairRefreshOperation = async (...args) => {
+        if (f.calls.filter(call => call === 'refresh').length > 1) { assert.ok(previous); return structuredClone(previous); }
+        const result = await query(...args); if (result.status === 'completed') previous = structuredClone(result); return result;
+    };
+    try {
+        await f.sync(); f.recall(); await f.sync(); f.recall(17); await f.sync(); f.complete(); await f.sync();
+        const live = f.store.snapshot(f.memory.bankId(contact));
+        assert.equal(live.dirty, true); assert.equal(live.repair?.phase, 'refresh-dispatched');
+        assert.equal(live.repair?.evidence.refreshOperationId, undefined); assert.equal(f.memory.relationship(contact), undefined);
+        assert.equal(f.models.get(`${f.memory.bankId(contact)}/relationship`)!.content, '');
+        await f.sync(); assert.equal(f.calls.filter(call => call === 'refresh').length, 2);
+        assert.equal(f.store.snapshot(f.memory.bankId(contact)).dirty, true);
     } finally { await f.memory.stop(); }
 });
