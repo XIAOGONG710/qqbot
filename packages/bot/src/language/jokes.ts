@@ -208,6 +208,7 @@ export async function refreshJokes(options: RefreshOptions): Promise<boolean> {
         });
     };
     const state = store.load(qq);
+    const stateHash = digest(state);
     if (signal?.aborted) return false;
     if (Object.hasOwn(state, 'source') && (!validSource(state.source) || state.source.jokesHash !== jokesHash(state.jokes))) return false;
     const previousSourceMatches = sourceMatches(state, history);
@@ -237,6 +238,9 @@ export async function refreshJokes(options: RefreshOptions): Promise<boolean> {
     const fresh = parseJokes(reply, recent).filter(joke => !stillThere.some(old => old.phrase === joke.phrase));
     const jokes = [...stillThere, ...fresh].slice(0, JOKES_KEPT);
     if (signal?.aborted) return false;
+    // Another completed extraction may have published a newer snapshot while
+    // this model was pending. Its confirmed progress must not be rolled back.
+    if (digest(store.load(qq)) !== stateHash || signal?.aborted) return false;
     const source: JokeSource = { version: 1, count: history.length, historyHash: historyHash(history), requestHash, jokesHash: jokesHash(jokes) };
     store.save(qq, { version: 1, jokes, updatedAt: new Date(now).toISOString(), messageCount: recent.length, messageCursor: cursorOf(recent.at(-1)!), source });
     if (!signal?.aborted) options.log(`小梗：抽了一次，现在有 ${jokes.length} 个（新增 ${fresh.length}；日志不记内容）`);
