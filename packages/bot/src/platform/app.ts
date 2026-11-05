@@ -314,7 +314,7 @@ export interface AppOptions {
     transport: Transport;
     log: Log;
     /** 测试用：替换每个回复器的生成、连发合并等待等 */
-    pipeline?: Partial<Pick<ContactPipelineOptions, 'generate' | 'settle' | 'now' | 'waitUntil'>>;
+    pipeline?: Partial<Pick<ContactPipelineOptions, 'generate' | 'settle' | 'now' | 'waitUntil' | 'retryAfterMs'>>;
     /** NapCat 的语音转文字、OCR（ADR 0052）；不给就不听不看，照旧「[语音]」「[图片]」 */
     media?: MediaReader;
     /** 看图（ADR 0055）：运行入口按配置建；测试也可以直接给假的 */
