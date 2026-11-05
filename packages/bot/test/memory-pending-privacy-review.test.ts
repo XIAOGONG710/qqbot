@@ -65,7 +65,9 @@ test('归档连同孤立pending和残留完整搬走，不再重启恢复旧pend
    assert.equal(existsSync(file), false); assert.deepEqual(readFileSync(move.to), before[index]);
   }
   assert.deepEqual(new ChatHistory(data).pendingIncoming(QQ), []); assert.deepEqual(new ChatHistory(data).pendingIncoming(OTHER), []);
-  const audit = auditContactPrivacy(data, QQ); assert.equal(audit.artifacts.filter(a => a.path.includes('archive')).length, 4);
+  const audit = auditContactPrivacy(data, QQ);
+  assert.equal(audit.artifacts.filter(a => a.kind === 'direct' && a.path.replaceAll('\\', '/').startsWith('chats/archive/')).length, 4);
+  assert.ok(audit.artifacts.some(a => a.kind === 'mixed' && a.path.replaceAll('\\', '/').startsWith('maintenance/archive-jobs/')));
   assert.equal(readFileSync(untouched, 'utf8'), 'READONLY_SYNTHETIC');
  } finally { rmSync(root, { recursive: true, force: true }); }
 });

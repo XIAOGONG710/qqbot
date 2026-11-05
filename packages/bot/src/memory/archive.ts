@@ -4,14 +4,15 @@
 // 3. koishi.yml、config.json 里的 bank 前缀换成新的：新 bank 是空的，旧 bank 留在 Hindsight 里不删、不再读。
 // 要求 bot 停着（数据目录的锁没有活着的持有者）：在跑的插件手里有聊天记录和换档记录，改了会被它写回去。
 
-import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { writeJsonAtomic } from './json-file.ts';
 import { acquireLock, isProcessAlive, type IsAlive } from '../platform/lock.ts';
 import { unfinishedForgetJobs } from './forget-job.ts';
 import { isWrittenRetainState, WRITTEN_RETAIN_FILE, WRITTEN_RETAIN_MARKER } from './written-retain.ts';
 import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
 import { stateObject, stateTimestamp } from './state-schema.ts';
+import { archiveTextFingerprint, createArchiveJob, loadArchiveJob, resumeArchiveJob, unfinishedArchiveJobs, type ArchiveJob, type ArchiveStep } from './archive-job.ts';
+import { assertForgetPath, fingerprintForgetFile } from './forget-job.ts';
 
 export interface ArchiveOptions {
     /** 数据目录（runtime/bot） */
@@ -24,9 +25,13 @@ export interface ArchiveOptions {
     /** 只列出要做的事，不动文件 */
     dryRun?: boolean;
     isAlive?: IsAlive;
+    /** Resume the immutable original plan; never rediscover targets after a partial archive. */
+    resume?: string;
 }
 
 export interface ArchiveResult {
+    jobId?: string;
+    complete?: boolean;
     stamp: string;
     moves: { from: string; to: string }[];
     /** 记了起点的联系人 */
@@ -66,6 +71,16 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
     const release = options.dryRun ? undefined : acquireLock(lock, process.pid, options.isAlive ?? isProcessAlive);
     try {
         if (!options.dryRun && unfinishedForgetJobs(dataDir).length) throw new Error('有未完成遗忘任务，不能归档或更换记忆前缀；请先按原任务恢复');
+        const pending = unfinishedArchiveJobs(dataDir);
+        let resuming: ArchiveJob | undefined;
+        if (options.resume) {
+            const job = loadArchiveJob(dataDir, options.resume);
+            if (pending.some(id => id !== job.id)) throw new Error('存在其他未完成归档任务；请先恢复原任务');
+            if (options.prefix !== undefined && job.prefix !== options.prefix) throw new Error('恢复归档不能更换原前缀');
+            if (options.dryRun) return { ...job.result, jobId: job.id, complete: job.complete };
+            resuming = job;
+        }
+        if (!resuming && pending.length) throw new Error(`存在未完成归档任务（${pending.join(',')}）；请使用 --resume 原任务UUID`);
         const writtenPath = join(dataDir, 'memory', WRITTEN_RETAIN_FILE);
         checkPath(writtenPath); checkPath(join(dataDir, 'memory', WRITTEN_RETAIN_MARKER));
         if (existsSync(writtenPath)) {
@@ -74,6 +89,7 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
             if (!isWrittenRetainState(state)) throw new Error('日记提交意图格式无效，未执行归档');
             if (Object.values(state.operations).some(operation => operation.phase !== 'completed')) throw new Error('有未完成日记提交，不能归档或更换前缀；请先核对原任务');
         } else if (existsSync(join(dataDir, 'memory', WRITTEN_RETAIN_MARKER))) throw new Error('日记提交意图丢失但存在见证，未执行归档');
+        if (resuming) return resumeArchiveJob(dataDir, resuming.id);
         const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
         const result: ArchiveResult = { stamp, moves: [], since: [], prefix: [], skipped: [] };
 
@@ -81,8 +97,10 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
         const tiersPath = join(dataDir, 'tiers.json');
         checkPath(tiersPath);
         let tiers: Record<string, { tier: string; since?: string } | string>;
+        let tiersText: string | undefined;
         try {
-            const raw: unknown = existsSync(tiersPath) ? JSON.parse(readFileSync(tiersPath, 'utf8')) : {};
+            tiersText = existsSync(tiersPath) ? readFileSync(tiersPath, 'utf8') : undefined;
+            const raw: unknown = tiersText === undefined ? {} : JSON.parse(tiersText);
             const allowed: readonly string[] = [...CONTACT_TIERS, UNLISTED_TIER];
             if (!stateObject(raw) || !Object.entries(raw).every(([qq, entry]) => /^[1-9]\d*$/.test(qq) && Number.isSafeInteger(Number(qq))
                 && (typeof entry === 'string' ? allowed.includes(entry) : stateObject(entry) && typeof entry.tier === 'string' && allowed.includes(entry.tier)
@@ -138,8 +156,9 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
         const prefix = options.prefix ?? `${(current ?? 'linmengyao').replace(/(-\d+)+$/, '')}-${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
         if (!PREFIX.test(prefix)) throw new Error(`bank 前缀只能有字母、数字、短横线：${prefix}`);
         if (prefix === current) throw new Error(`新前缀和现在的一样（${prefix}），换一个`);
-        const edits: { file: string; text: string }[] = [];
+        const edits: { file: string; text: string; before: string }[] = [];
         for (const file of configs) {
+            assertForgetPath(file);
             const text = readFileSync(file, 'utf8');
             let edited: ReturnType<typeof editJson>;
             try { edited = file.endsWith('.json') ? editJson(text, prefix) : editYaml(text, prefix); }
@@ -147,28 +166,28 @@ export function archiveTestData(options: ArchiveOptions): ArchiveResult {
             if ('reason' in edited) result.skipped.push({ file, reason: edited.reason });
             else {
                 result.prefix.push({ file, ...(edited.from ? { from: edited.from } : {}), to: prefix });
-                edits.push({ file, text: edited.text });
+                edits.push({ file, text: edited.text, before: text });
             }
         }
         for (const qq of Object.keys(tiers)) result.since.push({ qq, tier: tierOf(qq)! });
 
         if (options.dryRun) return result;
 
-        // 先记起点、挪文件，再改前缀（ADR 0011 第 10 节：顺序反了，插件重启时会把最近的消息从 QQ 补回来）
-        if (existsSync(tiersPath)) {
-            for (let n = 1;; n++) {
-                const backup = join(dataDir, `tiers.before-${stamp}${n === 1 ? '' : `-${n}`}.json`);
-                try { copyFileSync(tiersPath, backup, constants.COPYFILE_EXCL); result.tiersBackup = backup; break; }
-                catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw new Error('档位恢复快照无法保存，未执行归档'); }
-            }
-            writeJsonAtomic(tiersPath, Object.fromEntries(Object.keys(tiers).map(qq => [qq, { ...(typeof tiers[qq] === 'object' ? tiers[qq] : {}), tier: tierOf(qq), since: now.toISOString() }])));
+        // Persist the whole delta before changing tiers, moving sources or replacing a config.
+        const steps: ArchiveStep[] = [];
+        if (tiersText !== undefined) {
+            let backup = join(dataDir, `tiers.before-${stamp}.json`);
+            for (let n = 2; existsSync(backup); n++) backup = join(dataDir, `tiers.before-${stamp}-${n}.json`);
+            checkPath(backup); result.tiersBackup = backup;
+            const before = archiveTextFingerprint(tiersText);
+            steps.push({ kind: 'copy', source: resolve(tiersPath), target: resolve(backup), before, after: before });
+            const content = JSON.stringify(Object.fromEntries(Object.keys(tiers).map(qq => [qq, { ...(typeof tiers[qq] === 'object' ? tiers[qq] : {}), tier: tierOf(qq), since: now.toISOString() }])), null, 2) + '\n';
+            steps.push({ kind: 'replace', source: resolve(tiersPath), target: resolve(tiersPath), before, after: archiveTextFingerprint(content), content });
         }
-        for (const { from, to } of result.moves) {
-            mkdirSync(dirname(to), { recursive: true });
-            renameSync(from, to);
-        }
-        for (const { file, text } of edits) writeFileSync(file, text);
-        return result;
+        for (const { from, to } of result.moves) { const before = fingerprintForgetFile(from); steps.push({ kind: 'move', source: resolve(from), target: resolve(to), before, after: before }); }
+        for (const edit of edits) steps.push({ kind: 'replace', source: resolve(edit.file), target: resolve(edit.file), before: archiveTextFingerprint(edit.before), after: archiveTextFingerprint(edit.text), content: edit.text });
+        const job = createArchiveJob(dataDir, result, steps, edits.map(edit => edit.file), prefix);
+        return resumeArchiveJob(dataDir, job.id);
     } finally { release?.(); }
 }
 

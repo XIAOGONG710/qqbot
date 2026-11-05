@@ -12,6 +12,7 @@ import { HindsightClient } from '.././memory/hindsight.ts';
 import { memoryLedger, recordForget } from './memory-audit.ts';
 import { auditContactPrivacy, type PrivacyAudit } from './privacy-audit.ts';
 import { describeError } from './transient-io.ts';
+import { unfinishedArchiveJobs } from './archive-job.ts';
 import { writeJsonAtomic } from './json-file.ts';
 import { assertForgetPath, createForgetJob, forgetFilePath, loadForgetJob, sameForgetFile, saveForgetJob, unfinishedForgetJobs, type ForgetJob } from './forget-job.ts';
 
@@ -116,6 +117,7 @@ export async function forgetContact(
     // friendly diagnostic; audit and every mutation happen after acquiring it.
     const release = acquireLock(join(root, 'bot.lock'), process.pid, options.isAlive);
     try {
+        if (unfinishedArchiveJobs(root).length) throw new Error('有未完成归档任务；先按原归档计划 --resume 恢复，不能移动其恢复目标或开始遗忘');
         const pending = unfinishedForgetJobs(root);
         let job: ForgetJob;
         if (options.resume) {
