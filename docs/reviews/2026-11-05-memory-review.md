@@ -1,6 +1,8 @@
 # 记忆与数据：深入审查（进行中）
 
-阶段一。全部操作使用合成聊天、临时目录、假 API；未访问真实 runtime，未连接真实记忆库、模型或 QQ。此前模块完成不代表记忆模块完成。
+阶段一。修复复现实验使用合成聊天、临时目录和假API；未访问真实runtime，未连接真实记忆库、模型或QQ。此前模块完成不代表记忆模块完成。
+
+**验证资料范围更正（第十一批）**：此前“全部操作使用合成资料/未读取角色资料”的表述过宽；既有全量回归中有用例加载仓库角色卡。第十一批副代理也误跑了9项旧diary用例（两张仓库卡），已明确停止该类执行并重跑剔除它们的合成集；没有把卡或正文外发给服务。历史测试通过数量仍是当时实际结果，但不能据此称全合成。本轮主代理仅执行已确认以临时合成卡/假API工作的463项集合和全仓类型检查，没有新跑全仓测试；463项不冒充完整仓库覆盖。后续验证须先识别fixture来源，角色卡依赖用例在合成化之前不运行，不改弱断言凑绿。
 
 ## 文件与数据流清单
 
@@ -292,3 +294,33 @@ lastTouchedDay与civilDayNumber使用UTC中立日序表达民用日期，不强�
 原future-history/future-crisis/Apia诊断已改为正确行为探针，与正式回归分开，不能再用旧坏行为断言证明未修。本批ADR0246/0247分别记录恢复及时间协议，代码提交`b9adc611`（遗忘意图/维护租约）与`94352a7a`（事实视图/civil调用链）；只用合成聊天、假API、临时文件/真实子进程和IO注入，没有读取或删除真实运行时、聊天/角色或外部服务数据，没有部署或推送，AGENTS.md保持原未跟踪。
 
 M32b历史观察和公共日记/总结来源协议仍open；本批没有解除那些守卫。旧弱ID、未持久观察/legacy before、未知远端DELETE、病态历史重分片、非合作写者、fsync/网络FS与多文件非事务限制保持。记忆模块仍未完成，不转下一模块或社区比较。
+
+## 第十一批：外层停止所有权、日记回补与只读观察证据
+
+执行期间另有独立时区任务提交`58803856`。本批避开其config/package/Koishi/time-zone及测试改动；其成果不是本批实现，未覆盖或夹带其原修改。代码提交使用显式路径范围，AGENTS.md仍保持原未跟踪。
+
+### M36：外层发送与App停止
+
+presence/browsing.stop此前仅停timer，纯compose晚结果仍可发新动作；已派发送held时App可以先释放目录锁，再有晚ACK写历史/状态。现两实例永久停止，纯read/compose/未commit initiate可取消，已派mutation/send/已commit Responder由tick持有ACK及状态/历史收尾，stop返回可重复的drain，idle保undefined，start/reapply不复活。B站私有signal贯通initiate与sendLink；App汇合两个drain。
+
+真实App合成卡进一步确认封面await之后的子步骤旁路：封面held期间stop后会继续发文本。现每次真正send前查stop/signal，封面真实ACK按本次messageId记历史后不再派文本；已派链接文本则等ACK/ChatHistory完成才放锁。3项App回归在有效合成卡后先红后绿；首轮夹具缺earlySlot period、world people/events的加载失败不是源码反例，已修夹具后重新确认真实红灯。外层新8项加App3项共11，另覆盖在线、说说、戳、链接、DM/recordDm、评论/rpid及晚model/feed。提交`dfb64910`，ADR0249。
+
+范围仅记忆直接调用链的lifecycle，不代表B站/社交完整模块已审。永久不返回的mutation会阻drain；持续历史IO仍无durable发送outbox。资料卡多目标点赞中途停止的逐目标重启去重缺既有状态证据，未在本批臆造新频率政策或宣称全局exactly-once。
+
+### M29c：日记writer民用日期余波
+
+此前M29b只修reader/fading，writer的localDate回补仍可把Apia不存在的2011-12-30滚到31日，并提前把尚未结束的今天写入written；周记重复借31日，phase名义end缺日读入区间外日记。现civil目标先核身份，daily只补已结束且可表示当地日，week/phase以民用区间取真实日记；phase保名义ID/标题而timestamp用区间最后真实日记日。交叉又发现Nuuk晚23点缺时使23:30世界材料进入次日，现仅跨日时收束到本日最后真实瞬时，同日DST语义保持。新7项含Apia、Nuuk、DST/低年对照，确认合成49项重跑通过。旧written/texts未猜迁移；提交`3859cfa8`，ADR0250。
+
+### M32b：只读预检前进与能力证明阻点
+
+SDK新repairObservationStats严格fresh总数/fact-type计数/pending/failed和微秒水位；repairConsolidationStatus严格UUID/consolidation类型，单任务completed不冒充后继链已清。新6项，提交`811ba0af`，ADR0251；只读取，没有新增或调用清理/派发接口，没有解除任何guard，不能计为观察重建完成。
+
+固定官方v0.10.2 HTTP/version与bank/config不能独立证明database_backend及实际store_owned_for(bank)路径；知道版本或PG数据库也不等于观察事实走内置PG事务清理。未用布尔配置假造能力、未访问真实部署/数据库。需可信部署证明或真正后端无关的完整清空证据后，才能继续破坏性worker；同时unknown DELETE与公共旧源依赖屏障保持。
+
+日记直接retain的既有open另补真实writer+LongTerm+SDK假HTTP证据：三篇合法async receipt全pending且GET operations为0，writer已经written/texts，重启也不reconcile。可运行`node docs/reviews/repro/memory-diary-async-acceptance.mjs`，exit0仅证明当前坏行为，不是正确性回归。此不是新编号重复发现；必须prepared固定body/UUID/requestHash/来源manifest与typed实际完成回执一起贯通，不能只让LongTerm回bool而writer每轮重生成另一body。新日历修复和只读API都没有冒充这项已完成。
+
+### 第十一批验证与下一步
+
+正式新增24项（外层8/App3/日历7/读取API6），记忆累计新增411项，其中6项是后续预检接口证据校验，不代表6项清理缺陷已修。主代理最终463/463可确认合成回归通过（memory系列、纯B站卡片及模块登记），全仓类型/差异检查通过；后续ADR/模块映射生成后再核模块4项通过。没有把历史3042全量结果当作本轮全仓验证。
+
+下一步仍先贯通日记prepared/outbox、来源manifest与实际completed，再处理summary对confirmed diary版本的依赖；旧无manifest来源保legacy、不猜净化或删除已回复事实。观察后端能力缺证不以default猜测，继续保护。其余记忆直接CLI/归档多文件恢复、外层发送失败持久outbox与实际资源性能按风险取证；本批不降低验证深度，不转模块或社区比较。
