@@ -673,8 +673,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
         })
         : undefined;
     if (memory) log(diaries ? `她的日记：她的每一天结束后写一篇存进公共记忆（没聊天的日子也写，停过的补最近 ${DIARY_BACKFILL_DAYS} 天）` : '她的日记：不写（用到的档位卡上都没有作息）');
-    if (memory && diaries) {
-        memory.setWrittenSourceVerifier(() => diaries.verifySources(new Date(pipeline?.now?.() ?? Date.now())));
+    if (memory) {
+        memory.setWrittenSourceVerifier(diaries ? intents => diaries.verifySources(new Date(pipeline?.now?.() ?? Date.now()), intents) : null);
         // Recover completed authored-source invalidation before any responder can read public models.
         memory.derivedAvailable();
     }

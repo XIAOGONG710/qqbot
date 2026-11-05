@@ -1,0 +1,13 @@
+# ADR 0257：公共作者意图必须有对应来源覆盖
+
+状态：接受，2026-11-05。接续ADR0252/0253/0256。
+
+两项真实合成调用链证明：App移除全部schedule后没有writer，不再安装来源核验器，旧completed正文仍读出；保留outbox但丢失diary.json，重建writer将空confirmed视为clean，也会读出旧正文。不能只加“无writer”分支而忽略第二种情况。
+
+宿主现在必须明确选择来源验证模式。App有writer时向verifySources传当前bank的current意图元数据；无writer时传null，只有存在已知作者意图或持久block时动态阻相关公共派生读取。模拟宿主初始及restart同样接线，使用虚拟时钟并冻结对应writer实例；合成端到端反例验证旧正文不再读出。无作者意图的正常公共QQ事实和私人bank保持可用。关闭功能或暂时丢来源不标永久污染；实际来源改变仍按既定协议持久block，不用布尔清除旧保护。
+
+每个已知意图必须有同document/UUID的prepared或confirmed来源。confirmed重验manifest和可取得正文hash；同UUID与不可变requestHash映射由outbox协议保证，不伪造旧收据未存的requestHash。prepared须同步local-only重算实际日记/总结输入，缺依赖或源变化不能仅凭UUID存在放行，也不能因prepare本身自锁。保留原意图/完成事实，缺来源不重新生成正文冒认旧ACK；恢复正确来源可重验。其它bank的历史意图不污染当前新bank。
+
+复核仍每次fresh读取本地来源。对已校验、实际瞬时严格早于最早所需当地日的历史，可以略过herDay投影，因为herDay只映射本日或前日；不能按UTC日期前缀裁剪，不跳过旧时间戳schema校验。没有缓存resolveWorld/计划输出。公共格式化过滤可复用同同步栈的已核结果，但所有await和格式化回调后的fresh检查保留。
+
+旧自定义宿主需接入新元数据契约；未安装核验器的独立注入兼容旧行为，不冒称所有宿主已获保证。旧无outbox/无manifest资料不猜迁移或删除。服务端历史观察及旧公共派生清理仍未完成，不以本协议解除guard或宣称整库干净。

@@ -34,7 +34,7 @@ import type { MacroNames } from '../st/macros.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes, type Episode } from './episodes.ts';
 import { clarity, IMPORTANT, isSummary, LASTING, lastTouchedDay, withoutMark, type Clarity, type FadeStats } from './fading.ts';
 import { civilDayInWindow, providerTime } from './civil-time.ts';
-import { WrittenRetainStore, writtenRequestHash, type WrittenOperation, type WrittenRetainOptions } from './written-retain.ts';
+import { WrittenRetainStore, writtenRequestHash, type WrittenOperation, type WrittenRetainOptions, type WrittenSourceIntent } from './written-retain.ts';
 import type { BankConfig, HindsightApi, MemoryItem, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
 
 /** 进行中的片段每多这么多条就整段重写一次 */
@@ -358,7 +358,7 @@ export class LongTermMemory {
     readonly #cancelReads = new Set<() => void>();
     readonly #written: WrittenRetainStore;
     readonly #writtenQueues = new Map<string, Promise<boolean>>();
-    #writtenSourceVerifier?: () => boolean;
+    #writtenSourceVerifier?: ((intents: readonly WrittenSourceIntent[]) => boolean) | null;
     #checkingWrittenSources = false;
     #drain?: Promise<void>;
     /** 最近一次写入、召回的结果（控制台的状态页，ADR 0010） */
@@ -441,20 +441,25 @@ export class LongTermMemory {
 
     #writtenBlocked(bankId: string): boolean {
         if (bankId !== this.commonBankId()) return false;
-        if (this.#writtenSourceVerifier) {
-            if (this.#checkingWrittenSources) return true;
-            this.#checkingWrittenSources = true;
-            try { if (this.#writtenSourceVerifier() !== true) return true; }
-            catch { return true; }
-            finally { this.#checkingWrittenSources = false; }
-        }
+        let intents: WrittenSourceIntent[];
+        try {
+            const state = this.#written.guardState(bankId);
+            if (this.#writtenSourceVerifier === null) return state.blockedDocuments.length > 0 || state.intents.length > 0;
+            if (this.#writtenSourceVerifier === undefined) return state.blockedDocuments.length > 0;
+            intents = state.intents;
+        } catch { return true; }
+        if (this.#checkingWrittenSources) return true;
+        this.#checkingWrittenSources = true;
+        try { if (this.#writtenSourceVerifier(intents) !== true) return true; }
+        catch { return true; }
+        finally { this.#checkingWrittenSources = false; }
         try { return this.#written.blockedDocuments(bankId).length > 0; }
         catch { return true; }
     }
 
     /** The owning host supplies a synchronous local-only check; unknown sources never authorize a public read. */
-    setWrittenSourceVerifier(verifier: () => boolean): void {
-        if (typeof verifier !== 'function') throw new Error('日记来源核验接口无效');
+    setWrittenSourceVerifier(verifier: ((intents: readonly WrittenSourceIntent[]) => boolean) | null): void {
+        if (verifier !== null && typeof verifier !== 'function') throw new Error('日记来源核验接口无效');
         this.#writtenSourceVerifier = verifier;
         this.#invalidateEntities();
     }
@@ -575,13 +580,13 @@ export class LongTermMemory {
         for (const episode of changed) this.#markDocuments(contact, [episode.id], `revision:${repairFingerprint([this.#key(contact), episode.id, episodeDigest(episode, names)])}`);
     }
 
-    #filterDerived(bankId: string, results: RecallResult[], snapshot = this.#derivedSnapshot(bankId)): RecallResult[] {
+    #filterDerived(bankId: string, results: RecallResult[], snapshot = this.#derivedSnapshot(bankId), writtenBlocked?: boolean): RecallResult[] {
         if (!snapshot) return [];
         // A relationship-model receipt proves that model, not the removal of
         // every historical consolidation observation. Repaired banks continue
         // using their verified raw episode facts until that separate protocol
         // has independent evidence. Unaffected banks retain ordinary recall.
-        if (!snapshot.dirty && !this.#writtenBlocked(bankId)) return snapshot.allOwners.length
+        if (!snapshot.dirty && !(writtenBlocked ?? this.#writtenBlocked(bankId))) return snapshot.allOwners.length
             ? results.filter(result => (result.type === 'world' || result.type === 'experience') && Boolean(result.document_id && /^ep--?\d+$/.test(result.document_id)))
             : results;
         const blocked = new Set(snapshot.documents), common = bankId === this.commonBankId();
@@ -599,7 +604,7 @@ export class LongTermMemory {
         const snapshot = this.#derivedSnapshot(bankId);
         if (!snapshot) return undefined;
         const writtenBlocked = this.#writtenBlocked(bankId);
-        const text = formatRecalled(this.#filterDerived(bankId, results, snapshot), options);
+        const text = formatRecalled(this.#filterDerived(bankId, results, snapshot, writtenBlocked), options);
         // Formatting hooks can change source permissions after the first filter.
         // A newly blocked public source invalidates the already-rendered mixture.
         if (!writtenBlocked && this.#writtenBlocked(bankId)) return undefined;
