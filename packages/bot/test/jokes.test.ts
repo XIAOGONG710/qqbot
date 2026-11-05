@@ -93,11 +93,11 @@ describe('隔一阵抽一次', () => {
         assert.equal(store.load(1).jokes.length, 1, '同一个梗不重复');
     });
 
-    test('文件坏了当作没有，不崩；原文件不动', () => {
+    test('文件坏了失败关闭为未知来源，不崩且原文件不动', () => {
         const dir = tmp();
         writeFileSync(join(dir, '1.json'), '{坏的');
         const logs: string[] = [];
-        assert.deepEqual(jokeStore({ dir, log: m => logs.push(m) }).load(1), { version: 1, jokes: [] });
+        assert.deepEqual(jokeStore({ dir, log: m => logs.push(m) }).load(1), { version: 1, jokes: [], source: null });
         assert.ok(logs.some(m => m.includes('读不了')));
     });
 });

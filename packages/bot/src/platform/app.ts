@@ -122,7 +122,7 @@ import { calendarFetcher, useRealCalendar, type CalendarStatus } from '.././worl
 import { transportFetcher, useRealTransport, type TransportFetcherStatus } from '.././world/transport.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { idiomStore, IDIOMS_CHECK_MS, refreshIdioms } from '.././language/idioms.ts';
-import { jokeRefresher, jokeStore, JOKES_CHECK_MS } from '.././language/jokes.ts';
+import { jokeRefresher, jokeStore, JOKES_CHECK_MS, verifiedJokes } from '.././language/jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes, type MemeEntry } from '.././language/memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from '.././language/watching.ts';
 import { feedFactEntry, feedOnce, feedPath, loadFeed } from '.././bilibili/feed-browsing.ts';
@@ -1836,7 +1836,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             ...(config.jealousy ? { jealousy: true } : {}),
             ...(config.curious ? { curious: true } : {}),
             ...(config.interruptions ? { interruptions: true } : {}),
-            ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => jokes.load(contact.qq).jokes } : {}),
+            ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => verifiedJokes(jokes.load(contact.qq), history.load(contact.qq)) } : {}),
             ...(idioms && contact.tier === 'boyfriend' ? { idioms: () => idioms.load(contact.qq).items } : {}),
             ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => memeEntries } : {}),
             ...(exemplars.length && contact.tier === 'boyfriend' ? { exemplars } : {}),
@@ -2473,7 +2473,7 @@ ${video.link}`);
         if (photos) { const s = photos.status(); extras.photos = { count: s.count, cat: s.byKind.cat, view: s.byKind.view, work: s.byKind.work, food: s.byKind.food }; }
         const aiDraftStatus = aiPhotoDrafts.status();
         if (aiDraftStatus.total) extras.aiPhotoDrafts = aiDraftStatus;
-        if (jokes) extras.jokes = config.contacts.filter(c => c.tier === 'boyfriend').reduce((n, c) => n + jokes.load(c.qq).jokes.length, 0);
+        if (jokes) extras.jokes = config.contacts.filter(c => c.tier === 'boyfriend').reduce((n, c) => n + verifiedJokes(jokes.load(c.qq), history.load(c.qq)).length, 0);
         if (config.weeklyReport) {
             try {
                 const dir = join(config.dataDir, 'reports');

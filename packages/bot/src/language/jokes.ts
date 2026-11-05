@@ -4,7 +4,7 @@
 // 编出来的（原文里找不到的）一律丢掉；存在 <数据目录>/jokes/<QQ>.json（可以随时删，会重新抽）。
 // 用的时候：聊天提示词里偶尔（约 1/4 的轮次）多一行“你们之间有个梗 X，话赶话正好接得上就顺口提一句”；她 72 小时内刚用过的不再给；他难过 / 危机 / 小别扭时不给。
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 
@@ -25,6 +25,17 @@ export interface JokeState {
     messageCount?: number;
     /** 上次处理的末条消息摘要，不保存聊天正文。旧文件下一次正常刷新时补齐。 */
     messageCursor?: string;
+    /** null means an explicitly present but invalid manifest, never legacy. */
+    source?: JokeSource | null;
+}
+
+export interface JokeSource {
+    version: 1;
+    count: number;
+    historyHash: string;
+    /** Fingerprint of the complete actual model messages, not reconstructed at read time. */
+    requestHash: string;
+    jokesHash: string;
 }
 
 /** 多久看一眼该不该抽（抽不抽由下面的条件定） */
@@ -48,6 +59,25 @@ export const JOKE_COOLDOWN_MS = 72 * HOUR;
 
 type Said = { role: 'user' | 'assistant'; content: string; time?: string };
 const cursorOf = (message: Said) => createHash('sha256').update(JSON.stringify([message.time, message.role, message.content])).digest('hex');
+const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const historyHash = (messages: readonly Said[]) => digest(messages.map(message => [message.role, message.time, message.content]));
+const jokesHash = (jokes: readonly Joke[]) => digest(jokes.map(joke => [joke.phrase, joke.origin]));
+const validSource = (value: unknown): value is JokeSource => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const source = value as Partial<JokeSource>;
+    return source.version === 1 && Number.isSafeInteger(source.count) && source.count! >= JOKES_MIN_MESSAGES
+        && [source.historyHash, source.requestHash, source.jokesHash].every(hash => typeof hash === 'string' && /^[a-f0-9]{64}$/.test(hash));
+};
+const sourceMatches = (state: JokeState, history: readonly Said[]): boolean => validSource(state.source)
+    && state.source.count <= history.length
+    && state.source.jokesHash === jokesHash(state.jokes)
+    && state.source.historyHash === historyHash(history.slice(0, state.source.count));
+
+/** Read protection also applies after restart. Unknown legacy provenance is
+ * preserved on disk but is not evidence that an origin is still permitted. */
+export function verifiedJokes(state: JokeState, history: readonly Said[]): Joke[] {
+    return sourceMatches(state, history) ? state.jokes : [];
+}
 
 export const jokesPrompt = (userName: string, charName: string, transcript: string) => `下面是${charName}和${userName}最近两周的聊天。请找出他们之间的“小梗”：一个词或一句短话，在聊天里**反复出现**（至少两次），并且当时双方在玩、在笑，是只有他们俩懂的玩笑。
 要求：
@@ -93,17 +123,26 @@ export interface JokeStore {
 
 export function jokeStore(options: JokeStoreOptions): JokeStore {
     const file = (qq: number) => join(options.dir, `${qq}.json`);
+    const unavailable = (qq: number) => {
+        try { options.log(`小梗：${qq} 的文件或来源清单读不了，保留原文件，暂停供给和刷新`); }
+        catch { /* 诊断不能把未知来源降级成可重建的空白 legacy。 */ }
+    };
     return {
         load(qq) {
             const path = file(qq);
-            if (!existsSync(path)) return { version: 1, jokes: [] };
             try {
                 const value = JSON.parse(readFileSync(path, 'utf8')) as JokeState;
                 if (value?.version !== 1 || !Array.isArray(value.jokes)) throw new Error('结构不对');
-                return { ...value, jokes: value.jokes.filter(j => typeof j?.phrase === 'string' && typeof j.origin === 'string') };
+                const state = { ...value, jokes: value.jokes.filter(j => typeof j?.phrase === 'string' && typeof j.origin === 'string') };
+                if (Object.hasOwn(value, 'source') && (!validSource(value.source) || value.source.jokesHash !== jokesHash(state.jokes))) {
+                    state.source = null;
+                    unavailable(qq);
+                }
+                return state;
             } catch (error) {
-                options.log(`小梗：${qq} 的文件读不了（${error instanceof Error ? error.message : String(error)}），当作没有；原文件不动`);
-                return { version: 1, jokes: [] };
+                if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return { version: 1, jokes: [] };
+                unavailable(qq);
+                return { version: 1, jokes: [], source: null };
             }
         },
         save(qq, state) {
@@ -170,31 +209,36 @@ export async function refreshJokes(options: RefreshOptions): Promise<boolean> {
     };
     const state = store.load(qq);
     if (signal?.aborted) return false;
+    if (Object.hasOwn(state, 'source') && (!validSource(state.source) || state.source.jokesHash !== jokesHash(state.jokes))) return false;
+    const previousSourceMatches = sourceMatches(state, history);
     const recent = history.filter(message => message.time !== undefined && now - Date.parse(message.time) < JOKES_WINDOW_DAYS * DAY && Date.parse(message.time) <= now);
     if (recent.length < JOKES_MIN_MESSAGES) return false;
     if (state.updatedAt && now - Date.parse(state.updatedAt) < JOKES_REFRESH_MS) return false;
     const lastProcessed = state.messageCursor ? recent.findLastIndex(message => cursorOf(message) === state.messageCursor) : -1;
     const added = state.messageCursor ? recent.length - lastProcessed - 1 : state.updatedAt ? recent.filter(message => Date.parse(message.time!) > Date.parse(state.updatedAt!)).length : recent.length;
-    if (added < JOKES_MIN_NEW) return false;
+    if (previousSourceMatches && added < JOKES_MIN_NEW) return false;
     const transcript = recent.slice(-240).map(message => `${message.role === 'user' ? options.userName : options.charName}：${message.content.replace(/\s+/g, ' ').slice(0, 120)}`).join('\n');
+    const request: { role: 'user'; content: string }[] = [{ role: 'user', content: jokesPrompt(options.userName, options.charName, transcript) }];
+    const requestHash = digest(request);
     let cancel: (() => void) | undefined;
     const cancelled = signal ? new Promise<undefined>(resolve => { cancel = () => resolve(undefined); signal.addEventListener('abort', cancel, { once: true }); }) : undefined;
     let reply: string | undefined;
     try {
         const pending = Promise.resolve().then(() => {
             if (signal?.aborted || !sourceCurrent() || signal?.aborted) return undefined;
-            return options.extract([{ role: 'user', content: jokesPrompt(options.userName, options.charName, transcript) }]);
+            return options.extract(request.map(message => ({ ...message })));
         });
         reply = await (cancelled ? Promise.race([pending, cancelled]) : pending);
     } catch (error) { if (signal?.aborted) return false; throw error; }
     finally { if (cancel) signal?.removeEventListener('abort', cancel); }
     if (reply === undefined || signal?.aborted || !sourceCurrent() || signal?.aborted) return false;
     // 旧的还成立（在最近两周里仍然原样出现至少两次）的留着，新的接在后面，最多 JOKES_KEPT 个
-    const stillThere = state.jokes.filter(joke => recent.filter(message => message.content.includes(joke.phrase)).length >= JOKE_MIN_OCCURRENCES);
+    const stillThere = previousSourceMatches ? state.jokes.filter(joke => recent.filter(message => message.content.includes(joke.phrase)).length >= JOKE_MIN_OCCURRENCES) : [];
     const fresh = parseJokes(reply, recent).filter(joke => !stillThere.some(old => old.phrase === joke.phrase));
     const jokes = [...stillThere, ...fresh].slice(0, JOKES_KEPT);
     if (signal?.aborted) return false;
-    store.save(qq, { version: 1, jokes, updatedAt: new Date(now).toISOString(), messageCount: recent.length, messageCursor: cursorOf(recent.at(-1)!) });
+    const source: JokeSource = { version: 1, count: history.length, historyHash: historyHash(history), requestHash, jokesHash: jokesHash(jokes) };
+    store.save(qq, { version: 1, jokes, updatedAt: new Date(now).toISOString(), messageCount: recent.length, messageCursor: cursorOf(recent.at(-1)!), source });
     if (!signal?.aborted) options.log(`小梗：抽了一次，现在有 ${jokes.length} 个（新增 ${fresh.length}；日志不记内容）`);
     return true;
 }
