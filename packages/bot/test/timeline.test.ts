@@ -37,7 +37,7 @@ describe('跨渠道时间线', () => {
         const recent = timeline.recent(at(12));
         assert.deepEqual(recent.map(e => e.channel), ['bilibili', 'device', 'web']);
         assert.deepEqual(timeline.recent(at(12), 24, 0), [], 'limit=0 不应退化成返回全部记录');
-        assert.equal(timeline.recent(at(12), 24, Number.NaN).length, 3, '无效 limit 回退到默认值');
+        assert.throws(() => timeline.recent(at(12), 24, Number.NaN), RangeError, '无效 limit 不再悄悄回退成默认值：窗口参数写错是调用方的错，直接报错（main d90b8272 的约定）');
         assert.ok(recent[2]!.summary.length <= 80);
         const line = timeline.promptLine(at(12))!;
         assert.match(line, /今天 08:30 在 B 站看了一条视频/);

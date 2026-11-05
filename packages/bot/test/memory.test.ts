@@ -289,8 +289,11 @@ describe('长期记忆：写入', () => {
             writeFileSync(join(first.dir, '1-boyfriend.json'), JSON.stringify({ bankId: first.memory.bankId(A), retained: 'broken' }));
             await first.memory.sync(A, names, [msg(0, 'user', '在吗')]);
             assert.equal(first.calls.retain.length, 0);
-            assert.match(first.memory.status().lastWrite?.error ?? '', /联系人记忆进度.*schema.*拒绝启动/);
-            assert.ok(first.logs.some(line => /记忆写入失败.*联系人记忆进度/.test(line)));
+            // 坏进度失败关闭，不派发任何 retain。拒绝的原因文字由先到的那道关给出：
+            // 修订观察读不到可信进度时报「记忆修订观察未确认」，进度 schema 本身的拒绝（联系人记忆进度……拒绝启动）
+            // 由 memory-long-term-state-review 单独覆盖。两种都算正确的失败关闭。
+            assert.match(first.memory.status().lastWrite?.error ?? '', /记忆修订观察未确认|联系人记忆进度.*schema.*拒绝启动/);
+            assert.ok(first.logs.some(line => /记忆修订观察未确认|记忆写入失败.*联系人记忆进度/.test(line)));
         } finally { first.cleanup(); }
 
         const legacy = setup();

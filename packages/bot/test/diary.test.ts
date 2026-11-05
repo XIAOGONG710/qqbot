@@ -22,7 +22,7 @@ describe('她的日记（ADR 0017）', () => {
             generate: async () => assert.fail('坏进度不能继续生成日记'),
         });
         try {
-            await assert.rejects(writer.catchUp(new Date('2026-10-08T12:00:00+08:00')), /日记进度.*schema.*拒绝启动/);
+            await assert.rejects(writer.catchUp(new Date('2026-10-08T12:00:00+08:00')), /日记状态无效或读取失败/);
         } finally { rmSync(dir, { recursive: true, force: true }); }
     });
 
@@ -128,7 +128,7 @@ describe('她的日记（ADR 0017）', () => {
             assert.match(materials[1]!, /01:30 宝宝：还没睡/, '10-06 01:30 算 10-05 这一天');
             assert.match(materials[2]!, /21:00 宝宝：今天去哪了/);
             assert.doesNotMatch(materials.join('\n'), /路人/);
-            assert.ok(logs.some(l => l === '她的日记：2026-10-06 已写（3 字，聊过天的 1 人），存进公共记忆'));
+            assert.ok(logs.some(l => l === '她的日记：2026-10-06 已确认提交完成'));
             assert.equal(DIARY_BACKFILL_DAYS, 3);
             // 上周（9-28 到 10-04）有 10-04 这一篇：写周记（ADR 0018），9-21 那周一篇都没有，不写
             assert.deepEqual(summaries, [{ id: 'week:2026-09-28', title: '林梦瑶的周记（9月28日–10月4日）', text: '第4篇' }]);
@@ -182,8 +182,8 @@ describe('她的日记（ADR 0017）', () => {
             assert.deepEqual(state.weeks, { '2026-09-21': 0, '2026-09-28': 3 });
             assert.deepEqual(state.phases, { '中秋节:2026-09-27': 0, '国庆节:2026-10-07': 3 }, '中秋那几天没有日记，不写');
             assert.equal(state.texts['2026-10-07'], '写好了');
-            assert.ok(logs.includes('她的周记：2026-09-28 那周已写（3 字，用了 2 篇日记），存进公共记忆'));
-            assert.ok(logs.includes('她的国庆节总结已写（3 字，用了 5 篇日记），存进公共记忆'));
+            assert.ok(logs.includes('她的周记：2026-09-28 那周已确认提交完成'));
+            assert.ok(logs.includes('她的国庆节总结已确认提交完成'));
             // 写过的不再写，也不再读
             const before = read.length;
             await writer.catchUp(new Date('2026-10-08T18:00:00+08:00'));
@@ -212,16 +212,18 @@ describe('她的日记（ADR 0017）', () => {
         const now = new Date('2026-10-08T12:00:00+08:00');
         try {
             await writer.catchUp(now);
-            assert.ok(logs.some(l => l.includes('2026-10-05 没写成（模型接口返回 401），下次再写')));
+            assert.ok(logs.some(l => l === '她的日记或总结没生成成功，本轮保留原状态'));
             fail = 'empty';
             await writer.catchUp(now);
-            assert.ok(logs.some(l => l === '她的日记：2026-10-05 模型回了空的，下次再写'));
+            assert.ok(logs.some(l => l === '她的日记或总结没生成成功，本轮保留原状态'));
             fail = 'memory';
             await writer.catchUp(now);
             fail = undefined;
             calls = 0;
             await Promise.all([writer.catchUp(now), writer.catchUp(now)]);
-            assert.equal(calls, 4, '两次一起调只跑一次：补 3 天日记，再写刚结束的国庆节总结（ADR 0018）');
+            // 3 次 = 后两天的日记 + 刚结束的国庆节总结。第一天的日记正文在「写进记忆失败」那次已持久固定（ADR 0252），
+            // 重试直接复用、不重新生成；两次并发调用仍只跑一轮。
+            assert.equal(calls, 3, '两次一起调只跑一轮：第一天正文已固定复用，补后两天日记，再写刚结束的国庆节总结（ADR 0018 / 0252）');
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
