@@ -1,0 +1,13 @@
+# ADR 0311：记忆外层发送的停止所有权
+
+状态：接受，2026-11-05。接续 ADR 0303。仅审查记忆直接依赖的外层发送/持久收尾，不代表B站或社交模块已整体审完。
+
+M36合成反例：presence/browsing.stop原来只清timer，在途compose后仍发出新动作；已派发送held时stop无drain，App可先释放目录，晚ACK再写历史/状态。B站App封面await后也会在停止后启动新的链接发送。
+
+两所有者改为永久停止的实例状态：纯读取、模型及尚未commit的initiate可取消等待，晚结果不再落盘或开始新动作；真正已派mutation、send及已commit的真实Responder由当前tick持有，stop返回同一drain等待ACK及本次持久收尾。idle保持undefined，不允许start/reapply复活；私有signal贯通initiate和sendLink，不复用成全局普通回复取消器。
+
+App合并presence/browsing的drain后才释放目录锁。sendLink每次真正派发前检查stop/signal；封面ACK后先按实际messageId记本次封面事实，停止后不启动文本；已派文本ACK仍追加ChatHistory。不能把已发生发送改判未发，不能凭停止抛弃确认事实。
+
+独立回归覆盖在线、说说、戳、链接、DM/recordDm、评论/rpid、晚模型/feed及真实App持锁边界。仅合成卡、假API和临时文件，未运行真实QQ/B站请求。
+
+边界：不合作mutation永不返回仍会阻drain；持续历史/状态IO失败没有durable发送outbox。本批不保证QQ+多JSON事务或任意重试exactly-once。资料卡多个目标中途停止的逐目标重启去重缺原持久证据，未借本次生命周期改既有次数策略。

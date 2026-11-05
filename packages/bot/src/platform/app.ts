@@ -2084,12 +2084,16 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             fetch: bilibiliFetch ?? ((url, init) => fetch(url, init)),
             initiate: request => responders.get(qq)!.initiate(request),
             // 真链接作为下一条发出去；聊天记录里连标题一起记，她之后知道自己发过什么
-            sendLink: async video => {
+            sendLink: async (video, signal) => {
+                if (stopped || signal?.aborted) return;
                 // 这台 QQ（NapCat 里的版本）太旧，json 卡片一律提示「版本过低」，所以不发卡片：
                 // 先发封面图，再发「标题 + 链接」，QQ 自己会把链接展开成预览。
                 if (transport.sendPrivateImage && video.cover) {
-                    try { await transport.sendPrivateImage(qq, video.cover, '[视频封面]'); } catch { /* 封面发不了就算了，链接照发 */ }
+                    let imageId: number | undefined;
+                    try { imageId = await transport.sendPrivateImage(qq, video.cover, '[视频封面]'); } catch { /* 未确认封面，不伪造已发送事实。 */ }
+                    if (imageId !== undefined) chatHistory.append(qq, { time: new Date(worldNow()).toISOString(), role: 'assistant', content: `[分享视频封面]《${video.title}》`, messageId: imageId });
                 }
+                if (stopped || signal?.aborted) return;
                 const messageId = await transport.sendPrivateText(qq, `${video.title}
 ${video.link}`);
                 chatHistory.append(qq, { time: new Date(worldNow()).toISOString(), role: 'assistant', content: `[分享视频]《${video.title}》${video.link}`, messageId });
@@ -3676,8 +3680,8 @@ ${body}
             if (tastesTimer) clearInterval(tastesTimer);
             if (tastesFirst) clearTimeout(tastesFirst);
             if (followUpTimer) clearInterval(followUpTimer);
-            presence?.stop();
-            browsing?.stop();
+            const presenceDrain = presence?.stop();
+            const browsingDrain = browsing?.stop();
             replies?.stop();
             risk?.stop();
             if (lifeTimer) clearInterval(lifeTimer);
@@ -3717,7 +3721,7 @@ ${body}
             useRealCalendar(undefined);
             useRealTransport(undefined);
             useWorldNeeds(undefined);
-            const drains = [diaryDrain, promisesDrain, memoryDrain, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
+            const drains = [diaryDrain, promisesDrain, memoryDrain, presenceDrain, browsingDrain, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
                     for (const result of results) if (result.status === 'rejected') {
