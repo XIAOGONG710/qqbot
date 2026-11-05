@@ -414,3 +414,19 @@ App现在明确注册writer验证或null无来源模式。当前bank有已知作
 新增18项正式：来源缺失/覆盖及早期历史8、fresh-byte资源8、同步核验次数1、真实模拟宿主1；记忆审查累计新增502项。主553集通过后补模拟直接调用方，最终554/554确认合成集通过；随后类型检查指出undefined/null分支已返回、函数条件恒真，删除冗余条件后15项关联与全仓类型再绿，Git差异/模块登记及生成文档通过。未把过程中的类型错误或夹具错误冒称通过，未运行未经核实的全仓npm test/旧真实卡用例。
 
 独立本地代码提交`0f23a99a`（fresh-byte元数据复用）、`aaf33c17`（已知意图覆盖、App/模拟宿主与资源调用链）。AGENTS.md保持原未跟踪，未推送或部署。接续重点仍为M32b公共原文到远端旧派生的证据修订/清理；新source覆盖不是远端旧观察已净，保持ADR0251/0255的能力、历史行及未知DELETE边界。其余资源/生命周期/多文件恢复按风险证据继续，模块尚未完成。
+
+## 第十五批：来源索引完整性与归档参数入口（2026-11-05）
+
+M32b来源覆盖补查：合成completed outbox保留operations/marker，仅丢current后，旧guardState返回空意图，重启snapshot也接受。两项正式回归先报Missing expected exception。现在每个已知bank/document均须有current；多个completed历史版本仍合法，未完成版本仍必须current。损坏原件保留、恢复正确原件可读，不猜测最新版本；这不是抗恶意整体状态回滚协议。代码7bc1766c。新增2项，556/556核实合成集及全仓类型、模块登记、差异通过。
+
+并行归档CLI输入审查发现缺值回退默认路径：--data/--config/--koishi/--prefix末尾无值会到达真实archiveTestData入口，dryRun=false；用registerHooks替换纯capture后端取证，没有实际运行时读写。修复与最终验证见本批后续记录。
+
+并行模拟宿主生命周期审查确证：background relationship读取held，runScenario返回并删除两个测试bank后再释放失败，sim.log新增67字节，已返回steps.logs同时被改变。仅合成card/fake API，未改sim源；此问题待后续独立修复，不能把batch14来源接线称为完整模拟生命周期保障。restart/final所有者stop/drain及高级API转发需要连贯复核；高级API能力降级目前是代码线索，尚未作完整行为验证。
+
+远端公共旧派生与observation独立清理仍受既有证据阻点限制，本批未DELETE/触发整合/解除guard，不读取真实部署或角色数据。
+
+归档CLI修复已完成：单次parser先拒缺值/下一flag/空白、重复/未知及config/no-config冲突，合法路径/前缀/演练/原resume保持；5项正式回归先3红2绿后全绿，相关11项通过，全仓类型通过。代码b6e9223b。本批新增7项，记忆累计509项。最终整合重跑见进度检查点；首次561集560通过、模块文档一项失败，原因写补充时误建第二份0254文件导致模块扫描选错路径，已删除该临时误建文件并补回原ADR，模块4项独立复核通过，非生产缺陷。未弱化断言。
+
+模拟未修证据保存为docs/reviews/repro/memory-sim-owner-lifecycle.mjs；默认结束和--restart两种模式均是坏行为诊断，exit0不表示修复。restart时旧请求还能写入新step日志。下一轮优先修旧owner stop/drain及清库顺序，保已派发ACK事实，再验证switchable高级API能力是否被降级；不声称其余归档强杀阶段已全部覆盖。
+
+最终重跑561/561全绿（核实合成集，非全仓全量），全仓类型及差异检查通过。代码任务分别7bc1766c与b6e9223b；原未跟踪AGENTS.md保持，未推送/部署。
