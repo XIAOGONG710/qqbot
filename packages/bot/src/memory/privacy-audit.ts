@@ -8,6 +8,7 @@ import { FEEDBACK_MONTH_FILE, isFeedbackRow } from '../emotion/feedback.ts';
 import { ACCOUNT_ACTIONS } from '../social/account.ts';
 import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
 import { isDerivedState } from './derived-state.ts';
+import { FORGET_JOBS_DIRECTORY, isForgetJob } from './forget-job.ts';
 
 export interface PrivacyArtifact {
     path: string;
@@ -162,6 +163,23 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
     }
     if (derivedOwned) add(join(root, 'memory', 'index.coordination.sqlite'), 'mixed', '派生屏障的共享协调与缺失见证；不存聊天正文，不单独移走或删除');
     if (unknownDerivedResidues) inventoryLimitations.push(`派生屏障临时残留有 ${unknownDerivedResidues} 份读不了或schema无效，无法归属联系人；属于共享未确认资料，保留原件并需人工复核，未按正文号码猜测分配。`);
+
+    // Maintenance intent must remain in place to exclude automatic restart.
+    // Audit it by the validated plan owner, never move it as ordinary contact data.
+    let unknownForgetJobs = 0, forgetOwned = false;
+    for (const path of walk(join(root, FORGET_JOBS_DIRECTORY))) {
+        const match = /^([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\.json(?:\.tmp-[1-9]\d*-[1-9]\d*)?$/.exec(basename(path));
+        if (!match) { unknownForgetJobs++; continue; }
+        let value: unknown;
+        try { value = readJson(path); } catch { unknownForgetJobs++; continue; }
+        if (!isForgetJob(value, root, match[1]!)) { unknownForgetJobs++; continue; }
+        if (value.plan.qq === qq) {
+            forgetOwned = true;
+            add(path, 'mixed', '遗忘维护意图与恢复检查点中的明确plan.qq；含目标/文件摘要，不含正文，须原地保留，不能自动移动或删除启动屏障', 1);
+        }
+    }
+    if (forgetOwned) add(join(root, 'bot.coordination.sqlite'), 'mixed', '全目录运行/维护协调租约；不存聊天正文，运行中不可删换');
+    if (unknownForgetJobs) inventoryLimitations.push(`遗忘维护目录有 ${unknownForgetJobs} 份未知或无效记录，无法安全归属联系人；保留原件核实，未按正文猜测。`);
 
     // peek.uin 的写入源是 QQ 好友 target.qq，不把 B 站 uid 或摘要中的号码当作 QQ。
     walk(join(root, 'presence'));

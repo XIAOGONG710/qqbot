@@ -25,7 +25,8 @@ import { readLifeEvents } from '.././world/life-events.ts';
 import { Timeline, timelineAccount, timelineFromDevice } from '.././memory/timeline.ts';
 import { consumeDshTimelineInbox, consumeDshWorldInbox } from '.././memory/dsh-inbox.ts';
 import { readWebSecrets, WebLookup } from './web.ts';
-import { acquireLock, startHeartbeat as startLockHeartbeat } from './lock.ts';
+import { acquireLock } from './lock.ts';
+import { unfinishedForgetJobs } from '../memory/forget-job.ts';
 import type { Log } from './log.ts';
 import { ChatHistory, sourceMessageSeq, type StoredMessage } from '.././memory/history.ts';
 import { stateTimestamp } from '../memory/state-schema.ts';
@@ -354,12 +355,11 @@ export function unlistedName(nickname: string | undefined): string {
 
 export function startApp(options: AppOptions): App {
     mkdirSync(options.config.dataDir, { recursive: true });
-    const lockPath = join(options.config.dataDir, 'bot.lock');
-    const heartbeatPath = join(options.config.dataDir, 'bot.lock.hb');
-    const releaseLease = acquireLock(lockPath, process.pid, undefined, { path: heartbeatPath });
-    const stopLockHeartbeat = startLockHeartbeat(heartbeatPath, 30_000, lockPath);
-    const release = () => { stopLockHeartbeat(); releaseLease(); };
-    try { return createApp(options, release); }
+    const release = acquireLock(join(options.config.dataDir, 'bot.lock'));
+    try {
+        if (unfinishedForgetJobs(options.config.dataDir).length) throw new Error('数据目录有未完成遗忘任务；保留原记录，请先按原任务 --resume 核实恢复，再启动 bot');
+        return createApp(options, release);
+    }
     catch (error) { release(); throw error; }
 }
 

@@ -29,12 +29,14 @@ describe('单实例锁', () => {
 
     test('持有者已经不在了（被强杀留下的锁）或锁文件写坏了：接管', () => {
         writeFileSync(path, '222');
-        acquireLock(path, 111, () => false);
+        const first = acquireLock(path, 111, () => false);
         assert.equal(readFileSync(path, 'utf8'), '111');
+        first(); // Simulate the previous process exiting, including its OS lease.
 
         writeFileSync(path, 'garbage');
-        acquireLock(path, 333, () => true);
+        const second = acquireLock(path, 333, () => true);
         assert.equal(readFileSync(path, 'utf8'), '333');
+        second();
     });
 
     test('锁已经被别人接管时，释放不会删掉别人的锁', () => {
@@ -64,8 +66,9 @@ describe('心跳：卡死/PID 复用的进程挡住启动时要能接管（2026-
     test('PID 活着但心跳过期：接管', () => {
         writeFileSync(path, '222');
         writeFileSync(beat, String(Date.now() - HEARTBEAT_STALE_MS - 1000));
-        acquireLock(path, 111, () => true, { path: beat });
+        const release = acquireLock(path, 111, () => true, { path: beat });
         assert.equal(readFileSync(path, 'utf8'), '111');
+        release();
     });
 
     test('PID 活着、心跳还新：拒绝启动', () => {
