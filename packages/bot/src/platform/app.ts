@@ -391,9 +391,26 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     // 真实天气（ADR 0048）：世界里的天气按济南 / 青岛实际的；取不到、开始取之前的日子照旧按日期生成
     const weather = config.realWeather && worldCard ? weatherFetcher({ dir: join(config.dataDir, 'weather'), log, now: worldNow }) : undefined;
     useRealWeather(weather);
-    const firstWeatherRefresh = weather?.refresh();
-    construction.onFailure(() => { useRealWeather(undefined); return firstWeatherRefresh; });
-    const weatherTimer = weather ? setInterval(() => void weather.refresh(), WEATHER_REFRESH_MS) : undefined;
+    // A refresh owns both cities and may still publish caches after its first
+    // await. Keep that whole round inside this App's data-directory lease.
+    const weatherRefreshes = new Set<Promise<void>>();
+    const refreshWeather = (): Promise<void> | undefined => {
+        if (stopped || !weather) return undefined;
+        const pending = weather.refresh();
+        weatherRefreshes.add(pending);
+        const finished = () => { weatherRefreshes.delete(pending); };
+        void pending.then(finished, finished);
+        return pending;
+    };
+    void refreshWeather();
+    construction.onFailure(() => {
+        useRealWeather(undefined);
+        return weatherRefreshes.size ? Promise.allSettled([...weatherRefreshes]).then(results => {
+            const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+            if (failures.length) throw new AggregateError(failures.map(result => result.reason), '天气刷新停止收尾未确认');
+        }) : undefined;
+    });
+    const weatherTimer = weather ? setInterval(() => void refreshWeather(), WEATHER_REFRESH_MS) : undefined;
     construction.onFailure(() => clearInterval(weatherTimer));
     weatherTimer?.unref();
     if (worldCard) log(`真实天气：${weather ? `开（济南 / 青岛逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；取不到照旧按日期生成）` : '关（配置 realWeather: false），按日期生成'}`);
@@ -537,6 +554,25 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     // 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；服务是异步起的（要监听端口），
     // 起来之前她的菜单是空的、回复里的令牌只摘不用
     let deviceService: DeviceService | undefined;
+    let startingDevice: Promise<void> | undefined, serviceStop: Promise<void> | undefined, deviceStopDrain: Promise<void> | undefined;
+    const deviceNotifications = new Set<Promise<void>>();
+    function stopDeviceService(): Promise<void> | undefined {
+        if (!deviceService || serviceStop) return serviceStop;
+        try { serviceStop = Promise.resolve(deviceService.stop()); }
+        catch (error) { serviceStop = Promise.reject(error); }
+        return serviceStop;
+    }
+    function stopDevices(): Promise<void> | undefined {
+        if (deviceStopDrain) return deviceStopDrain;
+        const serviceDrain = stopDeviceService();
+        const pending = [startingDevice, serviceDrain, ...deviceNotifications].filter((task): task is Promise<void> => task !== undefined);
+        if (!pending.length) return undefined;
+        deviceStopDrain = Promise.allSettled(pending).then(results => {
+            const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+            if (failures.length) throw new AggregateError(failures.map(result => result.reason), '设备控制停止收尾未确认');
+        });
+        return deviceStopDrain;
+    }
     const deviceOwner = config.contacts.find(c => c.tier === 'boyfriend');
 
     // ───────── 连续性（ADR 0157–0163）：设定账本 / 记忆账本 / 时间线 / 搜索 / 休眠 / 口味 / 认识的人 ─────────
@@ -641,20 +677,35 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
         const describers = config.vision
             ? { screen: configuredImageDescriber(config, SCREEN_VISION_PROMPT), camera: configuredImageDescriber(config, CAMERA_VISION_PROMPT) }
             : undefined;
-        const startingDevice = (startDevices ?? startDeviceService)({
+        startingDevice = (startDevices ?? startDeviceService)({
             dataDir: config.dataDir, mode: config.deviceControl as 'dryRun' | 'on', links: config.deviceLinks, apps: config.deviceApps,
             log: message => { if (!stopped) log(message); },
             ...(timeline ? { onAudit: (entry: Parameters<NonNullable<Parameters<typeof startDeviceService>[0]['onAudit']>>[0]) => { if (!stopped) timelineFromDevice(timeline)(entry); } } : {}),
-            say: text => { if (!stopped) transport.sendPrivateText(deviceOwner.qq, text).catch(error => { if (!stopped) log(`设备控制：提示没发出去（${error instanceof Error ? error.message : String(error)}）`); }); },
+            say: text => {
+                if (stopped) return;
+                // Register settlement before invoking the public transport:
+                // it may synchronously re-enter App.stop while dispatching.
+                let settle!: () => void;
+                const pending = new Promise<void>(resolve => { settle = resolve; });
+                deviceNotifications.add(pending);
+                const done = () => { deviceNotifications.delete(pending); settle(); };
+                const failed = (error: unknown) => {
+                    try { if (!stopped) log(`设备控制：提示没发出去（${error instanceof Error ? error.message : String(error)}）`); }
+                    catch { /* 诊断失败不能悬置已经结束的发送。 */ }
+                    finally { done(); }
+                };
+                try { void transport.sendPrivateText(deviceOwner.qq, text).then(done, failed); }
+                catch (error) { failed(error); }
+            },
             ...(describers?.screen && describers.camera ? { describe: { screen: describers.screen, camera: describers.camera } } : {}),
         }).then(async service => {
-            if (stopped) { await service?.stop(); return; }
             deviceService = service;
+            if (stopped) await stopDeviceService();
         }, error => { if (!stopped) log(`设备控制：启动出错（${error instanceof Error ? error.message : String(error)}）`); });
         // The constructor rollback observes the original drain (including a
         // late service.stop rejection); keep normal startup rejection handled.
         void startingDevice.catch(() => {});
-        construction.onFailure(() => deviceService ? deviceService.stop() : startingDevice);
+        construction.onFailure(stopDevices);
     }
 
     // 长期记忆（Hindsight）：补回之后写一次，之后每隔一段时间把结束了的片段写进去
@@ -2291,6 +2342,7 @@ ${body}
             const diaryDrain = diaries?.stop();
             const promisesDrain = promises?.stop();
             const memoryDrain = memory?.stop();
+            const weatherDrains = [...weatherRefreshes];
             const contextDrains = [...contextSummaries].map(summarize => summarize.stop());
             clearTimeout(incomingRetryTimer);
             try { chatHistory.flushIncoming(); } catch (error) { log(`停止时入站状态仍未确认持久（${describeError(error)}）`); }
@@ -2322,11 +2374,11 @@ ${body}
             clearTimeout(foodRetryTimer);
             if (jokesTimer) clearInterval(jokesTimer);
             if (idiomsTimer) clearInterval(idiomsTimer);
-            void deviceService?.stop();
+            const deviceDrain = stopDevices();
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
-            const drains = [diaryDrain, promisesDrain, memoryDrain, presenceDrain, browsingDrain, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
+            const drains = [diaryDrain, promisesDrain, memoryDrain, presenceDrain, browsingDrain, deviceDrain, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
                     for (const result of results) if (result.status === 'rejected') {
