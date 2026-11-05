@@ -448,3 +448,9 @@ M32b远端公共旧派生/历史observation清理及证据解封仍未完，保�
 新增5项好友申请正式回归，记忆累计902；定向5/5、三份correctness probe通过。最终核实合成集1012项=1011通过/1既有Windows权限skip/0失败，全仓类型实际exit0、模块与差异检查通过，非全仓全量。仅使用临时合成卡/fake transport，无真实QQ、角色、runtime、网络服务、数据库或部署推送。
 
 **下一检查点：记忆模块仍未完成。** 继续基于证据盘点剩余直接transport、控制面与后台owner；已审好友申请/selfRecall/backfill及此前chat action链不重复。M32b远端公共旧派生/observation清理阻点保持，不以客户端drain或局部任务完成冒充服务端worker静止/整库净化，不访问真实部署DB。全部记忆工作覆盖充分前不转模块或社区比较。
+
+第三十八批完成“认识的人”纯读取停止边界（b3293eae，ADR0163）：真实App held B站回复读取在stop取消后，旧装饰器丢signal并迟到写`people.json`，replacement继承旧事实；现signal原样透传且await后复核，取消结果不登记。已派`postReply` ACK/时间线继续按mutation事实收尾。新增4项，累计906。
+
+第三十九批完成Web continuity停止/deadline隔离（d367c625，ADR0160）：真实App stop后旧Wikipedia读取原会继续摘录、写时间线/日志；25秒超时孤儿还能污染已接管目录的新实例prompt。现App stop+deadline合并signal，Web分类/读取/全部provider/摘录/缓存/日志/时间线逐段守界；不合作底层晚结果只吸收。deadline照常回复，stop用AbortError终止提示词构建且不记回复故障；正常完成、时间线与6小时缓存保持。新增3项，累计909。
+
+最终核实允许合成集1018项=1017通过/1既有Windows符号链接权限skip/0失败，全仓Bot类型、模块登记、差异检查通过；未运行未核真实卡suite，未访问真runtime/QQ/模型/外部服务/DB，无部署推送。下一轮优先真实App+fake DSH验证手机伴侣runtime/media/action-result与App.stop/Koishi卸载owner候选；未复现前不称缺陷。M32b远端公共派生/历史observation可信净化证据仍缺，客户端保护不解，记忆未完不转模块或社区比较。

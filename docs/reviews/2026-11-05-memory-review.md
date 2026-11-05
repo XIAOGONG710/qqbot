@@ -678,3 +678,19 @@ stop现在同步清除probing；health成功、失败及finally只有App仍活�
 新增5项，记忆累计902。正式5/5及三份correctness probe通过；最终核实合成集1012项=1011通过/1既有Windows符号链接权限skip/0失败，全仓类型实际exit0、模块和差异检查通过。不是全仓全量；未访问真实角色、runtime、QQ、外部模型/服务、数据库或部署。
 
 边界：好友申请仅有当前进程正常停机所有权，没有持久mutation outbox、强杀重放、跨进程exactly-once或QQ mutation与本地审计的原子事务；不合作`callAction`可阻塞drain。`friendHistory`不合作实现可令旧`connected()` Promise长期pending，但本地副作用已被停止守卫隔离。下一轮继续按证据复核其它直接transport/控制面和后台owner。M32b远端公共旧派生/历史observation清理与独立证据解封仍未完成，客户端保护保持，记忆模块未完成不转模块。
+
+## 第三十八批：认识的人纯读取取消边界（2026-11-05）
+
+代码 b3293eae，ADR0163补记。真实App、临时合成卡与fake B站HTTP确认：`ReplyWatcher.stop()`已经取消 held `fetchReplies`，但`acquaintancesAccount`原先丢掉调用方的`AbortSignal`，旧纯读取释放后仍把回复写入`people.json`；目录租约因此被拖到旧请求完成，并且同目录replacement会继承本应取消的认识的人事实。已派`postReply` mutation是正确对照：仍须等待真实ACK、时间线与一次诊断收尾，不能按纯读取丢弃。
+
+账号装饰器现在原样透传signal，并在await后再次核验；取消后仍把底层已经返回的数组交还已取消调用栈，但不再调用`people.observe`。没有改变人物识别、40字摘录、两日熟悉、朋友只能作者设置或B站回复策略；不宣称远端HTTP已经取消、多进程JSON事务或任意外部账号实现合作取消。新增4项（core1、真实App3），记忆累计906。定向6+3项及correctness probe通过；随后与下一批合并完成最终允许集验证。
+
+## 第三十九批：Web continuity 停止、deadline 与替代实例隔离（2026-11-05）
+
+代码 d367c625，ADR0160补记。两份真实App合成证据确认：(1) Wikipedia fake fetch held时stop已释放目录，旧请求释放后仍派摘录模型、写Web时间线并继续联系人提示词构建日志；(2) continuity 25秒超时产生的孤儿请求可在replacement接管同目录后迟到写时间线，使新实例下一轮prompt包含旧查询事实。正常完成、时间线与同实例6小时缓存是绿边界。
+
+`WebLookup.line`新增可选生命周期signal，显式贯通网页读取、全部搜索商，并在分类、DNS/读取、provider、摘录、缓存、日志和时间线各await/提交边界重核。App为每轮Web continuity合并全局stop与25秒deadline；本地race在取消时立即结束等待，底层不合作promise晚返回只被吸收，不再派后继。deadline只放弃Web资料并照常回复；App stop用`AbortError`终止整次提示词构建，contact不把主动取消降级成普通continuity失败，Responder也不把它记成离线故障或修改failingSince。额度在远端派发前已记，超时不回滚，避免伪造未发生请求。底层无signal实现仍可运行，本批不宣称远端取消。
+
+新增3项真实App正式回归，记忆累计909。定向Web 16项、两份correctness probe通过；最终核实允许的合成集1018项=1017通过、1项既有Windows符号链接权限skip、0失败。全仓Bot类型、模块登记与差异检查通过；没有运行未经核实的真实角色卡suite，没有访问真runtime、QQ、外部模型、服务或数据库，无部署推送。
+
+**下一检查点：记忆模块仍未完成。** 下一轮先用真实App、fake DSH/传输验证手机伴侣`runtime.handle`、媒体读取、动作回执与App.stop/Koishi卸载的完整owner边界；当前`mobileCompanion()`对象在stop后仍可见，属于待证候选，未复现前不称缺陷。随后继续其它直接transport/后台owner与资源证据。M32b远端公共diary/week/phase旧派生及历史observation净化仍缺可信writer fence、完整四态任务静止、实际store一致性和未知DELETE停止证据；客户端屏障保持，不用版本、布尔、live=0、删UUID或改generation伪解封，不访问真实部署DB。记忆覆盖充分前不转社交/B站/平台模块或社区比较。
