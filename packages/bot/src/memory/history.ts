@@ -22,6 +22,8 @@ export interface StoredMessage {
     sourceTime?: number;
     /** 持久入站预约，仅在prepare事实已经落盘后进入聊天。 */
     incomingId?: string;
+    /** 仅load视图根据持久撤回事实生成；原文JSONL中的同名字段不可信。 */
+    recalled?: true;
 }
 
 export interface IncomingEnvelope { source: MessageIdentity; message: Segment[] | string }
@@ -130,7 +132,7 @@ export class ChatHistory {
 
     /** 聊天记录；他撤回的那几条（recall）里的字换成「[撤回了一条消息]」，别的原样 */
     load(userId: number): StoredMessage[] {
-        const messages = this.#loadRaw(userId).map(message => ({ ...message }));
+        const messages = this.#loadRaw(userId).map(({ recalled: _rawFlag, ...message }) => ({ ...message }));
         const recalled = this.#recalledState(userId, messages);
         const legacy = new Set(recalled.legacyIds);
         const byId = new Map<number, RecallMark[]>();
@@ -139,7 +141,7 @@ export class ChatHistory {
             && !recalled.kept?.some(mark => recalledMatch(message, mark))
             && !recalled.pending?.some(entry => entry.prepared && entry.preparedKeep && equivalentIncoming(message, entry.prepared))
             && (legacy.has(message.messageId) || byId.get(message.messageId)?.some(mark => recalledMatch(message, mark))
-                || recalled.pending?.some(entry => entry.prepared && entry.withdrawn && !entry.preparedKeep && equivalentIncoming(message, entry.prepared))) ? { ...message, content: RECALLED_TEXT } : message);
+                || recalled.pending?.some(entry => entry.prepared && entry.withdrawn && !entry.preparedKeep && equivalentIncoming(message, entry.prepared))) ? { ...message, content: RECALLED_TEXT, recalled: true } : message);
     }
 
     #recalledPath(userId: number): string {
