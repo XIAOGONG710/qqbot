@@ -1,7 +1,10 @@
-// M32b UNFIXED diagnostic, not a correct-behaviour regression test.
+// M32b read-side protection probe; automatic provider-side rebuilding remains OPEN.
 // Run from repository root: node docs/reviews/repro/memory-model-revision.mjs
 // Only temporary synthetic data/fake API, no network or runtime reads.
 // Stable document replacement does not itself regenerate provider mental models.
+// Current clients must persistently block contaminated model output, including
+// after restart. Provider storage still containing old prose is NOT a claim
+// that the guarded client exposes it. No automatic clear/rebuild is asserted.
 // Official v0.10.2 source (retain commit is not enough):
 // https://github.com/vectorize-io/hindsight/blob/v0.10.2/hindsight-api-slim/hindsight_api/engine/memory_engine.py#L18088
 // Automatic refresh after retractions is best effort; retain is not a caller:
@@ -47,15 +50,25 @@ async function run() {
         assert.equal(retains, 4, 'source document overwrite must actually complete');
         assert.equal(documents.size, 2, 'document identities must stay stable');
         assert.ok([...documents.values()].every(item => !item.content.includes(marker)));
-        // Fresh instance has no old RAM cache, yet reads unchanged provider model prose.
+        // This instance's prewarmed cache is blocked as well as future provider reads.
+        assert.equal(memory.relationship(contact), undefined);
+        assert.equal(memory.impression(contact), undefined);
+        const readsBeforeRestart = modelReads;
+        // Fresh instance has no old RAM state. Durable dirty evidence still blocks
+        // both getters without reading the unchanged provider model prose.
         restarted = new LongTermMemory(options);
-        restarted.relationship(contact); restarted.impression(contact); await tick(); await tick();
-        assert.ok(restarted.relationship(contact).includes(marker), 'M32b diagnostic changed: provider old model no longer visible');
-        assert.ok(restarted.impression(contact).includes(marker), 'M32b diagnostic changed: provider old impression no longer visible');
-        console.log(JSON.stringify({ diagnostic: 'M32b-unfixed', case: 'provider-derived-model-still-old-after-restart',
+        assert.equal(restarted.relationship(contact), undefined);
+        assert.equal(restarted.impression(contact), undefined);
+        await tick(); await tick();
+        assert.equal(restarted.relationship(contact), undefined);
+        assert.equal(restarted.impression(contact), undefined);
+        assert.equal(modelReads, readsBeforeRestart, 'dirty models must not start provider reads');
+        assert.ok([...models.values()].every(model => model.content.includes(marker)), 'fake provider really still stores the original prose');
+        console.log(JSON.stringify({ diagnostic: 'M32b-read-side-protected', case: 'provider-old-models-blocked-after-restart',
             messages: OPEN_EPISODE_STEP, assistantMessages: 0, historyRedacted: true, stableDocuments: documents.size, retainCalls: retains,
-            documentsStillOriginal: false, relationshipStillOriginalAfterOverwrite: true, impressionStillOriginalAfterOverwrite: true,
-            extraRefreshRequestsOnOverwrite: refreshes - refreshBefore, providerModelReads: modelReads }));
+            documentsStillOriginal: false, clientRelationshipBlocked: true, clientImpressionBlocked: true,
+            providerModelsStillOriginal: true, automaticProviderRebuildComplete: false,
+            extraRefreshRequestsOnOverwrite: refreshes - refreshBefore, providerModelReadsAfterRestart: modelReads - readsBeforeRestart }));
     } finally {
         await memory.stop(); await restarted?.stop();
         const target = resolve(dir); assert.equal(dirname(target), resolve(tmpdir())); assert.ok(basename(target).startsWith('qqbot-model-residue-'));
