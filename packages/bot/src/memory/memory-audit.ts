@@ -35,14 +35,23 @@ export function auditedApi<T extends HindsightApi>(api: T, ledger: Ledger, optio
     return new Proxy(api, {
         get(target, prop) {
             const value = Reflect.get(target, prop, target) as unknown;
-            if (prop === 'retain') {
-                return async (bankId: string, item: MemoryItem) => {
+            if (prop === 'retain' || prop === 'submitRetain') {
+                if (typeof value !== 'function') return value;
+                return async (bankId: string, item: MemoryItem, ...rest: unknown[]) => {
                     const data = snapshot(() => {
                         let chars = 0; for (const _ of item.content) chars++;
-                        return { bank: bankId, document: item.document_id, tags: item.tags, occurred: item.timestamp, chars, sha: sha256(item.content).slice(0, 16) };
+                        return { bank: bankId, document: item.document_id, tags: item.tags, occurred: item.timestamp, chars, sha: sha256(item.content).slice(0, 16),
+                            ...(prop === 'submitRetain' ? { operation: sha256(String(rest[0])).slice(0, 16), stage: 'accepted' } : {}) };
                     });
-                    await (value as T['retain']).call(target, bankId, item);
-                    safeAppend(ledger, 'retain', data, options);
+                    await (value as (...args: unknown[]) => Promise<void>).call(target, bankId, item, ...rest);
+                    safeAppend(ledger, prop === 'retain' ? 'retain' : 'retain-submit', data, options);
+                };
+            }
+            if (prop === 'deleteDocument') {
+                if (typeof value !== 'function') return value;
+                return async (bankId: string, documentId: string) => {
+                    await (value as (bank: string, document: string) => Promise<void>).call(target, bankId, documentId);
+                    safeAppend(ledger, 'document-delete', snapshot(() => ({ bank: bankId, document: documentId })), options);
                 };
             }
             if (prop === 'createMentalModel' || prop === 'updateMentalModel') {
@@ -99,5 +108,5 @@ export function summarize(ledger: Ledger): string {
 }
 
 const LABELS: Record<string, string> = {
-    retain: '写入', 'model-create': '建印象模型', 'model-update': '改印象模型', forget: '忘掉联系人', 'forget-dry-run': '忘掉联系人（只演练）', note: '说明',
+    retain: '写入', 'retain-submit': '异步受理', 'document-delete': '删除文档', 'model-create': '建印象模型', 'model-update': '改印象模型', forget: '忘掉联系人', 'forget-dry-run': '忘掉联系人（只演练）', note: '说明',
 };
