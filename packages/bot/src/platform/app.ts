@@ -2433,6 +2433,19 @@ ${video.link}`);
         log(`回复 B 站评论：${options.mode === 'dryRun' ? '只写草稿（不发）' : '开'}；每 10 分钟看一次「回复我的」，先回他，其次挑有价值的，一天最多 5 条（他的不算），问 AI / 真人的、骂人的、广告一律不回；有价值的回复另存真人语料（presence/bilibili-corpus.jsonl）`);
     }
 
+    // A critical public-action state failure must not reset its quotas or bypass
+    // its risk gate, nor reject the whole host's connection callback.
+    function startBilibiliOwners(): void {
+        for (const start of [startBrowsing, startReplies]) {
+            if (stopped) return;
+            try { start(); }
+            catch (error) {
+                try { log(`B 站后台状态不可用，保留原文件并暂停本项启动（${describeError(error)}）`); }
+                catch { /* Diagnostics cannot authorize a public action. */ }
+            }
+        }
+    }
+
     function rainyAt(now: number): boolean {
         if (!sharedWorld || !worldCard?.herWorld || !worldCard.schedule) return false;
         return Boolean(sharedWorld.at(worldCard.herWorld, worldCard.schedule, new Date(now))?.weather?.rain);
@@ -3615,7 +3628,7 @@ ${body}
             const missed = chatHistory.load(deviceOwner.qq).filter(m => m.role === 'user' && Date.parse(m.time) >= since).length;
             tellOwner(`（她醒了。睡了 ${woke.minutes} 分钟；核对：${problems.length ? problems.join('；') : '封存清单、设定、记忆账本都对得上'}。休眠期间你发了 ${missed} 条。）`);
             catchUpAll();
-            startBrowsing(); startReplies(); void watchJob();
+            startBilibiliOwners(); void watchJob();
             for (const planner of planners.values()) planner.poke();
             presence?.reapply();
             const outcome = await responders.get(deviceOwner.qq)!.initiate({
@@ -3793,7 +3806,7 @@ ${body}
                     startPlanners();
                     startPresence();
                     presence?.reapply();
-                    if (!dormancy?.isDormant()) { startBrowsing(); startReplies(); }
+                    if (!dormancy?.isDormant()) startBilibiliOwners();
                     for (const planner of planners.values()) planner.poke();
                     for (const notice of ownerNotices.splice(0)) tellOwner(notice);
                     syncFollowUps();

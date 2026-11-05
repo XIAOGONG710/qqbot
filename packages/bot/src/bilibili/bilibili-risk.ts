@@ -7,7 +7,8 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { BiliApiError, DM_MAX_CHARS, type BiliAccount } from './bilibili-account.ts';
-import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { fileOps, readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { stateObject } from '../memory/state-schema.ts';
 
 /** 停多久：风险信号出现后公开发言停这么久（可以被单次事件覆盖） */
 export const RISK_HALT_DAYS = 7;
@@ -52,8 +53,12 @@ interface RiskFile {
     lastAlertAt?: number;
 }
 
-const validFile = (value: unknown): value is RiskFile =>
-    typeof value === 'object' && value !== null && (value as RiskFile).version === 1 && Array.isArray((value as RiskFile).seen);
+const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const timestamp = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && Math.abs(value) <= 8_640_000_000_000_000;
+const validFile = (value: unknown): value is RiskFile => stateObject(value) && value.version === 1
+    && Array.isArray(value.seen) && value.seen.every(id => typeof id === 'string' && id.length > 0)
+    && (value.until === undefined || timestamp(value.until)) && (value.lastAlertAt === undefined || timestamp(value.lastAlertAt))
+    && (value.lastUnread === undefined || count(value.lastUnread));
 
 export interface RiskOptions {
     account: BiliAccount | (() => Promise<BiliAccount | undefined>);
@@ -74,11 +79,30 @@ export function createRiskMonitor(options: RiskOptions): RiskMonitor {
     const { log } = options;
     mkdirSync(options.dir, { recursive: true });
     const statePath = join(options.dir, 'bilibili-risk.json');
-    const state = readJsonOr<RiskFile>(statePath, { version: 1, seen: [] }, log, { validate: validFile, label: 'B 站风险状态' });
-    const save = () => writeJsonAtomic(statePath, { ...state, seen: state.seen.slice(-200) });
+    let state = readJsonOr<RiskFile>(statePath, { version: 1, seen: [] }, log, { validate: validFile, invalid: 'throw', label: 'B 站风险状态' });
+    // A failed publication cannot erase a risk already observed by this process.
+    // Keep its entire candidate (including seen and until) for local retry. This
+    // is not a durable outbox or a promise of recovery after process death.
+    let pending: RiskFile | undefined;
+    const flush = () => {
+        if (!pending) return;
+        const next = pending, bytes = `${JSON.stringify(next, null, 2)}\n`;
+        try { writeJsonAtomic(statePath, next); }
+        catch (error) {
+            try { if (fileOps.readFileSync(statePath, 'utf8') !== bytes) throw error; }
+            catch { throw error; }
+        }
+        state = next; pending = undefined;
+    };
+    const commit = (change: (next: RiskFile) => void) => {
+        const next = structuredClone(pending ?? state); change(next); next.seen = next.seen.slice(-200);
+        if (!validFile(next)) throw new Error('B 站风险状态更新无效；保留已确认状态');
+        pending = next; flush();
+    };
+    const clock = () => { const t = options.now(); if (!timestamp(t)) throw new Error('B 站风险时钟无效'); return t; };
     let timer: ReturnType<typeof setInterval> | undefined;
     let busy = false;
-    let nextPollAt = 0;
+    let nextPollAt: number | undefined;
     const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
     let stopped = false, drain: Promise<void> | undefined;
     const cancellation = new AbortController(), stoppedError = new Error('B 站风险监控已停止');
@@ -111,11 +135,16 @@ export function createRiskMonitor(options: RiskOptions): RiskMonitor {
     /** 私信告诉他；发不出去（风控、没关注……）只记日志 */
     async function alert(text: string, t: number): Promise<void> {
         active();
-        if (t - (state.lastAlertAt ?? 0) < RISK_ALERT_GAP_MS) { note('B 站风险：刚提醒过他，这次的私信先不重复发'); return; }
+        flush();
+        const recentlyAlerted = () => state.lastAlertAt !== undefined && t - state.lastAlertAt < RISK_ALERT_GAP_MS;
+        if (recentlyAlerted()) { note('B 站风险：刚提醒过他，这次的私信先不重复发'); return; }
         const account = await read(getAccount);
         if (!account) { note('B 站风险：账号用不了，没法私信提醒他'); return; }
-        state.lastAlertAt = t;
-        save();
+        flush();
+        // Another trip may have reserved the shared cooldown while account
+        // lookup was pending. Recheck at the synchronous commit point.
+        if (recentlyAlerted()) { note('B 站风险：刚提醒过他，这次的私信先不重复发'); return; }
+        commit(next => { next.lastAlertAt = t; });
         active();
         try {
             await account.sendDm({ uid: options.uid, text: text.slice(0, DM_MAX_CHARS) });
@@ -127,23 +156,24 @@ export function createRiskMonitor(options: RiskOptions): RiskMonitor {
 
     function recordAt(event: RiskEvent, t: number): void {
         const days = event.days ?? RISK_HALT_DAYS;
-        state.until = Math.max(state.until ?? 0, t + days * 86_400_000);
-        save();
+        const until = t + days * 86_400_000;
+        if (!Number.isFinite(days) || days < 0 || !timestamp(until)) throw new Error('B 站风险暂停时间无效');
+        commit(next => { next.until = Math.max(next.until ?? until, until); });
         note(`B 站风险：${event.why}；公开评论和回复停 ${days} 天，之后的话只走私信`);
     }
-    async function record(event: RiskEvent): Promise<void> { recordAt(event, options.now()); }
+    async function record(event: RiskEvent): Promise<void> { recordAt(event, clock()); }
+    const alertText = (event: RiskEvent) => [
+        `【B 站风险提醒】${event.why}`,
+        ...(event.wanted ? [`她本来想发的：${event.wanted}`] : []),
+        ...(event.link ? [event.link] : []),
+        `公开评论和回复先停 ${event.days ?? RISK_HALT_DAYS} 天，之后的话只走私信。`,
+    ].join('\n');
 
     async function tripWork(event: RiskEvent): Promise<void> {
         active();
-        const t = options.now(); active();
+        const t = clock(); active();
         recordAt(event, t); active();
-        const days = event.days ?? RISK_HALT_DAYS;
-        await alert([
-            `【B 站风险提醒】${event.why}`,
-            ...(event.wanted ? [`她本来想发的：${event.wanted}`] : []),
-            ...(event.link ? [event.link] : []),
-            `公开评论和回复先停 ${days} 天，之后的话只走私信。`,
-        ].join('\n'), t);
+        await alert(alertText(event), t);
     }
 
     const trip = (event: RiskEvent) => owned(() => tripWork(event));
@@ -152,9 +182,10 @@ export function createRiskMonitor(options: RiskOptions): RiskMonitor {
         if (busy) return;
         busy = true;
         try {
-            const t = options.now();
+            flush();
+            const t = clock();
             active();
-            if (t < nextPollAt) return;
+            if (nextPollAt !== undefined && t < nextPollAt) return;
             const account = await read(getAccount);
             if (!account) return;
             nextPollAt = t + RISK_POLL_MS;
@@ -165,18 +196,30 @@ export function createRiskMonitor(options: RiskOptions): RiskMonitor {
                 active(); note(`B 站风险：看系统通知的未读数失败（过 15 分钟再试）：${reason(error)}`);
                 return;
             }
-            if (unread === 0) { if (state.lastUnread) { state.lastUnread = 0; save(); } return; }
-            if (unread === state.lastUnread) return;
-            state.lastUnread = unread;
+            if (!count(unread)) { note('B 站风险：系统通知未读数无效；保留进度后续重试'); return; }
+            if (unread === 0) { if (state.lastUnread) commit(next => { next.lastUnread = 0; }); return; }
             let notices: Awaited<ReturnType<BiliAccount['systemNotices']>> = [];
-            try { notices = await read(() => account.systemNotices(cancellation.signal)); } catch (error) { active(); note(`B 站风险：读系统通知失败：${reason(error)}`); }
+            try {
+                notices = await read(() => account.systemNotices(cancellation.signal));
+                if (!Array.isArray(notices) || !notices.every(notice => stateObject(notice) && typeof notice.id === 'string' && notice.id.length > 0 && typeof notice.title === 'string' && typeof notice.content === 'string' && timestamp(notice.at))) throw new Error('系统通知列表形状无效');
+            } catch (error) { active(); note(`B 站风险：读系统通知失败：${reason(error)}`); notices = []; }
             const fresh = notices.filter(notice => !state.seen.includes(notice.id));
-            state.seen.push(...fresh.map(notice => notice.id));
-            save();
             const risky = fresh.filter(notice => RISK_NOTICE.test(`${notice.title}${notice.content}`));
+            const observedAt = risky.length ? clock() : t; active();
+            if (notices.length) commit(next => {
+                next.lastUnread = unread;
+                next.seen = [...new Set([...next.seen, ...fresh.map(notice => notice.id)])];
+                if (risky.length) {
+                    const until = observedAt + RISK_HALT_DAYS * 86_400_000;
+                    if (!timestamp(until)) throw new Error('B 站风险暂停时间无效');
+                    next.until = Math.max(next.until ?? until, until);
+                }
+            });
             if (risky.length) {
                 const first = risky[0]!;
-                await trip({ why: `她的号收到了 B 站的系统通知「${first.title.slice(0, 40)}」${first.content ? `：${first.content.slice(0, 160)}` : ''}${risky.length > 1 ? `（另有 ${risky.length - 1} 条）` : ''}` });
+                const event = { why: `她的号收到了 B 站的系统通知「${first.title.slice(0, 40)}」${first.content ? `：${first.content.slice(0, 160)}` : ''}${risky.length > 1 ? `（另有 ${risky.length - 1} 条）` : ''}` };
+                note(`B 站风险：${event.why}；公开评论和回复停 ${RISK_HALT_DAYS} 天，之后的话只走私信`);
+                await alert(alertText(event), observedAt);
             } else if (fresh.length) {
                 note(`B 站风险：系统通知 ${fresh.length} 条，没有违规 / 警告一类的字眼（${fresh.map(notice => notice.title.slice(0, 20)).join('、')}）`);
             } else if (notices.length === 0) {
@@ -191,7 +234,7 @@ export function createRiskMonitor(options: RiskOptions): RiskMonitor {
     const backgroundTick = () => { void tick().catch(error => note(`B 站风险：监控失败（${reason(error)}）`)); };
 
     return {
-        halted: () => options.now() < (state.until ?? 0),
+        halted: () => clock() < ((pending ?? state).until ?? -Infinity),
         trip, tick, record,
         start() {
             if (stopped || timer) return;
@@ -205,7 +248,7 @@ export function createRiskMonitor(options: RiskOptions): RiskMonitor {
             stopped = true; cancellation.abort(stoppedError);
             if (timer) clearInterval(timer);
             timer = undefined;
-            drain = Promise.allSettled([...jobs]).then(() => undefined);
+            drain = Promise.allSettled([...jobs]).then(() => { flush(); });
             return drain;
         },
     };
