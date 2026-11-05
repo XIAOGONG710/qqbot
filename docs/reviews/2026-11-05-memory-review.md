@@ -430,3 +430,19 @@ M32b来源覆盖补查：合成completed outbox保留operations/marker，仅丢c
 模拟未修证据保存为docs/reviews/repro/memory-sim-owner-lifecycle.mjs；默认结束和--restart两种模式均是坏行为诊断，exit0不表示修复。restart时旧请求还能写入新step日志。下一轮优先修旧owner stop/drain及清库顺序，保已派发ACK事实，再验证switchable高级API能力是否被降级；不声称其余归档强杀阶段已全部覆盖。
 
 最终重跑561/561全绿（核实合成集，非全仓全量），全仓类型及差异检查通过。代码任务分别7bc1766c与b6e9223b；原未跟踪AGENTS.md保持，未推送/部署。
+
+## 第十六批：上下文摘要来源与模拟宿主记忆协议
+
+上下文摘要沿直接调用链确认旧key只看length/末条时间/正文。前文撤回但末条相同，内存、在途完成及重启缓存继续返回旧隐私摘要；3项合成回归先红后绿。改为实际summaryRequest完整内容的source-v2 SHA，覆盖实际使用的末200条材料、角色名、时区呈现与系统规则，派发复用同一请求快照。旧弱key不追认，实际未进入模型的更早材料不造成额外生成；默认关闭/窗口策略不改。提交99dd4017，全仓类型通过；旧context-window.test含真实角色加载，未执行。
+
+模拟Hindsight包装确认丢失advanced能力：真实runScenario＋真实SDK假HTTP全部retain仍pending但旧writer记3篇written。动态代理现在保真实能力、原api this、参数与取消；缺省仍缺省，down拒业务请求、deleteBank保清理例外。正式新增4项，相关17绿、全仓类型通过，提交d013e5b0。首次memory:true步骤夹具被parseScenario拒绝不计源码证据，修为memory:'sync'后才得到written=3的真红。
+
+生命周期正在独立修复。上轮--restart探针与本轮第一版回归按generate总次数判断重启，误把后台提取算对话；该特定证据口径更正，须识别实际重启后对话并在旧源码重证，不能用原错误触发点宣称旧实例跨restart。普通final晚读日志/报告、步骤异常、try前构造失败、已派retain尚未ACK却先清bank等反例已各自确证。交叉审另用realRain＋无效mood合成证明构造失败留下全局天气，已要求纳入同生命周期收尾。这里只记录证据，最终实现及验证见后续补记。
+
+生命周期最终实现c656ad9e：小型owner集合贯通早期构造异常、restart/final和forget；先失效旧epoch/插话timer和纯摘要生成等待，再同时stop全部owner，等待已派mutation ACK/状态及planner.running后替换或清bank。provider获得的log绑定派发epoch，晚raw/onPrompt/fact记录不改结束或新step报告；summary微任务派发前再查取消，重启/forget重建signal。天气早构造失败也按原约定恢复undefined，不声称并行场景global隔离。
+
+生命周期新增7项全绿。修正重启夹具后，以用户“合成重启后问候”实际prompt识别释放时机，registerHooks隔离加载d013e5b0旧runner，真实重启case仍明确红（lateDuringRestart true），新源绿；原“第2次generate”触发的旧证据撤回。portable探针普通/--restart均已改正确行为（lateLog0、报告不变），不再用旧坏行为断言。交叉代理独立天气及承诺抽取late logger探针也绿。
+
+类型验证更正：d013e5b0提交前主代理将npm类型输出重定向后接git diff --check，后者成功覆盖shell退出码，误报类型通过；实际两处新MemoryItem夹具缺context/document_id/tags/metadata。补齐必填字段提交76010813，相关4项重新通过，全仓类型实际exit0。没有修改生产协议规避类型。99dd4017的独立类型检查当时通过。最终575/575核实合成集绿，夹具修正后4项及全仓类型重新绿、差异/模块通过；不是全仓角色依赖测试全量。本批新增14（context3/capability4/lifecycle7），记忆累计523。
+
+后续：M32b公共diary/week/phase旧远端派生和历史observation清理/独立证据解封仍未实现，已有阻点不变；本批客户端来源和模拟owner不替代远端静止证明。新只读线索：App contextWindowFor创建的contextSummarizer有idle但无stop，App.stop尚未统一持有它，需用真实App合成held模型验证停止后是否仍写context/<QQ>.json/日志；这是候选，不能当已确证。之后按证据续审其它维护多文件和资源边界，记忆未完，不跳模块。未访问真实卡/runtime/部署/外部模型或数据库，AGENTS.md保原未跟踪。

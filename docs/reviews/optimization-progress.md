@@ -322,3 +322,9 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 第十五批完成来源索引完整性与归档CLI参数入口。completed operations若丢current会被误判无来源；现每个已知bank/document须有current，坏状态保原拒读，合法多历史版本仍保留。归档CLI缺值原会回默认真实目录继续执行，现缺值/下一flag/空白/重复/未知及config/no-config冲突都在归档前拒绝；合成registerHooks fake后端证明及验证，不接触真runtime。新增7项（索引2/CLI5），记忆累计509；最终561/561确认合成集、全仓类型、模块/差异通过。中间误建重复编号ADR使模块一项失败，已删误建文件并正确补原ADR，随后完整561重新通过。代码7bc1766c、b6e9223b；不代表全仓角色依赖测试全量。
 
 **下一检查点：记忆模块未完成。** 并行确证模拟owner生命周期未修：runScenario返回且删除假bank后旧relationship GET失败仍写sim.log和已返回report；restart旧请求写入新step。可跑docs/reviews/repro/memory-sim-owner-lifecycle.mjs及--restart，两者exit0仅表示坏行为复现。先修restart/final旧memory/responder/promises/diary/planner的stop/drain与清bank顺序，保已派ACK事实；再核switchable漏高级API转发的行为（目前仅只读候选，不当确证）。M32b公共旧派生/历史observation清理及独立证据解封仍未完成，既有保护与远端证据阻点不变，不以本批修复解guard或转模块。仅合成卡与假API，旧sim.test等不得运行。更完整覆盖及限制见本日memory-review第十五批。
+
+第十六批完成上下文摘要来源与模拟记忆宿主协议。context弱key导致前文撤回仍复用旧摘要，现hash完整实际summaryRequest/冻结派发，旧弱key不追认（99dd4017）。sim包装丢advanced导致真实SDK假HTTP pending却written3，现动态保真实可选能力/this/取消参数（d013e5b0）；后补两处测试必填字段76010813，纠正此前后续命令覆盖类型退出码的误报。sim所有者在构造异常/restart/final先全部stop再drain已派ACK/状态，后替换/清bank；epoch隔离日志/报告/timer、纯摘要取消、早天气恢复（c656ad9e，ADR0258）。重启原按generate次数的夹具触发错误已纠正，按实际重启后prompt在隔离旧源码重新得到真实红再绿；portable探针已改正确行为。
+
+新增14项（摘要3/能力4/生命周期7），记忆累计523。最终575/575确认合成集通过；夹具修正后4项及全仓类型实际exit0，模块与差异通过。仅合成卡/假API/临时目录，未跑旧角色依赖suite；未推送部署。
+
+下一轮仍为记忆模块：先合成验证App contextWindowFor的contextSummarizer未接App.stop的候选（held摘要在stop/目录锁释放后是否写context文件和日志），再按证据修复；不要将只读候选当确证。M32b旧公共派生/历史observation清理与有证据解封未完，缺可信远端writer/task fence及实际store证据时保持保护，不访问真部署/数据库，不以live inventory/refresh ACK猜解封。模拟停止只保本地已派请求收尾，不证明远端worker全部静止；不合作mutation可阻drain，global weather并发隔离未承诺。
