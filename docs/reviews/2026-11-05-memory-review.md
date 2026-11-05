@@ -620,3 +620,21 @@ M32b远端公共旧派生/历史observation独立清理及有证据解封仍未�
 协议只保证当前进程已派运输和诊断收尾，没有持久通知outbox、强杀恢复或跨运输/历史事务；不合作transport可持续阻塞drain。DSH顾问底层任务、配对/封存文件操作不因tellOwner统一出口自动成为同一事务，须逐链取证。下一轮按证据复核仍绕过统一出口的直接sendPrivateText链，以及DSH底层晚任务；尚未确证的不冒称缺陷。
 
 M32b远端公共旧派生/历史observation清理及证据解封仍未完，保护不解、不访问真部署DB；记忆未完不转模块/社区比较，B站/社交仍未整体审完。既有弱身份/未知DELETE/多文件远端非事务/协调文件和拒清理合成temp边界保持。
+
+## 第三十二批：`/主动` 原因提示的停止所有权（2026-11-05）
+
+代码7d488fcd，ADR0156补记。`docs/reviews/repro/memory-app-direct-text-owner.mjs`用真实App、临时合成角色卡和fake transport确认两侧：主动功能关闭时收到`/主动`，同栈stop后旧`Promise.resolve(reason).then(...)`仍会派发；已经派出的sendPrivateText held时，旧stop已释放bot.lock，失败日志在释放后晚写。命令和提示均不进入ChatHistory是保留的绿边界。
+
+原因尚未派发且App已停止时直接丢弃；已派提示改走现有sendOwnedNotice，在调用transport前预登记settlement，因此成功/失败ACK、同步重入stop和同步throw的诊断都在租约内完成。没有新增聊天历史、重试、频率或文案策略。新增7项，记忆累计869；正式7/7及correctness probe通过，最终核实合成集979项=978通过/1原Windows权限skip/0失败，全仓类型实际exit0、模块/差异检查通过。无真实QQ/模型/角色/runtime访问。
+
+## 第三十三批：DSH排队咨询的本地取消与收尾（2026-11-05）
+
+代码bc85de64，ADR0223补记。独立probe只替换dsh-link依赖：首问advise held、第二问已入队，旧stop已resolved且bot.lock不存在；释放首问后，成功结果会把`SYNTHETIC_LATE_FIRST_ADVICE`写入RAM并作为第二次请求的recentTurns，失败也会继续派第二问。tellOwner已经挡住晚QQ发送，不能据此误判底层任务已停。
+
+DSH问答新增独立AbortController和pending计数。队列任务在执行前、advise等待后与错误分支均检查生命周期；stop令本地race结束并等待当时的队列尾。已经调用的无signal DshLink promise仍挂成功/失败处理器，晚结果只被吸收，不再写dshConversation、发QQ或触发后继。正常运行时两问仍严格串行，第二问仍得到第一问user+assistant连续上下文；每个完成请求移除abort监听，不随咨询次数积累。
+
+首次完整983项回归揭示本实现初版把从未使用DSH的idle stop也变成Promise，导致“空闲同步释放”断言失败，并连锁两项未await stop的锁用例；未提交该版本。改为只有dshAskPending非零时返回drain，相关28项重新全绿。另一次并行buffer用例清理临时目录遇Windows EPERM，独立重跑通过且无源码改动，按环境抖动记录而非产品修复。最终完整983项=982通过/1既有Windows符号链接权限skip/0失败；全仓类型实际exit0、模块和差异检查通过。新增4项，记忆累计873。两个成功/失败probe都已改正确行为断言。
+
+协议限制：DshLink当前不接signal，已经派到远端的请求可能继续计算，本批只保证本地放弃结果；不宣称远端取消、持久上下文恢复、强杀安全或exactly-once。`/dsh`连通性probe与手机伴侣各有独立owner，未由QQ咨询队列自动覆盖。直接通知仍无持久outbox，不合作transport可阻止drain。下一轮继续对设备命令等绕过统一通知出口的直接发送链和其它后台任务逐条用真实App合成取证；尚未证实的不批量重构。
+
+M32b公共diary/week/phase旧远端派生和历史observation独立清理/证据解封仍未完成；客户端屏障保持，不使用版本、布尔、live=0或未知DELETE假造净化证明，不访问真实部署/数据库。记忆模块未完成，不转下一模块或社区比较；B站/社交仍未整体审完。
