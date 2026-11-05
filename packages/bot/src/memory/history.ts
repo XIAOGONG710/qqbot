@@ -116,6 +116,7 @@ export class ChatHistory {
     /** 每人撤回过的消息 id（<QQ 号>.recalled.json，最近 MAX_RECALLED 个） */
     readonly #recalled = new Map<number, RecalledState>();
     readonly #dirtyIncoming = new Set<number>();
+    readonly #recallRevisions = new Map<number, number>();
 
     constructor(dataDir: string, log: (message: string) => void = () => undefined) {
         this.#dir = join(dataDir, 'chats');
@@ -276,6 +277,9 @@ export class ChatHistory {
         this.#publish(userId, { ...state, pending: state.pending!.filter(row => row.id !== id) }); return true;
     }
 
+    /** 本实例已接受的撤回观察世代；仅作调度信号，不代表已持久，读取正文仍须flush成功。 */
+    recallRevision(userId: number): number { return this.#recallRevisions.get(userId) ?? 0; }
+
     /**
      * 他撤回了 messageId 这一条（ADR 0082）。只有他发的、她还没回过的才记（回过的她已经看过）；keep 说「这条原样留着」（危机的话）。
      * 原文留在文件里（只追加不改），之后 load() 给出去的是「[撤回了一条消息]」。记下了返回 true
@@ -300,6 +304,7 @@ export class ChatHistory {
             next = { ...next, order: ids, legacyIds: state.legacyIds.filter(id => ids.includes(id)), messages: [...state.messages, ...fresh.map(recallIdentity)].filter(mark => ids.includes(mark.messageId!)) };
         }
         for (const entry of pending) if (entry.withdrawn && entry.prepared) next = this.#withPrepared(next, entry);
+        this.#recallRevisions.set(userId, this.recallRevision(userId) + 1);
         this.#publish(userId, next, true);
         return true;
     }

@@ -666,12 +666,32 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
         })
         : undefined;
     if (memory) log(diaries ? `她的日记：她的每一天结束后写一篇存进公共记忆（没聊天的日子也写，停过的补最近 ${DIARY_BACKFILL_DAYS} 天）` : '她的日记：不写（用到的档位卡上都没有作息）');
+    const recalledMemoryPending = new Set<number>();
+    function syncContactMemory(contact: Contact): void {
+        if (!memory || stopped) return;
+        try {
+            if (dormancy?.isDormant()) return;
+            // load先确认撤回观察已经发布；不能把dirty或旧档位正文交给记忆队列。
+            const snapshot = history.load(contact.qq);
+            const since = tierRecord.since(contact.qq);
+            const pending = recalledMemoryPending.has(contact.qq) && chatHistory.pendingIncoming(contact.qq).some(entry => entry.withdrawn
+                && (!since || Date.parse(entry.source.time) >= since.getTime()));
+            const task = memory.sync(contact, { user: contact.name, char: cardFor(contact.tier).character.name }, snapshot);
+            // 待解码撤回还没进入聊天，完成后必须再提交最新视图，不能提前清掉观察。
+            if (!pending) recalledMemoryPending.delete(contact.qq);
+            void task.catch(incomingFailure);
+        } catch (error) { incomingFailure(error); }
+    }
+    function syncRecalledMemory(qq: number): void {
+        if (!recalledMemoryPending.has(qq)) return;
+        const contact = config.contacts.find(contact => contact.qq === qq);
+        if (contact) syncContactMemory(contact);
+    }
     function syncMemory(): void {
-        if (!memory) return;
-        for (const contact of config.contacts) {
-            try { void memory.sync(contact, { user: contact.name, char: cardFor(contact.tier).character.name }, history.load(contact.qq)).catch(incomingFailure); }
-            catch (error) { incomingFailure(error); }
-        }
+        if (!memory || stopped) return;
+        try { if (dormancy?.isDormant()) return; }
+        catch (error) { incomingFailure(error); return; }
+        for (const contact of config.contacts) syncContactMemory(contact);
         void diaries?.catchUp(new Date(pipeline?.now?.() ?? Date.now())).catch(incomingFailure);
         void promises?.sync().catch(incomingFailure);
     }
@@ -1445,6 +1465,7 @@ ${body}
                     try {
                         chatHistory.flushIncoming(contact.qq);
                         const count = await queueIncomingRecovery(contact.qq);
+                        syncRecalledMemory(contact.qq);
                         if (count && !dormancy?.isDormant() && shouldCatchUp(history.load(contact.qq), new Date())) responders.get(contact.qq)?.catchUp();
                     } catch (error) { failed = true; incomingFailure(error); }
                 }
@@ -1695,6 +1716,7 @@ ${body}
                 added++;
             } finally { releaseIncoming(entry.id); }
         }
+        if (added) syncRecalledMemory(qq);
         return added;
     }
     function queueIncomingRecovery(qq: number): Promise<number> {
@@ -1710,6 +1732,7 @@ ${body}
         const accepted = prepareReceived(event, text, receipt);
         if (stopped || dormancy?.isDormant()) return;
         responder.receive(accepted.content, event.message_id, new Date(accepted.time), accepted.messageSeq, accepted.incomingId);
+        syncRecalledMemory(event.user_id);
         const crisis = detectCrisis(accepted.content);
         if (crisis && config.contacts.some(c => c.qq === event.user_id)) {
             markCrisis(event.user_id, event.time * 1000, crisis.level);
@@ -1863,6 +1886,8 @@ ${body}
             if (memoryLedgerNow) { const check = memoryLedgerNow.verify(); if (!check.ok) problems.push(`记忆账本验不过（${check.reason}）`); }
             noteTimeline({ channel: 'dormancy', kind: 'wake', summary: `醒来了，睡了 ${woke.minutes} 分钟${problems.length ? '，核对有问题' : '，核对都对得上'}`, ok: problems.length === 0 });
             if (selfIdKnown) { await syncMissed(selfIdKnown); }
+            if (stopped) return;
+            for (const contact of config.contacts) syncRecalledMemory(contact.qq);
             const missed = chatHistory.load(deviceOwner.qq).filter(m => m.role === 'user' && Date.parse(m.time) >= since).length;
             tellOwner(`（她醒了。睡了 ${woke.minutes} 分钟；核对：${problems.length ? problems.join('；') : '封存清单、设定、记忆账本都对得上'}。休眠期间你发了 ${missed} 条。）`);
             catchUpAll();
@@ -2136,11 +2161,20 @@ ${body}
             if (stopped || !config.recalls) return;
             const contact = config.contacts.find(c => c.qq === event.user_id);
             if (!contact) return;
+            const before = chatHistory.recallRevision(contact.qq);
             // 想伤害自己的话撤回了也照样看到（安全比像人优先，ADR 0068）；回过的她已经看过
-            try { if (chatHistory.recall(contact.qq, event.message_id, content => Boolean(detectCrisis(content)))) {
-                const pending = chatHistory.pendingIncoming(contact.qq).some(entry => entry.withdrawn && entry.source.messageId === event.message_id);
-                log(pending ? `[${contact.qq}] 他撤回了一条待处理消息，已保存撤回意图` : `[${contact.qq}] 他撤回了一条还没回的消息，记成「撤回了一条消息」`);
-            } } catch (error) { incomingFailure(error); }
+            try {
+                if (chatHistory.recall(contact.qq, event.message_id, content => Boolean(detectCrisis(content)))) {
+                    if (memory) recalledMemoryPending.add(contact.qq);
+                    const pending = chatHistory.pendingIncoming(contact.qq).some(entry => entry.withdrawn && entry.source.messageId === event.message_id);
+                    log(pending ? `[${contact.qq}] 他撤回了一条待处理消息，已保存撤回意图` : `[${contact.qq}] 他撤回了一条还没回的消息，记成「撤回了一条消息」`);
+                }
+                syncRecalledMemory(contact.qq);
+            } catch (error) {
+                // 只有RAM已经接受的新观察才需要记忆更新；单纯读错不能授权同步旧正文。
+                if (memory && chatHistory.recallRevision(contact.qq) !== before) recalledMemoryPending.add(contact.qq);
+                incomingFailure(error);
+            }
         },
         receiveFriendRequest({ userId, flag }) {
             const gate = config.qqFriendGate ?? 'off';

@@ -151,11 +151,29 @@ function probeAppLock(f: ReturnType<typeof appFixture>) {
     return child.stdout.trim();
 }
 
-test('真实App停止保留旧锁直到已派发retain ACK落进度，idle停止同步放锁', async () => {
+test('真实App保留旧锁直到提交ACK；异步pending不冒记count，完成后重启核对进度且idle同步放锁', async () => {
     const f = appFixture(); const held = gate<Response>(); const originalFetch = globalThis.fetch; let retained = 0;
+    const operations = new Map<string, { bank: string; status: 'pending' | 'completed' }>();
+    let receipt: { success: true; async: true; bank_id: string; items_count: number; operation_id: string } | undefined;
     globalThis.fetch = async (_url, init) => {
         assert.ok(String(_url).startsWith('http://synthetic.invalid/'));
-        if (init?.method === 'POST' && String(_url).endsWith('/memories')) { retained++; return held.promise; }
+        const url = new URL(String(_url)), bank = decodeURIComponent(url.pathname.split('/banks/')[1]?.split('/')[0] ?? '');
+        if (url.pathname.endsWith('/operations')) {
+            const found = [...operations.entries()].filter(([, op]) => op.bank === bank && op.status === url.searchParams.get('status') && url.searchParams.get('type') === 'retain');
+            return Response.json({ bank_id: bank, total: found.length, operations: found.slice(0, 1).map(([id, op]) => ({ operation_id: id, status: op.status })) });
+        }
+        if (url.pathname.includes('/operations/')) {
+            const id = decodeURIComponent(url.pathname.split('/operations/')[1]!), operation = operations.get(id);
+            return operation?.bank === bank ? Response.json({ operation_id: id, operation_type: 'batch_retain', status: operation.status, child_operations: [{ status: operation.status }] }) : new Response('', { status: 404 });
+        }
+        if (init?.method === 'POST' && url.pathname.endsWith('/memories')) {
+            const body = JSON.parse(String(init.body));
+            const accepted = { success: true as const, async: true as const, bank_id: bank, items_count: 1, operation_id: body.operation_id };
+            if (!bank.endsWith('-common')) {
+                retained++; receipt = accepted; operations.set(body.operation_id, { bank, status: 'pending' }); return held.promise;
+            }
+            operations.set(body.operation_id, { bank, status: 'completed' }); return Response.json(accepted);
+        }
         if (init?.method === 'GET' && String(_url).includes('/mental-models/')) return new Response('', { status: 404 });
         return Response.json({});
     };
@@ -164,12 +182,18 @@ test('真实App停止保留旧锁直到已派发retain ACK落进度，idle停止
     try {
         running = app(f, true); await running.connected(20000); await until(() => retained === 1); running.stop();
         assert.equal(probeAppLock(f), 'LOCKED', '不能只检查锁文件存在，应证明另进程真实App拿不到锁');
-        held.release(Response.json({})); await until(() => !existsSync(join(f.dataDir, 'bot.lock')));
-        const state = JSON.parse(readFileSync(join(f.dataDir, 'memory', '10001-classmate.json'), 'utf8')); assert.equal(Object.keys(state.retained).length, 1);
+        assert.ok(receipt); held.release(Response.json(receipt)); await until(() => !existsSync(join(f.dataDir, 'bot.lock')));
+        const statePath = join(f.dataDir, 'memory', '10001-classmate.json');
+        const state = JSON.parse(readFileSync(statePath, 'utf8')); assert.equal(Object.keys(state.retained).length, 0);
+        assert.equal(Object.keys(state.pendingOwn).length, 1, '受理ACK不是文档已完成，停止后持久保留同UUID核对屏障');
         assert.equal(probeAppLock(f), 'RELEASED');
+        operations.get(receipt.operation_id)!.status = 'completed';
+        running = app(f, true); await running.connected(20000);
+        await until(() => Object.keys(JSON.parse(readFileSync(statePath, 'utf8')).retained).length === 1);
+        await running.stop(); assert.equal(retained, 1, '完成核对不重发已经接受的正文');
         const idle = app(f, false); idle.stop(); assert.equal(existsSync(join(f.dataDir, 'bot.lock')), false);
     } finally {
-        held.release(Response.json({})); running?.stop();
+        held.release(Response.json(receipt ?? {})); await running?.stop();
         // 旧实现反例没有drain API，也必须让受控ACK后续微任务在假fetch仍接管时收束。
         for (let i = 0; i < 12; i++) await tick();
         globalThis.fetch = originalFetch;
