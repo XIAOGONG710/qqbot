@@ -45,6 +45,8 @@ export type Fetch = (
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
 export interface LlmDeps {
+    /** Caller lifetime; cancellation must also prevent queued dispatch and retries. */
+    signal?: AbortSignal;
     fetch: Fetch;
     sleep: (ms: number) => Promise<void>;
     log: (message: string) => void;
@@ -126,6 +128,7 @@ export async function chatCompletion(
     messages: OpenAIMessage[],
     deps: Partial<LlmDeps> = {},
 ): Promise<string> {
+    deps.signal?.throwIfAborted();
     const guard = deps.guard ?? modelGuard(deps.log);
     try {
         return await guard.run(deps.purpose ?? 'chat', () => complete(options, messages, deps), error => error instanceof ModelUnreachable);
@@ -158,6 +161,8 @@ async function completeOnce(
     messages: OpenAIMessage[],
     deps: Partial<LlmDeps>,
 ): Promise<string> {
+    const signal = deps.signal;
+    signal?.throwIfAborted();
     const { fetch: doFetch, sleep, log } = { ...defaultDeps, ...deps };
     const url = `${options.baseUrl.replace(/\/+$/, '')}/chat/completions`;
     const init = {
@@ -179,9 +184,13 @@ async function completeOnce(
     let response: Awaited<ReturnType<Fetch>>;
     for (let attempt = 0; ; attempt++) {
         try {
-            response = await doFetch(url, { ...init, signal: AbortSignal.timeout(options.timeoutMs) });
+            signal?.throwIfAborted();
+            const timeout = AbortSignal.timeout(options.timeoutMs);
+            response = await doFetch(url, { ...init, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+            signal?.throwIfAborted();
             break;
         } catch (error) {
+            signal?.throwIfAborted();
             const code = networkErrorCode(error);
             const reason = code ? `${code}：${errorCause(error)}` : String(error);
             if (!code || !RETRYABLE_CODES.has(code) || attempt >= RETRY_DELAYS_MS.length) {
@@ -189,11 +198,28 @@ async function completeOnce(
                 throw new Failure(`模型接口请求失败（${reason}）`, { cause: error });
             }
             log(`模型接口连接失败（${code}），${RETRY_DELAYS_MS[attempt]! / 1000} 秒后重试`);
-            await sleep(RETRY_DELAYS_MS[attempt]!);
+            signal?.throwIfAborted();
+            if (signal && !deps.sleep) {
+                await new Promise<void>((done, reject) => {
+                    const abort = () => { clearTimeout(timer); signal.removeEventListener('abort', abort); reject(signal.reason); };
+                    const timer = setTimeout(() => { signal.removeEventListener('abort', abort); done(); }, RETRY_DELAYS_MS[attempt]!);
+                    signal.addEventListener('abort', abort, { once: true });
+                });
+            } else await sleep(RETRY_DELAYS_MS[attempt]!);
+            signal?.throwIfAborted();
         }
     }
 
-    const body = await response.text();
+    let body: string;
+    try {
+        body = await response.text();
+        signal?.throwIfAborted();
+    } catch (error) {
+        signal?.throwIfAborted();
+        const code = networkErrorCode(error);
+        if (code || isTimeout(error)) throw new ModelUnreachable('模型接口响应正文读取失败', { cause: error });
+        throw error;
+    }
     if (!response.ok) {
         const Failure = response.status === 429 || response.status >= 500 ? ModelUnreachable : Error;
         throw new Failure(`模型接口返回 ${response.status}：${body.replace(/\s+/g, ' ').slice(0, 200)}`);

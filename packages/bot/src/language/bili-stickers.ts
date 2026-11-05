@@ -82,41 +82,64 @@ const rotate = <T>(list: readonly T[], seed: string): T[] => {
  * B 站的表情包候选（给表情包收藏的 trendDiscover 用）：官方的和评论区的交替排，官方的按天轮换；读不到官方的就只有评论区的；
  * 都没有就用 fallback（原来的公开目录）。官方的缓存 12 小时、评论区的缓存 1 小时（收藏每小时才看一次，不用每次都去请求）
  */
-export function biliStickerDiscover(deps: BiliStickerDeps, fallback?: () => Promise<string[]>): () => Promise<string[]> {
+export function biliStickerDiscover(deps: BiliStickerDeps, fallback?: (signal?: AbortSignal) => Promise<string[]>): (signal?: AbortSignal) => Promise<string[]> {
     let official: { at: number; urls: string[] } | undefined;
     let comments: { at: number; urls: string[] } | undefined;
-    const get = async (url: string): Promise<unknown> => {
-        const response = await deps.fetch(url, { headers: { 'user-agent': UA, referer: 'https://www.bilibili.com/' }, signal: AbortSignal.timeout(15_000) });
-        if (!response.ok) throw new Error(`返回 ${response.status}`);
-        return response.json();
+    const read = async <T>(signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> => {
+        signal?.throwIfAborted();
+        let abort: (() => void) | undefined;
+        const cancelled = signal ? new Promise<never>((_, reject) => { abort = () => reject(signal.reason); signal.addEventListener('abort', abort, { once: true }); }) : undefined;
+        try {
+            const pending = Promise.resolve().then(() => { signal?.throwIfAborted(); return work(); });
+            const value = await (cancelled ? Promise.race([pending, cancelled]) : pending); signal?.throwIfAborted(); return value;
+        } finally { if (abort) signal?.removeEventListener('abort', abort); }
     };
-    return async () => {
+    const gap = (signal?: AbortSignal) => new Promise<void>((done, reject) => {
+        signal?.throwIfAborted();
+        const abort = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); reject(signal?.reason); };
+        const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); done(); }, 400);
+        signal?.addEventListener('abort', abort, { once: true });
+    });
+    const get = async (url: string, signal?: AbortSignal): Promise<unknown> => {
+        const timeout = AbortSignal.timeout(15_000);
+        const response = await read(signal, () => deps.fetch(url, { headers: { 'user-agent': UA, referer: 'https://www.bilibili.com/' }, signal: signal ? AbortSignal.any([signal, timeout]) : timeout }));
+        if (!response.ok) throw new Error(`返回 ${response.status}`);
+        return read(signal, () => response.json());
+    };
+    return async signal => {
+        signal?.throwIfAborted();
         const now = deps.now().getTime();
         const day = `${deps.now().getFullYear()}-${deps.now().getMonth() + 1}-${deps.now().getDate()}`;
+        signal?.throwIfAborted();
         try {
-            const account = await deps.account();
+            const account = await read(signal, () => deps.account());
             if (account && (!official || now - official.at > 12 * CACHE_MS)) {
-                official = { at: now, urls: account.emotePackages ? officialStickers(await account.emotePackages()) : [] };
+                const urls = account.emotePackages ? officialStickers(await read(signal, () => account.emotePackages!())) : [];
+                signal?.throwIfAborted(); official = { at: now, urls };
             }
-        } catch (error) { deps.log(`B 站表情包：读官方表情包失败（${error instanceof Error ? error.message : String(error)}）`); }
+        } catch (error) { signal?.throwIfAborted(); deps.log(`B 站表情包：读官方表情包失败（${error instanceof Error ? error.message : String(error)}）`); }
+        signal?.throwIfAborted();
         if (!comments || now - comments.at > CACHE_MS) {
             const urls: string[] = [];
             try {
-                const popular = await get('https://api.bilibili.com/x/web-interface/popular?ps=20&pn=1') as { data?: { list?: { aid?: number }[] } };
+                const popular = await get('https://api.bilibili.com/x/web-interface/popular?ps=20&pn=1', signal) as { data?: { list?: { aid?: number }[] } };
                 for (const video of (popular.data?.list ?? []).slice(0, 14)) {
                     if (!video.aid) continue;
-                    try { urls.push(...picturesOf(await get(`https://api.bilibili.com/x/v2/reply/main?type=1&oid=${video.aid}&mode=3&ps=20`))); } catch { /* 这个视频读不到就下一个 */ }
-                    await new Promise(resolve => setTimeout(resolve, 400));
+                    signal?.throwIfAborted();
+                    try { urls.push(...picturesOf(await get(`https://api.bilibili.com/x/v2/reply/main?type=1&oid=${video.aid}&mode=3&ps=20`, signal))); } catch { signal?.throwIfAborted(); /* 这个视频读不到就下一个 */ }
+                    await gap(signal);
                 }
-            } catch (error) { deps.log(`B 站表情包：读热门视频的评论区失败（${error instanceof Error ? error.message : String(error)}）`); }
+            } catch (error) { signal?.throwIfAborted(); deps.log(`B 站表情包：读热门视频的评论区失败（${error instanceof Error ? error.message : String(error)}）`); }
+            signal?.throwIfAborted();
             comments = { at: now, urls: [...new Set(urls)] };
         }
         const a = rotate(official?.urls ?? [], `${day} bili sticker official`);
         const b = rotate(comments.urls, `${day}${Math.floor(now / CACHE_MS)} bili sticker comment`);
         const merged: string[] = [];
         for (let i = 0; i < Math.max(a.length, b.length); i++) { if (a[i]) merged.push(a[i]!); if (b[i]) merged.push(b[i]!); }
+        signal?.throwIfAborted();
         if (merged.length) return merged;
-        return fallback ? fallback() : [];
+        return fallback ? read(signal, () => fallback(signal)) : [];
     };
 }
 
