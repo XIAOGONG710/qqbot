@@ -102,7 +102,10 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
     for (const area of ['chats', 'memory', 'promises', 'proactive', 'context', 'jokes', 'idioms']) {
         for (const path of walk(join(root, area))) {
             const name = basename(path);
-            if (name === `${qqText}.json` || name === `${qqText}.jsonl` || name.startsWith(`${qqText}-`)) {
+            // recalled.json 现在也保存尚未解码/已准备的私密入站正文。
+            // 后缀只接受 json-file.ts 实际生成的临时/旧隔离文件名，不按号码前缀猜归属。
+            const recalled = area === 'chats' && /^([1-9]\d*)\.recalled\.json(?:\.tmp-\d+-\d+|\.corrupt-\d+)?$/.exec(name)?.[1] === qqText;
+            if (name === `${qqText}.json` || name === `${qqText}.jsonl` || name.startsWith(`${qqText}-`) || recalled) {
                 add(path, 'direct', `${area} 中只属于这个联系人的文件`);
             }
         }
