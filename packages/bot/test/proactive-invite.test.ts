@@ -12,9 +12,10 @@ import { createProactivePlanner, type Planner } from '../src/proactive/proactive
 import type { InitiateOutcome, InitiateRequest } from '../src/social/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { SYNTHETIC_CHAR_NAME, syntheticCardPath } from './fixtures/card.ts';
 
-// ADR 0107：约他一起玩（配置 proactiveInvite）。用转换器生成的真卡（男朋友档）
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+// ADR 0107：约他一起玩（配置 proactiveInvite）。用转换器生成的合成卡（男朋友档）
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m).getTime();
 const HOUR = 3_600_000;
@@ -73,7 +74,7 @@ describe('约他一起玩：什么时候、约什么', () => {
     });
 
     test('固定节目只有卡上有的：我的世界存档、王者', () => {
-        const card = JSON.stringify(JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'), 'utf8')));
+        const card = JSON.stringify(JSON.parse(readFileSync(syntheticCardPath('boyfriend'), 'utf8')));
         assert.ok(card.includes('我的世界') && card.includes('王者'));
         assert.deepEqual(INVITE_ACTIVITIES.map(a => a.id).sort(), ['minecraft', 'wzry']);
     });
@@ -207,7 +208,7 @@ describe('约他一起玩：提示词和计划器', () => {
                 },
             },
             dir, log: () => {}, now: clock.now, waitUntil: clock.waitUntil,
-            names: { user: '阿明', char: '林梦瑶' },
+            names: { user: '阿明', char: SYNTHETIC_CHAR_NAME },
         });
         planners.push(planner);
         for (let i = 0; i < 20; i++) {

@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import type { Contact } from '../src/platform/config.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_CHAT_CHARS, diaryMaterial, diaryMessages, diaryWriter, type DiarySources } from '../src/life/diary.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 import type { LongTermMemory } from '../src/memory/long-term.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { SYNTHETIC_CHAR_NAME, syntheticCardPath } from './fixtures/card.ts';
 
-const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const card = loadCharacterCard(syntheticCardPath('boyfriend'));
 const sources: DiarySources = { charName: card.name, schedule: card.schedule!, moods: card.moods, books: card.books };
 const at = (iso: string, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(iso).toISOString(), role, content });
 
@@ -28,38 +29,38 @@ describe('她的日记（ADR 0017）', () => {
 
     test('材料：几点起、课（只写课型，不写课名和教室）、空闲活动、心情、书；不写在哪；没聊天的日子写明', () => {
         const text = diaryMaterial(sources, new Date(2026, 9, 9), []);
-        assert.match(text, /^日期：10月9日 周五\n几点起：07:40\n课：08:20–09:40 机房课；09:55–11:15 机房课；13:40–15:00 机房课\n/);
+        assert.match(text, /^日期：10月9日 周五\n几点起：09:30\n课：13:30–14:50 机房课\n/);
         assert.match(text, /\n空闲时：.*晚上/);
-        assert.match(text, /\n心情：安静（今天有早八，起得太早了）/);
-        assert.match(text, /\n在读：《药屋少女的呢喃》看到第 8 卷、《惹金枝》看到第 520 章\n/, '放下的书不写');
+        assert.match(text, /\n心情：开心（说不上为什么，今天就是这样）/);
+        assert.match(text, /\n在读：《雾港旧事》看到第 67 章\n/, '放下的书不写');
         assert.match(text, /\n今天没和名单里的人聊天。$/);
-        assert.doesNotMatch(text, /在哪|知行楼|济南|Python|概率论/);
+        assert.doesNotMatch(text, /在哪|启明楼|雾岚市|七号楼|数据库原理/);
         assert.match(diaryMaterial(sources, new Date(2026, 9, 6), []), /^日期：10月6日 周二（国庆节放假）\n/);
     });
 
-    test('材料：她那边今天发生的事和身体（ADR 0026）——按同学档的卡，宿舍、闺蜜、相机、课名、生理期都不进；提示词要她挑一两件写', () => {
-        const classmate = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-classmate.json'));
+    test('材料：她那边今天发生的事和身体（ADR 0026）——按同学档的卡，人名、闺蜜、相机、课名、生理期都不进；提示词要她挑一两件写', () => {
+        const classmate = loadCharacterCard(syntheticCardPath('classmate'));
         const withWorld: DiarySources = { ...sources, world: classmate.herWorld! };
         const text = diaryMaterial(withWorld, new Date(2026, 9, 11), []);
-        assert.match(text, /\n你那边今天：熬夜写完了 2 份作业；点了一杯奶茶外卖\n/, '天天一样的（没下雨、照常喂猫、还没写的作业）不写');
-        assert.match(diaryMaterial(withWorld, new Date(2026, 9, 9), []), /\n你那边今天：下雨了；下雨没下楼喂土豆；去驿站取了快递（发圈）\n/);
+        assert.match(text, /\n你那边今天：熬夜写完了 2 份作业\n/, '天天一样的（没下雨、照常喂猫、还没写的作业）不写');
+        assert.doesNotMatch(text, /家里视频/, '同学档的卡上没有家里视频');
+        assert.match(diaryMaterial(withWorld, new Date(2026, 9, 9), []), /\n你那边今天：下雨了；下雨没下楼喂团子饼\n/);
         // 进公共库的那份按线上的调法（app.ts 传同学档的作息 worldSchedule）：空闲活动看不到的是 cover。
-        // 不传作息时用的是男朋友档的，10-11 晚上抽到「研究新相机的设置」——以前只是那天碰巧没抽到修片（10-10 加了买相机以后的活动才发现）
-        assert.doesNotMatch(diaryMaterial({ ...withWorld, worldSchedule: classmate.schedule! }, new Date(2026, 9, 11), []), /宿舍|室友|陈佳宁|苏雨桐|相机|视频|Linux|MySQL/, '同学档看不到的不进公共库');
-        const cramps = diaryMaterial(withWorld, new Date(2026, 11, 21), []);
+        assert.doesNotMatch(diaryMaterial({ ...withWorld, worldSchedule: classmate.schedule! }, new Date(2026, 9, 11), []), /许小禾|林小满|胶片机|相机|七号楼|操作系统实验|计算机网络|高等数学/, '同学档看不到的不进公共库');
+        const cramps = diaryMaterial(withWorld, new Date(2026, 11, 18), []);
         assert.match(cramps, /\n身体：身上不太舒服，躺了大半天/);
         assert.doesNotMatch(cramps, /生理期|痛经/);
         assert.match(diaryMaterial(withWorld, new Date(2026, 10, 16), []), /\n身体：有点感冒，嗓子疼/);
         assert.doesNotMatch(diaryMaterial(sources, new Date(2026, 9, 11), []), /你那边今天|身体：/, '没传世界就没有');
-        // 空闲时按同学档的作息（ADR 0034）：修片是 cover，改了的打算里没有课名
+        // 空闲时按同学档的作息（ADR 0034）：带胶片机的活动是 cover，改了的打算里没有课名
         const shown: DiarySources = { ...withWorld, worldSchedule: classmate.schedule! };
-        // 10-18 下午男朋友档抽到修片（10-12 原来是，10-12 起加了新相机的新鲜期，那天换了）
-        assert.match(diaryMaterial(withWorld, new Date(2026, 9, 18), []), /下午修昨天拍的片子/, '最亲那一档的作息里有');
-        assert.doesNotMatch(diaryMaterial(shown, new Date(2026, 9, 18), []), /拍的片子|相机/, '同学档那天是 cover');
+        // 10-18 下午男朋友档抽到带胶片机的活动
+        assert.match(diaryMaterial(withWorld, new Date(2026, 9, 18), []), /下午带新胶片机去操场转转/, '最亲那一档的作息里有');
+        assert.doesNotMatch(diaryMaterial(shown, new Date(2026, 9, 18), []), /胶片机|相机/, '同学档那天是 cover');
         const oct12 = diaryMaterial(shown, new Date(2026, 9, 12), []);
-        assert.match(oct12, /\n空闲时：上午去图书馆占座；下午窝着刷手机；晚上本来打算打独立游戏，作业明天要交，先赶作业\n/);
-        assert.doesNotMatch(oct12, /拍的片子|摄影|计算机网络/);
-        assert.match(diaryMessages('林梦瑶', new Date(2026, 9, 11), text)[0]!.content, /「你那边今天」是今天真发生的事，最多挑一件，一句话带过，和材料一致；聊天里说过的事比它要紧，先写。身体不舒服的写一句/);
+        assert.match(oct12, /\n空闲时：上午去湖边散步；下午和室友去超市；晚上追一部动画\n/);
+        assert.doesNotMatch(oct12, /胶片机|相机|操作系统实验|计算机网络|高等数学/);
+        assert.match(diaryMessages(SYNTHETIC_CHAR_NAME, new Date(2026, 9, 11), text)[0]!.content, /「你那边今天」是今天真发生的事，最多挑一件，一句话带过，和材料一致；聊天里说过的事比它要紧，先写。身体不舒服的写一句/);
     });
 
     test('材料：每个人那天的聊天，「我」是她；太长的留最后的', () => {
@@ -77,12 +78,12 @@ describe('她的日记（ADR 0017）', () => {
     test('材料：之前说过那天打算做的事（ADR 0018 决策 2）；提示词说没变卦就写做了', () => {
         assert.match(diaryMaterial(sources, new Date(2026, 9, 10), [], ['去拍银杏', '看完那本书']), /\n之前说过今天打算：去拍银杏；看完那本书\n/);
         assert.doesNotMatch(diaryMaterial(sources, new Date(2026, 9, 10), []), /打算/);
-        assert.match(diaryMessages('林梦瑶', new Date(2026, 9, 10), '材料')[0]!.content as string, /之前说过今天打算做的事，聊天里没说变卦，就写做了/);
+        assert.match(diaryMessages(SYNTHETIC_CHAR_NAME, new Date(2026, 9, 10), '材料')[0]!.content as string, /之前说过今天打算做的事，聊天里没说变卦，就写做了/);
     });
 
     test('提示词只写怎么写，日期对', () => {
-        const [system, user] = diaryMessages('林梦瑶', new Date(2026, 9, 6), '材料');
-        assert.match(system!.content as string, /^你是林梦瑶，在读的女大学生，睡前在写今天（10月6日）的日记。/);
+        const [system, user] = diaryMessages(SYNTHETIC_CHAR_NAME, new Date(2026, 9, 6), '材料');
+        assert.match(system!.content as string, /^你是测试角色，在读的女大学生，睡前在写今天（10月6日）的日记。/);
         assert.match(system!.content as string, /聊天里你说过自己做了什么.*照写/);
         assert.equal(user!.content, '材料');
     });
@@ -119,7 +120,7 @@ describe('她的日记（ADR 0017）', () => {
             assert.ok(logs.some(l => l === '她的日记：2026-10-06 已确认提交完成'));
             assert.equal(DIARY_BACKFILL_DAYS, 3);
             // 上周（9-28 到 10-04）有 10-04 这一篇：写周记（ADR 0018），9-21 那周一篇都没有，不写
-            assert.deepEqual(summaries, [{ id: 'week:2026-09-28', title: '林梦瑶的周记（9月28日–10月4日）', text: '第4篇' }]);
+            assert.deepEqual(summaries, [{ id: 'week:2026-09-28', title: '测试角色的周记（9月28日–10月4日）', text: '第4篇' }]);
             assert.equal(materials[3], '[10月4日 周日]\n第1篇');
 
             await writer.catchUp(new Date('2026-10-08T03:00:00+08:00'));
@@ -160,8 +161,8 @@ describe('她的日记（ADR 0017）', () => {
             readFails = false;
             await writer.catchUp(new Date('2026-10-08T12:00:00+08:00'));
             assert.deepEqual(summaries, [
-                { id: 'week:2026-09-28', title: '林梦瑶的周记（9月28日–10月4日）' },
-                { id: 'phase:国庆节:2026-10-07', title: '林梦瑶的国庆节总结（10月1日–10月7日）' },
+                { id: 'week:2026-09-28', title: '测试角色的周记（9月28日–10月4日）' },
+                { id: 'phase:国庆节:2026-10-07', title: '测试角色的国庆节总结（10月1日–10月7日）' },
             ]);
             assert.equal(prompts.at(-2), '[10月3日 周六]\n2026-10-03 的日记\n\n[10月4日 周日]\n2026-10-04 的日记');
             // 国庆总结：10-03、10-04 读回过，本地存着；10-05、10-06 也是以前写的，读回；10-07 是这次写的

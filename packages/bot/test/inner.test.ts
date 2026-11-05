@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import {
@@ -15,11 +15,12 @@ import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
 import { thinkingTranscript } from '../src/platform/contact.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 useSensitiveSwitch(SENSITIVE_ON);
 
 // ADR 0101：内心。用转换器生成的真卡（男朋友档）；国庆假期 10-05 没有课，起床 09:30
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m).getTime();
 const msg = (time: number, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(time).toISOString(), role, content });
@@ -93,8 +94,8 @@ describe('内心：提示和放进聊天的一行', () => {
         const afterBracket = parseThought('（他早上问了个大问题，我那句回得太糊弄了，其实我也答不上来。）告诉他', [], 1) as { thought: InnerThought };
         assert.equal(afterBracket.thought.goes, 'tell');
         assert.equal(afterBracket.thought.text, '他早上问了个大问题，我那句回得太糊弄了，其实我也答不上来。');
-        const wrapped = parseThought('（翻着相册里土豆昨天那张，今天还没下楼喂它）\n自己想想', [], 1) as { thought: InnerThought };
-        assert.equal(wrapped.thought.text, '翻着相册里土豆昨天那张，今天还没下楼喂它');
+        const wrapped = parseThought('（翻着相册里团子饼昨天那张，今天还没下楼喂它）\n自己想想', [], 1) as { thought: InnerThought };
+        assert.equal(wrapped.thought.text, '翻着相册里团子饼昨天那张，今天还没下楼喂它');
         assert.deepEqual(parseThought('宝宝，人呢\n问他', [], 1, '阿明'), { rejected: '对他说话' });
         assert.deepEqual(parseThought('阿明 人呢\n问他', [], 1, '阿明'), { rejected: '对他说话' });
         assert.ok('thought' in parseThought('阿明的面试不知道怎么样了\n问他', [], 1, '阿明'), '名字在句子里不算');
@@ -227,7 +228,7 @@ describe('内心：计划器每隔一阵想一想', () => {
                 },
             },
             dir, log: m => logs.push(m), now: clock.now, waitUntil: clock.waitUntil,
-            names: { user: '阿明', char: '林梦瑶' },
+            names: { user: '阿明', char: '测试角色' },
             ...(extra.inner === false ? {} : { inner: true }),
             ...(extra.asleep ? { asleep: extra.asleep } : {}),
         });

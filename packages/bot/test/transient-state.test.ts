@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import type { Contact } from '../src/platform/config.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -13,6 +13,7 @@ import { promiseKeeper } from '../src/life/promises.ts';
 import type { Schedule } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { createTransientGate, describeError, isTransientIoError, TransientStateError, TRANSIENT_GRACE_MS } from '../src/memory/transient-io.ts';
+import { SYNTHETIC_CHAR_NAME, syntheticCardPath } from './fixtures/card.ts';
 
 const dirs: string[] = [];
 const restores: Array<() => void> = [];
@@ -145,7 +146,7 @@ describe('json-file：暂时失败不当成「不存在」也不当成「坏了�
 describe('约定模块：暂时读不到不再永久暂停', () => {
     const amin: Contact = { qq: 1, name: '阿明', tier: 'boyfriend' };
     const schedule = { sleep: '02:00' } as Schedule;
-    const names = { user: '阿明', char: '林梦瑶' };
+    const names = { user: '阿明', char: SYNTHETIC_CHAR_NAME };
 
     function setup() {
         const dir = fixture();
@@ -196,7 +197,7 @@ describe('约定模块：暂时读不到不再永久暂停', () => {
 
 describe('主动消息计划器：暂时写不进先撑着，恢复后补写', () => {
     const at = '2026-10-14T09:00:00+08:00';
-    const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+    const card = loadCharacterCard(syntheticCardPath('boyfriend'));
     const sleep = (ms: number) => new Promise<void>(done => setTimeout(done, ms));
 
     function deps(dir: string, patch: Partial<PlannerDeps> = {}): PlannerDeps {

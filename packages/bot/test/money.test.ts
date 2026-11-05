@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { depositFor, nextPayday, sideJobOn, spendItems, type Money } from '../src/life/money.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { describeWorld, recapDay, simulateWorld, worldAt } from '../src/world/world.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
+const card = (tier: string) => loadCharacterCard(syntheticCardPath(tier));
 const boyfriend = card('boyfriend');
 const known = card('known');
 const classmate = card('classmate');
@@ -34,16 +34,19 @@ describe('她的钱（ADR 0035）', () => {
         assert.equal(spendItems([{ what: '午饭', amount: 12 }, { what: '零碎', amount: 5 }, { what: '午饭', amount: 3 }]), '午饭 15、零碎 5');
     });
 
-    test('她说出口的数以后不能变：10-08 晚上她跟他说过两次「还差1750」（ADR 0035 调整 7）', () => {
+    test('她说出口的数以后不能变：10-08 晚上的相机基金是 2900，还差 100（ADR 0035 调整 7）', () => {
         // 钱是从开学那天按规则一天天推的，改规则（新的花销、行动花钱……）会把过去的数一起改掉。
         // 这里不过：要么改法不该动过去，要么在世界设定里给那天之前的数立锚点，别让她记得的数凭空变
         const now = worldAt(world, schedule, at(10, 8, 21, 7))!;
-        assert.equal(now.cameraFund!.saved, 2750);
-        assert.equal(now.cameraFund!.goal - now.cameraFund!.saved, 1750);
+        assert.equal(now.cameraFund!.saved, 2900);
+        assert.equal(now.cameraFund!.goal - now.cameraFund!.saved, 100);
     });
 
     test('四个月推下来：钱不会花成负的；每月花一千多到两千；相机基金每月都在涨，存多存少跟着手上的钱走', () => {
         const timeline = simulateWorld(world, schedule, at(12, 31, 23, 59));
+        // 合成世界 10-11 用相机基金买了相机，之后不再存；看存钱的规则用去掉这次购买的同一个世界
+        const { purchase: _purchase, ...unspentFund } = world.cameraFund!;
+        const saving = simulateWorld({ ...world, cameraFund: unspentFund }, schedule, at(12, 31, 23, 59));
         // 一天之内可能先花后进账（跟家里要的在晚上），按天末看
         for (let d = new Date(2026, 8, 1); d <= new Date(2026, 11, 31); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
             const now = worldAt(world, schedule, new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59))!;
@@ -53,18 +56,19 @@ describe('她的钱（ADR 0035）', () => {
             const spent = -timeline.ledger.filter(e => e.kind === 'spend' && e.at.getMonth() === month).reduce((s, e) => s + e.amount, 0);
             assert.ok(spent > 1200 && spent < 2400, `${month + 1} 月花了 ${spent}`);
         }
-        const amounts = timeline.deposits.map(d => d.amount);
+        const amounts = saving.deposits.map(d => d.amount);
         assert.ok(new Set(amounts).size > 2, `存的不是一个固定数：${amounts.join(',')}`);
         assert.ok(amounts.some(a => a === 0), '有的周钱要留着花，没存');
-        assert.ok(timeline.deposits.at(-1)!.saved > world.cameraFund!.saved);
-        assert.ok(timeline.deposits.at(-1)!.saved <= world.cameraFund!.goal);
+        assert.ok(saving.deposits.at(-1)!.saved > world.cameraFund!.saved);
+        assert.ok(saving.deposits.at(-1)!.saved <= world.cameraFund!.goal);
     });
 
     test('提示词：男朋友档看得到手上还有多少、今天花了什么；熟人档只看到相机基金；同学档都没有', () => {
-        const t = at(10, 11, 21, 30);
+        // 9-13（周日，存钱的日子）：合成世界 10-11 才买相机，这天还在攒
+        const t = at(9, 13, 21, 30);
         const bf = describeWorld(worldAt(world, schedule, t)!, t)!;
-        assert.match(bf, /钱：手上还有 \d+ 元（生活费每月 1 号到，这个月的到了，离下次还有 21 天）；今天花了 \d+ 元（.*午饭 \d+/);
-        assert.match(bf, /攒钱买相机：\d+ \/ 4500 元，还差 \d+（今天(存了 \d+|没存，手上的钱留着花到月底)）/);
+        assert.match(bf, /钱：手上还有 \d+ 元（生活费每月 1 号到，这个月的到了，离下次还有 18 天）；今天花了 \d+ 元（.*午饭 \d+/);
+        assert.match(bf, /攒钱买相机：\d+ \/ 3000 元，还差 \d+（今天(存了 \d+|没存，手上的钱留着花到月底)）/);
         const kn = describeWorld(worldAt(known.herWorld!, known.schedule!, t)!, t)!;
         assert.doesNotMatch(kn, /手上还有|今天花了/);
         assert.match(kn, /攒钱买相机/);
@@ -76,10 +80,10 @@ describe('她的钱（ADR 0035）', () => {
     });
 
     test('问到那天（ADR 0032）：那天花了多少、存没存', () => {
-        const recap = recapDay(worldAt(world, schedule, at(10, 11, 23, 30))!).join('；');
+        const recap = recapDay(worldAt(world, schedule, at(9, 13, 23, 30))!).join('；');
         assert.match(recap, /花了 \d+ 元（/);
         assert.match(recap, /相机基金(存了 \d+|这周没存)/);
-        assert.doesNotMatch(recapDay(worldAt(known.herWorld!, known.schedule!, at(10, 11, 23, 30))!).join('；'), /花了 \d+ 元/);
+        assert.doesNotMatch(recapDay(worldAt(known.herWorld!, known.schedule!, at(9, 13, 23, 30))!).join('；'), /花了 \d+ 元/);
     });
 
     test('跟家里要钱只在说得出口的档位里是一件事；账是同一本', () => {

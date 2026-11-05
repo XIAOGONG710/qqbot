@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { startApp } from '../src/platform/app.ts';
 import { toStored } from '../src/memory/backfill.ts';
@@ -9,6 +9,7 @@ import type { AppConfig } from '../src/platform/config.ts';
 import { ChatHistory } from '../src/memory/history.ts';
 import { segmentsToText, type MessageEvent, type QuoteLookup } from '../src/platform/onebot.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 const reply = (id: string | number) => ({ type: 'reply', data: { id } });
 const text = (value: string) => ({ type: 'text', data: { text: value } });
@@ -58,7 +59,7 @@ describe('引用回复进应用（ADR 0081）', () => {
         const cfg: AppConfig = {
             llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
             prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
-            characterCard: join(resolve(import.meta.dirname, '../../..'), 'characters/linmengyao/st/linmengyao-{tier}.json'),
+            characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }],
             unlistedFriends: false, schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false,
             lifeInPrompt: false, grievance: false, feedbackCommands: false, realWeather: false, media: true,

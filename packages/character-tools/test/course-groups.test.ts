@@ -7,7 +7,7 @@ import { checkWorld, worldForTier } from '../src/world-source.ts';
 
 const firstGroup = `cg-${'1'.repeat(32)}`;
 const secondGroup = `cg-${'2'.repeat(32)}`;
-const source = readSource(resolve(import.meta.dirname, '../../../characters/linmengyao/source'));
+const source = readSource(resolve(import.meta.dirname, '../../bot/test/fixtures/synthetic-character/source'));
 const synthetic: ScheduleSource = {
     sleep: '02:00', wakeup: { early: '07:40', lazy: '09:30' }, periods: { one: '08:20-09:50' }, semester: { start: '2026-09-07', weeks: 20 },
     holidays: [], makeups: [],

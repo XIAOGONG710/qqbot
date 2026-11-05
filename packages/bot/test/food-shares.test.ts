@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { loadTierCard } from '../src/platform/contact.ts';
 import { dishOn } from '../src/life/menu.ts';
@@ -8,9 +7,10 @@ import {
     type Candidate, type NewsItem, type ProactiveInput,
 } from '../src/proactive/proactive.ts';
 import { FOOD_PHOTO_CHANCE, lastMealDish, worldAt, worldNews, type WorldNow } from '../src/world/world.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 // ADR 0128：吃饭时拍了张照片发给他（news 的新一类 food_photo，配置 foodPhotos，要 menu 和 photos）
-const pattern = resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-{tier}.json');
+const pattern = syntheticCardPattern;
 const boyfriend = loadTierCard(pattern, 'boyfriend', { menu: true }).character;
 const schedule = boyfriend.schedule!;
 const endOf = (d: Date): WorldNow => worldAt(boyfriend.herWorld!, schedule, new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 30))!;
@@ -32,7 +32,7 @@ describe('世界账：吃饭时拍的照片', () => {
             assert.ok(minutes >= 6 && minutes <= 18, `${minutes}`);
         }
         assert.deepEqual(worldNews(hits[0]!.now, ['food_photo']), worldNews(hits[0]!.now, ['food_photo']));
-        assert.equal(worldNews(hits[0]!.now, DEFAULT_NEWS_KINDS).length, 0);
+        assert.deepEqual(worldNews(hits[0]!.now, DEFAULT_NEWS_KINDS).filter(n => n.kind === 'food_photo'), [], '默认的几类里没有饭的照片');
     });
 
     test('没开 menu 的卡没有菜名，也就没有这一类', () => {
@@ -89,7 +89,7 @@ describe('主动：吃饭时拍的照片', () => {
             { time: new Date(2026, 10, 17, 12, 30).toISOString(), role: 'user' as const, content: '在吗', messageId: 1 },
             { time: new Date(2026, 10, 17, 12, 31).toISOString(), role: 'assistant' as const, content: '在呢', messageId: 2 },
         ];
-        assert.equal(blockReason(c, new Date(2026, 10, 17, 13, 30).getTime(), input({ photoReady: ready(true), history: chatted })), '那之后聊过了');
+        assert.equal(blockReason(c, new Date(2026, 10, 17, 13, 20).getTime(), input({ photoReady: ready(true), history: chatted })), '那之后聊过了');
         const bedtime = { id: '2026-11-17:bedtime', occasion: 'bedtime', day: '2026-11-17', at: new Date(2026, 10, 17, 23, 30).getTime(), reason: 'x' } as Candidate;
         assert.deepEqual(untoldNews(bedtime, bedtime.at, input()), []);
     });

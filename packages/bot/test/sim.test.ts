@@ -11,9 +11,10 @@ import { renderReport } from '../src/sim/report.ts';
 import { runChecks, runScenario, type SimHindsight, type StepRecord } from '../src/sim/runner.ts';
 import { loadScenario, parseDuration, parseScenario, sayText, VirtualClock } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
-const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+const card = loadTierCard(syntheticCardPattern, 'boyfriend');
 const llm: BotConfig['llm'] = {
     baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000,
     promptPostProcessing: '', extraBody: {},
@@ -189,7 +190,7 @@ describe('模拟器：场景文件', () => {
             bubbles: [{ time: 0, text: '去吧去吧' }, { time: 0, text: '写完跟我说一声\n早点睡' }],
         };
         const results = runChecks({
-            replyNotMatch: ['(写完|忙完).{0,4}(跟我说|找我)', '记得吃饭'], firstNone: ['土豆'], firstAny: ['去吧'], maxBubbles: 2, maxLines: 2, timeBlock: '收尾',
+            replyNotMatch: ['(写完|忙完).{0,4}(跟我说|找我)', '记得吃饭'], firstNone: ['团子饼'], firstAny: ['去吧'], maxBubbles: 2, maxLines: 2, timeBlock: '收尾',
         }, step);
         assert.deepEqual(results.map(r => [r.ok, Boolean(r.pipeline)]), [[false, false], [true, false], [true, false], [true, false], [true, true], [true, false], [false, false]]);
         assert.match(results[0]!.text, /「写完跟我说」/);
@@ -270,7 +271,7 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
                 { refresh: 'relationship' },
                 { say: '铁锅又找我茬' },
                 { check: { recall: ['铁锅'], timeBlock: '距上一条消息：1 天', replyAny: ['好'] } },
-                { check: { timeBlock: '\\[你现在：国庆节放假，没抢到回青岛的票，留在学校（你们说好以后放假一起走，这次你不难受）；.+；阿明回青岛过国庆了（放假前就说好的）\\]' } },
+                { check: { timeBlock: '\\[你现在：国庆节放假，没回家，留在七号楼；.+；阿明回老家过国庆了\\]' } },
                 { check: { recall: ['不存在的词'] } },
             ],
         });

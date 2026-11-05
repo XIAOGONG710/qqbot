@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { dayPlan } from '../src/life/day-plan.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { dayFrom, firstRealDay, mergeHours, parseOpenMeteo, useRealWeather, weatherFetcher, weatherText, type HourWeather, type RealWeather } from '../src/world/weather.ts';
 import { describeWeather, describeWorld, worldAt } from '../src/world/world.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 const at = (iso: string) => new Date(`${iso}+08:00`);
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -228,7 +229,7 @@ describe('真实天气（ADR 0048）', () => {
 });
 
 describe('真实天气进她的世界（ADR 0048）', () => {
-    const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+    const card = loadCharacterCard(syntheticCardPath('boyfriend'));
     const schedule = card.schedule!;
     const herWorld = card.herWorld!;
     const fake = (rain: number[]): RealWeather => ({
@@ -257,8 +258,10 @@ describe('真实天气进她的世界（ADR 0048）', () => {
     });
 
     test('一天的打算看那个时段：下午才下的雨不改上午出门的打算', () => {
-        const day = new Date(2026, 9, 20);
-        const byWindow = (rainHours: number[]) => Object.fromEntries(dayPlan(schedule, herWorld.plans, day, { rain: rainHours.length > 0, rainHours })
+        // 合成卡 10-14 上午打算「拿胶片机去湖边拍照」（出门）、下午「带新胶片机去操场转转」；合成卡的出门打算里没有下午的，测试补一条
+        const day = new Date(2026, 9, 14);
+        const plans = { ...herWorld.plans!, outings: [...herWorld.plans!.outings, { text: '带新胶片机去操场转转', indoors: '在宿舍整理照片' }] };
+        const byWindow = (rainHours: number[]) => Object.fromEntries(dayPlan(schedule, plans, day, { rain: rainHours.length > 0, rainHours })
             .map(slot => [slot.window, slot.because ?? '照打算']));
         assert.deepEqual(byWindow([15]), { morning: '照打算', afternoon: '下雨了', evening: '照打算' });
         assert.deepEqual(byWindow([9]), { morning: '下雨了', afternoon: '照打算', evening: '照打算' });

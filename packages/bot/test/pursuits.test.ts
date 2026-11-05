@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { loadTierCard } from '../src/platform/contact.ts';
 import { appraisals, feelingsAt } from '../src/emotion/feelings.ts';
@@ -15,9 +15,9 @@ import {
     type Pursuit, type PursuitFacts,
 } from '../src/life/pursuits.ts';
 import type { WorldNow } from '../src/world/world.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
-const repoRoot = resolve(import.meta.dirname, '../../..');
-const schedule = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend').character.schedule!;
+const schedule = loadTierCard(syntheticCardPattern, 'boyfriend').character.schedule!;
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 

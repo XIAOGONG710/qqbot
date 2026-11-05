@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { bodyAt } from '../src/life/body.ts';
 import { readingActivities } from '../src/life/her-days.ts';
 import { herStatus } from '../src/language/status-line.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { worldAt } from '../src/world/world.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const card = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = card.schedule!;
 const herWorld = card.herWorld!;
 const extraFree = readingActivities(card.books);
@@ -46,16 +46,16 @@ describe('统一状态行（ADR 0042）', () => {
     });
 
     test('改了打算：对外保留原因，生活执行器拿到实际在做的事', () => {
-        // 10-20 下午原来是在图书馆赶作业，10-11 买了相机以后是拿相机出去拍（ADR 0053）
-        const rainy = status('2026-10-20T15:00:00');
-        assert.equal(rainy.revised, '本来打算拿新相机去校园里拍，下雨了，在宿舍研究新相机的设置');
+        // 10-14 上午打算拿胶片机出去拍，下雨了改成在宿舍（ADR 0053）
+        const rainy = status('2026-10-14T10:00:00');
+        assert.equal(rainy.revised, '本来打算拿胶片机去湖边拍照，下雨了，在宿舍整理照片');
         assert.deepEqual(rainy.state.activity, { kind: 'free', text: rainy.revised });
-        assert.equal(rainy.doing, '在宿舍研究新相机的设置');
+        assert.equal(rainy.doing, '在宿舍整理照片');
         assert.ok(rainy.slots.some(slot => slot.done !== slot.planned));
     });
 
     test('刚洗完澡是对外状态备注，不吞掉底层正在做的柔性行动', () => {
-        const showered = status('2026-10-12T23:20:00');
+        const showered = status('2026-10-12T22:00:00');
         assert.equal(showered.busy, '刚洗完澡');
         assert.deepEqual(showered.state.activity, { kind: 'free', text: '刚洗完澡' });
         assert.ok(showered.doing && showered.doing !== '刚洗完澡');

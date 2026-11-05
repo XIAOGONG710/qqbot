@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
@@ -10,9 +10,9 @@ import { answerOf, loadQuestions, pack, statusSummary, toScenario, type AnswerSe
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
-const repoRoot = resolve(import.meta.dirname, '../../..');
-const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+const card = loadTierCard(syntheticCardPattern, 'boyfriend');
 const llm: BotConfig['llm'] = {
     baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000,
     promptPostProcessing: '', extraBody: {},
@@ -98,11 +98,11 @@ describe('盲评生成器（T2）', () => {
     test('她那时：从时间块里摘时刻、在干嘛、心情、天气', () => {
         const block = [
             '[当前时间：2026-10-09 星期五 20:31]',
-            '[你现在：在学校（济南），住宿舍；熬夜赶作业]',
+            '[你现在：在学校（雾岚市），住宿舍；熬夜赶作业]',
             '[你今天的心情：安静（今天有早八，起得太早了）。今天有点蔫]',
-            '[你那边（今天到现在的事实）：天气：下雨，11–18℃｜土豆：今天下雨没下楼]',
+            '[你那边（今天到现在的事实）：天气：下雨，11–18℃｜团子饼：今天下雨没下楼]',
         ].join('\n');
-        assert.equal(statusSummary(block), '2026-10-09 星期五 20:31 · 在学校（济南），住宿舍；熬夜赶作业 · 心情安静 · 天气下雨，11–18℃');
+        assert.equal(statusSummary(block), '2026-10-09 星期五 20:31 · 在学校（雾岚市），住宿舍；熬夜赶作业 · 心情安静 · 天气下雨，11–18℃');
         assert.equal(statusSummary(undefined), undefined);
     });
 

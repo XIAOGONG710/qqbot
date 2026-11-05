@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { bodyAt, type Body } from '../src/life/body.ts';
 import type { Contact } from '../src/platform/config.ts';
@@ -13,9 +12,10 @@ import { meetWindow, mentionsMeetup, type Appointment, type HerPromise } from '.
 import { classesOn, formatDate, wakeOn } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import type { WorldNow } from '../src/world/world.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // ADR 0066：推掉和改约要有来源（身体、日程、作业、已有的约）
-const cardPath = (tier: string) => resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`);
+const cardPath = (tier: string) => syntheticCardPath(tier);
 const boyfriend = loadCharacterCard(cardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (month: number, day: number, h: number, m = 0, year = 2026) => new Date(year, month - 1, day, h, m);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 import { fileOps } from '../src/memory/json-file.ts';
 import { createProactivePlanner, type Planner, type PlannerDeps } from '../src/proactive/proactive-planner.ts';
@@ -9,6 +9,7 @@ import { emptyProactiveState, readProactiveState, validProactiveState } from '..
 import { TRANSIENT_GRACE_MS } from '../src/memory/transient-io.ts';
 import { checkStates } from '../src/ops/state-check.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 const dirs: string[] = [];
 const planners: Planner[] = [];
@@ -20,7 +21,7 @@ const fixture = () => { const dir = mkdtempSync(join(tmpdir(), 'qqbot-proactive-
 const at = '2026-10-14T09:00:00+08:00';
 const record = { id: '2026-10-14:morning', occasion: 'morning', plannedAt: at, at, result: 'sent', messageIds: [1] };
 const followUp = { id: 'f-1', what: '面试', date: '2026-10-15', time: '14:00', episode: 'ep-0', missed: 1 };
-const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const card = loadCharacterCard(syntheticCardPath('boyfriend'));
 
 function deps(dir: string, patch: Partial<PlannerDeps> = {}): PlannerDeps {
     return { dir, contact: { qq: 10001, name: '阿明', tier: 'boyfriend' }, schedule: card.schedule!,

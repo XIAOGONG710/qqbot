@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { bodyAt, type Body } from '../src/life/body.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -11,9 +10,10 @@ import { newsFrom } from '../src/proactive/proactive-planner.ts';
 import { wakeOn } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { unwellNews, worldNews, type FriendDate, type WorldNow } from '../src/world/world.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // ADR 0064：她账里的事成为开口的理由（事件类：买到相机、24 小时内到期的作业写完了、一段不舒服的第一天）
-const cardPath = (tier: string) => resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`);
+const cardPath = (tier: string) => syntheticCardPath(tier);
 const boyfriend = loadCharacterCard(cardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (month: number, day: number, h: number, m = 0, year = 2026) => new Date(year, month - 1, day, h, m).getTime();
@@ -34,34 +34,34 @@ const snapshot = (hw: WorldNow['homework'] = []): WorldNow => ({ day: '2026-10-1
 describe('事件类：作业写完了（ADR 0064 决策 3）', () => {
     test('24 小时内到期、已经写完的：了结的时刻是写完的时刻，id 按她写完的那一天，课名跟着看得到的档位', () => {
         const done = t(10, 14, 22);
-        const [item, ...rest] = worldNews(snapshot([homework('数据结构', done, t(10, 15, 8))]), ['homework_done']);
+        const [item, ...rest] = worldNews(snapshot([homework('操作系统实验', done, t(10, 15, 8))]), ['homework_done']);
         assert.equal(rest.length, 0);
-        assert.deepEqual(item, { id: 'homework:2026-10-14', kind: 'homework_done', at: new Date(done), what: '把数据结构的作业写完了' });
+        assert.deepEqual(item, { id: 'homework:2026-10-14', kind: 'homework_done', at: new Date(done), what: '把操作系统实验的作业写完了' });
         // 看不到课名的档位（WorldNow 里 course 是空的）不写课名
         assert.equal(worldNews(snapshot([homework('', done, t(10, 15, 8))]), ['homework_done'])[0]!.what, '把作业写完了');
     });
 
     test('早早写完的（离交还远）、还没写完的不算；刚好 24 小时算，多一毫秒不算', () => {
         const kinds = ['homework_done'] as const;
-        assert.deepEqual(worldNews(snapshot([homework('数据结构', t(10, 11, 21, 30), t(10, 18, 8))]), kinds), [], '早早写完');
-        assert.deepEqual(worldNews(snapshot([homework('数据结构', t(10, 14, 22), t(10, 15, 8), false)]), kinds), [], '还没写完');
-        assert.equal(worldNews(snapshot([homework('数据结构', t(10, 14, 8), t(10, 15, 8))]), kinds).length, 1, '刚好 24 小时');
-        assert.equal(worldNews(snapshot([homework('数据结构', t(10, 14, 8) - 1, t(10, 15, 8))]), kinds).length, 0, '多一毫秒');
+        assert.deepEqual(worldNews(snapshot([homework('操作系统实验', t(10, 11, 21, 30), t(10, 18, 8))]), kinds), [], '早早写完');
+        assert.deepEqual(worldNews(snapshot([homework('操作系统实验', t(10, 14, 22), t(10, 15, 8), false)]), kinds), [], '还没写完');
+        assert.equal(worldNews(snapshot([homework('操作系统实验', t(10, 14, 8), t(10, 15, 8))]), kinds).length, 1, '刚好 24 小时');
+        assert.equal(worldNews(snapshot([homework('操作系统实验', t(10, 14, 8) - 1, t(10, 15, 8))]), kinds).length, 0, '多一毫秒');
     });
 
     test('同一天写完的几份并成一件', () => {
         const kinds = ['homework_done'] as const;
-        const two = worldNews(snapshot([homework('数据结构', t(10, 14, 21), t(10, 15, 8)), homework('MySQL数据库应用', t(10, 14, 22), t(10, 15, 10))]), kinds);
+        const two = worldNews(snapshot([homework('操作系统实验', t(10, 14, 21), t(10, 15, 8)), homework('高等数学', t(10, 14, 22), t(10, 15, 10))]), kinds);
         assert.equal(two.length, 1);
-        assert.equal(two[0]!.what, '把数据结构、MySQL数据库应用的作业写完了');
+        assert.equal(two[0]!.what, '把操作系统实验、高等数学的作业写完了');
         assert.equal(two[0]!.at.getTime(), t(10, 14, 22), '取最晚的那份');
         assert.equal(worldNews(snapshot([homework('', t(10, 14, 21), t(10, 15, 8)), homework('', t(10, 14, 22), t(10, 15, 10))]), kinds)[0]!.what, '把 2 份作业都写完了');
-        const nextDay = worldNews(snapshot([homework('数据结构', t(10, 14, 22), t(10, 15, 8)), homework('英语', t(10, 15, 22), t(10, 16, 8))]), kinds);
+        const nextDay = worldNews(snapshot([homework('操作系统实验', t(10, 14, 22), t(10, 15, 8)), homework('英语', t(10, 15, 22), t(10, 16, 8))]), kinds);
         assert.deepEqual(nextDay.map(n => n.id), ['homework:2026-10-14', 'homework:2026-10-15'], '不同的天各一件');
     });
 
     test('卡上没开这一类（不传 kinds）时和 ADR 0057 一样只有相机', () => {
-        const now = snapshot([homework('数据结构', t(10, 14, 22), t(10, 15, 8))]);
+        const now = snapshot([homework('操作系统实验', t(10, 14, 22), t(10, 15, 8))]);
         assert.deepEqual(worldNews(now), []);
         assert.deepEqual(worldNews(now, []), []);
         assert.equal(worldNews(now, ['camera', 'homework_done']).length, 1);
@@ -107,7 +107,7 @@ describe('事件类：一段不舒服的第一天（ADR 0064 决策 3 + 确认�
 
 describe('newsFrom：把世界和身体变成排候选用的事（ADR 0064）', () => {
     const done = t(10, 14, 22);
-    const withHomework = snapshot([homework('数据结构', done, t(10, 15, 8))]);
+    const withHomework = snapshot([homework('操作系统实验', done, t(10, 15, 8))]);
     /** 她今天（10-14）最后一刻的快照里有作业写完了；别的时候没有（交作业的课一过，作业就不在世界快照里了） */
     const worldAt = (asked: Date[] = []) => (time: Date): WorldNow | undefined => {
         asked.push(time);
@@ -117,7 +117,7 @@ describe('newsFrom：把世界和身体变成排候选用的事（ADR 0064）', 
     test('看她今天、明天的最后一刻，再加明天这一刻；开了的类才有', () => {
         const asked: Date[] = [];
         const items = newsFrom(worldAt(asked), schedule, { kinds: ['camera', 'homework_done'] })(t(10, 14, 15));
-        assert.deepEqual(items, [{ id: 'homework:2026-10-14', kind: 'homework_done', day: '2026-10-14', at: done, what: '把数据结构的作业写完了' }]);
+        assert.deepEqual(items, [{ id: 'homework:2026-10-14', kind: 'homework_done', day: '2026-10-14', at: done, what: '把操作系统实验的作业写完了' }]);
         assert.deepEqual(asked.map(d => `${d.getDate()} ${d.getHours()}:${d.getMinutes()}`), ['14 23:59', '15 23:59', '15 15:0']);
     });
 
@@ -147,7 +147,7 @@ describe('newsFrom：把世界和身体变成排候选用的事（ADR 0064）', 
 
 describe('事件类：闺蜜的约变了（ADR 0061 第 2 步，friend_changed）', () => {
     const date = (patch: Partial<FriendDate> = {}): FriendDate => ({
-        id: '2026-12-04:su_yutong:canteen', kind: 'canteen', person: { id: 'su_yutong', name: '苏雨桐', relation: '同专业的朋友' }, what: '下课一起去食堂吃饭', doing: '在食堂和苏雨桐吃饭',
+        id: '2026-12-04:su_yutong:canteen', kind: 'canteen', person: { id: 'su_yutong', name: '许小禾', relation: '室友' }, what: '下课一起去食堂吃饭', doing: '在食堂和许小禾吃饭',
         askedAt: new Date(t(12, 4, 9, 53)), start: new Date(t(12, 4, 12, 2)), minutes: 45, outcome: 'cancelled', knownAt: new Date(t(12, 4, 10, 32)),
         reason: '临时被老师叫去帮忙', held: false, ...patch,
     });
@@ -157,15 +157,15 @@ describe('事件类：闺蜜的约变了（ADR 0061 第 2 步，friend_changed�
     test('临时去不了了：了结的时刻 = 她得知的时刻，id 带约的 id，原因按档位裁过的写上', () => {
         assert.deepEqual(worldNews(snap(date()), ['friend_changed']), [{
             id: 'friend:2026-12-04:su_yutong:canteen', kind: 'friend_changed', at: new Date(t(12, 4, 10, 32)),
-            what: '苏雨桐约好 12:02 下课一起去食堂吃饭，她临时去不了了（临时被老师叫去帮忙）',
+            what: '许小禾约好 12:02 下课一起去食堂吃饭，她临时去不了了（临时被老师叫去帮忙）',
         }]);
         // 没有原因（私事、这一档说不出口）就不写原因，不编
-        assert.equal(worldNews(snap(date({ reason: undefined })), ['friend_changed'])[0]!.what, '苏雨桐约好 12:02 下课一起去食堂吃饭，她临时去不了了');
+        assert.equal(worldNews(snap(date({ reason: undefined })), ['friend_changed'])[0]!.what, '许小禾约好 12:02 下课一起去食堂吃饭，她临时去不了了');
     });
 
     test('改到很晚（至少一小时）算；只晚一会儿、迟到、她自己推掉的、还没得知的、不是今天的不算；没开这一类就没有', () => {
         const moved = (minutes: number) => date({ outcome: 'moved', actualStart: new Date(t(12, 4, 12, 2) + minutes * 60_000), held: true, reason: undefined });
-        assert.equal(worldNews(snap(moved(90)), ['friend_changed'])[0]!.what, '苏雨桐约好 12:02 下课一起去食堂吃饭，她说改到 13:32');
+        assert.equal(worldNews(snap(moved(90)), ['friend_changed'])[0]!.what, '许小禾约好 12:02 下课一起去食堂吃饭，她说改到 13:32');
         assert.deepEqual(worldNews(snap(moved(30)), ['friend_changed']), []);
         assert.deepEqual(worldNews(snap(date({ outcome: 'late', actualStart: new Date(t(12, 4, 12, 10)), held: true })), ['friend_changed']), []);
         assert.deepEqual(worldNews(snap(date({ declined: '作业还没写完', declinedAt: new Date(t(12, 4, 9, 53)) })), ['friend_changed']), []);
@@ -177,9 +177,9 @@ describe('事件类：闺蜜的约变了（ADR 0061 第 2 步，friend_changed�
     });
 
     test('说明：只说这一件、不要他回应或安慰、不编没写的原因；排在别的类后面', () => {
-        const item: NewsItem = { id: 'friend:x', kind: 'friend_changed', day: '2026-12-04', at: t(12, 4, 10, 32), what: '苏雨桐约好 12:02 下课一起去食堂吃饭，她临时去不了了（临时被老师叫去帮忙）' };
+        const item: NewsItem = { id: 'friend:x', kind: 'friend_changed', day: '2026-12-04', at: t(12, 4, 10, 32), what: '许小禾约好 12:02 下课一起去食堂吃饭，她临时去不了了（临时被老师叫去帮忙）' };
         const text = occasionNote(newsOf(candidatesOn(day(12, 4), input({ news: [item] })))[0]!, '宝宝');
-        assert.match(text, /你刚得知苏雨桐约好 12:02 下课一起去食堂吃饭，她临时去不了了（临时被老师叫去帮忙），想跟宝宝说一声/);
+        assert.match(text, /你刚得知许小禾约好 12:02 下课一起去食堂吃饭，她临时去不了了（临时被老师叫去帮忙），想跟宝宝说一声/);
         assert.match(text, /不要他回应或安慰你/);
         assert.match(text, /没写的原因和细节不编/);
         assert.match(text, /不抱怨对方没找你、没回你/);
@@ -189,15 +189,15 @@ describe('事件类：闺蜜的约变了（ADR 0061 第 2 步，friend_changed�
 });
 
 describe('事件类：闺蜜病了的头一天（friend_sick）', () => {
-    const people = (day: number, of = 3): WorldNow['people'] => [{ name: '苏雨桐', relation: '大学同专业，济南人，不是室友', states: [{ kind: 'sick', day, of }] }];
+    const people = (day: number, of = 3): WorldNow['people'] => [{ name: '许小禾', relation: '室友', states: [{ kind: 'sick', day, of }] }];
     const snap = (day: number): WorldNow => ({ ...snapshot(), day: '2026-12-04', people: people(day) });
 
     test('头一天才有：上午 9:00–11:30 她得知，同一天同一个人每次一样；第二天起不再单发', () => {
         const [item, ...rest] = worldNews(snap(1), ['friend_sick']);
         assert.equal(rest.length, 0);
-        assert.equal(item!.id, 'friend_sick:苏雨桐:2026-12-04');
+        assert.equal(item!.id, 'friend_sick:许小禾:2026-12-04');
         assert.equal(item!.kind, 'friend_sick');
-        assert.equal(item!.what, '苏雨桐感冒了');
+        assert.equal(item!.what, '许小禾感冒了');
         assert.ok(item!.at.getTime() >= t(12, 4, 9) && item!.at.getTime() <= t(12, 4, 11, 30), item!.at.toString());
         assert.equal(worldNews(snap(1), ['friend_sick'])[0]!.at.getTime(), item!.at.getTime());
         assert.deepEqual(worldNews(snap(2), ['friend_sick']), []);
@@ -205,7 +205,7 @@ describe('事件类：闺蜜病了的头一天（friend_sick）', () => {
     });
 
     test('忙、回家不算；没开这一类就没有；看不到这个人（没有 people）就没有', () => {
-        const busy: WorldNow = { ...snapshot(), day: '2026-12-04', people: [{ name: '陈佳宁', relation: '高中同班，死党', states: [{ kind: 'busy', day: 1, of: 2, label: '有考试' }, { kind: 'home' }] }] };
+        const busy: WorldNow = { ...snapshot(), day: '2026-12-04', people: [{ name: '林小满', relation: '高中同学，最好的朋友', states: [{ kind: 'busy', day: 1, of: 2, label: '有考试' }, { kind: 'home' }] }] };
         assert.deepEqual(worldNews(busy, ['friend_sick']), []);
         assert.deepEqual(worldNews(snap(1)), [], '不传 kinds = 只有相机');
         assert.deepEqual(worldNews(snap(1), ['camera', 'homework_done', 'unwell', 'friend_changed']), []);
@@ -213,9 +213,9 @@ describe('事件类：闺蜜病了的头一天（friend_sick）', () => {
     });
 
     test('说明：只说这一件、不要他回应或安慰、病情和做了什么没写的不编；排在最后', () => {
-        const item: NewsItem = { id: 'friend_sick:苏雨桐:2026-12-04', kind: 'friend_sick', day: '2026-12-04', at: t(12, 4, 10, 10), what: '苏雨桐感冒了' };
+        const item: NewsItem = { id: 'friend_sick:许小禾:2026-12-04', kind: 'friend_sick', day: '2026-12-04', at: t(12, 4, 10, 10), what: '许小禾感冒了' };
         const text = occasionNote(candidatesOn(day(12, 4), input({ news: [item] })).filter(c => c.occasion === 'news')[0]!, '宝宝');
-        assert.match(text, /你刚得知苏雨桐感冒了，想跟宝宝说一声/);
+        assert.match(text, /你刚得知许小禾感冒了，想跟宝宝说一声/);
         assert.match(text, /不要他回应或安慰你/);
         assert.match(text, /那一行里没写的不编/);
         assert.doesNotMatch(text, /「[^」]*[！!]」/, '不给台词');
@@ -228,8 +228,8 @@ describe('事件类：闺蜜病了的头一天（friend_sick）', () => {
 
 describe('主动消息里的事件类：优先级、说明、日志（ADR 0064 决策 4、5、7）', () => {
     const item = (kind: NewsItem['kind'], id: string, at: number, what: string): NewsItem => ({ id, kind, day: '2026-10-14', at, what });
-    const camera = item('camera', 'camera', t(10, 14, 16, 30), '在山大路科技市场买到了二手相机');
-    const hw = item('homework_done', 'homework:2026-10-14', t(10, 14, 22), '把数据结构的作业写完了');
+    const camera = item('camera', 'camera', t(10, 14, 16, 30), '在城南的二手相机店买到了二手相机');
+    const hw = item('homework_done', 'homework:2026-10-14', t(10, 14, 22), '把操作系统实验的作业写完了');
     const sick = item('unwell', 'unwell:2026-10-14', t(10, 14, 7, 40), '肚子疼得厉害（生理期）');
     const newsOf = (candidates: ReturnType<typeof candidatesOn>) => candidates.filter(c => c.occasion === 'news');
 
@@ -237,7 +237,7 @@ describe('主动消息里的事件类：优先级、说明、日志（ADR 0064 �
         const list = newsOf(candidatesOn(day(10, 14), input({ news: [camera, hw, sick] })));
         assert.deepEqual(list.map(c => c.id).sort(), ['2026-10-14:news:camera', '2026-10-14:news:homework:2026-10-14', '2026-10-14:news:unwell:2026-10-14']);
         const label = candidateLabel(list.find(c => c.news?.kind === 'homework_done')!);
-        assert.match(label, /^她那边的事\[homework_done homework:2026-10-14\]（把数据结构的作业写完了）$/);
+        assert.match(label, /^她那边的事\[homework_done homework:2026-10-14\]（把操作系统实验的作业写完了）$/);
     });
 
     test('一天只剩一条时：相机 > 作业写完 > 不舒服；排不上的让给优先的，之后走「顺带说」', () => {
@@ -256,8 +256,8 @@ describe('主动消息里的事件类：优先级、说明、日志（ADR 0064 �
 
     test('说明：只给事实和方向；作业不要他回应或夸；不舒服不是求安抚；每一类都不抱怨', () => {
         const note = (c: NewsItem) => occasionNote(newsOf(candidatesOn(day(10, 14), input({ news: [c] })))[0]!, '宝宝');
-        assert.match(note(camera), /你刚在山大路科技市场买到了二手相机，想第一时间告诉宝宝/);
-        assert.match(note(hw), /你刚把数据结构的作业写完了，想跟宝宝说一声.*不要他回应或夸你/);
+        assert.match(note(camera), /你刚在城南的二手相机店买到了二手相机，想第一时间告诉宝宝/);
+        assert.match(note(hw), /你刚把操作系统实验的作业写完了，想跟宝宝说一声.*不要他回应或夸你/);
         assert.match(note(sick), /你今天肚子疼得厉害（生理期），想跟宝宝说一声.*不是要他哄你、关心你，也不要他回应/);
         for (const c of [camera, hw, sick]) {
             assert.match(note(c), /不抱怨对方没找你、没回你/);

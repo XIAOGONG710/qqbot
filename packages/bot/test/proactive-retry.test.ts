@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import type { ProactiveRecord, ProactiveSettings, RescheduleItem } from '../src/proactive/proactive.ts';
@@ -11,11 +11,12 @@ import type { InitiateOutcome, InitiateRequest } from '../src/social/responder.t
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管
 useSensitiveSwitch(SENSITIVE_ON);
 
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m).getTime();
 const msg = (time: number, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(time).toISOString(), role, content });
@@ -30,7 +31,7 @@ describe('主动消息：没连上模型过一会儿再试（10-11 相机那条�
         for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
     });
 
-    const camera = { id: 'camera', kind: 'camera' as const, day: '2026-10-11', at: t(10, 11, 16, 30), what: '在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头' };
+    const camera = { id: 'camera', kind: 'camera' as const, day: '2026-10-11', at: t(10, 11, 16, 30), what: '在城南的二手相机店买到了一台胶片机' };
     const unreachable: InitiateOutcome = { result: 'failed', reason: '生成失败：模型接口请求失败（ENOTFOUND：getaddrinfo ENOTFOUND api.deepseek.com）', unreachable: true };
 
     /** outcomes：每次到点依次返回；用完了就照常试运行。occasions 默认只开她那边的事 */
@@ -57,7 +58,7 @@ describe('主动消息：没连上模型过一会儿再试（10-11 相机那条�
                 },
             },
             dir, log: m => logs.push(m), now: clock.now, waitUntil: clock.waitUntil,
-            names: { user: '阿明', char: '林梦瑶' },
+            names: { user: '阿明', char: '测试角色' },
             news: () => [camera],
             ...(reschedule ? { reschedule } : {}),
         });
@@ -141,8 +142,8 @@ describe('主动消息：没连上模型过一会儿再试（10-11 相机那条�
         await runUntil(clock, t(10, 12, 1));
         assert.equal(tried.length, 4, logs.join('\n'));
         assert.doesNotMatch(notes[0]!, /还没跟阿明说过/);
-        assert.match(notes[3]!, /道个晚安；你今天在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头，还没跟阿明说过/);
-        assert.ok(logs.some(l => l.includes('睡前（准备睡了）顺带说没说成的事：在山大路科技市场买到了')), logs.join('\n'));
+        assert.match(notes[3]!, /道个晚安；你今天在城南的二手相机店买到了一台胶片机，还没跟阿明说过/);
+        assert.ok(logs.some(l => l.includes('睡前（准备睡了）顺带说没说成的事：在城南的二手相机店买到了')), logs.join('\n'));
         assert.equal(records().find(r => r.occasion === 'bedtime')?.result, 'dryRun');
     });
 });

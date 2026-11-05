@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
@@ -11,15 +11,21 @@ import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { inspectBookProgress, inspectSpeech, opener, parseChineseNumber, speechContext, stripOpeners, type SpeechContext, type SpeechKind } from '../src/language/speech-check.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 const none: SpeechContext = { recent: [], his: [] };
 const kinds = (text: string, kind: SpeechKind, context = none) => inspectSpeech(text, context).filter(i => i.kind === kind).map(i => i.match);
 
 describe('书的进度数字（ADR 0015）', () => {
-    const repoRoot = resolve(import.meta.dirname, '../../..');
-    const readingCard = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+    const readingCard = loadTierCard(syntheticCardPattern, 'boyfriend');
     const day = new Date('2026-10-06T12:00:00+08:00');
     const books = readingCard.character.books.map(book => ({ book, progress: bookProgressOn(book, day) }));
+    // 合成卡：《雾港旧事》10-06 看到第 64 章（全书 120 章）；弃坑的《纸飞机物语》停在第 30 话（「话」不查）。
+    // 合成卡没有按卷算的书、也只有一本按章算的：测试里把弃坑那本的单位改成卷 / 章，测的是同一段代码
+    const withUnit = (unit: string) => books.map(item => (item.book.id === 'paper-plane'
+        ? { book: { ...item.book, progress: { ...item.book.progress, unit } }, progress: { ...item.progress, unit } } : item));
+    const volumes = withUnit('卷');
+    const chapters = withUnit('章');
 
     test('中文数字和阿拉伯数字', () => {
         assert.equal(parseChineseNumber('八'), 8);
@@ -30,28 +36,28 @@ describe('书的进度数字（ADR 0015）', () => {
     });
 
     test('卷必须相同；章差不到 5% 不误伤，达到 5% 才命中', () => {
-        assert.deepEqual(inspectBookProgress('药屋看到第七卷\n惹金枝看到五百零五章\n恰似停在第300章', { books }), []);
-        assert.deepEqual(inspectBookProgress('惹金枝看到第529章', { books }).length, 0);
-        assert.deepEqual(inspectBookProgress('惹金枝看到第531章', { books }).map(issue => [issue.bookId, issue.said, issue.expected]), [['rejinzhi', 531, 505]]);
-        assert.deepEqual(inspectBookProgress('药屋第八卷', { books }).map(issue => [issue.bookId, issue.said, issue.expected]), [['yaowu', 8, 7]]);
+        assert.deepEqual(inspectBookProgress('雾港看到六十四章\n《纸飞机物语》停在第三十卷', { books: volumes }), []);
+        assert.deepEqual(inspectBookProgress('雾港看到第67章', { books }).length, 0);
+        assert.deepEqual(inspectBookProgress('雾港看到第68章', { books }).map(issue => [issue.bookId, issue.said, issue.expected]), [['fog-harbor', 68, 64]]);
+        assert.deepEqual(inspectBookProgress('《纸飞机物语》第三十一卷', { books: volumes }).map(issue => [issue.bookId, issue.said, issue.expected]), [['paper-plane', 31, 30]]);
     });
 
     test('总量也核对；情节门槛、第几集不算进度', () => {
-        assert.deepEqual(inspectBookProgress('惹金枝全书一共五百章', { books }).map(issue => [issue.kind, issue.said, issue.expected]), [['total', 500, 550]]);
-        assert.deepEqual(inspectBookProgress('恰似全书一共2505章\n第300章往后是权谋线\n最后第550章完结\n剧追到第八集', { books }), []);
+        assert.deepEqual(inspectBookProgress('雾港全书一共一百章', { books }).map(issue => [issue.kind, issue.said, issue.expected]), [['total', 100, 120]]);
+        assert.deepEqual(inspectBookProgress('雾港全书一共120章\n第40章往后是灯塔那段\n最后第120章完结\n剧追到第八集', { books }), []);
     });
 
     test('没写书名时用最近明确在聊的书；没有焦点时按单位和最接近的合理值判断', () => {
-        assert.deepEqual(inspectBookProgress('看到第500章了', { books }).length, 0);
-        assert.deepEqual(inspectBookProgress('看到第500章了', { books, focusIds: ['jiasi'] }).map(issue => issue.bookId), ['jiasi']);
-        assert.deepEqual(inspectBookProgress('看到第400章了', { books }).map(issue => issue.bookId), ['rejinzhi']);
+        assert.deepEqual(inspectBookProgress('看到第64章了', { books: chapters }).length, 0);
+        assert.deepEqual(inspectBookProgress('看到第64章了', { books: chapters, focusIds: ['paper-plane'] }).map(issue => issue.bookId), ['paper-plane']);
+        assert.deepEqual(inspectBookProgress('看到第50章了', { books: chapters }).map(issue => issue.bookId), ['fog-harbor']);
     });
 
     test('「翻了前两卷」是进度；「今天看了五章」是看了多少', () => {
-        assert.deepEqual(inspectBookProgress('没数，就翻了前两卷吧', { books, focusIds: ['yaowu'] }).map(issue => [issue.bookId, issue.said, issue.expected]), [['yaowu', 2, 7]]);
-        assert.deepEqual(inspectBookProgress('看完了前七卷', { books, focusIds: ['yaowu'] }), []);
-        assert.deepEqual(inspectBookProgress('今天看了五章就困了', { books, focusIds: ['rejinzhi'] }), []);
-        assert.deepEqual(inspectBookProgress('前两卷讲的是后宫的案子', { books, focusIds: ['yaowu'] }), []);
+        assert.deepEqual(inspectBookProgress('没数，就翻了前两卷吧', { books: volumes, focusIds: ['paper-plane'] }).map(issue => [issue.bookId, issue.said, issue.expected]), [['paper-plane', 2, 30]]);
+        assert.deepEqual(inspectBookProgress('看完了前三十卷', { books: volumes, focusIds: ['paper-plane'] }), []);
+        assert.deepEqual(inspectBookProgress('今天看了五章就困了', { books, focusIds: ['fog-harbor'] }), []);
+        assert.deepEqual(inspectBookProgress('前两卷讲的是港口的事', { books: volumes, focusIds: ['paper-plane'] }), []);
     });
 });
 
@@ -85,14 +91,14 @@ describe('说话的毛病：算账', () => {
             ['你明天考今天才来问我，真有你的', '今天才来'],
             ['哎哟，明天考现在才来', '现在才来'],
             ['哟，还知道回来啊', '还知道回来'],
-            ['哟，回青岛了还知道想我', '还知道想我'],
+            ['哟，回云州了还知道想我', '还知道想我'],
             ['你终于想起来还有我这么个人了', '终于想起'],
-            ['你回青岛了不陪家里人，怎么想起我了', '想起我了'],
+            ['你回云州了不陪家里人，怎么想起我了', '想起我了'],
             ['你课忙完了就想起我啦', '想起我啦'],
             ['你今天干嘛去了，一整天没动静', '一整天没动静'],
             ['面试到底怎么样了，你昨天说完就没影了', '说完就没影了'],
             ['你妈叫你，你就把我晾这了？', '把我晾'],
-            ['哟，回青岛了才想起我', '才想起我'],
+            ['哟，回云州了才想起我', '才想起我'],
             ['哟，还知道有个我啊', '还知道有个我'],
             ['你这两天是不是把我忘了', '把我忘了'],
             ['哟，失踪人口回归了', '失踪人口'],
@@ -109,7 +115,7 @@ describe('说话的毛病：算账', () => {
         for (const line of ['你上午发的，我这会儿才翻到', '回去拿了没，还是已经躺床上了才想起来', '我终于想起来那个词叫什么了',
             '你会不会哪天就不理我了', '行吧，那这几天我就当你失踪了', '我现在才知道', '今天才周二啊', '人呢', '先去吃饭，吃完再回我',
             '我刚还在想你在干嘛呢', '辛苦啦', '你可别把我忘了', '我在这儿，想说的时候喊我',
-            '我一个字都没看懂', '一句话都没有说错', '土豆还活着呢，好着呢', '那盆花还活着吗']) {
+            '我一个字都没看懂', '一句话都没有说错', '团子饼还活着呢，好着呢', '那盆花还活着吗']) {
             assert.deepEqual(kinds(line, 'ledger'), [], line);
         }
     });
@@ -121,20 +127,20 @@ describe('说话的毛病：怪他没说', () => {
             ['你都回家了？也不说一声', '也不说一声'],
             ['都回家了也不跟我说一声 我还以为你在学校待着呢', '也不跟我说一声'],
             ['什么面试啊，昨天也不跟我说', '也不跟我说'],
-            ['真的啊，你人都回青岛了，一个招呼都不打', '招呼都不打'],
-            ['我就是酸你回青岛了都没想着告诉我一声', '没想着告诉我'],
+            ['真的啊，你人都回云州了，一个招呼都不打', '招呼都不打'],
+            ['我就是酸你回云州了都没想着告诉我一声', '没想着告诉我'],
             ['上班？你什么时候背着我有班上了', '背着我'],
             ['一放假就跑了，把我一个人扔学校', '把我一个人扔'],
-            ['你回青岛了也不说带我玩，我在这边快发霉了', '也不说带'],
-            ['倒是你，跑回青岛也不来找我', '也不来找我'],
+            ['你回云州了也不说带我玩，我在这边快发霉了', '也不说带'],
+            ['倒是你，跑回云州也不来找我', '也不来找我'],
             ['哟，去超市了也不叫我', '也不叫我'],
-            ['你回青岛了也不说去我家看看', '也不说去'],
-            ['哟，回青岛不带上我', '不带上我'],
+            ['你回云州了也不说去我家看看', '也不说去'],
+            ['哟，回云州不带上我', '不带上我'],
             ['什么实习啊，之前也没听你说过', '也没听你说过'],
             ['你之前怎么没跟我说过，我还以为你就在宿舍躺着呢', '怎么没跟我说过'],
             ['爬山不叫我，我还在学校蹲着呢', '不叫我'],
             ['出去玩不带我玩', '不带我'],
-            ['哦豁，一个人偷偷回青岛爬山去了', '一个人偷偷回'],
+            ['哦豁，一个人偷偷回云州爬山去了', '一个人偷偷回'],
             ['你去的哪座山啊，怎么突然想起来爬山，也不提前说一声', '也不提前说一声'],
             ['面试也不先跟我说', '也不先跟我说'],
             ['面试？你什么时候投的简历，我咋不知道', '我咋不知道'],
@@ -148,7 +154,7 @@ describe('说话的毛病：怪他没说', () => {
         }
     });
     test('不误伤', () => {
-        for (const line of ['你别告诉我你又没吃饭', '我都不告诉你', '他背着我的相机跑了', '出门也不带伞', '我也不想去', '你回青岛那边怎么样，吃上家里的饭没',
+        for (const line of ['你别告诉我你又没吃饭', '我都不告诉你', '他背着我的相机跑了', '出门也不带伞', '我也不想去', '你回云州那边怎么样，吃上家里的饭没',
             '爬的哪座啊，累成这样', '我把我的猫粮扔了', '你去吧，不带上我也行', '我从来没跟你说过吗',
             '上课呢，偷偷回的', '我偷偷回你一句', '他从来不叫我名字', '你别不叫我啊', '你不带我也行',
             '数学作业我一看就头疼 第三题是啥我都不知道', '我怎么不知道你喜欢吃辣', '你倒好意思说我', '你倒是回我啊',
@@ -162,14 +168,14 @@ describe('说话的毛病：怪他没说', () => {
 describe('说话的毛病：对照的酸话（ADR 0019 决策 4，误报评估的 F 组）', () => {
     test('拿他和自己比着说委屈：DSH 侧的句子、模拟器原文', () => {
         for (const line of ['我在这边啃食堂剩菜', '出门玩都没带我份儿吧', '你那头在家舒坦吧，顿顿有饭吃，我在这边啃食堂剩菜',
-            '你回青岛舒服了吧，我一个人蹲宿舍', '你倒是回青岛潇洒，我在这儿留守', '你回家这几天过得挺舒服吧，就我一个人留守宿舍',
+            '你回云州舒服了吧，我一个人蹲宿舍', '你倒是回云州潇洒，我在这儿留守', '你回家这几天过得挺舒服吧，就我一个人留守宿舍',
             '我在学校啃食堂，你在家吃大餐', '我一个人在学校追剧呢，你倒是玩得挺开心', '你回家这一趟比上课还费人，我这边国庆留校，宿舍就剩我一个']) {
             assert.equal(kinds(line, 'contrast').length, 1, line);
         }
     });
     test('不误伤：真问句、关心、打游戏、说猫、「你倒是回我啊」', () => {
         for (const line of ['你那边下雨了吗，我这儿就傍晚那阵下了一下', '你那边天冷不冷，我这儿降温了', '我一个人在中路蹲半天，团战一开人全没了',
-            '你在家吃啥了，我这边食堂今天有糖醋排骨', '月底了，攒相机的钱，我这个月要吃土了', '土豆自己蹲那吃独食', '你回家路上注意安全，我这边刚下课',
+            '你在家吃啥了，我这边食堂今天有糖醋排骨', '月底了，攒相机的钱，我这个月要吃土了', '团子饼自己蹲那吃独食', '你回家路上注意安全，我这边刚下课',
             '你去玩吧，我这边还要写作业', '你玩得开心点，回来给我讲讲', '你在家多睡会儿，我这边刚起', '你倒是提醒我了，作业还没交',
             '明天几点考，你倒是回我啊', '你回家舒服吗，我这边今天降温了', '你那边好玩吗，我一个人在宿舍追剧呢', '我一个人在图书馆占座，你要来吗',
             '对了跟你说个惨的，国庆没抢到票，就我一个人留守学校']) {
@@ -319,8 +325,7 @@ describe('说话的毛病：叮嘱重复（10-09，一段聊天念叨一次是�
 });
 
 describe('模拟器的 speechClean 检查（假模型）', () => {
-    const repoRoot = resolve(import.meta.dirname, '../../..');
-    const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend');
     const llm: BotConfig['llm'] = {
         baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000,
         promptPostProcessing: '', extraBody: {},

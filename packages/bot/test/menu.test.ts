@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { loadTierCard } from '../src/platform/contact.ts';
 import { DEFAULT_MENU, dishNote, dishOn, loadMenuFrom, menuOf } from '../src/life/menu.ts';
 import { describeWorld, occupationAt, recapDay, worldAt } from '../src/world/world.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 // ADR 0125：每顿吃什么。账上以前只有“午饭 / 晚饭、在哪吃”，没有“吃了什么”——他问“中午吃的啥”她就现编，前后对不上
-const pattern = resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-{tier}.json');
+const pattern = syntheticCardPattern;
 const on = loadTierCard(pattern, 'boyfriend', { menu: true }).character;
 const off = loadTierCard(pattern, 'boyfriend').character;
 const at = (text: string) => new Date(text);

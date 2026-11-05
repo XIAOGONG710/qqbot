@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { createPresence, describeSelf, type PresenceTransport } from '../src/social/presence.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-const schedule = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;
+const schedule = loadCharacterCard(syntheticCardPath('boyfriend')).schedule!;
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-browse-')); dirs.push(d); return d; };
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });

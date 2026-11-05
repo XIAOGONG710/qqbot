@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { npcAllows, npcMentioned, npcSpans, npcStates, type NpcLife } from '../src/world/npc.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { describeWorld, recapDay, recentWith, worldAt } from '../src/world/world.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
+const card = (tier: string) => loadCharacterCard(syntheticCardPath(tier));
 const boyfriend = card('boyfriend');
 const classmate = card('classmate');
 const schedule = boyfriend.schedule!;
@@ -52,44 +52,46 @@ describe('两位闺蜜自己的日子（ADR 0033）', () => {
 
     test('他说起谁：全名、名都算，只看她上次回复之后的', () => {
         const people = boyfriend.herWorld!.people;
-        assert.deepEqual(npcMentioned([he('佳宁最近咋样')], people).map(p => p.id), ['chen_jianing']);
-        assert.deepEqual(npcMentioned([he('你和苏雨桐还一起吃饭吗')], people).map(p => p.id), ['su_yutong']);
-        assert.deepEqual(npcMentioned([he('雨桐呢'), she('她感冒了'), he('那你一个人吃？')], people), []);
+        assert.deepEqual(npcMentioned([he('小禾最近咋样')], people).map(p => p.id), ['su_yutong']);
+        assert.deepEqual(npcMentioned([he('你和林小满还一起吃饭吗')], people).map(p => p.id), ['chen_jianing']);
+        assert.deepEqual(npcMentioned([he('小满呢'), she('她感冒了'), he('那你一个人吃？')], people), []);
         assert.deepEqual(npcMentioned([he('最近忙啥')], people), []);
     });
 
-    // 卡上：苏雨桐 10-18（周日）起感冒 4 天
-    test('苏雨桐感冒那几天：「你那边」写她病了，不一起吃饭；问到那天想得起；说起她时知道最近两周', () => {
+    // 合成卡上：室友 10-18（周日）起感冒 3 天
+    test('室友感冒那几天：「你那边」写她病了，不一起吃饭、买奶茶；问到那天想得起；说起她时知道最近两周', () => {
         const at = new Date(2026, 9, 19, 21, 0);
         const now = worldAt(boyfriend.herWorld!, schedule, at)!;
-        assert.match(describeWorld(now, at)!, /朋友：苏雨桐感冒第 2 天/);
-        assert.match(recapDay(worldAt(boyfriend.herWorld!, schedule, new Date(2026, 9, 20, 23, 30))!).join('；'), /苏雨桐感冒第 3 天/);
-        assert.match(recentWith(boyfriend.herWorld!, schedule, new Date(2026, 9, 23, 20, 0), 'su_yutong')!.join('；'), /10月18日–10月21日感冒/);
+        assert.match(describeWorld(now, at)!, /朋友：许小禾感冒第 2 天/);
+        assert.match(recapDay(worldAt(boyfriend.herWorld!, schedule, new Date(2026, 9, 20, 23, 30))!).join('；'), /许小禾感冒快好了/);
+        assert.match(recentWith(boyfriend.herWorld!, schedule, new Date(2026, 9, 23, 20, 0), 'su_yutong')!.join('；'), /10月18日–10月20日感冒/);
         assert.match(recentWith(boyfriend.herWorld!, schedule, at, 'su_yutong')!.join('；'), /10月18日起感冒，还没好/);
-        for (let d = 18; d <= 21; d++) {
+        for (let d = 18; d <= 20; d++) {
             const events = worldAt(boyfriend.herWorld!, schedule, new Date(2026, 9, d, 23, 30))!.events.map(e => e.id);
-            assert.ok(!events.includes('lunch_with_friend') && !events.includes('spicy_noodles'), `10-${d} 不一起吃`);
+            assert.ok(!events.includes('lunch_with_friend') && !events.includes('milk-tea'), `10-${d} 不一起吃饭、买奶茶`);
         }
     });
 
-    test('整个学期：一起吃饭只在她没病、没回家的日子；拍板书只在她病了的日子', () => {
-        const su = boyfriend.herWorld!.people.find(p => p.id === 'su_yutong')!;
+    test('整个学期：一起买奶茶只在室友没病、没回家的日子；闺蜜打电话吐槽只在她忙的日子', () => {
+        const roommate = boyfriend.herWorld!.people.find(p => p.id === 'su_yutong')!;
+        const friend = boyfriend.herWorld!.people.find(p => p.id === 'chen_jianing')!;
         const timelineDays = Array.from({ length: 120 }, (_, i) => day(9, 1 + i));
         let notes = 0;
         for (const d of timelineDays) {
-            const states = npcStates('su_yutong', su.life, schedule, d).map(s => s.kind);
+            const states = npcStates('su_yutong', roommate.life, schedule, d).map(s => s.kind);
+            const friendStates = npcStates('chen_jianing', friend.life, schedule, d).map(s => s.kind);
             const events = worldAt(boyfriend.herWorld!, schedule, new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 30))!.events.map(e => e.id);
-            if (events.includes('lunch_with_friend')) assert.ok(!states.includes('sick') && !states.includes('home'), d.toDateString());
-            if (events.includes('notes_for_friend')) { notes++; assert.ok(states.includes('sick'), d.toDateString()); }
+            if (events.includes('milk-tea')) assert.ok(!states.includes('sick') && !states.includes('home'), d.toDateString());
+            if (events.includes('friend-call')) { notes++; assert.ok(friendStates.includes('busy'), d.toDateString()); }
         }
-        assert.ok(notes >= 1, '病的那几天有课的日子里至少拍过一回板书');
+        assert.ok(notes >= 1, '她忙的那几天里至少打来过一回电话');
     });
 
     test('同学档：看不到闺蜜，也就没有她们的日子', () => {
         const at = new Date(2026, 9, 19, 21, 0);
         const now = worldAt(classmate.herWorld!, classmate.schedule!, at)!;
         assert.equal(now.people, undefined);
-        assert.doesNotMatch(describeWorld(now, at) ?? '', /苏雨桐|陈佳宁/);
+        assert.doesNotMatch(describeWorld(now, at) ?? '', /许小禾|林小满/);
         assert.equal(recentWith(classmate.herWorld!, classmate.schedule!, at, 'su_yutong'), undefined);
     });
 });

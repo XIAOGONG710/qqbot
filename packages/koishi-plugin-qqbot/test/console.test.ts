@@ -5,20 +5,20 @@ import { join, resolve } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { readSource } from '../../character-tools/src/source.ts';
 import { characterPaths, consoleData, saveCharacter, setConsoleState } from '../src/console.ts';
+import { syntheticSourceDir, syntheticStDir } from '../../bot/test/fixtures/card.ts';
 
-const repoRoot = resolve(import.meta.dirname, '../../..');
 const dir = mkdtempSync(join(tmpdir(), 'qqbot-console-'));
-cpSync(join(repoRoot, 'characters/linmengyao/source'), join(dir, 'source'), { recursive: true });
-cpSync(join(repoRoot, 'characters/linmengyao/st'), join(dir, 'st'), { recursive: true });
+cpSync(syntheticSourceDir, join(dir, 'source'), { recursive: true });
+cpSync(syntheticStDir, join(dir, 'st'), { recursive: true });
 after(() => rmSync(dir, { recursive: true, force: true }));
 
-const paths = characterPaths(join(dir, 'st', 'linmengyao-{tier}.json'))!;
+const paths = characterPaths(join(dir, 'st', 'synthetic-{tier}.json'))!;
 setConsoleState({ character: paths });
 const mtimes = () => Object.fromEntries(readdirSync(join(dir, 'st')).map(f => [f, statSync(join(dir, 'st', f)).mtimeMs]));
 
 describe('控制台的角色资料（ADR 0010）', () => {
     test('从角色卡路径推出资料目录和文件名前缀', () => {
-        assert.deepEqual(paths, { stDir: join(dir, 'st'), sourceDir: join(dir, 'source'), prefix: 'linmengyao' });
+        assert.deepEqual(paths, { stDir: join(dir, 'st'), sourceDir: join(dir, 'source'), prefix: 'synthetic' });
     });
 
     test('只检查不写；资料没变时保存也不改 st/ 下的文件（插件监听 st/，没变就不重启）', () => {
@@ -31,21 +31,24 @@ describe('控制台的角色资料（ADR 0010）', () => {
 
     test('改了一个场景：写回 source/，重新生成用到它的世界书', () => {
         const source = readSource(paths.sourceDir);
-        const scene = source.scenes.find(s => s.tiers.includes('boyfriend') && s.tiers.length === 1)!;
+        // 场景按场景档（tiers.yml 的 scenes）归属：找只属于男朋友档那一组的场景
+        const group = source.tiers.tiers.find(t => t.name === 'boyfriend')!.scenes;
+        assert.deepEqual(source.tiers.tiers.filter(t => t.scenes === group).map(t => t.name), ['boyfriend'], '合成资料里这一组只给男朋友档');
+        const scene = source.scenes.find(s => s.tiers.length === 1 && s.tiers[0] === group)!;
         scene.examples.push('虚构的一句新例句');
         const result = saveCharacter('scenes', source.scenes);
         // 用到这个场景的世界书：这一档的原卡一本，加上它的承认版一本（ADR 0067）
-        assert.deepEqual(result, { ok: true, written: ['linmengyao-scenes-boyfriend.json', 'linmengyao-scenes-boyfriend-open.json'] });
+        assert.deepEqual(result, { ok: true, written: ['synthetic-scenes-boyfriend.json', 'synthetic-scenes-boyfriend-open.json'] });
         assert.ok(readFileSync(join(dir, 'source', 'scenes.yml'), 'utf8').includes('虚构的一句新例句'));
-        assert.ok(readFileSync(join(dir, 'st', 'linmengyao-scenes-boyfriend.json'), 'utf8').includes('「虚构的一句新例句」'));
-        assert.ok(readFileSync(join(dir, 'st', 'linmengyao-scenes-boyfriend-open.json'), 'utf8').includes('「虚构的一句新例句」'));
+        assert.ok(readFileSync(join(dir, 'st', 'synthetic-scenes-boyfriend.json'), 'utf8').includes('「虚构的一句新例句」'));
+        assert.ok(readFileSync(join(dir, 'st', 'synthetic-scenes-boyfriend-open.json'), 'utf8').includes('「虚构的一句新例句」'));
     });
 
     test('档位隐私检查不过：不写，返回哪一档、哪个场景、哪个词', () => {
         const source = readSource(paths.sourceDir);
         const before = readFileSync(join(dir, 'source', 'scenes.yml'), 'utf8');
         const word = source.tiers.tiers.find(t => t.name === 'classmate')!.banned[0]!;
-        const scene = source.scenes.find(s => s.tiers.includes('classmate'))!;
+        const scene = source.scenes.find(s => s.tiers.includes(source.tiers.tiers.find(t => t.name === 'classmate')!.scenes))!;
         scene.avoid.push(word);
         const result = saveCharacter('scenes', source.scenes);
         assert.equal(result.ok, false);
@@ -69,10 +72,10 @@ describe('控制台的角色资料（ADR 0010）', () => {
         assert.deepEqual(mtimes(), before);
 
         const moods = structuredClone(source.moods)!;
-        moods.moods.find(mood => mood.name === '安静')!.style.text = '今天有点蔫，回得短（虚构的改写）';
+        moods.moods.find(mood => mood.name === '开心')!.style.text = '今天有点蔫，回得短（虚构的改写）';
         const saved = saveCharacter('moods', moods);
-        assert.ok(saved.ok && saved.written.includes('linmengyao-classmate.json') && !saved.written.includes('linmengyao-stranger.json'));
-        assert.ok(readFileSync(join(dir, 'st', 'linmengyao-classmate.json'), 'utf8').includes('虚构的改写'));
+        assert.ok(saved.ok && saved.written.includes('synthetic-classmate.json') && !saved.written.includes('synthetic-stranger.json'));
+        assert.ok(readFileSync(join(dir, 'st', 'synthetic-classmate.json'), 'utf8').includes('虚构的改写'));
 
         const books = structuredClone(source.books)!;
         (books.books[0] as { activity?: unknown }).activity = { window: '', text: '' };
@@ -84,7 +87,7 @@ describe('控制台的角色资料（ADR 0010）', () => {
 
         const word = source.tiers.tiers.find(t => t.name === 'classmate')!.banned[0]!;
         const leaky = structuredClone(source.books)!;
-        leaky.books[1]!.nodes[0]!.points.push(`虚构的一句${word}`);
+        leaky.books.find(book => book.nodes.length)!.nodes[0]!.points.push(`虚构的一句${word}`);
         const leak = saveCharacter('books', leaky);
         assert.ok(!leak.ok && leak.problems?.some(p => p.tier === 'classmate' && p.word === word));
     });

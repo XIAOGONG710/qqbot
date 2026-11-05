@@ -12,9 +12,10 @@ import { whenSeen } from '../src/social/reply-timing.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { loadScenario, parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
-const cards = (tier: string) => loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), tier as 'boyfriend');
+const cards = (tier: string) => loadTierCard(syntheticCardPattern, tier as 'boyfriend');
 const boyfriendCard = cards('boyfriend');
 const schedule = boyfriendCard.character.schedule!;
 const at = (text: string) => new Date(`${text}+08:00`);

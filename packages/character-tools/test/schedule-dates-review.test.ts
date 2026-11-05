@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { test } from 'node:test';
 import { checkSource, readSource } from '../src/source.ts';
 
-const source = readSource(resolve(import.meta.dirname, '../../../characters/linmengyao/source'));
+const source = readSource(resolve(import.meta.dirname, '../../bot/test/fixtures/synthetic-character/source'));
 
 test('源课表日期拒绝不存在的日历日，覆盖学期、假期、调休、起床与活动生效边界', () => {
     const edits = [

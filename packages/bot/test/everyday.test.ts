@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { loadTierCard } from '../src/platform/contact.ts';
 import {
@@ -12,9 +12,9 @@ import {
 import { appraisals, feelingsAt } from '../src/emotion/feelings.ts';
 import { quizRecord } from '../src/life/pursuits.ts';
 import { simulateWorld, worldAt, type WorldNow } from '../src/world/world.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
-const repoRoot = resolve(import.meta.dirname, '../../..');
-const pattern = join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json');
+const pattern = syntheticCardPattern;
 const boyfriend = loadTierCard(pattern, 'boyfriend', { everydayLife: true }).character;
 const plain = loadTierCard(pattern, 'boyfriend').character;
 const classmate = loadTierCard(pattern, 'classmate', { everydayLife: true }).character;
@@ -100,7 +100,7 @@ describe('世界里的日子', () => {
         assert.ok(avg >= 3 && avg <= 5, String(avg));
     });
 
-    test('条件：下雨的事只在下雨那天，晴天的事不在雨天；土豆的事只在见到 / 没见到那天，且在喂完之后；月份、星期对得上', () => {
+    test('条件：下雨的事只在下雨那天，晴天的事不在雨天；猫的事只在见到 / 没见到那天，且在喂完之后；月份、星期对得上', () => {
         for (const date of dates) {
             const record = timeline.days.get(date)!;
             for (const event of record.events) {
@@ -119,7 +119,7 @@ describe('世界里的日子', () => {
         }
     });
 
-    test('闺蜜的事跟着她的状态：苏雨桐感冒 / 在家的日子没有一起自习、分零食这类；花钱的小事记了账', () => {
+    test('闺蜜的事跟着她的状态：闺蜜感冒 / 在家的日子没有一起自习、分零食这类；花钱的小事记了账', () => {
         const withMoney = timeline.ledger.filter(e => e.what === '文具' || e.what === '打印' || e.what === '水果');
         const fromEvents = [...timeline.days.values()].flatMap(record => record.events).filter(e => ['ed_pen', 'ed_print_queue', 'ed_fruit'].includes(e.id)).length;
         assert.equal(withMoney.length, fromEvents);
@@ -145,8 +145,8 @@ describe('小测的一条线', () => {
         const quizzes = days.flatMap(date => quizzesOn(schedule, day(date)).map(q => ({ ...q, date })));
         assert.ok(quizzes.length > 8);
         for (const quiz of quizzes) {
-            assert.ok(/高等数学|概率论|数据结构|计算机网络|MySQL|Linux|大数据|数据采集/.test(quiz.course), quiz.course);
-            assert.ok(!/形势与政策|创业基础|思想概论|Python数据分析|体育/.test(quiz.course), quiz.course);
+            assert.ok(/高等数学|概率论|线性代数|离散|数据结构|计算机网络|MySQL|数据库|操作系统|Linux|大数据|数据采集/.test(quiz.course), quiz.course);
+            assert.ok(!/形势与政策|体育/.test(quiz.course), quiz.course);
             assert.ok(quiz.date >= '2026-09-14' && quiz.date < '2026-12-20', quiz.date);
         }
         const math = quizzes.filter(q => q.category === 'math');

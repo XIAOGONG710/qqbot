@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
@@ -14,6 +14,7 @@ import type { OpenAIMessage } from '../src/language/prompt.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 // ADR 0138：被他带出来的口头习惯。短语都是测试里编的，不是真实聊天里的
 const dirs: string[] = [];
@@ -85,7 +86,7 @@ describe('hisMessages：窗口', () => {
 
 describe('refreshIdioms：什么时候学', () => {
     const base = (store: ReturnType<typeof idiomStore>, history: Msg[], extract: () => Promise<string>, now = NOW) => ({
-        qq: 1, userName: '阿明', charName: '林梦瑶', history, store, blocked: ['阿明', '林梦瑶'], extract, now, log: () => undefined,
+        qq: 1, userName: '阿明', charName: '测试角色', history, store, blocked: ['阿明', '测试角色'], extract, now, log: () => undefined,
     });
     const reply = JSON.stringify([{ 说法: '笑死', 类型: '口头禅' }]);
 
@@ -121,7 +122,7 @@ describe('refreshIdioms：什么时候学', () => {
     });
 
     test('提示词里要求原样、不要名词和内容', () => {
-        const text = idiomsPrompt('阿明', '林梦瑶', '第一句\n第二句');
+        const text = idiomsPrompt('阿明', '测试角色', '第一句\n第二句');
         assert.match(text, /原样/);
         assert.match(text, /不要人名、地名/);
         assert.match(text, /第一句\n第二句$/);
@@ -197,8 +198,7 @@ describe('idiomLine：这一轮给不给她看', () => {
 });
 
 describe('模拟器里走一遍', () => {
-    const repoRoot = resolve(import.meta.dirname, '../../..');
-    const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend');
     const llm: BotConfig['llm'] = { baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: '', extraBody: {} };
     const prompt: BotConfig['prompt'] = { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true };
     // 他最近说过这几个词，才算“还在说”

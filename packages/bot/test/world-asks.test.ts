@@ -1,17 +1,20 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { busySpans } from '../src/world/life-selector.ts';
 import { dayPlan, describePlans } from '../src/life/day-plan.ts';
 import { herDay } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { dateSpan, describeDate, describeWorld, occupationAt, planDates, recapDay, recentWith, worldAt, type FriendDate, type WorldNow } from '../src/world/world.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
+const card = (tier: string) => loadCharacterCard(syntheticCardPath(tier));
+// 约的配置（DEFAULT_ASKS）按 NPC id 认人：合成卡沿用同样的 id（su_yutong 约吃饭 / 自习 / 转转），名字和内容都是虚构的
+const ASK_FRIEND = 'su_yutong';
 const boyfriend = card('boyfriend');
 const classmate = card('classmate');
 const schedule = boyfriend.schedule!;
 const off = boyfriend.herWorld!;
+const friendName = off.people.find(p => p.id === ASK_FRIEND)!.name;
 const on = { ...off, asks: true };
 const day = (m: number, d: number, h = 0, min = 0) => new Date(2026, m - 1, d, h, min);
 
@@ -46,12 +49,13 @@ describe('闺蜜的约进世界（ADR 0061，World.asks）', () => {
     test('同一刻重放一样；同学档的卡上没有这两个人，也就没有约', () => {
         const at = nights.find(n => todays(n.now).length)!.at;
         assert.deepEqual(worldAt(on, schedule, at), worldAt(on, schedule, at));
+        assert.ok(!classmate.herWorld!.people.some(p => p.id === 'chen_jianing'), '同学档的卡上没有高中闺蜜');
         const mate = { ...classmate.herWorld!, asks: true };
         for (const { at: when } of nights) assert.equal(worldAt(mate, classmate.schedule!, when)?.dates, undefined);
     });
 
     test('前一晚说的约，前一晚就在「你那边」；说之前还不知道', () => {
-        const x = all.find(({ date }) => date.askedAt.getDate() !== date.start.getDate() && date.askedAt.getHours() >= 20)!;
+        const x = all.find(({ date }) => date.askedAt.getDate() !== date.start.getDate() && date.askedAt.getHours() >= 20 && date.declined === undefined)!;
         assert.ok(x, '学期里有前一晚说的约');
         const before = new Date(x.date.askedAt.getTime() - 60_000);
         const after = new Date(x.date.askedAt.getTime() + 60_000);
@@ -142,7 +146,8 @@ describe('闺蜜的约进世界（ADR 0061，World.asks）', () => {
     test('一天的打算里写上约：接在原来的打算后面；改约要等她知道才换时间，取消要等她知道才去掉，推掉的不写', () => {
         const plan = (now: WorldNow, at: Date) => describePlans(schedule, dayPlan(schedule, on.plans, herDay(schedule, at), { homework: now.homework, dates: planDates(now, at) }), at) ?? '';
         const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-        const moved = first(d => d.outcome === 'moved' && d.held && d.kind === 'video')!;
+        // 合成卡的学期里约视频改了时间的都被她推掉了；改约后照样去的不是吃饭的那一种是图书馆
+        const moved = first(d => d.outcome === 'moved' && d.held && d.kind === 'library')!;
         const early = new Date(moved.date.knownAt!.getTime() - 60_000);
         const late = new Date(moved.date.knownAt!.getTime() + 60_000);
         assert.match(plan(worldAt(on, schedule, early)!, early), new RegExp(`${hhmm(moved.date.start)} 和${moved.date.person.name}${moved.date.what}`));
@@ -158,17 +163,17 @@ describe('闺蜜的约进世界（ADR 0061，World.asks）', () => {
     });
 
     test('复盘那天、说起她时都带上约', () => {
-        const x = first(d => d.person.id === 'su_yutong' && d.start < day(12, 20))!;
+        const x = first(d => d.person.id === ASK_FRIEND && d.start < day(12, 20))!;
         const lines = recapDay(worldAt(on, schedule, new Date(x.date.start.getFullYear(), x.date.start.getMonth(), x.date.start.getDate(), 23, 30))!);
-        assert.ok(lines.some(l => l.includes('苏雨桐') && l.includes(x.date.what.slice(0, 2))), lines.join('｜'));
+        assert.ok(lines.some(l => l.includes(friendName) && l.includes(x.date.what.slice(0, 2))), lines.join('｜'));
         // 说起她时：先一句数（按时的也算进去，免得只剩变卦的让她以为总在放鸽子），再写最近两件变卦
-        const changed = first(d => d.person.id === 'su_yutong' && d.outcome !== 'on_time' && !d.declined && d.start < day(12, 20))!;
-        const recent = recentWith(on, schedule, new Date(changed.date.start.getTime() + 24 * 3600_000), 'su_yutong')!;
+        const changed = first(d => d.person.id === ASK_FRIEND && d.outcome !== 'on_time' && !d.declined && d.start < day(12, 20))!;
+        const recent = recentWith(on, schedule, new Date(changed.date.start.getTime() + 24 * 3600_000), ASK_FRIEND)!;
         assert.ok(recent.some(l => /^最近 14 天约过 \d+ 次（.*）$/.test(l)), recent.join('｜'));
-        assert.ok(recent.some(l => l.includes('苏雨桐') && l.includes(changed.date.what.slice(0, 2))), recent.join('｜'));
+        assert.ok(recent.some(l => l.includes(friendName) && l.includes(changed.date.what.slice(0, 2))), recent.join('｜'));
         const tally = recent.find(l => l.startsWith('最近 14 天约过'))!;
         assert.ok(/按时 \d+|迟到 \d+|改时间 \d+|她临时去不了 \d+/.test(tally));
-        assert.deepEqual(recentWith(off, schedule, new Date(x.date.start.getTime() + 24 * 3600_000), 'su_yutong')!.filter(l => /约的|推掉/.test(l)), []);
+        assert.deepEqual(recentWith(off, schedule, new Date(x.date.start.getTime() + 24 * 3600_000), ASK_FRIEND)!.filter(l => /约的|推掉/.test(l)), []);
     });
 
     test('私事理由：说不出口的档位不写理由（只写去不了了）', () => {

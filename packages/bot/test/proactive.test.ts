@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import {
@@ -8,9 +7,10 @@ import {
 } from '../src/proactive/proactive.ts';
 import { rainingAt, rainOf } from '../src/proactive/proactive-planner.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // 用转换器生成的真卡：男朋友档有作息、三个日子和主动设置（四种时机 + 待跟进 + 日子，每天 2 条，1 条没回就停）
-const cardPath = (tier: string) => resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`);
+const cardPath = (tier: string) => syntheticCardPath(tier);
 const boyfriend = loadCharacterCard(cardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 /** 本地时间（默认 2026 年）的毫秒时间戳 */
@@ -32,9 +32,9 @@ const find = (list: Candidate[], occasion: string) => list.find(c => c.occasion 
 const hm = (time: number) => new Date(time).toTimeString().slice(0, 5);
 
 describe('主动消息：读卡', () => {
-    test('男朋友档有主动设置和三个日子，同学档都没有', () => {
+    test('男朋友档有主动设置和四个日子，同学档都没有', () => {
         assert.deepEqual(boyfriend.proactive, { occasions: ['morning', 'after_class', 'bedtime', 'quiet', 'follow_up', 'dates', 'weather', 'news', 'reschedule', 'share'], dailyMax: 4, unansweredMax: 1, newsKinds: ['camera', 'homework_done', 'unwell', 'friend_changed', 'friend_sick'] });
-        assert.deepEqual(boyfriend.dates.map(d => d.name), ['你的生日', '你们在一起的纪念日', '他的生日']);
+        assert.deepEqual(boyfriend.dates.map(d => d.name), ['你的生日', '在一起的纪念日', '第一次一起出去玩的日子', '他的生日']);
         const classmate = loadCharacterCard(cardPath('classmate'));
         assert.equal(classmate.proactive, undefined);
         assert.deepEqual(classmate.dates, []);
@@ -54,13 +54,13 @@ describe('主动消息：她的那一天和日子', () => {
         assert.deepEqual(herDay(schedule, new Date(t(10, 12, 2))), day(10, 12));
     });
 
-    test('农历：2026-09-18、2027-09-08 是八月初八；闰月不算', () => {
-        assert.equal(lunarMonthDay(day(9, 18)), '08-08');
-        assert.equal(lunarMonthDay(day(9, 8, 2027)), '08-08');
+    test('农历：2026-09-13、2027-09-03 是八月初三；闰月不算', () => {
+        assert.equal(lunarMonthDay(day(9, 13)), '08-03');
+        assert.equal(lunarMonthDay(day(9, 3, 2027)), '08-03');
         assert.equal(lunarMonthDay(day(7, 25, 2025)), undefined); // 2025 年闰六月初一
         const his = boyfriend.dates.find(d => d.name === '他的生日')!;
-        assert.equal(dayMatches(his, day(9, 29)), 'solar');
-        assert.equal(dayMatches(his, day(9, 18)), 'lunar');
+        assert.equal(dayMatches(his, day(9, 12)), 'solar');
+        assert.equal(dayMatches(his, day(9, 13)), 'lunar');
         assert.equal(dayMatches(his, day(9, 30)), undefined);
     });
 });
@@ -79,7 +79,7 @@ describe('主动消息：每一天的候选', () => {
     });
 
     test('有课的周一：早安落在上课时间里就推到下课后；下课在最后一节（16:35）后 5–20 分钟', () => {
-        // 换几个联系人，早安总有落在 08:20 之后（在上 Linux）的
+        // 换几个联系人，早安总有落在 08:20 之后（在上操作系统实验）的
         for (let qq = 1; qq <= 30; qq++) {
             const list = candidatesOn(day(10, 12), input({ qq }));
             const morning = find(list, 'morning')!;
@@ -100,19 +100,19 @@ describe('主动消息：每一天的候选', () => {
         assert.equal(quiet([user(t(10, 5, 17))]), undefined, '17:00 + 8 小时过了 00:30');
     });
 
-    test('他的生日：公历那天零点（算前一天的晚上）发一条；农历那天不主动；她的生日和纪念日同一天，并进早安成一条', () => {
-        const birthday = candidatesOn(day(9, 28), input()).filter(c => c.occasion === 'dates');
+    test('零点的日子（她的生日）：那天零点（算前一天的晚上）发一条；他的生日农历那天不主动；纪念日和第一次一起出去玩的日子同一天，并进早安成一条', () => {
+        const birthday = candidatesOn(day(3, 13, 2027), input()).filter(c => c.occasion === 'dates');
         assert.equal(birthday.length, 1);
-        assert.equal(birthday[0]!.id, '2026-09-28:dates:midnight');
-        assert.ok(birthday[0]!.at >= t(9, 29, 0) && birthday[0]!.at <= t(9, 29, 0, 5), hm(birthday[0]!.at));
-        assert.equal(find(candidatesOn(day(9, 28), input()), 'bedtime'), undefined, '零点要祝的晚上不另说睡前');
-        assert.equal(candidatesOn(day(9, 17), input()).filter(c => c.occasion === 'dates').length, 0, '农历八月初八的前一晚');
+        assert.equal(birthday[0]!.id, '2027-03-13:dates:midnight');
+        assert.ok(birthday[0]!.at >= t(3, 14, 0, 0, 2027) && birthday[0]!.at <= t(3, 14, 0, 5, 2027), hm(birthday[0]!.at));
+        assert.equal(find(candidatesOn(day(3, 13, 2027), input()), 'bedtime'), undefined, '零点要祝的晚上不另说睡前');
+        assert.equal(candidatesOn(day(9, 13), input()).filter(c => c.occasion === 'dates').length, 0, '他的生日农历八月初三那天');
 
-        const july = candidatesOn(day(7, 17, 2027), input());
-        const dates = july.filter(c => c.occasion === 'dates');
+        const may = candidatesOn(day(5, 20, 2027), input());
+        const dates = may.filter(c => c.occasion === 'dates');
         assert.equal(dates.length, 1);
-        assert.deepEqual(dates[0]!.importantDays!.map(d => d.name), ['你的生日', '你们在一起的纪念日']);
-        assert.equal(find(july, 'morning'), undefined, '早安就是这一条');
+        assert.deepEqual(dates[0]!.importantDays!.map(d => d.name), ['在一起的纪念日', '第一次一起出去玩的日子']);
+        assert.equal(find(may, 'morning'), undefined, '早安就是这一条');
     });
 
     test('档位上没开的时机没有候选', () => {
@@ -152,10 +152,10 @@ describe('主动消息：计划（上限、优先级、错过不补）', () => {
     });
 
     test('记过的（发了、试运行、没发）不再排；日子不占条数', () => {
-        const history = [user(t(9, 28, 12))];
-        const records = [record('2026-09-28:morning', t(9, 28, 8), 'skipped'), record('2026-09-28:after_class', t(9, 28, 16, 50)), record('2026-09-28:bedtime', t(9, 28, 23), 'dryRun')];
-        const plan = planFrom(t(9, 28, 23, 30), input({ history, records }));
-        assert.deepEqual(plan.upcoming.map(c => c.id), ['2026-09-28:dates:midnight']);
+        const history = [user(t(3, 13, 12, 0, 2027))];
+        const records = [record('2027-03-13:morning', t(3, 13, 8, 0, 2027), 'skipped'), record('2027-03-13:after_class', t(3, 13, 16, 50, 2027)), record('2027-03-13:bedtime', t(3, 13, 23, 0, 2027), 'dryRun')];
+        const plan = planFrom(t(3, 13, 23, 30, 2027), input({ history, records }));
+        assert.deepEqual(plan.upcoming.map(c => c.id), ['2027-03-13:dates:midnight']);
     });
 });
 
@@ -228,11 +228,11 @@ describe('主动消息：到点时能不能发', () => {
     });
 
     test('日子：正聊着、到了上限、他没回都照样发；有没回的消息时由回复带上', () => {
-        const dates = at('dates', t(9, 29, 0, 3), { id: '2026-09-28:dates:midnight', day: '2026-09-28' });
-        const busy = [user(t(9, 28, 23, 50)), her(t(9, 28, 23, 55))];
-        const full = [record('2026-09-28:morning', t(9, 28, 8)), record('2026-09-28:after_class', t(9, 28, 17))];
-        assert.equal(blockReason(dates, t(9, 29, 0, 3), input({ history: busy, records: full })), undefined);
-        assert.equal(blockReason(dates, t(9, 29, 0, 3), input({ history: [...busy, user(t(9, 29, 0, 1))] })), '有没回的消息，回复就好');
+        const dates = at('dates', t(3, 14, 0, 3, 2027), { id: '2027-03-13:dates:midnight', day: '2027-03-13' });
+        const busy = [user(t(3, 13, 23, 50, 2027)), her(t(3, 13, 23, 55, 2027))];
+        const full = [record('2027-03-13:morning', t(3, 13, 8, 0, 2027)), record('2027-03-13:after_class', t(3, 13, 17, 0, 2027))];
+        assert.equal(blockReason(dates, t(3, 14, 0, 3, 2027), input({ history: busy, records: full })), undefined);
+        assert.equal(blockReason(dates, t(3, 14, 0, 3, 2027), input({ history: [...busy, user(t(3, 14, 0, 1, 2027))] })), '有没回的消息，回复就好');
     });
 });
 
@@ -274,8 +274,8 @@ describe('主动消息：下雨了（ADR 0050，只认真实天气）', () => {
 });
 
 describe('主动消息：她那边的事（ADR 0057）', () => {
-    // 10-11 周日 14:00–16:30 去山大路科技市场买相机（ADR 0053）
-    const camera = { id: 'camera', kind: 'camera' as const, day: '2026-10-11', at: t(10, 11, 16, 30), what: '在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头' };
+    // 10-11 周日 14:00–16:30 去城南的二手相机店买相机（ADR 0053）
+    const camera = { id: 'camera', kind: 'camera' as const, day: '2026-10-11', at: t(10, 11, 16, 30), what: '在城南的二手相机店买到了一台胶片机' };
 
     test('候选：了结后 5–20 分钟，一件一条；别的日子的、卡上没开的没有', () => {
         const c = find(candidatesOn(day(10, 11), input({ news: [camera] })), 'news')!;
@@ -287,7 +287,7 @@ describe('主动消息：她那边的事（ADR 0057）', () => {
         assert.equal(find(candidatesOn(day(10, 11), input({ news: [camera], settings: off })), 'news'), undefined);
         // 说明：事实和方向，不带引号里的台词
         const note = occasionNote(c, '宝宝');
-        assert.match(note, /你刚在山大路科技市场买到了二手索尼 a6100.*想第一时间告诉宝宝/);
+        assert.match(note, /你刚在城南的二手相机店买到了一台胶片机.*想第一时间告诉宝宝/);
         assert.doesNotMatch(note, /「[^」]*[！!]」/);
     });
 
@@ -343,7 +343,7 @@ describe('主动消息：她那边的事（ADR 0057）', () => {
         assert.deepEqual(untoldNews({ ...bedtime, occasion: 'weather' }, at, input({ news: [camera], history: morning, records: [failed] })), [], '下雨只说这一件');
         // 说明：睡前道晚安，顺带说这件；不给台词、不说为什么没说成
         const note = occasionNote(bedtime, '宝宝', [camera]);
-        assert.match(note, /跟宝宝道个晚安；你今天在山大路科技市场买到了二手索尼 a6100 加 16-50 套机镜头，还没跟宝宝说过，这次一起说/);
+        assert.match(note, /跟宝宝道个晚安；你今天在城南的二手相机店买到了一台胶片机，还没跟宝宝说过，这次一起说/);
         assert.doesNotMatch(note, /断网|网不好|发不出去|没发出去/);
         assert.equal(occasionNote(bedtime, '宝宝'), occasionNote(bedtime, '宝宝', []));
         assert.doesNotMatch(occasionNote(bedtime, '宝宝'), /相机/);

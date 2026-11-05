@@ -14,19 +14,19 @@ import { cleanUpReply, splitReply } from '../src/language/reply.ts';
 import { createResponder, DEFAULT_SETTLE, HESITATE_CHANCE, HESITATE_PAUSE_MS, PART_GAP_MS, RETRY_AFTER_MS, TYPING_REFRESH_MS, type InitiateRequest, type ReplyTiming, type ResponderDeps } from '../src/social/responder.ts';
 import { pick } from '../src/social/reply-timing.ts';
 
-const names = { user: '阿明', char: '林梦瑶' };
+const names = { user: '阿明', char: '测试角色' };
 
 describe('回复清理（同 ST cleanUpMessage 默认设置）', () => {
     test('去掉行首的“角色名:”和首尾空白', () => {
-        assert.equal(cleanUpReply('林梦瑶: 在呢  \n', names), '在呢');
-        assert.equal(cleanUpReply('嗯\n林梦瑶: 干嘛', names), '嗯\n干嘛');
+        assert.equal(cleanUpReply('测试角色: 在呢  \n', names), '在呢');
+        assert.equal(cleanUpReply('嗯\n测试角色: 干嘛', names), '嗯\n干嘛');
     });
     test('以对方名字开头的整条作废，中途出现的截断', () => {
         assert.equal(cleanUpReply('阿明: 我来替你说', names), '');
         assert.equal(cleanUpReply('好呀\n阿明: 那走吧', names), '好呀');
     });
     test('按行拆成几条，空行和行首尾空白去掉', () => {
-        assert.deepEqual(splitReply('躺着呢 刷土豆的照片\n\n  怎么了嘛 \r\n这么晚'), ['躺着呢 刷土豆的照片', '怎么了嘛', '这么晚']);
+        assert.deepEqual(splitReply('躺着呢 刷团子饼的照片\n\n  怎么了嘛 \r\n这么晚'), ['躺着呢 刷团子饼的照片', '怎么了嘛', '这么晚']);
         assert.deepEqual(splitReply('\n \n'), []);
     });
     test('图片表情指令那一行自己占一条，合并时绝不并进文字（ADR 0063，10-12 模拟器：文字、表情、文字最多 2 条时编号被并进上一句，发出去就成了文字）', () => {
@@ -307,13 +307,13 @@ describe('回复调度', () => {
     });
 
     test('多行回复拆成几条依次发，每条单独记录', async () => {
-        const { responder, stored, sent, gaps } = setup({ generate: async () => '土豆是猫啊\n\n你能不能上点心\n我拍好多张呢' });
-        responder.receive('土豆是什么', 1, new Date());
+        const { responder, stored, sent, gaps } = setup({ generate: async () => '团子饼是猫啊\n\n你能不能上点心\n我拍好多张呢' });
+        responder.receive('团子饼是什么', 1, new Date());
         await responder.whenIdle();
-        assert.deepEqual(sent, ['土豆是猫啊', '你能不能上点心', '我拍好多张呢']);
+        assert.deepEqual(sent, ['团子饼是猫啊', '你能不能上点心', '我拍好多张呢']);
         assert.deepEqual(gaps, [PART_GAP_MS, PART_GAP_MS]);
         assert.deepEqual(stored.map(m => `${m.role}:${m.content}:${m.messageId}`), [
-            'user:土豆是什么:1', 'assistant:土豆是猫啊:101', 'assistant:你能不能上点心:102', 'assistant:我拍好多张呢:103',
+            'user:团子饼是什么:1', 'assistant:团子饼是猫啊:101', 'assistant:你能不能上点心:102', 'assistant:我拍好多张呢:103',
         ]);
     });
 
@@ -425,13 +425,13 @@ describe('回复调度', () => {
         c.set(500);
         responder.receive('看到一只猫', 2, new Date());
         c.set(1000);
-        responder.receive('好像是土豆', 3, new Date());
+        responder.receive('好像是团子饼', 3, new Date());
         await c.wakeAt(4000); // 离最后一条才 3 秒，再等 1 秒
         assert.deepEqual(prompts, []);
         await c.wakeAt(5000);
         await responder.whenIdle();
         assert.deepEqual(c.asked, [4000, 1000]);
-        assert.deepEqual(prompts, [['user:刚才下楼', 'user:看到一只猫', 'user:好像是土豆']]);
+        assert.deepEqual(prompts, [['user:刚才下楼', 'user:看到一只猫', 'user:好像是团子饼']]);
         assert.deepEqual(sent, ['下楼干嘛']);
     });
 

@@ -28,10 +28,10 @@ import { CRISIS_FALLBACK } from '../src/language/exit-check.ts';
 import { CRISIS_MARK } from '../src/language/intent.ts';
 import { createDeviceControl } from '../src/platform/device-actions.ts';
 import type { DeviceService, startDeviceService } from '../src/platform/device-service.ts';
+import { syntheticCardPath, syntheticCardPattern, syntheticStDir } from './fixtures/card.ts';
 
 type StartDevices = typeof startDeviceService;
 
-const repoRoot = resolve(import.meta.dirname, '../../..');
 const SELF = 20000;
 const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -49,7 +49,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
         dsh: { enabled: false },
         prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
-        characterCard: join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'),
+        characterCard: syntheticCardPattern,
         contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }],
         unlistedFriends: false,
         schedule: false,
@@ -279,7 +279,7 @@ describe('编排（app.ts）', () => {
         assert.deepEqual(sent, ['10001:我在。你现在安全吗？身边有人吗']);
         // 提示词：危机意图、承认版卡（知道她是程序的联系人这一轮也承认）
         assert.match(prompts[0]!, new RegExp(CRISIS_MARK));
-        assert.match(prompts[0]!, /大方承认/, '危机回合换用承认版卡');
+        assert.match(prompts[0]!, /被认真问是不是 AI 就直接认了/, '危机回合换用承认版卡');
         // 日志和状态页只有时间，没有他说的内容
         assert.ok(logs.some(line => line.includes('危机信号') && !line.includes('不想活了')));
         const status = app.status().contacts[0]!;
@@ -293,14 +293,14 @@ describe('编排（app.ts）', () => {
         await until(() => sent.length >= 2);
         const stillCrisis = prompts.slice(before).join('\n');
         assert.match(stillCrisis, new RegExp(CRISIS_MARK));
-        assert.match(stillCrisis, /大方承认/);
+        assert.match(stillCrisis, /被认真问是不是 AI 就直接认了/);
         // 明确现在安全且有现实中的人陪同，才回到普通回合。
         const safeAt = prompts.length;
         app.receive(event(10001, 3, '我现在安全，室友在旁边陪我'));
         await until(() => sent.length >= 3);
         const normal = prompts.slice(safeAt).join('\n');
         assert.doesNotMatch(normal, new RegExp(CRISIS_MARK));
-        assert.doesNotMatch(normal, /大方承认/);
+        assert.doesNotMatch(normal, /被认真问是不是 AI 就直接认了/);
     });
 
     test('危机状态写失败仍暂停且继续响应，存储恢复后自动重试不需新信号', async () => {
@@ -786,7 +786,7 @@ describe('编排（app.ts）', () => {
         const cfg = config({ herDays: true, contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
         const { app, sent, logs } = setup(cfg, { 10002: [historyMessage(1, 10002, '在吗', 5)] });
         assert.ok(logs.includes('她自己的日子：开（每日心情、在读的书、进度数字的检查）'), '作息关着时没有看书的空闲活动');
-        assert.equal(logs.filter(l => /^她自己的日子：今天（\d\d-\d\d）：心情 .+（.+）；在读 药屋少女的呢喃 第 \d+ 卷、惹金枝 /.test(l)).length, 1);
+        assert.equal(logs.filter(l => /^她自己的日子：今天（\d\d-\d\d）：心情 .+（.+）；在读 雾港旧事( 第 \d+ 章| 读完了)、纸飞机物语 第 \d+ 话（放下了）$/.test(l)).length, 1);
         await app.connected(SELF);
         await until(() => sent.length > 0);
         const prompt = JSON.parse(readFileSync(join(cfg.dataDir, 'last-prompt.json'), 'utf8')) as { messages: { content: string }[] };
@@ -796,7 +796,7 @@ describe('编排（app.ts）', () => {
         const today = app.status().today!;
         assert.match(today.day, /^\d{4}-\d{2}-\d{2}$/);
         assert.equal(typeof today.mood!.name, 'string');
-        assert.deepEqual(today.books.map(book => [book.title, book.unit, book.putDown]), [['药屋少女的呢喃', '卷', false], ['惹金枝', '章', false], ['恰似寒光遇骄阳', '章', true]]);
+        assert.deepEqual(today.books.map(book => [book.title, book.unit, book.putDown]), [['雾港旧事', '章', false], ['纸飞机物语', '话', true]]);
         assert.equal(app.status().herDays, true);
 
         const off = setup(config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] }));
@@ -1305,12 +1305,12 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
     test('knowsBot: true 的联系人，危机回合要换的承认版卡缺了就启动报错（不再静默退回原卡；DSH 10-15 复核 0067 问题 1）', () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-cards-'));
         dirs.push(dir);
-        const source = join(repoRoot, 'characters/linmengyao/st');
-        for (const file of ['linmengyao-classmate.json', 'linmengyao-scenes-classmate.json']) copyFileSync(join(source, file), join(dir, file));
-        const cfg = config({ characterCard: join(dir, 'linmengyao-{tier}.json'), contacts: [{ qq: 10001, name: '阿明', tier: 'classmate', knowsBot: true }] });
+        const source = syntheticStDir;
+        for (const file of ['synthetic-classmate.json', 'synthetic-scenes-classmate.json']) copyFileSync(join(source, file), join(dir, file));
+        const cfg = config({ characterCard: join(dir, 'synthetic-{tier}.json'), contacts: [{ qq: 10001, name: '阿明', tier: 'classmate', knowsBot: true }] });
         assert.throws(() => setup(cfg, {}), /classmate-open/);
         // 补上承认版就起得来
-        for (const file of ['linmengyao-classmate-open.json', 'linmengyao-scenes-classmate-open.json']) copyFileSync(join(source, file), join(dir, file));
+        for (const file of ['synthetic-classmate-open.json', 'synthetic-scenes-classmate-open.json']) copyFileSync(join(source, file), join(dir, file));
         const ok = setup(cfg, {});
         assert.ok(ok.logs.some(l => l.startsWith('档位 classmate-open：')), '启动时就读了承认版');
     });
@@ -1340,8 +1340,8 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         assert.deepEqual(status.contacts.map(c => [c.qq, c.knowsBot, c.card]), [[10001, true, 'classmate'], [10002, false, 'classmate-open'], [10003, undefined, 'boyfriend-open']]);
         await app.connected(SELF);
         await until(() => sent.length >= 3);
-        const deflect = /不承认、绕开、或者开玩笑/;
-        const admit = /不要否认，用你自己的口气大方承认/;
+        const deflect = /被问是不是 AI，就当对方在开玩笑，说自己是真人/;
+        const admit = /被认真问是不是 AI 就直接认了：你是个陪人聊天的程序/;
         assert.equal(prompts.size, 3, [...prompts.keys()].join(','));
         assert.match(prompts.get('阿明')!, deflect);
         assert.doesNotMatch(prompts.get('阿明')!, admit);
@@ -1657,7 +1657,7 @@ describe('戳一戳（ADR 0079，配置 pokes）', () => {
     });
 
     test('她睡着、在上课时的戳不算（日志记在干什么，不进聊天记录、不排回复）；空闲时算', async () => {
-        const schedule = loadCharacterCard(resolve(repoRoot, 'characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;
+        const schedule = loadCharacterCard(syntheticCardPath('boyfriend')).schedule!;
         let classTime: Date | undefined;
         for (let minute = 8 * 60; minute < 18 * 60 && !classTime; minute++) {
             const at = new Date(2026, 9, 12, 0, minute);

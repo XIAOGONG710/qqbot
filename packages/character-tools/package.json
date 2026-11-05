@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "convert": "node src/cli.ts",
+    "convert:synthetic": "node src/cli.ts --source packages/bot/test/fixtures/synthetic-character/source --out packages/bot/test/fixtures/synthetic-character/st --prefix synthetic",
     "typecheck": "tsc -p .",
     "test": "node --test \"test/**/*.test.ts\""
   },

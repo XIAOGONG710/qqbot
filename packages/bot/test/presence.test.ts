@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
     SLEEPING, STUDYING, cleanQzoneText, createPresence, LIKE_CHANCE, LISTENING, ONLINE, onlineStatusFor, pickQzonePhoto, POKE_OUT_CHANCE, POKE_OUT_LATEST, pokeOutPlan, QZONE_CHANCE, QZONE_MAX_CHARS,
@@ -9,8 +9,9 @@ import {
 } from '../src/social/presence.ts';
 import { formatDate, herDay, stateAt } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-const schedule = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;
+const schedule = loadCharacterCard(syntheticCardPath('boyfriend')).schedule!;
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-presence-')); dirs.push(d); return d; };
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -85,7 +86,7 @@ describe('点赞、签名、表情回应、说说的规则（ADR 0083）', () =>
         for (const bad of ['', '很长'.repeat(QZONE_MAX_CHARS), '看这个 https://x.com', '@某人 在吗', '我的电话 13812345678', '今天[捂脸]', '作为一个AI我觉得', '很高兴为你发一条']) {
             assert.equal(cleanQzoneText(bad), undefined, bad);
         }
-        assert.equal(cleanQzoneText('今天去了济南大学', ['济南大学']), undefined);
+        assert.equal(cleanQzoneText('今天去了云杉学院', ['云杉学院']), undefined);
     });
 
     test('配图：文件夹里没用过的图按日期挑一张，用过的不再挑，没有图返回 undefined', () => {
@@ -327,8 +328,8 @@ describe('她知道自己在 QQ 上的样子（ADR 0083）', () => {
     test('签名（真改了的）和 3 天内真发的说说各一句；草稿、试运行、太久以前的不算；什么都没有返回 undefined', () => {
         assert.equal(describeSelf({ qzone: [] }, now), undefined);
         assert.equal(describeSelf({ signature: { text: '困', draft: true }, qzone: [{ at: now - 3_600_000, text: '草稿', mode: 'dryRun' }] }, now), undefined);
-        const line = describeSelf({ signature: { text: '土豆又胖了' }, qzone: [{ at: at(11, 4, 21, 30), text: '今天的云好看', photo: 'a.jpg', tid: 't', mode: 'on' }] }, now)!;
-        assert.match(line, /个性签名现在是「土豆又胖了」/);
+        const line = describeSelf({ signature: { text: '团子饼又胖了' }, qzone: [{ at: at(11, 4, 21, 30), text: '今天的云好看', photo: 'a.jpg', tid: 't', mode: 'on' }] }, now)!;
+        assert.match(line, /个性签名现在是「团子饼又胖了」/);
         assert.match(line, /昨天晚上发了一条说说「今天的云好看」，配了一张图/);
         assert.match(line, /^\[你在 QQ 上的样子（.*没写的别编）：/);
         assert.match(describeSelf({ qzone: [{ at: at(11, 5, 15, 0), text: '随手', mode: 'on' }] }, now)!, /今天下午发了一条说说「随手」/);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
@@ -11,6 +11,7 @@ import { createBreaker } from '../src/bilibili/platform-breaker.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 const dirs: string[] = [];
 const services: DeviceService[] = [];
@@ -192,8 +193,7 @@ describe('设备控制服务：电脑、手机、他的命令（ADR 0148）', ()
 });
 
 describe('回复路径：令牌不会发给他，而且只在真发送时登记（ADR 0148）', () => {
-    const repoRoot = resolve(import.meta.dirname, '../../..');
-    const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend');
     const llm: BotConfig['llm'] = { baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: '', extraBody: {} };
     const prompt: BotConfig['prompt'] = { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true };
 

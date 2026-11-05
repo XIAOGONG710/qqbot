@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import {
@@ -7,9 +6,10 @@ import {
     type Candidate, type ProactiveInput, type ProactiveRecord,
 } from '../src/proactive/proactive.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // ADR 0112：说了“等下”之后自己回来（配置 comeBack）
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (h: number, m = 0) => new Date(2026, 9, 24, h, m).getTime();
 const msg = (role: 'user' | 'assistant', time: number, content: string): StoredMessage => ({ time: new Date(time).toISOString(), role, content });

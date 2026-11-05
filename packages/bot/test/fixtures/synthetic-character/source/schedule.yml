@@ -1,0 +1,188 @@
+# 合成测试角色的作息（虚构文案；日历骨架对齐 bot 测试断言用到的日期和时刻，见 README）。
+# 覆盖：早课、跨午夜睡觉、起床浮动、假期（留校 / 在家、他在哪、他回来）、调休、学期边界、实训、从某天起 / 到某天止的活动、按档位裁剪。
+sleep: "02:00"
+wakeup:
+  early: "07:40"
+  lazy: "09:30"
+  jitter:
+    from: "2026-10-26"
+    spread_minutes: 40
+    weekend_minutes: 60
+    note: "合成：从这天起每天浮动"
+periods:
+  "1": "08:20-09:40"
+  "2": "09:55-11:15"
+  "3": "13:30-14:50"
+  "4": "15:15-16:35"
+  "5": "18:30-19:50"
+semester:
+  start: "2026-08-31"
+  weeks: 18
+holidays:
+  - name: "中秋节"
+    start: "2026-09-25"
+    end: "2026-09-27"
+    note: "合成：留在学校过"
+  - name: "国庆节"
+    start: "2026-10-01"
+    end: "2026-10-07"
+    where:
+      - tiers: ["boyfriend", "bestie", "girl_friend"]
+        text: "没回家，留在七号楼"
+      - tiers: ["known"]
+        text: "留在雾岚市的学校里"
+      - tiers: ["classmate", "stranger", "unlisted"]
+        text: "留在学校"
+    partner: "{{user}}回老家过国庆了"
+    partner_back: "{{user}}国庆放完回学校了，已经在学校里了"
+  - name: "寒假"
+    start: "2027-01-16"
+    end: "2027-02-28"
+    home: true
+makeups:
+  - date: "2026-10-10"
+    as_day: 0
+    note: "合成：补哪天没定，按没课"
+  - date: "2026-09-20"
+    as_day: 4
+    note: "合成：补周四的课"
+courses:
+  - name: "操作系统实验"
+    day: 1
+    slot: "1"
+    room: "启明楼511"
+    kind: "machine"
+    weeks: "1-16"
+    course_group: "cg-00000000000000000000000000000001"
+  - name: "计算机网络"
+    day: 1
+    slot: "2"
+    room: "启明楼204"
+    kind: "hard"
+    weeks: "1-16"
+    practice: 9
+    practice_room: "启明楼机房3"
+    course_group: "cg-00000000000000000000000000000002"
+  - name: "高等数学"
+    day: 1
+    slot: "4"
+    room: "启明楼210"
+    kind: "hard"
+    weeks: "1-16"
+    course_group: "cg-00000000000000000000000000000003"
+  - name: "形势与政策"
+    day: 2
+    slot: "3"
+    room: "C101"
+    kind: "water"
+    weeks: "2-8,10-12"
+  - name: "大学体育"
+    day: 3
+    slot: "1"
+    room: "东操场"
+    kind: "pe"
+    weeks: "1-16"
+  - name: "高等数学"
+    day: 3
+    slot: "4"
+    room: "启明楼210"
+    kind: "hard"
+    weeks: "1-16"
+    course_group: "cg-00000000000000000000000000000003"
+  - name: "数据结构"
+    day: 4
+    slot: "2"
+    room: "启明楼305"
+    kind: "hard"
+    weeks: "1-16"
+    course_group: "cg-00000000000000000000000000000004"
+  - name: "数据库原理"
+    day: 5
+    slot: "3"
+    room: "启明楼机房1"
+    kind: "machine"
+    weeks: "1-12"
+free:
+  - window: "morning"
+    text: "去图书馆自习"
+  - window: "morning"
+    text: "拿胶片机去湖边拍照"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    cover: "去湖边散步"
+  - window: "afternoon"
+    text: "在宿舍写作业"
+  - window: "afternoon"
+    text: "和室友去超市"
+  - window: "evening"
+    text: "追一部动画"
+  - window: "evening"
+    text: "打一会儿游戏"
+  - window: "afternoon"
+    text: "带新胶片机去操场转转"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    cover: "去操场转转"
+    from: "2026-10-12"
+  - window: "evening"
+    text: "琢磨新胶片机的参数"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    cover: "整理桌面"
+    from: "2026-10-11"
+  - window: "afternoon"
+    text: "带新胶片机去操场转转"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    cover: "去操场转转"
+    from: "2026-10-12"
+    until: "2026-10-25"
+    note: "合成：新鲜期"
+  - window: "evening"
+    text: "冲洗新拍的胶卷"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    cover: "整理桌面"
+    from: "2026-10-12"
+    until: "2026-10-31"
+  - window: "afternoon"
+    text: "去社团活动室"
+    from: "2026-10-21"
+  - window: "evening"
+    text: "熬夜赶作业"
+    from: "2026-12-21"
+    note: "合成：期末那几周才有"
+  - window: "morning"
+    text: "在家睡懒觉"
+    home: true
+  - window: "evening"
+    text: "陪妈妈看电视"
+    home: true
+course_detail:
+  tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+  note: "合成：课名、教室、课型叫法只给前四档"
+kinds:
+  hard:
+    label: "硬课"
+    see_after: [20, 40]
+    max_bubbles: 1
+  machine:
+    label: "机房课"
+    see_after: [5, 15]
+    max_bubbles: 3
+  water:
+    label: "水课"
+  pe:
+    label: "体育课"
+    see_after: [30, 60]
+    max_bubbles: 1
+kinds_note: "合成：上课时多久看到消息、最多回几条"
+where:
+  by_tier:
+    - tiers: ["boyfriend", "bestie", "girl_friend"]
+      text: "在学校（雾岚市），住七号楼宿舍"
+    - tiers: ["known"]
+      text: "在学校（雾岚市），住宿舍"
+    - tiers: ["classmate"]
+      text: "在学校，住宿舍"
+    - tiers: ["stranger", "unlisted"]
+      text: "在学校"
+  note: "合成：上学期间她在哪"
+partner:
+  text: "{{user}}在另一个校区上课"
+  tiers: ["boyfriend"]

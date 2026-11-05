@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
@@ -11,6 +11,7 @@ import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 // 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管
 useSensitiveSwitch(SENSITIVE_ON);
@@ -20,12 +21,12 @@ const textIntimacy = (text: string) => inspectReply(text, [], undefined, undefin
 
 describe('出口检查：做不到的事（ADR 0006 取证里的原句）', () => {
     test('答应发、像是已经发了照片，主动给人看', () => {
-        assert.deepEqual(promises('刚下课回来，晚上去喂土豆了，拍了张照片给你看'), ['拍了张']);
-        assert.deepEqual(promises('而且我手机里全是土豆的照片，你确定要看的话我给你翻两张'), ['给你翻']);
-        assert.deepEqual(promises('那你晚上干嘛，又熬夜不睡？我下去喂土豆，你要看不'), ['要看不']);
+        assert.deepEqual(promises('刚下课回来，晚上去喂团子饼了，拍了张照片给你看'), ['拍了张']);
+        assert.deepEqual(promises('而且我手机里全是团子饼的照片，你确定要看的话我给你翻两张'), ['给你翻']);
+        assert.deepEqual(promises('那你晚上干嘛，又熬夜不睡？我下去喂团子饼，你要看不'), ['要看不']);
         assert.deepEqual(promises('刚拍的，丑是丑了点，但它是我的'), ['刚拍的']);
         assert.deepEqual(promises('要不要看的，回去了发你'), ['发你']);
-        assert.deepEqual(promises('土豆今天又抢我鞋带 拍了好几张 明天给你看'), ['拍了好几张']);
+        assert.deepEqual(promises('团子饼今天又抢我鞋带 拍了好几张 明天给你看'), ['拍了好几张']);
         assert.deepEqual(promises('拍是拍了，但懒得翻相册给你找，等哪天它好好坐着不动我再拍了发你'), ['发你']);
         assert.deepEqual(promises('你要是真想听，等哪天打电话的时候说给你听'), ['打电话']);
     });
@@ -60,7 +61,7 @@ describe('出口检查：做不到的事（ADR 0006 取证里的原句）', () =
         assert.ok(logs.some(l => l.includes('[B 站私信]')));
     });
     test('拒绝、否定的说法不算', () => {
-        for (const line of ['照片就不发了，想得挺美', '不给，我不发照片', '自拍就算了 我手机里全是土豆的照片 没我',
+        for (const line of ['照片就不发了，想得挺美', '不给，我不发照片', '自拍就算了 我手机里全是团子饼的照片 没我',
             '不给你看', '才不想给你看', '别想我发你', '照片在我手机里存了一堆，懒得翻给你看', '哦对，我发不了照片', '我不打电话的', '你拍的照片挺好看',
             '打电话不行，我这边不方便说话', '发不了照片啊，我又没开相册给你看', '开视频算了吧']) {
             assert.deepEqual(promises(line), [], line);
@@ -84,16 +85,16 @@ describe('出口检查：做不到的事（ADR 0006 取证里的原句）', () =
         }
     });
     test('禁用词按行查，一行可以有几处', () => {
-        const issues = inspectReply('在呢\n我青岛的，山青的\n就这样', ['青岛', '山青', '宝宝']);
-        assert.deepEqual(issues.map(i => [i.line, i.kind, i.match]), [[1, 'banned', '青岛'], [1, 'banned', '山青']]);
+        const issues = inspectReply('在呢\n我雾岚市的，云杉的\n就这样', ['雾岚市', '云杉', '宝宝']);
+        assert.deepEqual(issues.map(i => [i.line, i.kind, i.match]), [[1, 'banned', '雾岚市'], [1, 'banned', '云杉']]);
     });
     test('删行、重写说明', () => {
-        const reply = '在喂土豆\n刚拍的，丑是丑了点\n你呢';
-        const issues = inspectReply(reply, ['土豆']);
+        const reply = '在喂团子饼\n刚拍的，丑是丑了点\n你呢';
+        const issues = inspectReply(reply, ['团子饼']);
         assert.equal(dropLines(reply, issues), '你呢');
         const note = rewriteNote(reply, issues, '鸽鸽');
         assert.match(note, /^\[上一版回复没有发出去：/);
-        assert.match(note, /「在喂土豆」提到了「土豆」，这是不该对鸽鸽说的/);
+        assert.match(note, /「在喂团子饼」提到了「团子饼」，这是不该对鸽鸽说的/);
         assert.match(note, /「刚拍的，丑是丑了点」答应或者像是已经给对方发照片.*，可你只能打字聊天。/);
         assert.match(note, /意思不变，重写这次的回复，只输出要发的消息。\]$/);
     });
@@ -129,8 +130,8 @@ describe('出口检查：重写一次，还不行删掉那几行', () => {
         assert.deepEqual(r.logs, []);
     });
     test('重写后通过就用重写的', async () => {
-        const r = await run('土豆在楼下\n拍给你看', ['土豆在楼下晒太阳']);
-        assert.equal(r.reply, '土豆在楼下晒太阳');
+        const r = await run('团子饼在楼下\n拍给你看', ['团子饼在楼下晒太阳']);
+        assert.equal(r.reply, '团子饼在楼下晒太阳');
         assert.equal(r.notes.length, 1);
         assert.deepEqual(r.logs, ['出口检查：第 2 行做不到的事「拍给你」，带说明重写一次', '出口检查：重写后通过']);
     });
@@ -149,10 +150,10 @@ describe('出口检查：重写一次，还不行删掉那几行', () => {
         assert.equal((await run('抱抱\n真的还是线下才有感觉', ['抱抱\n隔着屏幕亲了也没用'], [], true)).reply, '抱抱');
     });
     test('重写后仍命中，删掉命中的行；删空了就是空的（不发）', async () => {
-        assert.equal((await run('我青岛的', ['青岛的啊\n你呢'], ['青岛'])).reply, '你呢');
-        const r = await run('我青岛的', ['青岛'], ['青岛']);
+        assert.equal((await run('我雾岚市的', ['雾岚市的啊\n你呢'], ['雾岚市'])).reply, '你呢');
+        const r = await run('我雾岚市的', ['雾岚市'], ['雾岚市']);
         assert.equal(r.reply, '');
-        assert.match(r.logs[1]!, /重写后仍有第 1 行禁用词「青岛」，删掉这几行/);
+        assert.match(r.logs[1]!, /重写后仍有第 1 行禁用词「雾岚市」，删掉这几行/);
     });
     test('编了一整段对话（回复里有「[Start a new Chat]」、时间块的行）：重写；还在就从那一行起全删', async () => {
         const script = '就知道贫\n你上课累不累\n[Start a new Chat]还行\n宝宝我肚子有点疼';
@@ -187,8 +188,7 @@ describe('出口检查：重写一次，还不行删掉那几行', () => {
 });
 
 describe('出口检查接在流水线里（模拟器，假模型）', () => {
-    const repoRoot = resolve(import.meta.dirname, '../../..');
-    const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'classmate');
+    const card = loadTierCard(syntheticCardPattern, 'classmate');
     const llm: BotConfig['llm'] = {
         baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000,
         promptPostProcessing: '', extraBody: {},
@@ -198,7 +198,7 @@ describe('出口检查接在流水线里（模拟器，假模型）', () => {
     test('括号先被卡上的正则删掉；命中禁用词时带说明重写，说明在提示词最后，不进聊天记录', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'exit-'));
         const calls: OpenAIMessage[][] = [];
-        const replies = ['（想了想）\n我青岛的\n你呢', '不告诉你\n你呢'];
+        const replies = ['（想了想）\n我雾岚市的\n你呢', '不告诉你\n你呢'];
         try {
             const scenario = parseScenario({
                 name: 'x', tier: 'classmate', user: '鸽鸽', start: '2026-09-24T21:40:00+08:00', memory: false,
@@ -213,8 +213,8 @@ describe('出口检查接在流水线里（模拟器，假模型）', () => {
             assert.equal(calls.length, 2);
             assert.equal(calls[1]!.length, calls[0]!.length + 1);
             assert.deepEqual(calls[1]!.slice(0, -1), calls[0]);
-            assert.match(calls[1]!.at(-1)!.content as string, /「我青岛的」提到了「青岛」，这是不该对鸽鸽说的/);
-            assert.ok(say.logs.some(l => l.includes('出口检查：第 1 行禁用词「青岛」，带说明重写一次')));
+            assert.match(calls[1]!.at(-1)!.content as string, /「我雾岚市的」提到了「雾岚市」，这是不该对鸽鸽说的/);
+            assert.ok(say.logs.some(l => l.includes('出口检查：第 1 行禁用词「雾岚市」，带说明重写一次')));
             assert.deepEqual(say.generations[0]!.rewrites, ['不告诉你\n你呢']);
             assert.deepEqual(result.steps[1]!.checks, [{ ok: true, text: '出口检查干净' }]);
         } finally {
@@ -223,7 +223,7 @@ describe('出口检查接在流水线里（模拟器，假模型）', () => {
     });
 
     test('男朋友要文字亲亲：流水线会把“必须当面”重写成直接文字互动', async () => {
-        const boyfriend = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+        const boyfriend = loadTierCard(syntheticCardPattern, 'boyfriend');
         const dir = mkdtempSync(join(tmpdir(), 'text-intimacy-'));
         const replies = ['mua得当面给', 'mua，给你了', '隔着屏幕亲了也没用'];
         try {
@@ -292,15 +292,15 @@ describe('出口检查：说话的毛病（ADR 0014）', () => {
         assert.deepEqual(r.logs, ['出口检查：第 2 行算账「这会儿才想起」，带说明重写一次', '出口检查：重写后通过']);
     });
     test('对照的酸话（ADR 0019）：带说明重写，说明里说不要比着说委屈', async () => {
-        const r = await run('在呢\n你回青岛舒服了吧，我一个人蹲宿舍', ['在呢\n宿舍今天就我一个，好安静，你那边热闹吗']);
+        const r = await run('在呢\n你回雾岚市舒服了吧，我一个人蹲宿舍', ['在呢\n宿舍今天就我一个，好安静，你那边热闹吗']);
         assert.equal(r.reply, '在呢\n宿舍今天就我一个，好安静，你那边热闹吗');
         assert.match(r.notes[0]!, /在拿阿明和你自己比着说委屈；说你这边的事就说你这边的，阿明那边的事顺着问问/);
-        assert.match(r.logs[0]!, /^出口检查：第 2 行对照的酸话「你回青岛舒服」，带说明重写一次$/);
+        assert.match(r.logs[0]!, /^出口检查：第 2 行对照的酸话「你回雾岚市舒服」，带说明重写一次$/);
     });
     test('重写后还在：删掉那一行；只剩那一行就照发', async () => {
         assert.equal((await run('醒啦？\n这会儿才想起来回我', ['醒啦\n你终于想起来找我了'])).reply, '醒啦');
-        const r = await run('你回青岛了也不说一声', ['你回青岛也不说一声']);
-        assert.equal(r.reply, '你回青岛也不说一声');
+        const r = await run('你回雾岚市了也不说一声', ['你回雾岚市也不说一声']);
+        assert.equal(r.reply, '你回雾岚市也不说一声');
         assert.match(r.logs[1]!, /重写后仍有第 1 行怪对方没说「也不说一声」，照发/);
     });
     test('别的重复重写一次，还重复就照发', async () => {
@@ -323,8 +323,7 @@ describe('出口检查：说话的毛病（ADR 0014）', () => {
 });
 
 describe('说话的毛病接在流水线里（模拟器，假模型）', () => {
-    const repoRoot = resolve(import.meta.dirname, '../../..');
-    const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend');
     const llm: BotConfig['llm'] = {
         baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000,
         promptPostProcessing: '', extraBody: {},
@@ -364,7 +363,7 @@ describe('说话的毛病接在流水线里（模拟器，假模型）', () => {
 });
 
 describe('承认版卡的禁用词（ADR 0067，DSH 10-15 复核问题 3）', () => {
-    const pattern = resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-{tier}.json');
+    const pattern = syntheticCardPattern;
     const banned = (tier: string) => loadTierCard(pattern, tier).character.banned;
     const flagged = (tier: string) => inspectReply('我就是我啊，我不承认', banned(tier)).some(issue => issue.kind === 'banned' && issue.match === '不承认');
 

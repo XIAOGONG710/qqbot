@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { aboutHer, expired, extractionPrompt, firstAsk, mentions, parseExtraction, tripAlreadyOver, whenText, type FollowUp } from '../src/proactive/follow-ups.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -12,11 +12,12 @@ import type { InitiateRequest, ResponderStatus } from '../src/social/responder.t
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { SENSITIVE_OFF, SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管
 useSensitiveSwitch(SENSITIVE_ON);
 
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m).getTime();
 const day = (month: number, d: number) => new Date(2026, month - 1, d);
@@ -28,11 +29,11 @@ const hm = (time: number) => new Date(time).toTimeString().slice(0, 5);
 
 describe('待跟进：抽取的输入输出', () => {
     test('提示词带上还没问的事和聊天记录', () => {
-        const [system, user] = extractionPrompt('—— 2026年10月8日 星期四 ——\n阿明 (07:32): 我明天下午面试', [item()], { user: '阿明', char: '林梦瑶' });
+        const [system, user] = extractionPrompt('—— 2026年10月8日 星期四 ——\n阿明 (07:32): 我明天下午面试', [item()], { user: '阿明', char: '测试角色' });
         assert.match(system!.content, /阿明自己之后要经历/);
         assert.match(system!.content, /resolved/);
         assert.match(system!.content, /凌晨（0 点到 5 点）还没睡时说的「明天」/);
-        assert.match(system!.content, /冲着林梦瑶的事/);
+        assert.match(system!.content, /冲着测试角色的事/);
         assert.equal(user!.content, '还没问的事：\n- f-1：2026-10-09 下午 字节的面试\n\n聊天记录：\n—— 2026年10月8日 星期四 ——\n阿明 (07:32): 我明天下午面试');
     });
 
@@ -119,7 +120,7 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
             history: { load: () => history },
             responder: { initiate: async request => { initiated.push(request); request.commit(said); return { result: 'dryRun', parts: said }; } },
             dir, log: m => logs.push(m), now: clock.now, waitUntil: clock.waitUntil,
-            names: { user: '阿明', char: '林梦瑶' },
+            names: { user: '阿明', char: '测试角色' },
             extract: async messages => {
                 prompts.push(messages.at(-1)!.content);
                 const reply = replies.shift() ?? '{"add":[],"resolved":[]}';
@@ -225,35 +226,35 @@ describe('待跟进：计划器里记下、问过就忘、他说了结果就忘�
         assert.equal(skipped?.reason, '今天的条数留给了别的时机', logs.join('\n'));
     });
 
-    test('行程过去了、他后来又来聊过：不用再问；有结果的事、他还没来过的照旧（10-09 线上「到济南」）', () => {
-        const trip = { what: '到济南', date: '2026-10-07', time: '17:44' };
+    test('行程过去了、他后来又来聊过：不用再问；有结果的事、他还没来过的照旧（10-09 线上「到雾岚市」）', () => {
+        const trip = { what: '到雾岚市', date: '2026-10-07', time: '17:44' };
         assert.ok(tripAlreadyOver(trip, [{ time: '2026-10-08T20:14:00+08:00' }]), '8 号晚上聊过了');
         assert.ok(!tripAlreadyOver(trip, [{ time: '2026-10-07T18:00:00+08:00' }]), '到了才 16 分钟，还没算');
         assert.ok(!tripAlreadyOver(trip, []));
-        assert.ok(tripAlreadyOver({ what: '坐高铁回青岛', date: '2026-10-07', time: 'afternoon' }, [{ time: '2026-10-08T09:00:00+08:00' }]));
+        assert.ok(tripAlreadyOver({ what: '坐高铁回老家', date: '2026-10-07', time: 'afternoon' }, [{ time: '2026-10-08T09:00:00+08:00' }]));
         assert.ok(!tripAlreadyOver({ what: '字节的面试', date: '2026-10-07', time: '14:00' }, [{ time: '2026-10-08T09:00:00+08:00' }]), '面试有结果可问');
         assert.ok(!tripAlreadyOver({ what: '收到offer的消息', date: '2026-10-07', time: '14:00' }, [{ time: '2026-10-08T09:00:00+08:00' }]));
         assert.ok(!tripAlreadyOver({ what: '去图书馆前面集合，上一整个上午', date: '2026-10-09', time: '09:25' }, [{ time: '2026-10-09T13:10:00+08:00' }]));
     });
 
-    test('冲着她的事不记；到时候她没问出口的留着下次再问，第二次还没问出口才忘（10-09 线上「回去陪林梦瑶」）', async () => {
-        assert.ok(aboutHer('回去陪林梦瑶', '林梦瑶'));
-        assert.ok(!aboutHer('字节的面试', '林梦瑶'));
-        assert.ok(aboutHer('跟林梦瑶视频', '林梦瑶'));
-        assert.ok(!aboutHer('去林梦瑶家找小皮鞋', '林梦瑶'), '她不在场的事照记（10-07 线上问过「找到了没」）');
-        assert.ok(!mentions({ what: '回去陪林梦瑶' }, ['早呀', '还困着，今天下雨，懒得去图书馆了']));
+    test('冲着她的事不记；到时候她没问出口的留着下次再问，第二次还没问出口才忘（10-09 线上「回去陪测试角色」）', async () => {
+        assert.ok(aboutHer('回去陪测试角色', '测试角色'));
+        assert.ok(!aboutHer('字节的面试', '测试角色'));
+        assert.ok(aboutHer('跟测试角色视频', '测试角色'));
+        assert.ok(!aboutHer('去测试角色家找钥匙', '测试角色'), '她不在场的事照记（10-07 线上问过「找到了没」）');
+        assert.ok(!mentions({ what: '回去陪测试角色' }, ['早呀', '还困着，今天下雨，懒得去图书馆了']));
         assert.ok(mentions({ what: '高数期中考试' }, ['考得咋样']));
         assert.ok(mentions({ what: 'CET4 成绩' }, ['cet4出了没']));
         assert.ok(!mentions({ what: '明天去医院复查' }, ['早，今天去哪']), '只对上「去」「今天」不算');
         assert.ok(mentions({ what: '去了' }, ['嗯']), '全是虚词的判断不了，算问到');
 
-        const history = [msg(t(10, 8, 21), 'user', '我明天下午两点有面试，晚上回去陪林梦瑶'), msg(t(10, 8, 21, 1), 'assistant', '加油')];
+        const history = [msg(t(10, 8, 21), 'user', '我明天下午两点有面试，晚上回去陪测试角色'), msg(t(10, 8, 21, 1), 'assistant', '加油')];
         const { clock, planner, logs, initiated, state } = setup(new Date(t(10, 8, 22)), history,
-            ['{"add":[{"what":"字节的面试","date":"2026-10-09","time":"14:00"},{"what":"回去陪林梦瑶","date":"2026-10-09","time":"evening"}],"resolved":[]}'],
+            ['{"add":[{"what":"字节的面试","date":"2026-10-09","time":"14:00"},{"what":"回去陪测试角色","date":"2026-10-09","time":"evening"}],"resolved":[]}'],
             // 他一直没回也接着排（真的线上是他回了才排下一条）
             { occasions: ['follow_up' as const], dailyMax: 2, unansweredMax: 10 }, ['在吗', '今天好困']);
         await planner.syncFollowUps();
-        assert.ok(logs.includes('待跟进：「回去陪林梦瑶」是冲着她的事，不记'), logs.join('\n'));
+        assert.ok(logs.includes('待跟进：「回去陪测试角色」是冲着她的事，不记'), logs.join('\n'));
         assert.deepEqual(state().followUps.map((f: FollowUp) => f.what), ['字节的面试']);
         const askedTimes = async (n: number) => {
             for (let i = 0; i < 12; i++) {
@@ -317,7 +318,7 @@ describe('有没回的消息、回复器又闲着：到了主动的时机先再�
                 status: () => ({ phase, failures: 2 }),
             },
             dir, log: m => logs.push(m), now: clock.now, waitUntil: clock.waitUntil,
-            names: { user: '阿明', char: '林梦瑶' },
+            names: { user: '阿明', char: '测试角色' },
             extract: async () => '{"add":[],"resolved":[]}',
         });
         planners.push(planner);

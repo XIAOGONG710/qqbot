@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
@@ -15,10 +15,11 @@ import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPath, syntheticCardPattern } from './fixtures/card.ts';
 
-const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
-const classmate = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-classmate.json'));
-const stranger = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-stranger.json'));
+const card = loadCharacterCard(syntheticCardPath('boyfriend'));
+const classmate = loadCharacterCard(syntheticCardPath('classmate'));
+const stranger = loadCharacterCard(syntheticCardPath('stranger'));
 const schedule = card.schedule!;
 const book = (id: string) => card.books.find(item => item.id === id)!;
 const at = (text: string) => new Date(`${text}+08:00`);
@@ -68,55 +69,55 @@ describe('她的一天与每日心情（ADR 0015）', () => {
         assert.equal(deadline.reason, '有份作业快到截止时间了，心里还挂着');
     });
 
-    test('熟悉的五档有心情（4 种：10-07 玩梗、搞怪合并成「爱笑」）；陌生人和名单外没有', () => {
-        assert.deepEqual(card.moods.map(mood => mood.name), ['话痨', '爱笑', '黏人', '安静']);
-        assert.equal(classmate.moods.length, 4);
+    test('熟悉的档有心情（合成卡 3 种）；陌生人和名单外没有', () => {
+        assert.deepEqual(card.moods.map(mood => mood.name), ['平静', '烦躁', '开心']);
+        assert.equal(classmate.moods.length, 3);
         assert.deepEqual(stranger.moods, []);
     });
 });
 
 describe('在读的书（ADR 0015）', () => {
     test('进度按天推进、到上限停；读完和放下分开', () => {
-        const yaowu = book('yaowu');
-        assert.deepEqual(bookProgressOn(yaowu, at('2026-10-03T12:00:00')), { amount: 6, unit: '卷', finished: false, stopped: false });
-        assert.equal(bookProgressOn(yaowu, at('2026-10-05T12:00:00')).amount, 6);
-        assert.equal(bookProgressOn(yaowu, at('2026-10-06T12:00:00')).amount, 7);
-        assert.deepEqual(bookProgressOn(yaowu, at('2026-10-20T12:00:00')), { amount: 10, unit: '卷', finished: false, stopped: true });
+        // 合成卡在读的一本：8-31 第 10 章起，每 2 天 3 章，全书 120 章；上限比全书小时只停住、不叫读完（测试里把上限改到 100）
+        const fog = book('fog-harbor');
+        const capped = { ...fog, progress: { ...fog.progress, max: 100 } };
+        assert.deepEqual(bookProgressOn(capped, at('2026-10-04T12:00:00')), { amount: 61, unit: '章', finished: false, stopped: false });
+        assert.equal(bookProgressOn(capped, at('2026-10-05T12:00:00')).amount, 61);
+        assert.equal(bookProgressOn(capped, at('2026-10-06T12:00:00')).amount, 64);
+        assert.deepEqual(bookProgressOn(capped, at('2026-11-20T12:00:00')), { amount: 100, unit: '章', finished: false, stopped: true });
 
-        const rejinzhi = book('rejinzhi');
-        assert.equal(bookProgressAt(schedule, rejinzhi, at('2026-10-05T12:00:00')).amount, 500);
-        assert.deepEqual(bookProgressAt(schedule, rejinzhi, at('2026-10-15T12:00:00')), { amount: 550, unit: '章', finished: true, stopped: true });
+        assert.equal(bookProgressAt(schedule, fog, at('2026-10-05T12:00:00')).amount, 61);
+        assert.deepEqual(bookProgressAt(schedule, fog, at('2026-11-20T12:00:00')), { amount: 120, unit: '章', finished: true, stopped: true });
 
-        const jiasi = book('jiasi');
-        assert.deepEqual(bookProgressOn(jiasi, at('2027-01-01T12:00:00')), { amount: 300, unit: '章', finished: false, stopped: true });
+        const paperPlane = book('paper-plane');
+        assert.deepEqual(bookProgressOn(paperPlane, at('2027-01-01T12:00:00')), { amount: 30, unit: '话', finished: false, stopped: true });
     });
 
     test('只开放读到的节点；没读到和没有资料的问法被挡住', () => {
-        const rejinzhi = book('rejinzhi');
-        const at500 = bookProgressOn(rejinzhi, at('2026-10-05T12:00:00'));
-        assert.ok(availableBookNodes(rejinzhi, at500).some(node => node.id === 'rejinzhi-mid'));
-        assert.ok(!availableBookNodes(rejinzhi, at500).some(node => node.id === 'rejinzhi-ending'));
-        assert.deepEqual(unreadBookTopics(rejinzhi, at500, '结局最后是什么'), ['结局']);
+        const fog = book('fog-harbor');
+        const at25 = bookProgressOn(fog, at('2026-09-10T12:00:00'));
+        assert.ok(availableBookNodes(fog, at25).some(node => node.id === 'opening'));
+        assert.ok(!availableBookNodes(fog, at25).some(node => node.id === 'lighthouse'));
+        assert.deepEqual(unreadBookTopics(fog, at25, '灯塔里最后有什么'), ['灯塔']);
 
-        const yaowu = book('yaowu');
-        const at6 = bookProgressOn(yaowu, at('2026-10-05T12:00:00'));
-        assert.deepEqual(unreadBookTopics(yaowu, at6, '猫猫是谁'), []);
-        assert.deepEqual(unreadBookTopics(yaowu, at6, '最后谁是凶手'), ['后面的情节']);
+        const at61 = bookProgressOn(fog, at('2026-10-05T12:00:00'));
+        assert.deepEqual(unreadBookTopics(fog, at61, '灯塔里有什么'), []);
+        assert.deepEqual(unreadBookTopics(fog, at61, '大结局是什么'), ['后面的情节']);
     });
 
     test('提到书只看他的最后 3 条和她最后 2 次回复；能认书名、作者、人物和泛问', () => {
         const message = (role: StoredMessage['role'], content: string, n: number): StoredMessage => ({ role, content, time: new Date(n * 1000).toISOString() });
-        assert.deepEqual(bookMention([message('user', '你在看什么书', 1)], card.books), { mentioned: true, bookIds: ['yaowu', 'rejinzhi', 'jiasi'], named: false });
-        assert.deepEqual(bookMention([message('user', '时不虞后来怎么样', 1)], card.books), { mentioned: true, bookIds: ['rejinzhi'], named: true });
-        const old = [message('user', '药屋好看吗', 1), message('user', '一', 2), message('user', '二', 3), message('user', '三', 4), message('user', '四', 5)];
+        assert.deepEqual(bookMention([message('user', '你在看什么书', 1)], card.books), { mentioned: true, bookIds: ['fog-harbor', 'paper-plane'], named: false });
+        assert.deepEqual(bookMention([message('user', '虚构作者甲后来还写了什么', 1)], card.books), { mentioned: true, bookIds: ['fog-harbor'], named: true });
+        const old = [message('user', '雾港好看吗', 1), message('user', '一', 2), message('user', '二', 3), message('user', '三', 4), message('user', '四', 5)];
         assert.deepEqual(bookMention(old, card.books), { mentioned: false, bookIds: [], named: false });
 
         const replies = [
-            message('assistant', '我在看《惹金枝》', 1), message('assistant', '已经到后面了', 2), message('user', '哦', 3),
+            message('assistant', '我在看《雾港旧事》', 1), message('assistant', '已经到后面了', 2), message('user', '哦', 3),
             message('assistant', '今天天气还行', 4), message('user', '嗯', 5), message('assistant', '准备睡了', 6), message('user', '好', 7),
         ];
         assert.deepEqual(bookMention(replies, card.books), { mentioned: false, bookIds: [], named: false }, '三次以前的回复不再算');
-        assert.equal(readingActivity('窝在床上看《药屋少女的呢喃》', card.books), true);
+        assert.equal(readingActivity('睡前看几章《雾港旧事》', card.books), true);
         assert.equal(readingActivity('在宿舍跟室友扯淡', card.books), false);
     });
 
@@ -125,27 +126,27 @@ describe('在读的书（ADR 0015）', () => {
         for (const text of ['最后一节课是体育', '游戏更新了', '番茄炒蛋', '成绩出来了', '去图书馆占座', '这剧第几集了', '你哪来的零食']) {
             assert.equal(bookMention([message('user', text, 1)], card.books).mentioned, false, text);
         }
-        assert.deepEqual(bookMention([message('user', '壬氏是谁', 1)], card.books), { mentioned: true, bookIds: ['yaowu'], named: true });
-        const chat = [message('user', '你在看什么书', 1), message('assistant', '在看《惹金枝》', 2), message('user', '那结局呢', 3)];
-        assert.deepEqual(bookMention(chat, card.books), { mentioned: true, bookIds: ['rejinzhi'], named: true }, '最近一条没点名时往前找');
+        assert.deepEqual(bookMention([message('user', '那个灯塔是怎么回事', 1)], card.books), { mentioned: true, bookIds: ['fog-harbor'], named: true });
+        const chat = [message('user', '你在看什么书', 1), message('assistant', '在看《雾港旧事》', 2), message('user', '那结局呢', 3)];
+        assert.deepEqual(bookMention(chat, card.books), { mentioned: true, bookIds: ['fog-harbor'], named: true }, '最近一条没点名时往前找');
     });
 
     test('那一段：你的感受、称呼替换；点名的书给全部读到的节点，泛问每本给主角和主线', () => {
         const now = at('2026-10-06T19:00:00');
-        const named = describeBooks(schedule, [book('rejinzhi')], now, { userText: '那结局呢', userName: '宝宝', named: ['rejinzhi'] })!;
-        assert.match(named.text, /《惹金枝》.*看到第 505 章；全书 550 章；你的感受：/);
-        assert.match(named.text, /成绩与出版：入选/);
-        assert.match(named.text, /宝宝问的《惹金枝》结局你还没看到/);
+        const named = describeBooks(schedule, [book('fog-harbor')], now, { userText: '那结局呢', userName: '宝宝', named: ['fog-harbor'] })!;
+        assert.match(named.text, /《雾港旧事》.*看到第 64 章；全书 120 章；你的感受：/);
+        assert.match(named.text, /灯塔：灯塔里藏着一封信/);
+        assert.match(named.text, /宝宝问的《雾港旧事》后面的情节你还没看到/);
         assert.match(named.text, /也可以问问宝宝看到哪了。\]$/);
         assert.doesNotMatch(named.text, /\{\{user\}\}|她的感觉/);
-        assert.deepEqual(named.context.focusIds, ['rejinzhi']);
+        assert.deepEqual(named.context.focusIds, ['fog-harbor']);
 
         const generic = describeBooks(schedule, card.books, now, { userText: '你在看什么书', userName: '宝宝' })!;
-        assert.match(generic.text, /主角是谁：女主叫猫猫，原本在花街当药师\n/);
-        assert.match(generic.text, /主线：回京复仇：十五年后/);
-        assert.doesNotMatch(generic.text, /成绩与出版|原作与出版/);
+        assert.match(generic.text, /开头：主角在港口长大\n/);
+        assert.match(generic.text, /《纸飞机物语》[^\n]*停在第 30 话，已经放下了/);
+        assert.doesNotMatch(generic.text, /灯塔：/);
         assert.ok([...generic.text].length <= 600, `泛问的那一段 ${[...generic.text].length} 字`);
-        for (const id of ['yaowu', 'rejinzhi', 'jiasi']) {
+        for (const id of ['fog-harbor', 'paper-plane']) {
             const one = describeBooks(schedule, [book(id)], now, { userText: '', userName: '宝宝', named: [id] })!;
             assert.ok([...one.text].length <= 600, `${id} 点名时 ${[...one.text].length} 字`);
         }
@@ -155,26 +156,27 @@ describe('在读的书（ADR 0015）', () => {
         const message = (role: StoredMessage['role'], content: string, n: number): StoredMessage => ({ role, content, time: new Date(n * 1000).toISOString() });
         const now = at('2026-10-06T21:00:00');
         assert.equal(readingSection(schedule, card.books, now, { history: [message('user', '在干嘛', 1)], userName: '宝宝', activity: '在追一部剧' }), undefined);
-        const reading = readingSection(schedule, card.books, now, { history: [message('user', '在干嘛', 1)], userName: '宝宝', activity: '窝在床上看《药屋少女的呢喃》' })!;
-        assert.deepEqual(reading.context.books.map(item => item.book.id), ['yaowu']);
-        const asked = readingSection(schedule, card.books, now, { history: [message('user', '时不虞后来怎么样', 1)], userName: '宝宝' })!;
-        assert.deepEqual(asked.context.focusIds, ['rejinzhi']);
+        const reading = readingSection(schedule, card.books, now, { history: [message('user', '在干嘛', 1)], userName: '宝宝', activity: '睡前看几章《雾港旧事》' })!;
+        assert.deepEqual(reading.context.books.map(item => item.book.id), ['fog-harbor']);
+        const asked = readingSection(schedule, card.books, now, { history: [message('user', '灯塔后来怎么样', 1)], userName: '宝宝' })!;
+        assert.deepEqual(asked.context.focusIds, ['fog-harbor']);
 
         const extra = readingActivities(card.books);
-        assert.deepEqual(extra, [{ window: 'evening', text: '窝在床上看《药屋少女的呢喃》' }]);
+        assert.deepEqual(extra, [{ window: 'evening', text: '睡前看几章《雾港旧事》' }]);
         const evenings = Array.from({ length: 60 }, (_, i) => describeState(stateAt(schedule, new Date(at('2026-10-01T21:00:00').getTime() + i * 86_400_000), extra), schedule));
-        assert.ok(evenings.some(line => line.includes('药屋')), '60 个晚上里总有在看书的');
+        assert.ok(evenings.some(line => line.includes('雾港')), '60 个晚上里总有在看书的');
         const without = Array.from({ length: 60 }, (_, i) => describeState(stateAt(schedule, new Date(at('2026-10-01T21:00:00').getTime() + i * 86_400_000)), schedule));
-        assert.ok(!without.some(line => line.includes('药屋')), '不传就是旧的空闲活动');
+        assert.ok(!without.some(line => line.includes('雾港')), '不传就是旧的空闲活动');
     });
 
     test('心情行换称呼；日志摘要按她的一天只写一次；模拟器能指定心情', () => {
-        const choice = moodAt(schedule, card.moods, at('2026-10-14T19:00:00'), '黏人')!;
-        assert.equal(choice.mood.name, '黏人');
-        assert.match(describeMood(choice, '宝宝'), /^\[你今天的心情：黏人（说不上为什么，今天就是这样）。今天有点想宝宝：/);
+        const choice = moodAt(schedule, card.moods, at('2026-10-14T19:00:00'), '开心')!;
+        assert.equal(choice.mood.name, '开心');
+        // 合成卡的心情说法里没有 {{user}}，换称呼用同一条心情改一句说法来测
+        assert.equal(describeMood({ ...choice, mood: { ...choice.mood, style: '今天有点想{{user}}' } }, '宝宝'), '[你今天的心情：开心（说不上为什么，今天就是这样）。今天有点想宝宝]');
         assert.equal(moodAt(schedule, card.moods, at('2026-10-14T19:00:00'), '不存在'), undefined);
         assert.match(describeHerDaySummary(schedule, card.moods, card.books, at('2026-10-06T19:00:00'))!,
-            /^今天（10-06）：心情 .+（.+）；在读 药屋少女的呢喃 第 7 卷、惹金枝 第 505 章、恰似寒光遇骄阳 第 300 章（放下了）$/);
+            /^今天（10-06）：心情 .+（.+）；在读 雾港旧事 第 64 章、纸飞机物语 第 30 话（放下了）$/);
         const lines: string[] = [];
         const note = herDayLogger(schedule, card.moods, card.books, line => lines.push(line));
         note(at('2026-10-06T19:00:00'));
@@ -184,8 +186,8 @@ describe('在读的书（ADR 0015）', () => {
         assert.match(lines[1]!, /^她自己的日子：今天（10-07）/);
     });
 
-    test('同学档没有含禁用词的出版节点；旧卡没有新字段；读卡写坏会早报错', () => {
-        assert.ok(!classmate.books.find(item => item.id === 'jiasi')!.nodes.some(node => node.id === 'jiasi-publish'));
+    test('同学档没有只给前两档的节点；旧卡没有新字段；读卡写坏会早报错', () => {
+        assert.ok(!classmate.books.find(item => item.id === 'fog-harbor')!.nodes.some(node => node.id === 'lighthouse'));
         assert.deepEqual(stranger.books, []);
         assert.throws(() => parseMoods([{ name: '坏', weight: 1, style: 'x', when: [{ day: 'rainy', factor: 1, reason: 'x' }] }], '卡'), /day 不认识/);
         assert.throws(() => parseBooks([{ id: '坏' }], '卡'), /progress 应为对象/);
@@ -193,8 +195,7 @@ describe('在读的书（ADR 0015）', () => {
 });
 
 describe('接进流水线（ADR 0015 第 5 步，假模型）', () => {
-    const repoRoot = resolve(import.meta.dirname, '../../..');
-    const tierCard = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+    const tierCard = loadTierCard(syntheticCardPattern, 'boyfriend');
     const llm: BotConfig['llm'] = {
         baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000,
         promptPostProcessing: '', extraBody: {},
@@ -217,26 +218,26 @@ describe('接进流水线（ADR 0015 第 5 步，假模型）', () => {
     };
 
     test('心情行每轮都在；聊到书才有那一段；说错卷数带说明重写一次', async () => {
-        const result = await run(true, ['在宿舍躺着', '在看药屋，就翻了前两卷', '在看药屋，看到第七卷了']);
+        const result = await run(true, ['在宿舍躺着', '在看雾港，就翻了前两章', '在看雾港，看到第六十四章了']);
         const [chat, books] = result.steps.filter(step => step.kind === 'say');
         assert.match(chat!.generations[0]!.timeBlock!, /\n\[你今天的心情：[^\]]+\](\n|$)/);
-        assert.match(chat!.generations[0]!.timeBlock!, /\n\[你那边（今天到现在的事实[^\]]+土豆（楼下的流浪猫）/, '她的世界跟着她自己的日子（ADR 0021）');
+        assert.match(chat!.generations[0]!.timeBlock!, /\n\[你那边（今天到现在的事实[^\]]+团子饼（楼下的流浪猫）/, '她的世界跟着她自己的日子（ADR 0021）');
         assert.doesNotMatch(chat!.generations[0]!.timeBlock!, /在读的书/);
-        assert.match(books!.generations[0]!.timeBlock!, /\[在读的书：\n- 《药屋少女的呢喃》[^\n]*看到第 7 卷/);
+        assert.match(books!.generations[0]!.timeBlock!, /\[在读的书：\n- 《雾港旧事》[^\n]*看到第 64 章/);
         assert.equal(books!.generations[0]!.rewrites?.length, 1);
-        assert.ok(books!.logs.some(line => line.includes('进度数字「两卷」（《药屋少女的呢喃》看到第 7 卷）')));
-        assert.deepEqual(books!.bubbles.map(bubble => bubble.text), ['在看药屋，看到第七卷了']);
+        assert.ok(books!.logs.some(line => line.includes('进度数字「两章」（《雾港旧事》看到第 64 章）')));
+        assert.deepEqual(books!.bubbles.map(bubble => bubble.text), ['在看雾港，看到第六十四章了']);
         assert.ok(chat!.logs.some(line => /^她自己的日子：今天（10-06）/.test(line)));
     });
 
     test('关掉就什么都没有；场景指定的心情照用', async () => {
-        const off = await run(false, ['在宿舍躺着', '在看药屋，就翻了前两卷']);
+        const off = await run(false, ['在宿舍躺着', '在看雾港，就翻了前两章']);
         const offBooks = off.steps.filter(step => step.kind === 'say')[1]!;
         assert.doesNotMatch(offBooks.generations[0]!.timeBlock!, /心情|在读的书|你那边/);
         assert.equal(offBooks.generations[0]!.rewrites, undefined);
 
-        const quiet = await run(true, ['嗯', '药屋'], { mood: '安静' });
-        assert.match(quiet.steps.find(step => step.kind === 'say')!.generations[0]!.timeBlock!, /\[你今天的心情：安静（/);
+        const quiet = await run(true, ['嗯', '雾港'], { mood: '平静' });
+        assert.match(quiet.steps.find(step => step.kind === 'say')!.generations[0]!.timeBlock!, /\[你今天的心情：平静（/);
         await assert.rejects(run(true, [], { mood: '暴躁' }), /不是卡上的心情/);
     });
 });

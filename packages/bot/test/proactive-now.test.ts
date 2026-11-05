@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import { CRISIS_PAUSE_REASON, PENDING_REASON } from '../src/proactive/proactive.ts';
@@ -9,11 +9,12 @@ import { createProactivePlanner, type Planner } from '../src/proactive/proactive
 import type { InitiateRequest } from '../src/social/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { SYNTHETIC_CHAR_NAME, syntheticCardPath } from './fixtures/card.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
 
 useSensitiveSwitch(SENSITIVE_ON);
 
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m).getTime();
 const msg = (time: number, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(time).toISOString(), role, content });
@@ -45,7 +46,7 @@ describe('/主动：让她现在找他', () => {
                 },
             },
             dir, log: m => logs.push(m), now: clock.now, waitUntil: clock.waitUntil,
-            names: { user: '阿明', char: '林梦瑶' },
+            names: { user: '阿明', char: SYNTHETIC_CHAR_NAME },
             ...(options.crisis ? { crisisPaused: () => true } : {}),
         });
         planners.push(planner);
@@ -54,7 +55,7 @@ describe('/主动：让她现在找他', () => {
 
     test('夜里、一小时内聊过、上一条主动消息他还没回：这些闸都不管，直接交给回复器，说明是「想起一件自己的小事」', async () => {
         // 23:50，22:08 她主动发了一条、他没回；23:30 又有过一来一回
-        const history = [msg(t(10, 25, 22, 8), 'assistant', 'Linux 作业终于写完了'), msg(t(10, 25, 23, 30), 'user', '嗯'), msg(t(10, 25, 23, 31), 'assistant', '睡不着')];
+        const history = [msg(t(10, 25, 22, 8), 'assistant', '程序设计作业终于写完了'), msg(t(10, 25, 23, 30), 'user', '嗯'), msg(t(10, 25, 23, 31), 'assistant', '睡不着')];
         const { planner, requests, logs } = setup(history);
         assert.equal(await planner.fireNow(), undefined);
         assert.equal(requests.length, 1, logs.join('\n'));

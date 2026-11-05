@@ -1,20 +1,21 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import { createProactivePlanner, type Planner } from '../src/proactive/proactive-planner.ts';
 import type { InitiateRequest } from '../src/social/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { SYNTHETIC_CHAR_NAME, syntheticCardPath } from './fixtures/card.ts';
 import type { DayWeather } from '../src/world/weather.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
 
 // 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管
 useSensitiveSwitch(SENSITIVE_ON);
 
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m).getTime();
 const msg = (time: number, role: 'user' | 'assistant', content: string): StoredMessage => ({ time: new Date(time).toISOString(), role, content });
@@ -47,7 +48,7 @@ describe('主动消息：下雨了（ADR 0050，计划器）', () => {
             history: { load: () => history },
             responder: { initiate: async request => { initiated.push(request); request.commit(['下雨了']); return { result: 'dryRun', parts: ['下雨了'] }; } },
             dir, log: m => logs.push(m), now: clock.now, waitUntil: clock.waitUntil,
-            names: { user: '阿明', char: '林梦瑶' },
+            names: { user: '阿明', char: SYNTHETIC_CHAR_NAME },
             weather: now => ({ day: '2026-10-16', weather: weather(now) }),
         });
         planners.push(planner);

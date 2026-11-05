@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { classesOn } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { worldAt, type FriendDate } from '../src/world/world.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // 闺蜜的约（ADR 0061）过一整个学期：走世界层（线上开着 npcAsks 时的那条路），每天 23:00 看一次，把两个月里的约收齐，检查跨天、跨人的界。
-const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const card = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = card.schedule!;
 const world = { ...card.herWorld!, asks: true };
 

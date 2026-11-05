@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { checkConsistency, describeFindings, type SaidRow } from '../src/platform/consistency.ts';
 import { stateAt } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // ADR 0119：前后一致性检查
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 
 /** 找一个有课的工作日里“正在上课”的时刻，和一个“没课”的时刻 */
@@ -67,7 +67,7 @@ describe('前后一致性检查', () => {
         assert.equal(sameDay.length, 0);
         const short = checkConsistency({ rows: [3, 4, 5].map(d => row(at(d), 'assistant', '嗯嗯')), schedule });
         assert.equal(short.length, 0, '太短不算');
-        const media = checkConsistency({ rows: [3, 4, 5].map(d => row(at(d), 'assistant', '她发了张照片：土豆晒太阳')), schedule });
+        const media = checkConsistency({ rows: [3, 4, 5].map(d => row(at(d), 'assistant', '她发了张照片：团子饼晒太阳')), schedule });
         assert.equal(media.length, 0, '发图的记录不算');
     });
 
