@@ -1,6 +1,6 @@
-// Unresolved lifecycle diagnostic. Exit 0 proves the BAD late-write behavior,
-// not correctness. Only synthetic cards, fake APIs and temporary files are used.
-// Run with --restart to observe the obsolete owner writing into a new step.
+// Correctness probe: owned readers cannot modify finished logs/reports or a
+// restarted scope. Only synthetic cards, fake APIs and temporary files are used.
+// --restart releases the old read only in the actual restarted user prompt.
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -24,7 +24,7 @@ try {
     root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
     const card = loadTierCard(cardPath, 'classmate');
     const model = new Promise((_, reject) => { release = () => reject(new Error('SYNTHETIC_LATE_MODEL_FAILURE')); });
-    let modelReads = 0, deletes = 0, generations = 0, oldReadLoggedDuringRestartedGeneration = false;
+    let modelReads = 0, deletes = 0, releasedAfterRestart = false, oldReadLoggedDuringRestartedGeneration = false;
     const modelCalls = new Map();
     const api = { putBank: async () => {}, retain: async () => {}, recall: async () => [],
         getMentalModel: async (bank, id) => {
@@ -41,23 +41,24 @@ try {
             { role: 'assistant', content: '合成过去的回复', time: '2026-11-08T12:01:00+08:00' }],
         steps: [{ say: '合成新问候' }, ...(restart ? [{ restart: true }, { say: '合成重启后问候' }] : [])] });
     const result = await runScenario(scenario, { runId: 'synthetic-late-log', dataDir, card, llm: config.llm, prompt: config.prompt, hindsight: api,
-        generate: async () => {
-            generations++;
-            if (restart && generations === 2) {
+        generate: async messages => {
+            if (restart && messages.some(message => message.role === 'user' && message.content.includes('合成重启后问候'))) {
+                releasedAfterRestart = true;
                 release(); await new Promise(done => setImmediate(done)); await new Promise(done => setImmediate(done));
                 oldReadLoggedDuringRestartedGeneration = readFileSync(join(dataDir, 'sim.log'), 'utf8').includes('SYNTHETIC_LATE_MODEL_FAILURE');
             }
             return '合成回应';
         }, sleep: async () => {}, hindsightWaitMs: 100, settle: { quietMs: 0, maxMs: 0 }, realNow: () => Date.parse(scenario.start) });
     const before = readFileSync(join(dataDir, 'sim.log'), 'utf8');
+    const returned = JSON.stringify(result);
     assert.ok(modelReads > 0, 'The real runner must start the held background read');
     assert.ok(deletes > 0, 'The real runner must finish deleting its fake banks');
     release(); await new Promise(done => setImmediate(done)); await new Promise(done => setImmediate(done));
     const after = readFileSync(join(dataDir, 'sim.log'), 'utf8');
-    if (restart) assert.equal(oldReadLoggedDuringRestartedGeneration, true);
-    else assert.ok(after.length > before.length, 'Diagnostic expects the currently unresolved post-return file write');
-    assert.ok(after.includes('SYNTHETIC_LATE_MODEL_FAILURE'));
-    console.log(JSON.stringify({ diagnosticNotRegression: true, runnerReturned: true, restart, oldReadLoggedDuringRestartedGeneration,
+    assert.equal(releasedAfterRestart, restart);
+    assert.equal(oldReadLoggedDuringRestartedGeneration, false);
+    assert.equal(after, before); assert.equal(JSON.stringify(result), returned); assert.ok(!after.includes('SYNTHETIC_LATE_MODEL_FAILURE'));
+    console.log(JSON.stringify({ correctnessProbe: true, runnerReturned: true, restart, oldReadLoggedDuringRestartedGeneration,
         modelReads, deletedBanks: deletes, lateLogAfterReturn: after.length - before.length,
         returnedReportMutated: result.steps.some(step => step.logs.some(line => line.includes('SYNTHETIC_LATE_MODEL_FAILURE'))) }));
 } finally {

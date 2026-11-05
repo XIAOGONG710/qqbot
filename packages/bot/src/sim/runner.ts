@@ -190,7 +190,49 @@ function fakeRealWeather(rain: Readonly<Record<string, number[]>>): RealWeather 
     return { day: (_place, date, until) => dayFrom(hours, date, until) };
 }
 
+interface SimulationOwner { stop(): void | Promise<void>; readonly running?: Promise<unknown> }
+function simulationOwners() {
+    const live = new Set<SimulationOwner>();
+    const closing = new Set<() => void>(), final = new Set<() => void>();
+    return {
+        keep<T extends SimulationOwner>(owner: T): T { live.add(owner); return owner; },
+        beforeClose(callback: () => void): void { closing.add(callback); },
+        onFinal(callback: () => void): void { final.add(callback); },
+        finish(): void { for (const callback of final) callback(); final.clear(); },
+        async close(only?: readonly SimulationOwner[]): Promise<void> {
+            const pending: Promise<unknown>[] = [];
+            for (const callback of closing) { try { callback(); } catch (error) { pending.push(Promise.reject(error)); } }
+            // Stop every owner before waiting for any ACK. One held mutation
+            // must not leave another owner free to dispatch new work.
+            for (const owner of only ?? [...live]) {
+                live.delete(owner);
+                try {
+                    const drain = owner.stop();
+                    if (drain) pending.push(drain);
+                    if (owner.running) pending.push(owner.running);
+                } catch (error) { pending.push(Promise.reject(error)); }
+            }
+            const failures = (await Promise.allSettled(pending)).filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+            if (failures.length) throw new AggregateError(failures.map(result => result.reason), '模拟器后台任务停止收尾失败，保留数据等待核对');
+        },
+    };
+}
+
 export async function runScenario(scenario: Scenario, options: RunOptions): Promise<RunResult> {
+    const owners = simulationOwners();
+    try { return await runOwnedScenario(scenario, options, owners); }
+    finally { try { await owners.close(); } finally { owners.finish(); } }
+}
+
+async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners: ReturnType<typeof simulationOwners>): Promise<RunResult> {
+    let injecting = 0, responderEpoch = 0;
+    let summaryLifetime = new AbortController();
+    const injectionTimers = new Set<ReturnType<typeof setTimeout>>();
+    owners.beforeClose(() => {
+        responderEpoch++; summaryLifetime.abort();
+        for (const timer of injectionTimers) clearTimeout(timer);
+        injectionTimers.clear(); injecting = 0;
+    });
     // 模拟用的全是虚构对话，报告就是给人看细节的（主动消息原文、出口检查命中了什么）：日志照旧写原文。
     // 线上的默认是不写（ADR 0070 第 8 项，sensitive.ts）；这里不恢复，因为同一进程里可能并行跑好几个场景，而模拟器不会进线上进程。
     useSensitiveSwitch(SENSITIVE_ON);
@@ -206,7 +248,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     }));
     // 假的「真实天气」（ADR 0050）：场景写了 realRain 的日子按它算（世界和主动消息都认），跑完换回来
     const fakeWeather = scenario.realRain ? fakeRealWeather(scenario.realRain) : undefined;
-    if (fakeWeather) useRealWeather(fakeWeather);
+    if (fakeWeather) { useRealWeather(fakeWeather); owners.onFinal(() => useRealWeather(undefined)); }
     const contact: Contact = { qq: SIM_QQ, name: scenario.user, tier: scenario.tier, persona: scenario.persona, knowsBot: scenario.knowsBot };
     const names = { user: contact.name, char: options.card.character.name };
     // 下面从数据目录建的几样（聊天记录、记忆、世界、答应的事、日记、回复器、主动消息）在 restart 步骤里丢掉重建（ADR 0039）
@@ -227,11 +269,17 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         current.logs.push(message.replace(/^\[\d+\] /, ''));
         appendFileSync(join(dataDir, 'sim.log'), `[${new Date(clock.now()).toLocaleString('zh-CN', { hour12: false })}] ${message}\n`);
     };
+    // Provider callbacks receive a log bound to the owner that dispatched them,
+    // not a closure that can address the next restart's report.
+    const generationLog = (): Log => {
+        const epoch = responderEpoch;
+        return message => { if (epoch === responderEpoch) log(message); };
+    };
 
     let hindsightDown = false;
     const hindsight = options.hindsight && switchable(options.hindsight, () => hindsightDown);
     const openMemory = () => (scenario.memory && hindsight
-        ? new LongTermMemory({
+        ? owners.keep(new LongTermMemory({
             api: hindsight,
             dir: join(dataDir, 'memory'),
             bankPrefix: `sim-${options.runId}`,
@@ -239,7 +287,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             log,
             now: clock.now,
             common: true,
-        })
+        }))
         : undefined);
     let memory = openMemory();
     const bankId = memory?.bankId(contact);
@@ -298,22 +346,25 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         });
     }
     const openPromises = () => (memory || scenario.promises?.length
-        ? promiseKeeper({
+        ? owners.keep(promiseKeeper({
             contacts: [contact, ...others],
             history,
             names: person => ({ user: person.name, char: names.char }),
             ...(scenario.schedule && options.card.character.schedule ? { schedule: options.card.character.schedule } : {}),
-            extract: messages => (options.generate ? options.generate(messages, log) : chatCompletion(forExtraction(options.llm), messages, { log })),
+            extract: messages => {
+                const scoped = generationLog();
+                return options.generate ? options.generate(messages, scoped) : chatCompletion(forExtraction(options.llm), messages, { log: scoped });
+            },
             dir: join(dataDir, 'promises'),
             log,
             now: clock.now,
             ...(sharedWorld ? { onWorldActions: sharedWorld.record } : {}),
-        })
+        }))
         : undefined);
     let promises = openPromises();
     const diaryCard = options.card.character;
     const openDiaries = () => (memory && scenario.schedule && diaryCard.schedule
-        ? diaryWriter({
+        ? owners.keep(diaryWriter({
             sources: {
                 charName: diaryCard.name,
                 schedule: diaryCard.schedule,
@@ -327,12 +378,13 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             history,
             memory,
             ...(promises ? { plans: promises.plansOn } : {}),
-            generate: messages => (options.generate
-                ? options.generate(messages, log)
-                : chatCompletion({ ...options.llm, temperature: DIARY_TEMPERATURE }, messages, { log })),
+            generate: messages => {
+                const scoped = generationLog();
+                return options.generate ? options.generate(messages, scoped) : chatCompletion({ ...options.llm, temperature: DIARY_TEMPERATURE }, messages, { log: scoped });
+            },
             dir: join(dataDir, 'memory'),
             log,
-        })
+        }))
         : undefined);
     let diaries = openDiaries();
     const bindWrittenSources = () => {
@@ -345,7 +397,6 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     let nextMessageId = 1;
     let armed: SayStep['interrupt'];
     let bubblesThisStep = 0;
-    let injecting = 0;
     let generationCount = 0;
     let lastInputTime: number | undefined;
 
@@ -371,11 +422,25 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             ...options.contextTurns,
             summarize: contextSummarizer({
                 names,
-                generate: messages => (options.generate ? options.generate(messages, log) : chatCompletion(forExtraction(options.llm), messages, { log })),
+                generate: messages => {
+                    const signal = summaryLifetime.signal, scoped = generationLog();
+                    return new Promise<string>((resolve, reject) => {
+                        const abort = () => reject(new Error('模拟器上下文整理已停止'));
+                        if (signal.aborted) { abort(); return; }
+                        signal.addEventListener('abort', abort, { once: true });
+                        Promise.resolve().then(() => {
+                            if (signal.aborted) throw new Error('模拟器上下文整理已停止');
+                            return options.generate ? options.generate(messages, scoped) : chatCompletion(forExtraction(options.llm), messages, { log: scoped });
+                        })
+                            .then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+                    });
+                },
                 log,
             }),
         }
         : undefined;
+    const ownSummary = () => { if (contextWindow) owners.keep({ stop: () => contextWindow.summarize.idle() }); };
+    ownSummary();
     // 她自己的日子：和 bot 一样，她的每一天第一次生成时在 sim.log 里写一行当天的心情和进度
     const openHerDayLogger = () => (options.herDays && character.schedule
         ? herDayLogger(character.schedule, character.moods, character.books, log, scenario.mood)
@@ -402,7 +467,9 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         scenario.photos!.forEach((entry, i) => { const file = join(src, `p${i}.jpg`); writeFileSync(file, `fake-photo-${i}-${entry.caption}`); shelf.add(file, entry.kind, entry.caption, entry.dish); });
         return shelf;
     })() : undefined;
-    const createResponder = () => createContactResponder({
+    const createResponder = () => {
+        const epoch = responderEpoch;
+        return owners.keep(createContactResponder({
         contact,
         card: options.card,
         llm: options.llm,
@@ -415,7 +482,10 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(options.candidates ? { candidates: options.candidates } : {}),
         ...(scenario.mood !== undefined ? { mood: scenario.mood } : {}),
         ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
-        ...(contextWindow ? { contextWindow } : {}),
+        ...(contextWindow ? { contextWindow: { ...contextWindow, summarize: Object.assign(
+            (older: Parameters<typeof contextWindow.summarize>[0]) => epoch === responderEpoch ? contextWindow.summarize(older) : { ready: false as const },
+            { idle: () => contextWindow.summarize.idle() },
+        ) } } : {}),
         history,
         memory,
         ...(promises ? { promises } : {}),
@@ -442,8 +512,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         // 逐条事实检查（ADR 0137）：审稿的调用走场景自己的模型（假模型也行）；每次的记录进这一步，报告里看得到
         ...((options.factCheck ?? scenario.factCheck) !== 'off' ? {
             factCheck: options.factCheck ?? scenario.factCheck,
-            factAudit: (messages: OpenAIMessage[]) => (options.generate ? options.generate(messages, log) : chatCompletion({ ...forExtraction(options.llm), temperature: 0 }, messages, { log })),
-            onFactCheck: (record: FactRecord) => { (current.facts ??= []).push(record); },
+            factAudit: (messages: OpenAIMessage[]) => {
+                if (epoch !== responderEpoch) return Promise.reject(new Error('模拟回复器已停止'));
+                const scoped = generationLog();
+                return options.generate ? options.generate(messages, scoped) : chatCompletion({ ...forExtraction(options.llm), temperature: 0 }, messages, { log: scoped });
+            },
+            onFactCheck: (record: FactRecord) => { if (epoch === responderEpoch) (current.facts ??= []).push(record); },
         } : {}),
         ...(scenario.interruptions ? { interruptions: true } : {}),
         ...(scenario.jokes?.length ? { jokes: () => scenario.jokes! } : {}),
@@ -467,12 +541,13 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
         ...(scenario.stickerUncued !== undefined ? { stickerUncued: scenario.stickerUncued } : {}),
         ...(scenario.stickerOnlyChance !== undefined ? { stickerOnlyChance: scenario.stickerOnlyChance } : scenario.shapeFeel || options.shapeFeel ? { stickerOnlyChance: STICKER_ONLY_SHARE } : {}),
         contacts: [contact, ...others],
-        log,
+        log: message => { if (epoch === responderEpoch) log(message); },
         now: clock.now,
         settle: options.settle,
         retryAfterMs: [],
         waitUntil: clock.waitUntil,
         send: async (_userId, text, sendOptions) => {
+            if (epoch !== responderEpoch) throw new Error('旧模拟回复器已停止，本次未发送');
             const quoted = sendOptions?.replyTo === undefined ? undefined : history.load(contact.qq).find(m => m.messageId === sendOptions.replyTo)?.content;
             current.bubbles.push({ time: clock.now(), text, ...(initiating ? { proactive: initiating } : {}), ...(quoted ? { quote: quoted } : {}) });
             bubblesThisStep++;
@@ -481,7 +556,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 armed = undefined;
                 // 等这一条记进聊天记录之后、下一条发出之前再插话（气泡间隔是 1 秒）
                 injecting++;
-                setTimeout(() => { injecting--; receive(it.say, true); }, 100);
+                const timer = setTimeout(() => {
+                    injectionTimers.delete(timer);
+                    if (epoch !== responderEpoch) return;
+                    injecting--; receive(it.say, true);
+                }, 100);
+                injectionTimers.add(timer);
             }
             return nextMessageId++;
         },
@@ -494,6 +574,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 receive(it.say, true);
             }
             const raw = await reply;
+            if (epoch !== responderEpoch) return raw;
             // 出口检查的重写不经过 onPrompt，算在同一次生成里
             if (generation) {
                 if (generation.raw === undefined) generation.raw = raw;
@@ -502,10 +583,12 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             return raw;
         },
         onPrompt: prompt => {
+            if (epoch !== responderEpoch) return;
             current.generations.push(dynamicParts(prompt, clock.now()));
             writeFileSync(join(dataDir, 'prompts', `${++generationCount}.json`), JSON.stringify(prompt, null, 2));
         },
-    });
+        }));
+    };
     let responder = createResponder();
     let forgotten = 0;
 
@@ -529,7 +612,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
     const withSmalled = withCurioused && scenario.smallNews ? withSmallNews(withCurioused) : withCurioused;
     const proactiveSettings = withSmalled && scenario.foodPhotos && scenario.menu && scenario.photos ? withFoodShares(withSmalled) : withSmalled;
     const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
-        ? createProactivePlanner({
+        ? owners.keep(createProactivePlanner({
             contact,
             schedule: character.schedule,
             settings: proactiveSettings,
@@ -593,11 +676,19 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             now: clock.now,
             waitUntil: clock.waitUntil,
             names,
-            extract: messages => (options.generate ? options.generate(messages, log) : chatCompletion(forExtraction(options.llm), messages, { log })),
-        })
+            extract: messages => {
+                const scoped = generationLog();
+                return options.generate ? options.generate(messages, scoped) : chatCompletion(forExtraction(options.llm), messages, { log: scoped });
+            },
+        }))
         : undefined);
     let planner = openPlanner();
     if (scenario.proactive && !planner) log('场景开了主动消息，但卡上没有主动设置或作息，不主动');
+
+    const closeOwners = async () => {
+        await owners.close();
+        await contextWindow?.summarize.idle();
+    };
 
     /** 等她把这一轮（含插话之后的回复）都发完，或者停在「到点才看到」的等待上 */
     async function settle(): Promise<void> {
@@ -809,6 +900,9 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
                 }
             } else if ('forget' in step) {
                 await settle();
+                await owners.close([responder]);
+                await contextWindow?.summarize.idle();
+                summaryLifetime = new AbortController();
                 const chats = join(dataDir, 'chats');
                 renameSync(join(chats, `${contact.qq}.jsonl`), join(chats, `${contact.qq}.forgotten-${++forgotten}.jsonl`));
                 responder = createResponder();
@@ -816,8 +910,9 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             } else if ('restart' in step) {
                 // bot 重启（ADR 0039）：照 app.ts 启动，从数据目录重新读起；之后和连上 NapCat 时一样，补写停了的那几天的日记、回没回的消息
                 await settle();
-                planner?.stop();
-                responder.stop();
+                await closeOwners();
+                summaryLifetime = new AbortController();
+                ownSummary();
                 history = new ChatHistory(dataDir);
                 memory = openMemory();
                 ({ ledger: ledgerWorld, queue: queuedActions, world: sharedWorld } = openWorld());
@@ -870,7 +965,7 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
             }
         }
     } finally {
-        planner?.stop();
+        await closeOwners();
         if (fakeWeather) useRealWeather(undefined);
         if (memory && options.hindsight && !options.keepBank) {
             for (const bank of banks) {
