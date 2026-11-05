@@ -5,6 +5,7 @@
 //   每天的结果另写一份 <dataDir>/world/state.json 供查看；生活事件写在 events.json，actions.json 保留为旧版本兼容投影。
 // - 进提示词的只有事实和约束（describeWorld），不写能原样照抄的整句（DSH 原则 1）；到「现在」为止发生了的才写，没发生的不写。
 
+import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Contact } from '../platform/config.ts';
@@ -1390,7 +1391,7 @@ export function worldState(
             const assistant = episode.messages.filter(message => message.role === 'assistant');
             if (!assistant.length || !drafts.length) return;
             const added: WorldAction[] = [];
-            for (const [i, draft] of drafts.entries()) {
+            for (const draft of drafts) {
                 if (!ACTION_KINDS.has(draft.kind)) continue;
                 // 模型给的时刻必须能和片段里她的一句话对上，防止抽取器凭空造时间。
                 const message = assistant.findLast(item => localMinute(new Date(item.time)) === draft.at);
@@ -1437,11 +1438,18 @@ export function worldState(
                     }
                 }
                 if (target && [...actions, ...added].some(action => sameDayKind(action) && action.target === target)) continue;
+                // 提取重试可能补出遗漏项或改变数组顺序，位置不是事实身份。
+                // 在原有同日语义去重（也覆盖旧索引ID）和目标验证之后取稳定键，
+                // 不改收到同金额/同目标时既有的保守合并政策，也不重写旧事件。
+                const atMinute = localMinute(at);
+                const identity = createHash('sha256').update(JSON.stringify([
+                    contact.qq, episode.id, draft.kind, atMinute, amount ?? null, target ?? null, subject ?? null,
+                ])).digest('hex');
                 const action: WorldAction = {
-                    id: `${contact.qq}:${episode.id}:${i + 1}:${draft.kind}`,
+                    id: `${contact.qq}:${episode.id}:fact-${identity}:${draft.kind}`,
                     kind: draft.kind,
                     day,
-                    at: localMinute(at),
+                    at: atMinute,
                     contact: contact.qq,
                     episode: episode.id,
                     ...(subject ? { subject } : {}),
