@@ -5,6 +5,7 @@
 // - 要点只写事实（安排、发生的事、东西和人、约好的事），不写语气、不照抄原话——照抄了等于把旧回复又放回去；
 // - 7 天以前的照旧不放（fading.ts recentChat），靠长期记忆。
 
+import { createHash } from 'node:crypto';
 import { MIDNIGHT_RULE } from '../proactive/follow-ups.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import type { Log } from '../platform/log.ts';
@@ -81,7 +82,7 @@ export const SUMMARY_TIMEOUT_MS = 60_000;
 /** 整理失败以后，同一段隔这么久再试 */
 export const SUMMARY_RETRY_MS = 5 * 60_000;
 
-const summaryKey = (older: readonly ChatMessage[]) => `${older.length}|${older.at(-1)?.time ?? ''}|${older.at(-1)?.content ?? ''}`;
+const summaryKey = (request: readonly OpenAIMessage[]) => `source-v2:${createHash('sha256').update(JSON.stringify(request)).digest('hex')}`;
 
 /**
  * 整理要点（ADR 0043）：同一段较早的聊天只整理一次（切口不动时每轮都是同一段）。
@@ -104,8 +105,7 @@ export function contextSummarizer(options: {
     let running: { key: string; done: Promise<void> } | undefined;
     const failedAt = new Map<string, number>();
 
-    function start(key: string, older: readonly ChatMessage[]): void {
-        const request = summaryRequest(older, options.names);
+    function start(key: string, request: OpenAIMessage[], count: number): void {
         const tokens = request.reduce((n, m) => n + estimateTokens(m.content), 0);
         const began = now();
         const timeoutMs = options.timeoutMs ?? SUMMARY_TIMEOUT_MS;
@@ -122,7 +122,7 @@ export function contextSummarizer(options: {
             if (options.file) writeJsonAtomic(options.file, text === undefined ? { key } : { key, text });
             cached = { key, text };
             failedAt.delete(key);
-            options.log(`上下文要点：较早的 ${older.length} 条整理成 ${points.length} 条（请求约 ${tokens} token，用了 ${((now() - began) / 1000).toFixed(1)} 秒）`);
+            options.log(`上下文要点：较早的 ${count} 条整理成 ${points.length} 条（请求约 ${tokens} token，用了 ${((now() - began) / 1000).toFixed(1)} 秒）`);
         }).catch(error => {
             // 整理失败：这一段过一会儿再试；在那之前照旧放原文
             failedAt.set(key, now());
@@ -135,11 +135,12 @@ export function contextSummarizer(options: {
     }
 
     const summarize = ((older: readonly ChatMessage[]): SummaryState => {
-        const key = summaryKey(older);
+        const request = summaryRequest(older, options.names);
+        const key = summaryKey(request);
         if (cached?.key === key) return { ready: true, text: cached.text };
         const failed = failedAt.get(key);
         if (!running && (failed === undefined || now() - failed >= SUMMARY_RETRY_MS)) {
-            start(key, older);
+            start(key, request, older.length);
             options.log('上下文要点：切口挪了，后台在整理，这一轮照旧放最近 80 条');
         }
         return { ready: false };
