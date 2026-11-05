@@ -356,13 +356,13 @@ export interface VideoBrowsingOptions {
     /** 主动找他一次（responder.initiate） */
     initiate: (request: InitiateRequest) => Promise<InitiateOutcome>;
     /** 把真链接作为下一条发出去，记进聊天记录（content 里带标题，她之后知道自己发过什么） */
-    sendLink: (video: BiliVideo) => Promise<void>;
+    sendLink: (video: BiliVideo, signal?: AbortSignal) => Promise<void>;
 }
 
 export interface VideoBrowsing {
     tick(): Promise<void>;
     start(): void;
-    stop(): void;
+    stop(): Promise<void> | undefined;
 }
 
 export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsing {
@@ -374,6 +374,33 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
     let retryAt = 0;
     let busy = false;
     let timer: ReturnType<typeof setInterval> | undefined;
+    let stopped = false;
+    let running: Promise<void> | undefined;
+    let drain: Promise<void> | undefined;
+    const cancellation = new AbortController();
+    const STOPPED = Symbol('video browsing stopped');
+    const check = () => { if (stopped) throw STOPPED; };
+    const read = <T>(work: () => Promise<T>): Promise<T> => {
+        check();
+        return new Promise((resolve, reject) => {
+            const cancel = () => reject(STOPPED);
+            cancellation.signal.addEventListener('abort', cancel, { once: true });
+            Promise.resolve().then(() => { check(); return work(); }).then(value => { check(); resolve(value); }, reject)
+                .catch(reject).finally(() => cancellation.signal.removeEventListener('abort', cancel));
+        });
+    };
+    const fetchWhileActive: BiliFetch = (url, init) => read(() => options.fetch(url, { ...init, signal: AbortSignal.any([init.signal, cancellation.signal]) }));
+    const initiate = (request: InitiateRequest): Promise<InitiateOutcome> => {
+        check();
+        let committed = false;
+        return new Promise((resolve, reject) => {
+            const cancel = () => { if (!committed) reject(STOPPED); };
+            cancellation.signal.addEventListener('abort', cancel, { once: true });
+            Promise.resolve().then(() => { check(); return options.initiate({ ...request, signal: cancellation.signal,
+                commit: parts => { check(); committed = true; request.commit(parts); } }); }).then(resolve, reject)
+                .finally(() => cancellation.signal.removeEventListener('abort', cancel));
+        });
+    };
     let failedLogged = false;
     let failures = 0;
 
@@ -392,21 +419,24 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
 
     /** 账号：直接给的对象，或按需打开的函数（打不开返回 undefined；重试、日志由它自己管） */
     async function getAccount(): Promise<BiliAccount | undefined> {
+        check();
         const source = options.account;
         if (!source || options.now() < accountBrokenUntil) return undefined;
-        return typeof source === 'function' ? source() : source;
+        return typeof source === 'function' ? read(source) : source;
     }
 
     async function searchToday(day: string): Promise<BiliVideo[]> {
+        check();
         const account = await getAccount();
         if (!account) return [];
         if (searchCache?.day === day) return searchCache.list;
         const keyword = searchKeyword(day);
         let list: BiliVideo[] = [];
         try {
-            list = await account.search(keyword);
+            list = await read(() => account.search(keyword));
             log(`刷 B 站：用账号搜「${keyword}」，${list.length} 条`);
         } catch (error) {
+            check();
             warnOnce('search', `刷 B 站：账号搜索失败（之后不再记），今天只用热门榜：${reason(error)}`);
         }
         searchCache = { day, list };
@@ -415,6 +445,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
 
     /** 挑今天的视频：账号搜到的排在热门榜前面；账号层开着就依次试前几个读字幕，挑第一个有字幕的（都没有就用排第一的、只靠标题和热评） */
     async function chooseVideo(day: string, popular: readonly BiliVideo[]): Promise<Chosen | undefined> {
+        check();
         if (chosen?.day === day) return chosen;
         const searched = await searchToday(day);
         // 搜到的排在榜前面；同一个视频两边都有就只留前面那个
@@ -426,7 +457,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
         if (account) {
             for (const [i, candidate] of candidates.slice(0, SUBTITLE_TRIES).entries()) {
                 try {
-                    const result = await account.subtitle(candidate);
+                    const result = await read(() => account.subtitle(candidate));
                     if (result.status === 'ok') { index = i; excerpt = subtitleExcerpt(result.lines); break; }
                     if (result.status === 'needLogin') {
                         breakAccount();
@@ -434,19 +465,21 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
                         break;
                     }
                 } catch (error) {
+                    check();
                     warnOnce('subtitle', `刷 B 站：读字幕失败（之后不再记），这次只靠标题和热评：${reason(error)}`);
                     break;
                 }
             }
         }
         const video = candidates[index]!;
-        const hot = await fetchHotComments(options.fetch, video.aid).catch(() => [] as string[]);
+        const hot = await read(() => fetchHotComments(fetchWhileActive, video.aid)).catch(error => { check(); return [] as string[]; });
         chosen = { day, video, ...(excerpt ? { excerpt } : {}), hot };
         return chosen;
     }
 
     /** 分享之后在这个视频下评论、@ 他：dryRun 只写草稿；失败不影响分享 */
     async function maybeComment(t: number, pickedVideo: Chosen): Promise<void> {
+        check();
         // 话题模式（bilibiliCommentKeywords）：评论不跟着分享走，她自己按话题搜视频评论，见 topicComment
         if (options.comment?.keywords?.length) return;
         await commentUnder(t, pickedVideo);
@@ -454,6 +487,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
 
     /** 今天还能不能评论（风险、暂停、间隔、一周上限）：不能返回 undefined；quiet 时不记“暂停中”那行（话题模式每分钟问一次） */
     async function commentAllowed(t: number, quiet = false): Promise<BiliAccount | undefined> {
+        check();
         if (!options.comment || commentHalted) return undefined;
         if (options.risk?.halted()) { if (!quiet) log('刷 B 站：出过风险信号，公开评论先停着（话照常走私信），这次不评论'); return undefined; }
         if (t < (state.commentPausedUntil ?? 0)) { if (!quiet) log('刷 B 站：评论暂停中（上次发失败或没出现在公开列表里），这次不评论'); return undefined; }
@@ -465,6 +499,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
 
     /** 话题模式：按话题关键词（每天一个）搜视频，挑一个她会评论的，读字幕和热评，评论并 @ 他；一天最多试一次，受评论的间隔和一周上限管 */
     async function topicComment(t: number, day: string, awake: boolean): Promise<void> {
+        check();
         const keywords = options.comment?.keywords;
         if (!keywords?.length || !awake || state.topicDay === day) return;
         const date = new Date(t);
@@ -477,8 +512,9 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
         const keyword = keywords[pick(day, 'bili-topic', [0, keywords.length - 1])]!;
         let found: BiliVideo[];
         try {
-            found = await account.search(keyword);
+            found = await read(() => account.search(keyword));
         } catch (error) {
+            check();
             warnOnce('topic-search', `刷 B 站：按话题搜「${keyword}」失败（之后不再记），今天不评论：${reason(error)}`);
             return;
         }
@@ -490,17 +526,19 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
         const video = candidates[pick(day, 'bili-topic-video', [0, Math.min(4, candidates.length - 1)])]!;
         let excerpt: string | undefined;
         try {
-            const result = await account.subtitle(video);
+            const result = await read(() => account.subtitle(video));
             if (result.status === 'ok') excerpt = subtitleExcerpt(result.lines);
             else if (result.status === 'needLogin') breakAccount();
         } catch (error) {
+            check();
             warnOnce('subtitle', `刷 B 站：读字幕失败（之后不再记），这次只靠标题和热评：${reason(error)}`);
         }
-        const hot = await fetchHotComments(options.fetch, video.aid).catch(() => [] as string[]);
+        const hot = await read(() => fetchHotComments(fetchWhileActive, video.aid)).catch(error => { check(); return [] as string[]; });
         await commentUnder(t, { day, video, ...(excerpt ? { excerpt } : {}), hot });
     }
 
     async function commentUnder(t: number, pickedVideo: Chosen): Promise<void> {
+        check();
         const { comment } = options;
         const account = await commentAllowed(t);
         if (!comment || !account) return;
@@ -509,8 +547,9 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
         if (video.aid <= 0) return;
         let text: string | undefined;
         try {
-            text = await comment.compose({ video, ...(pickedVideo.excerpt ? { excerpt: pickedVideo.excerpt } : {}), hotComments: pickedVideo.hot, recent: records.slice(-5).map(record => record.text) });
+            text = await read(() => comment.compose({ video, ...(pickedVideo.excerpt ? { excerpt: pickedVideo.excerpt } : {}), hotComments: pickedVideo.hot, recent: records.slice(-5).map(record => record.text) }));
         } catch (error) {
+            check();
             log(`刷 B 站：写评论出错，这次不评论：${reason(error)}`);
             return;
         }
@@ -522,12 +561,14 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
             return;
         }
         try {
+            check();
             const { rpid } = await account.postComment({ aid: video.aid, bvid: video.bvid, text, at: comment.at });
             state.commentFailures = 0;
             state.comments = [...records, { at: t, bvid: video.bvid, aid: video.aid, rpid, text, checkAt: t + COMMENT_CHECK_AFTER_MS[0] }].slice(-100);
             save();
             log(`刷 B 站：在《${video.title}》下评论并 @ 了 ${comment.at.name}（rpid ${rpid}），稍后复核是不是公开可见`);
         } catch (error) {
+            check();
             if (error instanceof BiliApiError && error.code === COMMENT_CLOSED_CODE) {
                 log(`刷 B 站：《${video.title}》的评论区关了，这次不评论`);
                 return;
@@ -545,6 +586,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
 
     /** 发出去的评论过一会儿去公开的「最新」第一页里找一下：找不到多半是新号的评论在审核（那样 @ 也不会通知到他）；两次都找不到就停一周 */
     async function checkComments(t: number): Promise<void> {
+        check();
         if (!state.comments?.some(record => record.checkAt !== undefined && t >= record.checkAt)) return;
         const account = await getAccount();
         if (!account) return;
@@ -557,7 +599,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
                 continue;
             }
             try {
-                if (await account.commentVisible({ aid: record.aid, rpid: record.rpid })) {
+                if (await read(() => account.commentVisible({ aid: record.aid, rpid: record.rpid }))) {
                     record.visible = true;
                     delete record.checkAt;
                     log(`刷 B 站：评论 ${record.rpid} 公开可见`);
@@ -575,6 +617,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
                     }
                 }
             } catch (error) {
+                check();
                 // 查不到结果（断网、风控）：5 分钟后再试（超过 COMMENT_CHECK_GIVE_UP_MS 就不查了）
                 record.checkAt = t + 5 * 60_000;
                 warnOnce('verify', `刷 B 站：复核评论失败（之后不再记）：${reason(error)}`);
@@ -587,7 +630,8 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
 
     /** 写一条给他的话，不发 QQ（走和聊天一样的生成：卡、记忆、出口检查）；返回正文，或说明为什么没有 */
     async function draftLine(label: string, note: string): Promise<{ text: string } | { skipped: true } | { failed: string }> {
-        const outcome = await options.initiate({ label, note, topic: videoTopic(target.name), maxBubbles: 1, dryRun: true, commit: () => undefined });
+        check();
+        const outcome = await read(() => options.initiate({ label, note, topic: videoTopic(target.name), maxBubbles: 1, dryRun: true, signal: cancellation.signal, commit: check }));
         if (outcome.result === 'dryRun') return { text: outcome.parts.join('\n') };
         if (outcome.result === 'skipped') return { skipped: true };
         return { failed: outcome.result === 'failed' ? outcome.reason : '没有生成' };
@@ -600,6 +644,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
      * shared = 私信发了（或试运行写了草稿）；abandoned = 今天不办了；retry = 正聊着，过一会儿再来；fallback = 私信走不通，请走 QQ 发链接
      */
     async function deliverByDm(t: number, day: string, picked: Chosen): Promise<'shared' | 'abandoned' | 'retry' | 'fallback'> {
+        check();
         const { dm } = options;
         const account = await getAccount();
         if (!dm || !account || dmFailures >= DM_FAILURES_MAX) return 'fallback';
@@ -631,8 +676,10 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
             return 'shared';
         }
         try {
+            check();
             await account.sendDm({ uid: dm.uid, text: body });
         } catch (error) {
+            check();
             dmFailures++;
             if (error instanceof BiliApiError && (error.code === -101 || error.code === -111)) breakAccount();
             log(`刷 B 站：私信没发出去（${reason(error)}）${dmFailures >= DM_FAILURES_MAX ? '；连着失败，到重启前不再用私信' : ''}，这次改成在 QQ 上直接发给他`);
@@ -650,6 +697,7 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
 
     /** 私信发了之后，在 QQ 上提醒他去看；发不出去（正聊着）过一会儿再来 */
     async function nudge(t: number): Promise<void> {
+        check();
         const pending = state.dmPending;
         if (!pending) return;
         if (t - pending.at > NUDGE_GIVE_UP_MS) {
@@ -658,9 +706,9 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
             log('刷 B 站：QQ 上的提醒一直没发出去，算了（私信已经在他的 B 站里了）');
             return;
         }
-        const outcome = await options.initiate({
-            label: 'B 站私信（提醒）', note: nudgeNote(target.name), topic: videoTopic(target.name), maxBubbles: 1, dryRun: false, allowRepeat: true,
-            commit: () => { delete state.dmPending; save(); },
+        const outcome = await initiate({
+            label: 'B 站私信（提醒）', note: nudgeNote(target.name), topic: videoTopic(target.name), maxBubbles: 1, dryRun: false, allowRepeat: true, signal: cancellation.signal,
+            commit: () => { check(); delete state.dmPending; save(); },
         });
         if (outcome.result === 'sent') {
             log('刷 B 站：在 QQ 上提醒他去看私信');
@@ -670,7 +718,8 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
         if (outcome.result === 'failed') warnOnce('nudge', `刷 B 站：QQ 上的提醒没发出去（之后不再记，过一会儿再试）：${outcome.reason}`);
     }
 
-    async function tick(): Promise<void> {
+    async function runTick(): Promise<void> {
+        check();
         if (busy) return;
         busy = true;
         try {
@@ -697,11 +746,12 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
 
             if (!state.cache || t - state.cache.at > CACHE_MS) {
                 try {
-                    state.cache = { at: t, list: (await fetchPopular(options.fetch)).filter(suitable) };
+                    state.cache = { at: t, list: (await read(() => fetchPopular(fetchWhileActive))).filter(suitable) };
                     save();
                     failedLogged = false;
                     failures = 0;
                 } catch (error) {
+                    check();
                     retryAt = t + Math.min(FAIL_RETRY_MS * 2 ** failures, FAIL_RETRY_MAX_MS);
                     failures++;
                     if (!failedLogged) {
@@ -726,13 +776,15 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
                 }
             }
             const { video, excerpt, hot: comments } = picked;
-            const outcome = await options.initiate({
+            const outcome = await initiate({
                 label: 'B 站视频',
                 note: videoNote(video, comments, target.name, excerpt),
                 topic: videoTopic(target.name),
                 maxBubbles: 2,
                 dryRun: options.mode === 'dryRun',
+                signal: cancellation.signal,
                 commit: () => {
+                    check();
                     state.shares.push({ at: t, bvid: video.bvid, title: video.title, mode: options.mode });
                     state.shares = state.shares.slice(-100);
                     state.seen = [...state.seen, video.bvid].slice(-200);
@@ -740,12 +792,15 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
                     save();
                 },
             });
+            check();
             switch (outcome.result) {
                 case 'sent':
                     try {
-                        await options.sendLink(video);
+                        check();
+                        await options.sendLink(video, cancellation.signal);
                         log(`刷 B 站：发给他《${video.title}》和链接${excerpt ? '（读了字幕）' : ''}`);
                     } catch (error) {
+                        check();
                         log(`刷 B 站：话发出去了，链接没发成：${error instanceof Error ? error.message : String(error)}`);
                     }
                     await maybeComment(t, picked);
@@ -771,17 +826,28 @@ export function createVideoBrowsing(options: VideoBrowsingOptions): VideoBrowsin
         }
     }
 
+    function tick(): Promise<void> {
+        if (stopped || running) return Promise.resolve();
+        running = Promise.resolve().then(runTick).catch(error => { if (error !== STOPPED) throw error; }).finally(() => { running = undefined; });
+        return running;
+    }
+
     return {
         tick,
         start() {
-            if (timer) return;
+            if (stopped || timer) return;
             void tick();
             timer = setInterval(() => void tick(), 60_000);
             timer.unref?.();
         },
         stop() {
+            if (stopped) return drain;
+            stopped = true;
             if (timer) clearInterval(timer);
             timer = undefined;
+            cancellation.abort();
+            drain = running;
+            return drain;
         },
     };
 }

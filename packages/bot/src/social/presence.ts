@@ -297,7 +297,7 @@ export interface Presence {
     /** 看一眼现在该不该做什么（测试直接调；循环每分钟调一次） */
     tick(): Promise<void>;
     start(): void;
-    stop(): void;
+    stop(): Promise<void> | undefined;
     /** NapCat 重新连上 / 重新登录之后：QQ 那边的状态可能已经被重置成「在线」，把现在该有的状态再设一遍 */
     reapply(): void;
 }
@@ -332,8 +332,24 @@ export function createPresence(options: PresenceOptions): Presence {
     let statusFailures = 0;
     let busy = false;
     let timer: ReturnType<typeof setInterval> | undefined;
+    let stopped = false;
+    let running: Promise<void> | undefined;
+    let drain: Promise<void> | undefined;
+    const cancellation = new AbortController();
+    const STOPPED = Symbol('presence stopped');
+    const check = () => { if (stopped) throw STOPPED; };
+    const read = <T>(work: () => Promise<T>): Promise<T> => {
+        check();
+        return new Promise((resolve, reject) => {
+            const cancel = () => reject(STOPPED);
+            cancellation.signal.addEventListener('abort', cancel, { once: true });
+            Promise.resolve().then(() => { check(); return work(); }).then(value => { check(); resolve(value); }, reject)
+                .catch(reject).finally(() => cancellation.signal.removeEventListener('abort', cancel));
+        });
+    };
 
     async function online(t: number, state0: ReturnType<typeof stateAt>): Promise<void> {
+        check();
         if (!flags.onlineStatus || !transport.setOnlineStatus) return;
         if (state0.activity.kind === 'class') lastClassAt = t;
         if (t < statusRetryAt) return;
@@ -348,6 +364,7 @@ export function createPresence(options: PresenceOptions): Presence {
         // 刚改过不久就先不动（第一次——这次启动后还没设过——除外）
         if (have !== undefined && state.status && t - state.status.at < STATUS_MIN_GAP_MS) return;
         try {
+            check();
             await transport.setOnlineStatus(want.status, want.ext);
             appliedThisRun = want.label;
             statusFailures = 0;
@@ -356,6 +373,7 @@ export function createPresence(options: PresenceOptions): Presence {
             log(`在线状态：${want.label}`);
             recovered('改在线状态');
         } catch (error) {
+            check();
             fail('改在线状态', error);
             statusRetryAt = t + Math.min(STATUS_MIN_GAP_MS * 2 ** statusFailures, STATUS_RETRY_MAX_MS);
             statusFailures++;
@@ -363,19 +381,23 @@ export function createPresence(options: PresenceOptions): Presence {
     }
 
     async function likes(t: number, day: string, awake: boolean): Promise<void> {
+        check();
         if (!flags.profileLikes || !transport.sendLike || !awake || state.likedDay === day) return;
         const date = new Date(t);
         const minutes = date.getHours() * 60 + date.getMinutes();
         let waiting = false;
         for (const qq of options.likeTargets) {
+            check();
             const plan = likePlan(qq, day);
             if (!plan) continue;
             if (minutes < plan.minutes) { waiting = true; continue; }
             try {
+                check();
                 await transport.sendLike(qq, plan.times);
                 log(`[${qq}] 给资料卡点了 ${plan.times} 个赞`);
                 recovered('资料卡点赞');
             } catch (error) {
+                check();
                 fail('资料卡点赞', error);
             }
         }
@@ -387,6 +409,7 @@ export function createPresence(options: PresenceOptions): Presence {
     }
 
     async function signature(t: number, day: string, awake: boolean): Promise<void> {
+        check();
         if (flags.signature === 'off' || !awake) return;
         const hour = new Date(t).getHours();
         if (hour < SIGNATURE_HOURS[0] || hour > SIGNATURE_HOURS[1]) return;
@@ -411,12 +434,14 @@ export function createPresence(options: PresenceOptions): Presence {
         }
         if (!transport.setSignature) return;
         try {
+            check();
             await transport.setSignature(text);
             state.signature = { text, at: t, next: signatureDueAt(t) };
             save();
             log(`个性签名：改成「${logBody(text)}」`);
             recovered('改个性签名');
         } catch (error) {
+            check();
             fail('改个性签名', error);
             state.signature = { ...state.signature, next: t + 6 * 3_600_000 };
             save();
@@ -424,6 +449,7 @@ export function createPresence(options: PresenceOptions): Presence {
     }
 
     async function pokeOut(t: number, day: string, awake: boolean): Promise<void> {
+        check();
         if (!flags.pokeOut || !transport.pokeFriend || !options.pokeTargets?.length || !awake || state.pokeOutAttemptDay === day) return;
         const date = new Date(t);
         const plan = pokeOutPlan(day, date.getDay() === 0 || date.getDay() === 6);
@@ -443,8 +469,10 @@ export function createPresence(options: PresenceOptions): Presence {
         state.pokeOutAttemptDay = day;
         save();
         try {
+            check();
             await transport.pokeFriend(qq);
         } catch (error) {
+            check();
             fail('主动戳他', error);
             return;
         }
@@ -456,6 +484,7 @@ export function createPresence(options: PresenceOptions): Presence {
     }
 
     async function qzone(t: number, day: string, awake: boolean): Promise<void> {
+        check();
         if (flags.qzone === 'off' || !awake || !options.composeQzone || state.qzoneAttemptDay === day) return;
         if (flags.qzone === 'on' && !transport.postQzone) return;
         const date = new Date(t);
@@ -470,8 +499,9 @@ export function createPresence(options: PresenceOptions): Presence {
         const photoFile = pickQzonePhoto(join(dir, 'photos'), state.photosUsed, day);
         let composed: { text: string; withPhoto: boolean } | undefined;
         try {
-            composed = await options.composeQzone({ now: t, ...(photoFile ? { photoFile } : {}), recent: state.qzone.map(record => record.text) });
+            composed = await read(() => options.composeQzone!({ now: t, ...(photoFile ? { photoFile } : {}), recent: state.qzone.map(record => record.text) }));
         } catch (error) {
+            check();
             fail('写说说', error);
             return;
         }
@@ -493,6 +523,7 @@ export function createPresence(options: PresenceOptions): Presence {
             return;
         }
         try {
+            check();
             const tid = await transport.postQzone!({
                 content: text,
                 ...(photo ? { images: [pathToFileURL(join(dir, 'photos', photo)).href] } : {}),
@@ -505,6 +536,7 @@ export function createPresence(options: PresenceOptions): Presence {
             log(`说说：发了「${logBody(text)}」${photo ? `，配图 ${photo}` : ''}（${flags.qzoneVisibility === 'public' ? '所有人可见' : '好友可见'}）`);
             recovered('发说说');
         } catch (error) {
+            check();
             fail('发说说', error);
         }
     }
@@ -514,6 +546,7 @@ export function createPresence(options: PresenceOptions): Presence {
     const BROWSE_MIN_GAP_MS = 2.5 * 3_600_000;
     let browseUnreadable = false;
     async function browse(t: number, awake: boolean): Promise<void> {
+        check();
         if (flags.qzoneBrowse === undefined || flags.qzoneBrowse === 'off' || browseUnreadable) return;
         if (!awake || !transport.readQzoneFeed) return;
         const hour = new Date(t).getHours();
@@ -523,8 +556,9 @@ export function createPresence(options: PresenceOptions): Presence {
         save();
         let feed: QzoneFeed | undefined;
         try {
-            feed = await transport.readQzoneFeed(8);
+            feed = await read(() => transport.readQzoneFeed!(8));
         } catch (error) {
+            check();
             fail('翻空间', error);
             return;
         }
@@ -555,6 +589,7 @@ export function createPresence(options: PresenceOptions): Presence {
     const PEEK_FRESH_MS = 3 * 86_400_000;
     const peekDrafted = new Set<string>();
     async function peek(t: number, awake: boolean): Promise<void> {
+        check();
         if ((flags.qzonePeek ?? 'off') === 'off') return;
         const targets = options.peekTargets ?? [];
         if (!awake || !transport.readUserQzone || !targets.length) return;
@@ -569,8 +604,9 @@ export function createPresence(options: PresenceOptions): Presence {
         if (!target) return;
         let items: QzoneItem[] | undefined;
         try {
-            items = await transport.readUserQzone(target.qq);
+            items = await read(() => transport.readUserQzone!(target.qq));
         } catch (error) {
+            check();
             fail('看好友空间', error);
             return;
         }
@@ -613,6 +649,7 @@ export function createPresence(options: PresenceOptions): Presence {
     const strangersPath = join(dir, 'strangers.jsonl');
     let strangersUnreadable = false;
     async function strangers(t: number, awake: boolean): Promise<void> {
+        check();
         if ((flags.qzoneStrangers ?? 'off') === 'off' || strangersUnreadable) return;
         if (!awake || !transport.readStrangerFeed) return;
         const hour = new Date(t).getHours();
@@ -622,8 +659,9 @@ export function createPresence(options: PresenceOptions): Presence {
         save();
         let feed: StrangerFeed | undefined;
         try {
-            feed = await transport.readStrangerFeed();
+            feed = await read(() => transport.readStrangerFeed!());
         } catch (error) {
+            check();
             fail('刷陌生人', error);
             return;
         }
@@ -649,7 +687,8 @@ export function createPresence(options: PresenceOptions): Presence {
         log(`刷陌生人：${feed.items.length} 条（${feed.action}）`);
     }
 
-    async function tick(): Promise<void> {
+    async function runTick(): Promise<void> {
+        check();
         if (busy || options.paused?.()) return;
         busy = true;
         try {
@@ -672,23 +711,35 @@ export function createPresence(options: PresenceOptions): Presence {
         }
     }
 
+    function tick(): Promise<void> {
+        if (stopped || running) return Promise.resolve();
+        running = Promise.resolve().then(runTick).catch(error => { if (error !== STOPPED) throw error; }).finally(() => { running = undefined; });
+        return running;
+    }
+
     return {
         tick,
         selfNote: now => describeSelf(state, now),
         reapply() {
+            if (stopped) return;
             appliedThisRun = undefined;
             statusRetryAt = 0;
             if (timer) void tick();
         },
         start() {
-            if (timer) return;
+            if (stopped || timer) return;
             void tick();
             timer = setInterval(() => void tick(), PRESENCE_TICK_MS);
             timer.unref?.();
         },
         stop() {
+            if (stopped) return drain;
+            stopped = true;
             if (timer) clearInterval(timer);
             timer = undefined;
+            cancellation.abort();
+            drain = running;
+            return drain;
         },
     };
 }

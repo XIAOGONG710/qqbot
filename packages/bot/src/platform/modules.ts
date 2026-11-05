@@ -82,7 +82,7 @@ export const MODULES: readonly ModuleDef[] = [
             'memory/ledger.ts', 'memory/identity.ts', 'memory/memory-audit.ts', 'memory/timeline.ts', 'memory/dormancy.ts'],
         groups: ['记忆和安全'],
         metrics: '状态页「长期记忆」；ops/state-check-cli；ops/continuity-cli（设定账本 / 记忆账本）；聊天里发 /设定',
-        adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161', '0237', '0238', '0239', '0240', '0241', '0242', '0243', '0244', '0245', '0246', '0247'],
+        adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161', '0237', '0238', '0239', '0240', '0241', '0242', '0243', '0244', '0245', '0246', '0247', '0249'],
     },
     {
         id: 'social', name: '在 QQ 上的样子（社交）',
@@ -90,7 +90,7 @@ export const MODULES: readonly ModuleDef[] = [
         files: ['social/responder.ts', 'social/reply-timing.ts', 'social/rate-limit.ts', 'social/async-gate.ts', 'social/stickers.ts', 'social/sticker-favorites.ts', 'social/sticker-sources.ts', 'social/pokes.ts', 'social/presence.ts', 'social/qzone.ts', 'social/qzone-feed.ts', 'social/qzone-feeds3.ts', 'social/qzone-remote.ts', 'social/qzone-strangers.ts', 'social/account.ts', 'social/quote-reply.ts', 'social/external-platforms.ts'],
         groups: ['照片和表情', '在 QQ 上的样子'],
         metrics: '周报「说话的样子」里的延迟、「表情和语气」',
-        adrs: ['0063', '0075', '0077', '0083', '0105', '0109', '0136', '0142', '0143', '0144'],
+        adrs: ['0063', '0075', '0077', '0083', '0105', '0109', '0136', '0142', '0143', '0144', '0249'],
     },
     {
         id: 'bilibili', name: '外部世界：B 站',
@@ -98,7 +98,7 @@ export const MODULES: readonly ModuleDef[] = [
         files: ['bilibili/bilibili.ts', 'bilibili/bilibili-view.ts', 'bilibili/bilibili-summary.ts', 'bilibili/bilibili-stats.ts', 'bilibili/bilibili-inbox.ts', 'bilibili/bilibili-asr.ts', 'bilibili/bilibili-schema.ts', 'bilibili/bilibili-wbi.ts', 'bilibili/bilibili-feed.ts', 'bilibili/feed-browsing.ts', 'bilibili/bilibili-limit.ts', 'bilibili/bilibili-account-source.ts', 'bilibili/bilibili-account.ts', 'bilibili/platform-breaker.ts', 'bilibili/bilibili-comment.ts', 'bilibili/bilibili-login-cli.ts', 'bilibili/bilibili-login.ts', 'bilibili/bilibili-probe.ts', 'bilibili/bilibili-replies.ts', 'bilibili/bilibili-risk.ts'],
         groups: ['B 站'],
         metrics: '日志里的 B 站风险监控；presence/drafts.md',
-        adrs: ['0084', '0089', '0090', '0092', '0168'],
+        adrs: ['0084', '0089', '0090', '0092', '0168', '0249'],
     },
     {
         id: 'platform', name: '接入、配置与运维',
@@ -107,7 +107,7 @@ export const MODULES: readonly ModuleDef[] = [
             'platform/sensitive.ts', 'platform/time-zone.ts', 'platform/web.ts', 'dsh-link.ts', 'mobile-companion-dsh.ts', 'ops/', 'sim/', 'vendor/'],
         groups: ['工具'],
         metrics: '控制台「状态」页（ADR 0120）；ops/golive-check-cli；ops/heartbeat-watch-cli',
-        adrs: ['0002', '0008', '0118', '0119', '0120', '0160', '0246', '0248'],
+        adrs: ['0002', '0008', '0118', '0119', '0120', '0160', '0246', '0248', '0249'],
     },
 ];
 
