@@ -33,9 +33,13 @@ export function isWrittenRetainState(v: unknown): v is WrittenRetainState {
         && ['prepared', 'dispatched', 'completed'].includes(op.phase as string))) return false;
     const operations = v.operations as Record<string, WrittenOperation>;
     if (!Object.entries(v.current).every(([k, id]) => hash(k) && uuid(id) && Object.hasOwn(operations, id) && key(operations[id]!.bankId, operations[id]!.documentId) === k)) return false;
-    // A non-current unresolved operation cannot be bypassed by a newer request.
+    // Completed requests also require current source evidence for their bank/document.
+    // A missing index cannot masquerade as an unused, source-free bank.
     const current = v.current;
-    if (Object.values(operations).some(op => op.phase !== 'completed' && current[key(op.bankId, op.documentId)] !== op.operationId)) return false;
+    if (Object.values(operations).some(op => {
+        const currentId = current[key(op.bankId, op.documentId)];
+        return !currentId || op.phase !== 'completed' && currentId !== op.operationId;
+    })) return false;
     return Object.entries(v.blockedBanks).every(([bank, block]) => text(bank) && stateObject(block) && Array.isArray(block.documents)
         && block.documents.length > 0 && block.documents.every(doc) && new Set(block.documents).size === block.documents.length);
 }

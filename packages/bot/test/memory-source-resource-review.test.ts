@@ -112,3 +112,33 @@ test('缓存命中仍获取协调锁，损坏协调库不能靠RAM声明clean', 
     try { f.store.guardState(bank); writeFileSync(join(f.dir, WRITTEN_RETAIN_COORDINATION_DIRECTORY, 'index.coordination.sqlite'), 'SYNTHETIC_INVALID_SQLITE'); assert.throws(() => f.store.guardState(bank)); }
     finally { f.clean(); }
 });
+
+test('completed意图丢失current索引不能变成无来源clean，暖缓存和重启均保原拒读', () => {
+    const f = fixture(1);
+    try {
+        const original = readFileSync(f.path, 'utf8');
+        assert.equal(f.store.sourceIntents(bank).length, 1);
+        const broken = JSON.parse(original); broken.current = {};
+        const bytes = JSON.stringify(broken); writeFileSync(f.path, bytes);
+        assert.throws(() => f.store.guardState(bank));
+        assert.throws(() => new WrittenRetainStore(f.dir).snapshot());
+        assert.equal(readFileSync(f.path, 'utf8'), bytes, '不能猜测重建最后一个版本');
+        writeFileSync(f.path, original);
+        assert.equal(f.store.sourceIntents(bank).length, 1);
+    } finally { f.clean(); }
+});
+
+test('同文档多个完成版本保留历史，仅最新current参与来源；不同bank文档不能借索引覆盖', () => {
+    const f = fixture(1);
+    try {
+        const next = f.store.prepare(bank, { ...item(), content: 'SYNTHETIC_REVISION' });
+        f.store.phase(next.operationId, 'completed');
+        assert.equal(Object.keys(f.store.snapshot().operations).length, 2);
+        assert.deepEqual(f.store.sourceIntents(bank).map(op => op.operationId), [next.operationId]);
+        const otherOp = f.store.prepare(other, item()); f.store.phase(otherOp.operationId, 'completed');
+        const state = JSON.parse(readFileSync(f.path, 'utf8'));
+        delete state.current[createHash('sha256').update(JSON.stringify([other, item().document_id])).digest('hex')];
+        writeFileSync(f.path, JSON.stringify(state));
+        assert.throws(() => f.store.guardState(bank));
+    } finally { f.clean(); }
+});
