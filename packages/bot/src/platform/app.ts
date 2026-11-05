@@ -508,6 +508,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     });
     let dshProbe: DshProbeResult | undefined;
     let dshAskTail: Promise<void> = Promise.resolve();
+    let dshAskPending = 0;
+    const dshAskLifetime = new AbortController();
     const dshConversation = new DshConversationContext({
         file: join(config.dataDir, 'memory', 'dsh-recent.json'),
         log: message => log(`DSH：${message}`),
@@ -3579,17 +3581,37 @@ ${body}
 
     const askDsh = (question: string): void => {
         const askedAt = worldNow();
+        dshAskPending++;
         dshAskTail = dshAskTail.then(async () => {
+            if (stopped || dshAskLifetime.signal.aborted) return;
             try {
                 const continuity = dshRecentTurns();
-                const reply = await dshLink.advise({ question, state: dshState(), recentTurns: continuity, voice: dshVoice() });
+                const request = Promise.resolve(dshLink.advise({ question, state: dshState(), recentTurns: continuity, voice: dshVoice() }))
+                    .then(reply => ({ kind: 'reply' as const, reply }), error => ({ kind: 'error' as const, error }));
+                let onAbort: (() => void) | undefined;
+                const cancelled = new Promise<{ kind: 'cancelled' }>(resolve => {
+                    if (dshAskLifetime.signal.aborted) resolve({ kind: 'cancelled' });
+                    else {
+                        onAbort = () => resolve({ kind: 'cancelled' });
+                        dshAskLifetime.signal.addEventListener('abort', onAbort, { once: true });
+                    }
+                });
+                const outcome = await Promise.race([request, cancelled]);
+                if (onAbort) dshAskLifetime.signal.removeEventListener('abort', onAbort);
+                if (outcome.kind === 'cancelled' || stopped || dshAskLifetime.signal.aborted) return;
+                if (outcome.kind === 'error') throw outcome.error;
+                const reply = outcome.reply;
                 const text = reply.trim() || '我刚才没整理好，你再问我一次。';
                 dshConversation.commit(question, text, askedAt, worldNow());
                 tellOwner(text);
             } catch (error) {
-                tellOwner(`（DSH 咨询失败：${sanitizeDshError(error)}）`);
+                if (!stopped && !dshAskLifetime.signal.aborted) tellOwner(`（DSH 咨询失败：${sanitizeDshError(error)}）`);
             }
-        });
+        }).finally(() => { dshAskPending--; });
+    };
+    const stopDshAsks = (): Promise<void> | undefined => {
+        dshAskLifetime.abort();
+        return dshAskPending ? dshAskTail : undefined;
     };
 
     /** 「/休眠 [原因]」先商量：让她自己说话（这一条会发给他），记下她的话；「/休眠 确认」才封存并休眠；「/休眠 取消」回到醒着 */
@@ -3975,6 +3997,7 @@ ${body}
             const tastesDrain = tastes?.stop();
             const jokesDrain = jokesOwner?.stop();
             const idiomsDrain = idiomsOwner?.stop();
+            const dshDrain = stopDshAsks();
             const passiveReadDrain = stopPassiveReads();
             const stickerWorkDrain = stopStickerWork();
             const accountGuardDrains = [...accountGuardSettlements];
@@ -4040,7 +4063,7 @@ ${body}
             useRealTransport(undefined);
             useWorldNeeds(undefined);
             const drains = [
-                diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains, ...contextDrains, ...responderDrains,
+                diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, dshDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains, ...contextDrains, ...responderDrains,
             ].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
