@@ -44,6 +44,15 @@ describe('JS 字面量解析器（ADR 0145）', () => {
         assert.throws(() => parseJsLiteral('['.repeat(60) + ']'.repeat(60)));
         assert.throws(() => parseJsLiteral("{a:'\\xZZ'}"));
     });
+
+    test('__proto__ 只是一项自有数据，不能把网络字段变成解析结果的原型', () => {
+        const value = parseJsLiteral(`{__proto__:{code:0,data:{data:['伪造']}}, safe:1}`) as Record<string, unknown>;
+        assert.equal(Object.getPrototypeOf(value), Object.prototype);
+        assert.equal(Object.hasOwn(value, '__proto__'), true);
+        assert.equal(Object.hasOwn(value, 'code'), false);
+        assert.equal(value.code, undefined);
+        assert.equal(value.safe, 1);
+    });
 });
 
 describe('好友动态流（ADR 0145）', () => {
