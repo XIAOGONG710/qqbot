@@ -89,16 +89,29 @@ export function locateTurn(history: readonly StoredMessage[], at: Date, replyTo?
     return { her: history.slice(start, end + 1), context: history.slice(Math.max(0, start - FEEDBACK_CONTEXT), start) };
 }
 
+/** 月份文件名（YYYY-MM.jsonl）：隐私审计按这个找反馈账本 */
+export const FEEDBACK_MONTH_FILE = /^\d{4}-(?:0[1-9]|1[0-2])\.jsonl$/;
+
 export interface FeedbackRow {
     at: string;
     label: FeedbackLabel;
     /** 他发的那条「假」/「像」的消息 id，重投和补回时用来去重 */
     messageId: number;
+    /** 私有反馈事实的联系人范围；旧记录缺省时只能按来源时刻与短 ID 保守匹配（main 侧字段，隐私审计要用） */
+    contact?: number;
     /** 被评价的那条（有引用）或那一轮最后一条她的消息 id */
     herMessageId: number;
     her: string[];
     context: { role: 'user' | 'assistant'; text: string }[];
     tier: string;
+}
+
+/** 这一行是不是合法的反馈记录（旧文件里可能混着别的） */
+export function isFeedbackRow(value: unknown): value is FeedbackRow {
+    if (!value || typeof value !== 'object') return false;
+    const row = value as Record<string, unknown>;
+    return typeof row.at === 'string' && (row.label === 'fake' || row.label === 'real')
+        && (row.contact === undefined || (Number.isSafeInteger(row.contact) && Number(row.contact) > 0));
 }
 
 const monthOf = (at: Date) => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}`;
