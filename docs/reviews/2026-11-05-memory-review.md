@@ -470,3 +470,15 @@ core新增5正式；旧文件registerHooks控制4项真实效果红（晚落盘/
 正式新增5（context构造EIO1，设备2，天气成功/失败2），均旧源真红→新源绿；设备/天气4用registerHooks仅换e8d67bdd App得到4/4红。相关13项先绿，最终592/592确认合成集，全仓类型实际exit0、模块新增ADR后4项再绿、差异通过。代码3ce7d0bc，ADR0259。记忆累计540项；未读真实卡/runtime、未外联QQ/天气/模型/DB、未部署推送，AGENTS.md未跟踪保留。
 
 下一轮：正常成功构造后的App.stop目前仍只void deviceService.stop/清weatherTimer，需复用合法合成天气/设备fixture独立验证held首刷新、后续interval刷新、设备startup/stop以及已派通知ACK与释放租约顺序，再按证据修（不能假定构造scope也覆盖正常stop）。M32b公共旧派生/历史observation独立清理与有证据解封仍受远端证据阻点，记忆尚未完成，不跳模块。
+
+## 第十九批：正常停止的设备通知与天气收尾
+
+独立真实App合成确认：无其它owner掩盖时，pending设备startup、held service.stop、已派say成功/失败ACK尚未结束，旧App.stop返回undefined并释放锁；首weather与后续interval刷新也在锁释放后落缓存。不是上一批构造失败的重复反例。
+
+共享幂等stopDevices聚合startup、服务stop和已派通知，构造失败与正常stop共用；late服务关闭一次，停止后拒新回调。交叉复核进一步真正确证公开transport同步调用app.stop时，原“调用后登记通知”漏入stop快照，成功/失败ACK期间锁已释放，同步throw还迟到诊断。改为调用前预登记settlement，仍立即发、不排队，成功/失败/同步throw均settle且已停止不日志。不新增通知聊天历史或重发策略，保已派事实。
+
+天气App层统一refresh入口，Set跟踪完整两城市singleflight任务；停止置位后不派新轮，正常stop快照全部weatherDrains，构造rollback也allSettled后汇总，保租约到落盘/失败降级结束。重复interval不重复底层请求；不改provider、不假取消后继城市。按同类重入风险新增fake fetch函数体同步stop验证，当前本来通过：withWeatherDeadline微任务边界让任务先登记，故无额外天气重入缺陷及生产重构。
+
+新增13项（设备9/天气4）：设备最初4和补重入3真红→绿，另startup/stop拒绝2为边界验证；天气最初3真红→绿+同步fetch1边界绿。相关20/8定向通过，最终605/605核实合成集、全仓类型实际exit0/模块/差异通过。代码a9f64d95，ADR0259补正常停止约定；记忆累计553项。仅合成卡、假timer/fetch/service/transport/temp，不访问真实角色/runtime/QQ/天气/模型/DB，不推送部署，AGENTS.md保原未跟踪。
+
+边界：不合作startup/service.stop/transport可阻drain，保证退出等待不等于强杀可恢复；无持久通知outbox、跨QQ+JSON事务或任意重试exactly-once，全局weather多实例隔离未解决。后续统一盘点App其余与记忆相关后台工作（优先tastes.reflect的定时启动、模型await后持久及stop链），用合成证据确认后修；尚未验证，不称新缺陷。M32b公共旧派生/历史observation远端清理与独立证据解封仍未完成，不以已完成owner工作代替该保证，不转下一模块。

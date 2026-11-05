@@ -338,3 +338,7 @@ Commons 严格响应/尺寸/元数据与自有词表参数，保存完整作者�
 新增5（构造1/设备2/天气2），记忆累计540；最终592/592核实合成集、全仓类型实际exit0、模块4项及差异绿。仅合成卡/fake timers/API/fetch/temp，不访问真实角色/runtime/外部服务，不部署推送。
 
 下一轮优先独立验证正常App.stop的设备/天气owner：held初始与interval刷新、pending设备启动/服务stop/已派通知ACK是否在目录租约释放后仍写/发送；构造失败scope不代表正常stop已保证。根据真实合成证据修，未验证项不得冒称缺陷。M32b远端公共旧派生/历史observation清理/证据解封仍未完成，保护及既有不合作请求/多文件远端非事务边界不变，记忆未完不转模块。
+
+第十九批完成正常App.stop设备/天气收尾（a9f64d95，ADR0259补记）。真实App pending startup/service.stop/通知ACK和held天气初/后刷新均确证提前释放租约；现stopDevices幂等聚合，late service停一次、通知发送前预登记收尾以覆盖公开transport同步stop，成功/失败/同步throw均settle，停止后拒新回调。weather统一入口跟踪完整singleflight两城市轮次，stop拒新、等待已派落盘/失败收尾，构造同样allSettled。fake fetch内同步stop验证已有微任务边界安全，无额外重入缺陷/重构。新增13（设备9/天气4），记忆累计553；最终605/605确认合成集、全仓类型实际exit0、模块/差异绿，仅fake服务/temp，无真实卡/runtime/外网、无推送。
+
+下一轮统一盘点App剩余与记忆相关后台任务的启动/停止/持久所有权，优先tastes.reflect定时入口与模型await后写入；先真实合成复现，未验证不称缺陷。已完成正常/构造device/weather、context和sim旧清单跳过。M32b公共旧派生/历史observation独立清理/证据解封仍未完，现保护不解、不访问真部署DB，记忆未完不转模块。无持久通知outbox，不合作请求可阻drain，globalweather多实例隔离与多文件/远端非事务边界保持。
