@@ -602,3 +602,13 @@ per-call StickerWorkOptions.signal贯通串行纯任务，取消本地等待、�
 下一批必须先处理两组新确证（未修）：①memory-risk-notice-retry.mjs首次unread1、notices抛一次后lastUnread1仍持久；15分钟后同数与重启都noticeReads1/haltedfalse，只有未读数改2才重读原警告并haltedtrue。须区分成功读取与失败/空内容/已观察风险提交，保30分钟通知限频、不盲重复DM。②memory-bili-state-schema.mjs畸形risk.until='not-a-time'被接受且不暂停；reply.count='not-a-number'在7个不同uid的同日tick发送7条超过5，持久count字符串追加。须完整schema/旧合法兼容与失败关闭及IO恢复，不只修已知两个字段。这两个exit0仍只是坏行为事实诊断，不是正确性回归。
 
 M32b公共旧diary/week/phase远端派生与历史observation证据清理仍未完成，保护不解、不访问真部署DB；记忆未完不转模块/社区比较，B站/社交仍非整体审完。旧弱身份、无manifest/未持久观察、未知DELETE/可信store及writer任务证据、多文件远端非事务边界保持。原自动审批拒清理的合成temp仍未重试。
+
+第三十批完成通知进度、完整状态与IO恢复（44c72044，ADR0090）：首次失败/空列表和同未读数下换成新警告均确证漏读；现每非零15min poll读列表，seen去重、失败/空不追认成功。seen/until/lastUnread同候选发布；未持久风险RAM仍暂停，后续及stop先本地flush，失败不派提醒，发布后异常精确bytes确认。并发trip共同账号await后原会发2DM，现提交前重核30min冷却，预留先持久，失败恢复宁少不盲重发。
+
+replies/risk完整已知schema、坏JSON/IO保原拒空白；合法旧v1最小状态/未知扩展保持。回复未派预留IO回退已确认RAM，已派终态pending恢复先flush，risk记录器异常也尝试保存回复真实失败。App单独捕获公共任务初始化错误，连接不因这些拒绝而中断，也不以缺省risk绕过；文件修复后可重新启动。低年份/epoch前brokenUntil、风险提醒及轮询缺省0错误均有合成回归，派生越界拒新发送。
+
+新增33（reply11/risk16/App6），记忆累计847用例含原Windows链接权限skip1。首types实际exit1是新测试闭包变量被推为never，改typed holder后真实exit0；首956集后补负时间poll真实红绿，最终完整957项=956通过/1原权限skip/0失败，全仓类型/模块/差异绿，非全仓全量。两个原schema/notice-retry probe已改正确断言，正常7人仍最多5条、同数下一poll读到警告且不重复DM，勿重做旧坏断言。仅临时合成卡/事件/凭证和fakeAPI，无真角色/runtime/账号/服务/DB、部署推送。
+
+下一轮优先新确证延迟戳回owner：docs/reviews/repro/memory-app-notice-owner.mjs真实App合成卡/fake timer/pokeFriend，已派请求held时stop已resolved且bot.lock=false；释放后成功/失败日志各晚写1。两模式最终诊断正常exit0仅报告未修坏事实，不是正确回归；前两次诊断自己timer残留导致进程中断不算产品缺陷或通过，已只清理诊断创建的handles。需派发前登记settlement覆盖同步重入stop/throw、等已派ACK/诊断后release，未派timer仍取消，保原不记录聊天历史政策。tellOwner通知只读候选未验证，不一并冒称确证。
+
+M32b远端公共旧派生/历史observation独立清理及有证据解封仍未完，现保护不解，不读真实部署DB；记忆未完不转模块或社区比较。B站/社交仍非整体审完。无多实例CAS、持久通知outbox/强杀恢复或全局事务；旧已seen缺until不能猜迁移，未持久观察崩溃不可凭空恢复。既有协调文件/弱ID/未知DELETE边界及拒清理合成temp保持。
