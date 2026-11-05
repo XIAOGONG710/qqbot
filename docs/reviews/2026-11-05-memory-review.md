@@ -591,3 +591,14 @@ per-call StickerWorkOptions.signal贯通串行纯任务，取消本地等待、�
 隐私清单补index实际tmp/corrupt、明确来源图片及规范名称无索引图片/图片tmp，混合或未知归属原位保留，不整份导出/遗忘、不读图猜来源；其它联系人已知图片不误列本人。新增22项（持久17含真实链接权限跳过1、隐私5），记忆累计771项新增用例（含本批1项平台跳过，不能称全部已执行通过）。最终核实合成集881项：880通过、1跳过、0失败；全仓类型实际exit0、模块与差异通过，非全仓全量。链接因Windows EPERM未验证，不伪绿；所有数据temp/fake，没有真实角色/runtime/服务访问、部署推送。memory-sticker-eviction-io.mjs现正确探针三项true，勿重做旧坏断言。原自动审批拒清理的qqbot-app-stickers-owner-vqFkxW仍未重试。
 
 下一轮先盘点replies/risk后台与记忆持久的启动/停止所有权，真实App合成held API/timer先证后修；目前只是待核候选，不能声称已存在缺陷。表情多独立实例写入、持久QQ outbox及未知孤儿归属未保证，不扩大为已修事务。B站/社交尚未整体审。M32b公共旧diary/week/phase远端派生和历史observation独立清理/证据解封仍未完成，客户端保护不解、不访问真实部署DB，记忆未完不转模块或社区比较。继续保留旧weakID/legacybefore/未持久观察、未知DELETE及可信writer/store/task证据要求，不以读取零/版本/布尔/删guard假解封。
+
+
+第二十九批完成回复/风险监控停止所有权（0c8a1dcf，ADR0090）：真实App合成held账号/回复feed/模型在stop释放租约后仍续派/写state、corpus、draft及授予log；风险监控held unread/notices仍续查并发DM，均确证并修。永久stop同步拒新、取消纯读取/模型，派发前拥有任务、drain等待已派postReply/sendDm ACK及状态/语料收尾；App统一等待两owner。实际account三个纯读signal贯通body，replyComposer每次重试/await核signal、模型日志守宿主。真实guard等待首个请求并不包含后继，正式App覆盖这条区别。
+
+整合另确证已派postComment在stop后收到风险错误被旧check吞掉：按已派标记保失败/暂停，停止时用risk.record只持久已发生风险、不新发DM。hidden确认日志同步stop同样record并由原owner等待；活跃时仍trip通知。legacy自定义RiskGate无record兼容trip，不能保证外部实现无新副作用。纯取消不冒充远端取消；不合作mutation可阻drain，持久失败无outbox/强杀事务保证。频率/额度/披露/预留政策不改。
+
+新增43项（replies core12/App5、risk core10/App7、账号/写手6、已派评论失败1、hidden交接2），记忆累计814用例（含上一批Windows链接跳过1）。先922集通过后补hidden2，最终完整924项=923通过/1原权限跳过/0失败，全仓类型实际exit0、模块/差异绿；不是全仓全量，只有核实合成卡/temp/fake/API，没有真实角色/runtime/账号/外部服务、部署推送。replies-owner和risk-owner两probe已改正确断言，勿再用旧坏断言。
+
+下一批必须先处理两组新确证（未修）：①memory-risk-notice-retry.mjs首次unread1、notices抛一次后lastUnread1仍持久；15分钟后同数与重启都noticeReads1/haltedfalse，只有未读数改2才重读原警告并haltedtrue。须区分成功读取与失败/空内容/已观察风险提交，保30分钟通知限频、不盲重复DM。②memory-bili-state-schema.mjs畸形risk.until='not-a-time'被接受且不暂停；reply.count='not-a-number'在7个不同uid的同日tick发送7条超过5，持久count字符串追加。须完整schema/旧合法兼容与失败关闭及IO恢复，不只修已知两个字段。这两个exit0仍只是坏行为事实诊断，不是正确性回归。
+
+M32b公共旧diary/week/phase远端派生与历史observation证据清理仍未完成，保护不解、不访问真部署DB；记忆未完不转模块/社区比较，B站/社交仍非整体审完。旧弱身份、无manifest/未持久观察、未知DELETE/可信store及writer任务证据、多文件远端非事务边界保持。原自动审批拒清理的合成temp仍未重试。
