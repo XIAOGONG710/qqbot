@@ -22,6 +22,9 @@ import { createHash } from 'node:crypto';
 
 /** Transport ceiling, independent of the server's token budgets. */
 export const HINDSIGHT_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
+/** Reject an oversized inventory as unavailable; never return a truncated proof. */
+export const HINDSIGHT_INVENTORY_MAX_ITEMS = 100_000;
+export const HINDSIGHT_INVENTORY_MAX_METADATA_BYTES = 8 * 1024 * 1024;
 
 export class HindsightError extends Error {
     readonly status?: number;
@@ -127,10 +130,18 @@ export interface ConsolidationOperation {
     created_at: string | null; updated_at: string | null; completed_at: string | null;
     retry_count: number; next_retry_at: string | null;
 }
+export interface MemoryInventoryEvidence {
+    id: string; fact_type: 'world' | 'experience' | 'observation'; state: 'valid'; document_id: string | null;
+    tags: string[]; source_memory_ids: string[]; updated_at: string | null;
+    consolidated_at: string | null; consolidation_failed_at: string | null;
+}
 export interface ObservationRepairApi {
     repairObservationStats(bankId: string): Promise<ObservationRepairStats>;
     /** A single round can enqueue its successor. completed does not mean the bank's queue has drained. */
     repairConsolidationStatus(bankId: string, operationId: string): Promise<ConsolidationOperation>;
+    /** Live, unfiltered metadata inventory. Offset paging is NOT a snapshot; external quiescence is required. */
+    repairObservationInventory(bankId: string): Promise<MemoryInventoryEvidence[]>;
+    repairSourceConsolidationInventory(bankId: string): Promise<MemoryInventoryEvidence[]>;
 }
 export interface RepairOperation { operation_id: string; task_type: string; status: 'pending' | 'processing' | 'failed' | 'cancelled'; mental_model_id: string | null }
 export interface RepairModelMetadata { id: string; bank_id: string; name: string; tags: string[]; last_memory_seen_at: string | null; last_refreshed_at: string | null }
@@ -244,13 +255,14 @@ export class HindsightClient implements HindsightApi {
             is_stale: value.is_stale, safe_configuration: false, configuration_hash: '' };
         result.safe_configuration = isSafeRepairModel(result); result.configuration_hash = repairModelConfigHash(result); return result;
     }
-    async #repairPages<T extends { id?: string; operation_id?: string }>(path: string, field: 'items' | 'operations', parse: (row: unknown) => T, remaining: () => number, bank?: string): Promise<T[]> {
+    async #repairPages<T extends { id?: string; operation_id?: string }>(path: string, field: 'items' | 'operations', parse: (row: unknown) => T, remaining: () => number, bank?: string, maxTotal?: number): Promise<T[]> {
         const out: T[] = [], seen = new Set<string>(); let total: number | undefined;
         for (let offset = 0;;) {
             const page: unknown = await this.#request('GET', `${path}${path.includes('?') ? '&' : '?'}limit=100&offset=${offset}`, undefined, remaining());
             if (!stateObject(page) || !repairCount(page.total) || page.limit !== 100 || page.offset !== offset
                 || bank !== undefined && page.bank_id !== bank || !Array.isArray(page[field])
                 || total !== undefined && page.total !== total || page[field].length !== Math.min(100, page.total - offset)) return this.#repairError();
+            if (maxTotal !== undefined && page.total > maxTotal) throw new HindsightError('记忆清单超过安全读取限额');
             total = page.total;
             for (const value of page[field]) { const row = parse(value), id = row.operation_id ?? row.id!;
                 if (seen.has(id)) return this.#repairError(); seen.add(id); out.push(row); }
@@ -283,6 +295,36 @@ export class HindsightClient implements HindsightApi {
         return { bank_id: bankId, total_nodes: value.total_nodes, total_documents: value.total_documents, total_observations: value.total_observations,
             nodes_by_fact_type: counts, pending_consolidation: value.pending_consolidation, failed_consolidation: value.failed_consolidation,
             last_memory_write_at: value.last_memory_write_at as string ?? null, last_consolidated_at: value.last_consolidated_at as string ?? null };
+    }
+    #memoryInventory(bankId: string, type: MemoryInventoryEvidence['fact_type'], remaining: () => number,
+        budget: { count: number; bytes: number; ids: Set<string> }): Promise<MemoryInventoryEvidence[]> {
+        const memoryUuid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(v);
+        return this.#repairPages(`${this.#bank(bankId)}/memories/list?type=${type}&state=valid`, 'items', value => {
+            if (!stateObject(value) || !memoryUuid(value.id) || value.fact_type !== type || value.state !== 'valid'
+                || !Object.hasOwn(value, 'document_id') || !(value.document_id === null || repairText(value.document_id))
+                || !Array.isArray(value.tags) || !value.tags.every(repairText)
+                || !Array.isArray(value.source_memory_ids) || !value.source_memory_ids.every(memoryUuid)
+                || !['updated_at', 'consolidated_at', 'consolidation_failed_at'].every(key => Object.hasOwn(value, key) && (value[key] === null || stateTimestamp(value[key])))) return this.#repairError();
+            // UUID spelling is case-insensitive, including across world/experience pages.
+            const identity = value.id.toLowerCase();
+            if (budget.ids.has(identity)) return this.#repairError(); budget.ids.add(identity);
+            const result: MemoryInventoryEvidence = { id: value.id, fact_type: type, state: 'valid', document_id: value.document_id as string | null,
+                tags: [...value.tags] as string[], source_memory_ids: [...value.source_memory_ids] as string[],
+                updated_at: value.updated_at as string | null, consolidated_at: value.consolidated_at as string | null,
+                consolidation_failed_at: value.consolidation_failed_at as string | null };
+            budget.count++; budget.bytes += Buffer.byteLength(JSON.stringify(result), 'utf8');
+            if (budget.count > HINDSIGHT_INVENTORY_MAX_ITEMS || budget.bytes > HINDSIGHT_INVENTORY_MAX_METADATA_BYTES) throw new HindsightError('记忆清单超过安全读取限额');
+            return result;
+        }, remaining, undefined, HINDSIGHT_INVENTORY_MAX_ITEMS);
+    }
+    async repairObservationInventory(bankId: string): Promise<MemoryInventoryEvidence[]> {
+        return this.#memoryInventory(bankId, 'observation', this.#repairRemaining(), { count: 0, bytes: 0, ids: new Set() });
+    }
+    async repairSourceConsolidationInventory(bankId: string): Promise<MemoryInventoryEvidence[]> {
+        const remaining = this.#repairRemaining(), budget = { count: 0, bytes: 0, ids: new Set<string>() };
+        const world = await this.#memoryInventory(bankId, 'world', remaining, budget);
+        const experience = await this.#memoryInventory(bankId, 'experience', remaining, budget);
+        return [...world, ...experience];
     }
     async repairConsolidationStatus(bankId: string, operationId: string): Promise<ConsolidationOperation> {
         if (!operationUuid(operationId)) return this.#repairError();
