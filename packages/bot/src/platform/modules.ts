@@ -38,7 +38,7 @@ export const MODULES: readonly ModuleDef[] = [
             'life/everyday.ts', 'life/menu.ts', 'life/diary.ts', 'life/diary-insights.ts', 'life/reading-takes.ts', 'life/biography.ts', 'life/bedtime.ts', 'life/nights.ts', 'life/people.ts', 'life/promises.ts', 'life/promise-state.ts', 'life/open-loops.ts', 'life/tastes.ts', 'life/acquaintances.ts', 'life/her-plans.ts', 'life/now-export.ts', 'life/leave-note.ts', 'life/dreams.ts', 'life/open-questions.ts', 'life/her-guesses.ts', 'life/learning-questions.ts', 'life/traces.ts', 'life/understanding.ts', 'life/development.ts', 'human-values.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」；consistency-cli（说的和账对不对）；sim/life-audit',
-        adrs: ['0015', '0040', '0045', '0104', '0178', '0106', '0162', '0163', '0194', '0204', '0213', '0219', '0222', '0233', '0251', '0313'],
+        adrs: ['0015', '0040', '0045', '0104', '0178', '0106', '0162', '0163', '0194', '0204', '0213', '0219', '0222', '0233', '0251', '0313', '0314'],
     },
     {
         id: 'world', name: '她的世界（世界账）',
@@ -79,7 +79,7 @@ export const MODULES: readonly ModuleDef[] = [
             'memory/ledger.ts', 'memory/identity.ts', 'memory/memory-audit.ts', 'memory/timeline.ts', 'memory/dsh-inbox.ts', 'memory/dormancy.ts'],
         groups: ['记忆和安全'],
         metrics: '状态页「长期记忆」；ops/state-check-cli；ops/continuity-cli（设定账本 / 记忆账本）；聊天里发 /设定',
-        adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161', '0176', '0177', '0201', '0226', '0300', '0301', '0302', '0303', '0304', '0305', '0307', '0308', '0309', '0310', '0311', '0312', '0313'],
+        adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161', '0176', '0177', '0201', '0226', '0300', '0301', '0302', '0303', '0304', '0305', '0307', '0308', '0309', '0310', '0311', '0312', '0313', '0314'],
     },
     {
         id: 'social', name: '在 QQ 上的样子（社交）',

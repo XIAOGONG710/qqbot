@@ -941,6 +941,11 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     if (memory) log(config.selfDirectedMemory
         ? '混合记忆：自动记底账，她写 <<记住：…>> / <<日记：…>> 的另记；自动日记关'
         : diaries ? `她的日记：她的每一天结束后写一篇存进公共记忆（没聊天的日子也写，停过的补最近 ${DIARY_BACKFILL_DAYS} 天）` : '她的日记：不写（用到的档位卡上都没有作息）');
+    if (memory && diaries) {
+        memory.setWrittenSourceVerifier(() => diaries.verifySources(new Date(pipeline?.now?.() ?? Date.now())));
+        // Recover completed authored-source invalidation before any responder can read public models.
+        memory.derivedAvailable();
+    }
     const recalledMemoryPending = new Set<number>();
     // 旧进度可能已覆盖文档而供应商模型仍旧；在回复器能读模型前恢复持久屏障。
     if (memory) for (const contact of config.contacts) {

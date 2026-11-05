@@ -1,0 +1,13 @@
+# ADR 0314：已完成日记的持续来源复核
+
+状态：接受，2026-11-05。接续 ADR 0313，不解除旧公共派生保护。
+
+已完成的written/week/phase会被catchUp跳过；原来源复核只在未完成总结消费日记时发生。合成ChatHistory撤回、档位起点变化、重启及离开回填窗口均证明：真实正文已被遮盖，但日记及已完成总结的sourceVerified仍true。实际App撤回另有noteRecall通用屏障，本证据不冒称该屏障被绕过。
+
+writer新增同步verifySources(now)：不限回填窗口复核所有新confirmed日记，失效先持久noteWrittenSourceChanged，再发布receipt=false，并沿已完成总结的manifest依赖传播。缺少非legacy依赖收据是未知，不猜成legacy。保留真实written/body及远端完成事实，不自动删除旧文档、不将重算的新材料冒认旧模型正文。未知history/计划/状态/IO失败关闭且可恢复重验；每轮history与since每联系人只取一次，按herDay分组，未进入1500尾部的原文变化不误污染。
+
+LongTerm由宿主注册本地同步来源核验器，在公共模型、日记、实体、召回过滤和await后的最终出口复核；异常、递归或未知不能回退旧cache。App在回复器前注册并运行恢复检查。格式化回调若才使来源失效，已拼好的混合输出也拒绝。其它私人bank和精确未污染QQ原始事实仍保留。
+
+catchUp在未知来源时只核对已派prepared的原UUID/body，显式禁止新提交/模型；真实completed可记事实及sourceVerified=false，坏主状态仍不得重建。旧无manifest资料保legacy，不伪造历史依赖。当前保护需要宿主接入来源核验；关闭writer或移除来源配置后的证据迁移仍不凭空保证。此协议是客户端保护，不证明服务端观察/公共派生已清除，也不提供人工布尔解封。
+
+验证使用合成聊天、假API、临时目录和故障注入，没有读取真实角色/聊天/运行时。后台扫描与读口均有正式回归；独立的历史观察重建仍受 ADR 0312 的证据边界约束。
