@@ -432,3 +432,11 @@ M32b远端公共旧派生/历史observation清理及证据解封仍未完，保�
 新增9项，记忆累计882；两份旧failure diagnostics均改correctness probes。定向9/9、成功/失败/重入/同步throw及入站保留边界通过；最终核实合成集992项=991通过/1既有Windows权限skip/0失败，全仓类型实际exit0、模块/差异绿。仅临时合成卡、fake设备与transport，无真实屏幕/摄像头/QQ/runtime/网络访问或部署推送。边界仍是进程内已派所有权：无持久发送outbox、强杀恢复或QQ ACK与JSON全局事务，不合作transport可阻drain；capture未派来源的晚结果被丢弃而不保存。下一轮继续按真实App合成证据盘点剩余后台/直接发送owner；M32b远端派生与历史observation证据清理仍未完成，记忆未完不转模块。
 
 第三十五批完成状态页Hindsight健康探针停止边界（1854f67b，ADR0010）：真实App由status触发/health后，旧stop同步释放租约，晚成功仍把已停止App的RAM health改成ok；重启实例虽不受污染，但旧对象状态继续变化。现stop同步清probing，成功/失败/finally仅在App仍活跃时提交；纯读HTTP不纳drain，不让不合作探针占锁，新实例保持独立。新增3项，记忆累计885；定向3/3和双实例probe通过，最终995项=994通过/1既有Windows权限skip/0失败，全仓类型、模块、差异绿。无文件/日志晚写或跨实例污染，不夸大原影响；底层无signal请求仍可能运行。并行另确证markRead已派ACK未被stop拥有，留下一批修复，尚未把typing/react外推为缺陷。
+
+第三十六批完成聊天附属动作运输停止所有权（a2df43d5，ADR0083）：并行分别用真实App、合成卡和fake transport精确确认已读回执、正在输入状态与已读不回表情回应三条链。三者已派held时旧stop都会先释放bot.lock；失败诊断在释放后晚写，表情成功日志也晚写；transport函数体同步重入stop同样漏收本次调用。未发现额外后继请求或聊天历史/持久文件写入，不把影响夸大为回复事实损坏。
+
+三个动作现在统一复用调用前预登记的sendOwnedNotice settlement：已经交给transport的动作在成功/失败确认和一次诊断完成前持有App租约；同步throw及同步重入stop也不会漏快照；停止后不新增动作。保留失败只记一次、正在输入单独一次日志、表情成功日志及不写聊天历史的原策略。没有持久动作outbox、强杀重放或QQ与本地状态事务；不合作transport仍可阻塞正常drain。
+
+新增12项（已读4、正在输入4、表情4），记忆累计897。定向12/12及三份correctness probe通过；最终核实合成集1007项=1006通过/1既有Windows权限skip/0失败，全仓类型实际exit0、模块与差异检查通过，非全仓全量。只使用临时合成卡/fake transport，无真实QQ、角色、runtime、网络服务、数据库或部署推送。
+
+**下一检查点：记忆模块仍未完成。** 继续以真实App合成证据逐条盘点剩余直接transport与后台owner，不从相邻代码猜缺陷、不重复已修chat action/device/notice/DSH链。M32b公共diary/week/phase旧远端派生及历史observation清理/独立证据解封仍缺可信writer fence、完整四态任务静止和实际store一致性证据；当前客户端屏障保持，不用版本、布尔、live=0、未知DELETE或删guard/改generation伪造净化，不访问真实部署/数据库。全部记忆工作覆盖充分前不转下一模块或社区比较。

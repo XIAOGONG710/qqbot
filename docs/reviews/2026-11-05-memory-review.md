@@ -656,3 +656,13 @@ sendOwnedNotice现返回已预登记settlement，既有忽略返回值的直接�
 stop现在同步清除probing；health成功、失败及finally只有App仍活跃才提交RAM。纯读请求不加入drain，不等待不合作HTTP；底层HindsightClient无signal，网络请求仍可能运行但结果被放弃。活跃成功仍更新一次并保持一分钟限频。新增3项，记忆累计885；定向3/3及双实例correctness probe通过，最终核实合成集995项=994通过/1既有Windows权限skip/0失败，全仓类型实际exit0、模块/差异绿。仅合成卡/temp/fake fetch，无真实memory服务/runtime访问。
 
 并行下一证据已确认markRead已派ACK不属于stop drain，晚失败会在释放租约后写日志；只确认已读回执，未外推typing/react。下一批从该精确链继续。M32b远端公共旧派生/历史observation清理仍未完成，保护不解，记忆模块未完成不转模块。
+
+## 第三十六批：已读、正在输入与表情回应的运输收尾（2026-11-05）
+
+代码a2df43d5，ADR0083补记。三份独立真实App诊断只使用临时合成角色卡和fake transport，先分别确认范围：`markRead`、`setInputStatus`与已读不回的`reactMessage`已经派发并held时，旧stop均会先返回并释放bot.lock；晚失败会在租约外写一次诊断，表情成功也会晚写成功日志。transport函数体同步调用stop时，本次Promise还没有进入旧停机快照。三条链都没有观察到额外后继请求、普通QQ文本发送、聊天历史或持久文件写入，因此没有把问题扩大描述成回复丢失或持久数据损坏。
+
+三个入口统一走现有`sendOwnedNotice`：在调用公开transport函数之前先登记settlement，成功/失败及诊断回调完成后才移除；同步throw、同步重入stop和普通异步确认都由同一收尾覆盖。App已经停止时入口直接拒绝新动作。原有产品行为保持：已读和表情失败仍按动作只记第一次，正在输入仍只记第一次错误，表情成功仍记既有一行；这些附属动作仍不进入普通聊天历史，也没有新增重试。
+
+新增12项正式回归（每条动作各覆盖成功、失败、同步重入stop、同步重入后throw），记忆累计897。三份诊断已改成正确行为探针；定向12/12与三份probe通过。最终核实合成集1007项=1006通过/1既有Windows符号链接权限skip/0失败，全仓类型实际exit0、模块和差异检查通过。不是全仓全量；没有运行未核角色卡依赖suite，也未访问真实角色、runtime、QQ、外部模型/服务、数据库或部署。
+
+边界：只保证当前进程中已经派发transport动作的ACK与诊断归当前App租约；没有持久动作outbox、强杀恢复、跨进程exactly-once或QQ动作与本地历史事务。不合作transport可持续阻塞drain。下一轮继续按证据复核剩余直接发送/后台owner，不把相邻调用一概批量改写。M32b公共diary/week/phase旧远端派生及历史observation清理/独立证据解封仍未完成；客户端保护不解，不以版本、布尔、live inventory、未知DELETE或删guard/改generation冒充服务端净化，也不访问真实部署/数据库。记忆模块未完成，不转下一模块或社区比较。
