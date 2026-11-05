@@ -78,8 +78,15 @@ function onEvent(event: OneBotEvent): void {
 // Ctrl+C 是 SIGINT；Windows 上直接关掉终端窗口是 SIGHUP
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
     process.on(signal, () => {
-        client.stop();
-        process.exit(0);
+        // 已派发的QQ请求仍需要连接接收ACK；等App完成事实收尾后再断开。
+        void Promise.resolve(app.stop()).then(() => {
+            client.stop();
+            process.exit(0);
+        }, error => {
+            client.stop();
+            log(`停止收尾失败（${error instanceof Error ? error.name : typeof error}）`);
+            process.exit(1);
+        });
     });
 }
 

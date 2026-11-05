@@ -199,15 +199,32 @@ function validDiaryState(value: unknown): value is Partial<DiaryState> {
 /**
  * 补写还没写的日记：她这一天之前的 DIARY_BACKFILL_DAYS 天，一天一篇，按日期从早到晚；之后补周记、阶段总结（ADR 0018）。同一时间只跑一次
  */
-export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): Promise<void> } {
+export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): Promise<void>; stop(): Promise<void> | undefined } {
     const path = join(options.dir, 'diary.json');
     let running: Promise<void> | undefined;
+    let stopped = false;
+    let drain: Promise<void> | undefined;
+    const STOPPED = Symbol('diary stopped');
+    const cancelReads = new Set<() => void>();
+    // 生成和读取可取消等待；迟到结果不再进入调用方。已经派发的 retain 必须等确认并保存完成记录。
+    const read = <T>(work: () => Promise<T>): Promise<T> => {
+        if (stopped) return Promise.reject(STOPPED);
+        return new Promise((resolve, reject) => {
+            const cancel = () => { cancelReads.delete(cancel); reject(STOPPED); };
+            cancelReads.add(cancel);
+            let pending: Promise<T>;
+            try { pending = work(); } catch (error) { cancelReads.delete(cancel); reject(error); return; }
+            void pending.then(value => { cancelReads.delete(cancel); if (stopped) reject(STOPPED); else resolve(value); },
+                error => { cancelReads.delete(cancel); reject(error); });
+        });
+    };
     const save = (state: DiaryState, today: Date) => {
         const keepFrom = formatDate(localDate(today.getFullYear(), today.getMonth(), today.getDate() - KEEP_TEXT_DAYS));
         for (const date of Object.keys(state.texts)) if (date < keepFrom) delete state.texts[date];
         writeJsonAtomic(path, state);
     };
     const catchUp = async (now: Date) => {
+        if (stopped) return;
         let stored: Partial<DiaryState>;
         try {
             stored = readJsonOr<Partial<DiaryState>>(path, {}, options.log, {
@@ -222,6 +239,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         const { written } = state;
         const today = herDay(options.sources.schedule, now);
         for (let back = DIARY_BACKFILL_DAYS; back >= 1; back--) {
+            if (stopped) return;
             const day = localDate(today.getFullYear(), today.getMonth(), today.getDate() - back);
             const date = formatDate(day);
             if (!calendarDate(date)) continue;
@@ -239,11 +257,13 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             const material = diaryMaterial(options.sources, day, chats, plans);
             let text: string;
             try {
-                text = (await options.generate(diaryMessages(options.sources.charName, day, material))).trim();
+                text = (await read(() => options.generate(diaryMessages(options.sources.charName, day, material)))).trim();
             } catch (error) {
+                if (error === STOPPED) return;
                 options.log(`她的日记：${date} 没写成（${error instanceof Error ? error.message : String(error)}），下次再写`);
                 return;
             }
+            if (stopped) return;
             if (!text) {
                 options.log(`她的日记：${date} 模型回了空的，下次再写`);
                 return;
@@ -255,7 +275,9 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             save(state, today);
             options.log(`她的日记：${date} 已写（${[...text].length} 字，聊过天的 ${chats.filter(c => c.messages.length).length} 人），存进公共记忆`);
         }
+        if (stopped) return;
         if (!(await catchUpWeeks(state, today))) return;
+        if (stopped) return;
         await catchUpPhases(state, today);
     };
 
@@ -263,16 +285,19 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
     const diariesOn = async (days: readonly Date[], state: DiaryState): Promise<{ date: Date; text: string }[] | undefined> => {
         const found: { date: Date; text: string }[] = [];
         for (const day of days) {
+            if (stopped) return undefined;
             const date = formatDate(day);
             if (state.written[date] === undefined) continue;
             let text = state.texts[date];
             if (!text?.trim()) {
                 try {
-                    text = await options.memory.readDiary(date);
+                    text = await read(() => options.memory.readDiary(date));
                 } catch (error) {
+                    if (error === STOPPED) return undefined;
                     options.log(`她的日记：从公共记忆读 ${date} 的日记失败，周记下次再写：${error instanceof Error ? error.message : String(error)}`);
                     return undefined;
                 }
+                if (stopped) return undefined;
                 if (text?.trim()) state.texts[date] = text;
             }
             if (!text?.trim()) {
@@ -288,11 +313,13 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
     const summarize = async (label: string, period: string, diaries: { date: Date; text: string }[], retain: (text: string) => Promise<boolean>) => {
         let text: string;
         try {
-            text = (await options.generate(summaryMessages(options.sources.charName, period, diaries))).trim();
+            text = (await read(() => options.generate(summaryMessages(options.sources.charName, period, diaries)))).trim();
         } catch (error) {
+            if (error === STOPPED) return undefined;
             options.log(`她的${label}没写成（${error instanceof Error ? error.message : String(error)}），下次再写`);
             return undefined;
         }
+        if (stopped) return undefined;
         if (!text) {
             options.log(`她的${label}：模型回了空的，下次再写`);
             return undefined;
@@ -304,13 +331,14 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
     const catchUpWeeks = async (state: DiaryState, today: Date): Promise<boolean> => {
         const thisMonday = localDate(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7));
         for (let back = WEEK_BACKFILL; back >= 1; back--) {
+            if (stopped) return false;
             const monday = localDate(thisMonday.getFullYear(), thisMonday.getMonth(), thisMonday.getDate() - 7 * back);
             const id = formatDate(monday);
             if (!calendarDate(id)) continue;
             if (state.weeks[id] !== undefined) continue;
             const days = Array.from({ length: 7 }, (_, i) => localDate(monday.getFullYear(), monday.getMonth(), monday.getDate() + i));
             const diaries = await diariesOn(days, state);
-            if (!diaries) return false;
+            if (stopped || !diaries) return false;
             if (diaries.length) {
                 const period = `这周（${md(days[0]!)}–${md(days[6]!)}）`;
                 const length = await summarize(`周记（${id} 那周）`, period, diaries,
@@ -331,13 +359,14 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         const todayText = formatDate(today);
         const recent = formatDate(localDate(today.getFullYear(), today.getMonth(), today.getDate() - PHASE_BACKFILL_DAYS));
         for (const holiday of options.sources.schedule.holidays.filter(h => h.end < todayText && h.end >= recent)) {
+            if (stopped) return;
             const id = `${holiday.name}:${holiday.end}`;
             if (state.phases[id] !== undefined) continue;
             const [start, end] = [holiday.start, holiday.end].map(date => { const [y, m, d] = date.split('-').map(Number); return localDate(y!, m! - 1, d); });
             const days: Date[] = [];
             for (let day = start!; day <= end!; day = localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1)) days.push(day);
             const diaries = await diariesOn(days, state);
-            if (!diaries) return;
+            if (stopped || !diaries) return;
             if (diaries.length) {
                 const span = `${md(start!)}–${md(end!)}`;
                 const length = await summarize(`${holiday.name}总结`, `这个${holiday.name}（${span}）`, diaries,
@@ -353,8 +382,17 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
     };
     return {
         catchUp: now => {
+            if (stopped) return Promise.resolve();
             running ??= catchUp(now).finally(() => { running = undefined; });
             return running;
+        },
+        stop: () => {
+            if (stopped) return drain;
+            stopped = true;
+            for (const cancel of cancelReads) cancel();
+            cancelReads.clear();
+            drain = running;
+            return drain;
         },
     };
 }

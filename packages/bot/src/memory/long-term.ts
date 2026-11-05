@@ -23,6 +23,7 @@ import { ownSourceLabel, sourceLabel } from '../emotion/disclosure.ts';
 import type { StoredMessage } from './history.ts';
 import { MIDNIGHT_RULE } from '../proactive/follow-ups.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { stateObject } from './state-schema.ts';
 import { knowsPeople } from '../life/people.ts';
 import type { ChatMessage } from '../language/prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
@@ -247,6 +248,19 @@ interface CommonState {
     bankConfigured?: string;
 }
 
+const versionValue = (value: unknown): boolean => value === undefined || typeof value === 'string' && value.length > 0;
+const progressMap = (value: unknown): boolean => stateObject(value) && Object.entries(value).every(([id, count]) => /^ep--?\d+$/.test(id)
+    && typeof count === 'number' && Number.isSafeInteger(count) && count >= 0);
+function contactState(value: unknown): value is ContactState {
+    return stateObject(value) && typeof value.bankId === 'string' && Boolean(value.bankId) && progressMap(value.retained)
+        && (value.common === undefined || progressMap(value.common)) && versionValue(value.bankConfigured) && versionValue(value.personModel)
+        && (typeof value.relationshipModel === 'boolean' || versionValue(value.relationshipModel));
+}
+function commonState(value: unknown): value is CommonState {
+    return stateObject(value) && typeof value.bankId === 'string' && Boolean(value.bankId) && versionValue(value.bankConfigured);
+}
+const MEMORY_STOPPED = Symbol('memory stopped');
+
 /** 一次写入或召回的结果 */
 export interface MemoryEvent {
     at: number;
@@ -280,6 +294,12 @@ export class LongTermMemory {
     readonly #queues = new Map<string, Promise<void>>();
     readonly #relationship = new Map<string, { content?: string; fetchedAt: number; fetching?: boolean }>();
     #entities: { names: string[]; fetchedAt?: number } = { names: [] };
+    #entitiesVersion = 0;
+    #entitiesFlight?: { version: number; promise: Promise<readonly string[]> };
+    #stopped = false;
+    readonly #writeJobs = new Set<Promise<unknown>>();
+    readonly #cancelReads = new Set<() => void>();
+    #drain?: Promise<void>;
     /** 最近一次写入、召回的结果（控制台的状态页，ADR 0010） */
     #lastWrite?: MemoryEvent;
     #lastRecall?: MemoryEvent;
@@ -288,6 +308,48 @@ export class LongTermMemory {
         this.#options = options;
         this.#now = options.now ?? Date.now;
         mkdirSync(options.dir, { recursive: true });
+    }
+
+    /** 不再派发工作；已派发的写请求确认后仍保存进度，调用方须等 drain 后释放运行锁。 */
+    stop(): Promise<void> | undefined {
+        if (this.#stopped) return this.#drain;
+        this.#stopped = true;
+        for (const cancel of this.#cancelReads) cancel();
+        this.#cancelReads.clear();
+        if (this.#writeJobs.size) this.#drain = Promise.allSettled([...this.#writeJobs]).then(() => {});
+        return this.#drain;
+    }
+
+    #trackWrite<T>(job: Promise<T>): Promise<T> {
+        this.#writeJobs.add(job);
+        const release = () => { this.#writeJobs.delete(job); };
+        void job.then(release, release);
+        return job;
+    }
+
+    async #mutate<T>(work: () => Promise<T>): Promise<T> {
+        if (this.#stopped) throw MEMORY_STOPPED;
+        // 不 race 已派发的 mutation：成功确认后的本地进度提交属于这次写任务。
+        return work();
+    }
+
+    #read<T>(work: () => Promise<T>): Promise<T> {
+        if (this.#stopped) return Promise.reject(MEMORY_STOPPED);
+        return new Promise((resolve, reject) => {
+            const cancel = () => { this.#cancelReads.delete(cancel); reject(MEMORY_STOPPED); };
+            this.#cancelReads.add(cancel);
+            let pending: Promise<T>;
+            try { pending = work(); } catch (error) { this.#cancelReads.delete(cancel); reject(error); return; }
+            void pending.then(value => {
+                this.#cancelReads.delete(cancel);
+                if (this.#stopped) reject(MEMORY_STOPPED); else resolve(value);
+            }, error => { this.#cancelReads.delete(cancel); reject(error); });
+        });
+    }
+
+    #invalidateEntities(): void {
+        this.#entitiesVersion++;
+        this.#entities.fetchedAt = undefined;
     }
 
     /** 这次启动以来最近一次写入、召回的结果；还没发生过就没有 */
@@ -306,6 +368,7 @@ export class LongTermMemory {
 
     /** 把还没写入的片段写进 Hindsight；同一联系人排队执行，返回这一次排进去的任务 */
     sync(contact: MemoryContact, names: MacroNames, history: StoredMessage[]): Promise<void> {
+        if (this.#stopped) return Promise.resolve();
         // Queue ownership begins now: later history edits must not change the
         // evidence that this particular task was asked to retain.
         contact = { ...contact };
@@ -313,7 +376,8 @@ export class LongTermMemory {
         history = structuredClone(history);
         const key = this.#key(contact);
         const previous = this.#queues.get(key) ?? Promise.resolve();
-        const next = previous.then(() => this.#sync(contact, names, history)).catch(error => {
+        const next = previous.then(() => { if (!this.#stopped) return this.#sync(contact, names, history); }).catch(error => {
+            if (error === MEMORY_STOPPED) return;
             const message = error instanceof Error ? error.message : String(error);
             this.#lastWrite = { at: this.#now(), ok: false, operation: 'write', source: 'contact-sync', error: message };
             this.#options.log(`[${contact.qq}] 记忆写入失败：${message}`);
@@ -321,7 +385,7 @@ export class LongTermMemory {
         this.#queues.set(key, next);
         const release = () => { if (this.#queues.get(key) === next) this.#queues.delete(key); };
         void next.then(release, release);
-        return next;
+        return this.#trackWrite(next);
     }
 
     async #sync(contact: MemoryContact, names: MacroNames, history: StoredMessage[]): Promise<void> {
@@ -335,6 +399,7 @@ export class LongTermMemory {
         });
         const pending = due(state.retained);
         if (pending.length) await this.#retainOwn(contact, names, state, pending);
+        if (this.#stopped) return;
         if (!this.#options.common || !knowsPeople(contact.tier)) return;
         // 危机相关的片段不写进公共记忆库（ADR 0068 决策 8）：私人库保留事实本身，公共库不留
         const common = due(state.common).filter(episode => {
@@ -351,6 +416,7 @@ export class LongTermMemory {
             await this.#ensurePersonModel(contact, names, state, bankId);
             if (common.length) await this.#retainCommon(contact, names, state, common, bankId);
         } catch (error) {
+            if (error === MEMORY_STOPPED) return;
             const message = error instanceof Error ? error.message : String(error);
             this.#lastWrite = { at: this.#now(), ok: false, operation: 'write', source: 'qq-common', error: message };
             this.#options.log(`[${contact.qq}] 记忆（公共）写入失败：${message}`);
@@ -360,7 +426,7 @@ export class LongTermMemory {
     /** 写进公共记忆库：document_id 带上是谁的（哈希，不带 QQ 号），原文开头写和谁的私聊 */
     async #retainCommon(contact: MemoryContact, names: MacroNames, state: ContactState, episodes: Episode[], bankId: string): Promise<void> {
         for (const episode of episodes) {
-            await this.#options.api.retain(bankId, {
+            await this.#mutate(() => this.#options.api.retain(bankId, {
                 content: `和${names.user}的私聊\n${episodeTranscript(episode, names)}`,
                 timestamp: localIso(episode.start),
                 context: `QQ 私聊：${names.char}（AI 扮演）和${names.user}`,
@@ -368,13 +434,13 @@ export class LongTermMemory {
                 tags: TAGS,
                 metadata: { source: 'qq', episode: episode.id, messages: String(episode.messages.length) },
                 entities: [{ text: names.user, type: 'PERSON' }, { text: names.char, type: 'PERSON' }],
-            });
+            }));
             (state.common ??= {})[episode.id] = episode.messages.length;
             this.#save(contact, state);
             this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-common-episode', items: episode.messages.length, fingerprint: evidenceFingerprint(episode.id) };
             this.#options.log(`[${contact.qq}] 记忆（公共）：片段 ${episode.id}（${episode.messages.length} 条）已提交给 Hindsight`);
             // 新片段可能带来新的人和事，下一轮重读实体名
-            this.#entities.fetchedAt = undefined;
+            this.#invalidateEntities();
         }
     }
 
@@ -383,7 +449,8 @@ export class LongTermMemory {
      * 成功返回 true；失败记日志、返回 false（下次再写）
      */
     async retainDiary(date: string, day: Date, text: string, char: string): Promise<boolean> {
-        return this.#retainWritten(`${DIARY_PREFIX}${date}`, day, `${char}的日记（${date}）`, text, char, 'diary', `她的日记：${date}`);
+        if (this.#stopped) return false;
+        return this.#trackWrite(this.#retainWritten(`${DIARY_PREFIX}${date}`, day, `${char}的日记（${date}）`, text, char, 'diary', `她的日记：${date}`));
     }
 
     /**
@@ -391,7 +458,8 @@ export class LongTermMemory {
      * 时间写最后那天晚上。title 是正文前面那一行（「林梦瑶的周记（10月5日–10月11日）」）
      */
     async retainSummary(documentId: string, lastDay: Date, title: string, text: string, char: string, tag: 'week' | 'phase'): Promise<boolean> {
-        return this.#retainWritten(documentId, lastDay, title, text, char, tag, `她的${tag === 'week' ? '周记' : '阶段总结'}：${documentId}`);
+        if (this.#stopped) return false;
+        return this.#trackWrite(this.#retainWritten(documentId, lastDay, title, text, char, tag, `她的${tag === 'week' ? '周记' : '阶段总结'}：${documentId}`));
     }
 
     /** 她自己写的东西存进公共库；成功返回 true，失败记日志、返回 false（下次再写） */
@@ -399,7 +467,7 @@ export class LongTermMemory {
         if (!this.#options.common) return false;
         try {
             const bankId = await this.#ensureCommonBank(char);
-            await this.#options.api.retain(bankId, {
+            await this.#mutate(() => this.#options.api.retain(bankId, {
                 content: `${title}\n${text}`,
                 // 日记是睡前写的：时间写那天晚上
                 timestamp: localIso(localDate(day.getFullYear(), day.getMonth(), day.getDate(), 22)),
@@ -408,11 +476,12 @@ export class LongTermMemory {
                 tags: [...TAGS, tag],
                 metadata: { source: tag, ...(tag === 'diary' ? { date: documentId.slice(DIARY_PREFIX.length) } : { id: documentId }) },
                 entities: [{ text: char, type: 'PERSON' }],
-            });
+            }));
             this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: tag, items: 1, fingerprint: evidenceFingerprint(documentId) };
-            this.#entities.fetchedAt = undefined;
+            this.#invalidateEntities();
             return true;
         } catch (error) {
+            if (error === MEMORY_STOPPED) return false;
             const message = error instanceof Error ? error.message : String(error);
             this.#lastWrite = { at: this.#now(), ok: false, operation: 'write', source: tag, error: message, fingerprint: evidenceFingerprint(documentId) };
             this.#options.log(`${what} 写进公共记忆失败，下次再写：${message}`);
@@ -425,8 +494,11 @@ export class LongTermMemory {
      */
     async readDiary(date: string): Promise<string | undefined> {
         const get = this.#options.api.getDocument;
-        if (!this.#options.common || !get) return undefined;
-        const document = await get.call(this.#options.api, this.commonBankId(), `${DIARY_PREFIX}${date}`, this.#options.recallTimeoutMs);
+        if (this.#stopped || !this.#options.common || !get) return undefined;
+        let document;
+        try { document = await this.#read(() => get.call(this.#options.api, this.commonBankId(), `${DIARY_PREFIX}${date}`, this.#options.recallTimeoutMs)); }
+        catch (error) { if (error === MEMORY_STOPPED) return undefined; throw error; }
+        if (this.#stopped) return undefined;
         const text = document?.original_text;
         // 正文前面有一行「林梦瑶的日记（日期）」
         return text ? text.slice(text.indexOf('\n') + 1).trim() || undefined : undefined;
@@ -437,11 +509,11 @@ export class LongTermMemory {
         const model = personModel(this.#personModelId(contact), names.user, names.char);
         const version = createHash('sha256').update(JSON.stringify(model)).digest('hex').slice(0, 12);
         if (state.personModel === version) return;
-        if (!(await this.#options.api.getMentalModel(bankId, model.id))) {
-            await this.#options.api.createMentalModel(bankId, model);
+        if (!(await this.#read(() => this.#options.api.getMentalModel(bankId, model.id)))) {
+            await this.#mutate(() => this.#options.api.createMentalModel(bankId, model));
         } else {
-            await this.#options.api.updateMentalModel(bankId, model.id, model);
-            await this.#options.api.refreshMentalModel(bankId, model.id);
+            await this.#mutate(() => this.#options.api.updateMentalModel(bankId, model.id, model));
+            await this.#mutate(() => this.#options.api.refreshMentalModel(bankId, model.id));
         }
         state.personModel = version;
         this.#save(contact, state);
@@ -451,12 +523,12 @@ export class LongTermMemory {
     async #ensureCommonBank(char: string): Promise<string> {
         const path = join(this.#options.dir, 'common.json');
         const bankId = this.commonBankId();
-        const stored = readJsonOr<Partial<CommonState>>(path, {}, message => this.#options.log(message));
-        const state: CommonState = stored.bankId === bankId ? { bankId, ...(stored.bankConfigured ? { bankConfigured: stored.bankConfigured } : {}) } : { bankId };
+        const stored = this.#loadCommon();
+        const state: CommonState = stored.bankId === bankId ? { ...stored, bankId } : { bankId };
         const missions = commonBankMissions(char);
         const version = createHash('sha256').update(JSON.stringify(missions)).digest('hex').slice(0, 12);
         if (state.bankConfigured !== version) {
-            await this.#options.api.putBank(bankId, { name: `${char} 的公共记忆（名单里的人）`, ...missions });
+            await this.#mutate(() => this.#options.api.putBank(bankId, { name: `${char} 的公共记忆（名单里的人）`, ...missions }));
             writeJsonAtomic(path, { ...state, bankConfigured: version });
             this.#options.log(`记忆：公共记忆库 ${bankId} 已写入 mission`);
         }
@@ -466,7 +538,7 @@ export class LongTermMemory {
     async #retainOwn(contact: MemoryContact, names: MacroNames, state: ContactState, pending: Episode[]): Promise<void> {
         await this.#ensureBank(contact, names, state);
         for (const episode of pending) {
-            await this.#options.api.retain(state.bankId, {
+            await this.#mutate(() => this.#options.api.retain(state.bankId, {
                 content: episodeTranscript(episode, names),
                 // 带本机时区：抽取时按这个时间的日期、星期换算「明天」（ADR 0012 决策 1 第 2 条）
                 timestamp: localIso(episode.start),
@@ -475,7 +547,7 @@ export class LongTermMemory {
                 document_id: episode.id,
                 tags: TAGS,
                 metadata: { source: 'qq', episode: episode.id, messages: String(episode.messages.length) },
-            });
+            }));
             state.retained[episode.id] = episode.messages.length;
             this.#save(contact, state);
             this.#lastWrite = { at: this.#now(), ok: true, operation: 'write', source: 'qq-episode', items: episode.messages.length, fingerprint: evidenceFingerprint(episode.id) };
@@ -488,19 +560,19 @@ export class LongTermMemory {
         const version = createHash('sha256').update(JSON.stringify(missions)).digest('hex').slice(0, 12);
         if (state.bankConfigured !== version) {
             const config: BankConfig = { name: `${names.char} × ${names.user}（${contact.tier}）`, ...missions };
-            await this.#options.api.putBank(state.bankId, config);
+            await this.#mutate(() => this.#options.api.putBank(state.bankId, config));
             state.bankConfigured = version;
             this.#save(contact, state);
             this.#options.log(`[${contact.qq}] 记忆：bank ${state.bankId}（${contact.tier}）已写入 mission`);
         }
         const modelVersion = createHash('sha256').update(JSON.stringify(RELATIONSHIP_MODEL)).digest('hex').slice(0, 12);
         if (state.relationshipModel !== modelVersion) {
-            if (!(await this.#options.api.getMentalModel(state.bankId, RELATIONSHIP_MODEL_ID))) {
-                await this.#options.api.createMentalModel(state.bankId, RELATIONSHIP_MODEL);
+            if (!(await this.#read(() => this.#options.api.getMentalModel(state.bankId, RELATIONSHIP_MODEL_ID)))) {
+                await this.#mutate(() => this.#options.api.createMentalModel(state.bankId, RELATIONSHIP_MODEL));
             } else {
                 // 已经有了（旧设定建的）：改设定，再刷新一次让内容按新设定重写
-                await this.#options.api.updateMentalModel(state.bankId, RELATIONSHIP_MODEL_ID, RELATIONSHIP_MODEL);
-                await this.#options.api.refreshMentalModel(state.bankId, RELATIONSHIP_MODEL_ID);
+                await this.#mutate(() => this.#options.api.updateMentalModel(state.bankId, RELATIONSHIP_MODEL_ID, RELATIONSHIP_MODEL));
+                await this.#mutate(() => this.#options.api.refreshMentalModel(state.bankId, RELATIONSHIP_MODEL_ID));
                 this.#options.log(`[${contact.qq}] 记忆：关系概况的设定改了，已更新并重新整理`);
             }
             state.relationshipModel = modelVersion;
@@ -518,12 +590,13 @@ export class LongTermMemory {
         contact: MemoryContact, chat: ChatMessage[], now: Date,
         options: { query?: string; window?: { start: Date; end: Date }; header?: string; limit?: number } & FadeOptions = {},
     ): Promise<string | undefined> {
+        if (this.#stopped) return undefined;
         const state = this.#load(contact);
         if (!state.bankConfigured) return undefined;
         const query = options.query ?? recallQuery(chat);
         if (!query) return undefined;
         const results = await this.#recall(state.bankId, recallRequest(query, now, options.window), `[${contact.qq}] 记忆召回失败，这次不带记忆`);
-        if (!results) return undefined;
+        if (this.#stopped || !results) return undefined;
         const current = currentEpisodeId(chat);
         return formatRecalled(results.filter(r => !current || r.document_id !== current), {
             header: options.header, limit: options.limit, now, fade: this.#fade(chat, options),
@@ -544,8 +617,8 @@ export class LongTermMemory {
         contact: NamedContact, chat: readonly ChatMessage[], now: Date, people: readonly NamedContact[], window?: { start: Date; end: Date; period?: string }, fade: FadeOptions = {},
         focus: readonly string[] = [],
     ): Promise<string | undefined> {
-        if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
-        const stored = readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message));
+        if (this.#stopped || !this.#options.common || !knowsPeople(contact.tier)) return undefined;
+        const stored = this.#loadCommon();
         if (stored.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
         const query = recallQuery(chat);
         if (!query) return undefined;
@@ -554,12 +627,13 @@ export class LongTermMemory {
             ...recallRequest(query, now, window), types: ['world', 'experience'], prefer_observations: false, ...(window ? { max_tokens: DAY_RECALL_TOKENS } : {}),
         };
         const found = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
-        if (!found) return undefined;
+        if (this.#stopped || !found) return undefined;
         // 问上周、问假期时，周记、阶段总结单独按标签再召回一次（ADR 0026：日记里的事多了以后，周记的条目有时排不进上面那次的名额，3/9 次问上周没想起周记）
         const summaryTag = window?.period === 'week' ? 'week' : window?.period === 'holiday' ? 'phase' : undefined;
         const summaries = summaryTag
             ? await this.#recall(stored.bankId, { ...request, tags: [...request.tags, summaryTag] }, `[${contact.qq}] ${summaryTag === 'week' ? '周记' : '阶段总结'}召回失败，这次只用上面的`)
             : undefined;
+        if (this.#stopped) return undefined;
         const all = summaries?.length ? [...summaries, ...found.filter(r => !summaries.some(s => s.id === r.id))] : found;
         // 问到某段时间时，那段的周记、阶段总结排在前面（ADR 0018：「上周忙啥」「国庆过得怎样」整体答）
         // 问的是某一天：只留那天的，那天的日记排前面（ADR 0018 第二批：「昨天」那天正好是国庆最后一天，总结里的几条占满名额，把那天的日记挤掉了）
@@ -585,8 +659,8 @@ export class LongTermMemory {
      * contact.ts 只会在亲密联系人开启一段新对话或她主动找他时调用；这里仍保留通用的权限检查。
      */
     async othersToday(contact: NamedContact, now: Date, people: readonly NamedContact[], start: Date): Promise<string | undefined> {
-        if (!this.#options.common || !knowsPeople(contact.tier)) return undefined;
-        const stored = readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message));
+        if (this.#stopped || !this.#options.common || !knowsPeople(contact.tier)) return undefined;
+        const stored = this.#loadCommon();
         if (stored.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
         const own = this.#hash(contact);
         const owners = new Set(people.map(person => this.#hash(person)).filter(hash => hash !== own));
@@ -598,7 +672,7 @@ export class LongTermMemory {
             types: ['world', 'experience'],
             prefer_observations: false,
         }, `[${contact.qq}] 今天和别人聊过的召回失败，这次不带`);
-        if (!all) return undefined;
+        if (this.#stopped || !all) return undefined;
         const today = all.filter(result => {
             const owner = (result.document_id ?? '').split(':')[0]!;
             return owners.has(owner) && mentionedOnDay(result, start, end);
@@ -626,10 +700,12 @@ export class LongTermMemory {
 
     async #recall(bankId: string, request: RecallRequest, failure: string): Promise<RecallResult[] | undefined> {
         try {
-            const results = await this.#options.api.recall(bankId, request, this.#options.recallTimeoutMs);
+            const results = await this.#read(() => this.#options.api.recall(bankId, request, this.#options.recallTimeoutMs));
+            if (this.#stopped) return undefined;
             this.#lastRecall = { at: this.#now(), ok: true, operation: 'recall', source: 'hindsight-recall', items: results.length, fingerprint: evidenceFingerprint(request.query) };
             return results;
         } catch (error) {
+            if (error === MEMORY_STOPPED) return undefined;
             const message = error instanceof Error ? error.message : String(error);
             this.#lastRecall = { at: this.#now(), ok: false, operation: 'recall', source: 'hindsight-recall', error: message, fingerprint: evidenceFingerprint(request.query) };
             this.#options.log(`${failure}：${message}`);
@@ -643,35 +719,44 @@ export class LongTermMemory {
      */
     async commonEntities(): Promise<readonly string[]> {
         const list = this.#options.api.listEntities;
-        if (!this.#options.common || !list) return [];
+        if (this.#stopped || !this.#options.common || !list) return [];
         const cached = this.#entities;
-        if (cached.fetchedAt !== undefined && this.#now() - cached.fetchedAt < ENTITIES_REFRESH_MS) return cached.names;
-        try {
-            this.#entities = { names: await list.call(this.#options.api, this.commonBankId(), this.#options.recallTimeoutMs), fetchedAt: this.#now() };
-        } catch (error) {
-            // 公共库还没建是 404，不用记
-            if ((error as { status?: number }).status !== 404) {
-                this.#options.log(`读取公共记忆的实体失败，用上一次的：${error instanceof Error ? error.message : String(error)}`);
+        if (cached.fetchedAt !== undefined && this.#now() - cached.fetchedAt < ENTITIES_REFRESH_MS) return [...cached.names];
+        const version = this.#entitiesVersion;
+        if (this.#entitiesFlight?.version === version) return this.#entitiesFlight.promise;
+        const promise = (async () => {
+            try {
+                const names = await this.#read(() => list.call(this.#options.api, this.commonBankId(), this.#options.recallTimeoutMs));
+                if (!this.#stopped && version === this.#entitiesVersion) this.#entities = { names: [...names], fetchedAt: this.#now() };
+            } catch (error) {
+                if (error !== MEMORY_STOPPED && !this.#stopped && version === this.#entitiesVersion) {
+                    // 公共库还没建是 404，不用记；只延长当前世代的已有缓存。
+                    if ((error as { status?: number }).status !== 404) this.#options.log(`读取公共记忆的实体失败，用上一次的：${error instanceof Error ? error.message : String(error)}`);
+                    this.#entities = { names: this.#entities.names, fetchedAt: this.#now() };
+                }
             }
-            this.#entities = { names: cached.names, fetchedAt: this.#now() };
-        }
-        return this.#entities.names;
+            return this.#stopped ? [] : [...this.#entities.names];
+        })();
+        const flight = { version, promise }; this.#entitiesFlight = flight;
+        const release = () => { if (this.#entitiesFlight === flight) this.#entitiesFlight = undefined; };
+        void promise.then(release, release);
+        return promise;
     }
 
     /**
      * 她对这个人的印象（ADR 0017，公共库里的「她眼中的他」）：返回缓存，过期了在后台重新读；没开公共库、还没建、内容为空都是 undefined
      */
     impression(person: NamedContact): string | undefined {
-        if (!this.#options.common || !knowsPeople(person.tier) || !this.#load(person).personModel) return undefined;
+        if (this.#stopped || !this.#options.common || !knowsPeople(person.tier) || !this.#load(person).personModel) return undefined;
         const key = `person:${this.#key(person)}`;
         const cached = this.#relationship.get(key);
         if (!cached || (!cached.fetching && this.#now() - cached.fetchedAt >= RELATIONSHIP_REFRESH_MS)) {
             const entry = { content: cached?.content, fetchedAt: cached?.fetchedAt ?? 0, fetching: true };
             this.#relationship.set(key, entry);
-            this.#options.api.getMentalModel(this.commonBankId(), this.#personModelId(person))
-                .then(model => { entry.content = withoutMark(model?.content ?? '') || undefined; })
-                .catch(error => this.#options.log(`[${person.qq}] 读取「她眼中的${person.name}」失败：${error instanceof Error ? error.message : String(error)}`))
-                .finally(() => { entry.fetchedAt = this.#now(); entry.fetching = false; });
+            this.#read(() => this.#options.api.getMentalModel(this.commonBankId(), this.#personModelId(person)))
+                .then(model => { if (!this.#stopped) entry.content = withoutMark(model?.content ?? '') || undefined; })
+                .catch(error => { if (error !== MEMORY_STOPPED && !this.#stopped) this.#options.log(`[${person.qq}] 读取「她眼中的${person.name}」失败：${error instanceof Error ? error.message : String(error)}`); })
+                .finally(() => { if (!this.#stopped) { entry.fetchedAt = this.#now(); entry.fetching = false; } });
         }
         const content = this.#relationship.get(key)?.content;
         return content
@@ -685,6 +770,7 @@ export class LongTermMemory {
 
     /** 关系概况：返回缓存，过期了在后台重新读 */
     relationship(contact: MemoryContact): string | undefined {
+        if (this.#stopped) return undefined;
         const state = this.#load(contact);
         if (!state.relationshipModel) return undefined;
         const key = this.#key(contact);
@@ -692,10 +778,10 @@ export class LongTermMemory {
         if (!cached || (!cached.fetching && this.#now() - cached.fetchedAt >= RELATIONSHIP_REFRESH_MS)) {
             const entry = { content: cached?.content, fetchedAt: cached?.fetchedAt ?? 0, fetching: true };
             this.#relationship.set(key, entry);
-            this.#options.api.getMentalModel(state.bankId, RELATIONSHIP_MODEL_ID)
-                .then(model => { entry.content = withoutMark(model?.content ?? '') || undefined; })
-                .catch(error => this.#options.log(`[${contact.qq}] 读取关系概况失败：${error instanceof Error ? error.message : String(error)}`))
-                .finally(() => { entry.fetchedAt = this.#now(); entry.fetching = false; });
+            this.#read(() => this.#options.api.getMentalModel(state.bankId, RELATIONSHIP_MODEL_ID))
+                .then(model => { if (!this.#stopped) entry.content = withoutMark(model?.content ?? '') || undefined; })
+                .catch(error => { if (error !== MEMORY_STOPPED && !this.#stopped) this.#options.log(`[${contact.qq}] 读取关系概况失败：${error instanceof Error ? error.message : String(error)}`); })
+                .finally(() => { if (!this.#stopped) { entry.fetchedAt = this.#now(); entry.fetching = false; } });
         }
         const content = this.#relationship.get(key)?.content;
         return content ? `[你们关系的整体情况（从以前的聊天整理的，只作参考，不要原样说出来）]\n${content}` : undefined;
@@ -717,10 +803,14 @@ export class LongTermMemory {
     #load(contact: MemoryContact): ContactState {
         const path = this.#path(contact);
         const fresh: ContactState = { bankId: this.bankId(contact), retained: {} };
-        const data = readJsonOr<Partial<ContactState>>(path, {}, message => this.#options.log(`[${contact.qq}] ${message}`));
+        const data = readJsonOr<Partial<ContactState>>(path, {}, message => this.#options.log(`[${contact.qq}] ${message}`), { validate: contactState });
         // 换了 bank 前缀：进度是旧 bank 的，新 bank 从头写 mission 和片段（ADR 0012 决策 1 第 9 条）
         if (data.bankId && data.bankId !== fresh.bankId) return fresh;
         return { ...fresh, ...data, bankId: fresh.bankId, retained: data.retained ?? {} };
+    }
+
+    #loadCommon(): Partial<CommonState> {
+        return readJsonOr<Partial<CommonState>>(join(this.#options.dir, 'common.json'), {}, message => this.#options.log(message), { validate: commonState });
     }
 
     #save(contact: MemoryContact, state: ContactState): void {

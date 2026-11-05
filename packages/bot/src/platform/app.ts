@@ -140,8 +140,8 @@ export interface App {
     receiveRecall(event: RecallEvent): void;
     /** 有人申请加她（ADR 0142，配置 qqFriendGate）：名单内同意；名单外按档留着或驳回。不认识的申请不碰 */
     receiveFriendRequest(input: { userId: number; flag: string; comment?: string }): void;
-    /** 停下：回复器都停掉，不再写记忆，释放锁（Koishi 插件停用或重启时） */
-    stop(): void;
+    /** 停下：拒绝新工作；已派发的记忆写入/回复发送确认并收尾后才释放锁。idle同步，忙时宿主须await。 */
+    stop(): Promise<void> | undefined;
     /** 此刻的状态（控制台「林梦瑶」页面，ADR 0010）；不含聊天内容 */
     status(): AppStatus;
     /** DSH 开启时可供宿主挂 HTTPS / WebSocket 的手机伴侣运行时；默认关闭时为 undefined。 */
@@ -252,7 +252,14 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-export function startApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, sensitive = sensitiveSwitch() }: AppOptions): App {
+export function startApp(options: AppOptions): App {
+    mkdirSync(options.config.dataDir, { recursive: true });
+    const release = acquireLock(join(options.config.dataDir, 'bot.lock'));
+    try { return createApp(options, release); }
+    catch (error) { release(); throw error; }
+}
+
+function createApp({ config, transport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, sensitive = sensitiveSwitch() }: AppOptions, releaseLock: () => void): App {
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -462,8 +469,7 @@ export function startApp({ config, transport, log, pipeline, media, vision, stic
     }
 
     const chatHistory = new ChatHistory(config.dataDir, log);
-    // 放在 ChatHistory 之后：它会建好数据目录
-    const releaseLock = acquireLock(join(config.dataDir, 'bot.lock'));
+    // 目录锁已在构造入口获取，任何状态初始化都位于锁内。
     // 心跳（任务书 T3b）：每分钟写 heartbeat.json（只有时间和进程号），ops/heartbeat-watch-cli.ts 看它多久没更新
     let connectedAt: Date | undefined;
     let lastMessageAt: Date | undefined;
@@ -1194,6 +1200,7 @@ ${video.link}`);
     }
 
     let stopped = false;
+    let stopDrain: Promise<void> | undefined;
     let stickerDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
     let photoDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
     let foodDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
@@ -2148,8 +2155,11 @@ ${body}
                 .catch(error => log(`[好友申请] ${userId} 处理失败：${error instanceof Error ? error.message : String(error)}`));
         },
         stop() {
-            if (stopped) return;
+            if (stopped) return stopDrain;
             stopped = true;
+            const diaryDrain = diaries?.stop();
+            const promisesDrain = promises?.stop();
+            const memoryDrain = memory?.stop();
             clearTimeout(incomingRetryTimer);
             try { chatHistory.flushIncoming(); } catch (error) { log(`停止时入站状态仍未确认持久（${describeError(error)}）`); }
             photoDiscovery.abort();
@@ -2160,7 +2170,7 @@ ${body}
             reading?.stop();
             if (readingUnlisted !== reading) readingUnlisted?.stop();
             for (const planner of planners.values()) planner.stop();
-            for (const responder of responders.values()) responder.stop();
+            const responderDrains = [...responders.values()].map(responder => responder.stop());
             if (memoryTimer) clearInterval(memoryTimer);
             if (tastesTimer) clearInterval(tastesTimer);
             if (tastesFirst) clearTimeout(tastesFirst);
@@ -2184,7 +2194,18 @@ ${body}
             if (weeklyTimer) clearInterval(weeklyTimer);
             clearTimeout(photoRetryTimer);
             useRealWeather(undefined);
+            const drains = [diaryDrain, promisesDrain, memoryDrain, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
+            if (drains.length) {
+                stopDrain = Promise.allSettled(drains).then(results => {
+                    for (const result of results) if (result.status === 'rejected') {
+                        try { log(`停止时持久收尾未确认（${describeError(result.reason)}）`); } catch { /* 诊断不改变已确认事实。 */ }
+                    }
+                    releaseLock();
+                });
+                return stopDrain;
+            }
             releaseLock();
+            return undefined;
         },
         status() {
             const now = new Date();
