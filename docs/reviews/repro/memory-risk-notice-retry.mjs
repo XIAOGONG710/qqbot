@@ -1,5 +1,4 @@
-// Synthetic diagnosis of unread-count caching after a failed notice read.
-// Exit 0 reports facts; it does not assert that the behavior is correct.
+// Synthetic correctness probe: failed reads retry with unchanged unread count.
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,6 +21,11 @@ try {
     await monitor.stop(); monitor = make(); at += RISK_POLL_MS; await monitor.tick(); const sameUnreadAfterRestart = view();
     // Positive control: changing the count lets the same fake API expose the warning.
     unread = 2; at += RISK_POLL_MS; await monitor.tick(); const changedUnreadControl = view();
+    assert.equal(failedFirst.noticeReads, 1); assert.equal(failedFirst.halted, false);
+    assert.equal(sameUnreadAfterInterval.noticeReads, 2); assert.equal(sameUnreadAfterInterval.halted, true);
+    assert.equal(sameUnreadAfterRestart.noticeReads, 3); assert.equal(sameUnreadAfterRestart.halted, true);
+    assert.equal(changedUnreadControl.noticeReads, 4); assert.equal(changedUnreadControl.halted, true);
+    assert.equal(changedUnreadControl.dms, failedFirst.dms);
     console.log(JSON.stringify({ failedFirst, sameUnreadAfterInterval, sameUnreadAfterRestart, changedUnreadControl, logs }, null, 2));
 } finally {
     await monitor.stop(); assert.equal(dirname(resolve(root)), resolve(tmpdir())); assert.ok(basename(root).startsWith('qqbot-risk-notice-retry-review-'));

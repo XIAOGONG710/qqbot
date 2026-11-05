@@ -8,7 +8,8 @@ import { join } from 'node:path';
 import { BiliApiError, type BiliAccount, type ReplyItem } from './bilibili-account.ts';
 import { BLOCKED } from './bilibili.ts';
 import { isRiskError, type RiskGate } from './bilibili-risk.ts';
-import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { fileOps, readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { calendarDate, stateObject } from '../memory/state-schema.ts';
 import { formatDate } from '../life/schedule.ts';
 
 /** 多久看一次「回复我的」 */
@@ -82,8 +83,18 @@ interface ReplyFile {
     recent?: string[];
 }
 
-const validFile = (value: unknown): value is ReplyFile =>
-    typeof value === 'object' && value !== null && (value as ReplyFile).version === 1 && Array.isArray((value as ReplyFile).handled);
+const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const storedTime = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value)
+    && value >= -62167219200000 && value <= 253402300799999;
+function validFile(value: unknown): value is ReplyFile {
+    if (!stateObject(value) || value.version !== 1 || !Array.isArray(value.handled) || !value.handled.every(id => typeof id === 'string' && id.length > 0)) return false;
+    if (value.day !== undefined && (typeof value.day !== 'string' || !calendarDate(value.day))) return false;
+    for (const key of ['count', 'userCount', 'failures']) if (value[key] !== undefined && !count(value[key])) return false;
+    for (const key of ['nextPollAt', 'nextReplyAt', 'pausedUntil']) if (value[key] !== undefined && !storedTime(value[key])) return false;
+    if (value.recent !== undefined && (!Array.isArray(value.recent) || !value.recent.every(text => typeof text === 'string'))) return false;
+    return value.perPerson === undefined || stateObject(value.perPerson)
+        && Object.entries(value.perPerson).every(([uid, used]) => /^(?:0|[1-9]\d*)$/.test(uid) && Number.isSafeInteger(Number(uid)) && count(used));
+}
 
 // ───────── 不回的情况 ─────────
 
@@ -134,9 +145,33 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
     const statePath = join(options.dir, 'bilibili-replies.json');
     const draftsPath = join(options.dir, 'drafts.md');
     const corpusPath = join(options.dir, CORPUS_FILE);
-    const state = readJsonOr<ReplyFile>(statePath, { version: 1, handled: [] }, log, { validate: validFile, label: '回复 B 站评论状态' });
-    const handled = new Set(state.handled);
-    const save = () => { state.handled = [...handled].slice(-HANDLED_KEEP); writeJsonAtomic(statePath, state); };
+    let witnessed = false;
+    const load = (): ReplyFile => {
+        const loaded = readJsonOr<ReplyFile | undefined>(statePath, undefined, undefined, { validate: validFile, invalid: 'throw', label: '回复 B 站评论状态' });
+        if (loaded) { witnessed = true; return loaded; }
+        if (witnessed) throw new Error('回复 B 站评论状态消失；保留现场并拒绝重新回复');
+        return { version: 1, handled: [] };
+    };
+    let committed = load(), state = structuredClone(committed), handled = new Set(state.handled), uncertain = false;
+    let pending: ReplyFile | undefined;
+    const restore = (file: ReplyFile) => { state = structuredClone(file); handled = new Set(state.handled); };
+    const save = (observed = false) => {
+        const next = structuredClone({ ...state, handled: [...handled].slice(-HANDLED_KEEP) });
+        if (!validFile(next)) { restore(committed); throw new Error('回复 B 站评论状态更新无效；保留已确认进度'); }
+        if (observed) pending = next;
+        const bytes = `${JSON.stringify(next, null, 2)}\n`;
+        try { writeJsonAtomic(statePath, next); }
+        catch (error) {
+            let confirmed = false;
+            try { confirmed = fileOps.readFileSync(statePath, 'utf8') === bytes; } catch { /* Unknown publication must be recovered from fresh state. */ }
+            if (!confirmed) { uncertain = true; restore(committed); throw error; }
+        }
+        committed = next; witnessed = true; uncertain = false; pending = undefined; restore(next);
+    };
+    const recover = () => {
+        if (uncertain) { committed = load(); restore(committed); uncertain = false; }
+        if (pending) { restore(pending); save(true); }
+    };
     const random = options.random ?? Math.random;
     let timer: ReturnType<typeof setInterval> | undefined;
     let busy = false;
@@ -151,14 +186,14 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
         finally { lifetime.signal.removeEventListener('abort', abort); }
     };
     let halted = false;
-    let brokenUntil = 0;
+    let brokenUntil: number | undefined;
     const warned = new Set<string>();
     const warnOnce = (key: string, message: string, confirmed = false) => { if (!warned.has(key)) { warned.add(key); note(message, confirmed); } };
     const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
     async function getAccount(): Promise<BiliAccount | undefined> {
         const at = options.now(); active();
-        if (at < brokenUntil) return undefined;
+        if (brokenUntil !== undefined && at < brokenUntil) return undefined;
         return typeof options.account === 'function' ? options.account(lifetime.signal) : options.account;
     }
 
@@ -175,9 +210,12 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
 
     async function runTick(): Promise<void> {
             active(); let dispatched = false;
+            recover(); active();
+            if (halted) return;
             const t = options.now();
             active();
-            if (t < (state.pausedUntil ?? 0) || t < (state.nextPollAt ?? 0)) return;
+            if (!storedTime(t) || !storedTime(t + REPLY_POLL_MS)) throw new Error('回复 B 站评论当前时间超出可持久范围');
+            if (state.pausedUntil !== undefined && t < state.pausedUntil || state.nextPollAt !== undefined && t < state.nextPollAt) return;
             if (options.risk?.halted()) return;
             active();
             if (options.awake && !options.awake(t)) return;
@@ -193,6 +231,7 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
                 active();
                 if (error instanceof BiliApiError && (error.code === -101 || error.code === -111)) brokenUntil = t + AUTH_RETRY_MS;
                 warnOnce('fetch', `B 站回复：看「回复我的」失败（之后不再记，过 10 分钟再试）：${reason(error)}`);
+                active();
                 save();
                 return;
             }
@@ -218,8 +257,10 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
 
             for (const { item, fromUser } of waiting) {
                 active();
-                if (t < (state.nextReplyAt ?? 0)) break;
-                const spent = fromUser ? (state.userCount ?? 0) >= REPLY_USER_DAY_MAX : (state.count ?? 0) >= REPLY_DAY_MAX || (state.perPerson?.[String(item.uid)] ?? 0) >= REPLY_PER_PERSON_DAY_MAX;
+                if (state.nextReplyAt !== undefined && t < state.nextReplyAt) break;
+                const uid = String(item.uid);
+                const personal = state.perPerson && Object.hasOwn(state.perPerson, uid) ? state.perPerson[uid]! : 0;
+                const spent = fromUser ? (state.userCount ?? 0) >= REPLY_USER_DAY_MAX : (state.count ?? 0) >= REPLY_DAY_MAX || personal >= REPLY_PER_PERSON_DAY_MAX;
                 if (spent) continue;
 
                 let text: string | undefined;
@@ -241,10 +282,13 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
                 // 先记下再发：崩在中间最多漏回一条，不会回两遍
                 const nextReplyAt = t + REPLY_GAP_MS[0] + Math.floor(random() * (REPLY_GAP_MS[1] - REPLY_GAP_MS[0]));
                 active();
+                if (!storedTime(nextReplyAt) || !storedTime(t + REPLY_PAUSE_MS) || (state.failures ?? 0) >= Number.MAX_SAFE_INTEGER) {
+                    restore(committed); throw new Error('回复 B 站评论派生时间或计数超出可持久范围；本条未派发');
+                }
                 if (fromUser) state.userCount = (state.userCount ?? 0) + 1;
                 else {
                     state.count = (state.count ?? 0) + 1;
-                    state.perPerson = { ...state.perPerson, [String(item.uid)]: (state.perPerson?.[String(item.uid)] ?? 0) + 1 };
+                    state.perPerson = { ...state.perPerson, [uid]: personal + 1 };
                 }
                 state.nextReplyAt = nextReplyAt;
                 state.recent = [...(state.recent ?? []), text].slice(-5);
@@ -278,19 +322,21 @@ export function createReplyWatcher(options: ReplyOptions): ReplyWatcher {
                     // 验证码、风控、账号受限一类：改成私信告诉他，公开发言（评论和回复）都先停
                     if (isRiskError(error) && options.risk) {
                         const event = { why: `回复被 B 站拦了（${reason(error)}）`, wanted: `回 @${item.name}：${text}`, ...(item.bvid ? { link: `https://www.bilibili.com/video/${item.bvid}` } : {}) };
-                        if (stopped && options.risk.record) await options.risk.record(event);
-                        else await options.risk.trip(event);
+                        try {
+                            if (stopped && options.risk.record) await options.risk.record(event);
+                            else await options.risk.trip(event);
+                        } finally { save(true); }
                     }
                     break;
                 }
                 if (stopped) break;
             }
             if (!dispatched) active();
-            save();
+            save(dispatched);
     }
 
     function tick(): Promise<void> {
-        if (stopped || busy || halted) return Promise.resolve();
+        if (stopped || busy || halted && !pending && !uncertain) return Promise.resolve();
         busy = true;
         // Own the task before a public source or mutation can reenter stop().
         const task = Promise.resolve().then(runTick).catch(error => { if (!stopped || error !== lifetime.signal.reason) throw error; }).finally(() => { busy = false; });
