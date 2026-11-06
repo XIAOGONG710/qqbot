@@ -8,8 +8,8 @@ import { dateSpan, describeDate, describeWorld, occupationAt, planDates, recapDa
 import { syntheticCardPath } from './fixtures/card.ts';
 
 const card = (tier: string) => loadCharacterCard(syntheticCardPath(tier));
-// 约的配置（DEFAULT_ASKS）按 NPC id 认人：合成卡沿用同样的 id（su_yutong 约吃饭 / 自习 / 转转），名字和内容都是虚构的
-const ASK_FRIEND = 'su_yutong';
+// 约的配置（DEFAULT_ASKS）按 NPC id 认人：合成卡沿用同样的 id（roommate 约吃饭 / 自习 / 转转），名字和内容都是虚构的
+const ASK_FRIEND = 'roommate';
 const boyfriend = card('boyfriend');
 const classmate = card('classmate');
 const schedule = boyfriend.schedule!;
@@ -49,7 +49,7 @@ describe('闺蜜的约进世界（ADR 0061，World.asks）', () => {
     test('同一刻重放一样；同学档的卡上没有这两个人，也就没有约', () => {
         const at = nights.find(n => todays(n.now).length)!.at;
         assert.deepEqual(worldAt(on, schedule, at), worldAt(on, schedule, at));
-        assert.ok(!classmate.herWorld!.people.some(p => p.id === 'chen_jianing'), '同学档的卡上没有高中闺蜜');
+        assert.ok(!classmate.herWorld!.people.some(p => p.id === 'friend'), '同学档的卡上没有高中闺蜜');
         const mate = { ...classmate.herWorld!, asks: true };
         for (const { at: when } of nights) assert.equal(worldAt(mate, classmate.schedule!, when)?.dates, undefined);
     });
@@ -146,8 +146,8 @@ describe('闺蜜的约进世界（ADR 0061，World.asks）', () => {
     test('一天的打算里写上约：接在原来的打算后面；改约要等她知道才换时间，取消要等她知道才去掉，推掉的不写', () => {
         const plan = (now: WorldNow, at: Date) => describePlans(schedule, dayPlan(schedule, on.plans, herDay(schedule, at), { homework: now.homework, dates: planDates(now, at) }), at) ?? '';
         const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-        // 合成卡的学期里约视频改了时间的都被她推掉了；改约后照样去的不是吃饭的那一种是图书馆
-        const moved = first(d => d.outcome === 'moved' && d.held && d.kind === 'library')!;
+        // 改约后照样去的、不跟着饭点走的那一种（吃饭的约按她那顿饭的时刻，计划里另算）
+        const moved = first(d => d.outcome === 'moved' && d.held && d.kind !== 'canteen' && d.kind !== 'dinner')!;
         const early = new Date(moved.date.knownAt!.getTime() - 60_000);
         const late = new Date(moved.date.knownAt!.getTime() + 60_000);
         assert.match(plan(worldAt(on, schedule, early)!, early), new RegExp(`${hhmm(moved.date.start)} 和${moved.date.person.name}${moved.date.what}`));

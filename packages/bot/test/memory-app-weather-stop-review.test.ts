@@ -8,6 +8,7 @@ import { startApp, WEATHER_REFRESH_MS, type App } from '../src/platform/app.ts';
 import { parseAppConfig } from '../src/platform/config.ts';
 import { acquireLock } from '../src/platform/lock.ts';
 import { realWeather } from '../src/world/weather.ts';
+import { SYNTHETIC_WEATHER_PLACES } from './fixtures/card.ts';
 
 const tick = () => new Promise<void>(done => setImmediate(done));
 async function settle() { for (let i = 0; i < 8; i++) await tick(); }
@@ -24,7 +25,9 @@ function fixture(holdAt: number, fail = false, onFetch?: (app: App, index: numbe
     };
     try {
         const schedule = { sleep: '02:00', wake: { early: '08:00', lazy: '08:00', earlySlot: '1' }, periods: { '1': { start: '08:00', end: '09:30' } }, semester: { start: '2026-09-01', weeks: 30 }, holidays: [], makeups: [], kinds: { hard: {}, machine: {}, water: {}, pe: {} }, courses: [], free: { morning: ['合成休息'], afternoon: ['合成休息'], evening: ['合成休息'], afternoonFrom: '12:00', eveningFrom: '18:00' }, where: '合成地点' };
-        const card = { spec: 'chara_card_v2', data: { name: '合成角色', extensions: { qqbot: { schedule, world: { startDay: '2026-11-01', awayHolidays: [], people: [], events: [] } } } } };
+        // 真实天气取卡上 weather.places 的地方（合成的两个）
+        const SYNTHETIC_WEATHER = { rainChance: 0.3, temps: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [String(i + 1), [10, 20]])), places: { school: SYNTHETIC_WEATHER_PLACES[0], home: SYNTHETIC_WEATHER_PLACES[1] } };
+        const card = { spec: 'chara_card_v2', data: { name: '合成角色', extensions: { qqbot: { schedule, world: { startDay: '2026-11-01', awayHolidays: [], people: [], events: [], weather: SYNTHETIC_WEATHER } } } } };
         for (const tier of ['boyfriend', 'boyfriend-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify(card));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
             contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], schedule: false, moody: false, speechCheck: false, herDays: true, realWeather: true, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
@@ -70,7 +73,7 @@ for (const later of [false, true]) test(`正常App.stop等待${later ? '后续in
         f.release(); await drain; await settle();
         assert.equal(f.calls(), later ? 4 : 2, '已派一轮的第二城市保真完成，不能假取消');
         assert.deepEqual(f.writeLocks, later ? [true, true, true, true] : [true, true]);
-        assert.ok(existsSync(join(f.dataDir, 'weather', 'jinan.json'))); assert.ok(existsSync(join(f.dataDir, 'weather', 'qingdao.json')));
+        assert.ok(existsSync(join(f.dataDir, 'weather', 'school-town.json'))); assert.ok(existsSync(join(f.dataDir, 'weather', 'home-town.json')));
         assert.equal(existsSync(join(f.dataDir, 'bot.lock')), false); assert.equal(f.timers.size, 0);
         const before = f.calls(); f.weatherTick(); await settle(); assert.equal(f.calls(), before, '已排队的旧tick在停止后不能再派发');
         const release = acquireLock(join(f.dataDir, 'bot.lock')); release();
@@ -83,7 +86,7 @@ test('正常App.stop等待天气失败降级收尾，不造缓存且不因失败
         await tick(); const drain = f.app.stop();
         assert.equal(existsSync(join(f.dataDir, 'bot.lock')), true); assert.ok(drain instanceof Promise);
         f.release(); await drain; await settle();
-        assert.equal(f.calls(), 2); assert.deepEqual(f.writeLocks, []); assert.equal(existsSync(join(f.dataDir, 'weather', 'jinan.json')), false);
+        assert.equal(f.calls(), 2); assert.deepEqual(f.writeLocks, []); assert.equal(existsSync(join(f.dataDir, 'weather', 'school-town.json')), false);
         assert.equal(existsSync(join(f.dataDir, 'bot.lock')), false);
         f.weatherTick(); await settle(); assert.equal(f.calls(), 2);
     } finally { await f.cleanup(); }

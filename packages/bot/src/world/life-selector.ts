@@ -148,8 +148,6 @@ export function dayBusy(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: 
     return busySpans(dayWorld(sources, at));
 }
 
-const MEAL_SOCIAL = new Set(['lunch_with_friend', 'spicy_noodles']);
-const CLASS_SOCIAL = new Set(['notes_for_friend']);
 
 /** 世界里已有的 NPC 事实进入类型化行动：一起吃饭 / 帮拍板书附在那件硬行动上，微信来往单独占一小段时间。 */
 function npcFacts(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date) {
@@ -157,7 +155,7 @@ function npcFacts(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date) 
 }
 
 function targetForMeal(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, meal: { kind: 'lunch' | 'dinner'; start: Date; end: Date }): string | undefined {
-    const social = npcFacts(sources, meal.start).find(event => MEAL_SOCIAL.has(event.id)
+    const social = npcFacts(sources, meal.start).find(event => event.attach === 'meal'
         && (event.mealKind ? event.mealKind === meal.kind : event.at >= meal.start && event.at < meal.end))?.person?.id;
     if (social) return social;
     // 闺蜜约的那顿午饭（ADR 0061）：真的发生了的才算
@@ -167,11 +165,11 @@ function targetForMeal(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, meal:
 }
 
 function targetForClass(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date, end: Date): string | undefined {
-    return npcFacts(sources, at).find(event => CLASS_SOCIAL.has(event.id) && event.at >= at && event.at < end)?.person?.id;
+    return npcFacts(sources, at).find(event => event.attach === 'class' && event.at >= at && event.at < end)?.person?.id;
 }
 
 function directNpcFacts(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date) {
-    return npcFacts(sources, at).filter(event => !MEAL_SOCIAL.has(event.id) && !CLASS_SOCIAL.has(event.id));
+    return npcFacts(sources, at).filter(event => !event.attach);
 }
 
 /** 她这一天晚上那一段里的某一刻（windowEnd 取到的就是第二天入睡） */

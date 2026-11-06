@@ -125,7 +125,7 @@ describe('「你那边」进时间块（ADR 0021 W2）', () => {
         assert.match(text, /的作业(已经写完了|还没写)（(明天|后天|周.)交）/, '先写写没写完，再写哪天交');
         assert.match(text, /攒钱买相机：\d+ \/ 3000 元/);
         assert.doesNotMatch(text, /[我你]觉得|好开心|好烦|！/, '不写情绪和能照抄的句子');
-        const friend = patch(w => { w.events = [{ id: 'x', text: '{person}在微信上跟你互损了几句', person: 'su_yutong', window: 'morning', chance: 1, when: 'any' }]; });
+        const friend = patch(w => { w.events = [{ id: 'x', text: '{person}在微信上跟你互损了几句', person: 'roommate', window: 'morning', chance: 1, when: 'any' }]; });
         const withFriend = describeWorld(worldAt(friend, schedule, now)!, now)!;
         assert.match(withFriend, /许小禾在微信上跟你互损了几句（许小禾：室友/);
     });

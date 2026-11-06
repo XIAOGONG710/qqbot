@@ -147,10 +147,10 @@ describe('类型化行动与世界裁判（ADR 0037）', () => {
         }
 
         const social = judgeAction({
-            id: 'social', kind: 'interact_npc', startedAt: start, subject: '在微信上跟许小禾聊了会儿', target: 'su_yutong', durationMinutes: 15,
+            id: 'social', kind: 'interact_npc', startedAt: start, subject: '在微信上跟许小禾聊了会儿', target: 'roommate', durationMinutes: 15,
         }, context(start));
         assert.equal(social.ok, true);
-        if (social.ok) assert.equal(social.event.target, 'su_yutong');
+        if (social.ok) assert.equal(social.event.target, 'roommate');
     });
 
     test('选择器只给这一刻现实中能做的动作，同一输入结果一致', () => {

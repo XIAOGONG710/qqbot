@@ -15,7 +15,7 @@ const schedule: Schedule = {
     periods: { one: { start: '08:20', end: '09:50' }, two: { start: '10:10', end: '11:40' } },
     semester: { start: '2026-09-07', weeks: 20 }, holidays: [], makeups: [],
     kinds: { hard: {}, machine: {}, water: {}, pe: {} },
-    courses: [1, 2, 3, 4, 5].map(day => ({ day, slot: 'one', weeks: '1-20', kind: 'hard', name: '高等数学' })),
+    courses: [1, 2, 3, 4, 5].map(day => ({ day, slot: 'one', weeks: '1-20', kind: 'hard', name: '高等数学', quiz: 'math' })),
     free: { morning: ['休息'], afternoon: ['休息'], evening: ['休息'], afternoonFrom: '13:00', eveningFrom: '18:00' }, where: '宿舍',
 };
 const event: LifeEvent = { id: 'future', actor: 'linmengyao', kind: 'work_on_project', target: 'photography_growth', subject: '修片', day: '2026-11-06',
@@ -70,8 +70,8 @@ test('成绩记录和世界事件使用完全相同的出分时刻', () => {
 
 test('同日多节同名课仅首次生成周测，事件 ID 唯一，课表输入顺序不影响结果', () => {
     const twice: Schedule = { ...schedule, courses: [
-        { day: 1, slot: 'two', weeks: '1-20', kind: 'hard', name: '高等数学' },
-        { day: 1, slot: 'one', weeks: '1-20', kind: 'hard', name: '高等数学' },
+        { day: 1, slot: 'two', weeks: '1-20', kind: 'hard', name: '高等数学', quiz: 'math' },
+        { day: 1, slot: 'one', weeks: '1-20', kind: 'hard', name: '高等数学', quiz: 'math' },
     ] };
     let checked = 0;
     for (let i = 0; i < 20; i++) {

@@ -16,7 +16,7 @@ const minutes = (t: Date) => t.getHours() * 60 + t.getMinutes();
 // 源码里的默认约（DEFAULT_ASKS）按真实角色的 NPC id 写的；合成卡的两个 NPC 用同样两份配置：
 // 室友（在学校、一起吃饭自习）用第一份，高中闺蜜（不在一个学校、视频）用第二份
 const [nearby, faraway] = Object.values(DEFAULT_ASKS) as [AsksConfig, AsksConfig];
-const ASKS: Record<string, AsksConfig> = { 'su_yutong': nearby, 'chen_jianing': faraway };
+const ASKS: Record<string, AsksConfig> = { 'roommate': nearby, 'friend': faraway };
 
 // 一个学期多一点：学期第 1 周起 ~20 周（课表按学期算），再加一整年看分布
 const semester = npcAsksBetween(people, schedule, day(9, 14), day(12, 31), ASKS);
@@ -37,8 +37,8 @@ describe('闺蜜的约（ADR 0061）', () => {
         const weeks = (day(12, 31).getTime() - day(9, 14).getTime()) / (7 * 86_400_000);
         const perWeek = semester.length / weeks;
         assert.ok(perWeek > 0.8 && perWeek < 2.2, `学期里每周 ${perWeek.toFixed(2)} 次`);
-        const roommate = semester.filter(a => a.person === 'su_yutong').length;
-        const friend = semester.filter(a => a.person === 'chen_jianing').length;
+        const roommate = semester.filter(a => a.person === 'roommate').length;
+        const friend = semester.filter(a => a.person === 'friend').length;
         assert.ok(roommate >= 8 && roommate <= 20, `室友 ${roommate}`);
         assert.ok(friend >= 6 && friend <= 16, `高中闺蜜 ${friend}`);
     });
@@ -113,7 +113,7 @@ describe('闺蜜的约（ADR 0061）', () => {
     });
 
     test('同学档的卡上没有高中闺蜜，也就没有她的约；没写配置的人没有约', () => {
-        const friendOnly = { 'chen_jianing': ASKS['chen_jianing']! };
+        const friendOnly = { 'friend': ASKS['friend']! };
         assert.ok(npcAsksBetween(people, schedule, day(9, 14), day(12, 31), friendOnly).length > 0, '男朋友档有她的约');
         assert.deepEqual(npcAsksBetween(classmate.herWorld?.people ?? [], classmate.schedule!, day(9, 14), day(12, 31), friendOnly), []);
         assert.deepEqual(npcAsksBetween(people, schedule, day(9, 14), day(12, 31), {}), []);
@@ -121,8 +121,8 @@ describe('闺蜜的约（ADR 0061）', () => {
 
     test('一次放鸽子不会让别的约不发生（每个约各自按哈希，互不影响）', () => {
         const only = (id: string): Record<string, AsksConfig> => ({ [id]: ASKS[id]! });
-        const together = semester.filter(a => a.person === 'su_yutong').map(a => a.id);
-        const alone = npcAsksBetween(people, schedule, day(9, 14), day(12, 31), only('su_yutong')).map(a => a.id);
+        const together = semester.filter(a => a.person === 'roommate').map(a => a.id);
+        const alone = npcAsksBetween(people, schedule, day(9, 14), day(12, 31), only('roommate')).map(a => a.id);
         assert.deepEqual(together, alone);
     });
 });

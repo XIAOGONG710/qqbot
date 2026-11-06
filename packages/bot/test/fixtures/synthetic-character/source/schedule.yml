@@ -48,6 +48,7 @@ makeups:
     note: "合成：补周四的课"
 courses:
   - name: "操作系统实验"
+    quiz: core
     day: 1
     slot: "1"
     room: "启明楼511"
@@ -55,6 +56,7 @@ courses:
     weeks: "1-16"
     course_group: "cg-00000000000000000000000000000001"
   - name: "计算机网络"
+    quiz: core
     day: 1
     slot: "2"
     room: "启明楼204"
@@ -64,6 +66,7 @@ courses:
     practice_room: "启明楼机房3"
     course_group: "cg-00000000000000000000000000000002"
   - name: "高等数学"
+    quiz: math
     day: 1
     slot: "4"
     room: "启明楼210"
@@ -83,6 +86,7 @@ courses:
     kind: "pe"
     weeks: "1-16"
   - name: "高等数学"
+    quiz: math
     day: 3
     slot: "4"
     room: "启明楼210"
@@ -90,6 +94,7 @@ courses:
     weeks: "1-16"
     course_group: "cg-00000000000000000000000000000003"
   - name: "数据结构"
+    quiz: core
     day: 4
     slot: "2"
     room: "启明楼305"
@@ -97,6 +102,7 @@ courses:
     weeks: "1-16"
     course_group: "cg-00000000000000000000000000000004"
   - name: "数据库原理"
+    quiz: core
     day: 5
     slot: "3"
     room: "启明楼机房1"

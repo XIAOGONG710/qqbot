@@ -14,23 +14,26 @@ import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { dishNote, dishOn, type Menu } from '../life/menu.ts';
 import type { Episode } from '.././memory/episodes.ts';
 import { classesOn, formatDate, herDay, wakeOn, type ClassToday, type Schedule } from '../life/schedule.ts';
-import { realWeather, type DayWeather } from './weather.ts';
+import { realWeather, type DayWeather, type WeatherPlace } from './weather.ts';
 import { bodyAt, parseBody, unwell, type Body, type BodyNow } from '../life/body.ts';
 import { DEFAULT_NEWS_KINDS, type NewsKind } from '../proactive/proactive.ts';
 import { EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, quizEvents, type EventFeel } from '../life/everyday.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
 import { describeNpc, npcAllows, npcSpans, npcStates, validateNpcLife, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
-import { coordinateNpcDates, DEFAULT_ASKS, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
+import { asksByPerson, coordinateNpcDates, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
 import type { Plans } from '../life/day-plan.ts';
 import { ASK_HOME_TIME, depositFor, lastPayday, MISC_TIME, nextPayday, ORDER_TIME, PAY_TIME, parcelPrice, priceIn, sideJobOn, spendItems, type Money, type MoneyEntry } from '../life/money.ts';
 import { validateWorldConfig } from './world-config.ts';
 
 export type WorldWindow = 'morning' | 'afternoon' | 'evening';
+export type PersonRole = 'nearby' | 'faraway';
+export type EventAttach = 'meal' | 'class';
 
 export interface World {
     startDay: string;
     awayHolidays: string[];
-    weather?: { rainChance: number; temps: Record<string, [number, number]> };
+    /** places：真实天气取哪里（ADR 0048，weather.ts）；只在看得到她在哪座城市的档位上有 */
+    weather?: { rainChance: number; temps: Record<string, [number, number]>; places?: { school: WeatherPlace; home: WeatherPlace } };
     cat?: { name: string; feed: [string, string]; seenChance: number; food: { bagDays: number; left: number; reorderAt: number } };
     /** afterMealFrom：从这天起取件的时刻撞上饭点就吃完再去（ADR 0042）；之前的日子照旧 */
     parcels?: { perWeek: number; arriveDays: [number, number]; keepDays: number; items: string[]; afterMealFrom?: string };
@@ -46,12 +49,15 @@ export interface World {
     };
     familyCall?: { weekday: number; time: string };
     /** life：她们自己的日子（ADR 0033，npc.ts） */
-    people: { id: string; name: string; relation: string; life?: NpcLife }[];
+    /** role：nearby 同校的朋友、faraway 外地的朋友；日常小事和约按它认人，不按 id */
+    people: { id: string; name: string; relation: string; role?: PersonRole; life?: NpcLife }[];
     /** skipWhen / onlyWhen：person 那天的状态（ADR 0033）：她感冒了就不一起吃饭，感冒了才有「帮她拍板书」 */
     events: {
         id: string; text: string; person?: string; window: WorldWindow; chance: number; when: 'school' | 'class_day' | 'any' | 'off_day'; weekday?: number; skipWhen?: NpcStateKind[]; onlyWhen?: NpcStateKind[];
         /** 花了钱（ADR 0035） */
         cost?: { amount: [number, number]; what: string };
+        /** 附在哪个行动上（life-selector.ts）：meal 和 person 一起吃的那顿饭，class 上课时的事；asksInstead：开了约就只通过约发生 */
+        attach?: EventAttach; asksInstead?: true;
         /** 以下是补充的日常小事才有的（ADR 0106，everyday.ts）：星期几 / 哪几个月 / 天气 / 一天一组最多一件 / 在她心里留下什么 / 要土豆见到了没见到 / 买了相机以后 */
         weekdays?: number[]; months?: number[]; weather?: 'rain' | 'dry' | 'cold' | 'hot'; group?: string; feel?: EventFeel;
         requires?: 'cat_seen' | 'cat_unseen'; afterCamera?: boolean; everyday?: boolean;
@@ -189,7 +195,7 @@ export interface WorldNow {
     /** 她这一天的日常（ADR 0031）：午饭、晚饭在哪吃、几点到几点；洗澡几点到几点（不洗的日子没有） */
     routine?: { meals: { kind: 'lunch' | 'dinner'; start: Date; end: Date; where: 'canteen' | 'takeout' | 'home'; /** 吃的是什么（ADR 0125，配置 menu） */ dish?: string }[]; shower?: { start: Date; end: Date } };
     /** 今天已经发生的小事（text 已换好人名） */
-    events: { id: string; text: string; at: Date; person?: { id: string; name: string; relation: string }; feel?: EventFeel; mealKind?: 'lunch' | 'dinner' }[];
+    events: { id: string; text: string; at: Date; person?: { id: string; name: string; relation: string }; feel?: EventFeel; mealKind?: 'lunch' | 'dinner'; attach?: EventAttach }[];
     /** 她身边的人今天怎么样（ADR 0033）：只有有事的（病了、忙、回家了） */
     people?: { name: string; relation: string; states: NpcState[] }[];
     /** 她的钱（ADR 0035）：手上还有多少、下次几号到账、今天到现在花的；detail 是这一档说得出口 */
@@ -430,7 +436,9 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         const record: DayRecord = { date, atSchool, events: [] };
         days.set(date, record);
         // 真实天气（ADR 0048）：在学校按济南、放假在家按青岛；没有数据的日子照旧按日期生成
-        if (world.weather) record.weather = realWeather()?.day(atSchool ? 'jinan' : 'qingdao', date, until) ?? weatherOn(world.weather, day);
+        // 真实天气按卡上的地点（weather.places）：在学校取学校那里的，放假在家取家里的
+        const place = world.weather?.places ? (atSchool ? world.weather.places.school : world.weather.places.home).id : undefined;
+        if (world.weather) record.weather = (place ? realWeather()?.day(place, date, until) : undefined) ?? weatherOn(world.weather, day);
 
         // 快递：到了驿站的，在学校、不上课时取；有时拖一天；过了最后一天没取就退回
         // 取件的时刻撞上饭点（12:20 总落在午饭里，ADR 0040 验证一节）：从 afterMealFrom 那天起吃完饭再去（ADR 0042）；之前的日子照旧，过完的日子不被新规则改写
@@ -545,8 +553,8 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         // 学校和宿舍里的小事
         for (const event of world.events) {
             if (event.everyday) continue;
-            // 开了闺蜜的约（ADR 0061）：和苏雨桐吃午饭只通过「约」发生，免得一天两顿
-            if (world.asks && event.id === 'lunch_with_friend') continue;
+            // 开了约（ADR 0061）：和朋友一起吃的那顿只通过「约」发生，免得一天两顿
+            if (world.asks && event.asksInstead) continue;
             if (event.weekday && (day.getDay() || 7) !== event.weekday) continue;
             const ok = event.when === 'any' || (event.when === 'school' ? atSchool : atSchool && lessons.length > 0);
             if (!ok || unit(`${date} ${event.id}`) >= event.chance) continue;
@@ -695,7 +703,7 @@ function friendDatesFor(world: World, schedule: Schedule, now: Date, days: reado
     };
     const out: FriendDate[] = [];
     for (const day of days) {
-        for (const ask of npcAsksOn(world.people, schedule, day, DEFAULT_ASKS, anchors)) {
+        for (const ask of npcAsksOn(world.people, schedule, day, asksByPerson(world.people), anchors)) {
             if (ask.askedAt > now) continue;
             out.push(friendDate(world, schedule, ask, timeline, detail));
         }
@@ -831,9 +839,10 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
         if (event.at > now) continue;
         const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
         // 卡上的饭后叙事在整个 afternoon/evening 窗口取时刻，不能把叙事钟点误当成吃饭开始。
-        const window = ['lunch_with_friend', 'spicy_noodles'].includes(event.id) ? world.events.find(def => def.id === event.id)?.window : undefined;
+        const def = world.events.find(item => item.id === event.id);
+        const window = def?.attach === 'meal' ? def.window : undefined;
         const mealKind = window === 'afternoon' ? 'lunch' as const : window === 'evening' ? 'dinner' as const : undefined;
-        result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: event.at, ...(person ? { person: { id: person.id, name: person.name, relation: person.relation } } : {}), ...(event.feel ? { feel: event.feel } : {}), ...(mealKind ? { mealKind } : {}) });
+        result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: event.at, ...(person ? { person: { id: person.id, name: person.name, relation: person.relation } } : {}), ...(event.feel ? { feel: event.feel } : {}), ...(mealKind ? { mealKind } : {}), ...(def?.attach ? { attach: def.attach } : {}) });
     }
     const people = world.people.map(p => ({ name: p.name, relation: p.relation, states: npcStates(p.id, p.life, schedule, day) })).filter(p => p.states.length);
     if (people.length) result.people = people;
@@ -1511,11 +1520,15 @@ export function parseWorld(value: unknown, source: string): World | undefined {
         const person = obj(p, `.people[${i}]`);
         if (typeof person.id !== 'string' || !person.id.trim() || typeof person.name !== 'string' || !person.name.trim()
             || typeof person.relation !== 'string') fail(`.people[${i}] 要有 id、name、relation`);
+        if (person.role !== undefined && person.role !== 'nearby' && person.role !== 'faraway') fail(`.people[${i}].role 应为 nearby / faraway`);
         validateNpcLife(person.life, message => fail(`.people[${i}].life${message}`));
     }
+    for (const role of ['nearby', 'faraway']) if ((w.people as { role?: unknown }[]).filter(p => p.role === role).length > 1) fail(`.people 里 role: ${role} 最多一个人`);
     for (const [i, e] of (w.events as unknown[]).entries()) {
         const event = obj(e, `.events[${i}]`);
         if (typeof event.text !== 'string' || !(String(event.window) in WINDOWS) || typeof event.chance !== 'number') fail(`.events[${i}] 格式不对`);
+        if (event.attach !== undefined && ((event.attach !== 'meal' && event.attach !== 'class') || typeof event.person !== 'string')) fail(`.events[${i}].attach 应为 meal / class，且要有 person`);
+        if (event.asksInstead !== undefined && (event.asksInstead !== true || event.attach !== 'meal')) fail(`.events[${i}].asksInstead 只能是 true，且要 attach: meal`);
     }
     if (w.cat) {
         const cat = obj(w.cat, '.cat');

@@ -33,8 +33,8 @@ describe('目录', () => {
             assert.ok(def.chance > 0 && def.chance <= 1, def.id);
             assert.ok(['morning', 'afternoon', 'evening'].includes(def.window), def.id);
             assert.ok(['school', 'class_day', 'any', 'off_day'].includes(def.when), def.id);
-            assert.equal(def.text.includes('{person}'), Boolean(def.person), `${def.id}：{person} 和 person 要同时有`);
-            if (def.person) assert.ok(['chen_jianing', 'su_yutong'].includes(def.person), def.id);
+            assert.equal(def.text.includes('{person}'), Boolean(def.role), `${def.id}：{person} 和 role 要同时有`);
+            if (def.role) assert.ok(['nearby', 'faraway'].includes(def.role), def.id);
             if (def.feel) assert.ok(['joy', 'relief', 'worry', 'sad', 'annoyed', 'tired'].includes(def.feel.kind) && [1, 2, 3].includes(def.feel.strength), def.id);
             for (const month of def.months ?? []) assert.ok(month >= 1 && month <= 12, def.id);
             for (const weekday of def.weekdays ?? []) assert.ok(weekday >= 1 && weekday <= 7, def.id);

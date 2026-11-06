@@ -2,6 +2,18 @@
 start_day: "2026-08-31"
 away_holidays: ["寒假"]
 weather:
+  places:
+    tiers: [boyfriend, bestie, girl_friend, known]
+    school:
+      id: school-town
+      name: 雾岚市
+      latitude: 30.5
+      longitude: 110.5
+    home:
+      id: home-town
+      name: 溪口镇
+      latitude: 31.5
+      longitude: 112.5
   tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate", "stranger", "unlisted"]
   rain_chance: 0.2
   temps:
@@ -58,7 +70,8 @@ family_call:
   weekday: 7
   time: "20:30"
 people:
-  - id: "su_yutong"
+  - id: "roommate"
+    role: nearby
     name: "许小禾"
     label: "室友"
     relation: "室友"
@@ -72,7 +85,8 @@ people:
         per_month: 1
         days: [1, 2]
         labels: ["有考试", "赶作业"]
-  - id: "chen_jianing"
+  - id: "friend"
+    role: faraway
     name: "林小满"
     label: "高中的闺蜜"
     relation: "高中同学，最好的朋友"
@@ -90,7 +104,7 @@ people:
 events:
   - id: "milk-tea"
     text: "和{person}去校门口买了奶茶"
-    person: "su_yutong"
+    person: "roommate"
     tiers: ["boyfriend", "bestie", "girl_friend", "known"]
     window: "afternoon"
     chance: 0.2
@@ -101,15 +115,17 @@ events:
       what: "奶茶"
   - id: "friend-call"
     text: "{person}打电话来吐槽考试"
-    person: "chen_jianing"
+    person: "friend"
     tiers: ["boyfriend", "bestie", "girl_friend", "known"]
     window: "evening"
     chance: 0.5
     when: "any"
     only_when: ["busy"]
   - id: "lunch_with_friend"
+    attach: meal
+    asks_instead: true
     text: "和{person}在二食堂吃了午饭"
-    person: "su_yutong"
+    person: "roommate"
     tiers: ["boyfriend", "bestie", "girl_friend", "known"]
     window: "afternoon"
     chance: 0.15

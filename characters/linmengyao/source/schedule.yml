@@ -84,6 +84,7 @@ makeups:
       以后的调休日（国家公布之后）问用户补星期几，写进这里。
 courses:
   - name: Linux操作系统
+    quiz: core
     course_group: cg-0b68490871f061afdd0f91c8df3f6629
     day: 1
     slot: 1-2
@@ -91,6 +92,7 @@ courses:
     kind: machine
     weeks: 1-16
   - name: 大数据应用技术
+    quiz: core
     course_group: cg-2cc55f9fbff0da6790df03cdd891b6dc
     day: 1
     slot: 3-4
@@ -100,6 +102,7 @@ courses:
     practice: 9
     practice_room: 知行楼303（机房）
   - name: MySQL数据库应用
+    quiz: core
     course_group: cg-94d974c71a3c3a80f424083000691e2c
     day: 1
     slot: 8-9
@@ -116,6 +119,7 @@ courses:
     kind: pe
     weeks: 1-16
   - name: 计算机网络技术
+    quiz: core
     course_group: cg-80776d18bc64ecfa8654ebd30cb6f11a
     day: 2
     slot: 8-9
@@ -132,6 +136,7 @@ courses:
     kind: water
     weeks: 9-12
   - name: 高等数学
+    quiz: math
     course_group: cg-026744267a5bb8ae6ba2f5485ae7deff
     day: 3
     slot: 3-4
@@ -153,6 +158,7 @@ courses:
     kind: water
     weeks: 1-16
   - name: 数据结构
+    quiz: core
     course_group: cg-5f4241e396823ccb539562fe03f86d1c
     day: 4
     slot: 3-4
@@ -169,6 +175,7 @@ courses:
     kind: machine
     weeks: 1-6
   - name: 概率论与数理统计
+    quiz: math
     course_group: cg-8ba86d2fe318cf4e3631a9f4f0063630
     day: 5
     slot: 3-4
@@ -176,6 +183,7 @@ courses:
     kind: machine
     weeks: 1-16
   - name: 数据采集与处理
+    quiz: core
     course_group: cg-dfad1ebf2d2f9a3a21051c2d055e765e
     day: 5
     slot: 6-7

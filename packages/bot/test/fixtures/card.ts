@@ -27,3 +27,9 @@ export function syntheticCardPath(tier: SyntheticTier | string, open = false): s
 export function syntheticLorebookPath(tier: SyntheticTier | string, open = false): string {
     return resolve(syntheticStDir, `${SYNTHETIC_PREFIX}-scenes-${tier}${open ? '-open' : ''}.json`);
 }
+
+/** 合成卡上的真实天气地点（world.yml 的 weather.places）：在学校 school-town、在家 home-town，都是虚构的 */
+export const SYNTHETIC_WEATHER_PLACES = [
+    { id: 'school-town', name: '雾岚市', latitude: 30.5, longitude: 110.5 },
+    { id: 'home-town', name: '溪口镇', latitude: 31.5, longitude: 112.5 },
+] as const;

@@ -479,8 +479,11 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     const ledgerWorld = worldCard
         ? worldState(worldCard.herWorld!, worldCard.schedule!, log, join(config.dataDir, 'world'), worldNow)
         : undefined;
-    // 真实天气（ADR 0048）：世界里的天气按济南 / 青岛实际的；取不到、开始取之前的日子照旧按日期生成
-    const weather = config.realWeather && worldCard ? weatherFetcher({ dir: join(config.dataDir, 'weather'), log, now: worldNow }) : undefined;
+    // 真实天气（ADR 0048）：世界里的天气按卡上写的地方（weather.places：学校、家）实际的；取不到、开始取之前的日子照旧按日期生成
+    const weatherPlaces = worldCard?.herWorld?.weather?.places;
+    const weather = config.realWeather && worldCard && weatherPlaces
+        ? weatherFetcher({ dir: join(config.dataDir, 'weather'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow })
+        : undefined;
     useRealWeather(weather);
     // A refresh owns both cities and may still publish caches after its first
     // await. Keep that whole round inside this App's data-directory lease.
@@ -504,7 +507,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     const weatherTimer = weather ? setInterval(() => void refreshWeather(), WEATHER_REFRESH_MS) : undefined;
     construction.onFailure(() => clearInterval(weatherTimer));
     weatherTimer?.unref();
-    if (worldCard) log(`真实天气：${weather ? `开（济南 / 青岛逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；取不到照旧按日期生成）` : '关（配置 realWeather: false），按日期生成'}`);
+    if (worldCard) log(`真实天气：${weather ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；取不到照旧按日期生成）`
+        : !config.realWeather ? '关（配置 realWeather: false），按日期生成' : '关（卡上没写 weather.places），按日期生成'}`);
     // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
     const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
     const lifeStartedAt = new Date(worldNow());

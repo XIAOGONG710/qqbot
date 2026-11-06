@@ -5,16 +5,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { localDate } from '../src/local-date.ts';
 import { weatherFetcher } from '../src/world/weather.ts';
+import { SYNTHETIC_WEATHER_PLACES } from './fixtures/card.ts';
 
 test('越界或无效天气刷新时钟保留已有缓存且不泄漏缓存内容，恢复后可重试', async () => {
  const dir = mkdtempSync(join(tmpdir(), 'qqbot-weather-date-'));
  try {
   const raw = JSON.stringify({ since: '2026-11-04', fetchedAt: '2026-11-04T12:00:00.000Z',
    hours: { '2026-11-05T00': { t: 17.123456, p: 0, c: 2 } } });
-  for (const place of ['jinan', 'qingdao']) writeFileSync(join(dir, `${place}.json`), raw);
+  for (const place of ['school-town', 'home-town']) writeFileSync(join(dir, `${place}.json`), raw);
   let time = 0;
   const logs: string[] = [];
-  const options = { dir, now: () => time, log: (message: string) => logs.push(message), provider: {
+  const options = { dir, places: SYNTHETIC_WEATHER_PLACES, now: () => time, log: (message: string) => logs.push(message), provider: {
    id: 'synthetic', fetchHourly: async () => ({ '2026-11-05T00': { t: 20, p: 0, c: 2 } }),
   } };
   const fetcher = weatherFetcher(options);
@@ -25,19 +26,19 @@ test('越界或无效天气刷新时钟保留已有缓存且不泄漏缓存内�
     && /^\d{4}-/.test(invalid.toISOString())) continue;
    time = invalid.getTime();
    await fetcher.refresh();
-   for (const place of ['jinan', 'qingdao']) assert.equal(readFileSync(join(dir, `${place}.json`), 'utf8'), raw);
-   assert.equal(weatherFetcher(options).status().places.jinan.hours, 1);
-   assert.ok(fetcher.status().places.jinan.error);
-   const age = fetcher.status().places.jinan.ageMs;
+   for (const place of ['school-town', 'home-town']) assert.equal(readFileSync(join(dir, `${place}.json`), 'utf8'), raw);
+   assert.equal(weatherFetcher(options).status().places['school-town']!.hours, 1);
+   assert.ok(fetcher.status().places['school-town']!.error);
+   const age = fetcher.status().places['school-town']!.ageMs;
    assert.ok(age === undefined || Number.isFinite(age), '坏时钟不应使公开状态带有 NaN 年龄');
   }
   assert.ok(logs.length > 0);
   assert.ok(logs.every(message => !message.includes('17.123456') && !message.includes(raw)));
   time = localDate(2026, 10, 5, 12).getTime();
   await fetcher.refresh();
-  assert.equal(fetcher.status().places.jinan.error, undefined);
-  assert.equal(weatherFetcher(options).status().places.jinan.error, undefined);
-  assert.equal(JSON.parse(readFileSync(join(dir, 'jinan.json'), 'utf8')).fetchedAt, new Date(time).toISOString());
+  assert.equal(fetcher.status().places['school-town']!.error, undefined);
+  assert.equal(weatherFetcher(options).status().places['school-town']!.error, undefined);
+  assert.equal(JSON.parse(readFileSync(join(dir, 'school-town.json'), 'utf8')).fetchedAt, new Date(time).toISOString());
  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -45,20 +46,20 @@ test('没有天气缓存时坏时钟不创建文件，正常四位年时钟恢�
  const dir = mkdtempSync(join(tmpdir(), 'qqbot-weather-date-empty-'));
  try {
   let time = localDate(10000, 0, 2, 12).getTime();
-  const fetcher = weatherFetcher({ dir, now: () => time, log: () => {}, provider: {
+  const fetcher = weatherFetcher({ places: SYNTHETIC_WEATHER_PLACES, dir, now: () => time, log: () => {}, provider: {
    id: 'synthetic', fetchHourly: async () => ({ '2026-11-05T00': { t: 20, p: 0, c: 2 } }),
   } });
   for (const invalid of [time, NaN]) {
    time = invalid;
    await fetcher.refresh();
-   for (const place of ['jinan', 'qingdao']) assert.equal(existsSync(join(dir, `${place}.json`)), false);
-   assert.equal(fetcher.status().places.jinan.errorAt, undefined);
-   assert.ok(fetcher.status().places.jinan.error);
+   for (const place of ['school-town', 'home-town']) assert.equal(existsSync(join(dir, `${place}.json`)), false);
+   assert.equal(fetcher.status().places['school-town']!.errorAt, undefined);
+   assert.ok(fetcher.status().places['school-town']!.error);
   }
   time = localDate(2026, 10, 5, 12).getTime();
   await fetcher.refresh();
-  assert.equal(fetcher.status().places.jinan.error, undefined);
-  assert.equal(fetcher.status().places.jinan.since, '2026-11-06');
-  assert.equal(existsSync(join(dir, 'jinan.json')), true);
+  assert.equal(fetcher.status().places['school-town']!.error, undefined);
+  assert.equal(fetcher.status().places['school-town']!.since, '2026-11-06');
+  assert.equal(existsSync(join(dir, 'school-town.json')), true);
  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

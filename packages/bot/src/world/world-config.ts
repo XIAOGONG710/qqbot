@@ -47,6 +47,18 @@ export function validateWorldConfig(value: unknown, fail: (message: string) => n
         probability(weather.rainChance, '.weather.rainChance');
         const temps = object(weather.temps, '.weather.temps');
         for (let month = 1; month <= 12; month++) range(temps[String(month)], `.weather.temps.${month}`, -100, 100, false);
+        if (weather.places !== undefined) {
+            const places = object(weather.places, '.weather.places');
+            const ids = (['school', 'home'] as const).map(key => {
+                const place = object(places[key], `.weather.places.${key}`);
+                text(place.name, `.weather.places.${key}.name`);
+                number(place.latitude, `.weather.places.${key}.latitude`, -90, 90, false);
+                number(place.longitude, `.weather.places.${key}.longitude`, -180, 180, false);
+                if (typeof place.id !== 'string' || !/^[a-z][a-z0-9_-]*$/.test(place.id)) fail(`.weather.places.${key}.id 应为小写字母开头的字母、数字、- 或 _`);
+                return place.id;
+            });
+            if (ids[0] === ids[1]) fail('.weather.places 的 school 和 home 的 id 不能一样');
+        }
     }
     if (w.cat !== undefined) {
         const cat = object(w.cat, '.cat'); text(cat.name, '.cat.name');

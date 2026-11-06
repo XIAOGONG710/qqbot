@@ -20,7 +20,11 @@ export interface Course {
     name?: string;
     room?: string;
     practice?: { fromWeek: number; room?: string };
+    /** 这门课出小测（everyday.ts）：math 数学类、core 专业课；卡上只有看得到课名的档位才有 */
+    quiz?: CourseQuiz;
 }
+
+export type CourseQuiz = 'math' | 'core';
 
 export interface Schedule {
     sleep: string;
@@ -54,6 +58,8 @@ export interface ClassToday {
     id?: string;
     /** 内部匿名分组；和 id 一样不进入枚举快照与提示词。 */
     groupId?: string;
+    /** 这门课出小测（Course.quiz）；和 id 一样不可枚举 */
+    quiz?: CourseQuiz;
     kind: CourseKind;
     name?: string;
     room?: string;
@@ -150,6 +156,7 @@ export function classesOn(schedule: Schedule, day: Date): { lessons: ClassToday[
             // 内部稳定标识不进日志、提示词或测试快照；各档课表数组顺序相同。
             Object.defineProperty(lesson, 'id', { value: `course-${index + 1}`, enumerable: false });
             if (c.groupId) Object.defineProperty(lesson, 'groupId', { value: c.groupId, enumerable: false });
+            if (c.quiz) Object.defineProperty(lesson, 'quiz', { value: c.quiz, enumerable: false });
             return lesson;
         })
         .sort((a, b) => a.start.getTime() - b.start.getTime());
@@ -371,6 +378,7 @@ export function parseSchedule(json: unknown, source: string): Schedule {
             if (!(slot in periods)) fail(`${at}.slot ${slot} 不在 periods 里`);
             const kind = str(o.kind, `${at}.kind`) as CourseKind;
             if (!KINDS.includes(kind)) fail(`${at}.kind ${kind} 不是课型`);
+            if (o.quiz !== undefined && o.quiz !== 'math' && o.quiz !== 'core') fail(`${at}.quiz 应为 math / core`);
             const practice = opt(o.practice, v => {
                 const p = obj(v, `${at}.practice`);
                 return { fromWeek: int(p.fromWeek, `${at}.practice.fromWeek`), ...(p.room !== undefined ? { room: str(p.room, `${at}.practice.room`) } : {}) };
@@ -384,6 +392,7 @@ export function parseSchedule(json: unknown, source: string): Schedule {
                 ...(o.name !== undefined ? { name: str(o.name, `${at}.name`) } : {}),
                 ...(o.room !== undefined ? { room: str(o.room, `${at}.room`) } : {}),
                 ...(practice ? { practice } : {}),
+                ...(o.quiz !== undefined ? { quiz: o.quiz as CourseQuiz } : {}),
             };
         }),
         free: {

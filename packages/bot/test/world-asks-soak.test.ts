@@ -24,7 +24,7 @@ describe('闺蜜的约：一个学期的审计（ADR 0061）', () => {
         for (const x of dates) perMonth.set(month(x), (perMonth.get(month(x)) ?? 0) + 1);
         assert.deepEqual([...perMonth.keys()].sort(), ['2026-11', '2026-12']);
         assert.ok([...perMonth.values()].every(n => n >= 5 && n <= 9), JSON.stringify([...perMonth]));
-        assert.deepEqual([...new Set(dates.map(x => x.person.id))].sort(), ['chen_jianing', 'su_yutong']);
+        assert.deepEqual([...new Set(dates.map(x => x.person.id))].sort(), ['friend', 'roommate']);
 
         const window = (x: FriendDate) => { const start = x.actualStart ?? x.start; return { start, end: new Date(start.getTime() + x.minutes * 60_000) }; };
         const accepted = dates.filter(x => x.outcome !== 'cancelled' && !x.declined);

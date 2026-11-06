@@ -147,7 +147,7 @@ describe('newsFrom：把世界和身体变成排候选用的事（ADR 0064）', 
 
 describe('事件类：闺蜜的约变了（ADR 0061 第 2 步，friend_changed）', () => {
     const date = (patch: Partial<FriendDate> = {}): FriendDate => ({
-        id: '2026-12-04:su_yutong:canteen', kind: 'canteen', person: { id: 'su_yutong', name: '许小禾', relation: '室友' }, what: '下课一起去食堂吃饭', doing: '在食堂和许小禾吃饭',
+        id: '2026-12-04:roommate:canteen', kind: 'canteen', person: { id: 'roommate', name: '许小禾', relation: '室友' }, what: '下课一起去食堂吃饭', doing: '在食堂和许小禾吃饭',
         askedAt: new Date(t(12, 4, 9, 53)), start: new Date(t(12, 4, 12, 2)), minutes: 45, outcome: 'cancelled', knownAt: new Date(t(12, 4, 10, 32)),
         reason: '临时被老师叫去帮忙', held: false, ...patch,
     });
@@ -156,7 +156,7 @@ describe('事件类：闺蜜的约变了（ADR 0061 第 2 步，friend_changed�
 
     test('临时去不了了：了结的时刻 = 她得知的时刻，id 带约的 id，原因按档位裁过的写上', () => {
         assert.deepEqual(worldNews(snap(date()), ['friend_changed']), [{
-            id: 'friend:2026-12-04:su_yutong:canteen', kind: 'friend_changed', at: new Date(t(12, 4, 10, 32)),
+            id: 'friend:2026-12-04:roommate:canteen', kind: 'friend_changed', at: new Date(t(12, 4, 10, 32)),
             what: '许小禾约好 12:02 下课一起去食堂吃饭，她临时去不了了（临时被老师叫去帮忙）',
         }]);
         // 没有原因（私事、这一档说不出口）就不写原因，不编

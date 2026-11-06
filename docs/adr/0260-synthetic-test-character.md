@@ -18,6 +18,7 @@
 4. **迁移原则**：断言改成合成资料里对应的值，不弱化——断言数量不减，精确匹配不改模糊，测的仍是同一行为（例如隐私边界改为在合成卡上断言同样的边界）。随替换去掉测试里来自真实卡的事实性原文。
 5. **守卫**：`packages/bot/test/no-real-character-data.test.ts` 扫描所有包的测试文件，出现「从仓库根解析出的真实角色目录」就失败。必须读真实资料的只有 `convert.test.ts`：它校验的就是真实资料本身（`st/` 与 `source/` 生成一致、档位隐私检查）。它放在 `packages/character-tools/test-real/`，不进 `npm test`，用 `npm run test:real` 单独跑（11-06 补充，见下文「拆出 test-real」）。在临时目录里自建同名路径、只把路径交给 `parseAppConfig` / `loadConfig` 解析（它们不读文件）的测试不算违规。
 6. **源码按真实 NPC 写死的逻辑**（用户 11-06 定）：`src/life/everyday.ts` 的日常小事、`src/world/npc-asks.ts` 的 `DEFAULT_ASKS` 按 NPC id `su_yutong`、`chen_jianing` 认人，`world.ts` / `life-selector.ts` 写死事件 id `lunch_with_friend`，`everyday.ts` 用课名正则（MATH_COURSE / CORE_COURSE）判断哪些课出小测。这次**不改源码**：合成 NPC 沿用这两个 id、补一条 `lunch_with_friend`，合成课表用通用课名（高等数学、数据结构……）命中课名分类；名字和内容都是虚构的。源码去耦另立任务。
+   - **11-06 已由 ADR 0261 取代**：源码改为读卡上的 `role` / `attach` / `asks_instead` / `quiz` / `weather.places`，合成 NPC 改用虚构的 id `roommate` / `friend`。
 7. **测试里的手写数据**也按同样原则处理：`biography.test.ts` 顶部手写的「她的过去」原本是真实经历的翻版，改写成虚构内容，结构（id、keys、gap）不变。
 
 ## 验证（11-06）
@@ -36,7 +37,7 @@
 ## 后果
 
 - 全仓 `npm test` 恢复为每次提交都可以跑的回归，不接触真实资料（`convert.test.ts` 拆到 `test:real`）。审查记录里「不跑全仓」的限制随之解除。
-- 源码里仍有真实资料的痕迹，留给源码去耦那项任务：上面第 6 条的 id 与课名分类；`world.ts` 一处注释写着真实 NPC 的全名；`proactive.ts`、`weather.ts` 里写死了真实猫名、真实城市（`jinan`）一类的文案和地点键；`LifeEvent.actor` 的字面量 `'linmengyao'`；`packages/bot/sim/*.json` 场景文件里的个别地点。
+- 源码里仍有真实资料的痕迹，留给源码去耦那项任务：上面第 6 条的 id 与课名分类（ADR 0261 已去掉，连同 `weather.ts` 的地点）；`world.ts` 一处注释写着真实 NPC 的全名；`proactive.ts`、`weather.ts` 里写死了真实猫名、真实城市（`jinan`）一类的文案和地点键；`LifeEvent.actor` 的字面量 `'linmengyao'`；`packages/bot/sim/*.json` 场景文件里的个别地点。
 - `convert.test.ts` 失败时仍可能输出真实原文：所以它不在 `npm test` 里，只在本机、改了转换器或真实资料时跑 `npm run test:real`，排查时只看断言行；以后接 CI 也不要跑它。
 - 合成卡的 `creator_notes` 带着转换器写死的一句说明（含真实角色名和控制台页面名，`persona-to-card.ts`），不是资料内容，暂不处理。
 - bot 源码里仍有默认指向真实角色目录的地方（`bankPrefix` 默认值、`identity.ts` 的 `IDENTITY_DIRS`、`dormancy.ts` 的封存、几个 CLI 的默认卡），它们是运行时行为，不在本 ADR 范围；测试通过参数或临时目录绕开。

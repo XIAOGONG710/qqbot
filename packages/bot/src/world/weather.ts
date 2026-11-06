@@ -1,4 +1,5 @@
-// 真实天气（ADR 0048，ADR 0021 的 W5）：定时从 Open-Meteo 取济南（在学校）、青岛（放假在家）逐小时的气温、降水、天况，存在数据目录。
+// 真实天气（ADR 0048，ADR 0021 的 W5）：定时从 Open-Meteo 取她学校所在地（在学校）、家（放假在家）逐小时的气温、降水、天况，存在数据目录。
+// 取哪里写在卡上（world.yml 的 weather.places，只给看得到她在哪座城市的档位）：源码里不写具体地点。
 // 世界（world.ts）某一天有真实数据就用真实的，没有的（断网、模拟器、测试、开始取之前的日子）照旧按日期生成。
 // - 「下没下雨」只算到这一刻为止真实下过的钟头，不把预报里晚上的雨提前当成「下雨了」；预报只写成「预报几点后有雨」。
 // - 取的时候已经到了的钟头记成实况，存下就不再改；预报的永远不算「下过」：过去的事实不被后来取到的数据改写。
@@ -10,12 +11,10 @@ import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { calendarDate, stateObject, stateTimestamp } from '../memory/state-schema.ts';
 import { localDate } from '../local-date.ts';
 
-export type Place = 'jinan' | 'qingdao';
-
-export const PLACES: Record<Place, { name: string; latitude: number; longitude: number }> = {
-    jinan: { name: '济南', latitude: 36.65, longitude: 117.12 },
-    qingdao: { name: '青岛西海岸', latitude: 35.96, longitude: 120.19 },
-};
+/** 取天气的一个地方（卡上的 weather.places.school / home）：id 是缓存文件名（<id>.json），改了就从头取 */
+export interface WeatherPlace { id: string; name: string; latitude: number; longitude: number }
+/** 地方的 id */
+export type Place = string;
 
 /** 一个钟头：气温（℃）、降水（mm，前一小时累计）、天况（WMO 代码）；o：取的时候这个钟头已经到了（实况） */
 export interface HourWeather { t: number; p: number; c: number; o?: 1 }
@@ -196,6 +195,8 @@ export function parseOpenMeteo(data: unknown): Record<string, HourWeather> {
 export interface WeatherFetcherOptions {
     /** 存数据的目录（<数据目录>/weather） */
     dir: string;
+    /** 取哪几个地方（卡上的 weather.places）；id 要互不相同、能当文件名 */
+    places: readonly WeatherPlace[];
     log: (message: string) => void;
     now?: () => number;
     /** 默认用全局 fetch；测试传假的 */
@@ -313,7 +314,7 @@ export function openMeteoProvider(options: { fetchJson?: (url: string) => Promis
 }
 
 export interface WeatherFetcher extends RealWeather {
-    /** 取一次两个地方；失败只记日志，留着旧的 */
+    /** 取一次每个地方；失败只记日志，留着旧的 */
     refresh(): Promise<void>;
     /** 只返回数据新鲜度和覆盖范围，不返回坐标之外的个人信息。 */
     status(): WeatherFetcherStatus;
@@ -326,6 +327,9 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
     const provider = options.provider ?? openMeteoProvider({ fetchJson: options.fetchJson, timeoutMs });
     // 数据目录第一次用时还没有（审查第 1 条：没建目录时每次写盘都失败，真实天气一次都不生效）
     mkdirSync(options.dir, { recursive: true });
+    const byId = new Map(options.places.map(place => [place.id, place] as const));
+    if (byId.size !== options.places.length || options.places.some(place => !/^[a-z][a-z0-9_-]*$/.test(place.id))) throw new Error('真实天气的地点 id 要互不相同，且是小写字母开头的字母、数字、- 或 _');
+    const nameOf = (place: Place) => byId.get(place)?.name ?? place;
     const path = (place: Place) => join(options.dir, `${place}.json`);
     const stores = new Map<Place, Store | undefined>();
     const errors = new Map<Place, string>();
@@ -338,14 +342,14 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
                 stores.set(place, data ? { ...data, fetchedAt: data.fetchedAt ?? '' } : undefined);
             } catch {
                 // 不隔离、不重建，也不把 JSON 错误中的原文放进日志；修好后仍可再次读取。
-                throw new Error(`${PLACES[place].name}天气缓存读取或校验失败，保留原文件`);
+                throw new Error(`${nameOf(place)}天气缓存读取或校验失败，保留原文件`);
             }
         }
         return stores.get(place);
     };
     const failed = (place: Place, error: unknown) => {
         const reason = error instanceof Error ? error.message : String(error);
-        if (errors.get(place) !== reason) options.log(`真实天气：${PLACES[place].name}没取到，照旧用存着的（${reason}）`);
+        if (errors.get(place) !== reason) options.log(`真实天气：${nameOf(place)}没取到，照旧用存着的（${reason}）`);
         errors.set(place, reason);
         const timestamp = weatherTimestamp(new Date(now()));
         if (timestamp) errorAt.set(place, timestamp);
@@ -353,6 +357,7 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
     };
     return {
         day: (place, date, until) => {
+            if (!byId.has(place)) return undefined;
             try {
                 const store = load(place);
                 return store && date >= store.since ? dayFrom(store.hours, date, until) : undefined;
@@ -362,9 +367,9 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
             // 心跳和启动可能同时触发刷新；复用同一请求，避免重复打公开接口。
             if (inFlight) return inFlight;
             inFlight = (async () => {
-                for (const place of Object.keys(PLACES) as Place[]) {
+                for (const place of options.places.map(place => place.id)) {
                     try {
-                        const { latitude, longitude } = PLACES[place];
+                        const { latitude, longitude } = byId.get(place)!;
                         const fetched = validHourly(await withWeatherDeadline(signal => provider.fetchHourly({ place, latitude, longitude, signal }), timeoutMs));
                         const at = new Date(now());
                         const fetchedAt = weatherTimestamp(at);
@@ -385,7 +390,7 @@ export function weatherFetcher(options: WeatherFetcherOptions): WeatherFetcher {
         status: () => {
             const places = {} as Record<Place, WeatherPlaceStatus>;
             let fetchedAt: string | undefined;
-            for (const place of Object.keys(PLACES) as Place[]) {
+            for (const place of options.places.map(place => place.id)) {
                 let store: Store | undefined;
                 try { store = load(place); } catch (error) { failed(place, error); }
                 const item: WeatherPlaceStatus = { hours: Object.keys(store?.hours ?? {}).length };

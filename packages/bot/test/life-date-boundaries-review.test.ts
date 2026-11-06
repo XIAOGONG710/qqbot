@@ -90,7 +90,7 @@ test('行动拒绝跨出四位日历范围的成功结果', () => {
 test('日程小测保持 400 年同周历一致，低年计划选到真实事项', () => {
     const count = (year: string) => {
         const start = `${year}-01-03`;
-        const fixture = { ...schedule, semester: { start, weeks: 20 }, courses: [{ day: 1, slot: '1', weeks: '1-20', kind: 'hard' as const, name: '合成高等数学' }] };
+        const fixture = { ...schedule, semester: { start, weeks: 20 }, courses: [{ day: 1, slot: '1', weeks: '1-20', kind: 'hard' as const, name: '合成高等数学', quiz: 'math' as const }] };
         return Array.from({ length: 20 }, (_, i) => {
             const at = date(start); at.setDate(at.getDate() + 7 * i); return quizzesOn(fixture, at).length;
         });

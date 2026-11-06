@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 import { dayFrom, mergeHours, openMeteoProvider, weatherFetcher, type HourWeather } from '../src/world/weather.ts';
+import { SYNTHETIC_WEATHER_PLACES } from './fixtures/card.ts';
 
 const dirs: string[] = [];
 const fixture = () => { const dir = mkdtempSync(join(tmpdir(), 'qqbot-weather-review-')); dirs.push(dir); return dir; };
@@ -40,27 +41,27 @@ test('坏缓存拒绝使用且刷新不能覆盖，错误不包含坏 JSON 原�
         { since: date, fetchedAt: 'not-a-time', hours: hours() },
         'BROKEN_PRIVATE_CACHE_JSON',
     ]) {
-        const dir = fixture(); const file = join(dir, 'jinan.json');
+        const dir = fixture(); const file = join(dir, 'school-town.json');
         const text = typeof bad === 'string' ? bad : JSON.stringify(bad); writeFileSync(file, text);
         const logs: string[] = [];
-        const fetcher = weatherFetcher({ dir, log: line => logs.push(line), now: () => at('03:00').getTime(), provider: { id: 'fake', fetchHourly: async () => hours() } });
-        assert.equal(fetcher.day('jinan', date, at('12:00')), undefined);
-        assert.ok(fetcher.status().places.jinan.error);
+        const fetcher = weatherFetcher({ places: SYNTHETIC_WEATHER_PLACES, dir, log: line => logs.push(line), now: () => at('03:00').getTime(), provider: { id: 'fake', fetchHourly: async () => hours() } });
+        assert.equal(fetcher.day('school-town', date, at('12:00')), undefined);
+        assert.ok(fetcher.status().places['school-town']!.error);
         await fetcher.refresh();
         assert.equal(readFileSync(file, 'utf8'), text);
         assert.ok(logs.every(line => !line.includes('BROKEN_PRIVATE_CACHE_JSON')));
         // 原文件修好后不必重建 fetcher，就可以正常重试。
         writeFileSync(file, JSON.stringify({ since: date, hours: hours(21, true) }));
-        assert.equal(fetcher.day('jinan', date, at('12:00'))!.low, 21);
+        assert.equal(fetcher.day('school-town', date, at('12:00'))!.low, 21);
     }
 });
 
 test('供应商忽略 AbortSignal 也会超时释放刷新，迟到旧结果不能覆盖新缓存', async () => {
     let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
     let attempts = 0; let firstSignal: AbortSignal | undefined;
-    const fetcher = weatherFetcher({ dir: fixture(), log: () => {}, now: () => at('03:00').getTime(), timeoutMs: 10,
+    const fetcher = weatherFetcher({ places: SYNTHETIC_WEATHER_PLACES, dir: fixture(), log: () => {}, now: () => at('03:00').getTime(), timeoutMs: 10,
         provider: { id: 'slow', fetchHourly: async request => {
-            if (request.place === 'jinan' && ++attempts === 1) { firstSignal = request.signal; await gate; return hours(10); }
+            if (request.place === 'school-town' && ++attempts === 1) { firstSignal = request.signal; await gate; return hours(10); }
             return hours(30);
         } } });
     const first = fetcher.refresh();
@@ -70,17 +71,17 @@ test('供应商忽略 AbortSignal 也会超时释放刷新，迟到旧结果不�
     try {
         assert.equal(outcome, 'done');
         assert.equal(firstSignal?.aborted, true);
-        assert.match(fetcher.status().places.jinan.error ?? '', /超时/);
+        assert.match(fetcher.status().places['school-town']!.error ?? '', /超时/);
         await fetcher.refresh();
-        assert.equal(fetcher.day('jinan', date, at('12:00'))!.low, 30);
+        assert.equal(fetcher.day('school-town', date, at('12:00'))!.low, 30);
         release(); await new Promise(resolve => setImmediate(resolve));
-        assert.equal(fetcher.day('jinan', date, at('12:00'))!.low, 30);
+        assert.equal(fetcher.day('school-town', date, at('12:00'))!.low, 30);
     } finally { clearTimeout(guard); release(); await first; }
 });
 
 test('Open-Meteo 供应商遵守调用方取消，已取消时不发请求', async () => {
     let called = 0; const controller = new AbortController(); controller.abort();
     const provider = openMeteoProvider({ fetchJson: async () => { called++; return { hourly: { time: [], temperature_2m: [], precipitation: [], weather_code: [] } }; } });
-    await assert.rejects(provider.fetchHourly({ place: 'jinan', latitude: 36.65, longitude: 117.12, signal: controller.signal }));
+    await assert.rejects(provider.fetchHourly({ place: 'school-town', latitude: 30.5, longitude: 110.5, signal: controller.signal }));
     assert.equal(called, 0);
 });

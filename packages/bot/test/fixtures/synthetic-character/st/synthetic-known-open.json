@@ -151,7 +151,8 @@
                             "kind": "machine",
                             "groupId": "cg-00000000000000000000000000000001",
                             "name": "操作系统实验",
-                            "room": "启明楼511"
+                            "room": "启明楼511",
+                            "quiz": "core"
                         },
                         {
                             "day": 1,
@@ -161,6 +162,7 @@
                             "groupId": "cg-00000000000000000000000000000002",
                             "name": "计算机网络",
                             "room": "启明楼204",
+                            "quiz": "core",
                             "practice": {
                                 "fromWeek": 9,
                                 "room": "启明楼机房3"
@@ -173,7 +175,8 @@
                             "kind": "hard",
                             "groupId": "cg-00000000000000000000000000000003",
                             "name": "高等数学",
-                            "room": "启明楼210"
+                            "room": "启明楼210",
+                            "quiz": "math"
                         },
                         {
                             "day": 2,
@@ -198,7 +201,8 @@
                             "kind": "hard",
                             "groupId": "cg-00000000000000000000000000000003",
                             "name": "高等数学",
-                            "room": "启明楼210"
+                            "room": "启明楼210",
+                            "quiz": "math"
                         },
                         {
                             "day": 4,
@@ -207,7 +211,8 @@
                             "kind": "hard",
                             "groupId": "cg-00000000000000000000000000000004",
                             "name": "数据结构",
-                            "room": "启明楼305"
+                            "room": "启明楼305",
+                            "quiz": "core"
                         },
                         {
                             "day": 5,
@@ -215,7 +220,8 @@
                             "weeks": "1-12",
                             "kind": "machine",
                             "name": "数据库原理",
-                            "room": "启明楼机房1"
+                            "room": "启明楼机房1",
+                            "quiz": "core"
                         }
                     ],
                     "free": {
@@ -455,6 +461,20 @@
                                 -4,
                                 5
                             ]
+                        },
+                        "places": {
+                            "school": {
+                                "id": "school-town",
+                                "name": "雾岚市",
+                                "latitude": 30.5,
+                                "longitude": 110.5
+                            },
+                            "home": {
+                                "id": "home-town",
+                                "name": "溪口镇",
+                                "latitude": 31.5,
+                                "longitude": 112.5
+                            }
                         }
                     },
                     "cat": {
@@ -513,9 +533,10 @@
                     },
                     "people": [
                         {
-                            "id": "su_yutong",
+                            "id": "roommate",
                             "name": "室友",
                             "relation": "室友",
+                            "role": "nearby",
                             "life": {
                                 "sick": {
                                     "perMonth": 0.5,
@@ -538,9 +559,10 @@
                             }
                         },
                         {
-                            "id": "chen_jianing",
+                            "id": "friend",
                             "name": "高中的闺蜜",
                             "relation": "高中同学，最好的朋友",
+                            "role": "faraway",
                             "life": {
                                 "busy": {
                                     "perMonth": 1,
@@ -566,7 +588,7 @@
                             "window": "afternoon",
                             "chance": 0.2,
                             "when": "school",
-                            "person": "su_yutong",
+                            "person": "roommate",
                             "skipWhen": [
                                 "sick"
                             ],
@@ -584,7 +606,7 @@
                             "window": "evening",
                             "chance": 0.5,
                             "when": "any",
-                            "person": "chen_jianing",
+                            "person": "friend",
                             "onlyWhen": [
                                 "busy"
                             ]
@@ -595,7 +617,7 @@
                             "window": "afternoon",
                             "chance": 0.15,
                             "when": "school",
-                            "person": "su_yutong",
+                            "person": "roommate",
                             "skipWhen": [
                                 "sick"
                             ],
@@ -605,7 +627,9 @@
                                     20
                                 ],
                                 "what": "午饭"
-                            }
+                            },
+                            "attach": "meal",
+                            "asksInstead": true
                         },
                         {
                             "id": "late-class",

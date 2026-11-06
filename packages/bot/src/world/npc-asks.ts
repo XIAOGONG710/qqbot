@@ -7,6 +7,7 @@
 import { classesOn, formatDate, type Schedule } from '../life/schedule.ts';
 import { localDate } from '../local-date.ts';
 import { MAX_NPC_MONTHLY_SPANS, npcStates, unit, type NpcLife, type NpcStateKind } from './npc.ts';
+import type { PersonRole } from './world.ts';
 
 /** 约在一天的哪一段：午饭、晚饭、晚上、周末下午 */
 export type AskSlot = 'lunch' | 'dinner' | 'evening' | 'weekend';
@@ -160,9 +161,12 @@ const EVENING_ASK_SPREAD = 120;
 /** 改到晚一点最晚到几点结束，再晚就不了了之 */
 const LATEST_END = 22 * 60 + 30;
 
-/** 卡上还没有这一块（world.yml 的 asks 另一步再加）：先按人的 id 放默认。数字是可改的设定（ADR 0061 确认记录） */
-export const DEFAULT_ASKS: Record<string, AsksConfig> = {
-    su_yutong: {
+/**
+ * 卡上还没有这一块（world.yml 的 asks 另一步再加）：先按人的 role 放默认（nearby 同校的朋友、faraway 外地的朋友，world.yml 的 people[].role）。
+ * 数字是可改的设定（ADR 0061 确认记录）
+ */
+export const DEFAULT_ASKS: Record<PersonRole, AsksConfig> = {
+    nearby: {
         perMonth: 4,
         dayBefore: 0.5,
         kinds: [
@@ -175,7 +179,7 @@ export const DEFAULT_ASKS: Record<string, AsksConfig> = {
         moved: { chance: 0.1, shiftMinutes: [60, 150], reasons: [{ text: '临时要先去办件事' }, { text: '作业还差一点想先弄完' }, { text: '睡过头了' }] },
         cancelled: { chance: 0.05, reasons: [{ text: '临时被老师叫去帮忙' }, { text: '突然肚子疼', private: true }, { text: '家里有点事', private: true }] },
     },
-    chen_jianing: {
+    faraway: {
         perMonth: 3,
         dayBefore: 0.7,
         kinds: [
@@ -187,7 +191,12 @@ export const DEFAULT_ASKS: Record<string, AsksConfig> = {
     },
 };
 
-export interface AskPerson { id: string; name: string; life?: NpcLife }
+export interface AskPerson { id: string; name: string; role?: PersonRole; life?: NpcLife }
+
+/** 按人的 id 取约的配置：有 role 的人用那一种的默认（哈希仍按 id 取，同一个人的约不因换配置来源而变） */
+export function asksByPerson(people: readonly AskPerson[], defaults: Record<PersonRole, AsksConfig> = DEFAULT_ASKS): Record<string, AsksConfig> {
+    return Object.fromEntries(people.flatMap(person => (person.role ? [[person.id, defaults[person.role]]] : [])));
+}
 
 const at =(day: Date, minutes: number) => localDate(day.getFullYear(), day.getMonth(), day.getDate(), 0, minutes);
 const addDays = (day: Date, n: number) => localDate(day.getFullYear(), day.getMonth(), day.getDate() + n);

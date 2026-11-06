@@ -223,14 +223,14 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         const lunch = worldAt(npcWorld, schedule, at('2026-10-13T12:00:00'))!.routine!.meals.find(m => m.kind === 'lunch')!;
         const together = chooseAt(lunch.start, npcSources);
         assert.ok('intent' in together);
-        if ('intent' in together) assert.deepEqual([together.intent.kind, together.intent.target], ['eat', 'su_yutong']);
+        if ('intent' in together) assert.deepEqual([together.intent.kind, together.intent.target], ['eat', 'roommate']);
 
         // 合成卡上 11-08 14:17 和室友去买了奶茶（卡上的事件）：那一刻成为独立的 NPC 来往
         const chat = chooseAt(at('2026-11-08T14:17:00'), plain);
         assert.ok('intent' in chat);
         if ('intent' in chat) assert.deepEqual(
             [chat.intent.kind, chat.intent.target, chat.intent.subject],
-            ['interact_npc', 'su_yutong', '在微信上跟许小禾聊了会儿'],
+            ['interact_npc', 'roommate', '在微信上跟许小禾聊了会儿'],
         );
     });
 
@@ -429,7 +429,7 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         const rain = [11, 12, 13];
         const hours: Record<string, HourWeather> = Object.fromEntries(Array.from({ length: 24 }, (_, h) => [`${date}T${String(h).padStart(2, '0')}`,
             { t: 16, p: rain.includes(h - 1) ? 1.2 : 0, c: rain.includes(h) ? 61 : 2, o: 1 as const }]));
-        useRealWeather({ day: (place, day, until) => (place === 'jinan' && day === date ? dayFrom(hours, day, until) : undefined) });
+        useRealWeather({ day: (place, day, until) => (place === 'school-town' && day === date ? dayFrom(hours, day, until) : undefined) });
         try {
             const { events } = live(dir, at('2026-11-08T08:00:00'), at('2026-11-08T14:00:00'));
             const library = events.filter(event => event.subject === '拿胶片机去湖边拍照');
@@ -483,7 +483,7 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
                 assert.ok(events.some(other => other.kind === 'attend_class' && other.startedAt === e.endedAt), `${e.id} 停下的时候没有课`);
             }
             const social = events.filter(e => ['eat', 'attend_class', 'interact_npc'].includes(e.kind) && e.target);
-            assert.ok(social.some(e => e.target === 'su_yutong'), '72 小时里和室友的来往进入类型化行动账');
+            assert.ok(social.some(e => e.target === 'roommate'), '72 小时里和室友的来往进入类型化行动账');
             const project = events.filter(e => e.kind === 'work_on_project' && e.target === 'photography_growth');
             const projectMinutes = project.reduce((sum, e) => sum + (Date.parse(e.endedAt) - Date.parse(e.startedAt)) / 60_000, 0);
             assert.ok(projectMinutes >= 120, `摄影项目只推进了 ${projectMinutes} 分钟`);

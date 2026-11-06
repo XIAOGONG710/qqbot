@@ -36,7 +36,7 @@ test('角色世界解析拒绝无界NPC配置，而不是等进入日程计算�
 
 test('公开的自定义NPC邀请配置也拒绝无界或负数月次数', () => {
     for (const perMonth of [-1, Infinity, 1e9, NaN]) {
-        const config = { ...DEFAULT_ASKS.chen_jianing!, perMonth };
+        const config = { ...DEFAULT_ASKS.faraway, perMonth };
         assert.throws(() => npcAsksOn([{ id: 'synthetic', name: '合成NPC' }], schedule, day, { synthetic: config }), RangeError);
     }
 });
@@ -124,10 +124,10 @@ test('同截止时间的不同课程保留各自赶作业时段，同一作业�
 
 test('不同NPC的重叠邀请不能同时held，拒绝记录保留实际理由与时刻', () => {
     const world: World = { startDay: '2026-09-07', awayHolidays: [], events: [], asks: true,
-        people: [{ id: 'su_yutong', name: '合成甲', relation: '同学' }, { id: 'chen_jianing', name: '合成乙', relation: '老同学' }] };
-    const now = new Date('2029-11-27T20:00:00+08:00');
+        people: [{ id: 'roommate', name: '合成甲', relation: '同学', role: 'nearby' }, { id: 'friend', name: '合成乙', relation: '老同学', role: 'faraway' }] };
+    const now = new Date('2028-04-17T20:00:00+08:00');
     const projected = worldAt(world, schedule, now)!;
-    const sameDay = projected.dates!.filter(date => date.start.getDate() === 27);
+    const sameDay = projected.dates!.filter(date => date.start.getDate() === 17);
     assert.equal(sameDay.length, 2);
     assert.equal(sameDay.filter(date => date.held).length, 1);
     const declined = sameDay.find(date => !date.held)!;

@@ -383,6 +383,7 @@ test('作息：几点睡、几点起、节次、学期、假期、调休、课�
     assert.deepEqual(s.courses[1], {
         day: 1, slot: '3-4', weeks: '1-16', kind: 'hard', name: '大数据应用技术', room: '知行楼303', practice: { fromWeek: 9, room: '知行楼303（机房）' },
         ...(source.schedule.courses[1]!.course_group ? { groupId: source.schedule.courses[1]!.course_group } : {}),
+        quiz: 'core',
     });
     assert.deepEqual(s.kinds.hard, { label: '专业课，认真听', seeAfterMin: [5, 20], maxBubbles: 1 });
     // 有 from 的进 later（那天起才进抽签列表，ADR 0053 之后）

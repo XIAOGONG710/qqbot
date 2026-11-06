@@ -167,7 +167,8 @@
                             "kind": "machine",
                             "groupId": "cg-0b68490871f061afdd0f91c8df3f6629",
                             "name": "Linux操作系统",
-                            "room": "知行楼612"
+                            "room": "知行楼612",
+                            "quiz": "core"
                         },
                         {
                             "day": 1,
@@ -177,6 +178,7 @@
                             "groupId": "cg-2cc55f9fbff0da6790df03cdd891b6dc",
                             "name": "大数据应用技术",
                             "room": "知行楼303",
+                            "quiz": "core",
                             "practice": {
                                 "fromWeek": 9,
                                 "room": "知行楼303（机房）"
@@ -190,6 +192,7 @@
                             "groupId": "cg-94d974c71a3c3a80f424083000691e2c",
                             "name": "MySQL数据库应用",
                             "room": "知行楼509",
+                            "quiz": "core",
                             "practice": {
                                 "fromWeek": 13,
                                 "room": "知行楼509（机房）"
@@ -212,6 +215,7 @@
                             "groupId": "cg-80776d18bc64ecfa8654ebd30cb6f11a",
                             "name": "计算机网络技术",
                             "room": "知行楼503",
+                            "quiz": "core",
                             "practice": {
                                 "fromWeek": 13,
                                 "room": "知行楼503（机房）"
@@ -233,7 +237,8 @@
                             "kind": "water",
                             "groupId": "cg-026744267a5bb8ae6ba2f5485ae7deff",
                             "name": "高等数学",
-                            "room": "知行楼704"
+                            "room": "知行楼704",
+                            "quiz": "math"
                         },
                         {
                             "day": 3,
@@ -261,6 +266,7 @@
                             "groupId": "cg-5f4241e396823ccb539562fe03f86d1c",
                             "name": "数据结构",
                             "room": "知行楼305",
+                            "quiz": "core",
                             "practice": {
                                 "fromWeek": 9,
                                 "room": "知行楼305（机房）"
@@ -282,7 +288,8 @@
                             "kind": "machine",
                             "groupId": "cg-8ba86d2fe318cf4e3631a9f4f0063630",
                             "name": "概率论与数理统计",
-                            "room": "知行楼704"
+                            "room": "知行楼704",
+                            "quiz": "math"
                         },
                         {
                             "day": 5,
@@ -292,6 +299,7 @@
                             "groupId": "cg-dfad1ebf2d2f9a3a21051c2d055e765e",
                             "name": "数据采集与处理",
                             "room": "知行楼303",
+                            "quiz": "core",
                             "practice": {
                                 "fromWeek": 9,
                                 "room": "知行楼303（机房）"
@@ -869,6 +877,20 @@
                                 -3,
                                 6
                             ]
+                        },
+                        "places": {
+                            "school": {
+                                "id": "jinan",
+                                "name": "济南",
+                                "latitude": 36.65,
+                                "longitude": 117.12
+                            },
+                            "home": {
+                                "id": "qingdao",
+                                "name": "青岛西海岸",
+                                "latitude": 35.96,
+                                "longitude": 120.19
+                            }
                         }
                     },
                     "cat": {
@@ -935,6 +957,7 @@
                             "id": "chen_jianing",
                             "name": "陈佳宁",
                             "relation": "高中同班，你的死党；考去了外地，平时在微信上互损",
+                            "role": "faraway",
                             "life": {
                                 "sick": {
                                     "perMonth": 0.5,
@@ -960,6 +983,7 @@
                             "id": "su_yutong",
                             "name": "苏雨桐",
                             "relation": "大学同专业，济南人，不是室友；一起上课、一起吃饭",
+                            "role": "nearby",
                             "life": {
                                 "sick": {
                                     "perMonth": 0.5,
@@ -1008,7 +1032,9 @@
                             "skipWhen": [
                                 "sick",
                                 "home"
-                            ]
+                            ],
+                            "attach": "meal",
+                            "asksInstead": true
                         },
                         {
                             "id": "notes_for_friend",
@@ -1019,7 +1045,8 @@
                             "person": "su_yutong",
                             "onlyWhen": [
                                 "sick"
-                            ]
+                            ],
+                            "attach": "class"
                         },
                         {
                             "id": "spicy_noodles",
@@ -1038,7 +1065,8 @@
                                     24
                                 ],
                                 "what": "米线"
-                            }
+                            },
+                            "attach": "meal"
                         },
                         {
                             "id": "canteen_queue",

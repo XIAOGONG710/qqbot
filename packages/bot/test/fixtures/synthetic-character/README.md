@@ -49,8 +49,9 @@ npm run convert:synthetic -w @qqbot/character-tools
   - 相机基金：含购买；
   - 作业：grouped_from；
   - 家里视频（只给前四档）；
-  - 两个 NPC：生病、忙、回家，并且按档位决定叫名字还是叫称呼；id 沿用代码里写死的 `su_yutong`、`chen_jianing`（见下文），名字和内容是虚构的；
-  - 四个事件：带人、星期、skip_when / only_when、花钱；其中 `lunch_with_friend` 是代码按 id 认的饭后叙事（附在午饭上）；
+  - 两个 NPC：生病、忙、回家，并且按档位决定叫名字还是叫称呼；`role` 一个 nearby（室友 `roommate`）、一个 faraway（高中闺蜜 `friend`），代码按 role 认人（见下文）；
+  - 四个事件：带人、星期、skip_when / only_when、花钱；其中和室友吃的午饭带 `attach: meal`、`asks_instead: true`（附在午饭上；开了约就只通过约发生）；
+  - 真实天气的地点 `weather.places`：学校 `school-town`（雾岚市）、家 `home-town`（溪口镇），坐标是虚构的，只给前四档；
   - 身体：生理期、小感冒；
   - 日常三餐、洗澡；
   - 打算：上午、下午各有出门活动（含 cover，也是出门的）；学习打算里有期末才有的「熬夜赶作业」；
@@ -58,9 +59,11 @@ npm run convert:synthetic -w @qqbot/character-tools
 - **主动消息**：男朋友档 daily_max 4、unanswered_max 1，share 排在时机列表最后。
 - **禁用词**：名单外那一档另禁「不承认」。
 
-## 为什么 NPC 用这两个 id
+## NPC 的 id 和代码的关系
 
-bot 源码按 NPC id 写死了逻辑：`src/life/everyday.ts` 的日常小事、`src/world/npc-asks.ts` 的 `DEFAULT_ASKS`、`src/world/world.ts` 和 `life-selector.ts` 里的事件 id `lunch_with_friend`。合成 NPC 沿用这些 id，测试才能测到这些逻辑；只有 id 相同，名字和内容都是虚构的。源码去掉这层耦合是另一项任务（ADR 0260）。
+bot 源码不按 id 认人（ADR 0261）：日常小事、约（`DEFAULT_ASKS`）按 NPC 的 `role`，饭后叙事按事件的 `attach` / `asks_instead`，小测按课程的 `quiz`，真实天气按 `weather.places`。所以合成 NPC 的 id 是随便起的虚构名字。
+
+id 会进哈希（NPC 哪天生病、约在哪天、结果如何都按 id 取），改 id 会让测试里钉的日期整体挪动。现在的 `roommate` / `friend` 是挑过的：这一学期里约的各种结果（迟到、改约、取消、推掉，以及拉长学期后「改约之后才推掉」）都至少出现一次，`world-asks.test.ts` 才找得到要测的那一条。
 
 ## 真实测试依赖的结构 → 合成资料里的对应位置
 
@@ -91,7 +94,7 @@ bot 源码按 NPC id 写死了逻辑：`src/life/everyday.ts` 的日常小事、
 | 周四上午的课（调休改补周四时有课名） | courses「数据结构」 | 周四第 2 节，hard |
 | 周五下午机房课 | courses「数据库原理」 | 周五第 3 节，machine，周次 1-12 |
 | 周六、周日没课 | — | 没有排课 |
-| 会出小测的课 | 课名匹配 `src/life/everyday.ts` 的 MATH_COURSE / CORE_COURSE | 数学类「高等数学」；专业课「计算机网络」「数据结构」「数据库原理」「操作系统实验」。分数按「日期 + 课名」定，这几个名字让学期里有不及格的一次 |
+| 会出小测的课 | courses 的 `quiz`（math / core） | 数学类「高等数学」；专业课「计算机网络」「数据结构」「数据库原理」「操作系统实验」。分数按「日期 + 课名」定，这几个名字让学期里有不及格的一次 |
 | 匿名课程组 | courses.course_group | cg-000…0001 到 cg-000…0004 |
 | 课名、教室给哪些档 | course_detail.tiers | boyfriend / bestie / girl_friend / known |
 | 上学期间她在哪（按档位） | where.by_tier | 前三档：「在学校（雾岚市），住七号楼宿舍」；known：「在学校（雾岚市），住宿舍」；classmate：「在学校，住宿舍」；stranger / unlisted：「在学校」 |
@@ -102,7 +105,7 @@ bot 源码按 NPC id 写死了逻辑：`src/life/everyday.ts` 的日常小事、
 | 世界从哪天开始推 | `world.yml` start_day | 2026-08-31 |
 | 楼下的猫 | `world.yml` cat | 「团子饼」，20:00–21:30 喂，后三档里 stranger / unlisted 看不到 |
 | 和家里视频 | family_call | 周日 20:30，只给前四档 |
-| 室友（NPC） | people「su_yutong」 | 只给前四档；名字「许小禾」只给前三档，known 叫「室友」。10-18 起感冒 3 天 |
-| 高中闺蜜（NPC） | people「chen_jianing」 | 名字「林小满」只给前两档，girl_friend / known 叫「高中的闺蜜」；有「忙」的日子（打电话吐槽只在她忙时） |
+| 室友（NPC） | people「roommate」，role nearby | 只给前四档；名字「许小禾」只给前三档，known 叫「室友」。9-26 起感冒 3 天 |
+| 高中闺蜜（NPC） | people「friend」，role faraway | 名字「林小满」只给前两档，girl_friend / known 叫「高中的闺蜜」；有「忙」的日子（打电话吐槽只在她忙时） |
 | 角色名 | `persona.yml` name | 测试角色 |
 | 男朋友档的称呼 | tiers.yml boyfriend.user_is、persona relation | 「阿测」（女生朋友档及以下的禁用词） |
