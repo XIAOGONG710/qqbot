@@ -20,6 +20,7 @@
 - `vision/media.ts`
 - `vision/hearing.ts`
 - `vision/voice-out.ts`
+- `vision/voice-text.ts`
 - `vision/sticker-reads.ts`
 
 ## 开关

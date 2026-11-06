@@ -30,6 +30,8 @@ export interface VoiceWorkerOptions {
     dir: string;
     /** 念这段要用的情绪描述；不给就让参考音频自己决定 */
     emo?: string;
+    /** ChatTTS 的语气参数（voice-text.ts 的 voiceStyle）；只认 emo 的旧 worker 忽略它 */
+    style?: { oral: number; laugh: number; breaks: number; speed: number };
 }
 
 /** 把一句话交给 worker，等它出 wav；出不来返回 undefined（不抛错，别因为声音把回复搞挂） */
@@ -41,7 +43,7 @@ export async function speakViaWorker(text: string, options: VoiceWorkerOptions):
     mkdirSync(outbox, { recursive: true });
     const id = `v${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const requestPath = join(inbox, `${id}.json`);
-    writeFileSync(requestPath, JSON.stringify({ text, ...(options.emo ? { emo: options.emo } : {}) }), 'utf8');
+    writeFileSync(requestPath, JSON.stringify({ text, ...(options.emo ? { emo: options.emo } : {}), ...(options.style ? { style: options.style } : {}) }), 'utf8');
     const resultPath = join(outbox, `${id}.json`);
     const deadline = Date.now() + VOICE_TIMEOUT;
     while (Date.now() < deadline) {

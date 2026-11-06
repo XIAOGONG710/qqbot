@@ -38,6 +38,7 @@ import { quotedIds, renderForward, segmentsToText, type ForwardLookup, type Grou
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
 import { createHearing } from '.././vision/hearing.ts';
 import { speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
+import { speechText, voiceStyle } from '.././vision/voice-text.ts';
 import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
@@ -1695,7 +1696,11 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             const last = lastVoiceAt.get(userId) ?? 0;
             if (Date.now() - last < 3 * 60_000) { speakAsText(userId, line, '三分钟内已经发过'); return; }
             lastVoiceAt.set(userId, Date.now());
-            void speakViaWorker(line, { dir: voiceDir })
+            // 念之前整理成念得顺的样子，按她这一刻的心境给语气（voice-text.ts）；整理完没有能念的就改发文字
+            const spoken = speechText(line);
+            if (!spoken) { speakAsText(userId, line, '没有能念出来的字'); return; }
+            const { emo, ...style } = voiceStyle(lastFeelings?.felt[0], line, new Date(worldNow()));
+            void speakViaWorker(spoken, { dir: voiceDir, emo, style })
                 .then(async wav => {
                     if (!wav) { speakAsText(userId, line, '没生成出来'); return; }
                     let id: number;
