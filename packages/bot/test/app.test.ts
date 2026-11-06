@@ -396,26 +396,26 @@ describe('编排（app.ts）', () => {
         assert.deepEqual(chat(cfg, 10001), ['user:[动画表情]', 'assistant:她发了个表情包：白猫捂嘴偷笑']);
     });
 
-    test('照片货架（ADR 0109）：他要看土豆，货架里有 → 提示词列编号、先一句话再发图；聊天记录写成可读的一句；没要的时候模型乱写指令一律清掉', async () => {
+    test('照片货架（ADR 0109）：他要看团子饼，货架里有 → 提示词列编号、先一句话再发图；聊天记录写成可读的一句；没要的时候模型乱写指令一律清掉', async () => {
         const cfg = config({ photos: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
         const source = join(cfg.dataDir, 'cat.jpg');
         writeFileSync(source, 'fake-jpg');
-        const entry = photoShelf({ dir: join(cfg.dataDir, 'photos'), log: () => {} }).add(source, 'cat', '土豆趴在自行车棚顶上晒太阳');
+        const entry = photoShelf({ dir: join(cfg.dataDir, 'photos'), log: () => {} }).add(source, 'cat', '团子饼趴在自行车棚顶上晒太阳');
         let prompt = '';
         const { app, images, sent } = setup(cfg, { 10001: [] }, { generate: messages => { prompt = messages.map(m => m.content).join('\n'); return `翻到一张，上周拍的\n<photo:${entry.id}>`; } });
         await app.connected(SELF);
-        app.receive(event(10001, 1, '发张土豆的照片我看看'));
+        app.receive(event(10001, 1, '发张团子饼的照片我看看'));
         await until(() => images.length === 1);
         assert.equal(images[0], `10001:${join(cfg.dataDir, 'photos', 'files', `${entry.id}.jpg`)}:[照片]`);
-        assert.match(prompt, new RegExp(`<photo:${entry.id}>：土豆趴在自行车棚顶上晒太阳`));
+        assert.match(prompt, new RegExp(`<photo:${entry.id}>：团子饼趴在自行车棚顶上晒太阳`));
         assert.match(prompt, /以前拍的/);
         assert.deepEqual(sent.map(m => m.replace(/^10001:/, '')), ['翻到一张，上周拍的']);
-        assert.deepEqual(chat(cfg, 10001), ['user:发张土豆的照片我看看', 'assistant:翻到一张，上周拍的', `assistant:她发了张照片：土豆趴在自行车棚顶上晒太阳`]);
+        assert.deepEqual(chat(cfg, 10001), ['user:发张团子饼的照片我看看', 'assistant:翻到一张，上周拍的', `assistant:她发了张照片：团子饼趴在自行车棚顶上晒太阳`]);
 
         // 没要的时候：模型自己写了照片指令，清掉、不发图
         const quiet = config({ photos: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
         writeFileSync(join(quiet.dataDir, 'cat.jpg'), 'fake-jpg');
-        const quietEntry = photoShelf({ dir: join(quiet.dataDir, 'photos'), log: () => {} }).add(join(quiet.dataDir, 'cat.jpg'), 'cat', '土豆晒太阳');
+        const quietEntry = photoShelf({ dir: join(quiet.dataDir, 'photos'), log: () => {} }).add(join(quiet.dataDir, 'cat.jpg'), 'cat', '团子饼晒太阳');
         const second = setup(quiet, { 10001: [] }, { generate: () => `今天好冷\n<photo:${quietEntry.id}>` });
         await second.app.connected(SELF);
         second.app.receive(event(10001, 2, '今天好冷啊'));
@@ -436,7 +436,7 @@ describe('编排（app.ts）', () => {
             execFileSync(process.execPath, [resolve(import.meta.dirname, '../src/ops/photo-cli.ts'), 'add', source,
                 '--dir', cfg.dataDir, '--kind', 'cat', '--caption', '合成新增猫照'], { encoding: 'utf8', timeout: 10_000 });
             photoId = (JSON.parse(readFileSync(join(cfg.dataDir, 'photos', 'index.json'), 'utf8')) as { entries: { id: string }[] }).entries[0]!.id;
-            app.receive(event(10001, 204, '发张土豆的照片我看看'));
+            app.receive(event(10001, 204, '发张团子饼的照片我看看'));
             await until(() => prompt !== '');
             assert.ok(prompt.includes(`<photo:${photoId}>`), '候选从独立CLI最新索引读取，不沿用启动时空货架');
             await until(() => images.length === 1);
@@ -457,7 +457,7 @@ describe('编排（app.ts）', () => {
         });
         try {
             await app.connected(SELF);
-            app.receive({ ...event(10001, 202, '发张土豆的照片我看看'), time: Math.floor(clock.now() / 1000) });
+            app.receive({ ...event(10001, 202, '发张团子饼的照片我看看'), time: Math.floor(clock.now() / 1000) });
             const deadline = Date.now() + 12_000;
             while (!sent.some(line => /<photo:/i.test(line)) && !logs.some(line => /回复失败/.test(line)) && Date.now() < deadline) {
                 await new Promise(resolve => setTimeout(resolve, 20)); const next = clock.nextTimer(); if (next !== undefined) clock.advanceTo(next);
@@ -480,7 +480,7 @@ describe('编排（app.ts）', () => {
         const originalRename = fileOps.renameSync; let failedCommits = 0;
         fileOps.renameSync = (from, to) => { if (to === indexFile) { failedCommits++; throw new Error('PRIVATE_PHOTO_INDEX_FAILURE'); } return originalRename(from, to); };
         try {
-            app.receive(event(10001, 201, '发张土豆的照片我看看'));
+            app.receive(event(10001, 201, '发张团子饼的照片我看看'));
             await until(() => images.length === 1);
             const stored = new ChatHistory(cfg.dataDir).load(10001);
             const sent = stored.filter(message => message.role === 'assistant');
@@ -538,10 +538,10 @@ describe('编排（app.ts）', () => {
             };
             try {
                 await app.connected(SELF);
-                app.receive({ ...event(10001, 301, '发张土豆的照片我看看'), time: Math.floor(clock.now() / 1000) });
+                app.receive({ ...event(10001, 301, '发张团子饼的照片我看看'), time: Math.floor(clock.now() / 1000) });
                 await pump(() => held.has(10001));
                 cli.remove(entry.id); cli.add(source, 'cat', '合成说明乙');
-                app.receive({ ...event(10002, 302, '发张土豆的照片我看看'), time: Math.floor(clock.now() / 1000) });
+                app.receive({ ...event(10002, 302, '发张团子饼的照片我看看'), time: Math.floor(clock.now() / 1000) });
                 await pump(() => held.has(10002));
                 // 两次发送已经取得各自快照；其后删除、损坏索引也不能改变已确认图片历史。
                 cli.remove(entry.id); writeFileSync(join(root, 'index.json'), 'PRIVATE_BROKEN_INDEX');
@@ -2092,7 +2092,7 @@ describe('她知道自己在 QQ 上的样子（ADR 0083）：进提示词', () =
         mkdirSync(join(cfg.dataDir, 'presence'), { recursive: true });
         const now = clock.now();
         writeFileSync(join(cfg.dataDir, 'presence', 'presence.json'), JSON.stringify({
-            version: 1, signature: { text: '土豆又胖了', at: now - 86_400_000, next: now + 3 * 86_400_000 },
+            version: 1, signature: { text: '团子饼又胖了', at: now - 86_400_000, next: now + 3 * 86_400_000 },
             qzone: [{ at: now - 20 * 3_600_000, text: '今天的云好看', photo: 'a.jpg', tid: 't1', mode: 'on' }], photosUsed: ['a.jpg'],
         }));
         const seen: string[] = [];
@@ -2107,9 +2107,9 @@ describe('她知道自己在 QQ 上的样子（ADR 0083）：进提示词', () =
         }
         assert.equal(sent.length, 1);
         const prompt = seen.at(-1)!;
-        assert.match(prompt, /个性签名现在是「土豆又胖了」/);
+        assert.match(prompt, /个性签名现在是「团子饼又胖了」/);
         assert.match(prompt, /发了一条说说「今天的云好看」，配了一张图/);
-        assert.ok(!logs.some(l => l.includes('土豆又胖了')), '日志里没有签名原文');
+        assert.ok(!logs.some(l => l.includes('团子饼又胖了')), '日志里没有签名原文');
     });
 });
 

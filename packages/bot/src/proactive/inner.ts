@@ -76,7 +76,7 @@ const chars = (text: string) => {
  * 都是从她已经知道的事实里挑一件想，不是编新事
  */
 export const THOUGHT_THEMES = [
-    '你自己手头的事（攒钱、作业、土豆、身体、今天的打算）：接下来怎么办，是什么感觉',
+    '你自己手头的事（攒钱、作业、楼下的猫、身体、今天的打算）：接下来怎么办，是什么感觉',
     '刚过去的一件事（你这边今天发生的，或者最近聊天里提到的）在你心里留下的印象：回想它、琢磨它',
     '他说过的一件具体的事（不是“他怎么还不回”）：现在大概是什么样了，你有点好奇或惦记',
     '接下来几天你想做的、盼着的或有点发愁的事',
@@ -168,7 +168,7 @@ export function parseThought(raw: string, recent: readonly InnerThought[], at: n
         if (explicitGoes && goes !== explicitGoes) return { rejected: '去向不明确' };
         text = text.slice(0, inline.index).replace(/[，,。.！!…\s]+$/, '').trim();
     }
-    // 整句被括号包着（「（翻着相册里土豆昨天那张……）」）：去掉外面那层
+    // 整句被括号包着（「（翻着相册里猫昨天那张……）」）：去掉外面那层
     const wrapped = /^[（(]([^（）()]+)[）)]$/.exec(text);
     if (wrapped) text = wrapped[1]!.trim();
     if (chars(text) < MIN_CHARS) return { rejected: '太短' };

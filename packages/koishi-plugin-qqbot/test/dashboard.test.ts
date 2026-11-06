@@ -107,7 +107,7 @@ describe('客户端的纯函数', () => {
         assert.match(rows[0].text, /空的/);
         assert.match(rows[1].text, /还没有/);
         assert.equal(rows[2].text, 'weekly-2026-11-22.md');
-        assert.match(extrasRows({ photos: { count: 5, cat: 3, view: 2, work: 0 } })[0].text, /5 张（土豆 3、天空 2）/);
+        assert.match(extrasRows({ photos: { count: 5, cat: 3, view: 2, work: 0 } })[0].text, /5 张（猫 3、天空 2）/);
     });
 });
 

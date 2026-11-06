@@ -28,6 +28,7 @@
 - `life/acquaintances.ts`
 - `human-values.ts`
 - `local-date.ts`
+- `character-terms.ts`
 
 ## 开关
 

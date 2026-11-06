@@ -7,6 +7,7 @@ import { localDate } from '../local-date.ts';
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
 import { dirname, join } from 'node:path';
+import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
 import { crisisFallback, faceContext, finalizeReply, reviewCrisisReply, reviewReply, type ReviewOptions } from '.././language/exit-check.ts';
@@ -96,6 +97,8 @@ export interface TierCard {
 export function loadTierCard(pattern: string, tier: string, options: { everydayLife?: boolean; everydayFrom?: string; menu?: boolean; menuFrom?: string } = {}): TierCard {
     const path = pattern.replaceAll('{tier}', tier);
     const loaded = loadCharacterCard(path);
+    // 猫的名字、学校和家所在的城市记下来（ADR 0262）：文案和正则从这里取，源码里不写死
+    noteCharacterTerms(loaded.herWorld);
     // 补充的日常小事和小测（ADR 0106，配置 everydayLife）：代码里加进世界的“小事”块，不改角色卡
     const everyday = options.everydayLife && loaded.herWorld ? { ...loaded, herWorld: withEveryday(loaded.herWorld, tier, options.everydayFrom)! } : loaded;
     // 每顿吃什么（ADR 0125，配置 menu）：菜单放进世界，午饭 / 晚饭才有“吃的是什么”
@@ -162,7 +165,7 @@ export interface ContactPipelineOptions {
     react?: (userId: number, messageId: number, text: string) => void;
     /** 图片表情收藏：给模型列可选编号、校验输出；实际发送由 app.ts 的 send 接线。 */
     stickers?: StickerShelf;
-    /** 照片货架（ADR 0109，配置 photos）：他要看土豆 / 风景 / 她的片子时，货架里有就发；只对男朋友档 */
+    /** 照片货架（ADR 0109，配置 photos）：他要看猫 / 风景 / 她的片子时，货架里有就发；只对男朋友档 */
     photos?: PhotoShelf;
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
     stickerChance?: number;
@@ -595,7 +598,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(grievance ? { grievance } : {}),
                 ...(untold.length ? { news: untold } : {}),
             });
-            // 照片（ADR 0109）：他明确要看土豆 / 风景 / 她的片子，货架里有这一类，允许发（没连着发、今天没发够、不是危机 / 吵醒 / 小别扭 / 他难过），就发；
+            // 照片（ADR 0109）：他明确要看猫 / 风景 / 她的片子，货架里有这一类，允许发（没连着发、今天没发够、不是危机 / 吵醒 / 小别扭 / 他难过），就发；
             // 没有明确对象（只说“发张照片”）取手上有的第一类；要的是她本人（自拍）不在货架里，照旧走“先不发”
             photoNow = undefined;
             photoDishNow = undefined;
@@ -637,7 +640,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她在 B 站看过的（ADR 0130）：他问到“最近看了什么 / 刷到什么”才放
             const watchedNow = options.watched && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? watchedLine(options.watched(), chat, time) : undefined;
             if (watchedNow) log('她看视频：这一轮提示词里放了她最近看过的（日志不记内容）');
-            // 主动发的那条（喂完土豆拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
+            // 主动发的那条（喂完猫拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
             // 被打断的这一轮（ADR 0115）：不带“先直接回答他刚问的”这类意图、不套形状 / 长短提示——它们和“先接他的话、顺带说一声刚被什么岔了一下”冲突，模型会按更紧的那条来、把打断吞掉（模拟 5/5 没提）
             const intent = photoNow && !initiate ? photoIntent(photoNow) : interruptLine ? undefined : baseIntent;
             const grievanceActive = Boolean(grievance && intent === describeGrievance(grievance));
@@ -713,7 +716,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 形状控制开着：用具体的字数和条数代替「回短一点」的软提示；不适用的轮次（他明着让她讲、主动找他、收尾）照旧走 lengthHint
             // 她这一天半里已经主动说过的事（ADR 0098）；带自己的事的轮次从她还没说过的事里挑一件说
             const told = !crisisNow ? alreadyTold(chat, time.getTime()) : [];
-            const TOLD_LABEL: Record<string, RegExp> = { 相机: /相机/, 猫: /土豆|猫/, 作业: /作业/, 快递: /快递/ };
+            const TOLD_LABEL: Record<string, RegExp> = { 相机: /相机/, 猫: new RegExp(`${catAlternative()}猫`), 作业: /作业/, 快递: /快递/ };
             const worldLabels = world ? world.replace(/^\[你那边（[^）]*）：/, '').replace(/\]$/, '').split('｜').map(item => item.split('：')[0]!.trim()).filter(Boolean) : [];
             const agendaTopics = [
                 ...worldLabels.filter(label => !told.some(name => TOLD_LABEL[name]?.test(label))),
@@ -810,7 +813,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(plansLine ? [plansLine] : []),
                         ...(promised ? [promised] : []),
                         ...(obstacleLine ? [obstacleLine] : []),
-                        // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在青岛」
+                        // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
                         ...(partnerBack ? [partnerBack] : []),
                         ...(togetherLine ? [togetherLine] : []),
                         ...(closenessLine ? [closenessLine] : []),

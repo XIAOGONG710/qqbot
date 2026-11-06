@@ -44,7 +44,7 @@ interface Def {
     cost?: { amount: [number, number]; what: string };
     skipWhen?: ('sick' | 'busy' | 'home')[];
     onlyWhen?: ('sick' | 'busy' | 'home')[];
-    /** 要这一天土豆见到了 / 没见到 */
+    /** 要这一天猫见到了 / 没见到 */
     requires?: 'cat_seen' | 'cat_unseen';
     /** 买了相机以后才有 */
     afterCamera?: boolean;
@@ -136,15 +136,15 @@ const DEFS: Def[] = [
     { id: 'ed_leaves', text: '校园里的银杏黄了，路过拍了几张', window: 'afternoon', chance: 0.2, when: 'school', weather: 'dry', months: [10, 11], group: 'weather', feel: f('joy') },
     { id: 'ed_moon', text: '晚上月亮特别圆，在楼下站着看了一会儿', window: 'evening', chance: 0.04, when: 'any', weather: 'dry', tiers: CLOSE, group: 'weather' },
 
-    // ───── 土豆 ─────
-    { id: 'ed_cat_belly', text: '土豆今天蹭了蹭她的手，还翻出了肚皮', window: 'evening', chance: 0.12, when: 'any', requires: 'cat_seen', group: 'cat', feel: f('joy') },
-    { id: 'ed_cat_fast', text: '土豆今天吃得特别快，碗舔得干干净净', window: 'evening', chance: 0.1, when: 'any', requires: 'cat_seen', group: 'cat' },
-    { id: 'ed_cat_grass', text: '土豆身上沾了草屑，帮它摘了好一会儿', window: 'evening', chance: 0.05, when: 'any', requires: 'cat_seen', group: 'cat' },
-    { id: 'ed_cat_photo', text: '给土豆拍了几张照片，有一张特别好', window: 'evening', chance: 0.1, when: 'any', requires: 'cat_seen', group: 'cat', feel: f('joy') },
-    { id: 'ed_cat_other_feeder', text: '碰到别的同学也在喂土豆', window: 'evening', chance: 0.04, when: 'any', requires: 'cat_seen', group: 'cat' },
-    { id: 'ed_cat_waiting', text: '喊了好几声土豆没出来，猫碗放在老地方', window: 'evening', chance: 0.2, when: 'any', requires: 'cat_unseen', group: 'cat', feel: f('worry') },
+    // ───── 猫 ─────
+    { id: 'ed_cat_belly', text: '{cat}今天蹭了蹭她的手，还翻出了肚皮', window: 'evening', chance: 0.12, when: 'any', requires: 'cat_seen', group: 'cat', feel: f('joy') },
+    { id: 'ed_cat_fast', text: '{cat}今天吃得特别快，碗舔得干干净净', window: 'evening', chance: 0.1, when: 'any', requires: 'cat_seen', group: 'cat' },
+    { id: 'ed_cat_grass', text: '{cat}身上沾了草屑，帮它摘了好一会儿', window: 'evening', chance: 0.05, when: 'any', requires: 'cat_seen', group: 'cat' },
+    { id: 'ed_cat_photo', text: '给{cat}拍了几张照片，有一张特别好', window: 'evening', chance: 0.1, when: 'any', requires: 'cat_seen', group: 'cat', feel: f('joy') },
+    { id: 'ed_cat_other_feeder', text: '碰到别的同学也在喂{cat}', window: 'evening', chance: 0.04, when: 'any', requires: 'cat_seen', group: 'cat' },
+    { id: 'ed_cat_waiting', text: '喊了好几声{cat}没出来，猫碗放在老地方', window: 'evening', chance: 0.2, when: 'any', requires: 'cat_unseen', group: 'cat', feel: f('worry') },
 
-    // ───── 朋友（陈佳宁在外地，苏雨桐是同专业济南人；只做互动，不加新人新事） ─────
+    // ───── 朋友（闺蜜在外地，室友是同专业的本地人；只做互动，不加新人新事） ─────
     { id: 'ed_jn_meme', text: '{person}发来一张搞笑图，互损了几句', window: 'evening', chance: 0.14, when: 'any', role: 'faraway', skipWhen: ['busy'], tiers: CLOSE, group: 'social', feel: f('joy') },
     { id: 'ed_jn_campus', text: '{person}吐槽她们学校的食堂，笑死了', window: 'evening', chance: 0.09, when: 'any', role: 'faraway', skipWhen: ['busy'], tiers: CLOSE, group: 'social', feel: f('joy') },
     { id: 'ed_jn_exam', text: '{person}说她们快考试了，在微信上哀嚎', window: 'evening', chance: 0.12, when: 'any', role: 'faraway', months: [11, 12, 1], tiers: CLOSE, group: 'social' },
@@ -186,7 +186,8 @@ export function everydayEventsFor(world: World, tier: string): WorldEventDef[] {
     const personFor = (role: PersonRole | undefined) => (role ? world.people.find(person => person.role === role)?.id : undefined);
     return DEFS.filter(def => (def.tiers ?? ALL).includes(visible) && (!def.role || personFor(def.role)))
         .map((def): WorldEventDef => ({
-            id: def.id, text: def.text, window: def.window, chance: Math.round(def.chance * EVERYDAY_SCALE * 1000) / 1000, when: def.when,
+            // {cat}：楼下那只猫的名字（卡上的 world.cat.name；猫的事要见到 / 没见到猫，没有猫的世界本来就没有）
+            id: def.id, text: def.text.replaceAll('{cat}', world.cat?.name ?? '猫'), window: def.window, chance: Math.round(def.chance * EVERYDAY_SCALE * 1000) / 1000, when: def.when,
             ...(def.role ? { person: personFor(def.role)! } : {}), ...(def.skipWhen ? { skipWhen: def.skipWhen } : {}), ...(def.onlyWhen ? { onlyWhen: def.onlyWhen } : {}),
             ...(def.cost ? { cost: def.cost } : {}), ...(def.weekdays ? { weekdays: def.weekdays } : {}), ...(def.months ? { months: def.months } : {}),
             ...(def.weather ? { weather: def.weather } : {}), group: def.group, ...(def.feel ? { feel: def.feel } : {}),

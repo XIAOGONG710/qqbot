@@ -76,7 +76,7 @@ export function pickBest(candidates: readonly string[], rules: PickRules, clean:
     return { index, scored };
 }
 
-/** 日志：「候选 3 个，挑第 2 个（第 1 个：说了 4 句；第 3 个：扯到自己的「土豆」）」 */
+/** 日志：「候选 3 个，挑第 2 个（第 1 个：说了 4 句；第 3 个：扯到自己的「猫」）」 */
 export function describePick(index: number, scored: readonly Scored[]): string {
     const others = scored.map((s, i) => (i !== index && s.reasons.length ? `第 ${i + 1} 个：${s.reasons.join('，')}` : undefined)).filter(Boolean);
     const chosen = scored[index]!.reasons.length ? `；挑中的也有：${scored[index]!.reasons.join('，')}` : '';

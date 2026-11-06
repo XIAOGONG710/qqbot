@@ -169,7 +169,7 @@ export function buildPrompt(input: PromptInput): PromptResult {
     let remaining = settings.maxContext - settings.maxTokens - 3
         - [...head, newChat, ...afterHistory, ...tail].reduce((sum, m) => sum + cost(m), 0);
 
-    // 聊天记录隔了一天就插一行日期（ADR 0049，像 QQ 隔天显示时间）：分得清哪句是哪天说的（放完假还以为他在青岛，ADR 0007 调整 2026-10-10）。
+    // 聊天记录隔了一天就插一行日期（ADR 0049，像 QQ 隔天显示时间）：分得清哪句是哪天说的（放完假还以为他在老家，ADR 0007 调整 2026-10-10）。
     // 绝对日期，旧消息前面那一行不会变，不影响缓存；放进去的最早一条前面也有一行
     const nowYear = (input.now ?? new Date()).getFullYear();
     const dayOf = (m: ChatMessage | undefined) => (m?.time ? chatDayLabel(new Date(m.time), nowYear) : undefined);

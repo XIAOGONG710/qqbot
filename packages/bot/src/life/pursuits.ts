@@ -6,6 +6,7 @@
 // 毕业以后做什么、家里的期待这类悬着的问题**不是追求**，作者没定之前不碰（persona：「毕业打算还没想好，被问就避」）。
 
 import { localDate } from '../local-date.ts';
+import { catName } from '../character-terms.ts';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Appraisal } from '.././emotion/feelings.ts';
@@ -30,7 +31,10 @@ export interface Pursuit {
     builtin?: boolean;
 }
 
-export const CAMERA_STEPS = ['熟悉新相机的设置', '拍一组土豆', '拍一组校园的秋天', '挑十来张修好', '挑最满意的几张发到空间里'] as const;
+/** 用新相机的五步；第二步拍的是楼下那只猫（名字从卡上读，ADR 0262） */
+export const cameraSteps = (): readonly string[] => ['熟悉新相机的设置', `拍一组${catName()}`, '拍一组校园的秋天', '挑十来张修好', '挑最满意的几张发到空间里'];
+/** 一共几步 */
+export const CAMERA_STEP_COUNT = 5;
 /** 买了相机之后她认真弄过几回（生活账里的摄影 work_on_project），第 k 步做完 */
 export const CAMERA_THRESHOLDS = [2, 5, 9, 13, 16] as const;
 /** 买了相机、有几天没碰，就有点愧疚 */
@@ -166,15 +170,15 @@ function cameraView(pursuit: Pursuit, facts: PursuitFacts): PursuitView | undefi
         if (!session) return [];
         return [{
             id: `pursuit:camera:step:${index + 1}`, at: Date.parse(session.endedAt), kind: 'joy', strength: index === CAMERA_THRESHOLDS.length - 1 ? 2 : 1,
-            cause: `用新相机把“${CAMERA_STEPS[index]}”这一步做完了`, source: 'world', halfLifeH: 10,
+            cause: `用新相机把“${cameraSteps()[index]}”这一步做完了`, source: 'world', halfLifeH: 10,
         }];
     });
     const quiet = (last ?? camera.end).getTime();
-    if (step < CAMERA_STEPS.length && facts.now.getTime() - quiet >= CAMERA_STALL_DAYS * DAY_MS) {
+    if (step < CAMERA_STEP_COUNT && facts.now.getTime() - quiet >= CAMERA_STALL_DAYS * DAY_MS) {
         appraisals.push({ id: `pursuit:camera:stall:${Math.floor(quiet / DAY_MS)}`, at: quiet + CAMERA_STALL_DAYS * DAY_MS, kind: 'worry', strength: 1, cause: '相机买了有一阵了，好几天没怎么拍', source: 'world', halfLifeH: 24 });
     }
-    const now = step >= CAMERA_STEPS.length ? '这几步都做完了' : `现在在第 ${step + 1} 步（${CAMERA_STEPS[step]}）`;
-    const done = step ? `，做完的有：${CAMERA_STEPS.slice(0, step).join('、')}` : '';
+    const now = step >= CAMERA_STEP_COUNT ? '这几步都做完了' : `现在在第 ${step + 1} 步（${cameraSteps()[step]}）`;
+    const done = step ? `，做完的有：${cameraSteps().slice(0, step).join('、')}` : '';
     const lastText = last ? `买了相机以后认真弄过 ${sessions.length} 回，上一回是${clockDay(last, facts.now)}` : '买了相机还没怎么认真拍过';
     return { pursuit, text: `${pursuit.title}——${pursuit.why}；${now}${done}；${lastText}`, appraisals };
 }

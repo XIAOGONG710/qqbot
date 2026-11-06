@@ -36,7 +36,7 @@ interface Festival {
 
 /**
  * 这一天某个时段她在做的事（进空闲活动，那个时段只从这里挑；日子的名字对上 FESTIVALS）。home：true 只在在家的假期里用，false 只在学校时用，不写都用。
- * 只写事实里已有的（独生女、青岛家里、爸妈、室友），不添新设定；不写吃饭（饭点另有一层）。没写的节日她那天照常过
+ * 只写事实里已有的（独生女、家里、爸妈、室友），不添新设定；不写吃饭（饭点另有一层）。没写的节日她那天照常过
  */
 const DOING: Readonly<Record<string, { window: Window; text: string; home?: boolean }[]>> = {
     除夕: [

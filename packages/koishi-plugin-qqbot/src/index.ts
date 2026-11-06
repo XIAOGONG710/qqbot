@@ -352,9 +352,9 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         proactiveInvite: Schema.boolean().default(DEFAULTS.proactiveInvite)
             .description('**约他一起玩**（ADR 0107，要「主动消息」开着）：晚上（19:30 以后）她想起你们的固定节目——卡上写着的我的世界存档、王者双排——随口约他一句。一周最多 3 次、两次之间至少隔 2 天（他回的第一句像拒绝就隔 4 天）；他没回不催；他说过去忙 / 去睡了、他今晚有事、她自己很累 / 不舒服 / 心情不好，就不约。默认关。'),
         photos: Schema.boolean().default(DEFAULTS.photos)
-            .description('**照片货架**（ADR 0109）：他要看土豆（楼下的流浪猫）/ 天空时，货架里有就发一张高清照片（只对男朋友档）。照片由她自己从网上找：Wikimedia Commons 里 CC0 / 公有领域的原图（不用署名），看图模型逐张把关——有人脸、有水印 / 文字 / 相框、不清晰、不是三花猫 / 天空的都不收；猫只收同一只（同一个系列）。需要「看图」开着才会去找；货架空着这个开关什么都不做。她本人的自拍、吃的不在里面。默认关。'),
+            .description('**照片货架**（ADR 0109）：他要看楼下的流浪猫/ 天空时，货架里有就发一张高清照片（只对男朋友档）。照片由她自己从网上找：Wikimedia Commons 里 CC0 / 公有领域的原图（不用署名），看图模型逐张把关——有人脸、有水印 / 文字 / 相框、不清晰、不是三花猫 / 天空的都不收；猫只收同一只（同一个系列）。需要「看图」开着才会去找；货架空着这个开关什么都不做。她本人的自拍、吃的不在里面。默认关。'),
         photoShares: Schema.boolean().default(DEFAULTS.photoShares)
-            .description('**她主动发照片**（ADR 0110，要「照片货架」和「主动消息」开着）：喂完土豆、见到它的日子里，约三分之一的天她拍了张照片，过十来分钟发给他、配一句话（不用他回应）。货架里没有土豆的照片就不发；刚发过 / 今天发够了也不发。默认关。'),
+            .description('**她主动发照片**（ADR 0110，要「照片货架」和「主动消息」开着）：喂完猫、见到它的日子里，约三分之一的天她拍了张照片，过十来分钟发给他、配一句话（不用他回应）。货架里没有猫的照片就不发；刚发过 / 今天发够了也不发。默认关。'),
         together: Schema.boolean().default(DEFAULTS.together)
             .description('**陪玩状态**（ADR 0111）：他答应了她的邀约（或她答应了他的“今晚王者双排吗”）之后的两三个小时，她正和他一起玩——回话短一点、慢一点，聊眼前这局 / 存档里的事；这段时间不插“你人呢”之类别的主动消息；谁说“下了 / 不玩了 / 睡了 / 晚安”就结束。只对男朋友档。默认关。'),
         comeBack: Schema.boolean().default(DEFAULTS.comeBack)
@@ -404,7 +404,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         tailCap: Schema.boolean().default(DEFAULTS.tailCap)
             .description('**句尾「吧」「呢」封顶**（ADR 0146）：她多出来的句尾语气字几乎全在这两个字上（吧 5.0% 对他的 2.2%，呢 5.0% 对他的 1.8%；啊 / 嘛 / 呀 / 啦在真人范围内，不动）。开了以后，她最近 80 条气泡里以“吧”收尾的占比到 3%、以“呢”收尾的到 2.5% 时，这一轮再用它收尾的就把那个字去掉（不重写）；固定搭配（干嘛 / 好吧 / 行吧）、省略问句（你呢）和太短的应声不动。默认关'),
         factCheck: Schema.union(FACT_CHECK_MODES.map(mode => Schema.const(mode).description(FACT_CHECK_LABELS[mode]))).default(DEFAULTS.factCheck)
-            .description('**逐条事实检查**（ADR 0137）：她最容易露馅的是编——事实里只有“土豆今天没下楼”，她写“土豆一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。回复发出去之前让模型当审稿员，把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。off 不查；log 只查、只在日志里记（敏感调试关着时只记条数），回复照发——先看误报多不多；fix 有问题就带说明重写一次，重写后再查，还有就删那几行。危机回合不查，查不成一律照发。'),
+            .description('**逐条事实检查**（ADR 0137）：她最容易露馅的是编——事实里只有“猫今天没下楼”，她写“猫一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。回复发出去之前让模型当审稿员，把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。off 不查；log 只查、只在日志里记（敏感调试关着时只记条数），回复照发——先看误报多不多；fix 有问题就带说明重写一次，重写后再查，还有就删那几行。危机回合不查，查不成一律照发。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
@@ -414,7 +414,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         lagTail: Schema.boolean().default(DEFAULTS.lagTail)
             .description('**回复延迟的长尾**（ADR 0105）：真人回消息的延迟是长尾的（公开数据里只有约 58% 的回复在 1 分钟内），她醒着空着时原来几乎全在十几秒内。开了以后一部分消息她在做别的，20 秒到一小时才看到（一来一回很快时少，冷场时多，他难受 / 问她在不在时更快）；回复一直失败（断网）十分钟以上才发出去时，时间块里多一句断网的事实，她可以顺口说一句“刚才网断了”。默认关。'),
         everydayLife: Schema.boolean().default(DEFAULTS.everydayLife)
-            .description('**她每天碰到的小事**（ADR 0106）：线上事件账全是课、饭、睡这样的例行。开了以后世界里多约 90 条日常尺度的小事（外卖晚了、老师拖堂、下雨没带伞、舍友的闹钟、晚霞拍了几张、和苏雨桐 / 陈佳宁的来往、土豆的事……），按日期哈希、有天气 / 月份 / 星期条件，一天最多多 4 件；另有“小测”一条线（高数 / 概率论 / 专业课每四周一次，前一次课老师说、当天写、两天后出分，数学类偏低）。不改角色卡。带感受的小事会成为她开心 / 烦 / 担心 / 难过的来由（要开「心境」）。默认关。'),
+            .description('**她每天碰到的小事**（ADR 0106）：线上事件账全是课、饭、睡这样的例行。开了以后世界里多约 90 条日常尺度的小事（外卖晚了、老师拖堂、下雨没带伞、舍友的闹钟、晚霞拍了几张、和室友 / 闺蜜的来往、猫的事……），按日期哈希、有天气 / 月份 / 星期条件，一天最多多 4 件；另有“小测”一条线（高数 / 概率论 / 专业课每四周一次，前一次课老师说、当天写、两天后出分，数学类偏低）。不改角色卡。带感受的小事会成为她开心 / 烦 / 担心 / 难过的来由（要开「心境」）。默认关。'),
         pursuits: Schema.boolean().default(DEFAULTS.pursuits)
             .description('**她自己的追求**（ADR 0104，只给男朋友档）：内置两条自传里写明的——「别挂科」和「用新相机拍出自己满意的东西」（买到相机之后分五步，进度来自她真的拍过 / 修过几回）。做完一步她会开心、好几天没碰有点愧疚；时间块里一小段让她知道自己在追什么（不用主动提）；配合「会拒绝」，她正在修片时他让她先放下，她可以先弄完这一小段。作者可在数据目录 pursuits.json 里暂停 / 放下 / 加自己的。默认关。'),
         shapeSplit: Schema.boolean().default(DEFAULTS.shapeSplit)
@@ -482,11 +482,11 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         grievance: Schema.boolean().default(DEFAULTS.grievance)
             .description('**有起因的小别扭与和好**（ADR 0074）：男朋友档，他隔了 3 天以上才来、这几天她发的一直没回时，她回来的头一两轮淡一点、点一句，他一解释 / 道歉 / 哄就软下来。只由这一个具体事件触发，一次只有一档，不存跨天的情绪，每轮从聊天记录的时间重算。默认关'),
         npcAsks: Schema.boolean().default(DEFAULTS.npcAsks)
-            .description('**闺蜜的约**（ADR 0061）：陈佳宁、苏雨桐会约她（一起吃饭、去图书馆、微信视频），有时迟到、改到晚一点、临时取消；她按自己的课、身体、作业答应或推掉。进她的一天（状态行）和「你那边」。只给看得到这两个人的档位。默认关'),
+            .description('**闺蜜的约**（ADR 0061）：室友和闺蜜会约她（一起吃饭、去图书馆、微信视频），有时迟到、改到晚一点、临时取消；她按自己的课、身体、作业答应或推掉。进她的一天（状态行）和「你那边」。只给看得到这两个人的档位。默认关'),
         feedbackCommands: Schema.boolean().default(DEFAULTS.feedbackCommands)
             .description('**反馈通道**（ADR 0073）：男朋友档收到只有「假」或「像」一个字的消息（可带前面的 / 、后面的标点或一个小黄脸、QQ 的回复引用）时，记下她那一轮话是「假」还是「像」，不当聊天、她不回应。记录在数据目录的 feedback/ 里，不进日志正文。默认关'),
         realWeather: Schema.boolean().default(DEFAULTS.realWeather)
-            .description('**真实天气**（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成'),
+            .description('**真实天气**（ADR 0048）：她的世界里的天气按卡上写的地方（学校、家，weather.places）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成'),
         festivals: Schema.union(FESTIVAL_MODES.map(mode => Schema.const(mode).description(FESTIVAL_LABELS[mode]))).default(DEFAULTS.festivals)
             .description('**公共节日**（ADR 0076）：她知道今天是平安夜、除夕、情人节……（时间块提前几天提醒）；选「主动说」时再在新年零点、除夕、平安夜、情人节、元宵、520、七夕、端午、中秋由「重要的日子」时机带一句。默认关'),
         typingStatus: Schema.boolean().default(DEFAULTS.typingStatus)

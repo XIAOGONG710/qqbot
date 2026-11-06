@@ -37,7 +37,7 @@ export const MODULES: readonly ModuleDef[] = [
         id: 'life', name: '她的日子（生活）',
         scope: '她自己的一天：作息、世界账（天气、猫、快递、作业、钱）、日常小事和小测、项目与追求、身体、心情和在读的书、真人式连续数值、闺蜜、节日、承诺和日记。',
         files: ['life/schedule.ts', 'life/actions.ts', 'life/projects.ts', 'life/pursuits.ts', 'life/money.ts', 'life/body.ts', 'life/needs.ts', 'life/her-days.ts', 'life/day-plan.ts',
-            'life/everyday.ts', 'life/menu.ts', 'life/diary.ts', 'life/biography.ts', 'life/bedtime.ts', 'life/people.ts', 'life/promises.ts', 'life/promise-state.ts', 'life/open-loops.ts', 'life/tastes.ts', 'life/acquaintances.ts', 'human-values.ts', 'local-date.ts'],
+            'life/everyday.ts', 'life/menu.ts', 'life/diary.ts', 'life/biography.ts', 'life/bedtime.ts', 'life/people.ts', 'life/promises.ts', 'life/promise-state.ts', 'life/open-loops.ts', 'life/tastes.ts', 'life/acquaintances.ts', 'human-values.ts', 'local-date.ts', 'character-terms.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」；consistency-cli（说的和账对不对）；sim/life-audit',
         adrs: ['0015', '0040', '0045', '0104', '0106', '0162', '0163', '0222', '0228', '0231', '0243', '0250', '0252', '0253', '0257'],
@@ -69,7 +69,7 @@ export const MODULES: readonly ModuleDef[] = [
     },
     {
         id: 'proactive', name: '主动找他',
-        scope: '她什么时候先开口：早安、下课、睡前、冷场、随口说件事、约他、问意见、喂完土豆拍照、说了等下之后回来、没回也继续、心里的念头、待跟进的事。',
+        scope: '她什么时候先开口：早安、下课、睡前、冷场、随口说件事、约他、问意见、喂完猫拍照、说了等下之后回来、没回也继续、心里的念头、待跟进的事。',
         files: ['proactive/proactive.ts', 'proactive/proactive-planner.ts', 'proactive/proactive-state.ts', 'proactive/inner.ts', 'proactive/shares.ts', 'proactive/follow-ups.ts'],
         groups: ['主动找他'],
         metrics: '周报「主动性」（条数、30 分钟内他回的占比、按时机分）',

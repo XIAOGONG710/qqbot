@@ -1,7 +1,7 @@
 // 两位闺蜜自己的日子（ADR 0033）：卡上 world.people[].life（source/world.yml 按档位裁剪）→ 某一天她们各自怎么样。
-// - 生病几天、忙几天（有考试、赶作业）、回家（济南本地的周末、放假），都按「日期 + 人 + 名目」取哈希，同一天对所有人一样，重启、重放都一样，不存状态。
-// - 她们的状态管着和林梦瑶的来往（world.ts 里带 person 的小事看 skip_when / only_when）：苏雨桐感冒那几天不一起吃饭、上课帮她拍板书；
-//   陈佳宁有考试那几天微信上不怎么互损。林梦瑶知道这些（同专业天天见、和死党天天微信），所以进「你那边」，问到那天也想得起。
+// - 生病几天、忙几天（有考试、赶作业）、回家（本地的周末、放假），都按「日期 + 人 + 名目」取哈希，同一天对所有人一样，重启、重放都一样，不存状态。
+// - 她们的状态管着和林梦瑶的来往（world.ts 里带 person 的小事看 skip_when / only_when）：室友感冒那几天不一起吃饭、上课帮她拍板书；
+//   闺蜜有考试那几天微信上不怎么互损。林梦瑶知道这些（同专业天天见、和死党天天微信），所以进「你那边」，问到那天也想得起。
 // - 只写事实，不写台词、不写情绪（ADR 0021 决策 3）。
 
 import { formatDate, type Schedule } from '../life/schedule.ts';
@@ -89,7 +89,7 @@ export function describeNpc(name: string, states: readonly NpcState[]): string |
     return parts.length ? `${name}${parts.join('，')}` : undefined;
 }
 
-/** 他这次的话里说起的人（名字或者名，「陈佳宁」「佳宁」）；只看她上次回复之后的 */
+/** 他这次的话里说起的人（名字或者名，「闺蜜」「闺蜜」）；只看她上次回复之后的 */
 export function npcMentioned<P extends { id: string; name: string }>(history: readonly { role: 'user' | 'assistant'; content: string }[], people: readonly P[]): P[] {
     const lastReply = history.findLastIndex(message => message.role === 'assistant');
     const said = history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
@@ -115,7 +115,7 @@ export function npcSpans(states: readonly { day: Date; states: readonly NpcState
 
 /**
  * 某段病、某段忙：按月排——每月 perMonth 段（整数部分一定有，小数部分按哈希），起始日按哈希散在那个月里，持续天数在范围里取；
- * 今天落在哪段里、是第几天（几段叠在一起取开始得早的）。不按天抛硬币：那样一年里会有几个月一段都没有（第一版苏雨桐 4 个半月没病过）
+ * 今天落在哪段里、是第几天（几段叠在一起取开始得早的）。不按天抛硬币：那样一年里会有几个月一段都没有（第一版室友 4 个半月没病过）
  */
 function spanOn(key: string, perMonth: number, [min, max]: [number, number], day: Date): { start: Date; day: number; of: number } | undefined {
     let found: { start: Date; day: number; of: number } | undefined;

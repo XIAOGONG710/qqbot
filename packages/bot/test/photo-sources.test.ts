@@ -5,6 +5,10 @@ import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { COMMONS_USER_AGENT, commonsSearch, judgePhoto, parseCommons, PHOTO_VISION_PROMPT, seriesKey, type CommonsFetch } from '../src/vision/photo-sources.ts';
 import { PHOTO_DISCOVERY_PER_RUN, PHOTO_TARGET, photoShelf, type PhotoCandidate, type PhotoJudgement, type PhotoKind, type PhotoSource } from '../src/vision/photos.ts';
+import { useSyntheticTerms } from './fixtures/card.ts';
+
+// 猫名、城市名用合成角色的（ADR 0262）
+useSyntheticTerms();
 
 // ADR 0109（用户 10-22：照片从网上找高清的、记得去水印）：来源只取 CC0 / 公有领域，看图把关，水印 / 人物没有明确说“没有”就不收
 
@@ -99,9 +103,9 @@ describe('看图把关（水印、人物必须明确说“没有”）', () => {
         assert.equal(judgePhoto('cat', '{坏的').keep, false);
     });
 
-    test('济南没有的东西不收：模型明说有棕榈 / 热带植物 / 沙滩，或说明里写了；字段没回答不拦（只在明确说「有」时拦）', () => {
+    test('雾岚市没有的东西不收：模型明说有棕榈 / 热带植物 / 沙滩，或说明里写了；字段没回答不拦（只在明确说「有」时拦）', () => {
         const sky = { ...good, 猫: false, 三花: false, 天空: true, 说明: '黄昏的天空，云层被染成橘红色' };
-        assert.equal(judge('view', { ...sky, 热带: true }).reason, '画面里有济南没有的东西（棕榈 / 热带植物 / 沙滩 / 海面 / 岛屿 / 大片水面）');
+        assert.equal(judge('view', { ...sky, 热带: true }).reason, '画面里有她学校那边没有的东西（棕榈 / 热带植物 / 沙滩 / 海面 / 岛屿 / 大片水面）');
         assert.equal(judge('view', { ...sky, 说明: '金黄云霞铺满蓝天，底部是棕榈树和树丛的黑色剪影' }).keep, false);
         assert.equal(judge('view', { ...sky, 说明: '蓝天下的沙滩和海浪，光线明亮' }).keep, false);
         assert.equal(judge('view', { ...sky, 说明: '平静水面倒映着橙蓝渐变的晚霞与云层' }).keep, false);

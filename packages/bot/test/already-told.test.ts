@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { alreadyTold, TOLD_WINDOW_MS } from '../src/language/expression.ts';
+import { useSyntheticTerms } from './fixtures/card.ts';
+
+// 猫名、城市名用合成角色的（ADR 0262）
+useSyntheticTerms();
 
 // ADR 0098：她主动跟他说过的、关于她自己的事，一天半里不再自己提（10-20 到 10-21 三个晚上每晚都提「肚子坠着」，他说她会老是重复一件事）。台词是虚构的
 const at = (hoursAgo: number, now: number) => new Date(now - hoursAgo * 3_600_000).toISOString();
@@ -27,7 +31,7 @@ describe('她已经主动说过的事（alreadyTold）', () => {
         const history = [
             him('在吗', 40), her('肚子疼', 40),
             him('在干嘛', 5), her('在调相机参数，头都大了', 5),
-            him('吃了吗', 4), her('土豆今天又蹲楼下了', 4),
+            him('吃了吗', 4), her('团子饼今天又蹲楼下了', 4),
         ];
         assert.deepEqual(alreadyTold(history, now).sort(), ['猫', '相机'].sort());
         assert.equal(TOLD_WINDOW_MS, 36 * 3_600_000);

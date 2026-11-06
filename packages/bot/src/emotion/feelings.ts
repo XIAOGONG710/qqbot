@@ -96,7 +96,7 @@ function eventAppraisals(world: WorldNow): Appraisal[] {
     }] : []));
 }
 
-/** 她那边的事：世界快照里能看到的（今天的），news 的几类 + 作业快到期 + 土豆 */
+/** 她那边的事：世界快照里能看到的（今天的），news 的几类 + 作业快到期 + 猫 */
 function worldAppraisals(world: WorldNow, now: number): Appraisal[] {
     const out: Appraisal[] = [];
     for (const news of worldNews(world, NEWS_KINDS)) {
@@ -113,7 +113,7 @@ function worldAppraisals(world: WorldNow, now: number): Appraisal[] {
         if (due > now && due - now <= 18 * HOUR) out.push({ id: `world:hw18:${due}`, at: due - 18 * HOUR, kind: 'worry', strength: 1, cause: `${name}快到期了还没写完`, source: 'world', halfLifeH: 6 });
         if (due > now && due - now <= 6 * HOUR) out.push({ id: `world:hw6:${due}`, at: due - 6 * HOUR, kind: 'worry', strength: 2, cause: `${name}快到期了还没写完`, source: 'world', halfLifeH: 6 });
     }
-    // 土豆：今天去喂了，见到 / 没见到
+    // 猫：今天去喂了，见到 / 没见到
     const fed = world.cat && 'fed' in world.cat.today ? world.cat.today : undefined;
     if (world.cat && fed && fed.fed.getTime() <= now) {
         if (fed.seen === true) out.push({ id: `world:cat-seen:${world.day}`, at: fed.fed.getTime(), kind: 'joy', strength: 1, cause: `${world.cat.name}今天出来蹭你了`, source: 'world', halfLifeH: 3 });

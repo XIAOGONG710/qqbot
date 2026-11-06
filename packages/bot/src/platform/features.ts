@@ -62,7 +62,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'innerLife', label: '内心（念头 / 心里惦记）', group: '主动找他', adr: '0101' },
     { key: 'proactiveInvite', label: '约他一起玩', group: '主动找他', adr: '0107' },
     { key: 'proactiveAsk', label: '问问他的意见', group: '主动找他', adr: '0116' },
-    { key: 'photoShares', label: '喂完土豆发张照片', group: '主动找他', adr: '0110' },
+    { key: 'photoShares', label: '喂完猫发张照片', group: '主动找他', adr: '0110' },
     { key: 'comeBack', label: '说了等下之后回来', group: '主动找他', adr: '0112' },
     { key: 'hisHours', label: '按他在线的钟头排', group: '主动找他', adr: '0117' },
     { key: 'watching', label: '自己在 B 站看东西、有看法', group: 'B 站', adr: '0130' },

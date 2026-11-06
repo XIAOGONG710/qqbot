@@ -71,7 +71,7 @@ export function extrasRows(extras) {
     const rows = [];
     if (extras?.photos) {
         const p = extras.photos;
-        rows.push({ label: '照片货架', text: p.count ? `${p.count} 张（土豆 ${p.cat}、天空 ${p.view}${p.work ? `、她的片子 ${p.work}` : ''}${p.food ? `、吃的 ${p.food}` : ''}）` : '空的（她自己去网上找，每 6 小时一次）' });
+        rows.push({ label: '照片货架', text: p.count ? `${p.count} 张（猫 ${p.cat}、天空 ${p.view}${p.work ? `、她的片子 ${p.work}` : ''}${p.food ? `、吃的 ${p.food}` : ''}）` : '空的（她自己去网上找，每 6 小时一次）' });
     }
     if (extras?.jokes !== undefined) rows.push({ label: '小梗', text: extras.jokes ? `${extras.jokes} 个` : '还没有（聊得够多会自己抽）' });
     if (extras?.report) rows.push({ label: '最近一份周报', text: extras.report.name });

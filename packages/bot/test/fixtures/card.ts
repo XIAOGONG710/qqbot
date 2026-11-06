@@ -2,6 +2,7 @@
 // 测试不读 characters/ 下的真实角色卡：要卡就用这里的路径。
 
 import { resolve } from 'node:path';
+import { useCharacterTerms } from '../../src/character-terms.ts';
 
 export const TIERS = ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger', 'unlisted'] as const;
 export type SyntheticTier = (typeof TIERS)[number];
@@ -33,3 +34,8 @@ export const SYNTHETIC_WEATHER_PLACES = [
     { id: 'school-town', name: '雾岚市', latitude: 30.5, longitude: 110.5 },
     { id: 'home-town', name: '溪口镇', latitude: 31.5, longitude: 112.5 },
 ] as const;
+
+/** 合成角色的专有名字（ADR 0262）：猫「团子饼」，学校在雾岚市、家在溪口镇。要测认出猫名 / 城市名的测试先调这个 */
+export function useSyntheticTerms(): void {
+    useCharacterTerms({ cat: '团子饼', cities: ['雾岚市', '溪口镇'], home: '溪口镇' });
+}

@@ -1,12 +1,13 @@
 // 照片货架的网络来源（ADR 0109 补）：她的照片不用作者给的相册，自己从网上找高清图。
 // 来源：Wikimedia Commons（不用 key）。只收 CC0 / 公有领域——发给他不需要署名，也不碰版权；其他许可（CC BY / BY-SA 要署名）一律不收。
-// 范围：猫（三花，同一组系列里取，免得每张是不同的猫）和天空 / 晚霞。她的作品（work）、风景以外的街景不走网络：街景里的招牌、人、地名对不上她在济南的生活。
+// 范围：猫（三花，同一组系列里取，免得每张是不同的猫）和天空 / 晚霞。她的作品（work）、风景以外的街景不走网络：街景里的招牌、人、地名对不上她在学校那边的生活。
 // 高清：原图宽 ≥ 2400、高 ≥ 1600，下载 2560 宽的缩略图（Commons 自己生成，不放大，一般 1–3 MB）。
 // 水印（用户 10-22：「记得去水印」）：不擦别人图上的水印——来源只取 CC0 / 公有领域的原图（本来基本没有），再逐张让看图模型检查叠加的文字、水印、徽标、日期戳、相框；
 // 有任何一样就不收，模型没明确回答“没有”也不收（宁可少收）。
 // 把关：下载后让看图模型回一个 JSON（有没有人脸、有没有水印 / 文字、是不是猫 / 三花 / 以天空为主、清不清晰、一句话描述），代码按规则定收不收；说明里不许带地名、品种名。
 
 import type { AppConfig } from '../platform/config.ts';
+import { cityAlternatives } from '../character-terms.ts';
 import { stateObject } from '../memory/state-schema.ts';
 import { imageDataUrl, fetchRemoteImage } from './safe-image.ts';
 import { configuredImageDescriber, MAX_IMAGE_BYTES } from './vision.ts';
@@ -222,13 +223,13 @@ export function judgePhoto(kind: PhotoKind, reply: string): PhotoJudgement {
     if (!bool(o['清晰'])) return { keep: false, caption, reason: '不够清晰' };
     if (kind === 'cat' && !(bool(o['猫']) && bool(o['三花']))) return { keep: false, caption, reason: '不是三花猫' };
     if (kind === 'view' && !bool(o['天空'])) return { keep: false, caption, reason: '不是以天空为主' };
-    // 济南没有的东西（10-25：货架里有两张澳大利亚 Palm Beach 的棕榈树晚霞，用户看了说假）：模型明说有，或说明里写了，都不收；字段没回答不算（只在明确说「有」时拦）
+    // 学校那边没有的东西（10-25：货架里有两张澳大利亚 Palm Beach 的棕榈树晚霞，用户看了说假）：模型明说有，或说明里写了，都不收；字段没回答不算（只在明确说「有」时拦）
     // 场景里的招牌 / 外文（10-25：一张澳大利亚的晚霞左下角是英文啤酒招牌，叠加水印的检查拦不住场景里的字）：模型明说有就不收；字段没回答不算
     if (bool(o['招牌']) || /招牌|标牌|广告牌|路牌|字母|文字/.test(caption)) return { keep: false, caption, reason: '画面里有招牌 / 文字' };
-    if (bool(o['热带']) || /棕榈|椰子|椰树|热带|沙滩|海滩|仙人掌|海面|海边|海浪|大海|岛|水面|湖面|摩天轮/.test(caption)) return { keep: false, caption, reason: '画面里有济南没有的东西（棕榈 / 热带植物 / 沙滩 / 海面 / 岛屿 / 大片水面）' };
+    if (bool(o['热带']) || /棕榈|椰子|椰树|热带|沙滩|海滩|仙人掌|海面|海边|海浪|大海|岛|水面|湖面|摩天轮/.test(caption)) return { keep: false, caption, reason: '画面里有她学校那边没有的东西（棕榈 / 热带植物 / 沙滩 / 海面 / 岛屿 / 大片水面）' };
     const chars = [...caption].length;
     if (chars < 6 || chars > 40) return { keep: false, caption, reason: '说明太短或太长' };
-    // 说明里不许带地名 / 品种 / 外文：会和她在济南的生活、“土豆”对不上
+    // 说明里不许带地名 / 品种 / 外文：会和她在学校那边的生活、“猫”对不上
     if (/[A-Za-z]{3,}/.test(caption) || /黎巴嫩|意大利|日本|美国|法国|德国|英国|澳大利亚|欧洲|非洲|短毛猫|布偶|暹罗|波斯/.test(caption)) return { keep: false, caption, reason: '说明里带了地名或品种' };
     return { keep: true, caption };
 }
@@ -353,7 +354,7 @@ export function judgeFood(dish: string, reply: string): PhotoJudgement {
     if (!bool(o['清晰'])) return { keep: false, caption, reason: '不够清晰' };
     const chars = [...caption].length;
     if (chars < 6 || chars > 40) return { keep: false, caption, reason: '说明太短或太长' };
-    if (/[A-Za-z]{3,}/.test(caption) || /北京|上海|广州|香港|台湾|日本|韩国|美国|泰国|越南|兰州|西安|成都|重庆|济南|青岛/.test(caption)) return { keep: false, caption, reason: '说明里带了地名' };
+    if (/[A-Za-z]{3,}/.test(caption) || new RegExp(`北京|上海|广州|香港|台湾|日本|韩国|美国|泰国|越南|兰州|西安|成都|重庆${cityAlternatives()}`).test(caption)) return { keep: false, caption, reason: '说明里带了地名' };
     return { keep: true, caption };
 }
 

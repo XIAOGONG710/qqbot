@@ -170,7 +170,7 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
 
     test('世界动作复用同一次片段抽取，回调一次；片段标成已抽后不重复回写', async () => {
         const history = [
-            msg('2026-10-08T20:00:00', 'user', '土豆呢'),
+            msg('2026-10-08T20:00:00', 'user', '团子饼呢'),
             msg('2026-10-08T20:01:00', 'assistant', '刚下楼喂完，今天见着它了'),
         ];
         const { keeper, asked, world, cleanup } = setup(history, [JSON.stringify({
@@ -188,7 +188,7 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
 
     test('世界动作落盘失败时不标已抽，下一次同步会重新抽并回写', async () => {
         const history = [
-            msg('2026-10-08T20:00:00', 'user', '土豆呢'),
+            msg('2026-10-08T20:00:00', 'user', '团子饼呢'),
             msg('2026-10-08T20:01:00', 'assistant', '刚喂完'),
         ];
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-promises-world-retry-'));

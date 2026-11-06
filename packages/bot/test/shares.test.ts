@@ -21,7 +21,7 @@ describe('分享卡片、转发、文件在聊天记录里的写法（ADR 0080�
     });
 
     test('认不出结构：用卡片自带的通知栏那一行；再不行就「[分享]」；坏 JSON、不是对象都不抛', () => {
-        assert.equal(shareText(card({ app: 'com.tencent.map', prompt: '[位置]济南大学西校区' })), '[位置：济南大学西校区]');
+        assert.equal(shareText(card({ app: 'com.tencent.map', prompt: '[位置]云杉学院西校区' })), '[位置：云杉学院西校区]');
         assert.equal(shareText(card({ app: 'x', prompt: '一个卡片' })), '[分享：一个卡片]');
         assert.equal(shareText(card({ app: 'x' })), '[分享]');
         assert.equal(shareText('{坏的'), '[分享]');

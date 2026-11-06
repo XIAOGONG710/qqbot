@@ -58,7 +58,7 @@ export interface World {
         cost?: { amount: [number, number]; what: string };
         /** 附在哪个行动上（life-selector.ts）：meal 和 person 一起吃的那顿饭，class 上课时的事；asksInstead：开了约就只通过约发生 */
         attach?: EventAttach; asksInstead?: true;
-        /** 以下是补充的日常小事才有的（ADR 0106，everyday.ts）：星期几 / 哪几个月 / 天气 / 一天一组最多一件 / 在她心里留下什么 / 要土豆见到了没见到 / 买了相机以后 */
+        /** 以下是补充的日常小事才有的（ADR 0106，everyday.ts）：星期几 / 哪几个月 / 天气 / 一天一组最多一件 / 在她心里留下什么 / 要猫见到了没见到 / 买了相机以后 */
         weekdays?: number[]; months?: number[]; weather?: 'rain' | 'dry' | 'cold' | 'hot'; group?: string; feel?: EventFeel;
         requires?: 'cat_seen' | 'cat_unseen'; afterCamera?: boolean; everyday?: boolean;
     }[];
@@ -237,13 +237,13 @@ export function worldErrands(now: WorldNow): { start: Date; end: Date; text: str
     return camera && formatDate(camera.start) === now.day ? [{ start: camera.start, end: camera.end, text: `去${camera.where}买相机` }] : [];
 }
 
-/** 喂完见到土豆的日子里，这一天拍了照片的概率（平均一周两三次，不是天天） */
+/** 喂完见到猫的日子里，这一天拍了照片的概率（平均一周两三次，不是天天） */
 export const CAT_PHOTO_CHANCE = 0.35;
 /** 喂完过了多久想起来发（分钟范围） */
 const CAT_PHOTO_DELAY_MIN: [number, number] = [8, 25];
 
 /**
- * 喂完土豆、见到它的日子里，有的天她拍了张照片想发给他（ADR 0110）：按“日期”取哈希，同一天每次一样。
+ * 喂完猫、见到它的日子里，有的天她拍了张照片想发给他（ADR 0110）：按“日期”取哈希，同一天每次一样。
  * 了结的时刻 = 喂完之后几分钟；没见到它的天没有照片可拍
  */
 function newsCatPhoto(now: WorldNow): WorldNews[] {
@@ -435,7 +435,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         const atSchool = !(holiday && world.awayHolidays.includes(holiday.name)) && !(outsideSemester && day > start);
         const record: DayRecord = { date, atSchool, events: [] };
         days.set(date, record);
-        // 真实天气（ADR 0048）：在学校按济南、放假在家按青岛；没有数据的日子照旧按日期生成
+        // 真实天气（ADR 0048）：在学校按学校那边、放假在家按家里；没有数据的日子照旧按日期生成
         // 真实天气按卡上的地点（weather.places）：在学校取学校那里的，放假在家取家里的
         const place = world.weather?.places ? (atSchool ? world.weather.places.school : world.weather.places.home).id : undefined;
         if (world.weather) record.weather = (place ? realWeather()?.day(place, date, until) : undefined) ?? weatherOn(world.weather, day);
@@ -584,7 +584,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
             if (event.person && !person) continue;
             if (person && !npcAllows(npcStates(person.id, person.life, schedule, day), event.skipWhen, event.onlyWhen)) continue;
-            // 土豆的事发生在她喂完之后
+            // 猫的事发生在她喂完之后
             const time = event.requires && record.cat?.fed
                 ? new Date(record.cat.fed.getTime() + (2 + Math.floor(unit(`${date} ${event.id} time`) * 7)) * 60_000)
                 : new Date(at(day, WINDOWS[event.window][0]).getTime() + Math.floor(unit(`${date} ${event.id} time`) * (minutes(WINDOWS[event.window][1]) - minutes(WINDOWS[event.window][0]))) * 60_000);
@@ -1058,7 +1058,7 @@ export function occupationAt(now: WorldNow, at: Date): string | undefined {
     if (parcel) return `刚去驿站取了快递（${parcel.item}），在往回走`;
     const homework = now.homework.find(h => !h.done && within(new Date(h.doneAt.getTime() - OCCUPATION_MINUTES.homework * 60_000), OCCUPATION_MINUTES.homework));
     if (homework) return `在赶${homework.course ? `${homework.course}的` : ''}作业，${clock(homework.doneAt)} 左右能写完`;
-    // 闺蜜的约（ADR 0061）：在一起的那一段（迟到、改约的按实际的时刻）；比吃饭先说，免得「在食堂吃午饭」盖掉「和苏雨桐」
+    // 闺蜜的约（ADR 0061）：在一起的那一段（迟到、改约的按实际的时刻）；比吃饭先说，免得「在食堂吃午饭」盖掉「和室友」
     const together = now.dates?.find(d => d.held && at >= dateSpan(d).start && at < dateSpan(d).end);
     if (together) return together.doing;
     // 吃饭（ADR 0031）

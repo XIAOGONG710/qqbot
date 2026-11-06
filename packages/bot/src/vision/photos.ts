@@ -1,13 +1,14 @@
-// 照片货架（ADR 0109，配置 photos，默认关）：她手机里的照片——土豆（楼下的流浪猫）、窗外的天、她拍的片子。
+// 照片货架（ADR 0109，配置 photos，默认关）：她手机里的照片——楼下的流浪猫、窗外的天、她拍的片子。
 // 来源（用户 10-22：「照片不要用我给她的相册，从网络上找她要发给我的照片，高清」）：她自己从网上找——photo-sources.ts 从 Wikimedia Commons 找 CC0 / 公有领域的高清图，
 // 看图模型把关后收进货架（discover）；作者用 photo-cli 手动加也还可以。
 // 为什么：他一天里 12% 的消息带图 / 表情，她线上累计 0 张照片；人设里写着“每天下楼喂它，会拍它的照片存手机里，也会拿去给他看”，
-// 他说想看土豆时她只能“先不发”。照片不是模型能编的东西：货架里没有照片 = 这个功能什么都不做。
+// 他说想看猫时她只能“先不发”。照片不是模型能编的东西：货架里没有照片 = 这个功能什么都不做。
 // 范围（第一版）：猫（cat）、风景（view）、她的作品（work，只能手动加）；不含她本人的自拍（那是对她长相的作者裁决，不替作者定）、不含吃的（和她当天吃了什么对不上就穿帮）。
 // 用法同表情包：模型要发就单独一行 <photo:编号>；代码清理（未知的 / 混在文字里的 / 一轮多张的都去掉）、解析、发送、聊天记录里写成可读的一句。
 // 照片都是“以前拍的”：提示词要求别说成“刚拍的”，免得和她当下在做的事对不上。
 
 import { createHash, randomUUID } from 'node:crypto';
+import { catAlternative, catName } from '../character-terms.ts';
 import { lstatSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { writeJsonAtomic } from '../memory/json-file.ts';
@@ -16,7 +17,11 @@ import { PhotoIndexLockError, withPhotoIndexLock } from './photo-index-lock.ts';
 
 export const PHOTO_KINDS = ['cat', 'view', 'work', 'food'] as const;
 export type PhotoKind = (typeof PHOTO_KINDS)[number];
-export const PHOTO_KIND_NAMES: Record<PhotoKind, string> = { cat: '土豆（楼下的流浪猫）', view: '窗外 / 路上的风景', work: '你自己拍的片子', food: '你自己吃的饭' };
+/** 每一类照片在提示词里怎么叫；猫的名字从卡上读（ADR 0262） */
+export function photoKindName(kind: PhotoKind): string {
+    return kind === 'cat' ? (catName() === '猫' ? '楼下的流浪猫' : `${catName()}（楼下的流浪猫）`) : PHOTO_KIND_NAMES_REST[kind];
+}
+const PHOTO_KIND_NAMES_REST: Record<Exclude<PhotoKind, 'cat'>, string> = { view: '窗外 / 路上的风景', work: '你自己拍的片子', food: '你自己吃的饭' };
 
 export const PHOTO_MAX_BYTES = 12 * 1024 * 1024;
 /** 网络来源每一类攒到几张就不再找（猫是同一系列里的，风景换着发） */
@@ -330,7 +335,7 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                         const have = new Set(index.entries.filter(entry => entry.kind === 'cat').map(entry => entry.origin?.series).filter((t): t is string => Boolean(t)));
                         const groups = new Map<string, PhotoCandidate[]>();
                         for (const c of fresh) groups.set(c.series, [...(groups.get(c.series) ?? []), c]);
-                        // 已经有了一只猫的照片，就只收同一系列的——土豆只有一只；那个系列收完了就停，不换另一只猫
+                        // 已经有了一只猫的照片，就只收同一系列的——猫只有一只；那个系列收完了就停，不换另一只猫
                         const preferred = have.size
                             ? [...groups.entries()].filter(([key]) => have.has(key)).sort((a, b) => b[1].length - a[1].length)[0]
                             : [...groups.entries()].sort((a, b) => b[1].length - a[1].length)[0];
@@ -510,7 +515,7 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
             if (!list.length) return undefined;
             // 吃的照片是这一顿饭拍的（ADR 0128），可以说“刚拍的”；别的照片都是以前拍的
             const when = kind === 'food' ? `这一顿你拍的${dish ? `「${dish}」` : '饭'}，可以说是吃饭时拍的` : '都是以前拍的，别说成刚拍的';
-            return `[你手机里${PHOTO_KIND_NAMES[kind]}的照片（${when}；只能从下面选，编号不解释，一轮最多发一张）：发就另起一行单独写 <photo:编号>，这一行必须有，别的字不要塞在这一行里]\n`
+            return `[你手机里${photoKindName(kind)}的照片（${when}；只能从下面选，编号不解释，一轮最多发一张）：发就另起一行单独写 <photo:编号>，这一行必须有，别的字不要塞在这一行里]\n`
                 + list.map(entry => `- <photo:${entry.id}>：${entry.caption}`).join('\n');
         },
         clean(reply, allow = true, scope) {
@@ -579,7 +584,7 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
  * 没有明确对象（只说“发张照片看看”）：猫 > 风景 > 作品，取手上有的第一类由调用方决定，这里返回 'any'
  */
 const SHOW_WORDS = /看看|瞧瞧|康康|看下|看一下|发(?:来|过来|给我|我|一?张|个)|拍(?:一?张|给我|来看)|有(?:图|照片)吗|照片呢|图呢|晒|给我看/;
-const CAT_WORDS = /土豆|猫|喵|三花/;
+const catWords = () => new RegExp(`${catAlternative()}猫|喵|三花`);
 const VIEW_WORDS = /风景|天空|夕阳|落日|晚霞|窗外|云|月亮|下雪|雪景|雨景|路上/;
 const WORK_WORDS = /你拍的|你修的|作品|片子|相机里|拍的照片|修的图|摄影/;
 /** 要看吃的（ADR 0128）：吃的 / 饭 / 菜 / 外卖 / 食堂 / 具体的一餐；比“你拍的”优先（「拍给我看看你吃的」） */
@@ -591,7 +596,7 @@ export function photoWanted(text: string): PhotoKind | 'any' | undefined {
     if (!SHOW_WORDS.test(text)) return undefined;
     // 「看看你吃的」是要看饭，不是要看她本人（ADR 0128）：有吃的字眼、又没有明确要她的脸 / 自拍时放行
     if (SELF_WORDS.test(text) && !(FOOD_WORDS.test(text) && !HARD_SELF_WORDS.test(text))) return undefined;
-    if (CAT_WORDS.test(text)) return 'cat';
+    if (catWords().test(text)) return 'cat';
     if (VIEW_WORDS.test(text)) return 'view';
     if (FOOD_WORDS.test(text)) return 'food';
     if (WORK_WORDS.test(text)) return 'work';
@@ -621,5 +626,5 @@ export function photoAllowance(
 /** 这一轮的意图行：他要看的照片她有，就发；先带一句，再另起一行放照片 */
 export function photoIntent(kind: PhotoKind): string {
     if (kind === 'food') return '[这一轮你想：他想看你吃的饭，你吃饭时刚好拍了：先用一句话带一下（说是哪一顿、吃的什么，看「你那边」吃的那一行，没写的细节不编），然后另起一行单独发照片；不用解释，别多说]';
-    return `[这一轮你想：他想看${PHOTO_KIND_NAMES[kind]}的照片，你手机里正好有，翻出来发给他：先用一句话带一下（像随手翻出来的，是以前拍的，别说成刚拍的、别说“现在拍”），然后另起一行单独发照片；不用解释照片怎么来的，别多说]`;
+    return `[这一轮你想：他想看${photoKindName(kind)}的照片，你手机里正好有，翻出来发给他：先用一句话带一下（像随手翻出来的，是以前拍的，别说成刚拍的、别说“现在拍”），然后另起一行单独发照片；不用解释照片怎么来的，别多说]`;
 }

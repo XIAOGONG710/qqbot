@@ -730,30 +730,30 @@ describe('长期记忆：召回的写法（ADR 0017）', () => {
         assert.equal(secondPerson('- 10月5日：林梦瑶的日记里写林梦瑶和鸽鸽聊了杭州', '林梦瑶'), '- 10月5日：你的日记里写你和鸽鸽聊了杭州');
         assert.equal(secondPerson('鸽鸽去杭州', '林梦瑶'), '鸽鸽去杭州');
         assert.equal(secondPerson('林梦瑶', ''), '林梦瑶', '名字是空的不换');
-        // 带她名字的那一行里的「她」也是她（DSH 诊断 1.2：「你养了一只叫土豆的宠物，她说自己还没喂它」）；还提到别的女生时不换
-        const women = ['苏雨桐'];
+        // 带她名字的那一行里的「她」也是她（DSH 诊断 1.2：「你养了一只叫团子饼的宠物，她说自己还没喂它」）；还提到别的女生时不换
+        const women = ['许小禾'];
         assert.equal(
-            secondPerson('- 10月5日：林梦瑶养了一只叫土豆的宠物，她说自己还没喂它\n- 10月8日：宝宝说忙完再找她', '林梦瑶', women),
-            '- 10月5日：你养了一只叫土豆的宠物，你说自己还没喂它\n- 10月8日：宝宝说忙完再找她',
+            secondPerson('- 10月5日：林梦瑶养了一只叫团子饼的宠物，她说自己还没喂它\n- 10月8日：宝宝说忙完再找她', '林梦瑶', women),
+            '- 10月5日：你养了一只叫团子饼的宠物，你说自己还没喂它\n- 10月8日：宝宝说忙完再找她',
         );
-        assert.equal(secondPerson('林梦瑶和苏雨桐去食堂，菜辣得她嗓子冒烟', '林梦瑶', women), '你和苏雨桐去食堂，菜辣得她嗓子冒烟');
+        assert.equal(secondPerson('林梦瑶和许小禾去食堂，菜辣得她嗓子冒烟', '林梦瑶', women), '你和许小禾去食堂，菜辣得她嗓子冒烟');
     });
 
-    test('同一个人和事一次最多放 2 条，他这次说到的不限（DSH 诊断 1.2：他嫌她老说土豆，召回 8 条里 3 条是猫）', () => {
-        const cat = (id: string, text: string) => ({ id, text, type: 'world', entities: ['林梦瑶', '土豆'] });
+    test('同一个人和事一次最多放 2 条，他这次说到的不限（DSH 诊断 1.2：他嫌她老说团子饼，召回 8 条里 3 条是猫）', () => {
+        const cat = (id: string, text: string) => ({ id, text, type: 'world', entities: ['林梦瑶', '团子饼'] });
         const results = [
-            cat('1', '林梦瑶长期照顾楼下的三花猫土豆'),
+            cat('1', '林梦瑶长期照顾楼下的三花猫团子饼'),
             { id: '2', text: '林梦瑶在宿舍打空洞骑士', type: 'world', entities: ['林梦瑶', '空洞骑士'] },
-            cat('3', '林梦瑶养了一只叫土豆的宠物'),
-            cat('4', '林梦瑶下楼喂了土豆，说到做到'),
+            cat('3', '林梦瑶养了一只叫团子饼的宠物'),
+            cat('4', '林梦瑶下楼喂了团子饼，说到做到'),
             { id: '5', text: '林梦瑶在赶作业', type: 'world', entities: ['林梦瑶', '作业'] },
         ];
         let stats;
         const lines = formatRecalled(results, { fade: { heard: '孩子你无敌了', ignore: ['林梦瑶', '鸽鸽'], onFade: s => { stats = s; } } })!.split('\n').slice(1);
-        assert.deepEqual(lines, ['- 林梦瑶长期照顾楼下的三花猫土豆', '- 林梦瑶在宿舍打空洞骑士', '- 林梦瑶养了一只叫土豆的宠物', '- 林梦瑶在赶作业']);
+        assert.deepEqual(lines, ['- 林梦瑶长期照顾楼下的三花猫团子饼', '- 林梦瑶在宿舍打空洞骑士', '- 林梦瑶养了一只叫团子饼的宠物', '- 林梦瑶在赶作业']);
         assert.equal(stats!.repeated, 1);
-        const asked = formatRecalled(results, { fade: { heard: '土豆今天吃了没', ignore: ['林梦瑶'] } })!.split('\n').slice(1);
-        assert.equal(asked.length, 5, '他问的就是土豆');
+        const asked = formatRecalled(results, { fade: { heard: '团子饼今天吃了没', ignore: ['林梦瑶'] } })!.split('\n').slice(1);
+        assert.equal(asked.length, 5, '他问的就是团子饼');
     });
 });
 

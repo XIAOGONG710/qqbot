@@ -13,7 +13,10 @@ import type { InitiateOutcome, InitiateRequest } from '../src/social/responder.t
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { CAT_PHOTO_CHANCE, worldNews, type WorldNow } from '../src/world/world.ts';
-import { syntheticCardPath } from './fixtures/card.ts';
+import { syntheticCardPath, useSyntheticTerms } from './fixtures/card.ts';
+
+// 猫名、城市名用合成角色的（ADR 0262）
+useSyntheticTerms();
 
 // ADR 0110：喂完团子饼见到它的日子里，有的天她拍了张照片发给他（news 的新一类 cat_photo，配置 photoShares）
 const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
@@ -76,8 +79,8 @@ describe('主动：喂完团子饼拍的照片', () => {
         const note = occasionNote(c, '宝宝');
         assert.ok(note.includes('拍了它一张照片') && note.includes('另起一行单独发照片') && note.includes('别写成一句平平的汇报') && !note.includes('不要他回应'), note);
         assert.equal(blockReason(c, c.at, input({ photoReady: () => true })), undefined);
-        assert.match(blockReason(c, c.at, input())!, /货架里没有土豆的照片/, '没给 photoReady = 不发');
-        assert.match(blockReason(c, c.at, input({ photoReady: () => false }))!, /货架里没有土豆的照片/);
+        assert.match(blockReason(c, c.at, input())!, /货架里没有猫的照片/, '没给 photoReady = 不发');
+        assert.match(blockReason(c, c.at, input({ photoReady: () => false }))!, /货架里没有猫的照片/);
         const chatted: StoredMessage[] = [{ time: new Date(t(10, 24, 21, 6)).toISOString(), role: 'user', content: '在吗' }, { time: new Date(t(10, 24, 21, 7)).toISOString(), role: 'assistant', content: '在' }];
         assert.ok(blockReason(c, t(10, 24, 22, 30), input({ photoReady: () => true, history: chatted })), '那之后聊过了');
     });

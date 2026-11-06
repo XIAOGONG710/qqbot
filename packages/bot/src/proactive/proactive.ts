@@ -9,6 +9,7 @@ import { localDate } from '../local-date.ts';
 // 没连上模型的（断网）不算错过：记录里带 retryAt 的候选按那个时刻再排，最多 UNREACHABLE_MAX_TRIES 次，只在同一天里。
 
 import { expired, firstAsk, partText, whenText, type FollowUp } from './follow-ups.ts';
+import { catName } from '../character-terms.ts';
 import { INNER_DELAY_MIN, INNER_MAX_PER_DAY, type InnerThought } from './inner.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { ObstacleKind } from '.././world/obstacles.ts';
@@ -281,13 +282,13 @@ const LIGHT_NEWS: ReadonlySet<string> = new Set(['small_thing', 'cat_photo', 'fo
 
 /**
  * 别写成汇报（用户 10-23：「现在她主动发的信息很莫名其妙，没来由的突然发一个，感觉十分突兀」）。
- * 线上 10-22 到 10-23 的主动消息：「刚在超市逛了一圈，买了个笔记本」「洗完澡了，肚子坠得难受」「刚跟苏雨桐吃完晚饭回来，正研究相机设置呢」「室友分了点零食，还挺好吃」——
+ * 线上 10-22 到 10-23 的主动消息：「刚在超市逛了一圈，买了个笔记本」「洗完澡了，肚子坠得难受」「刚跟室友吃完晚饭回来，正研究相机设置呢」「室友分了点零食，还挺好吃」——
  * 全是一句平平的汇报，没有由头、没有情绪、没有话头；而且都是他没回的时候一条接一条。原因一半在提示词：这些时机的说明里写的是“像突然想起来随口说的”“说完不用他回应”“不要他回应”，模型就照字面写成了没头没尾的一句。
- * 现在（没有开关，同 ADR 0108）：说自己的事的这几个时机（随口说件事、冷场、心里惦记想告诉他、她那边的小事、喂完土豆 / 吃饭拍的照片）共用这一段。
+ * 现在（没有开关，同 ADR 0108）：说自己的事的这几个时机（随口说件事、冷场、心里惦记想告诉他、她那边的小事、喂完猫 / 吃饭拍的照片）共用这一段。
  */
 /**
- * 小事（small_thing）为什么说（ADR 0152）：10-25 19:55 她发了「陈佳宁发了张图来损我，我笑完才反应过来她骂的是我」，用户：「太假了，我不知道她为什么给我发这个，是想分享还是求我的安慰，看不懂她的意思」。
- * 账上只有「陈佳宁发来一张搞笑图，互损了几句」（互相损）、感觉是开心；模型自己编了一个反转（「被骂了才反应过来」），读起来像在吐槽 / 求安慰，而且没有图、没有那句话，他没法接。
+ * 小事（small_thing）为什么说（ADR 0152）：10-25 19:55 她发了「闺蜜发了张图来损我，我笑完才反应过来她骂的是我」，用户：「太假了，我不知道她为什么给我发这个，是想分享还是求我的安慰，看不懂她的意思」。
+ * 账上只有「闺蜜发来一张搞笑图，互损了几句」（互相损）、感觉是开心；模型自己编了一个反转（「被骂了才反应过来」），读起来像在吐槽 / 求安慰，而且没有图、没有那句话，他没法接。
  * 线上到现在只有两条这样的主动消息（10-23「室友分了点零食，还挺好吃」、10-25 这条），他都没回。所以：把“为什么说”按事件自带的感觉定下来（开心 → 分享、让他也乐；烦 → 随口吐槽；……），
  * 并明说不许编对方说了什么 / 图上是什么 / 反转
  */
@@ -488,7 +489,7 @@ export const BACK_MIN: [number, number] = [4, 14];
 const BACK_WINDOW_MS = 40 * MIN;
 
 /**
- * 打开 photoShares（ADR 0110，要 photos 开着）：喂完土豆见到它之后，有的日子她拍了张照片发给他（news 的新一类 cat_photo）。
+ * 打开 photoShares（ADR 0110，要 photos 开着）：喂完猫见到它之后，有的日子她拍了张照片发给他（news 的新一类 cat_photo）。
  * 加 news 时机和 cat_photo 这一类，不改角色卡；其余的事件类照卡上的
  */
 export function withCatPhoto(settings: ProactiveSettings): ProactiveSettings {
@@ -767,8 +768,8 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
         if (reachAdded) {
             for (let i = list.length - 1; i >= 0; i--) if (list[i]!.occasion === 'share' || list[i]!.occasion === 'quiet') list.splice(i, 1);
         }
-        // 他没回的这段时间里，别的“说自己的事”的时机也不发（ADR 0133）：她那边的小事、喂完土豆 / 吃饭拍的照片、心里惦记想告诉他——
-        // 他一直没回，她再一条条报自己的事，就是用户说的「没来由的突然发一个，十分突兀」（10-23 线上：下午催了一句没回，傍晚「刚跟苏雨桐吃完晚饭回来」、晚上「室友分了点零食」）。
+        // 他没回的这段时间里，别的“说自己的事”的时机也不发（ADR 0133）：她那边的小事、喂完猫 / 吃饭拍的照片、心里惦记想告诉他——
+        // 他一直没回，她再一条条报自己的事，就是用户说的「没来由的突然发一个，十分突兀」（10-23 线上：下午催了一句没回，傍晚「刚跟室友吃完晚饭回来」、晚上「室友分了点零食」）。
         // 留给 reach（戳他）、早安、睡前这些有理由的；他回了、或者聊着聊着没人理的（replied）不受这条管
         if (!gate.replied) {
             for (let i = list.length - 1; i >= 0; i--) {
@@ -1046,7 +1047,7 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
             const item = input.news?.find(n => n.id === candidate.news!.id && n.day === candidate.day);
             if (!item) return '那件事没发生';
             // 说“拍了张照片”却发不出照片会穿帮：货架里没有 / 刚发过 / 今天发够了就不发
-            if (item.kind === 'cat_photo' && !input.photoReady?.('cat', now)) return '货架里没有土豆的照片，或者这会儿不该发照片';
+            if (item.kind === 'cat_photo' && !input.photoReady?.('cat', now)) return '货架里没有猫的照片，或者这会儿不该发照片';
             if (item.kind === 'food_photo' && !input.photoReady?.('food', now, item.dish)) return '货架里没有这顿饭的照片，或者这会儿不该发照片';
             // 那之后聊过：聊天里多半已经说了（状态行里有），不再单发一条
             if (history.some(m => Date.parse(m.time) >= item.at)) return '那之后聊过了';
@@ -1100,8 +1101,8 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
             // 闺蜜病了（头一天）：她从对方那里得知；只说这一件，不借机求安慰、不编病情
             friend_sick: () => `你刚得知${candidate.news!.what}，想跟${userName}说一声：就说这一件（看「你那边」那一行里的朋友），不要他回应或安慰你；病得怎么样、有没有去看、你做了什么，那一行里没写的不编`,
             unwell: () => `你今天${candidate.news!.what}，想跟${userName}说一声：只是告诉他，不是要他哄你、关心你，也不要他回应；说到哪一步照「你的身体」那一行，没写的细节不编`,
-            // 喂完土豆拍了张照片（ADR 0110）：先一句话带一下，另起一行单独发照片（提示词里列了编号）；照片是以前拍的，别说“现在”；不要他回应
-            cat_photo: () => `你刚下楼喂了土豆，还拍了它一张照片，想发给${userName}看：先用一句话带一下（喂它这件事看「你那边」土豆那一行，没写的细节不编），然后另起一行单独发照片（那句话要有点自己的感觉：${LEAD_NOTE}）；别问他想不想看`,
+            // 喂完猫拍了张照片（ADR 0110）：先一句话带一下，另起一行单独发照片（提示词里列了编号）；照片是以前拍的，别说“现在”；不要他回应
+            cat_photo: () => `你刚下楼喂了${catName()}，还拍了它一张照片，想发给${userName}看：先用一句话带一下（喂它这件事看「你那边」${catName()}那一行，没写的细节不编），然后另起一行单独发照片（那句话要有点自己的感觉：${LEAD_NOTE}）；别问他想不想看`,
             // 吃饭时拍了张照片（ADR 0128）：先一句话带一下，另起一行单独发照片（提示词里列了编号，只有这道菜的）；不要他回应
             food_photo: () => `你${candidate.news!.what}，吃饭时拍了张照片，想发给${userName}看：先用一句话带一下（说是哪一顿、吃的什么，看「你那边」吃的那一行，没写的细节不编；那句话要有点自己的感觉：${LEAD_NOTE}），然后另起一行单独发照片；别问他想不想看`,
             // 今天碰到的一件小事（ADR 0127）：随口说，不要他回应；细节只用那一行里写的

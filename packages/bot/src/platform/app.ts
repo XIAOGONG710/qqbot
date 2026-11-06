@@ -99,6 +99,8 @@ import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sen
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { processTimeZone } from './time-zone.ts';
 import type { ExternalPlatformMode } from '../social/external-platforms.ts';
+import { noteCharacterTerms } from '../character-terms.ts';
+import { loadCharacterCard } from '../st/card.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -438,6 +440,11 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
         }
         return card;
     };
+    // 专有名字（ADR 0262）：城市名只写在前几档的卡上；名单里只有低档位时，也从最亲那一档的卡上记下（读不了就算了，照旧用卡上有的）
+    try {
+        const openest = config.characterCard.replaceAll('{tier}', 'boyfriend');
+        if (existsSync(openest)) noteCharacterTerms(loadCharacterCard(openest).herWorld);
+    } catch { /* 那张卡真用到时 loadTierCard 会报错 */ }
     // 承认版的卡（ADR 0067）：危机回合用（ADR 0068 决策 7）；本来就用承认版的、名单外的没有；文件缺了就不换（那一轮靠意图行里的承认说法）
     const openCards = new Map<string, TierCard | undefined>();
     const openCardFor = (contact: Contact): TierCard | undefined => {
@@ -615,7 +622,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickers, 
     const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, signal: photoDiscovery.signal, ...(photoSource ? { source: photoSource } : {}), ...(config.foodPhotos && foodSource ? { foodSource } : {}) }) : undefined;
     if (config.photos) {
         const have = photos?.status();
-        log(photos ? `照片货架：开（本地 ${have!.count} 张：土豆 ${have!.byKind.cat}、风景 ${have!.byKind.view}、她的片子 ${have!.byKind.work}；${photoSource ? '她自己去网上找（CC0 / 公有领域，看图把关，每 6 小时一次）' : '网络来源没开（看图没配置），只有手动加的'}；只对男朋友档；没有照片就什么都不做）` : '照片货架：配置开着，但发图片的通道没准备好，不工作');
+        log(photos ? `照片货架：开（本地 ${have!.count} 张：猫 ${have!.byKind.cat}、风景 ${have!.byKind.view}、她的片子 ${have!.byKind.work}；${photoSource ? '她自己去网上找（CC0 / 公有领域，看图把关，每 6 小时一次）' : '网络来源没开（看图没配置），只有手动加的'}；只对男朋友档；没有照片就什么都不做）` : '照片货架：配置开着，但发图片的通道没准备好，不工作');
     }
     log(`图片表情：${stickerMode === 'off' ? '关（配置 stickers: "off"）'
         : !collectingStickers ? `配置为 ${stickerMode}，但看图或收藏库没准备好，不工作`
@@ -1465,7 +1472,7 @@ ${video.link}`);
                 contact,
                 schedule: character.schedule!,
                 settings: plannerSettings,
-                // 喂完土豆拍的照片（ADR 0110）：货架里有土豆的照片、这会儿也允许发才发
+                // 喂完猫拍的照片（ADR 0110）：货架里有猫的照片、这会儿也允许发才发
                 ...(config.hisHours && contact.tier === 'boyfriend' ? { hisHours: true } : {}),
                 ...(config.together && contact.tier === 'boyfriend' ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
                 ...(photos && (config.photoShares || config.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),

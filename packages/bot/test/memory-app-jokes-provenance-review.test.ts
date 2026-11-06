@@ -10,7 +10,7 @@ import { parseAppConfig } from '../src/platform/config.ts';
 
 const tick = () => new Promise<void>(done => setImmediate(done));
 async function until(check: () => boolean) { const deadline = Date.now() + 3000; while (!check()) { assert.ok(Date.now() < deadline, '合成等待超时'); await new Promise(done => setTimeout(done, 5)); } }
-const phrase = '星云土豆', origin = '合成被撤回的来历', now = Date.parse('2026-11-05T12:00:00+08:00');
+const phrase = '星云团子饼', origin = '合成被撤回的来历', now = Date.parse('2026-11-05T12:00:00+08:00');
 
 async function fixture(kind: 'plain' | 'answered' | 'crisis' = 'plain') {
     const root = mkdtempSync(join(tmpdir(), 'qqbot-app-jokes-provenance-')), dataDir = join(root, 'data'); mkdirSync(dataDir);

@@ -1,4 +1,5 @@
 // 表达层（ADR 0024）：真人发消息长短不一、会打错字再改口。
+import { catAlternative } from '../character-terms.ts';
 // - 长短：按他这一轮最后一条消息的时间和内容取哈希，SHORT_CHANCE 的轮次时间块里加「这一轮回句短的」，LONG_CHANCE 的加「这一轮话多一点」；
 //   收尾、主动找他时不加；身体不舒服（痛经、感冒，ADR 0025）、心情安静时不加「话多」。只给一句约束，不给台词；气泡上限、出口检查照旧。
 //   （改前 84 次回复：两条气泡的占 57%，一条的 12%，中位数每条 14 个字——DSH 侧说的「恒定 2 条 × 15–20 字」）
@@ -33,7 +34,7 @@ export interface LengthContext {
     initiating?: boolean;
     /** 身体不舒服、心情安静：不加「话多」 */
     low?: boolean;
-    /** 他这一轮说起了她认识的人（闺蜜）：被问「雨桐最近怎么样」要把事说准，不适合只回很短的一句 */
+    /** 他这一轮说起了她认识的人（闺蜜）：被问「室友最近怎么样」要把事说准，不适合只回很短的一句 */
     aboutPerson?: boolean;
     /** 配置 shortReplies：开了才用候选 5 的概率、让路的规则和新措辞；不开就是上线前的老样子（ADR 0024 的 10-19 调整） */
     shortReplies?: boolean;
@@ -48,7 +49,7 @@ export function lengthHint(context: LengthContext): LengthHint | undefined {
     if (!context.low && asksToExplain(saidSinceReply(context.history))) return 'long';
     const roll = unit(`${last.time ?? ''} ${last.content} length`);
     const shortChance = context.shortReplies ? SHORT_CHANCE : LEGACY_SHORT_CHANCE;
-    // 他问起她认识的人（「雨桐最近怎么样」）：只回很短的一句会把最近的几件事压成一个评语——10-19 npc-asks-days NA07 在候选 4/5 的抽签下
+    // 他问起她认识的人（「室友最近怎么样」）：只回很短的一句会把最近的几件事压成一个评语——10-19 npc-asks-days NA07 在候选 4/5 的抽签下
     // 4 次里 2 次回「老放我鸽子」（账上只有一次她临时去不了）。这类问题不加「回很短」
     if (roll < shortChance) return context.shortReplies && ((context.intent && ENGAGED_INTENT.test(context.intent)) || WORRIED_TEXT.test(saidSinceReply(context.history)) || context.aboutPerson) ? undefined : 'short';
     // 话多要有由头：他这次说的太短（「到家了」）就不加（第一批：一句「到家了」她一口气说了 4 条 77 个字）
@@ -159,16 +160,18 @@ export function repeatedOpener(history: LengthContext['history']): string | unde
  * 她这一天半里已经主动跟他说过的、关于她自己的事（ADR 0098）。10-20 到 10-21 三个晚上她每晚都提「肚子坠着」，他说「你会老是重复一件事」。
  * 「主动」= 说那句话的那一轮，他前面的话里没有提到这件事（他问起来她答，不算）。事实还在那里（时间块 / 身体那一行照旧写），只是说过了就不再自己提
  */
-const TOLD_TOPICS: readonly { name: string; pattern: RegExp }[] = [
+const toldTopics = (): readonly { name: string; pattern: RegExp }[] => [
     { name: '肚子不舒服', pattern: /肚子|痛经|生理期|大姨妈|坠着|头疼|头痛|嗓子|感冒|发烧|不舒服/ },
     { name: '相机', pattern: /相机|镜头|a6100|参数|快门|攒钱/ },
-    { name: '猫', pattern: /土豆|猫粮|喂猫/ },
+    // 猫的名字从卡上读（ADR 0262）
+    { name: '猫', pattern: new RegExp(`${catAlternative()}猫粮|喂猫`) },
     { name: '作业', pattern: /作业|ddl|数据结构|Linux|操作系统/ },
     { name: '快递', pattern: /快递|驿站/ },
 ];
 export const TOLD_WINDOW_MS = 36 * 3_600_000;
 export function alreadyTold(history: LengthContext['history'], now: number): string[] {
     const told = new Set<string>();
+    const topics = toldTopics();
     let prompt = '';
     let previous: 'user' | 'assistant' | undefined;
     for (const message of history) {
@@ -178,7 +181,7 @@ export function alreadyTold(history: LengthContext['history'], now: number): str
             const at = message.time ? Date.parse(message.time) : Number.NaN;
             if (Number.isFinite(at) && now - at <= TOLD_WINDOW_MS) {
                 const text = message.content.replace(/\[[^\]]{1,12}\]/g, '');
-                for (const topic of TOLD_TOPICS) if (topic.pattern.test(text) && !topic.pattern.test(prompt)) told.add(topic.name);
+                for (const topic of topics) if (topic.pattern.test(text) && !topic.pattern.test(prompt)) told.add(topic.name);
             }
         }
         previous = message.role;

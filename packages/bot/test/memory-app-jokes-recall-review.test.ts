@@ -13,7 +13,7 @@ async function until(check: () => boolean) { const deadline = Date.now() + 3000;
 
 test('真实App小梗在途来源被同长度撤回后，不保存旧结果或带入下一轮提示词', async () => {
     const root = mkdtempSync(join(tmpdir(), 'qqbot-app-jokes-recall-')), dataDir = join(root, 'data'); mkdirSync(dataDir);
-    const oldFetch = globalThis.fetch, now = Date.parse('2026-11-05T12:00:00+08:00'), phrase = '星云土豆', origin = '合成被撤回的来历';
+    const oldFetch = globalThis.fetch, now = Date.parse('2026-11-05T12:00:00+08:00'), phrase = '星云团子饼', origin = '合成被撤回的来历';
     let app: App | undefined, release!: (value: string) => void, extracts = 0;
     const held = new Promise<string>(done => { release = done; }), prompts: { content: string }[][] = [];
     try {

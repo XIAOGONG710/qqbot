@@ -151,7 +151,7 @@ export interface InitiateRequest {
     commit: (parts: string[]) => void;
     /** 这句话本来就是固定的习惯说法，出口检查不按“最近说过一模一样的”去掉（B 站私信之后的提醒，ADR 0089） */
     allowRepeat?: boolean;
-    /** 这一条要带一张照片（ADR 0110，喂完土豆拍的）：回复器让货架的这一类照片进提示词，并允许输出一行 <photo:编号> */
+    /** 这一条要带一张照片（ADR 0110，喂完猫拍的）：回复器让货架的这一类照片进提示词，并允许输出一行 <photo:编号> */
     photo?: 'cat' | 'food';
     /** 带的是吃的照片时，是哪道菜（ADR 0128）：货架里只拿这道菜的 */
     photoDish?: string;

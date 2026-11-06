@@ -59,6 +59,10 @@ npm run convert:synthetic -w @qqbot/character-tools
 - **主动消息**：男朋友档 daily_max 4、unanswered_max 1，share 排在时机列表最后。
 - **禁用词**：名单外那一档另禁「不承认」。
 
+## 猫名、城市名
+
+源码里的文案和正则不写真实的猫名、城市名（ADR 0262），读卡时从 `world.cat.name`、`weather.places` 记下（`src/character-terms.ts`）。单元测试没读卡时，要测认出猫名 / 城市名的先调 `test/fixtures/card.ts` 的 `useSyntheticTerms()`（团子饼、雾岚市、溪口镇）。
+
 ## NPC 的 id 和代码的关系
 
 bot 源码不按 id 认人（ADR 0261）：日常小事、约（`DEFAULT_ASKS`）按 NPC 的 `role`，饭后叙事按事件的 `attach` / `asks_instead`，小测按课程的 `quiz`，真实天气按 `weather.places`。所以合成 NPC 的 id 是随便起的虚构名字。

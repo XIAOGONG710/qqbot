@@ -91,7 +91,7 @@ export interface State {
 }
 
 const DAY_MS = 86_400_000;
-/** 放完假这么多天之内，他在哪用假期的 partnerBack（「放完假回学校了」）：聊天记录里还留着假期里他说的「我在青岛」 */
+/** 放完假这么多天之内，他在哪用假期的 partnerBack（「放完假回学校了」）：聊天记录里还留着假期里他说的「我在老家」 */
 export const PARTNER_BACK_DAYS = 7;
 /** 起床或下课到下一节课不超过这么久，算赶去上课 / 课间，不挑空闲活动 */
 const BETWEEN_MAX_MS = 45 * 60_000;
@@ -262,7 +262,7 @@ export function formatDate(date: Date): string {
 /**
  * 放完假那几天「他已经回学校了」那一行（partnerBack）；不是那几天就是 undefined。
  * 提示词里放在时间块事实的最后、离他最新的话最近（describeState 传 partnerApart）：放在第 4 行时，合进 ADR 0051 / 0052 的两段说明后
- * 「你不是在青岛吗」又回来了（schedule-boyfriend 10 次里 3 次；挪到最后 22 次里 1 次，2026-10-10）
+ * 「你不是在老家吗」又回来了（schedule-boyfriend 10 次里 3 次；挪到最后 22 次里 1 次，2026-10-10）
  */
 export function partnerBackLine(state: State, userName?: string): string | undefined {
     return state.partnerJustBack && state.partner ? `[${state.partner.replaceAll('{{user}}', userName ?? '他')}]` : undefined;
@@ -292,7 +292,7 @@ export function describeState(state: State, schedule: Schedule, options: { woken
             break;
     }
     const partner = state.partner?.replaceAll('{{user}}', options.userName ?? '他');
-    // 放完假那几天他在哪单独一行：跟在「你现在」最后时，她仍信聊天记录里假期中他说的「我在青岛」（ADR 0007 调整 2026-10-10）
+    // 放完假那几天他在哪单独一行：跟在「你现在」最后时，她仍信聊天记录里假期中他说的「我在老家」（ADR 0007 调整 2026-10-10）
     // partnerApart：那一行由调用方用 partnerBackLine 放到别处（提示词里放在时间块事实的最后）
     if (state.partnerJustBack && partner) return `[你现在：${[state.where, doing].filter(Boolean).join('；')}]${options.partnerApart ? '' : `\n[${partner}]`}`;
     return `[你现在：${[state.where, doing, partner].filter(Boolean).join('；')}]`;

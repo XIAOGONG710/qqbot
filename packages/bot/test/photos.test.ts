@@ -8,6 +8,10 @@ import { splitReply } from '../src/language/reply.ts';
 import {
     PHOTO_GAP_MS, PHOTO_HISTORY_PREFIX, PHOTO_MAX_PER_DAY, photoAllowance, photoIntent, photoShelf, photoWanted,
 } from '../src/vision/photos.ts';
+import { useSyntheticTerms } from './fixtures/card.ts';
+
+// 猫名、城市名用合成角色的（ADR 0262）
+useSyntheticTerms();
 
 // ADR 0109：照片货架。图片内容无所谓，货架只认扩展名、大小和作者写的说明
 const dirs: string[] = [];
@@ -28,9 +32,9 @@ describe('照片货架', () => {
     test('作者加照片：复制进货架、按内容定编号、重复加返回已有的；换个壳（重新打开）还在', () => {
         const { make, file } = setup();
         const shelf = make();
-        const a = shelf.add(file('a.jpg', 'cat-1'), 'cat', ' 土豆趴在自行车棚顶上晒太阳 ');
+        const a = shelf.add(file('a.jpg', 'cat-1'), 'cat', ' 团子饼趴在自行车棚顶上晒太阳 ');
         assert.match(a.id, /^[a-f0-9]{12}$/);
-        assert.equal(a.caption, '土豆趴在自行车棚顶上晒太阳');
+        assert.equal(a.caption, '团子饼趴在自行车棚顶上晒太阳');
         assert.equal(shelf.add(file('copy.jpg', 'cat-1'), 'cat', '别的说明').id, a.id, '内容一样 = 同一张');
         shelf.add(file('b.png', 'view-1'), 'view', '宿舍窗外的晚霞');
         assert.deepEqual(shelf.status(), { count: 2, byKind: { cat: 1, view: 1, work: 0, food: 0 } });
@@ -38,7 +42,7 @@ describe('照片货架', () => {
         assert.equal(shelf.has('work'), false);
         const again = make();
         assert.equal(again.list().length, 2);
-        assert.equal(again.resolve(`<photo:${a.id}>`)?.caption, '土豆趴在自行车棚顶上晒太阳');
+        assert.equal(again.resolve(`<photo:${a.id}>`)?.caption, '团子饼趴在自行车棚顶上晒太阳');
     });
 
     test('不合格的不收：种类、扩展名、空说明、太大', () => {
@@ -53,8 +57,8 @@ describe('照片货架', () => {
     test('提示词：只列这一类，写明以前拍的、编号只能从里面选；用得少的 / 最久没发的在前', () => {
         const { make, file } = setup();
         const shelf = make();
-        const a = shelf.add(file('a.jpg', '1'), 'cat', '土豆晒太阳');
-        const b = shelf.add(file('b.jpg', '2'), 'cat', '土豆吃猫粮');
+        const a = shelf.add(file('a.jpg', '1'), 'cat', '团子饼晒太阳');
+        const b = shelf.add(file('b.jpg', '2'), 'cat', '团子饼吃猫粮');
         shelf.add(file('c.jpg', '3'), 'view', '窗外的晚霞');
         shelf.used(a.id);
         const prompt = shelf.prompt('cat')!;
@@ -67,8 +71,8 @@ describe('照片货架', () => {
     test('清理：已知的单独一行留一个；未知的、混在文字里的、第二张都去掉；这一轮不该发就全去掉', () => {
         const { make, file, logs } = setup();
         const shelf = make();
-        const a = shelf.add(file('a.jpg', '1'), 'cat', '土豆晒太阳');
-        const b = shelf.add(file('b.jpg', '2'), 'cat', '土豆吃猫粮');
+        const a = shelf.add(file('a.jpg', '1'), 'cat', '团子饼晒太阳');
+        const b = shelf.add(file('b.jpg', '2'), 'cat', '团子饼吃猫粮');
         assert.equal(shelf.clean(`翻到一张\n<photo:${a.id}>`), `翻到一张\n<photo:${a.id}>`);
         assert.equal(shelf.clean(`翻到一张\n<photo:${a.id}>\n<photo:${b.id}>`), `翻到一张\n<photo:${a.id}>`, '同一轮第二张去掉');
         assert.equal(shelf.clean('看\n<photo:aaaaaaaaaaaa>'), '看', '未知编号去掉');
@@ -81,8 +85,8 @@ describe('照片货架', () => {
     test('发出去之后：聊天记录里写成可读的一句；普通文字原样；used 计数', () => {
         const { make, file } = setup();
         const shelf = make();
-        const a = shelf.add(file('a.jpg', '1'), 'cat', '土豆晒太阳');
-        assert.equal(shelf.history(`<photo:${a.id}>`), `${PHOTO_HISTORY_PREFIX}土豆晒太阳`);
+        const a = shelf.add(file('a.jpg', '1'), 'cat', '团子饼晒太阳');
+        assert.equal(shelf.history(`<photo:${a.id}>`), `${PHOTO_HISTORY_PREFIX}团子饼晒太阳`);
         assert.equal(shelf.history('哈哈'), '哈哈');
         shelf.used(a.id);
         assert.equal(shelf.list()[0]!.used, 1);
@@ -95,12 +99,12 @@ describe('照片货架', () => {
 describe('什么时候发', () => {
     test('他要看哪一类：对象明确才算；要她本人（自拍）不算；没对象只说“发张照片”取手上有的', () => {
         for (const [text, kind] of [
-            ['发张土豆的照片我看看', 'cat'], ['土豆呢，让我看看', 'cat'], ['看看猫', 'cat'], ['想看看那只三花', 'cat'],
+            ['发张团子饼的照片我看看', 'cat'], ['团子饼呢，让我看看', 'cat'], ['看看猫', 'cat'], ['想看看那只三花', 'cat'],
             ['拍张窗外的天空给我看', 'view'], ['看看今天的晚霞', 'view'],
             ['你拍的片子给我看看', 'work'], ['发几张你修的图看看', 'work'],
             ['发张照片看看', 'any'], ['有照片吗', 'any'],
         ] as const) assert.equal(photoWanted(text), kind, text);
-        for (const text of ['发张自拍看看', '想看你', '让我看看你现在的样子', '在吗', '土豆今天怎么样', '你拍的好看']) assert.equal(photoWanted(text), undefined, text);
+        for (const text of ['发张自拍看看', '想看你', '让我看看你现在的样子', '在吗', '团子饼今天怎么样', '你拍的好看']) assert.equal(photoWanted(text), undefined, text);
     });
 
     const at = (h: number) => new Date(2026, 9, 23, h, 0).getTime();
@@ -109,7 +113,7 @@ describe('什么时候发', () => {
         assert.deepEqual(photoAllowance([], at(15)), { allowed: true });
         assert.equal(photoAllowance([], at(15), true).allowed, false);
         assert.equal(photoAllowance([], at(15), false, true).allowed, false);
-        const sent = (h: number) => ({ role: 'assistant' as const, content: `${PHOTO_HISTORY_PREFIX}土豆`, time: iso(h) });
+        const sent = (h: number) => ({ role: 'assistant' as const, content: `${PHOTO_HISTORY_PREFIX}团子饼`, time: iso(h) });
         assert.equal(photoAllowance([sent(13)], at(15)).reason, '刚发过一张');
         assert.deepEqual(photoAllowance([sent(10)], at(15)), { allowed: true }, '隔了 5 小时可以');
         assert.equal(PHOTO_GAP_MS, 3 * 60 * 60_000);
@@ -134,7 +138,7 @@ describe('什么时候发', () => {
 
     test('意图行：以前拍的、不说成刚拍的，先一句话带、另起一行放照片', () => {
         const line = photoIntent('cat');
-        assert.ok(line.includes('土豆') && line.includes('以前拍的') && line.includes('别说成刚拍的') && line.includes('另起一行'), line);
+        assert.ok(line.includes('团子饼') && line.includes('以前拍的') && line.includes('别说成刚拍的') && line.includes('另起一行'), line);
         assert.doesNotMatch(line, /[「」]/, '不给台词');
     });
 });

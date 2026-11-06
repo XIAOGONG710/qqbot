@@ -325,7 +325,7 @@ export interface Scenario {
     comeBack: boolean;
     /** 默认 false：陪玩状态（ADR 0111，配置 together） */
     together: boolean;
-    /** 默认 false：她主动发照片（ADR 0110，配置 photoShares，要 photos 和 proactive）；喂完土豆见到它的日子里约 35% 的天 */
+    /** 默认 false：她主动发照片（ADR 0110，配置 photoShares，要 photos 和 proactive）；喂完猫见到它的日子里约 35% 的天 */
     photoShares: boolean;
     /** 假的照片货架（ADR 0109）：真的 shelf 代码，文件是几个字节的假图（模拟器不发图，气泡里是 <photo:编号>）。只有写了才给回复器，并打开 photos */
     photos?: { kind: 'cat' | 'view' | 'work' | 'food'; caption: string; dish?: string }[];

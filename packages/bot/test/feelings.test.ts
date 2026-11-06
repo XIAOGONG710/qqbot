@@ -75,22 +75,22 @@ describe('评估：她那边的事', () => {
         const got = Object.fromEntries(felt(list).map(f => [f.kind, f.level]));
         assert.equal(got.joy, 'strong');
         assert.equal(got.relief, 'clear');
-        const sick = world({ people: [{ name: '苏雨桐', relation: '同学', states: [{ kind: 'sick', day: 1, of: 3 }] }] });
+        const sick = world({ people: [{ name: '许小禾', relation: '同学', states: [{ kind: 'sick', day: 1, of: 3 }] }] });
         // 她得知的时刻在当天 9:00–11:30 之间；中午看，还没散，是小事（单独不表现）
         const noon = Date.parse('2026-10-22T12:00:00+08:00');
         const sickList = appraisals({ now: noon, history: [], world: sick });
         const sickFelt = feelingsAt(sickList, noon);
         assert.deepEqual(sickFelt.map(f => `${f.kind}:${f.level}`), ['worry:faint']);
-        assert.match(sickFelt[0]!.cause, /苏雨桐感冒了/);
+        assert.match(sickFelt[0]!.cause, /许小禾感冒了/);
         assert.deepEqual(feelingsAt(sickList, noon + 20 * HOUR), [], '第二天早就散了');
     });
 
-    test('土豆：喂了见到了高兴一点，没见到有点担心；还没去的没有', () => {
-        const seen = world({ cat: { name: '土豆', today: { fed: new Date(at(-1)), seen: true }, yesterdayFed: true, foodDays: 9 } });
+    test('团子饼：喂了见到了高兴一点，没见到有点担心；还没去的没有', () => {
+        const seen = world({ cat: { name: '团子饼', today: { fed: new Date(at(-1)), seen: true }, yesterdayFed: true, foodDays: 9 } });
         assert.equal(appraisals({ now: T0, history: [], world: seen })[0]!.kind, 'joy');
-        const unseen = world({ cat: { name: '土豆', today: { fed: new Date(at(-1)), seen: false }, yesterdayFed: true, foodDays: 9 } });
+        const unseen = world({ cat: { name: '团子饼', today: { fed: new Date(at(-1)), seen: false }, yesterdayFed: true, foodDays: 9 } });
         assert.equal(appraisals({ now: T0, history: [], world: unseen })[0]!.kind, 'worry');
-        const later = world({ cat: { name: '土豆', today: { later: '18:30' }, yesterdayFed: true, foodDays: 9 } });
+        const later = world({ cat: { name: '团子饼', today: { later: '18:30' }, yesterdayFed: true, foodDays: 9 } });
         assert.deepEqual(appraisals({ now: T0, history: [], world: later }), []);
     });
 });

@@ -24,7 +24,7 @@ function fixture() {
         { time: at(2, 12, 0, 30), role: 'assistant', content: '宝宝，刚吃完' },
         { time: at(1, 21, 0, 0), role: 'assistant', content: '宝宝，在忙吗' },
         { time: at(1, 21, 5, 0), role: 'user', content: '嗯' },
-        { time: at(1, 21, 5, 8), role: 'assistant', content: '她发了张照片：土豆晒太阳' },
+        { time: at(1, 21, 5, 8), role: 'assistant', content: '她发了张照片：团子饼晒太阳' },
     ];
     writeFileSync(join(dir, 'chats', '10001.jsonl'), rows.map(r => JSON.stringify(r)).join('\n'));
     writeFileSync(join(dir, 'proactive', '10001-boyfriend.json'), JSON.stringify({
@@ -48,7 +48,7 @@ describe('周报', () => {
         assert.match(report, /陪玩 1/);
         assert.match(report, /回复失败成 1 次断/);
         assert.ok(!report.includes(SECRET), '原话泄露');
-        assert.ok(!report.includes('土豆晒太阳') && !report.includes('睡得好吗'), '她的话也不出现');
+        assert.ok(!report.includes('团子饼晒太阳') && !report.includes('睡得好吗'), '她的话也不出现');
     });
 
     test('称呼开头：回话和她先开口分开数', () => {

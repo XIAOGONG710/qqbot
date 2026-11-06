@@ -26,7 +26,7 @@ export interface PlanFacts {
     homework?: readonly { course: string; due: Date; doneAt: Date }[];
     /** 世界里定好了几点去做的事（world.ts 的 worldErrands，买相机那一趟）：那一段就写这件事，不写作息里的空闲活动（10-11 模拟：打算写「下午在图书馆赶作业」，她照着说了） */
     errands?: readonly { start: Date; text: string }[];
-    /** 约好的事（闺蜜的约，ADR 0061，world.ts 的 planDates）：不替换那一段的打算，写在后面（「晚上研究新相机的设置；20:30 和陈佳宁微信视频」） */
+    /** 约好的事（闺蜜的约，ADR 0061，world.ts 的 planDates）：不替换那一段的打算，写在后面（「晚上研究新相机的设置；20:30 和闺蜜微信视频」） */
     dates?: readonly { start: Date; text: string }[];
 }
 
