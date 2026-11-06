@@ -1660,7 +1660,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         // 回复里的内部标记（<<记住>> / <<日记>> / <<私密>> / <<同意工作>> / <<拒绝工作>> / <<用电脑>> / <<同意>> / <<拒绝>>）：从文字里剥掉、该办的事办了，返回剩下的文字。
         // 发出去的气泡走 send 时先过这里；整条只有标记的气泡不发，也要过这里（responder 的 absorb），不然写在单独一行的标记就丢了。
         // 她的声音（2026-11-01）：她写 `<<语音：…>>` 就念出来、发语音条。worker 常驻，一句话 10–15 秒
-        const voiceDir = process.env.QQBOT_TTS_DIR ?? join(process.cwd(), 'runtime', 'indextts');
+        const voiceDir = process.env.QQBOT_TTS_DIR ?? join(process.cwd(), 'runtime', 'chattts');
         const voiceOn = contact.tier === 'boyfriend' && Boolean(transport.sendPrivateVoice) && process.env.QQBOT_TTS !== 'off';
         const lastVoiceAt = new Map<number, number>();
         // 11-02「检查类似的问题」：原来语音那一行从回复里摘掉以后，聊天记录里就没有了（historyText 把 <<语音：…>> 当内部标记剥掉），

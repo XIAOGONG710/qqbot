@@ -1,7 +1,7 @@
 // 她“说话”（2026-11-01）：她可以在回复里写 `<<语音：嗯，我在呢>>`，这句话会被念出来、发成 QQ 语音条。
 //
 // 为什么不直接 HTTP：这台机器上回环端口连不通（沙箱/防火墙），所以走**文件队列**——
-// 常驻的 `runtime/indextts/worker.py` 盯 `queue/in/*.json`，生成完把 wav 写到 `queue/out/`。
+// 常驻的 `runtime/chattts/worker.py` 盯 `queue/in/*.json`，生成完把 wav 写到 `queue/out/`。
 // worker 只加载一次模型（40 秒），之后每句 10–15 秒。
 //
 // 边界（她自己说的）：发不发由她决定；一次只说一句短的；不自动外放是他那边的事。
@@ -26,7 +26,7 @@ export function takeVoiceLines(text: string): { text: string; lines: string[] } 
 }
 
 export interface VoiceWorkerOptions {
-    /** `runtime/indextts` 的绝对路径 */
+    /** `runtime/chattts` 的绝对路径 */
     dir: string;
     /** 念这段要用的情绪描述；不给就让参考音频自己决定 */
     emo?: string;
@@ -66,7 +66,7 @@ export function startVoiceWorker(dir: string): void {
     if (!existsSync(python) || !existsSync(script)) return;
     const child = spawn(python, [script], {
         cwd: dir,
-        env: { ...process.env, PYTHONPATH: '.', HF_HOME: join(dir, 'checkpoints', 'hf_cache') },
+        env: { ...process.env, PYTHONPATH: '.', HF_HOME: join(dir, 'hf-cache') },
         detached: true,
         stdio: 'ignore',
         windowsHide: true,
