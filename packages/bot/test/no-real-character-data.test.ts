@@ -5,14 +5,12 @@ import { test } from 'node:test';
 
 // 测试不读真实角色资料（ADR 0260）：真实卡含隐私，测试失败时的输出会把原文带出去。
 // 要卡用 test/fixtures/card.ts 的合成角色。
+// 必须读真实资料的测试（校验真实资料本身）放在 character-tools 的 test-real/，不进 npm test，用 npm run test:real 在本机跑。
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 
-/**
- * 按设计必须读真实资料的测试：它们校验的就是真实资料本身（st/ 与 source/ 一致、档位隐私检查）。
- * 不要往这里加别的文件。
- */
-const ALLOWED = new Set(['packages/character-tools/test/convert.test.ts', 'packages/bot/test/no-real-character-data.test.ts']);
+/** 守卫自己的自测里写着违规样例；不要往这里加别的文件，读真实资料的测试放 test-real/ */
+const ALLOWED = new Set(['packages/bot/test/no-real-character-data.test.ts']);
 
 /** 同一行里既有真实角色目录，又是从仓库根（repoRoot / import.meta.dirname / '../../..'）解析出来的路径 */
 const REAL_DIR = /characters\/linmengyao|'characters',\s*'linmengyao'/;
@@ -44,6 +42,17 @@ test('测试不从仓库里读取真实角色资料（只用合成角色）', ()
         }
     }
     assert.deepEqual(offenders, [], '改用 test/fixtures/card.ts 的合成角色卡');
+});
+
+test('npm test 不跑 test-real/ 里读真实资料的测试', () => {
+    for (const pkg of readdirSync(join(repoRoot, 'packages'))) {
+        let manifest: { scripts?: Record<string, string> };
+        try { manifest = JSON.parse(readFileSync(join(repoRoot, 'packages', pkg, 'package.json'), 'utf8')); } catch { continue; }
+        assert.ok(!manifest.scripts?.test?.includes('test-real'), `${pkg} 的 test 脚本不该包含 test-real/`);
+    }
+    const tools = JSON.parse(readFileSync(join(repoRoot, 'packages/character-tools/package.json'), 'utf8')) as { scripts: Record<string, string> };
+    assert.equal(tools.scripts.test, 'node --test "test/**/*.test.ts"');
+    assert.match(tools.scripts['test:real'] ?? '', /test-real\//);
 });
 
 test('守卫本身能查出违规写法', () => {

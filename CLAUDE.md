@@ -17,6 +17,8 @@ SillyTavern 只用来编写、试聊角色并定义数据格式（角色卡 / �
 - `characters/*/legacy/` 是旧项目 astrbot-linmengyao 的原样导入，只读；转换产物另放。
   旧项目的设计文档与观点已过时，不作为本项目依据。角色资料含真实隐私信息，仓库须保持私有。
 - 运行时数据、密钥、NapCat 运行包放在 `runtime/`（已被忽略）。
+- 测试只用合成角色（`packages/bot/test/fixtures/synthetic-character/`，ADR 0260），不读真实角色资料；`npm test` 可随时全量跑。
+  校验真实资料本身的测试在 `packages/character-tools/test-real/`，改了转换器或真实 `source/` 后在本机跑 `npm run test:real`，失败时只看断言行。
 
 ## 环境
 
