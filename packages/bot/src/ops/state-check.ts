@@ -87,9 +87,9 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
                     const path = join(folder, name);
                     if (dir === 'proactive' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readProactiveState(path); return '主动消息 v1 schema 通过'; }
                     if (dir === 'promises' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readPromiseState(path); return '承诺 v1 schema 通过'; }
-                    if (dir === 'weather' && /^(jinan|qingdao)\.json$/.test(name)) { readWeatherStore(path, undefined, 'throw'); return '天气缓存 schema 通过'; }
-                    if (dir === 'air-quality' && /^(jinan|qingdao)\.json$/.test(name)) { readAirQualityStore(path, undefined, 'throw'); return '空气质量缓存 schema 通过'; }
-                    if (dir === 'daylight' && /^(jinan|qingdao)\.json$/.test(name)) { readDaylightStore(path, undefined, 'throw'); return '日照缓存 schema 通过'; }
+                    if (dir === 'weather' && /^[a-z][a-z0-9_-]*\.json$/.test(name)) { readWeatherStore(path, undefined, 'throw'); return '天气缓存 schema 通过'; }
+                    if (dir === 'air-quality' && /^[a-z][a-z0-9_-]*\.json$/.test(name)) { readAirQualityStore(path, undefined, 'throw'); return '空气质量缓存 schema 通过'; }
+                    if (dir === 'daylight' && /^[a-z][a-z0-9_-]*\.json$/.test(name)) { readDaylightStore(path, undefined, 'throw'); return '日照缓存 schema 通过'; }
                     if (dir === 'calendar' && name === 'calendar.json') { readCalendarStore(path, undefined, 'throw'); return '法定日历缓存 schema 通过'; }
                     if (dir === 'transport' && name === 'transport.json') { readTransportStore(path, undefined, 'throw'); return '交通缓存 schema 通过'; }
                     if (dir === 'memory' && name === 'common.json') { readCommonMemoryState(path); return '公共记忆进度 schema 通过'; }

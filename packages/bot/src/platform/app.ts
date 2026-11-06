@@ -129,7 +129,7 @@ import { feedFactEntry, feedOnce, feedPath, loadFeed } from '.././bilibili/feed-
 import { fetchDanmaku, fetchStoryboard, fetchView } from '.././bilibili/bilibili-view.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from '.././language/together.ts';
-import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
+import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_HISTORY_PREFIX, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
 import { SlidingWindowRateLimiter } from '.././social/rate-limit.ts';
 import { greetingOnly, markSignature, MINOR_NOTICE, minorHint, strangerGuard } from '.././social/strangers.ts';
@@ -160,6 +160,9 @@ import { createTurnWeigher, WEIGH_TIMEOUT_MS } from '.././language/turn-weight.t
 import { externalPlatformMode, type ExternalPlatformMode } from '../social/external-platforms.ts';
 import { createExternalDraftStore, type ExternalDraftStore, type ExternalDraftSummary } from '../social/external-drafts.ts';
 import { createCommandReceiptStore } from './command-receipts.ts';
+import { processTimeZone } from './time-zone.ts';
+import { noteCharacterTerms } from '../character-terms.ts';
+import { loadCharacterCard } from '../st/card.ts';
 
 /** 自己过日子的执行器多久推一次（ADR 0040） */
 const LIFE_TICK_MS = 10 * 60_000;
@@ -254,6 +257,8 @@ export interface ContactStatus {
 export interface AppStatus {
     /** 正在运行的提交、分支和启动时间；由启动脚本注入，不再靠 ADR 猜线上版本。 */
     runtime: RuntimeInfo;
+    /** 进程此刻实际在用的时区（ADR 0331）：作息、饭点、日界都按它算；状态页据此显示她那边的本地时间 */
+    timeZone: string;
     contacts: ContactStatus[];
     unlistedFriends: boolean;
     schedule: boolean;
@@ -554,6 +559,11 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         }
         return card;
     };
+    // 专有名字（ADR 0335）：城市名只写在前几档的卡上；名单里只有低档位时，也从最亲那一档的卡上记下（读不了就算了，照旧用卡上有的）
+    try {
+        const openest = config.characterCard.replaceAll('{tier}', 'boyfriend');
+        if (existsSync(openest)) noteCharacterTerms(loadCharacterCard(openest).herWorld);
+    } catch { /* 那张卡真用到时 loadTierCard 会报错 */ }
     // 承认版的卡（ADR 0067）：危机回合用（ADR 0068 决策 7）；本来就用承认版的、名单外的没有；文件缺了就不换（那一轮靠意图行里的承认说法）
     const openCards = new Map<string, TierCard | undefined>();
     const openCardFor = (contact: Contact): TierCard | undefined => {
@@ -595,8 +605,11 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     const ledgerWorld = worldCard
         ? worldState(worldCard.herWorld!, worldCard.schedule!, log, join(config.dataDir, 'world'), worldNow)
         : undefined;
-    // 真实天气（ADR 0048）：世界里的天气按济南 / 青岛实际的；取不到、开始取之前的日子照旧按日期生成
-    const weather = config.realWeather && worldCard ? weatherFetcher({ dir: join(config.dataDir, 'weather'), log, now: worldNow }) : undefined;
+    // 真实天气（ADR 0048）：世界里的天气按卡上写的地方（weather.places：学校、家）实际的；取不到、开始取之前的日子照旧按日期生成
+    const weatherPlaces = worldCard?.herWorld?.weather?.places;
+    const weather = config.realWeather && worldCard && weatherPlaces
+        ? weatherFetcher({ dir: join(config.dataDir, 'weather'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow })
+        : undefined;
     useRealWeather(weather);
     const ownRealityRefresh = (
         source: { refresh(): Promise<void> } | undefined,
@@ -628,8 +641,9 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     const weatherTimer = weather ? setInterval(() => void refreshWeather(), WEATHER_REFRESH_MS) : undefined;
     construction.onFailure(() => { if (weatherTimer) clearInterval(weatherTimer); });
     weatherTimer?.unref();
-    if (worldCard) log(`真实天气：${weather ? `开（济南 / 青岛逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；取不到照旧按日期生成）` : '关（配置 realWeather: false），按日期生成'}`);
-    const airQuality = config.realAirQuality === true && worldCard ? airQualityFetcher({ dir: join(config.dataDir, 'air-quality'), log, now: worldNow }) : undefined;
+    if (worldCard) log(`真实天气：${weather ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；取不到照旧按日期生成）`
+        : !config.realWeather ? '关（配置 realWeather: false），按日期生成' : '关（卡上没写 weather.places），按日期生成'}`);
+    const airQuality = config.realAirQuality === true && worldCard && weatherPlaces ? airQualityFetcher({ dir: join(config.dataDir, 'air-quality'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
     useRealAirQuality(airQuality);
     const airQualityRefreshes = new Set<Promise<void>>();
     const refreshAirQuality = () => ownRealityRefresh(airQuality, airQualityRefreshes);
@@ -644,8 +658,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     const airQualityTimer = airQuality ? setInterval(() => void refreshAirQuality(), AIR_QUALITY_REFRESH_MS) : undefined;
     construction.onFailure(() => { if (airQualityTimer) clearInterval(airQualityTimer); });
     airQualityTimer?.unref();
-    if (worldCard) log(`真实空气质量：${airQuality ? `开（济南 / 青岛当前观测，每 ${AIR_QUALITY_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : '关（配置 realAirQuality: false）'}`);
-    const daylight = config.realDaylight === true && worldCard ? daylightFetcher({ dir: join(config.dataDir, 'daylight'), log, now: worldNow }) : undefined;
+    if (worldCard) log(`真实空气质量：${airQuality ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}当前观测，每 ${AIR_QUALITY_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realAirQuality !== true ? '关（配置 realAirQuality: false）' : '关（卡上没写 weather.places）')}`);
+    const daylight = config.realDaylight === true && worldCard && weatherPlaces ? daylightFetcher({ dir: join(config.dataDir, 'daylight'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
     useRealDaylight(daylight);
     const daylightRefreshes = new Set<Promise<void>>();
     const refreshDaylight = () => ownRealityRefresh(daylight, daylightRefreshes);
@@ -660,7 +674,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     const daylightTimer = daylight ? setInterval(() => void refreshDaylight(), DAYLIGHT_REFRESH_MS) : undefined;
     construction.onFailure(() => { if (daylightTimer) clearInterval(daylightTimer); });
     daylightTimer?.unref();
-    if (worldCard) log(`真实日照：${daylight ? `开（济南 / 青岛日出日落，每 ${DAYLIGHT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : '关（配置 realDaylight: false）'}`);
+    if (worldCard) log(`真实日照：${daylight ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}日出日落，每 ${DAYLIGHT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realDaylight !== true ? '关（配置 realDaylight: false）' : '关（卡上没写 weather.places）')}`);
     const calendar = config.realCalendar === true && worldCard ? calendarFetcher({ dir: join(config.dataDir, 'calendar'), log, now: worldNow }) : undefined;
     useRealCalendar(calendar);
     const calendarRefreshes = new Set<Promise<void>>();
@@ -678,9 +692,10 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     calendarTimer?.unref();
     if (worldCard) log(`现实法定日历：${calendar ? `开（当前年和下一年，每 ${CALENDAR_REFRESH_MS / 60_000} 小时取一次；取不到不写进世界）` : '关（配置 realCalendar: false）'}`);
     const transportConfig = config.realTransport ?? DEFAULTS.realTransport;
-    const worldTransport = transportConfig.enabled && worldCard ? transportFetcher({
+    const worldTransport = transportConfig.enabled && worldCard && weatherPlaces ? transportFetcher({
         dir: join(config.dataDir, 'transport'), log, now: worldNow,
-        locations: [{ id: 'jinan', name: '济南' }, { id: 'qingdao', name: '青岛' }],
+        // 地点和天气一样从卡上读（weather.places，ADR 0334）
+        locations: [weatherPlaces.school, weatherPlaces.home].map(place => ({ id: place.id, name: place.name })),
         endpoint: transportConfig.endpoint, source: transportConfig.source,
     }) : undefined;
     useRealTransport(worldTransport);
@@ -697,7 +712,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     const transportTimer = worldTransport ? setInterval(() => void refreshTransport(), TRANSPORT_REFRESH_MS) : undefined;
     construction.onFailure(() => { if (transportTimer) clearInterval(transportTimer); });
     transportTimer?.unref();
-    if (worldCard) log(`现实交通：${worldTransport ? `开（济南 / 青岛，每 ${TRANSPORT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : '关（配置 realTransport.enabled: false）'}`);
+    if (worldCard) log(`现实交通：${worldTransport ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}，每 ${TRANSPORT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (!transportConfig.enabled ? '关（配置 realTransport.enabled: false）' : '关（卡上没写 weather.places）')}`);
     // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
     const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
     const lifeStartedAt = new Date(worldNow());
@@ -868,10 +883,12 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     const watchedFile = watchedPath(config.dataDir);
     let watchedEntries: readonly Watched[] = config.watching ? loadWatched(watchedFile, log).entries : [];
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
-    const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, ...(photoSource ? { source: photoSource } : {}), ...(config.foodPhotos && foodSource ? { foodSource } : {}) }) : undefined;
+    const photoDiscovery = new AbortController();
+    construction.onFailure(() => photoDiscovery.abort());
+    const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, signal: photoDiscovery.signal, ...(photoSource ? { source: photoSource } : {}), ...(config.foodPhotos && foodSource ? { foodSource } : {}) }) : undefined;
     if (config.photos) {
         const have = photos?.status();
-        log(photos ? `照片货架：开（本地 ${have!.count} 张：土豆 ${have!.byKind.cat}、风景 ${have!.byKind.view}、她的片子 ${have!.byKind.work}；${photoSource ? '她自己去网上找（CC0 / 公有领域，看图把关，每 6 小时一次）' : '网络来源没开（看图没配置），只有手动加的'}；只对男朋友档；没有照片就什么都不做）` : '照片货架：配置开着，但发图片的通道没准备好，不工作');
+        log(photos ? `照片货架：开（本地 ${have!.count} 张：猫 ${have!.byKind.cat}、风景 ${have!.byKind.view}、她的片子 ${have!.byKind.work}；${photoSource ? '她自己去网上找（CC0 / 公有领域，看图把关，每 6 小时一次）' : '网络来源没开（看图没配置），只有手动加的'}；只对男朋友档；没有照片就什么都不做）` : '照片货架：配置开着，但发图片的通道没准备好，不工作');
     }
     log(`图片表情：${stickerMode === 'off' ? '关（配置 stickers: "off"）'
         : !collectingStickers ? `配置为 ${stickerMode}，但看图或收藏库没准备好，不工作`
@@ -1824,6 +1841,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             return text;
         };
 
+        // 仅保存已确认、待写聊天历史的发送快照；按消息ID绑定，不受同照片并发发送完成顺序影响。
+        const sentPhotoHistory = new Map<number, { token: string; content: string }>();
         const responder = createPipeline({
             contact,
             card: cardFor(cardKey(contact)),
@@ -1911,6 +1930,12 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             ...(aiPhotoRequests && contact.tier === 'boyfriend' ? {
                 currentAiPhoto: ({ kind, dish, at, world }: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => requestCurrentAiPhoto(aiPhotoRequests, kind, world, at, dish),
             } : {}),
+            ...(photos && contact.tier === 'boyfriend' ? { sentHistory: (text: string, messageId: number) => {
+                const snapshot = sentPhotoHistory.get(messageId);
+                if (!snapshot || snapshot.token !== text.trim().toLowerCase()) return undefined;
+                sentPhotoHistory.delete(messageId);
+                return snapshot.content;
+            } } : {}),
             ...(stickerChance !== undefined ? { stickerChance } : {}),
             ...(config.biliStickers ? { stickerUncued: STICKER_UNCUED_CHANCE } : {}),
             // 抽到发表情的轮次里一半只发表情（ADR 0099）：跟着情绪轮的开关走；测试可以直接给概率
@@ -2020,9 +2045,16 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
                 text = tidyQuestionMarks(stripInternalMarkers(text));
                 if (!text.trim()) return 0;
                 const photo = contact.tier === 'boyfriend' ? photos?.resolve(text) : undefined;
+                // A cleaned photo can lose its cache before transmission; never send its control token as text.
+                if (!photo && /^<photo:[a-f0-9]{12}>$/i.test(text.trim())) throw new Error('照片发送前已不可用；本轮未发送照片');
                 if (photo) {
                     const id = await transport.sendPrivateImage!(userId, photo.file, '[照片]');
-                    photos!.used(photo.id);
+                    sentPhotoHistory.set(id, { token: `<photo:${photo.id}>`, content: `${PHOTO_HISTORY_PREFIX}${photo.caption}` });
+                    // 正常历史转换立即消费；撤回成功或异常中断留下的快照最多保留128项。
+                    if (sentPhotoHistory.size > 128) sentPhotoHistory.delete(sentPhotoHistory.keys().next().value!);
+                    // 传输确认的消息 ID 是发送事实；副索引失败不能把成功改判成失败而重发。
+                    try { photos!.used(photo.id); }
+                    catch { log('照片货架：照片已发送，使用记录写入失败；保留发送结果，不重发'); }
                     return id;
                 }
                 const sticker = contact.tier === 'boyfriend' ? sendingStickers?.resolve(text) : undefined;
@@ -2243,6 +2275,28 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         }
     }
     const crisisState = createCrisisState(config.dataDir, log);
+    let crisisSaveTimer: ReturnType<typeof setTimeout> | undefined;
+    let crisisSaveDelay = 1000;
+    function retryCrisisSave(): void {
+        if (stopped || crisisSaveTimer) return;
+        crisisSaveTimer = setTimeout(() => {
+            crisisSaveTimer = undefined;
+            if (stopped) return;
+            try { crisisState.flush(); crisisSaveDelay = 1000; }
+            catch { crisisSaveDelay = Math.min(crisisSaveDelay * 2, 60_000); retryCrisisSave(); }
+        }, crisisSaveDelay);
+        crisisSaveTimer.unref();
+    }
+    function markCrisis(qq: number, at: number, level: CrisisLevel): void {
+        if (stopped) return;
+        try {
+            crisisState.mark(qq, at, level);
+            clearTimeout(crisisSaveTimer); crisisSaveTimer = undefined; crisisSaveDelay = 1000;
+        } catch {
+            if (!crisisSaveTimer) log('危机状态暂未保存；已观察信号仍暂停普通主动消息，后台重试（不记原文）');
+            retryCrisisSave();
+        }
+    }
 
     /** 存在感（ADR 0083）：在线状态 / 资料卡点赞 / 个性签名 / 说说；第一次连上才起，一个开关都没开就不起 */
     let presence: Presence | undefined;
@@ -2525,7 +2579,7 @@ ${video.link}`);
                 contact,
                 schedule: character.schedule!,
                 settings: plannerSettings,
-                // 喂完土豆拍的照片（ADR 0110）：货架里有土豆的照片、这会儿也允许发才发
+                // 喂完猫拍的照片（ADR 0110）：货架里有猫的照片、这会儿也允许发才发
                 ...(config.hisHours && contact.tier === 'boyfriend' ? { hisHours: true } : {}),
                 ...(config.together && contact.tier === 'boyfriend' ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
                 ...(photos && (config.photoShares || config.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
@@ -3392,7 +3446,7 @@ ${body}
                 if (stopped || dormancy?.isDormant()) break;
                 history.append(qq, accepted);
                 const hit = detectCrisis(accepted.content);
-                if (hit) crisisState.mark(qq, Date.parse(accepted.time), hit.level);
+                if (hit) markCrisis(qq, Date.parse(accepted.time), hit.level);
                 added++;
             } finally { releaseIncoming(entry.id); }
         }
@@ -3464,7 +3518,7 @@ ${body}
         syncRecalledMemory(event.user_id);
         const crisis = detectCrisis(accepted.content);
         if (crisis && config.contacts.some(c => c.qq === event.user_id)) {
-            crisisState.mark(event.user_id, event.time * 1000, crisis.level);
+            markCrisis(event.user_id, event.time * 1000, crisis.level);
             log(`[${event.user_id}] 危机信号：${crisis.level} 级（只记级别和时间，不记内容）${crisis.level === 'concern' ? '；关切级不停主动消息' : `；普通主动消息暂停 ${CRISIS_PAUSE_MS / 3_600_000} 小时`}`);
         }
         planners.get(event.user_id)?.poke();
@@ -3575,58 +3629,65 @@ ${body}
         const dataUrl = `data:${record.mime};base64,${record.data.toString('base64')}`;
         return await withTimeout(vision.describe({ url: dataUrl, dataUrl }), MEDIA_TIMEOUTS.vision);
     };
-    if (dshEnabled) mobileCompanion = createMobileCompanion({
-        dsh: dshLink,
-        state: dshState,
-        voice: dshVoice,
-        now: worldNow,
-        sharedConversation: {
-            recent: () => dshRecentTurns(),
-            commit: (_clientId, question, reply, askedAt, repliedAt) => dshConversation.commit(question, reply, askedAt, repliedAt),
-        },
-        describeMedia: describeMobileMedia,
-        ...(media?.voiceDataToText ? {
-            transcribeVoice: async (data: Uint8Array, mime: 'audio/ogg' | 'audio/webm' | 'audio/wav' | 'audio/mp4') => {
-                const transcript = await withTimeout(media.voiceDataToText!(data, mime), MEDIA_TIMEOUTS.voice);
-                if (!transcript?.trim()) throw new Error('没有听清这段语音');
-                return transcript;
+    if (dshEnabled) {
+        const ownedCompanion = createMobileCompanion({
+            dsh: dshLink,
+            state: dshState,
+            voice: dshVoice,
+            now: worldNow,
+            sharedConversation: {
+                recent: () => dshRecentTurns(),
+                commit: (_clientId, question, reply, askedAt, repliedAt) => dshConversation.commit(question, reply, askedAt, repliedAt),
             },
-        } : {}),
-        onActionResult: async (result, clientId) => {
-            log(`手机动作回执：设备 ${clientId}，请求 ${result.requestId}，${result.ok ? '成功' : '失败'}，决策 ${result.decision}${result.error ? `（${sanitizeDshError(result.error)}）` : ''}`);
-        },
-        onPhotoReviewList: async (request, clientId) => {
-            const matching = aiPhotoDrafts.list(request.status);
-            const items = matching.slice(-Math.min(request.limit ?? 20, 50)).reverse().map(entry => {
-                let thumbnail: { mediaId: string; mime: 'image/jpeg' | 'image/png' | 'image/webp'; bytes: number } | undefined;
-                try {
-                    const preview = aiPhotoDrafts.preview(entry.id);
-                    if (preview.bytes.length <= PHOTO_REVIEW_MAX_THUMBNAIL_BYTES && mobileCompanion) {
-                        const record = mobileCompanion.media.put({
-                            clientId, mime: preview.type, data: Buffer.from(preview.bytes), bytes: preview.bytes.length,
-                        });
-                        thumbnail = { mediaId: record.mediaId, mime: preview.type, bytes: record.bytes };
-                    }
-                } catch { /* 文件异常时只不给预览；审核动作仍会再次失败关闭。 */ }
-                return {
-                    id: entry.id, kind: entry.kind, status: entry.status, caption: entry.caption,
-                    createdAt: entry.createdAt, expiresAt: aiPhotoDraftFreshness(entry, new Date(worldNow())).expiresAt,
-                    ...(entry.reviewedAt ? { reviewedAt: entry.reviewedAt } : {}),
-                    ...(thumbnail ? { thumbnail } : {}),
-                };
-            });
-            return { items, total: matching.length };
-        },
-        onPhotoReviewDecision: async (request, clientId, requestId) => {
-            const shelf = photos ?? photoShelf({ dir: join(config.dataDir, 'photos'), log });
-            const entry = request.decision === 'approve'
-                ? aiPhotoDrafts.approve(request.draftId, shelf)
-                : aiPhotoDrafts.reject(request.draftId);
-            if (!entry.reviewedAt || (entry.status !== 'approved' && entry.status !== 'rejected')) throw new Error('照片审核没有完成');
-            log(`手机照片审核：设备 ${clientId}，请求 ${requestId}，${entry.id} ${entry.status === 'approved' ? '已通过' : '已拒绝'}；不会自动发送`);
-            return { draftId: entry.id, status: entry.status, reviewedAt: entry.reviewedAt };
-        },
-    });
+            describeMedia: describeMobileMedia,
+            ...(media?.voiceDataToText ? {
+                transcribeVoice: async (data: Uint8Array, mime: 'audio/ogg' | 'audio/webm' | 'audio/wav' | 'audio/mp4') => {
+                    const transcript = await withTimeout(media.voiceDataToText!(data, mime), MEDIA_TIMEOUTS.voice);
+                    if (!transcript?.trim()) throw new Error('没有听清这段语音');
+                    return transcript;
+                },
+            } : {}),
+            onActionResult: async (result, clientId) => {
+                log(`手机动作回执：设备 ${clientId}，请求 ${result.requestId}，${result.ok ? '成功' : '失败'}，决策 ${result.decision}${result.error ? `（${sanitizeDshError(result.error)}）` : ''}`);
+            },
+            onPhotoReviewList: async (request, clientId) => {
+                const matching = aiPhotoDrafts.list(request.status);
+                const items = matching.slice(-Math.min(request.limit ?? 20, 50)).reverse().map(entry => {
+                    let thumbnail: { mediaId: string; mime: 'image/jpeg' | 'image/png' | 'image/webp'; bytes: number } | undefined;
+                    try {
+                        const preview = aiPhotoDrafts.preview(entry.id);
+                        if (preview.bytes.length <= PHOTO_REVIEW_MAX_THUMBNAIL_BYTES && mobileCompanion) {
+                            const record = mobileCompanion.media.put({
+                                clientId, mime: preview.type, data: Buffer.from(preview.bytes), bytes: preview.bytes.length,
+                            });
+                            thumbnail = { mediaId: record.mediaId, mime: preview.type, bytes: record.bytes };
+                        }
+                    } catch { /* 文件异常时只不给预览；审核动作仍会再次失败关闭。 */ }
+                    return {
+                        id: entry.id, kind: entry.kind, status: entry.status, caption: entry.caption,
+                        createdAt: entry.createdAt, expiresAt: aiPhotoDraftFreshness(entry, new Date(worldNow())).expiresAt,
+                        ...(entry.reviewedAt ? { reviewedAt: entry.reviewedAt } : {}),
+                        ...(thumbnail ? { thumbnail } : {}),
+                    };
+                });
+                return { items, total: matching.length };
+            },
+            onPhotoReviewDecision: async (request, clientId, requestId) => {
+                const shelf = photos ?? photoShelf({ dir: join(config.dataDir, 'photos'), log });
+                const entry = request.decision === 'approve'
+                    ? aiPhotoDrafts.approve(request.draftId, shelf)
+                    : aiPhotoDrafts.reject(request.draftId);
+                if (!entry.reviewedAt || (entry.status !== 'approved' && entry.status !== 'rejected')) throw new Error('照片审核没有完成');
+                log(`手机照片审核：设备 ${clientId}，请求 ${requestId}，${entry.id} ${entry.status === 'approved' ? '已通过' : '已拒绝'}；不会自动发送`);
+                return { draftId: entry.id, status: entry.status, reviewedAt: entry.reviewedAt };
+            },
+        });
+        mobileCompanion = ownedCompanion;
+        construction.onFailure(() => {
+            if (mobileCompanion === ownedCompanion) mobileCompanion = undefined;
+            return ownedCompanion.stop();
+        });
+    }
 
     const askDsh = (question: string): void => {
         const askedAt = worldNow();
@@ -3744,7 +3805,7 @@ ${body}
                     const at = Date.parse(message.time);
                     if (message.role !== 'user' || !Number.isFinite(at) || at > recoveredAt || recoveredAt - at >= CRISIS_PAUSE_MS) continue;
                     const hit = detectCrisis(message.content);
-                    if (hit) crisisState.mark(contact.qq, at, hit.level);
+                    if (hit) markCrisis(contact.qq, at, hit.level);
                 }
                 let fetched: HistoryMessage[] = [];
                 try {
@@ -3818,7 +3879,7 @@ ${body}
                     for (const message of missed) {
                         if (message.role !== 'user') continue;
                         const crisis = detectCrisis(message.content);
-                        if (crisis) crisisState.mark(contact.qq, Date.parse(message.time), crisis.level);
+                        if (crisis) markCrisis(contact.qq, Date.parse(message.time), crisis.level);
                     }
                     if (missed.length) {
                         const lines = sensitive.on()
@@ -4048,6 +4109,8 @@ ${body}
             const jokesDrain = jokesOwner?.stop();
             const idiomsDrain = idiomsOwner?.stop();
             const dshDrain = stopDshAsks();
+            const mobileCompanionDrain = mobileCompanion?.stop();
+            mobileCompanion = undefined;
             probing = false;
             const passiveReadDrain = stopPassiveReads();
             const stickerWorkDrain = stopStickerWork();
@@ -4061,6 +4124,14 @@ ${body}
             const contextDrains = [...contextSummaries].map(summarize => summarize.stop());
             clearTimeout(incomingRetryTimer);
             try { chatHistory.flushIncoming(); } catch (error) { log(`停止时入站状态仍未确认持久（${describeError(error)}）`); }
+            photoDiscovery.abort();
+            clearTimeout(crisisSaveTimer);
+            // A safety observation can be newer than crisis.json when the
+            // background retry timer has not fired yet.  Normal shutdown is
+            // the last in-process chance to publish that already-observed
+            // fact before releasing the directory lease.
+            try { crisisState.flush(); }
+            catch { try { log('停止时危机状态仍未确认持久；保留原文件和失败关闭边界，未记录原文'); } catch { /* diagnostics cannot change shutdown */ } }
             for (const timer of pokeTimers) clearTimeout(timer);
             pokeTimers.clear();
             heartbeat.stop();
@@ -4114,7 +4185,7 @@ ${body}
             useRealTransport(undefined);
             useWorldNeeds(undefined);
             const drains = [
-                diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, dshDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains, ...contextDrains, ...responderDrains,
+                diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, dshDrain, mobileCompanionDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains, ...contextDrains, ...responderDrains,
             ].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
@@ -4191,6 +4262,7 @@ ${body}
             const extras = statusExtras();
             return {
                 runtime,
+                timeZone: processTimeZone(),
                 contacts: [
                     ...config.contacts.map(contact => contactStatus(contact, false)),
                     ...[...unlisted.values()].map(contact => contactStatus(contact, true)),

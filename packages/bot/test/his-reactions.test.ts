@@ -7,13 +7,17 @@ import type { StoredMessage } from '../src/memory/history.ts';
 import {
     flatTopics, hisReactions, newsKindOf, reactionPlan, reactionsLine, reactionsLog, reactionTo, stoppedTopics, STOP_DAYS, topicsOf, type TopicReactions,
 } from '../src/proactive/his-reactions.ts';
+import { syntheticCardPath, useSyntheticTerms } from './fixtures/card.ts';
 import { occasionNote, type Candidate, type NewsItem, type ProactiveRecord } from '../src/proactive/proactive.ts';
 import { createProactivePlanner, type Planner } from '../src/proactive/proactive-planner.ts';
 import type { InitiateOutcome, InitiateRequest } from '../src/social/responder.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 
-// ADR 0212：看他的反应。她本人（11-02 ask-her）的条件：土豆照发、不舒服 / 关心他不看反应、他明说不想听比「嗯」重
+// 猫名、城市名用合成角色的（ADR 0335）
+useSyntheticTerms();
+
+// ADR 0212：看他的反应。她本人（11-02 ask-her）的条件：团子饼照发、不舒服 / 关心他不看反应、他明说不想听比「嗯」重
 const DAY = 86_400_000;
 const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m).getTime();
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -41,10 +45,10 @@ function build(items: { at: number; text: string; occasion?: ProactiveRecord['oc
 
 describe('看他的反应：一条话归哪类', () => {
     test('按话题归类；三个字的名字只叫后两个字也认得', () => {
-        assert.deepEqual(topicsOf('土豆今天趴我键盘上了'), ['cat']);
+        assert.deepEqual(topicsOf('团子饼今天趴我键盘上了'), ['cat']);
         assert.deepEqual(topicsOf('食堂的麻辣烫今天换了老板'), ['food']);
         assert.deepEqual(topicsOf('高数作业终于写完了'), ['study']);
-        assert.deepEqual(topicsOf('佳宁又发图来损我', ['陈佳宁']), ['friends']);
+        assert.deepEqual(topicsOf('小满又发图来损我', ['林小满']), ['friends']);
         assert.deepEqual(topicsOf('今天天很蓝'), []);
     });
 
@@ -84,11 +88,11 @@ describe('看他的反应：他怎么回的', () => {
 describe('看他的反应：三周汇总和给她看的那一行', () => {
     const now = t(11, 2, 18);
     const sample = () => build([
-        // 土豆：接了 3 次、嗯了 1 次
-        { at: now - 2 * DAY, text: '土豆今天趴我键盘上了', replies: ['哈哈哈它是不是想你了'] },
-        { at: now - 4 * DAY, text: '土豆今天居然让我摸了', replies: ['真的假的', '有照片吗'] },
-        { at: now - 6 * DAY, text: '喂土豆的时候它蹭我腿', replies: ['嗯'] },
-        { at: now - 8 * DAY, text: '土豆胖了一圈', replies: ['你喂太多了吧哈哈哈'] },
+        // 团子饼：接了 3 次、嗯了 1 次
+        { at: now - 2 * DAY, text: '团子饼今天趴我键盘上了', replies: ['哈哈哈它是不是想你了'] },
+        { at: now - 4 * DAY, text: '团子饼今天居然让我摸了', replies: ['真的假的', '有照片吗'] },
+        { at: now - 6 * DAY, text: '喂团子饼的时候它蹭我腿', replies: ['嗯'] },
+        { at: now - 8 * DAY, text: '团子饼胖了一圈', replies: ['你喂太多了吧哈哈哈'] },
         // 课和作业：嗯、没回、嗯
         { at: now - 1 * DAY, text: '高数作业终于写完了', replies: ['嗯'] },
         { at: now - 3 * DAY, text: '下午的课老师拖堂了', replies: [] },
@@ -96,7 +100,7 @@ describe('看他的反应：三周汇总和给她看的那一行', () => {
         // 吃的：他明说了
         { at: now - 2 * DAY, text: '今天食堂的麻辣烫好吃', replies: ['别老发吃的了'] },
         // 不算的：试运行、她不舒服那一类、她关心他、三周以前的
-        { at: now - 1 * DAY, text: '土豆今天又胖了', replies: [], result: 'dryRun' },
+        { at: now - 1 * DAY, text: '团子饼今天又胖了', replies: [], result: 'dryRun' },
         { at: now - 1 * DAY, text: '今天第一天，肚子疼', occasion: 'news', newsId: 'unwell:2026-11-01', replies: [] },
         { at: now - 2 * DAY, text: '你今天早饭吃了没', replies: [] },
         { at: now - 25 * DAY, text: '高数课好无聊', replies: ['嗯'] },
@@ -118,7 +122,7 @@ describe('看他的反应：三周汇总和给她看的那一行', () => {
     test('那一行：接得多的、回个嗯的、明说过的；不禁话题，说什么她自己拿捏', () => {
         const { history, records } = sample();
         const line = reactionsLine(hisReactions(history, records, now), now)!;
-        assert.ok(line.includes('土豆的事他多半会接着聊'), line);
+        assert.ok(line.includes('猫的事他多半会接着聊'), line);
         assert.ok(line.includes('课和作业他多半就回个嗯'), line);
         assert.ok(line.includes('2 天前直接说过不想听你说吃的'), line);
         assert.ok(line.includes('你自己拿捏') && line.includes('想说的照样可以说'), line);
@@ -126,7 +130,7 @@ describe('看他的反应：三周汇总和给她看的那一行', () => {
     });
 
     test(`次数不够（每类少于 3 次）就没有这一行；明说不想听过了 ${STOP_DAYS} 天就不再提`, () => {
-        const few = build([{ at: now - DAY, text: '土豆今天趴我键盘上了', replies: ['哈哈'] }, { at: now - 2 * DAY, text: '作业写完了', replies: ['嗯'] }]);
+        const few = build([{ at: now - DAY, text: '团子饼今天趴我键盘上了', replies: ['哈哈'] }, { at: now - 2 * DAY, text: '作业写完了', replies: ['嗯'] }]);
         assert.equal(reactionsLine(hisReactions(few.history, few.records, now), now), undefined);
         const old = build([{ at: now - (STOP_DAYS + 1) * DAY, text: '今天食堂的麻辣烫好吃', replies: ['别老发吃的了'] }]);
         const stats = hisReactions(old.history, old.records, now);
@@ -137,7 +141,7 @@ describe('看他的反应：三周汇总和给她看的那一行', () => {
     test('news 记录的 id 认得出是哪一类', () => {
         assert.equal(newsKindOf({ id: '2026-11-01:news:cat_photo:2026-11-01', occasion: 'news' }), 'cat_photo');
         assert.equal(newsKindOf({ id: '2026-11-01:news:small:2026-11-01:x', occasion: 'news' }), 'small_thing');
-        assert.equal(newsKindOf({ id: '2026-11-01:news:friend_sick:苏雨桐:2026-11-01', occasion: 'news' }), 'friend_sick');
+        assert.equal(newsKindOf({ id: '2026-11-01:news:friend_sick:许小禾:2026-11-01', occasion: 'news' }), 'friend_sick');
         assert.equal(newsKindOf({ id: '2026-11-01:news:friend:d1', occasion: 'news' }), 'friend_changed');
         assert.equal(newsKindOf({ id: '2026-11-01:share', occasion: 'share' }), undefined);
     });
@@ -164,11 +168,11 @@ describe('看他的反应：这一次主动开口怎么用', () => {
         assert.ok(plan.seen!.includes('只输出「不发」'), plan.seen);
     });
 
-    test('她本人的条件 1：土豆的事他再不接也照发，不给「不发」这个口子', () => {
-        const plan = reactionPlan(news('cat_photo', '给土豆拍了张照片'), stats, now);
+    test('她本人的条件 1：团子饼的事他再不接也照发，不给「不发」这个口子', () => {
+        const plan = reactionPlan(news('cat_photo', '给团子饼拍了张照片'), stats, now);
         assert.equal(plan.skip, undefined);
         assert.equal(plan.canDecline, undefined);
-        assert.ok(plan.seen!.includes('土豆的事、课和作业他多半就回个嗯'), plan.seen);
+        assert.ok(plan.seen!.includes('猫的事、课和作业他多半就回个嗯'), plan.seen);
     });
 
     test('随口说件事 / 冷场：只给那一行，话题她自己挑；早安、睡前、催他、她不舒服、心里惦记都不给', () => {
@@ -190,7 +194,7 @@ describe('看他的反应：这一次主动开口怎么用', () => {
 });
 
 describe('看他的反应：计划器', () => {
-    const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+    const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
     const schedule = boyfriend.schedule!;
     const dirs: string[] = [];
     let planner: Planner | undefined;

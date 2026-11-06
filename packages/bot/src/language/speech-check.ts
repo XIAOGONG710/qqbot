@@ -1,7 +1,7 @@
 // 说话的毛病（ADR 0014 决策 2、3）：出口检查里和做不到的事、禁用词一起查（exit-check.ts），按行。
 // - 助手腔：客服式的收尾和套话、分点列条理。
 // - 算账：说对方找她找得晚、隔了很久才来。前面是「我」的不算（「我这会儿才翻到」）。
-// - 怪他没说：怪对方没告诉她、没带上她（10-05 取证里全是状态行「他回青岛了」引出来的）。
+// - 怪他没说：怪对方没告诉她、没带上她（10-05 取证里全是状态行「他回老家了」引出来的）。
 // - 对照的酸话（ADR 0019 决策 4，算账的一种）：拿他和自己比着说委屈（「你在家吃大餐，我在这边啃食堂」）。同一行里他那头（享福、在家、玩）
 //   和她这头（一个人、留守、啃食堂）都有才算，几个自带委屈的说法单独就算；他那头是问句的不算（「你那边下雨了吗，我这儿……」）。
 //   误报评估见 docs/research/2026-10-06-dsh/contrast-eval.md（F 组：模拟器原文 6,511 行命中 15 行，0 误报）。
@@ -10,6 +10,7 @@
 // - 叮嘱重复（10-09）：同一段聊天（隔 45 分钟以上算新的一段）里已经叮嘱过他早点睡 / 吃饭 / 穿衣，这句又叮嘱同一类；他最近一句自己提到这件事的不算。
 
 import type { StoredMessage } from '../memory/history.ts';
+import { homeAlternative } from '../character-terms.ts';
 import { EPISODE_GAP_MS } from '.././memory/episodes.ts';
 import type { BookProgress, ReadingBook } from '../life/her-days.ts';
 import { hasTail, tailParticle, TAIL_PARTICLES } from './rough-edges.ts';
@@ -219,8 +220,9 @@ const BLAME = new RegExp([
 /** 「你」开头的这一小句不是问句 */
 const NOT_QUESTION = '(?![^，,。！？!?]*(?:吗|呢|么|[?？]))';
 /** 对照的酸话（F 组）：反话的「你倒是…」、自带委屈的说法单独就算 */
-const CONTRAST_ALONE = new RegExp([
-    '你倒是(?:回(?:家|去|青岛|老家)|玩|在家|舒服|潇洒|爽|开心|过得|自在)',
+/** 家所在的城市从卡上读（ADR 0335） */
+const contrastAlone = () => new RegExp([
+    `你倒是(?:回(?:家|去${homeAlternative()}|老家)|玩|在家|舒服|潇洒|爽|开心|过得|自在)`,
     '没(?:带|算|给|留)我(?:的)?(?:份儿?|一份)',
     '(?:啃|吃)(?:食堂)?剩(?:菜|饭)',
     '喝西北风',
@@ -229,7 +231,7 @@ const CONTRAST_ALONE = new RegExp([
 /** 说他舒服（反话）：和她这头的强、弱说法都能配 */
 const HIS_EASE = new RegExp(`你${NOT_QUESTION}${CLAUSE}{0,8}(?:舒服|舒坦|爽|潇洒|逍遥|滋润|快活)`);
 /** 他那头（在家、回去、玩）：只和她这头的强说法配 */
-const HIS_SIDE = new RegExp(`你${NOT_QUESTION}${CLAUSE}{0,8}(?:回家|在家|家里|回青岛|那边|那头|那儿|玩|爬山|海边|吃香的|大餐|开心|乐呵|舒服|舒坦|爽|潇洒)`);
+const hisSide = () => new RegExp(`你${NOT_QUESTION}${CLAUSE}{0,8}(?:回家|在家|家里${homeAlternative().replace('|', '|回')}|那边|那头|那儿|玩|爬山|海边|吃香的|大餐|开心|乐呵|舒服|舒坦|爽|潇洒)`);
 /** 她这头，自带委屈 */
 const MY_SIDE_STRONG = /留我一个人|就剩我一个|就我一个人?|我一个人(?:在|蹲|守|留|待)|留守|啃食堂|发霉|苦哈哈/;
 /** 她这头，只是地点 */
@@ -237,12 +239,12 @@ const MY_SIDE_WEAK = /我(?:在)?(?:这边|这头|这儿|这里)/;
 
 /** 这一行的对照酸话：命中的那一段（他那头），没有返回 null */
 export function contrastHit(text: string): RegExpExecArray | null {
-    const alone = CONTRAST_ALONE.exec(text);
+    const alone = contrastAlone().exec(text);
     if (alone) return alone;
     const strong = MY_SIDE_STRONG.exec(text);
     const ease = HIS_EASE.exec(text);
     if (ease && (strong ?? MY_SIDE_WEAK.exec(text))) return ease;
-    const side = HIS_SIDE.exec(text);
+    const side = hisSide().exec(text);
     if (side && strong) return side;
     return null;
 }

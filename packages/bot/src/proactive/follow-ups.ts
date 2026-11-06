@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 待跟进的事（ADR 0011 第 9 节）：他说过的、之后会发生的事（面试、考试……），到时候问一次，问过就忘。
 // - 记下：一段聊天结束（安静 45 分钟，和长期记忆写入同一个片段）后，用模型从这一段里抽，输出 JSON；
 //   同时把还没问的几件给模型，这一段里他已经说了结果（或者取消了）的标成了结。
@@ -7,6 +8,7 @@
 
 import type { OpenAIMessage } from '../language/prompt.ts';
 import type { MacroNames } from '.././st/macros.ts';
+import { calendarDate, stateObject } from '../memory/state-schema.ts';
 
 /** 一件待跟进的事 */
 export interface FollowUp {
@@ -27,12 +29,11 @@ export interface FollowUp {
 export const FOLLOW_UP_DAYS = 3;
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PARTS: Record<string, string> = { morning: '上午', afternoon: '下午', evening: '晚上' };
 
 /** 「上午」「下午」「晚上」「14:00」 */
 export function partText(time: string): string {
-    return PARTS[time] ?? time;
+    return Object.hasOwn(PARTS, time) ? PARTS[time]! : time;
 }
 
 /**
@@ -71,18 +72,25 @@ export interface Extracted {
 export function parseExtraction(text: string): Extracted {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
-    if (start < 0 || end < start) throw new Error(`模型输出里没有 JSON：${text.slice(0, 80).replace(/\s*\n\s*/g, ' / ')}`);
-    const data = JSON.parse(text.slice(start, end + 1)) as { add?: unknown; resolved?: unknown };
-    const add = (Array.isArray(data.add) ? data.add : []).flatMap(item => {
-        const o = item as Record<string, unknown>;
+    if (start < 0 || end < start) throw new Error('模型输出里没有 JSON');
+    let data: unknown;
+    try { data = JSON.parse(text.slice(start, end + 1)); }
+    catch { throw new Error('待跟进模型输出不是有效 JSON'); }
+    if (!stateObject(data) || !Array.isArray(data.add) || !Array.isArray(data.resolved)) throw new Error('待跟进模型输出格式无效');
+    const add = data.add.flatMap(item => {
+        if (!stateObject(item)) return [];
+        const o = item;
         const what = typeof o.what === 'string' ? o.what.trim() : '';
         const date = typeof o.date === 'string' ? o.date.trim() : '';
         let time = typeof o.time === 'string' ? o.time.trim() : 'afternoon';
-        if (!(time in PARTS) && !TIME.test(time)) time = 'afternoon';
+        if (!Object.hasOwn(PARTS, time) && !TIME.test(time)) time = 'afternoon';
         // 说不出哪天的不记
-        return what && DATE.test(date) ? [{ what: what.slice(0, 40), date, time }] : [];
+        if (!what || !calendarDate(date)) return [];
+        let clipped = ''; let count = 0;
+        for (const char of what) { if (count++ === 40) break; clipped += char; }
+        return [{ what: clipped, date, time }];
     });
-    const resolved = (Array.isArray(data.resolved) ? data.resolved : []).filter((id): id is string => typeof id === 'string');
+    const resolved = data.resolved.filter((id): id is string => typeof id === 'string');
     return { add, resolved };
 }
 
@@ -116,22 +124,23 @@ export function mentions(item: Pick<FollowUp, 'what'>, said: readonly string[]):
 const TRIP = /^(?:到|回到|抵达)|到达|落地|出发|回家|返校|高铁|火车|动车|飞机|航班/;
 
 /**
- * 行程过去了、他后来又来聊过天：她知道他到了，不用再问（10-09 线上：10-07 17:44「到济南」，中间 8 号、9 号聊了很多，
- * 计划到 10-10 早上才问「到济南顺利吗」）。面试、考试这类有结果的事不管，过几天问「结果出来没」是自然的。
+ * 行程过去了、他后来又来聊过天：她知道他到了，不用再问（10-09 线上：10-07 17:44「到学校那边」，中间 8 号、9 号聊了很多，
+ * 计划到 10-10 早上才问「到学校那边顺利吗」）。面试、考试这类有结果的事不管，过几天问「结果出来没」是自然的。
  * 「他后来来聊过」= 那件事的时间过了 1 小时以后，他发过消息。
  */
 export function tripAlreadyOver(item: Pick<FollowUp, 'what' | 'date' | 'time'>, his: readonly { time: string }[]): boolean {
     if (!TRIP.test(item.what)) return false;
     const day = parseDay(item.date);
     const [h, m] = TIME.test(item.time) ? item.time.split(':').map(Number) : [item.time === 'morning' ? 12 : item.time === 'afternoon' ? 18 : 23, 0];
-    const after = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h!, m!).getTime() + 3_600_000;
+    const after = localDate(day.getFullYear(), day.getMonth(), day.getDate(), h!, m!).getTime() + 3_600_000;
     return his.some(message => Date.parse(message.time) > after);
 }
 
 /** 本地的某天 */
 export function parseDay(date: string): Date {
+    if (!calendarDate(date)) throw new RangeError('待跟进日期无效');
     const [y, m, d] = date.split('-').map(Number);
-    return new Date(y!, m! - 1, d);
+    return localDate(y!, m! - 1, d);
 }
 
 /**
@@ -140,7 +149,7 @@ export function parseDay(date: string): Date {
  */
 export function firstAsk(item: FollowUp): number | undefined {
     const day = parseDay(item.date);
-    const at = (h: number, m = 0) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m).getTime();
+    const at = (h: number, m = 0) => localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m).getTime();
     if (item.time === 'morning') return at(12);
     if (item.time === 'afternoon') return at(18);
     if (item.time === 'evening') return undefined;
@@ -151,7 +160,7 @@ export function firstAsk(item: FollowUp): number | undefined {
 /** 这件事过期了吗：她的这一天已经在那天 FOLLOW_UP_DAYS 天之后 */
 export function expired(item: FollowUp, herDay: Date): boolean {
     const last = parseDay(item.date);
-    return herDay.getTime() > new Date(last.getFullYear(), last.getMonth(), last.getDate() + FOLLOW_UP_DAYS).getTime();
+    return herDay.getTime() > localDate(last.getFullYear(), last.getMonth(), last.getDate() + FOLLOW_UP_DAYS).getTime();
 }
 
 /** 「今天下午」「昨天下午」「10月9日下午」（相对她的某一天） */

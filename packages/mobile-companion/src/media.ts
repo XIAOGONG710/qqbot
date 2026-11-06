@@ -20,6 +20,8 @@ export interface CompanionMediaStore {
     /** 设备撤销配对时立即清掉该设备尚未过期的媒体。 */
     clear(clientId?: string, now?: number): number;
     purge(now?: number): number;
+    /** 宿主结束时清理所有内存媒体并永久拒绝新写入。 */
+    stop(): void;
 }
 
 export interface MemoryCompanionMediaStoreOptions {
@@ -46,6 +48,7 @@ export class MemoryCompanionMediaStore implements CompanionMediaStore {
     private readonly id: () => string;
     private readonly records = new Map<string, CompanionMediaRecord>();
     private totalBytes = 0;
+    private stopped = false;
 
     constructor(options: MemoryCompanionMediaStoreOptions = {}) {
         this.ttlMs = bounded(options.ttlMs ?? DEFAULT_TTL_MS, 10_000, 24 * 60 * 60_000, '媒体 TTL');
@@ -57,6 +60,7 @@ export class MemoryCompanionMediaStore implements CompanionMediaStore {
     }
 
     put(input: Omit<CompanionMediaRecord, 'mediaId' | 'createdAt' | 'expiresAt'> & { now?: number }): CompanionMediaRecord {
+        if (this.stopped) throw new Error('媒体存储已经停止');
         const now = input.now ?? this.now();
         if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{5,127}$/.test(input.clientId)) throw new Error('媒体设备标识不合法');
         const mime = input.mime.trim().toLowerCase();
@@ -89,6 +93,7 @@ export class MemoryCompanionMediaStore implements CompanionMediaStore {
     }
 
     get(clientId: string, mediaId: string, now = this.now()): CompanionMediaRecord | undefined {
+        if (this.stopped) return undefined;
         this.purge(now);
         const record = this.records.get(mediaId);
         if (!record || record.clientId !== clientId) return undefined;
@@ -107,12 +112,19 @@ export class MemoryCompanionMediaStore implements CompanionMediaStore {
     }
 
     purge(now = this.now()): number {
+        if (this.stopped) return 0;
         let removed = 0;
         for (const [mediaId, record] of this.records) {
             const age = now - record.createdAt;
             if (record.expiresAt <= now || age < -MAX_CLOCK_SKEW_MS) { this.remove(mediaId); removed += 1; }
         }
         return removed;
+    }
+
+    stop(): void {
+        if (this.stopped) return;
+        this.clear();
+        this.stopped = true;
     }
 
     private evictFor(clientId: string, incomingBytes: number): void {

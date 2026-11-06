@@ -6,18 +6,28 @@
 // 平时在控制台的「林梦瑶」页面里改资料，保存时自动生成；直接改了 source/ 的文件，就跑这个。
 // st/ 只是生成结果，不要手改：每次都按资料覆盖（以前防 SillyTavern 手改的 --force 不再需要，写了也不报错）。
 // 档位隐私检查不过就什么都不写。
+//
+// 可选参数（测试的合成角色用，见 packages/bot/test/fixtures/synthetic-character/README.md）：
+//   --source <目录>  资料目录（默认 characters/linmengyao/source）
+//   --out <目录>     输出目录（默认 characters/linmengyao/st）
+//   --prefix <名字>  文件名前缀（默认 linmengyao）
+// 相对路径按仓库根解析。不传参数时行为和以前完全一样。
 
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 import { buildCharacter, checkPrivacy, writeOutputs } from './build.ts';
 import { readSource } from './source.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const characterDir = join(repoRoot, 'characters/linmengyao');
-const outDir = join(characterDir, 'st');
+const { values: args } = parseArgs({ options: { source: { type: 'string' }, out: { type: 'string' }, prefix: { type: 'string' } } });
+if (args.prefix !== undefined && !/^[a-z][a-z0-9-]*$/.test(args.prefix)) throw new Error('--prefix 只能用小写字母、数字和连字符');
+const sourceDir = args.source === undefined ? join(characterDir, 'source') : resolve(repoRoot, args.source);
+const outDir = args.out === undefined ? join(characterDir, 'st') : resolve(repoRoot, args.out);
 
-const source = readSource(join(characterDir, 'source'));
-const built = buildCharacter(source);
+const source = readSource(sourceDir);
+const built = args.prefix === undefined ? buildCharacter(source) : buildCharacter(source, args.prefix);
 const problems = checkPrivacy(built, source);
 if (problems.length) {
     console.error('档位隐私检查没过，没有写入 st/：');

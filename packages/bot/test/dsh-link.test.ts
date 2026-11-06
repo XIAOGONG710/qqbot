@@ -1,3 +1,4 @@
+import { useSyntheticTerms } from './fixtures/card.ts';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,6 +11,9 @@ import { createMobileCompanion, createMobileDshHandlers } from '../src/mobile-co
 import { helloEnvelope } from '@qqbot/mobile-companion/gateway';
 import type { LlmOptions } from '../src/language/llm.ts';
 import { fileOps } from '../src/memory/json-file.ts';
+
+// 猫名、城市名用合成角色的（ADR 0335）
+useSyntheticTerms();
 
 const options: LlmOptions = {
     baseUrl: 'https://dsh.example', model: 'dsh-model', apiKey: 'secret', temperature: 1, maxTokens: 300, timeoutMs: 1000, extraBody: {},
@@ -221,7 +225,7 @@ describe('DSH 连接层', () => {
         });
         await link.advise({ question: '照片准备得怎么样？', state });
         const prompt = String((body!.messages as { content: string }[])[1]!.content);
-        assert.match(prompt, /AI 照片草稿：待审核 2，已通过 4，已拒绝 1；最近是土豆（待审核）/);
+        assert.match(prompt, /AI 照片草稿：待审核 2，已通过 4，已拒绝 1；最近是团子饼（待审核）/);
         assert.doesNotMatch(prompt, /secret|PRIVATE|C:\//i);
 
         const invalid = { at: state.at, photoDrafts: { pending: -1, approved: 1.5, rejected: '2', lastKind: 'selfie', lastStatus: 'sent' } } as unknown as DshState;

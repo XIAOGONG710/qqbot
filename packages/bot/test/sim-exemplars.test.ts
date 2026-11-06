@@ -5,6 +5,7 @@ import { bareMessages, type BareSetup } from '../src/sim/bare.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, loadWorldInfo } from '../src/st/world-info.ts';
 import { resolve } from 'node:path';
+import { syntheticStDir, syntheticCardPath } from './fixtures/card.ts';
 
 const item = (id: string, stimulus: string[], human: string[], context: string[] = []): ExemplarCase => ({ id, stimulus, human, context: context.map(content => ({ content })) });
 
@@ -59,8 +60,8 @@ describe('放进提示词的一段 / 防照抄的度量', () => {
     });
 
     test('bare 臂：给了例子就放在聊天记录之后；不给就和以前一模一样', () => {
-        const stDir = resolve(import.meta.dirname, '../../../characters/linmengyao/st');
-        const character = loadCharacterCard(resolve(stDir, 'linmengyao-boyfriend-open.json'));
+        const stDir = syntheticStDir;
+        const character = loadCharacterCard(syntheticCardPath('boyfriend', true));
         const setup: BareSetup = {
             card: { character, worldInfo: loadWorldInfo(resolve(stDir, `${character.world}.json`), character.world) },
             userName: '宝宝', settings: { maxContext: 8192, maxTokens: 300, worldInfo: DEFAULT_WORLD_INFO_SETTINGS }, now: new Date('2026-10-24T21:00:00+08:00'),

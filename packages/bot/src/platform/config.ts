@@ -16,6 +16,7 @@ import { PROACTIVE_MODES, type ProactiveMode } from '.././proactive/proactive.ts
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '.././st/prompt-converters.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from '.././st/world-info.ts';
 import { externalPlatformMode, type ExternalPlatformMode } from '.././social/external-platforms.ts';
+import { applyTimeZone, canonicalTimeZone, DEFAULT_TIME_ZONE } from './time-zone.ts';
 
 /** 看图能用的提供方（ADR 0055）。DeepSeek 复用聊天模型的 QQBOT_LLM_API_KEY，不另要 key。 */
 export const VISION_PROVIDERS = ['deepseek'] as const;
@@ -342,7 +343,7 @@ export interface AppConfig {
      */
     proactiveInvite: boolean;
     /**
-     * 照片货架（ADR 0109）：他要看土豆 / 风景时，货架里有就发一张高清照片。照片由她自己从网上找（Wikimedia Commons 里 CC0 / 公有领域的原图，看图模型把关：没有人脸、没有水印 / 文字 / 相框、清晰；
+     * 照片货架（ADR 0109）：他要看猫 / 风景时，货架里有就发一张高清照片。照片由她自己从网上找（Wikimedia Commons 里 CC0 / 公有领域的原图，看图模型把关：没有人脸、没有水印 / 文字 / 相框、清晰；
      * 要看图开着才找）；作者也能用 photo-cli 手动加。货架空着这个开关什么都不做。只对男朋友档；她本人的自拍、吃的不在第一版里。默认关
      */
     photos: boolean;
@@ -352,7 +353,7 @@ export interface AppConfig {
      */
     aiPhotos?: boolean;
     /**
-     * 她主动发照片（ADR 0110，要 photos 和主动消息开着）：喂完土豆见到它的日子里，有的天（约 35%）她拍了张照片，过十来分钟发给他，配一句话；货架里没有土豆的照片就不发。默认关
+     * 她主动发照片（ADR 0110，要 photos 和主动消息开着）：喂完猫见到它的日子里，有的天（约 35%）她拍了张照片，过十来分钟发给他，配一句话；货架里没有猫的照片就不发。默认关
      */
     photoShares: boolean;
     /**
@@ -480,7 +481,7 @@ export interface AppConfig {
     /** 他登记的应用名字，最多 8 个；电脑上的 device-agent.config.json 里要有同名的路径才会打开 */
     deviceApps: readonly string[];
     /**
-     * 逐条事实检查（ADR 0137）：她最容易露馅的是编——事实里只有“土豆今天没下楼”，她写“土豆一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。
+     * 逐条事实检查（ADR 0137）：她最容易露馅的是编——事实里只有“猫今天没下楼”，她写“猫一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。
      * 回复发出去之前，让模型当审稿员把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。
      * off 不查；log 只查、只在日志里记几条（敏感调试关着时只记条数），回复照发——先看误报多不多；fix 有问题就带说明重写一次，重写后再查，还有就删那几行。危机回合不查。查不成一律照发。默认 off
      */
@@ -512,8 +513,8 @@ export interface AppConfig {
     lagTail: boolean;
     /**
      * 她每天碰到的小事（ADR 0106）：线上 15 天的事件账全是课、饭、睡这样的例行，卡上的“小事”只有 12 条。开了以后世界里多约 90 条日常尺度的小事
-     * （外卖晚了、老师拖堂、下雨没带伞、舍友的闹钟、食堂阿姨多给了半勺菜、晚霞拍了几张、和苏雨桐 / 陈佳宁的来往、土豆的事……），
-     * 按日期哈希、有天气 / 月份 / 星期 / 土豆见没见到这些条件，一天最多多 4 件、同一类一天一件；另有“小测”的一条线（高数 / 概率论 / 专业课每四周一次，
+     * （外卖晚了、老师拖堂、下雨没带伞、舍友的闹钟、食堂阿姨多给了半勺菜、晚霞拍了几张、和室友 / 闺蜜的来往、猫的事……），
+     * 按日期哈希、有天气 / 月份 / 星期 / 猫见没见到这些条件，一天最多多 4 件、同一类一天一件；另有“小测”的一条线（高数 / 概率论 / 专业课每四周一次，
      * 前一次课老师说、当天写、两天后出分，数学类偏低）。其中带感受的会成为她开心 / 烦 / 担心 / 难过的来由（要 herFeelings）。不改角色卡，只给亲近的档位看全。默认关
      */
     everydayLife: boolean;
@@ -530,7 +531,7 @@ export interface AppConfig {
     /** 她每天回顾聊天（ADR 0221）：默认关；要名单里有男朋友档。存在 chat-review.json（私人空间） */
     chatReview?: boolean;
     /**
-     * 她自己的追求（ADR 0104，只给男朋友档）：内置两条，都是自传里写明的话——「别挂科」和「用新相机拍出自己满意的东西」（买到相机以后分五步：熟悉设置、拍一组土豆、拍一组校园的秋天、挑十来张修好、挑最满意的发到空间里）。
+     * 她自己的追求（ADR 0104，只给男朋友档）：内置两条，都是自传里写明的话——「别挂科」和「用新相机拍出自己满意的东西」（买到相机以后分五步：熟悉设置、拍一组猫、拍一组校园的秋天、挑十来张修好、挑最满意的发到空间里）。
      * 进度只来自她做过的事（生活账里的摄影、出分的小测），不存数字；做完一步她会开心、买了相机好几天没碰会有点愧疚，时间块里一小段让她知道自己在追什么（不用主动提）；
      * 配合 herNo：她正在修片 / 拍照时他让她先放下，她可以先弄完这一小段。作者可以在 pursuits.json 里暂停 / 放下 / 加自己的。默认关
      */
@@ -644,7 +645,7 @@ export interface AppConfig {
     /** 她读完 / 看完之后自己想的（ADR 0204）：默认关；要名单里有男朋友档。每晚 22 点以后想一次，有话想说才写，没想法就空着；存在 reading-takes.json（她的私人空间，没有命令念给他） */
     readingTakes?: boolean;
     /**
-     * 看他的反应（ADR 0212）：默认关；只男朋友档，要 proactive 开着。她主动说自己的事（随口说件事、冷场、小事 / 土豆 / 吃的照片）时，
+     * 看他的反应（ADR 0212）：默认关；只男朋友档，要 proactive 开着。她主动说自己的事（随口说件事、冷场、小事 / 猫 / 吃的照片）时，
      * 提示词多一行三周内他对各类事的反应（接着聊 / 回个嗯 / 没回 / 明说不想听），不禁话题；他明说过不想听的那一类照片 / 小事 7 天内不发。不落盘，每次从聊天记录重算
      */
     hisReactions?: boolean;
@@ -656,7 +657,7 @@ export interface AppConfig {
     herGuesses?: boolean;
     /** 她没想完的问题（ADR 0207）：默认关；要名单里有男朋友档。他问的、她答「不知道」的，夜里（22 点以后）用 deliberateModel 让她自己想，想出什么写什么；存在 open-questions.json（她的私人空间，没有命令念给他）；他再问到同一件事才放进提示词，不说怎么用 */
     openQuestions?: boolean;
-    /** 真实天气（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
+    /** 真实天气（ADR 0048）：她的世界里的天气按学校那边（在学校）/ 老家（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     realWeather: boolean;
     /** 真实空气质量（ADR 0227）：只取当前已观测小时，失败或过期不写进世界；默认关。 */
     realAirQuality?: boolean;
@@ -702,6 +703,8 @@ export interface AppConfig {
     };
     /** 运行数据目录（聊天记录等） */
     dataDir: string;
+    /** 她的时区（ADR 0331）：作息、日界、饭点都按它算；入口用 applyTimeZone 设给进程。默认 Asia/Shanghai */
+    timeZone: string;
 }
 
 /** 一个群（ADR 0210）：群号、叫什么、群里的人是不是都知道她是 AI（不写 = 不知道：认真问到就承认） */
@@ -743,6 +746,7 @@ export function cardKey(contact: Pick<Contact, 'tier' | 'knowsBot'>): string {
 
 type Json = Record<string, unknown>;
 
+/** 读 config.json（独立入口和命令行工具用）；读完就把进程时区设成配置的 timeZone（ADR 0331） */
 export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.env): BotConfig {
     const path = resolvePath(repoRoot, env.QQBOT_CONFIG || 'runtime/bot/config.json');
     if (!existsSync(path)) {
@@ -750,6 +754,7 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
     }
     const file = JSON.parse(readFileSync(path, 'utf8')) as Json;
     const app = parseAppConfig(file, repoRoot, env);
+    applyTimeZone(app.timeZone);
     const onebot = section(file, 'onebot');
     return { onebot: { url: str(onebot, 'url', 'onebot'), token: env.QQBOT_ONEBOT_TOKEN ?? '' }, ...app };
 }
@@ -828,11 +833,13 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         if (!VISION_PROVIDERS.some(candidate => candidate === provider)) {
             throw new Error(`配置 vision.provider「${provider}」不认识：应为 ${VISION_PROVIDERS.join(' / ')} 之一`);
         }
+        const timeoutMs = v.timeoutMs === undefined ? MEDIA_TIMEOUTS.vision : v.timeoutMs;
+        if (typeof timeoutMs !== 'number' || !Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new Error('配置 vision.timeoutMs 应为正有限32位整数');
         vision = {
             provider: provider as (typeof VISION_PROVIDERS)[number],
             model: str(v, 'model', 'vision'),
             ...(typeof v.baseUrl === 'string' && v.baseUrl ? { baseUrl: v.baseUrl } : {}),
-            timeoutMs: num(v, 'timeoutMs', 'vision', MEDIA_TIMEOUTS.vision),
+            timeoutMs,
         };
     }
 
@@ -1019,6 +1026,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         proactive: proactiveMode(file.proactive),
         ...(memory ? { memory } : {}),
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),
+        timeZone: file.timeZone === undefined ? DEFAULT_TIME_ZONE : canonicalTimeZone(file.timeZone),
     };
 }
 

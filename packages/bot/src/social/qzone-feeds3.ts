@@ -85,7 +85,11 @@ export function parseJsLiteral(source: string): unknown {
                 const name = key();
                 skip();
                 if (source[pos++] !== ':') fail('缺冒号');
-                object[name] = value(depth + 1);
+                // `object['__proto__'] = value` 会修改原型而不是保存一个普通字段；网络响应可借此
+                // 伪造后续读取到的 code/data。显式定义自有数据属性，保留字面量语义且不继承它。
+                Object.defineProperty(object, name, {
+                    value: value(depth + 1), enumerable: true, writable: true, configurable: true,
+                });
                 skip();
                 if (source[pos] === ',') { pos++; continue; }
                 if (source[pos] === '}') { pos++; return object; }

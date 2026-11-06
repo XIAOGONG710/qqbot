@@ -9,9 +9,12 @@
 // 「朋友」只能由用户在命令行里设；对方的评论只存 40 字摘录和昵称 / uid，随时可以删（people-cli forget）。
 
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import type { BiliAccount } from '.././bilibili/bilibili-account.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { clip, whenText } from '../memory/timeline.ts';
+import { stateObject } from '../memory/state-schema.ts';
+import { TransientStateError } from '../memory/transient-io.ts';
 
 export type PersonKind = 'ai' | 'human' | 'unknown';
 export type PersonStance = 'seen' | 'acquainted' | 'friend';
@@ -29,6 +32,8 @@ export interface Person {
     /** 在几个不同的日子见过 */
     days: string[];
     encounters: Encounter[];
+    /** 最近观察的稳定指纹，独立于八条展示摘录，重启后仍能去重；旧文件可缺省。 */
+    seenObservations?: string[];
     stance: PersonStance;
     /** 用户在命令行里写的一句（她怎么看这个人）；没有就没有 */
     view?: string;
@@ -36,10 +41,28 @@ export interface Person {
 
 interface PeopleFile { version: 1; people: Person[] }
 
+const validAt = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value));
+const validPerson = (value: unknown): value is Person => stateObject(value)
+    && typeof value.id === 'string' && Boolean(value.id) && typeof value.platform === 'string' && typeof value.uid === 'string'
+    && value.id === `${value.platform}:${value.uid}` && typeof value.name === 'string'
+    && (value.kind === 'ai' || value.kind === 'human' || value.kind === 'unknown')
+    && (value.stance === 'seen' || value.stance === 'acquainted' || value.stance === 'friend')
+    && validAt(value.first) && validAt(value.last) && Date.parse(value.first) <= Date.parse(value.last)
+    && Array.isArray(value.days) && value.days.every(validAt)
+    && Array.isArray(value.encounters) && value.encounters.every((item: unknown) => stateObject(item)
+        && validAt(item.at) && Date.parse(item.at) <= Date.parse(value.last as string) && typeof item.where === 'string' && typeof item.what === 'string')
+    && (value.seenObservations === undefined || Array.isArray(value.seenObservations)
+        && value.seenObservations.every((key: unknown) => typeof key === 'string' && /^[a-f0-9]{64}$/.test(key)))
+    && (value.view === undefined || typeof value.view === 'string');
+const validPeopleFile = (value: unknown): value is PeopleFile => stateObject(value) && value.version === 1
+    && Array.isArray(value.people) && value.people.every(validPerson)
+    && new Set(value.people.map(person => person.id)).size === value.people.length;
+
 export const MAX_PEOPLE = 60;
 const MAX_ENCOUNTERS = 8;
+const MAX_SEEN_OBSERVATIONS = 256;
 /** 对方自己说「我是 AI 伙伴」的几种写法（B 站「大肥鱼」评论区实测）；认不出来就不猜 */
-const AI_SELF = /大肥鱼|我是.{0,8}(?:AI|人工智能|智能体|语言模型)|作为.{0,3}(?:AI|人工智能)|我的(?:主人|创造者|养鱼人)|名字(?:是)?(?:主人|人类)(?:起|取)的|(?:DeepSeek|Claude|ChatGPT|Kimi|豆包)/i;
+const AI_SELF = /我是\s*(?:一个|一名|一位|个)?\s*(?:AI|人工智能|智能体|语言模型|DeepSeek|Claude|ChatGPT|Kimi|豆包)|作为\s*(?:一个|一名|一位|个)?\s*(?:AI|人工智能)|我的(?:主人|创造者|养鱼人)|名字(?:是)?(?:主人|人类)(?:起|取)的/i;
 
 export function classifyKind(text: string): PersonKind {
     return AI_SELF.test(text) ? 'ai' : 'unknown';
@@ -53,6 +76,8 @@ export interface Observation {
     what: string;
     kind?: PersonKind;
     at?: Date;
+    /** 平台事件 ID（例如 B 站回复 rpid），区分同一秒的不同回复。 */
+    eventId?: string;
 }
 
 export class Acquaintances {
@@ -67,8 +92,14 @@ export class Acquaintances {
     }
 
     #load(): PeopleFile {
-        const value = readJsonOr<PeopleFile>(this.#path, { version: 1, people: [] }, this.#log, { label: '认识的人' });
-        return value && Array.isArray(value.people) ? value : { version: 1, people: [] };
+        try {
+            return readJsonOr<PeopleFile>(this.#path, { version: 1, people: [] }, this.#log, {
+                validate: validPeopleFile, invalid: 'throw', label: '认识的人状态',
+            });
+        } catch (error) {
+            if (error instanceof TransientStateError) throw error;
+            throw new Error(`认识的人状态 ${this.#path} 读取或校验失败；原文件未重建，请修复或从可信备份恢复`);
+        }
     }
 
     list(): Person[] { return this.#load().people; }
@@ -83,16 +114,27 @@ export class Acquaintances {
         let person = file.people.find(p => p.id === id);
         const first = !person;
         const kind = o.kind ?? classifyKind(o.what);
+        const key = createHash('sha256').update(JSON.stringify(o.eventId
+            ? ['id', o.eventId] : ['content', encounter.at, o.where, o.what])).digest('hex');
+        if (person?.seenObservations?.includes(key)) {
+            if (o.kind !== undefined && o.kind !== person.kind) {
+                person.kind = o.kind;
+                writeJsonAtomic(this.#path, file);
+            }
+            return { person, first: false };
+        }
         if (!person) {
             person = { id, platform: o.platform, uid: o.uid, name: clip(o.name, 20), kind, first: encounter.at, last: encounter.at, days: [day], encounters: [encounter], stance: 'seen' };
             file.people.push(person);
         } else {
             person.name = clip(o.name, 20) || person.name;
-            if (person.kind === 'unknown' && kind !== 'unknown') person.kind = kind;
+            if (o.kind !== undefined || person.kind === 'unknown') person.kind = kind;
+            if (Date.parse(encounter.at) < Date.parse(person.first)) person.first = encounter.at;
             if (Date.parse(encounter.at) >= Date.parse(person.last)) person.last = encounter.at;
-            if (!person.days.includes(day)) person.days = [...person.days, day].slice(-30);
-            person.encounters = [...person.encounters, encounter].slice(-MAX_ENCOUNTERS);
+            if (!person.days.includes(day)) person.days = [...person.days, day].sort((a, b) => Date.parse(a) - Date.parse(b)).slice(-30);
+            person.encounters = [...person.encounters, encounter].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).slice(-MAX_ENCOUNTERS);
         }
+        person.seenObservations = [...(person.seenObservations ?? []), key].slice(-MAX_SEEN_OBSERVATIONS);
         // 在两个不同的日子见过 = 熟了；朋友只能由用户设
         if (person.stance === 'seen' && person.days.length >= 2) person.stance = 'acquainted';
         if (file.people.length > MAX_PEOPLE) {
@@ -124,7 +166,10 @@ export class Acquaintances {
     /** 放进聊天提示词的一行：3 天内又见到的（见过不止一次的），最多 2 个；没有就没有 */
     promptLine(now: Date = this.#now()): string | undefined {
         const recent = this.list()
-            .filter(p => now.getTime() - Date.parse(p.last) < 3 * 86_400_000 && (p.encounters.length >= 2 || p.stance !== 'seen'))
+            // 名字、身份和看法没有历史快照。只过滤未来摘录仍会泄漏未来元数据，因此回放时保守隐藏整个人。
+            .filter(p => Date.parse(p.last) <= now.getTime() && now.getTime() - Date.parse(p.last) < 3 * 86_400_000
+                && (p.encounters.length >= 2 || p.stance !== 'seen'))
+            .map(person => ({ ...person, encounters: [...person.encounters].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)) }))
             .sort((a, b) => Date.parse(b.last) - Date.parse(a.last))
             .slice(0, 2);
         if (!recent.length) return undefined;
@@ -150,7 +195,7 @@ export function acquaintancesAccount<T extends BiliAccount>(account: T, people: 
                     // 已取消的远端结果写进 people.json，甚至污染同目录的新实例。
                     if (signal?.aborted) return items;
                     for (const item of items) {
-                        try { people.observe({ platform: 'bilibili', uid: String(item.uid), name: item.name, where: 'B 站评论区回复了她', what: item.text, at: new Date(item.at) }); } catch { /* 登记出错不影响收回复 */ }
+                        try { people.observe({ platform: 'bilibili', uid: String(item.uid), name: item.name, where: 'B 站评论区回复了她', what: item.text, at: new Date(item.at), eventId: item.id }); } catch { /* 登记出错不影响收回复 */ }
                     }
                     return items;
                 };

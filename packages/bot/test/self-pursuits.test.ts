@@ -30,7 +30,7 @@ describe('底线（写在代码里，她改不到）：这些不会成为她的�
         assert.match(problem('假装成别人去试探同学')!, /骗人/);
         assert.match(problem('准备考研', '想换个方向')!, /人生方向/);
         assert.match(problem('出国读书', '看看外面的世界')!, /人生方向/);
-        assert.match(problem('毕业以后去青岛', '离家近一点')!, /人生方向/);
+        assert.match(problem('毕业以后去溪口镇', '离家近一点')!, /人生方向/);
     });
 
     test('平常的小事收：学着做一道菜、把摄影集整理出来、每周去操场跑两次', () => {

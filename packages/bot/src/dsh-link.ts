@@ -1,5 +1,6 @@
 import { chatCompletion, type Fetch, type LlmDeps, type LlmOptions } from './language/llm.ts';
 import { HUMAN_TREND_KEYS, type HumanValues, type HumanValueTrends } from './human-values.ts';
+import { catName } from './character-terms.ts';
 import type { DevelopmentSummary } from './life/development.ts';
 
 /** DSH 连接层只接收脱敏后的状态，不直接接收聊天记录。 */
@@ -243,7 +244,7 @@ function stateText(state: DshState | undefined): string {
     if (safe.trends) lines.push(`最近 ${safe.trends.windowMinutes} 分钟变化：${Object.entries(safe.trends.values).map(([key, value]) => `${key}=${Number(value) > 0 ? '+' : ''}${value}`).join('，')}`);
     if (safe.recentEvents?.length) lines.push(`最近事件（仅类型摘要）：${safe.recentEvents.join('、')}`);
     if (safe.photoDrafts) {
-        const kindNames = { cat: '土豆', food: '食物', desk: '书桌', view: '窗外' } as const;
+        const kindNames = { cat: catName(), food: '食物', desk: '书桌', view: '窗外' } as const;
         const statusNames = { pending_review: '待审核', approved: '已通过', rejected: '已拒绝' } as const;
         const latest = safe.photoDrafts.lastKind && safe.photoDrafts.lastStatus ? `；最近是${kindNames[safe.photoDrafts.lastKind]}（${statusNames[safe.photoDrafts.lastStatus]}）` : '';
         lines.push(`AI 照片草稿：待审核 ${safe.photoDrafts.pending}，已通过 ${safe.photoDrafts.approved}，已拒绝 ${safe.photoDrafts.rejected}${latest}`);

@@ -16,7 +16,7 @@ async function until(check: () => boolean, label: string): Promise<void> {
 
 function wiki(): Response {
     return Response.json({ query: { pages: { 1: {
-        pageid: 1, title: '合成资料', extract: '合成资料明确写着星云土豆是一项离线测试事实。', index: 1,
+        pageid: 1, title: '合成资料', extract: '合成资料明确写着星云团子饼是一项离线测试事实。', index: 1,
     } } } });
 }
 
@@ -55,11 +55,11 @@ test('真实App停机取消已派Web gather，迟到结果不再摘录、写时�
             transport: { friendHistory: async () => [], sendPrivateText: async (_qq, text) => { sent.push(text); return 1; } },
             pipeline: { now: () => NOW, settle: { quietMs: 0, maxMs: 0 }, generate: async messages => {
                 const text = messages.map(line => line.content).join('\n');
-                if (text.includes('资料摘录员')) { extractCalls++; return '星云土豆是一项离线测试事实'; }
+                if (text.includes('资料摘录员')) { extractCalls++; return '星云团子饼是一项离线测试事实'; }
                 return '合成主回复';
             } },
         });
-        await app.connected(20000); app.receive(event(1, '帮我查一下星云土豆是什么'));
+        await app.connected(20000); app.receive(event(1, '帮我查一下星云团子饼是什么'));
         await until(() => fetchCalls === 1, 'web gather entered');
         await app.stop(); const logCount = logs.length;
         assert.equal(existsSync(join(dataDir, 'bot.lock')), false);
@@ -87,11 +87,11 @@ test('Web deadline产生的孤儿结果不污染已经接管目录的替代实�
             transport: { friendHistory: async () => [], sendPrivateText: async (_qq, text) => { sent1.push(text); return 11; } },
             pipeline: { now: () => NOW, settle: { quietMs: 0, maxMs: 0 }, generate: async messages => {
                 const text = messages.map(line => line.content).join('\n');
-                if (text.includes('资料摘录员')) { extractCalls++; return '星云土豆是一项离线测试事实'; }
+                if (text.includes('资料摘录员')) { extractCalls++; return '星云团子饼是一项离线测试事实'; }
                 return '第一实例合成主回复';
             } },
         });
-        await app1.connected(20000); app1.receive(event(10, '帮我查一下星云土豆是什么'));
+        await app1.connected(20000); app1.receive(event(10, '帮我查一下星云团子饼是什么'));
         await until(() => fetchCalls === 1, 'old web gather entered');
         await until(() => sent1.length === 1, 'old reply after deadline');
         await app1.stop(); const oldLogCount = logs1.length;
@@ -111,7 +111,7 @@ test('Web deadline产生的孤儿结果不污染已经接管目录的替代实�
         app2.receive(event(11, '晚上好'));
         await until(() => sent2.length === 1, 'replacement reply');
         assert.ok(prompts2.length > 0);
-        assert.ok(prompts2.every(prompt => !prompt.includes('上网查了「星云土豆是什么」')));
+        assert.ok(prompts2.every(prompt => !prompt.includes('上网查了「星云团子饼是什么」')));
     } finally {
         releaseFetch(); await app2?.stop(); await app1?.stop(); await settle();
         globalThis.fetch = oldFetch; globalThis.setTimeout = oldSetTimeout; cleanup(root);
@@ -128,17 +128,17 @@ test('Web正常完成仍会摘录、写时间线并在同实例复用缓存', as
             transport: { friendHistory: async () => [], sendPrivateText: async (_qq, text) => { sent.push(text); return sent.length; } },
             pipeline: { now: () => NOW, settle: { quietMs: 0, maxMs: 0 }, generate: async messages => {
                 const text = messages.map(line => line.content).join('\n');
-                if (text.includes('资料摘录员')) { extractCalls++; return '星云土豆是一项离线测试事实'; }
+                if (text.includes('资料摘录员')) { extractCalls++; return '星云团子饼是一项离线测试事实'; }
                 prompts.push(text); return '正常完成的合成回复';
             } },
         });
-        await app.connected(20000); app.receive(event(20, '帮我查一下星云土豆是什么'));
+        await app.connected(20000); app.receive(event(20, '帮我查一下星云团子饼是什么'));
         await until(() => sent.length === 1, 'first completed reply');
-        app.receive(event(21, '帮我查一下星云土豆是什么'));
+        app.receive(event(21, '帮我查一下星云团子饼是什么'));
         await until(() => sent.length === 2, 'cached completed reply');
         assert.equal(fetchCalls, 1); assert.equal(extractCalls, 1);
-        assert.ok(prompts.every(prompt => prompt.includes('你刚上网查了一下（中文维基百科）：星云土豆是一项离线测试事实')));
-        assert.match(readFileSync(join(dataDir, 'timeline.jsonl'), 'utf8'), /上网查了「星云土豆是什么」/);
+        assert.ok(prompts.every(prompt => prompt.includes('你刚上网查了一下（中文维基百科）：星云团子饼是一项离线测试事实')));
+        assert.match(readFileSync(join(dataDir, 'timeline.jsonl'), 'utf8'), /上网查了「星云团子饼是什么」/);
         assert.ok(logs.some(line => line.includes('摘出 1 条')));
     } finally {
         await app?.stop(); await settle(); globalThis.fetch = oldFetch; cleanup(root);

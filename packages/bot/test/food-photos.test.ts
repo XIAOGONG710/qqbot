@@ -6,6 +6,10 @@ import { afterEach, describe, test } from 'node:test';
 import { DEFAULT_MENU, dishesBetween } from '../src/life/menu.ts';
 import { FOOD_QUERIES, foodVisionPrompt, judgeFood, parseCommonsFood } from '../src/vision/photo-sources.ts';
 import { FOOD_MISS_RETRY_MS, FOOD_PER_DISH, FOOD_TRIES_PER_DISH, photoIntent, photoShelf, photoWanted, type FoodSource, type PhotoCandidate } from '../src/vision/photos.ts';
+import { useSyntheticTerms } from './fixtures/card.ts';
+
+// 猫名、城市名用合成角色的（ADR 0335）
+useSyntheticTerms();
 
 // ADR 0128：吃的照片。按菜名收（Commons，普通人随手拍的饭），看图把关；这一顿吃的什么就只发这道菜的
 const dirs: string[] = [];
@@ -184,7 +188,7 @@ describe('货架：按菜名收、按菜名发', () => {
 describe('他想看吃的', () => {
     test('photoWanted：要看 + 吃的 / 午饭 / 晚饭 / 外卖 → food；猫、风景、作品、没有明确对象的不变', () => {
         for (const text of ['拍给我看看你吃的', '午饭吃的啥发我看看', '看看你的晚饭', '发张外卖的照片', '你吃了啥拍一张', '食堂的饭给我看看']) assert.equal(photoWanted(text), 'food', text);
-        assert.equal(photoWanted('看看土豆'), 'cat');
+        assert.equal(photoWanted('看看团子饼'), 'cat');
         assert.equal(photoWanted('看看窗外的晚霞'), 'view');
         assert.equal(photoWanted('发你拍的片子来看看'), 'work');
         assert.equal(photoWanted('发张照片看看'), 'any');

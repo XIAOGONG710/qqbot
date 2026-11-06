@@ -6,9 +6,10 @@ import { afterEach, describe, test } from 'node:test';
 import { loadTierCard } from '../src/platform/contact.ts';
 import { inCooldown, loadThreadsFrom, THREAD_COOLDOWN_DAYS, THREADS, threadStepsFor } from '../src/world/threads.ts';
 import { worldAt } from '../src/world/world.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 // ADR 0216：她那边的事有后续。她本人（11-02 ask-her）：拌嘴不过夜、淋雨第二天嗓子发紧、鸡毛蒜皮翻篇、别老丢
-const pattern = resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-{tier}.json');
+const pattern = syntheticCardPattern;
 const FROM = '2026-11-03';
 function worldOf(threadsFrom?: string) {
     const card = loadTierCard(pattern, 'boyfriend', { everydayLife: true, everydayFrom: FROM, worldDrama: true, ...(threadsFrom ? { threadsFrom } : {}) });

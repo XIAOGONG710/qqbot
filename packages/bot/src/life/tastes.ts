@@ -12,6 +12,8 @@
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { clip, whenText } from '../memory/timeline.ts';
+import { stateObject } from '../memory/state-schema.ts';
+import { TransientStateError } from '../memory/transient-io.ts';
 
 export interface Experience {
     /** 清单里的编号（来自生活账 id / 看过的视频 bvid） */
@@ -35,6 +37,18 @@ export interface Taste {
 }
 
 interface TastesFile { version: 1; lastReflectAt?: string; tastes: Taste[] }
+
+const validAt = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value));
+const validTaste = (value: unknown): value is Taste => stateObject(value)
+    && typeof value.name === 'string' && Boolean(value.name.trim()) && typeof value.why === 'string'
+    && (value.stance === 'like' || value.stance === 'dislike') && (value.strength === 1 || value.strength === 2 || value.strength === 3)
+    && validAt(value.since) && validAt(value.last) && Date.parse(value.since) <= Date.parse(value.last)
+    && Array.isArray(value.evidence) && value.evidence.every((item: unknown) => stateObject(item)
+        && typeof item.ref === 'string' && validAt(item.at) && typeof item.text === 'string');
+const validTastesFile = (value: unknown): value is TastesFile => stateObject(value) && value.version === 1
+    && (value.lastReflectAt === undefined || validAt(value.lastReflectAt))
+    && Array.isArray(value.tastes) && value.tastes.every(validTaste)
+    && new Set(value.tastes.map(taste => taste.name)).size === value.tastes.length;
 
 export const MAX_TASTES = 12;
 export const MAX_NEW_PER_REFLECTION = 2;
@@ -73,8 +87,14 @@ export class Tastes {
     }
 
     #load(): TastesFile {
-        const value = readJsonOr<TastesFile>(this.#path, { version: 1, tastes: [] }, this.#options.log, { label: '口味' });
-        return value && Array.isArray(value.tastes) ? value : { version: 1, tastes: [] };
+        try {
+            return readJsonOr<TastesFile>(this.#path, { version: 1, tastes: [] }, this.#options.log, {
+                validate: validTastesFile, invalid: 'throw', label: '口味状态',
+            });
+        } catch (error) {
+            if (error instanceof TransientStateError) throw error;
+            throw new Error(`口味状态 ${this.#path} 读取或校验失败；原文件未重建，请修复或从可信备份恢复`);
+        }
     }
 
     list(): Taste[] { return this.#load().tastes; }
@@ -155,7 +175,12 @@ export class Tastes {
             const refs = [...new Set(Array.isArray(p.refs) ? p.refs.filter((r): r is string => typeof r === 'string' && byRef.has(r)) : [])];
             if (!name || [...name].length < 2 || !why || !stance || refs.length < (stance === 'like' ? 2 : 1)) continue;
             if (/[\[\]「」]/.test(name + why)) continue;
-            const strength = (Math.min(3, Math.max(1, Math.round(Number(p.strength) || 1))) as 1 | 2 | 3);
+            // 兼容缺省强度和简单数字字符串，但不能对任意模型对象执行 Number/toPrimitive。
+            const rawStrength = p.strength === undefined ? 1 : p.strength;
+            const numericStrength = typeof rawStrength === 'number' ? rawStrength
+                : typeof rawStrength === 'string' && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(rawStrength.trim()) ? Number(rawStrength) : NaN;
+            if (!Number.isFinite(numericStrength)) continue;
+            const strength = Math.min(3, Math.max(1, Math.round(numericStrength))) as 1 | 2 | 3;
             const evidence = refs.slice(0, 4).map(ref => ({ ref, at: byRef.get(ref)!.at, text: clip(byRef.get(ref)!.text, 30) }));
             const existing = file.tastes.find(t => t.name === name);
             if (existing) {
@@ -188,8 +213,10 @@ export class Tastes {
     }
 
     /** 放进聊天提示词的一段：最强 / 最近的 3 条；没有就没有 */
-    promptLine(): string | undefined {
-        const top = [...this.list()].sort((a, b) => b.strength - a.strength || Date.parse(b.last) - Date.parse(a.last)).slice(0, 3);
+    promptLine(now: Date = this.#options.now?.() ?? new Date()): string | undefined {
+        const top = this.list().filter(taste => Date.parse(taste.since) <= now.getTime() && Date.parse(taste.last) <= now.getTime()
+            && taste.evidence.every(evidence => Date.parse(evidence.at) <= now.getTime()))
+            .sort((a, b) => b.strength - a.strength || Date.parse(b.last) - Date.parse(a.last)).slice(0, 3);
         if (!top.length) return undefined;
         const parts = top.map(t => `${t.stance === 'like' ? '喜欢' : '不太喜欢'}${t.name}（${t.why}）`);
         return `[你自己慢慢发现的口味（是你真的经历过之后才有的，不是设定）：${parts.join('；')}。聊到相关的事时可以自然带出来，别硬提，也别当成口头禅；这里没写的细节（具体是哪个游戏、哪道菜、发生过什么）别编]`;

@@ -51,6 +51,8 @@ interface RiskFile {
     seen: string[];
     lastUnread?: number;
     lastAlertAt?: number;
+    /** 读不出内容时已经为这个未读数私信提醒过；读取照样每轮重试，提醒不重复 */
+    alertedUnread?: number;
 }
 
 const count = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -58,7 +60,8 @@ const timestamp = (value: unknown): value is number => typeof value === 'number'
 const validFile = (value: unknown): value is RiskFile => stateObject(value) && value.version === 1
     && Array.isArray(value.seen) && value.seen.every(id => typeof id === 'string' && id.length > 0)
     && (value.until === undefined || timestamp(value.until)) && (value.lastAlertAt === undefined || timestamp(value.lastAlertAt))
-    && (value.lastUnread === undefined || count(value.lastUnread));
+    && (value.lastUnread === undefined || count(value.lastUnread))
+    && (value.alertedUnread === undefined || count(value.alertedUnread));
 
 export interface RiskOptions {
     account: BiliAccount | (() => Promise<BiliAccount | undefined>);
@@ -197,7 +200,10 @@ export function createRiskMonitor(options: RiskOptions): RiskMonitor {
                 return;
             }
             if (!count(unread)) { note('B 站风险：系统通知未读数无效；保留进度后续重试'); return; }
-            if (unread === 0) { if (state.lastUnread) commit(next => { next.lastUnread = 0; }); return; }
+            if (unread === 0) {
+                if (state.lastUnread || state.alertedUnread !== undefined) commit(next => { next.lastUnread = 0; delete next.alertedUnread; });
+                return;
+            }
             let notices: Awaited<ReturnType<BiliAccount['systemNotices']>> = [];
             try {
                 notices = await read(() => account.systemNotices(cancellation.signal));
@@ -223,8 +229,11 @@ export function createRiskMonitor(options: RiskOptions): RiskMonitor {
             } else if (fresh.length) {
                 note(`B 站风险：系统通知 ${fresh.length} 条，没有违规 / 警告一类的字眼（${fresh.map(notice => notice.title.slice(0, 20)).join('、')}）`);
             } else if (notices.length === 0) {
-                // 未读数涨了但读不出内容：不知道是什么，不停发言，只让他去看一眼（读得出、只是都见过了的不用提醒）
+                // 未读数涨了但读不出内容：不知道是什么，不停发言，只让他去看一眼（读得出、只是都见过了的不用提醒）。
+                // 读取每轮都重试（ADR 0090 2026-11-05），但同一个未读数只提醒一次。
+                if ((pending ?? state).alertedUnread === unread) { note(`B 站风险：${unread} 条未读的系统通知还是读不出内容，已经提醒过，过 15 分钟再试`); return; }
                 await alert(`【B 站风险提醒】她的号有 ${unread} 条未读的系统通知，我没能读出内容；请你登录她的号看一眼是不是违规或风控提醒。`, t);
+                if ((pending ?? state).lastAlertAt === t) commit(next => { next.alertedUnread = unread; });
             }
         } finally {
             busy = false;

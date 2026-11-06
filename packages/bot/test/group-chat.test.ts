@@ -8,8 +8,9 @@ import { parseGroups, type AppConfig } from '../src/platform/config.ts';
 import { isGroupMessage, type GroupMessageEvent } from '../src/platform/onebot.ts';
 import { GROUP_LIMITS, groupLine, groupLog, groupNote, groupReply, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
-// ADR 0210（用户 11-02）：只在名单里的群说话；她本人「基本潜水，有人点我名、聊到吃的剧土豆、有人损你才冒头」
+// ADR 0210（用户 11-02）：只在名单里的群说话；她本人「基本潜水，有人点我名、聊到吃的剧团子饼、有人损你才冒头」
 const SELF = 20000;
 const BF = { qq: 10001, name: '宝宝' };
 const ctx = (extra: Partial<SpeakContext> = {}): SpeakContext => ({ selfId: SELF, boyfriend: BF, boyfriendNames: ['阿明'], herMessageIds: new Set([7001]), topicToday: 0, ...extra });
@@ -107,7 +108,7 @@ describe('群聊：进应用', () => {
         const cfg = {
             llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
             prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
-            characterCard: join(resolve(import.meta.dirname, '../../..'), 'characters/linmengyao/st/linmengyao-{tier}.json'),
+            characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '宝宝', tier: 'boyfriend', knowsBot: true }],
             unlistedFriends: false, schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false,
             lifeInPrompt: false, grievance: false, feedbackCommands: false, realWeather: false, media: true,

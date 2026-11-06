@@ -1,0 +1,210 @@
+# 合成测试角色的世界（虚构）。覆盖：天气、猫、快递（饭后取）、相机基金（含购买）、作业（匿名课程组）、家里视频、NPC（生病/忙/回家）、事件（人、星期、状态、花钱）、身体、日常、打算、钱。
+start_day: "2026-08-31"
+away_holidays: ["寒假"]
+weather:
+  places:
+    tiers: [boyfriend, bestie, girl_friend, known]
+    school:
+      id: school-town
+      name: 雾岚市
+      latitude: 30.5
+      longitude: 110.5
+    home:
+      id: home-town
+      name: 溪口镇
+      latitude: 31.5
+      longitude: 112.5
+  tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate", "stranger", "unlisted"]
+  rain_chance: 0.2
+  temps:
+    "1": [-6, 3]
+    "2": [-3, 7]
+    "3": [3, 13]
+    "4": [9, 20]
+    "5": [15, 26]
+    "6": [20, 30]
+    "7": [23, 31]
+    "8": [22, 30]
+    "9": [17, 26]
+    "10": [10, 20]
+    "11": [3, 12]
+    "12": [-4, 5]
+  note: "合成气温"
+cat:
+  name: "团子饼"
+  tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate"]
+  feed: ["20:00", "21:30"]
+  seen_chance: 0.7
+  food:
+    bag_days: 20
+    left: 12
+    reorder_at: 3
+parcels:
+  tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate", "stranger", "unlisted"]
+  per_week: 1.5
+  arrive_days: [2, 4]
+  keep_days: 3
+  items: ["猫粮", "洗发水", "零食"]
+  after_meal_from: "2026-10-12"
+camera_fund:
+  tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+  goal: 3000
+  saved: 800
+  weekly: 200
+  deposit_day: 7
+  purchase:
+    date: "2026-10-11"
+    from: "14:00"
+    minutes: 120
+    where: "城南的二手相机店"
+    what: "一台胶片机"
+    price: 2800
+homework:
+  tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate", "stranger", "unlisted"]
+  kinds: ["hard", "machine"]
+  chance: 0.5
+  early_chance: 0.2
+  grouped_from: "2026-10-12"
+family_call:
+  tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+  weekday: 7
+  time: "20:30"
+people:
+  - id: "roommate"
+    role: nearby
+    name: "许小禾"
+    label: "室友"
+    relation: "室友"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    named_tiers: ["boyfriend", "bestie", "girl_friend"]
+    life:
+      sick:
+        per_month: 0.5
+        days: [1, 3]
+      busy:
+        per_month: 1
+        days: [1, 2]
+        labels: ["有考试", "赶作业"]
+  - id: "friend"
+    role: faraway
+    name: "林小满"
+    label: "高中的闺蜜"
+    relation: "高中同学，最好的朋友"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    named_tiers: ["boyfriend", "bestie"]
+    life:
+      home:
+        weekend_chance: 0.5
+        holidays: true
+      busy:
+        per_month: 1
+        days: [1, 3]
+        labels: ["期中周"]
+      note: "合成：本地人，常回家"
+events:
+  - id: "milk-tea"
+    text: "和{person}去校门口买了奶茶"
+    person: "roommate"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    window: "afternoon"
+    chance: 0.2
+    when: "school"
+    skip_when: ["sick"]
+    cost:
+      amount: [12, 18]
+      what: "奶茶"
+  - id: "friend-call"
+    text: "{person}打电话来吐槽考试"
+    person: "friend"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    window: "evening"
+    chance: 0.5
+    when: "any"
+    only_when: ["busy"]
+  - id: "lunch_with_friend"
+    attach: meal
+    asks_instead: true
+    text: "和{person}在二食堂吃了午饭"
+    person: "roommate"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    window: "afternoon"
+    chance: 0.15
+    when: "school"
+    skip_when: ["sick"]
+    cost:
+      amount: [12, 20]
+      what: "午饭"
+  - id: "late-class"
+    text: "早上的课拖堂了十分钟"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate", "stranger", "unlisted"]
+    window: "morning"
+    chance: 0.1
+    when: "class_day"
+    weekday: 1
+body:
+  tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate", "stranger", "unlisted"]
+  period:
+    first: "2026-09-20"
+    cycle: [27, 31]
+    days: 5
+    cramps_chance: 0.5
+    detail_tiers: ["boyfriend", "bestie"]
+  cold:
+    per_month: 0.2
+    days: 3
+routine:
+  tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate", "stranger", "unlisted"]
+  lunch:
+    from: "11:50"
+    spread: 30
+    minutes: 30
+  dinner:
+    from: "17:50"
+    spread: 40
+    minutes: 30
+  takeout_chance: 0.3
+  shower:
+    from: "21:30"
+    spread: 60
+    minutes: [15, 30]
+    chance: 0.8
+plans:
+  tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate", "stranger", "unlisted"]
+  outings:
+    - text: "拿胶片机去湖边拍照"
+      indoors: "在宿舍整理照片"
+      tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    - text: "去湖边散步"
+      indoors: "在宿舍看剧"
+    - text: "带新胶片机去操场转转"
+      indoors: "在宿舍整理照片"
+      tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    - text: "去操场转转"
+      indoors: "在宿舍看剧"
+  study: ["去图书馆自习", "在宿舍写作业", "熬夜赶作业"]
+  rest: "在床上躺着"
+money:
+  tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+  detail_tiers: ["boyfriend", "bestie"]
+  allowance: 2000
+  payday: 1
+  start: 900
+  ask_home: 500
+  prices:
+    canteen: [8, 15]
+    takeout: [18, 30]
+    misc: [5, 20]
+    cat_food: 45
+    parcels:
+      "猫粮": 45
+      "洗发水": 35
+      "零食": 25
+  side_jobs:
+    per_month: 1
+    pay: [50, 150]
+    kinds: ["帮人修图"]
+  saving:
+    keep_per_day: 40
+    step: 50
+    max: 600
+note: "合成世界"

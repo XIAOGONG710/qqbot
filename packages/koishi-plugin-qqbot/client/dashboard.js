@@ -187,10 +187,10 @@ const REAL_WORLD_SOURCES = {
     'holiday.ailcc.com': '法定日历服务',
     'generic-transport': '自定义交通数据',
 };
-const REAL_WORLD_PLACES = { jinan: '济南', qingdao: '青岛' };
 const safeSource = provider => REAL_WORLD_SOURCES[provider];
 const safeUpdatedAt = value => Number.isFinite(Date.parse(value)) ? `更新 ${dashboardTime(value)}` : undefined;
-const coveragePlaces = rows => Object.keys(rows ?? {}).flatMap(key => REAL_WORLD_PLACES[key] ? [REAL_WORLD_PLACES[key]] : []).join('、');
+// 地点来自卡上的 weather.places（ADR 0334），状态里只有它们的 id：这里只说覆盖几个地方，不在页面上写具体地名
+const coveragePlaces = rows => { const count = Object.keys(rows ?? {}).length; return count ? `${count} 个地方` : ''; };
 const withMeta = (state, parts) => {
     const safe = parts.filter(Boolean);
     return safe.length ? `${state}（${safe.join('；')}）` : state;
@@ -355,7 +355,7 @@ export function extrasRows(extras) {
     const rows = [];
     if (extras?.photos) {
         const p = extras.photos;
-        rows.push({ label: '照片货架', text: p.count ? `${p.count} 张（土豆 ${p.cat}、天空 ${p.view}${p.work ? `、她的片子 ${p.work}` : ''}${p.food ? `、吃的 ${p.food}` : ''}）` : '空的（她自己去网上找，每 6 小时一次）' });
+        rows.push({ label: '照片货架', text: p.count ? `${p.count} 张（猫 ${p.cat}、天空 ${p.view}${p.work ? `、她的片子 ${p.work}` : ''}${p.food ? `、吃的 ${p.food}` : ''}）` : '空的（她自己去网上找，每 6 小时一次）' });
     }
     if (extras?.aiPhotoDrafts) {
         const p = extras.aiPhotoDrafts;
@@ -400,4 +400,23 @@ export function aiPhotoRuntimeRows(value) {
         rows.push({ label: '照片草稿', text: '暂时无法读取' });
     }
     return rows;
+}
+
+/**
+ * 状态页「她的时区」一行：实际在用的 IANA 时区、此刻的 UTC 偏移、她那边现在几点（作息、饭点、日界都按它算，
+ * 浏览器所在的时区不影响这个）。没有这个字段（插件还是旧代码）返回 undefined，页面提示重启。
+ */
+export function timeZoneLine(zone, nowMs) {
+    if (typeof zone !== 'string' || !zone) return undefined;
+    const at = new Date(nowMs);
+    try {
+        const part = (options, type) => new Intl.DateTimeFormat('en-US', { timeZone: zone, ...options }).formatToParts(at).find(item => item.type === type)?.value;
+        const match = /^GMT(?:([+-])(\d{1,2})(?::(\d{2}))?)?$/.exec(part({ timeZoneName: 'longOffset' }, 'timeZoneName') ?? 'GMT');
+        const minutes = match?.[1] ? (match[1] === '-' ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3] ?? 0)) : 0;
+        const offset = minutes ? `UTC${minutes < 0 ? '-' : '+'}${String(Math.floor(Math.abs(minutes) / 60)).padStart(2, '0')}:${String(Math.abs(minutes) % 60).padStart(2, '0')}` : 'UTC±00:00';
+        const time = new Intl.DateTimeFormat('zh-CN', { timeZone: zone, hour: '2-digit', minute: '2-digit', hour12: false }).format(at);
+        return `${zone}（${offset}），她那边现在 ${time}`;
+    } catch {
+        return zone;
+    }
 }

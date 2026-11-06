@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
@@ -11,6 +11,7 @@ import { createBreaker } from '../src/bilibili/platform-breaker.ts';
 import { runScenario } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 const dirs: string[] = [];
 const services: DeviceService[] = [];
@@ -21,7 +22,7 @@ const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 9, 9
 const secrets: DeviceSecrets = { hub: { host: '127.0.0.1', port: 0 }, token: 'a'.repeat(64), phone: { baseUrl: 'https://ntfy.example', topic: 'mengyao-0123456789abcdef' } };
 
 /** 假的电脑端小程序：一直来取任务，按 answer 回结果，记下收到的任务 */
-function fakeAgent(base: string, answer: (job: { action: string; params: unknown }) => { ok: boolean; error?: string; mime?: string; imageBase64?: string }) {
+function fakeAgent(base: string, answer: (job: { action: string; params: unknown }) => { ok: boolean; error?: string; mime?: string; imageBase64?: string }, beforeResult?: () => Promise<void>) {
     const seen: { action: string; params: unknown }[] = [];
     let stopped = false;
     const headers = { Authorization: `Bearer ${secrets.token}` };
@@ -32,6 +33,7 @@ function fakeAgent(base: string, answer: (job: { action: string; params: unknown
                 if (response.status !== 200) continue;
                 const job = await response.json() as { id: string; action: string; params: unknown };
                 seen.push({ action: job.action, params: job.params });
+                if (beforeResult) await beforeResult();
                 await fetch(`${base}/result`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: job.id, ...answer(job) }) });
             } catch { /* 取件中心关了 */ }
         }
@@ -97,18 +99,25 @@ describe('设备控制的密钥和装配（ADR 0148）', () => {
 describe('设备控制服务：电脑、手机、他的命令（ADR 0148）', () => {
     test('她回复里的通知令牌 → 取件中心 → 电脑端小程序拿到任务；审计只有动作和结果，没有文字', async () => {
         const t = await start();
-        const agent = fakeAgent(t.base, () => ({ ok: true }));
-        await until(() => t.service.hub.online());
-        t.service.control.take('我提醒你一下\n<device:notify|电脑|该喝水了>');
-        await until(() => agent.seen.length === 1);
-        assert.deepEqual(agent.seen, [{ action: 'notify', params: { text: '该喝水了' } }]);
-        agent.stop();
-        // 审计是异步追加的：等它落盘再读（以前直接读，整包并发跑时会抢在写入之前，偶发 ENOENT）
+        const resultGate = Promise.withResolvers<void>();
+        const agent = fakeAgent(t.base, () => ({ ok: true }), () => resultGate.promise);
         const auditPath = join(t.dataDir, 'devices', 'audit.jsonl');
-        await until(() => existsSync(auditPath) && readFileSync(auditPath, 'utf8').includes('"action":"notify"'));
-        const audit = readFileSync(auditPath, 'utf8');
-        assert.match(audit, /"action":"notify".*"decision":"executed"/);
-        assert.equal(audit.includes('喝水'), false);
+        try {
+            await until(() => t.service.hub.online());
+            t.service.control.take('我提醒你一下\n<device:notify|电脑|该喝水了>');
+            await until(() => agent.seen.length === 1);
+            assert.deepEqual(agent.seen, [{ action: 'notify', params: { text: '该喝水了' } }]);
+            // 已取件不等于已执行：确定性暂停结果提交，证明 seen 不能作为审计完成条件。
+            assert.equal(existsSync(auditPath) && readFileSync(auditPath, 'utf8').includes('"decision":"executed"'), false);
+            resultGate.resolve();
+            await until(() => existsSync(auditPath) && readFileSync(auditPath, 'utf8').includes('"decision":"executed"'));
+            const audit = readFileSync(auditPath, 'utf8');
+            assert.match(audit, /"action":"notify".*"decision":"executed"/);
+            assert.equal(audit.includes('喝水'), false);
+        } finally {
+            resultGate.resolve();
+            agent.stop();
+        }
     });
 
     test('手机走 ntfy：通知、定时（延时）；电脑没上线时「都」只走手机，电脑那份在审计里记失败', async () => {
@@ -184,8 +193,7 @@ describe('设备控制服务：电脑、手机、他的命令（ADR 0148）', ()
 });
 
 describe('回复路径：令牌不会发给他，而且只在真发送时登记（ADR 0148）', () => {
-    const repoRoot = resolve(import.meta.dirname, '../../..');
-    const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend');
     const llm: BotConfig['llm'] = { baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: '', extraBody: {} };
     const prompt: BotConfig['prompt'] = { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true };
 

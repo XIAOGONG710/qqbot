@@ -5,7 +5,9 @@
 // - 只写事实，不写台词、不写情绪（ADR 0021 决策 3）。
 
 import { classesOn, formatDate, type Schedule } from '../life/schedule.ts';
-import { npcStates, unit, type NpcLife, type NpcStateKind } from './npc.ts';
+import { localDate } from '../local-date.ts';
+import { MAX_NPC_MONTHLY_SPANS, npcStates, unit, type NpcLife, type NpcStateKind } from './npc.ts';
+import type { PersonRole } from './world.ts';
 
 /** 约在一天的哪一段：午饭、晚饭、晚上、周末下午 */
 export type AskSlot = 'lunch' | 'dinner' | 'evening' | 'weekend';
@@ -75,6 +77,71 @@ export interface NpcAsk {
     fromState?: NpcStateKind;
 }
 
+/** FriendDate 的可协调部分；不依赖 world.ts，避免把事实层与展示层形成运行时循环。 */
+export interface NpcDateReservation {
+    id: string;
+    askedAt: Date;
+    start: Date;
+    minutes: number;
+    outcome: AskOutcome;
+    actualStart?: Date;
+    knownAt?: Date;
+    declined?: string;
+    declinedAt?: Date;
+    held: boolean;
+}
+
+/**
+ * 已答应的朋友约也占时间。按邀请/变卦被知道的时刻重放，先承诺的优先，同刻以稳定 ID 打平。
+ * 取消在通知到达后才释放旧时段；改约或迟到撞上已有承诺时记成她当时推掉，不能只从结果中删去。
+ */
+export function coordinateNpcDates<T extends NpcDateReservation>(dates: readonly T[]): T[] {
+    const copies = dates.map(date => ({ ...date }));
+    const moments = new Map<number, { asks: T[]; changes: T[] }>();
+    const ids = new Set<string>();
+    const add = (at: Date, kind: 'asks' | 'changes', date: T) => {
+        if (!Number.isFinite(at.getTime())) throw new RangeError('朋友约定的时刻不合法');
+        const moment = moments.get(at.getTime()) ?? { asks: [], changes: [] };
+        moment[kind].push(date);
+        moments.set(at.getTime(), moment);
+    };
+    for (const date of copies) {
+        if (!date.id || ids.has(date.id) || !Number.isFinite(date.start.getTime()) || !Number.isInteger(date.minutes) || date.minutes <= 0
+            || (date.actualStart && !Number.isFinite(date.actualStart.getTime()))) throw new RangeError('朋友约定的身份或时段不合法');
+        ids.add(date.id);
+        add(date.askedAt, 'asks', date);
+        if (date.knownAt) add(date.knownAt, 'changes', date);
+        if (date.declinedAt && date.declinedAt.getTime() !== date.knownAt?.getTime() && date.declinedAt > date.askedAt) add(date.declinedAt, 'changes', date);
+    }
+    const reserved = new Map<string, { start: number; end: number }>();
+    const priority = (a: T, b: T) => a.askedAt.getTime() - b.askedAt.getTime() || a.id.localeCompare(b.id);
+    const declinedBy = (date: T, at: number) => Boolean(date.declined && (!date.declinedAt || date.declinedAt.getTime() <= at));
+    const reserve = (date: T, start: Date, at: number, changed: boolean) => {
+        const from = start.getTime(); const to = from + date.minutes * 60_000;
+        const clash = [...reserved.values()].some(span => span.start < to && from < span.end);
+        if (clash) {
+            date.declined = changed ? '改时间后和先答应的约撞了' : '那会儿已经答应别的约了';
+            date.declinedAt = new Date(at);
+            date.held = false;
+        } else reserved.set(date.id, { start: from, end: to });
+    };
+    for (const [at, moment] of [...moments].sort(([a], [b]) => a - b)) {
+        const changing = moment.changes.filter(date => reserved.has(date.id)).sort(priority);
+        // 同时改约先统一释放旧时段，再按承诺优先级分配，避免处理顺序制造虚假的冲突。
+        for (const date of changing) reserved.delete(date.id);
+        for (const date of changing) {
+            if (declinedBy(date, at) || date.outcome === 'cancelled') continue;
+            reserve(date, date.actualStart ?? date.start, at, true);
+        }
+        for (const date of moment.asks.sort(priority)) {
+            if (declinedBy(date, at) || (date.outcome === 'cancelled' && date.knownAt && date.knownAt.getTime() <= at)) continue;
+            const known = date.knownAt && date.knownAt.getTime() <= at;
+            reserve(date, known && date.actualStart ? date.actualStart : date.start, at, false);
+        }
+    }
+    return copies.sort((a, b) => a.start.getTime() - b.start.getTime() || a.id.localeCompare(b.id));
+}
+
 /** 约在哪一段：开始时刻可以落在 [from, to] 里（十分钟一档，且和课前后各留一点） */
 const SLOTS: Record<AskSlot, [string, string]> = {
     lunch: ['11:30', '13:00'],
@@ -94,9 +161,12 @@ const EVENING_ASK_SPREAD = 120;
 /** 改到晚一点最晚到几点结束，再晚就不了了之 */
 const LATEST_END = 22 * 60 + 30;
 
-/** 卡上还没有这一块（world.yml 的 asks 另一步再加）：先按人的 id 放默认。数字是可改的设定（ADR 0061 确认记录） */
-export const DEFAULT_ASKS: Record<string, AsksConfig> = {
-    su_yutong: {
+/**
+ * 卡上还没有这一块（world.yml 的 asks 另一步再加）：先按人的 role 放默认（nearby 同校的朋友、faraway 外地的朋友，world.yml 的 people[].role）。
+ * 数字是可改的设定（ADR 0061 确认记录）
+ */
+export const DEFAULT_ASKS: Record<PersonRole, AsksConfig> = {
+    nearby: {
         perMonth: 4,
         dayBefore: 0.5,
         kinds: [
@@ -109,7 +179,7 @@ export const DEFAULT_ASKS: Record<string, AsksConfig> = {
         moved: { chance: 0.1, shiftMinutes: [60, 150], reasons: [{ text: '临时要先去办件事' }, { text: '作业还差一点想先弄完' }, { text: '睡过头了' }] },
         cancelled: { chance: 0.05, reasons: [{ text: '临时被老师叫去帮忙' }, { text: '突然肚子疼', private: true }, { text: '家里有点事', private: true }] },
     },
-    chen_jianing: {
+    faraway: {
         perMonth: 3,
         dayBefore: 0.7,
         kinds: [
@@ -121,10 +191,15 @@ export const DEFAULT_ASKS: Record<string, AsksConfig> = {
     },
 };
 
-export interface AskPerson { id: string; name: string; life?: NpcLife }
+export interface AskPerson { id: string; name: string; role?: PersonRole; life?: NpcLife }
 
-const at =(day: Date, minutes: number) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, minutes);
-const addDays = (day: Date, n: number) => new Date(day.getFullYear(), day.getMonth(), day.getDate() + n);
+/** 按人的 id 取约的配置：有 role 的人用那一种的默认（哈希仍按 id 取，同一个人的约不因换配置来源而变） */
+export function asksByPerson(people: readonly AskPerson[], defaults: Record<PersonRole, AsksConfig> = DEFAULT_ASKS): Record<string, AsksConfig> {
+    return Object.fromEntries(people.flatMap(person => (person.role ? [[person.id, defaults[person.role]]] : [])));
+}
+
+const at =(day: Date, minutes: number) => localDate(day.getFullYear(), day.getMonth(), day.getDate(), 0, minutes);
+const addDays = (day: Date, n: number) => localDate(day.getFullYear(), day.getMonth(), day.getDate() + n);
 const clock = (text: string) => { const [h, m] = text.split(':').map(Number); return h! * 60 + m!; };
 const holidayOn = (schedule: Schedule, day: Date) => { const date = formatDate(day); return schedule.holidays.some(h => h.start <= date && date <= h.end); };
 
@@ -158,8 +233,9 @@ const stateOf = (person: AskPerson, schedule: Schedule, day: Date) => npcStates(
 
 /** 这个人在 first 那个月里发起的约（约的那天都落在这个月） */
 function monthAsks(person: AskPerson, config: AsksConfig, schedule: Schedule, first: Date, anchors?: AskAnchors): NpcAsk[] {
+    if (!Number.isFinite(config.perMonth) || config.perMonth < 0 || config.perMonth > MAX_NPC_MONTHLY_SPANS) throw new RangeError(`NPC每月邀请次数应为 0–${MAX_NPC_MONTHLY_SPANS} 内的有限数`);
     const month = formatDate(first).slice(0, 7);
-    const length = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    const length = localDate(first.getFullYear(), first.getMonth() + 1, 0).getDate();
     const count = Math.floor(config.perMonth) + (unit(`${month} ${person.id} ask extra`) < config.perMonth % 1 ? 1 : 0);
     const taken = new Set<string>();
     const asks: NpcAsk[] = [];
@@ -224,7 +300,7 @@ function settle(ask: NpcAsk, person: AskPerson, config: AsksConfig, schedule: Sc
 
 /** 约的那天是 day 的所有约（按原定开始排）；没写配置的人没有约 */
 export function npcAsksOn(people: readonly AskPerson[], schedule: Schedule, day: Date, configs: Record<string, AsksConfig> = DEFAULT_ASKS, anchors?: AskAnchors): NpcAsk[] {
-    const first = new Date(day.getFullYear(), day.getMonth(), 1);
+    const first = localDate(day.getFullYear(), day.getMonth(), 1);
     const date = formatDate(day);
     return people.flatMap(person => (configs[person.id] ? monthAsks(person, configs[person.id]!, schedule, first, anchors) : []))
         .filter(ask => ask.day === date)

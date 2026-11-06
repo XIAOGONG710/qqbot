@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 跨渠道统一的近期时间线（ADR 0159，配置 timeline，默认关）。
 // 来自 10-25 用户给的清单：「统一近期时间线：你在 B 站回复评论后，另一个聊天窗口可能毫不知情。不同工具、窗口和实例应共享可访问的事件记录，
 // 记下时间、操作与实际结果。」
@@ -59,7 +60,7 @@ const hm = (d: Date) => `${two(d.getHours())}:${two(d.getMinutes())}`;
 
 /** 「今天 22:08」「昨天 20:10」「前天 …」 */
 export function whenText(at: Date, now: Date): string {
-    const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const day = (d: Date) => localDate(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     const diff = Math.round((day(now) - day(at)) / 86_400_000);
     return `${diff <= 0 ? '今天' : diff === 1 ? '昨天' : diff === 2 ? '前天' : `${at.getMonth() + 1}-${at.getDate()}`} ${hm(at)}`;
 }

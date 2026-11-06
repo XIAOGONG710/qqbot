@@ -7,11 +7,13 @@ import { after, afterEach, before, describe, test } from 'node:test';
 import { setWorkMode } from '../src/platform/work-mode.ts';
 import { startApp, type App, type AppOptions, type Transport } from '../src/platform/app.ts';
 import { PEEK_OFF_NOTICE } from '../src/platform/private-space.ts';
+import { execFileSync } from 'node:child_process';
 import { SENSITIVE_OFF, type SensitiveSwitch } from '../src/platform/sensitive.ts';
 import type { HistoryMessage } from '../src/memory/backfill.ts';
 import type { ImageDescriber, MEDIA_TIMEOUTS, MediaReader } from '../src/vision/media.ts';
 import type { AppConfig } from '../src/platform/config.ts';
 import { ChatHistory } from '../src/memory/history.ts';
+import { fileOps } from '../src/memory/json-file.ts';
 import type { MessageEvent, PokeEvent } from '../src/platform/onebot.ts';
 import { POKE_BACK_DELAY_MS, POKE_OUT_TEXT, pokeBackPlan } from '../src/social/pokes.ts';
 import { pokeOutPlan } from '../src/social/presence.ts';
@@ -24,16 +26,16 @@ import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import type { StickerEntry, StickerShelf } from '../src/social/stickers.ts';
-import { photoShelf, type PhotoSource } from '../src/vision/photos.ts';
+import { photoAllowance, photoShelf, type PhotoSource } from '../src/vision/photos.ts';
 import { CRISIS_FALLBACK } from '../src/language/exit-check.ts';
 import { CRISIS_MARK } from '../src/language/intent.ts';
 import { createDeviceControl } from '../src/platform/device-actions.ts';
 import type { DeviceService, startDeviceService } from '../src/platform/device-service.ts';
 import { readOwnerBank } from '../src/memory/owner-bank.ts';
+import { syntheticCardPath, syntheticCardPattern, syntheticStDir } from './fixtures/card.ts';
 
 type StartDevices = typeof startDeviceService;
 
-const repoRoot = resolve(import.meta.dirname, '../../..');
 const SELF = 20000;
 const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -63,7 +65,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
         dsh: { enabled: false },
         prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
-        characterCard: join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'),
+        characterCard: syntheticCardPattern,
         contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }],
         unlistedFriends: false,
         schedule: false,
@@ -83,6 +85,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         dataDir,
         // 线上默认是关（ADR 0200）；这里默认开着，好让下面各条 /追求 /说话习惯 /心境 /自我认识 的测试照旧测「念出来」，关着的情形有专门一条
         ownerPeek: true,
+        timeZone: 'Asia/Shanghai',
         ...overrides,
     };
 }
@@ -98,7 +101,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -112,7 +115,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.reactMessage ? { reactMessage: options.reactMessage } : {}),
         ...(options.extra ?? {}),
         sendPrivateText: async (userId, text) => { sent.push(`${userId}:${text}`); return nextId++; },
-        sendPrivateImage: async (userId, file, summary) => { images.push(`${userId}:${file}:${summary}`); return nextId++; },
+        sendPrivateImage: async (userId, file, summary) => { images.push(`${userId}:${file}:${summary}`); return options.extra?.sendPrivateImage ? options.extra.sendPrivateImage(userId, file, summary) : nextId++; },
         ...(options.pokeFriend ? { pokeFriend: options.pokeFriend } : {}),
         friendHistory: async (userId, count) => {
             asked.push(userId);
@@ -143,6 +146,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         sensitive: options.sensitive ?? { on: () => true, describe: () => '' },
         pipeline: {
             generate: async (messages, _log, use) => options.generate?.(messages, use) ?? '好', settle: { quietMs: 0, maxMs: 0 },
+            ...(options.retryAfterMs ? { retryAfterMs: options.retryAfterMs } : {}),
             ...(options.clock ? { now: options.clock.now, waitUntil: options.clock.waitUntil } : {}),
         },
     });
@@ -468,7 +472,7 @@ describe('编排（app.ts）', () => {
         assert.deepEqual(sent, ['10001:我在。你现在安全吗？身边有人吗']);
         // 提示词：危机意图、承认版卡（知道她是程序的联系人这一轮也承认）
         assert.match(prompts[0]!, new RegExp(CRISIS_MARK));
-        assert.match(prompts[0]!, /大方承认/, '危机回合换用承认版卡');
+        assert.match(prompts[0]!, /不要否认，用你自己的口气大方承认/, '危机回合换用承认版卡');
         // 日志和状态页只有时间，没有他说的内容
         assert.ok(logs.some(line => line.includes('危机信号') && !line.includes('不想活了')));
         const status = app.status().contacts[0]!;
@@ -482,14 +486,55 @@ describe('编排（app.ts）', () => {
         await until(() => sent.length >= 2);
         const stillCrisis = prompts.slice(before).join('\n');
         assert.match(stillCrisis, new RegExp(CRISIS_MARK));
-        assert.match(stillCrisis, /大方承认/);
+        assert.match(stillCrisis, /不要否认，用你自己的口气大方承认/);
         // 明确现在安全且有现实中的人陪同，才回到普通回合。
         const safeAt = prompts.length;
         app.receive(event(10001, 3, '我现在安全，室友在旁边陪我'));
         await until(() => sent.length >= 3);
         const normal = prompts.slice(safeAt).join('\n');
         assert.doesNotMatch(normal, new RegExp(CRISIS_MARK));
-        assert.doesNotMatch(normal, /大方承认/);
+        assert.doesNotMatch(normal, /不要否认，用你自己的口气大方承认/);
+    });
+
+    test('危机状态写失败仍暂停且继续响应，存储恢复后自动重试不需新信号', async () => {
+        const cfg = config(); const { app, logs } = setup(cfg, {}, { generate: () => '我在。你现在安全吗？' });
+        const original = fileOps.renameSync; const delays = fileOps.writeDelaysMs; const statePath = join(cfg.dataDir, 'crisis.json');
+        fileOps.writeDelaysMs = [0];
+        fileOps.renameSync = ((from, to) => { if (String(to) === statePath) throw Object.assign(new Error('PRIVATE_CRISIS_IO'), { code: 'EIO' }); return original(from, to); }) as typeof original;
+        try {
+            app.receive(event(10001, 901, '我不想活了'));
+            await until(() => new ChatHistory(cfg.dataDir).load(10001).some(message => message.role === 'user'));
+            assert.equal(app.status().contacts[0]!.crisis?.paused, true);
+            assert.equal(existsSync(statePath), false);
+            fileOps.renameSync = original;
+            await until(() => existsSync(statePath), 4000);
+            assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).contacts['10001'].level, 'high');
+            assert.ok(logs.every(message => !message.includes('PRIVATE_CRISIS_IO')));
+        } finally { fileOps.renameSync = original; fileOps.writeDelaysMs = delays; app.stop(); }
+    });
+
+    test('重启从已存聊天恢复缺失危机标记，不依赖NapCat再次补回同ID消息', async () => {
+        const cfg = config(); const at = Date.now() - 30_000;
+        new ChatHistory(cfg.dataDir).append(10001, { role: 'user', content: '我不想活了', time: new Date(at).toISOString(), messageId: 902 });
+        const { app } = setup(cfg, { 10001: [] });
+        try {
+            await app.connected(SELF);
+            assert.equal(app.status().contacts[0]!.crisis?.paused, true);
+            assert.equal(Date.parse(JSON.parse(readFileSync(join(cfg.dataDir, 'crisis.json'), 'utf8')).contacts['10001'].at), at);
+        } finally { app.stop(); }
+    });
+
+    test('停止后补回历史晚拒绝不恢复下一联系人的危机状态或发起新请求', async () => {
+        const cfg = config({ contacts: [{ qq: 10001, name: '合成人甲', tier: 'classmate' }, { qq: 10002, name: '合成人乙', tier: 'classmate' }] });
+        new ChatHistory(cfg.dataDir).append(10002, { role: 'user', content: '我不想活了', time: new Date().toISOString(), messageId: 903 });
+        let reject!: (error: Error) => void;
+        const held = new Promise<void>((_resolve, fail) => { reject = fail; });
+        const { app, asked } = setup(cfg, { 10001: [], 10002: [] }, { holdHistory: held });
+        const connected = app.connected(SELF);
+        try {
+            await until(() => asked.length === 1); app.stop(); reject(new Error('synthetic late history failure')); await connected;
+            assert.deepEqual(asked, [10001]); assert.equal(existsSync(join(cfg.dataDir, 'crisis.json')), false);
+        } finally { reject(new Error('synthetic cleanup')); app.stop(); await connected; }
     });
 
     test('危机回合：重写后仍不过就发固定的关怀兜底（含 12356）', async () => {
@@ -544,32 +589,103 @@ describe('编排（app.ts）', () => {
         assert.deepEqual(chat(cfg, 10001), ['user:[动画表情]', 'assistant:她发了个表情包：白猫捂嘴偷笑']);
     });
 
-    test('照片货架（ADR 0109）：他要看土豆，货架里有 → 提示词列编号、先一句话再发图；聊天记录写成可读的一句；没要的时候模型乱写指令一律清掉', async () => {
+    test('照片货架（ADR 0109）：他要看团子饼，货架里有 → 提示词列编号、先一句话再发图；聊天记录写成可读的一句；没要的时候模型乱写指令一律清掉', async () => {
         const cfg = config({ photos: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
         const source = join(cfg.dataDir, 'cat.jpg');
         writeFileSync(source, 'fake-jpg');
-        const entry = photoShelf({ dir: join(cfg.dataDir, 'photos'), log: () => {} }).add(source, 'cat', '土豆趴在自行车棚顶上晒太阳');
+        const entry = photoShelf({ dir: join(cfg.dataDir, 'photos'), log: () => {} }).add(source, 'cat', '团子饼趴在自行车棚顶上晒太阳');
         let prompt = '';
         const { app, images, sent } = setup(cfg, { 10001: [] }, { generate: messages => { prompt = messages.map(m => m.content).join('\n'); return `翻到一张，上周拍的\n<photo:${entry.id}>`; } });
         await app.connected(SELF);
-        app.receive(event(10001, 1, '发张土豆的照片我看看'));
+        app.receive(event(10001, 1, '发张团子饼的照片我看看'));
         await until(() => images.length === 1);
         assert.equal(images[0], `10001:${join(cfg.dataDir, 'photos', 'files', `${entry.id}.jpg`)}:[照片]`);
-        assert.match(prompt, new RegExp(`<photo:${entry.id}>：土豆趴在自行车棚顶上晒太阳`));
+        assert.match(prompt, new RegExp(`<photo:${entry.id}>：团子饼趴在自行车棚顶上晒太阳`));
         assert.match(prompt, /以前拍的/);
         assert.deepEqual(sent.map(m => m.replace(/^10001:/, '')), ['翻到一张，上周拍的']);
-        assert.deepEqual(chat(cfg, 10001), ['user:发张土豆的照片我看看', 'assistant:翻到一张，上周拍的', `assistant:她发了张照片：土豆趴在自行车棚顶上晒太阳`]);
+        assert.deepEqual(chat(cfg, 10001), ['user:发张团子饼的照片我看看', 'assistant:翻到一张，上周拍的', `assistant:她发了张照片：团子饼趴在自行车棚顶上晒太阳`]);
 
         // 没要的时候：模型自己写了照片指令，清掉、不发图
         const quiet = config({ photos: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
         writeFileSync(join(quiet.dataDir, 'cat.jpg'), 'fake-jpg');
-        const quietEntry = photoShelf({ dir: join(quiet.dataDir, 'photos'), log: () => {} }).add(join(quiet.dataDir, 'cat.jpg'), 'cat', '土豆晒太阳');
+        const quietEntry = photoShelf({ dir: join(quiet.dataDir, 'photos'), log: () => {} }).add(join(quiet.dataDir, 'cat.jpg'), 'cat', '团子饼晒太阳');
         const second = setup(quiet, { 10001: [] }, { generate: () => `今天好冷\n<photo:${quietEntry.id}>` });
         await second.app.connected(SELF);
         second.app.receive(event(10001, 2, '今天好冷啊'));
         await until(() => second.sent.length >= 1);
         assert.equal(second.images.length, 0);
         assert.ok(second.sent.every(m => !m.includes('<photo')));
+    });
+
+    test('活bot无需重启即可发现独立photo-cli新增的照片并发送', async () => {
+        const cfg = config({ photos: true, contacts: [{ qq: 10001, name: '合成人', tier: 'boyfriend' }] });
+        const source = join(cfg.dataDir, 'synthetic-live-cat.jpg'); writeFileSync(source, 'synthetic-live-cat');
+        let photoId = ''; let prompt = '';
+        const { app, images } = setup(cfg, { 10001: [] }, { generate: messages => {
+            prompt = messages.map(message => message.content).join('\n'); return `<photo:${photoId}>`;
+        } });
+        try {
+            await app.connected(SELF);
+            execFileSync(process.execPath, [resolve(import.meta.dirname, '../src/ops/photo-cli.ts'), 'add', source,
+                '--dir', cfg.dataDir, '--kind', 'cat', '--caption', '合成新增猫照'], { encoding: 'utf8', timeout: 10_000 });
+            photoId = (JSON.parse(readFileSync(join(cfg.dataDir, 'photos', 'index.json'), 'utf8')) as { entries: { id: string }[] }).entries[0]!.id;
+            app.receive(event(10001, 204, '发张团子饼的照片我看看'));
+            await until(() => prompt !== '');
+            assert.ok(prompt.includes(`<photo:${photoId}>`), '候选从独立CLI最新索引读取，不沿用启动时空货架');
+            await until(() => images.length === 1);
+            assert.match(images[0]!, new RegExp(photoId));
+            await until(() => chat(cfg, 10001).some(line => line.includes('她发了张照片：合成新增猫照')));
+        } finally { app.stop(); }
+    });
+
+    test('照片清理后打字时缓存丢失明确失败，不发内部指令或伪造图片历史', async () => {
+        const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
+        const cfg = config({ photos: true, schedule: true, typingStatus: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        const input = join(cfg.dataDir, 'synthetic-late-cat.jpg'); writeFileSync(input, 'synthetic-late-photo');
+        const entry = photoShelf({ dir: join(cfg.dataDir, 'photos'), log: () => {} }).add(input, 'cat', '合成缓存猫');
+        const cache = join(cfg.dataDir, 'photos', 'files', entry.file); let generated = false; let removedAfterClean = false;
+        const { app, images, sent, logs } = setup(cfg, { 10001: [] }, { clock, retryAfterMs: [],
+            generate: () => { generated = true; assert.ok(existsSync(cache)); return `这是之前翻到的那张合成照片\n<photo:${entry.id}>`; },
+            setInputStatus: async () => { if (!removedAfterClean) { assert.ok(generated); rmSync(cache); removedAfterClean = true; } },
+        });
+        try {
+            await app.connected(SELF);
+            app.receive({ ...event(10001, 202, '发张团子饼的照片我看看'), time: Math.floor(clock.now() / 1000) });
+            const deadline = Date.now() + 12_000;
+            while (!sent.some(line => /<photo:/i.test(line)) && !logs.some(line => /回复失败/.test(line)) && Date.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, 20)); const next = clock.nextTimer(); if (next !== undefined) clock.advanceTo(next);
+            }
+            assert.ok(removedAfterClean, '由打字回调确定性地在清理后移除缓存');
+            assert.equal(images.length, 0);
+            assert.ok(sent.every(line => !/<photo:/i.test(line)));
+            assert.ok(chat(cfg, 10001).every(line => !line.includes('她发了张照片：')));
+            assert.ok(logs.some(line => /照片发送前已不可用/.test(line)));
+        } finally { app.stop(); }
+    });
+
+    test('照片已发送后使用次数提交失败仍保留成功ID和可读历史，不触发重发', async () => {
+        const cfg = config({ photos: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
+        const source = join(cfg.dataDir, 'synthetic-cat.jpg'); writeFileSync(source, 'synthetic-photo-bytes');
+        const entry = photoShelf({ dir: join(cfg.dataDir, 'photos'), log: () => {} }).add(source, 'cat', '合成猫趴在地面上');
+        const indexFile = join(cfg.dataDir, 'photos', 'index.json'); const originalIndex = readFileSync(indexFile, 'utf8');
+        const { app, images, logs } = setup(cfg, { 10001: [] }, { generate: () => `<photo:${entry.id}>` });
+        await app.connected(SELF);
+        const originalRename = fileOps.renameSync; let failedCommits = 0;
+        fileOps.renameSync = (from, to) => { if (to === indexFile) { failedCommits++; throw new Error('PRIVATE_PHOTO_INDEX_FAILURE'); } return originalRename(from, to); };
+        try {
+            app.receive(event(10001, 201, '发张团子饼的照片我看看'));
+            await until(() => images.length === 1);
+            const stored = new ChatHistory(cfg.dataDir).load(10001);
+            const sent = stored.filter(message => message.role === 'assistant');
+            assert.equal(failedCommits, 1, '注入仅命中成功发送后的使用次数提交');
+            assert.equal(images.length, 1);
+            assert.deepEqual(sent.map(message => [message.content, message.messageId]), [['她发了张照片：合成猫趴在地面上', 900]]);
+            assert.equal(readFileSync(indexFile, 'utf8'), originalIndex, '副索引提交失败保持原文件');
+            assert.equal(photoAllowance(stored, Date.now()).allowed, false, '重复间隔取自已发送聊天事实，不依赖used计数');
+            assert.ok(logs.some(line => /使用记录.*失败/.test(line)));
+            assert.ok(logs.every(line => !line.includes('PRIVATE_PHOTO_INDEX_FAILURE')));
+            assert.ok(logs.every(line => !/回复失败/.test(line)));
+        } finally { fileOps.renameSync = originalRename; }
     });
 
     test('照片货架：第一次找被限流（429）→ 过一会儿自己再来一次，最多 PHOTO_RETRY_MAX 次；找到就不再重试', async () => {
@@ -593,6 +709,67 @@ describe('编排（app.ts）', () => {
         await new Promise(r => setTimeout(r, 120));
         assert.equal(searches, before, '收到了就不再重试');
         app.stop();
+    });
+
+    test('同ID照片并发发送按本次确认消息保存说明，CLI改说明后正序/乱序完成不串历史', async () => {
+        for (const order of [[10002, 10001], [10001, 10002]]) {
+            const clock = new VirtualClock(new Date(2026, 10, 5, 15));
+            const cfg = config({ photos: true, contacts: [{ qq: 10001, name: '合成人甲', tier: 'boyfriend' }, { qq: 10002, name: '合成人乙', tier: 'boyfriend' }] });
+            cfg.characterCard = join(cfg.dataDir, 'synthetic-{tier}.json');
+            for (const tier of ['boyfriend', 'boyfriend-open']) writeFileSync(join(cfg.dataDir, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
+            const source = join(cfg.dataDir, 'synthetic-receipt.jpg'); writeFileSync(source, 'synthetic-receipt-photo');
+            const root = join(cfg.dataDir, 'photos'); const cli = photoShelf({ dir: root, log: () => {} });
+            const entry = cli.add(source, 'cat', '合成说明甲'); const token = `<photo:${entry.id}>`;
+            const held = new Map<number, () => void>();
+            const { app, logs, images } = setup(cfg, { 10001: [], 10002: [] }, { clock, retryAfterMs: [], generate: () => token,
+                extra: { sendPrivateImage: userId => new Promise(resolve => held.set(userId, () => resolve(userId + 1000))) },
+            });
+            const pump = async (check: () => boolean) => {
+                const deadline = Date.now() + 6000;
+                while (!check() && Date.now() < deadline) { await new Promise(resolve => setTimeout(resolve, 10)); const next = clock.nextTimer(); if (next !== undefined) clock.advanceTo(next); }
+                assert.ok(check(), '受控并发发送/历史检查未完成');
+            };
+            try {
+                await app.connected(SELF);
+                app.receive({ ...event(10001, 301, '发张团子饼的照片我看看'), time: Math.floor(clock.now() / 1000) });
+                await pump(() => held.has(10001));
+                cli.remove(entry.id); cli.add(source, 'cat', '合成说明乙');
+                app.receive({ ...event(10002, 302, '发张团子饼的照片我看看'), time: Math.floor(clock.now() / 1000) });
+                await pump(() => held.has(10002));
+                // 两次发送已经取得各自快照；其后删除、损坏索引也不能改变已确认图片历史。
+                cli.remove(entry.id); writeFileSync(join(root, 'index.json'), 'PRIVATE_BROKEN_INDEX');
+                for (const qq of order) {
+                    held.get(qq)!();
+                    await pump(() => new ChatHistory(cfg.dataDir).load(qq).some(message => message.role === 'assistant'));
+                }
+                for (const [qq, caption] of [[10001, '合成说明甲'], [10002, '合成说明乙']] as const) {
+                    const sent = new ChatHistory(cfg.dataDir).load(qq).filter(message => message.role === 'assistant');
+                    assert.deepEqual(sent.map(message => [message.messageId, message.content]), [[qq + 1000, `她发了张照片：${caption}`]]);
+                }
+                assert.equal(images.length, 2);
+                assert.ok(logs.every(line => !line.includes('PRIVATE_BROKEN_INDEX')));
+            } finally { for (const release of held.values()) release(); app.stop(); }
+        }
+    });
+
+    test('app停止后在途找图晚返回不下载或写入货架', async () => {
+        const cfg = config({ photos: true });
+        let release!: () => void; let searched = false; let downloads = 0;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const source: PhotoSource = {
+            search: async kind => { searched = true; await gate; return [{ kind, title: 'synthetic-late', pageUrl: 'https://example.org/page', imageUrl: 'https://example.org/photo', width: 3000, height: 2000, license: 'CC0', artist: '', series: 'synthetic' }]; },
+            download: async () => { downloads++; return { bytes: new Uint8Array(150 * 1024), type: 'image/jpeg' }; },
+            judge: async () => ({ keep: true, caption: '合成晚返回照片' }),
+        };
+        const { app } = setup(cfg, { 10001: [] }, { photoSource: source });
+        try {
+            await app.connected(SELF); await until(() => searched);
+            app.stop(); release();
+            await new Promise<void>(resolve => setImmediate(resolve));
+            assert.equal(downloads, 0);
+            assert.equal(existsSync(join(cfg.dataDir, 'photos', 'index.json')), false);
+            assert.equal(existsSync(join(cfg.dataDir, 'photos', 'files')), false);
+        } finally { release(); app.stop(); }
     });
 
     test('照片货架没开 / 货架空：他要看照片也不发图（照旧走“先不发”）', async () => {
@@ -1172,7 +1349,7 @@ describe('编排（app.ts）', () => {
         const cfg = config({ herDays: true, contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
         const { app, sent, logs } = setup(cfg, { 10002: [historyMessage(1, 10002, '在吗', 5)] });
         assert.ok(logs.includes('她自己的日子：开（每日心情、在读的书、进度数字的检查）'), '作息关着时没有看书的空闲活动');
-        assert.equal(logs.filter(l => /^她自己的日子：今天（\d\d-\d\d）：心情 .+（.+）；在读 药屋少女的呢喃 第 \d+ 卷、惹金枝 /.test(l)).length, 1);
+        assert.equal(logs.filter(l => /^她自己的日子：今天（\d\d-\d\d）：心情 .+（.+）；在读 雾港旧事( 第 \d+ 章| 读完了)、纸飞机物语 第 \d+ 话（放下了）$/.test(l)).length, 1);
         await app.connected(SELF);
         await until(() => sent.length > 0);
         const prompt = JSON.parse(readFileSync(join(cfg.dataDir, 'last-prompt.json'), 'utf8')) as { messages: { content: string }[] };
@@ -1182,7 +1359,7 @@ describe('编排（app.ts）', () => {
         const today = app.status().today!;
         assert.match(today.day, /^\d{4}-\d{2}-\d{2}$/);
         assert.equal(typeof today.mood!.name, 'string');
-        assert.deepEqual(today.books.map(book => [book.title, book.unit, book.putDown]), [['药屋少女的呢喃', '卷', false], ['惹金枝', '章', false], ['恰似寒光遇骄阳', '章', true], ['人间草木', '篇', false]]);
+        assert.deepEqual(today.books.map(book => [book.title, book.unit, book.putDown]), [['雾港旧事', '章', false], ['纸飞机物语', '话', true]]);
         assert.equal(app.status().herDays, true);
 
         const off = setup(config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] }));
@@ -1558,6 +1735,70 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         assert.deepEqual(chat(cfg, 10001).filter(m => m.startsWith('user:')), ['user:[语音：你下课了吗]', 'user:[图片，上面写着：期中考试安排]']);
     });
 
+    test('短ID复用：live按来源去重，同秒不同原始序号都进入历史', async () => {
+        const cfg = config(); const run = setup(cfg, { 10001: [] });
+        await run.app.connected(SELF);
+        const first = { ...event(10001, 700, '第一条'), real_seq: '9007199254740992' };
+        run.app.receive(first); run.app.receive(first);
+        run.app.receive({ ...first, time: first.time + 1, real_seq: '9007199254740993', message: [{ type: 'text', data: { text: '后一秒' } }] });
+        run.app.receive({ ...first, real_seq: '9007199254740994', message: [{ type: 'text', data: { text: '同秒另一条' } }] });
+        const rows = new ChatHistory(cfg.dataDir).load(10001).filter(row => row.role === 'user');
+        assert.deepEqual(rows.map(row => row.content), ['第一条', '后一秒', '同秒另一条']);
+        assert.deepEqual(rows.map(row => row.messageSeq), ['9007199254740992', '9007199254740993', '9007199254740994']);
+        run.app.stop();
+    });
+
+    test('畸形来源时间在实时和同步补回排队入口安全忽略，不能降级成弱身份', async () => {
+        const cfg = config(); let release!: () => void;
+        const holdHistory = new Promise<void>(resolve => { release = resolve; });
+        const run = setup(cfg, { 10001: [] }, { holdHistory });
+        const incoming = { ...event(99999, 700, '合成畸形来源'), time: 1e100 };
+        assert.doesNotThrow(() => run.app.receive(incoming));
+        const connected = run.app.connected(SELF);
+        await until(() => run.asked.length > 0);
+        run.app.receive(incoming);
+        run.app.receive({ ...incoming, user_id: 10001 });
+        release(); await assert.doesNotReject(connected);
+        assert.deepEqual(new ChatHistory(cfg.dataDir).load(10001), []);
+        assert.equal(run.sent.length, 0);
+        assert.ok(run.logs.some(line => line.includes('来源身份无效')));
+        run.app.stop();
+    });
+
+    test('两个联系人同短ID同源秒同序号，媒体解析结果仍按联系人隔离', async () => {
+        const cfg = config({ contacts: [{ qq: 10001, name: '合成甲', tier: 'boyfriend' }, { qq: 10002, name: '合成乙', tier: 'classmate' }] });
+        const fake = napcat({}, { 'https://x/peer-a.png': ['甲的图'], 'https://x/peer-b.png': ['乙的图'] });
+        const run = setup(cfg, { 10001: [], 10002: [] }, { media: fake.media });
+        await run.app.connected(SELF); fake.hold();
+        const sourceAt = nowSec();
+        run.app.receive({ ...mediaEvent(10001, 700, photoSegment('https://x/peer-a.png')), time: sourceAt, real_seq: '1' });
+        run.app.receive({ ...mediaEvent(10002, 700, photoSegment('https://x/peer-b.png')), time: sourceAt, real_seq: '1' });
+        await until(() => fake.calls.ocr.length === 2);
+        fake.release();
+        await until(() => chat(cfg, 10001).some(line => line.startsWith('user:')) && chat(cfg, 10002).some(line => line.startsWith('user:')));
+        assert.deepEqual(chat(cfg, 10001).filter(line => line.startsWith('user:')), ['user:[图片，上面写着：甲的图]']);
+        assert.deepEqual(chat(cfg, 10002).filter(line => line.startsWith('user:')), ['user:[图片，上面写着：乙的图]']);
+        run.app.stop();
+    });
+
+    test('媒体补回等待期间live复用短ID，两个源图片不合并也不被等待后的ID过滤吞掉', async () => {
+        const cfg = config(); const sourceAt = nowSec();
+        new ChatHistory(cfg.dataDir).append(10001, { role: 'user', time: new Date((sourceAt - 10) * 1000).toISOString(), messageId: 700, messageSeq: '1', content: '旧事实' });
+        const fake = napcat({}, { 'https://x/first.png': ['图一'], 'https://x/second.png': ['图二'] });
+        const run = setup(cfg, { 10001: [
+            { message_id: 700, real_seq: '2', time: sourceAt - 5, sender: { user_id: 10001 }, message: photoSegment('https://x/first.png') },
+            { message_id: 700, real_seq: '3', time: sourceAt, sender: { user_id: 10001 }, message: photoSegment('https://x/second.png') },
+        ] }, { media: fake.media });
+        fake.hold(); const connected = run.app.connected(SELF);
+        await until(() => fake.calls.ocr.length === 2);
+        run.app.receive({ ...event(10001, 700, '实时新事实'), real_seq: '4', time: sourceAt + 1 });
+        fake.release(); await connected;
+        const rows = new ChatHistory(cfg.dataDir).load(10001).filter(row => row.role === 'user');
+        assert.deepEqual(new Set(rows.map(row => row.content)), new Set(['旧事实', '实时新事实', '[图片，上面写着：图一]', '[图片，上面写着：图二]']));
+        assert.equal(rows.length, 4);
+        run.app.stop();
+    });
+
     test('读的时候后面来的话排在后面，顺序不乱；没字的图（NapCat 不回）超时退回「[图片]」，回复不卡住', async () => {
         const cfg = config();
         const fake = napcat({}, { 'https://x/cat.jpg': 'hang' });
@@ -1628,12 +1869,12 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
     test('knowsBot: true 的联系人，危机回合要换的承认版卡缺了就启动报错（不再静默退回原卡；DSH 10-15 复核 0067 问题 1）', () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-cards-'));
         dirs.push(dir);
-        const source = join(repoRoot, 'characters/linmengyao/st');
-        for (const file of ['linmengyao-classmate.json', 'linmengyao-scenes-classmate.json']) copyFileSync(join(source, file), join(dir, file));
-        const cfg = config({ characterCard: join(dir, 'linmengyao-{tier}.json'), contacts: [{ qq: 10001, name: '阿明', tier: 'classmate', knowsBot: true }] });
+        const source = syntheticStDir;
+        for (const file of ['synthetic-classmate.json', 'synthetic-scenes-classmate.json']) copyFileSync(join(source, file), join(dir, file));
+        const cfg = config({ characterCard: join(dir, 'synthetic-{tier}.json'), contacts: [{ qq: 10001, name: '阿明', tier: 'classmate', knowsBot: true }] });
         assert.throws(() => setup(cfg, {}), /classmate-open/);
         // 补上承认版就起得来
-        for (const file of ['linmengyao-classmate-open.json', 'linmengyao-scenes-classmate-open.json']) copyFileSync(join(source, file), join(dir, file));
+        for (const file of ['synthetic-classmate-open.json', 'synthetic-scenes-classmate-open.json']) copyFileSync(join(source, file), join(dir, file));
         const ok = setup(cfg, {});
         assert.ok(ok.logs.some(l => l.startsWith('档位 classmate-open：')), '启动时就读了承认版');
     });
@@ -1817,7 +2058,8 @@ describe('反馈通道（ADR 0073）：男朋友档回「假」/「像」', () =
         const { app, sent, logs } = setup(cfg);
         app.receive(event(10001, 1, '在吗'));
         await until(() => sent.length === 1);
-        app.receive(event(10001, 2, '假'));
+        const feedbackEvent = event(10001, 2, '假');
+        app.receive(feedbackEvent);
         await until(() => feedbackRows(cfg).length === 1);
         assert.equal(sent.length, 1, '她没有回应这个字');
         assert.deepEqual(chat(cfg, 10001), ['user:在吗', 'assistant:好'], '不进聊天记录');
@@ -1829,7 +2071,7 @@ describe('反馈通道（ADR 0073）：男朋友档回「假」/「像」', () =
         await until(() => feedbackRows(cfg).length === 2);
         assert.deepEqual(feedbackRows(cfg)[1], { ...feedbackRows(cfg)[1]!, label: 'real', messageId: 3, herMessageId: 900 });
         // 入口重投同一条：吞掉、不再记
-        app.receive(event(10001, 2, '假'));
+        app.receive(feedbackEvent);
         await new Promise(r => setTimeout(r, 100));
         assert.equal(feedbackRows(cfg).length, 2);
         assert.equal(sent.length, 1);
@@ -1982,7 +2224,7 @@ describe('戳一戳（ADR 0079，配置 pokes）', () => {
     });
 
     test('她睡着、在上课时的戳不算（日志记在干什么，不进聊天记录、不排回复）；空闲时算', async () => {
-        const schedule = loadCharacterCard(resolve(repoRoot, 'characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;
+        const schedule = loadCharacterCard(syntheticCardPath('boyfriend')).schedule!;
         let classTime: Date | undefined;
         for (let minute = 8 * 60; minute < 18 * 60 && !classTime; minute++) {
             const at = new Date(2026, 9, 12, 0, minute);
@@ -2417,7 +2659,7 @@ describe('她知道自己在 QQ 上的样子（ADR 0083）：进提示词', () =
         mkdirSync(join(cfg.dataDir, 'presence'), { recursive: true });
         const now = clock.now();
         writeFileSync(join(cfg.dataDir, 'presence', 'presence.json'), JSON.stringify({
-            version: 1, signature: { text: '土豆又胖了', at: now - 86_400_000, next: now + 3 * 86_400_000 },
+            version: 1, signature: { text: '团子饼又胖了', at: now - 86_400_000, next: now + 3 * 86_400_000 },
             qzone: [{ at: now - 20 * 3_600_000, text: '今天的云好看', photo: 'a.jpg', tid: 't1', mode: 'on' }], photosUsed: ['a.jpg'],
         }));
         const seen: string[] = [];
@@ -2432,9 +2674,9 @@ describe('她知道自己在 QQ 上的样子（ADR 0083）：进提示词', () =
         }
         assert.equal(sent.length, 1);
         const prompt = seen.at(-1)!;
-        assert.match(prompt, /个性签名现在是「土豆又胖了」/);
+        assert.match(prompt, /个性签名现在是「团子饼又胖了」/);
         assert.match(prompt, /发了一条说说「今天的云好看」，配了一张图/);
-        assert.ok(!logs.some(l => l.includes('土豆又胖了')), '日志里没有签名原文');
+        assert.ok(!logs.some(l => l.includes('团子饼又胖了')), '日志里没有签名原文');
     });
 });
 
@@ -2713,7 +2955,7 @@ describe('设备控制：他的命令在回复器之前截住（ADR 0148）', ()
         const fake = fakeDevices();
         const { app, sent } = setup(cfg, {}, { startDevices: fake.start });
         await new Promise(r => setTimeout(r, 30));
-        app.receive(event(10001, 2, '/屏幕 看这个'));
+        app.receive({ ...event(10001, 2, '/屏幕 看这个'), real_seq: '9007199254740993' });
         await until(() => sent.length === 1);
         assert.match(sent[0]!, /我跟她说了/);
         assert.deepEqual(chat(cfg, 10001), [], '命令不进聊天记录');

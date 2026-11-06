@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
@@ -12,6 +12,7 @@ import { renderReport } from '../src/sim/report.ts';
 import { runScenario, type SimHindsight } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { SYNTHETIC_CHAR_NAME, syntheticCardPattern } from './fixtures/card.ts';
 
 const u = (content: string, time?: string): ChatMessage => ({ role: 'user', content, ...(time ? { time } : {}) });
 const a = (content: string, time?: string): ChatMessage => ({ role: 'assistant', content, ...(time ? { time } : {}) });
@@ -41,17 +42,17 @@ describe('最近几轮 + 要点（ADR 0043 离线实验）', () => {
 
     test('整理要点的请求带日期和星期、只要事实；后台整理、回复不等，同一段只整理一次；失败过一会儿再试、超时算失败、整理好的存盘', async () => {
         const older = [u('我下周三下午两点面试', '2026-10-07T13:01:00.000Z'), a('可以啊你', '2026-10-07T13:02:00.000Z')];
-        const request = summaryRequest(older, { user: '宝宝', char: '林梦瑶' });
+        const request = summaryRequest(older, { user: '宝宝', char: SYNTHETIC_CHAR_NAME });
         assert.match(request[0]!.content, /只写事实，不写语气/);
         // 摘要事实审计（ADR 0043，10-09 探针）：凌晨的「明天」、改口只写最后结果、谁的事
         assert.match(request[0]!.content, /凌晨（0 点到 5 点）还没睡时说的「明天」/);
         assert.match(request[0]!.content, /合成一条只写最后的结果/);
         assert.match(request[0]!.content, /每条写清楚是谁的事：宝宝的室友/);
-        assert.equal(request[1]!.content, '[10月7日 周三 21:01] 宝宝：我下周三下午两点面试\n[10月7日 周三 21:02] 林梦瑶：可以啊你');
+        assert.equal(request[1]!.content, `[10月7日 周三 21:01] 宝宝：我下周三下午两点面试\n[10月7日 周三 21:02] ${SYNTHETIC_CHAR_NAME}：可以啊你`);
         const logs: string[] = [];
         let calls = 0;
         const summarize = contextSummarizer({
-            names: { user: '宝宝', char: '林梦瑶' },
+            names: { user: '宝宝', char: SYNTHETIC_CHAR_NAME },
             generate: async () => { calls++; return '好的，要点如下：\n- 宝宝 10月14日（周三）下午两点面试\n- 无'; },
             log: line => logs.push(line),
         });
@@ -70,7 +71,7 @@ describe('最近几轮 + 要点（ADR 0043 离线实验）', () => {
         let clock = 0;
         let failures = 0;
         const failing = contextSummarizer({
-            names: { user: '宝宝', char: '林梦瑶' }, now: () => clock,
+            names: { user: '宝宝', char: SYNTHETIC_CHAR_NAME }, now: () => clock,
             generate: async () => { failures++; throw new Error('超时'); }, log: line => logs.push(line),
         });
         assert.deepEqual(failing(older), { ready: false });
@@ -84,7 +85,7 @@ describe('最近几轮 + 要点（ADR 0043 离线实验）', () => {
         assert.equal(failures, 2, '过了 5 分钟再试');
 
         // 模型一直不回：超时算失败，不一直挂着
-        const hanging = contextSummarizer({ names: { user: '宝宝', char: '林梦瑶' }, timeoutMs: 20, generate: () => new Promise(() => {}), log: line => logs.push(line) });
+        const hanging = contextSummarizer({ names: { user: '宝宝', char: SYNTHETIC_CHAR_NAME }, timeoutMs: 20, generate: () => new Promise(() => {}), log: line => logs.push(line) });
         hanging(older);
         await hanging.idle();
         assert.match(logs.at(-1)!, /上下文要点整理失败.*超过 0 秒/);
@@ -94,10 +95,10 @@ describe('最近几轮 + 要点（ADR 0043 离线实验）', () => {
         try {
             const file = join(dir, 'summary.json');
             let saved = 0;
-            const first = contextSummarizer({ names: { user: '宝宝', char: '林梦瑶' }, file, generate: async () => { saved++; return '- 宝宝 10月14日（周三）下午两点面试'; }, log: () => {} });
+            const first = contextSummarizer({ names: { user: '宝宝', char: SYNTHETIC_CHAR_NAME }, file, generate: async () => { saved++; return '- 宝宝 10月14日（周三）下午两点面试'; }, log: () => {} });
             first(older);
             await first.idle();
-            const restarted = contextSummarizer({ names: { user: '宝宝', char: '林梦瑶' }, file, generate: async () => { saved++; return '- 不该再调'; }, log: () => {} });
+            const restarted = contextSummarizer({ names: { user: '宝宝', char: SYNTHETIC_CHAR_NAME }, file, generate: async () => { saved++; return '- 不该再调'; }, log: () => {} });
             assert.deepEqual(restarted(older), { ready: true, text });
             assert.equal(saved, 1);
         } finally {
@@ -106,8 +107,7 @@ describe('最近几轮 + 要点（ADR 0043 离线实验）', () => {
     });
 
     test('模拟器 contextTurns：原文只放最近几轮，更早的要点放进提示词，报告里看得到；不传照旧最近 80 条', async () => {
-        const repoRoot = resolve(import.meta.dirname, '../../..');
-        const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+        const card = loadTierCard(syntheticCardPattern, 'boyfriend');
         const llm: BotConfig['llm'] = {
             baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: '', extraBody: {},
         };

@@ -20,7 +20,7 @@ function setup(replies: (string | Error)[], vision?: ImageDescriber) {
     const seen: OpenAIMessage[][] = [];
     const logs: string[] = [];
     const deps: QzoneComposerDeps = {
-        character: { name: '林梦瑶', description: '大学生，爱拍照', personality: '嘴硬心软', banned: ['济南大学'] },
+        character: { name: '林梦瑶', description: '大学生，爱拍照', personality: '嘴硬心软', banned: ['云杉学院'] },
         generate: async messages => {
             seen.push(messages);
             const next = replies.shift();
@@ -71,9 +71,9 @@ describe('写说说（ADR 0083）', () => {
     });
 
     test('不合格重写（最多 3 次）：网址、禁用词、和最近的重复；三次都不行返回 undefined；模型出错返回 undefined', async () => {
-        const retry = setup(['看这个 https://x.com', '我在济南大学', '昨天的面不错', '终于下课了']);
+        const retry = setup(['看这个 https://x.com', '我在云杉学院', '昨天的面不错', '终于下课了']);
         assert.deepEqual(await retry.compose({ now: 0, recent: ['昨天的面不错'] }), undefined, '前三次都不合格');
-        const ok = setup(['我在济南大学', '昨天的面不错', '终于下课了']);
+        const ok = setup(['我在云杉学院', '昨天的面不错', '终于下课了']);
         assert.deepEqual(await ok.compose({ now: 0, recent: ['昨天的面不错'] }), { text: '终于下课了', withPhoto: false });
         const broken = setup([new Error('模型不可用')]);
         assert.equal(await broken.compose({ now: 0, recent: [] }), undefined);

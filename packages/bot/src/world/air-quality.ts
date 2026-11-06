@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { cacheAgeMs } from './cache-freshness.ts';
 import { sanitizeExternalError } from './external-error.ts';
-import { PLACES, type Place } from './weather.ts';
+import type { Place, WeatherPlace } from './weather.ts';
 
 export interface HourAirQuality { pm25: number; pm10: number; aqi: number; o?: 1 }
 export interface DayAirQuality { pm25: number; pm10: number; aqi: number; category: string; observedAt: string; real: true }
@@ -136,6 +136,8 @@ function dayFrom(hours: Readonly<Record<string, HourAirQuality>>, date: string, 
 
 export interface AirQualityFetcherOptions {
     dir: string;
+    /** 取哪几个地方（卡上的 weather.places，ADR 0334）；id 是缓存文件名 */
+    places: readonly WeatherPlace[];
     log: (message: string) => void;
     now?: () => number;
     fetchJson?: (url: string) => Promise<unknown>;
@@ -150,6 +152,8 @@ export interface AirQualityFetcher extends RealAirQuality { refresh(): Promise<v
 
 export function airQualityFetcher(options: AirQualityFetcherOptions): AirQualityFetcher {
     const now = options.now ?? Date.now;
+    const byId = new Map(options.places.map(place => [place.id, place] as const));
+    if (byId.size !== options.places.length || options.places.some(place => !/^[a-z][a-z0-9_-]*$/.test(place.id))) throw new Error('地点 id 要互不相同，且是小写字母开头的字母、数字、- 或 _');
     const timeoutMs = options.timeoutMs ?? 20_000;
     const cacheMaxAgeMs = options.cacheMaxAgeMs ?? 2 * 60 * 60_000;
     const fetchJson = options.fetchJson ?? (async (url: string) => {
@@ -182,9 +186,9 @@ export function airQualityFetcher(options: AirQualityFetcherOptions): AirQuality
         refresh: () => {
             if (inFlight) return inFlight;
             inFlight = (async () => {
-                for (const place of Object.keys(PLACES) as Place[]) {
+                for (const place of options.places.map(place => place.id)) {
                     try {
-                        const { latitude, longitude } = PLACES[place];
+                        const { latitude, longitude } = byId.get(place)!;
                         const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${latitude}&longitude=${longitude}`
                             + '&hourly=pm2_5,pm10,us_aqi&past_days=2&forecast_days=2&timezone=Asia%2FShanghai';
                         const at = new Date(now());
@@ -198,7 +202,7 @@ export function airQualityFetcher(options: AirQualityFetcherOptions): AirQuality
                     } catch (error) {
                         const reason = sanitizeExternalError(error);
                         errors.set(place, reason); errorAt.set(place, new Date(now()).toISOString());
-                        options.log(`真实空气质量：${PLACES[place].name}没取到，照旧不用它（${reason}）`);
+                        options.log(`真实空气质量：${byId.get(place)?.name ?? place}没取到，照旧不用它（${reason}）`);
                     }
                 }
             })().finally(() => { inFlight = undefined; });
@@ -207,7 +211,7 @@ export function airQualityFetcher(options: AirQualityFetcherOptions): AirQuality
         status: () => {
             const places = {} as Record<Place, AirQualityPlaceStatus>;
             let fetchedAt: string | undefined;
-            for (const place of Object.keys(PLACES) as Place[]) {
+            for (const place of options.places.map(place => place.id)) {
                 const store = load(place);
                 const item: AirQualityPlaceStatus = { hours: Object.keys(store?.hours ?? {}).length };
                 if (store?.fetchedAt) {

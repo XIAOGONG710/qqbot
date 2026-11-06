@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
@@ -19,7 +19,7 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-jokes-')); dirs.push(d); return d; };
 
 const history = chat([
-    ['user', '你又去喂大肘子了吧', 60], ['assistant', '什么大肘子，那是土豆', 59.9],
+    ['user', '你又去喂大肘子了吧', 60], ['assistant', '什么大肘子，那是团子饼', 59.9],
     ['user', '大肘子本肘', 40], ['assistant', '哈哈哈哈', 39.9],
     ['user', '今天吃了啥', 20], ['assistant', '食堂的黄焖鸡', 19.9],
 ]);
@@ -27,7 +27,7 @@ const history = chat([
 describe('从模型回复里挑梗：硬校验', () => {
     test('原样出现至少两条不同消息的才留；编的 / 只出现一次的 / 太短太长 / 来历空的 / 手机号一样的数字都丢', () => {
         const reply = JSON.stringify([
-            { 梗: '大肘子', 来历: '他把土豆叫成大肘子' },
+            { 梗: '大肘子', 来历: '他把团子饼叫成大肘子' },
             { 梗: '黄焖鸡', 来历: '她每天吃' },
             { 梗: '芝麻酥', 来历: '编出来的' },
             { 梗: '肘', 来历: '太短' },
@@ -35,10 +35,10 @@ describe('从模型回复里挑梗：硬校验', () => {
             { 梗: '本肘', 来历: '' },
         ]);
         const jokes = parseJokes(reply, history);
-        assert.deepEqual(jokes, [{ phrase: '大肘子', origin: '他把土豆叫成大肘子' }]);
+        assert.deepEqual(jokes, [{ phrase: '大肘子', origin: '他把团子饼叫成大肘子' }]);
         assert.deepEqual(parseJokes('这里没有 JSON', history), []);
         assert.deepEqual(parseJokes('[坏的', history), []);
-        assert.deepEqual(parseJokes('```json\n[{"梗":"大肘子","来历":"他把土豆叫成大肘子"}]\n```', history).length, 1, '带 markdown 围栏也认');
+        assert.deepEqual(parseJokes('```json\n[{"梗":"大肘子","来历":"他把团子饼叫成大肘子"}]\n```', history).length, 1, '带 markdown 围栏也认');
         assert.deepEqual(parseJokes(JSON.stringify([{ 梗: '13800138000', 来历: '号码' }]), chat([['user', '13800138000', 1], ['assistant', '13800138000', 1]])), []);
     });
 
@@ -60,7 +60,7 @@ describe('隔一阵抽一次', () => {
         let calls = 0;
         const out = await refreshJokes({
             qq: 1, userName: '阿明', charName: '林梦瑶', history: messages, store, now, log: () => {},
-            extract: async () => { calls++; return JSON.stringify([{ 梗: '大肘子', 来历: '他把土豆叫成大肘子' }]); }, ...extra,
+            extract: async () => { calls++; return JSON.stringify([{ 梗: '大肘子', 来历: '他把团子饼叫成大肘子' }]); }, ...extra,
         });
         return { out, calls, store };
     };
@@ -71,7 +71,7 @@ describe('隔一阵抽一次', () => {
         const { out, calls, store } = await ask(many(80), { log: m => logs.push(m) });
         assert.equal(out, true);
         assert.equal(calls, 1);
-        assert.deepEqual(store.load(1).jokes, [{ phrase: '大肘子', origin: '他把土豆叫成大肘子' }]);
+        assert.deepEqual(store.load(1).jokes, [{ phrase: '大肘子', origin: '他把团子饼叫成大肘子' }]);
         assert.ok(logs.every(m => !m.includes('大肘子')));
     });
 
@@ -81,7 +81,7 @@ describe('隔一阵抽一次', () => {
         let calls = 0;
         const run = (h: Said[], when: number) => refreshJokes({
             qq: 1, userName: '阿明', charName: '林梦瑶', history: h, store, now: when, log: () => {},
-            extract: async () => { calls++; return JSON.stringify([{ 梗: '大肘子', 来历: '他把土豆叫成大肘子' }]); },
+            extract: async () => { calls++; return JSON.stringify([{ 梗: '大肘子', 来历: '他把团子饼叫成大肘子' }]); },
         });
         assert.equal(await run(messages, now), true);
         assert.equal(await run(messages, now + JOKES_REFRESH_MS - 1000), false, '20 小时内');
@@ -97,13 +97,15 @@ describe('隔一阵抽一次', () => {
         const dir = tmp();
         writeFileSync(join(dir, '1.json'), '{坏的');
         const logs: string[] = [];
+        // 坏文件来源未知：source 记为 null（失败关闭），不当成可以重建的空白旧文件
         assert.deepEqual(jokeStore({ dir, log: m => logs.push(m) }).load(1), { version: 1, jokes: [], source: null });
         assert.ok(logs.some(m => m.includes('读不了')));
+        assert.equal(readFileSync(join(dir, '1.json'), 'utf8'), '{坏的', '原文件不动');
     });
 });
 
 describe('这一轮给不给她看梗', () => {
-    const jokes: Joke[] = [{ phrase: '大肘子', origin: '他把土豆叫成大肘子' }];
+    const jokes: Joke[] = [{ phrase: '大肘子', origin: '他把团子饼叫成大肘子' }];
     const turn = (n: number): Said[] => [...history.filter(m => !(m.role === 'assistant' && m.content.includes('大肘子'))), { role: 'user' as const, content: `第 ${n} 句闲话`, time: new Date(now - 1000 + n).toISOString() }];
 
     test('约 JOKE_TURN_SHARE 的轮次给；同一句每次一样；给的那一行写明“接得上才提、别解释、别每次都提”', () => {
@@ -111,7 +113,7 @@ describe('这一轮给不给她看梗', () => {
         assert.ok(shown.length > 400 * JOKE_TURN_SHARE * 0.6 && shown.length < 400 * JOKE_TURN_SHARE * 1.5, `400 轮里 ${shown.length}`);
         assert.equal(jokeLine(jokes, turn(7), now), jokeLine(jokes, turn(7), now));
         const line = shown[0]!;
-        assert.ok(line.includes('「大肘子」') && line.includes('来历：他把土豆叫成大肘子') && line.includes('接不上就别提') && line.includes('别解释这个梗'), line);
+        assert.ok(line.includes('「大肘子」') && line.includes('来历：他把团子饼叫成大肘子') && line.includes('接不上就别提') && line.includes('别解释这个梗'), line);
     });
 
     test('她 72 小时内自己说过的梗不再给；过了冷却又给；没有梗就没有', () => {

@@ -3,7 +3,8 @@
 // 时间块（describeDays）提前几天起「明天是平安夜」，其中一部分到了那天由主动消息（dates 时机）带一句。
 // 农历的日子每年落在不同的公历日，所以每条只在换算出的那一年算（ImportantDay.year）。
 import { lunarMonthDay, type ImportantDay } from '../proactive/proactive.ts';
-import type { Schedule } from '../life/schedule.ts';
+import { formatDate, wakeOn, type Schedule } from '../life/schedule.ts';
+import { localDate } from '../local-date.ts';
 
 /** off 不加；notes 只在时间块里提；greet 再加上挑出来的几个节日由她主动说一句 */
 export const FESTIVAL_MODES = ['off', 'notes', 'greet'] as const;
@@ -18,6 +19,9 @@ type Rule =
     | { term: '清明' | '冬至' };
 
 type Window = 'morning' | 'afternoon' | 'evening';
+/** 来源随 JSON/structuredClone 保留，只撤销本模块生成项，不凭节日名字删除作者资料。 */
+type GeneratedFestival = { __qqbotFestival?: 1 };
+const generated = (item: object): boolean => (item as GeneratedFestival).__qqbotFestival === 1;
 
 interface Festival {
     name: string;
@@ -32,7 +36,7 @@ interface Festival {
 
 /**
  * 这一天某个时段她在做的事（进空闲活动，那个时段只从这里挑；日子的名字对上 FESTIVALS）。home：true 只在在家的假期里用，false 只在学校时用，不写都用。
- * 只写事实里已有的（独生女、青岛家里、爸妈、室友），不添新设定；不写吃饭（饭点另有一层）。没写的节日她那天照常过
+ * 只写事实里已有的（独生女、家里、爸妈、室友），不添新设定；不写吃饭（饭点另有一层）。没写的节日她那天照常过
  */
 const DOING: Readonly<Record<string, { window: Window; text: string; home?: boolean }[]>> = {
     除夕: [
@@ -116,7 +120,7 @@ function lunarCalendar(year: number): Map<string, string> {
     const cached = lunarYears.get(year);
     if (cached) return cached;
     const days = new Map<string, string>();
-    for (let date = new Date(year, 0, 1); date.getFullYear() === year; date = new Date(year, date.getMonth(), date.getDate() + 1)) {
+    for (let date = localDate(year, 0, 1); date.getFullYear() === year; date = localDate(year, date.getMonth(), date.getDate() + 1)) {
         const lunar = lunarMonthDay(date);
         // 腊月的日子在一个公历年里可能出现两次（年初是上一个农历年的腊月，年末是下一个的头几天）：留下先出现的
         if (lunar && !days.has(lunar)) days.set(lunar, monthDay(date));
@@ -133,19 +137,21 @@ function dateIn(year: number, rule: Rule, lunarDays: ReadonlyMap<string, string>
     const spring = SPRING_FESTIVAL[year] ?? lunarDays.get('01-01');
     if (!spring) return undefined;
     const [month, day] = spring.split('-').map(Number) as [number, number];
-    return monthDay(new Date(year, month - 1, day + rule.spring));
+    return monthDay(localDate(year, month - 1, day + rule.spring));
 }
 
 /** 这些年的公共节日（ImportantDay，带 year，公历那天）。mode 为 off 时没有 */
 export function festivalDays(years: readonly number[], mode: FestivalMode): ImportantDay[] {
     if (mode !== 'notes' && mode !== 'greet') return [];
     return years.flatMap(year => {
+        if (!Number.isInteger(year) || year < 0 || year > 9999) throw new RangeError('节日年份超出支持范围');
         const lunarDays = lunarCalendar(year);
-        return FESTIVALS.flatMap((festival): ImportantDay[] => {
+        return FESTIVALS.flatMap((festival): (ImportantDay & GeneratedFestival)[] => {
             const date = dateIn(year, festival.rule, lunarDays);
             if (!date) return [];
             const greet = mode === 'greet' ? festival.greet : undefined;
             return [{
+                __qqbotFestival: 1,
                 name: festival.name, date, year, ahead: festival.ahead, ...(festival.hint ? { hint: festival.hint } : {}),
                 ...(greet === 'midnight' ? { midnight: true } : {}),
                 ...(greet ? {} : { silent: true }),
@@ -156,24 +162,46 @@ export function festivalDays(years: readonly number[], mode: FestivalMode): Impo
 
 /** 今年起三年（够一次开着跑很久） */
 export function festivalYears(now: Date): number[] {
-    return [now.getFullYear(), now.getFullYear() + 1, now.getFullYear() + 2];
+    const year = now.getFullYear();
+    if (!Number.isFinite(now.getTime()) || year < 0 || year > 9999) throw new RangeError('节日年份超出支持范围');
+    return [year, year + 1, year + 2].filter(value => value <= 9999);
 }
 
 /** 把公共节日并进一档的重要的日子（读卡时用）；同一个角色对象并两次不会重复（模拟器几次运行共用一张卡） */
 export function withFestivals(dates: readonly ImportantDay[], now: Date, mode: FestivalMode): ImportantDay[] {
-    const have = new Set(dates.filter(d => d.year !== undefined).map(d => `${d.name}:${d.year}`));
-    return [...dates, ...festivalDays(festivalYears(now), mode).filter(d => !have.has(`${d.name}:${d.year}`))];
+    const today = formatDate(now);
+    const haveGenerated = dates.some(generated);
+    const keep = dates.filter(day => !generated(day) || (day.year !== undefined && `${String(day.year).padStart(4, '0')}-${day.date}` < today));
+    const have = new Set(keep.filter(day => day.year !== undefined).map(day => `${day.name}:${day.year}`));
+    return [...keep, ...festivalDays(festivalYears(now), mode).filter(day => !have.has(`${day.name}:${day.year}`)
+        // 首次构造沿用完整年历；对已有生成项的模式切换不倒填、改写已经过去的日期。
+        && (!haveGenerated || `${String(day.year).padStart(4, '0')}-${day.date}` >= today))];
 }
 
 /** 节日这一天某个时段她在做的事（Schedule.free.on 用的格式：公历那天）；notes 和 greet 都有，off 没有 */
 export function festivalActivities(years: readonly number[], mode: FestivalMode): NonNullable<Schedule['free']['on']> {
     if (mode !== 'notes' && mode !== 'greet') return [];
     return festivalDays(years, 'notes').flatMap(day => (DOING[day.name] ?? []).map(item => ({
-        date: `${day.year}-${day.date}`, window: item.window, text: item.text, ...(item.home !== undefined ? { home: item.home } : {}),
+        __qqbotFestival: 1 as const,
+        date: `${String(day.year).padStart(4, '0')}-${day.date}`, window: item.window, text: item.text, ...(item.home !== undefined ? { home: item.home } : {}),
     })));
 }
 
 /** 把节日里她在做的事并进这张卡的作息（读卡时用；重复调用结果一样） */
 export function withFestivalActivities(schedule: Schedule | undefined, now: Date, mode: FestivalMode): void {
-    if (schedule && (mode === 'notes' || mode === 'greet')) schedule.free.on = festivalActivities(festivalYears(now), mode);
+    if (!schedule) return;
+    const previous = schedule.free.on ?? [];
+    const started = (item: NonNullable<Schedule['free']['on']>[number]) => {
+        const day = new Date(`${item.date}T00:00:00`);
+        const start = item.window === 'morning' ? wakeOn(schedule, day)
+            : new Date(`${item.date}T${item.window === 'afternoon' ? schedule.free.afternoonFrom : schedule.free.eveningFrom}:00`);
+        return start <= now;
+    };
+    const keep = previous.filter(item => !generated(item) || started(item));
+    const haveGenerated = previous.some(generated);
+    const key = (item: NonNullable<Schedule['free']['on']>[number]) => JSON.stringify([item.date, item.window, item.home, item.text]);
+    const have = new Set(keep.map(key));
+    const next = festivalActivities(festivalYears(now), mode).filter(item => !have.has(key(item)) && (!haveGenerated || !started(item)));
+    // off 对没有本模块生成项的旧卡保持原样，包括缺省 free.on；不猜删无来源的同名自定义活动。
+    if (haveGenerated || mode === 'notes' || mode === 'greet') schedule.free.on = [...keep, ...next];
 }

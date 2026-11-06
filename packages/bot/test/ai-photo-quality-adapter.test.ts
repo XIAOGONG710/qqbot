@@ -21,7 +21,7 @@ const referenceImage = () => {
 };
 
 const context: AiPhotoContext = {
-    kind: 'cat', eventKey: 'cat:1', subject: '土豆在自行车棚旁边', caption: '土豆在路边待着',
+    kind: 'cat', eventKey: 'cat:1', subject: '团子饼在自行车棚旁边', caption: '团子饼在路边待着',
     at: '2026-11-04T10:20:00.000Z', weather: '阴',
 };
 
@@ -54,7 +54,7 @@ describe('AI 照片质量适配器（ADR 0242）', () => {
         assert.match(received!.dataUrl, /^data:image\/png;base64,/);
         assert.equal(received!.referenceDataUrls?.length, 1);
         assert.match(received!.referenceDataUrls?.[0] ?? '', /^data:image\/png;base64,/);
-        assert.match(received!.prompt, /FACTS=.*土豆在自行车棚旁边/);
+        assert.match(received!.prompt, /FACTS=.*团子饼在自行车棚旁边/);
         assert.match(received!.prompt, /不可信数据/);
     });
 

@@ -6,8 +6,8 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { jokeRefresher, jokeStore, refreshJokes } from '../src/language/jokes.ts';
 
 const now = Date.parse('2026-11-05T12:00:00+08:00'), tick = () => new Promise<void>(done => setImmediate(done));
-const proposal = '[{"梗":"星云土豆","来历":"合成聊天玩笑"}]';
-function source() { return Array.from({ length: 42 }, (_, i) => ({ role: i % 2 ? 'assistant' as const : 'user' as const, content: `星云土豆 合成对话${i}`, time: new Date(now - (42 - i) * 1000).toISOString() })); }
+const proposal = '[{"梗":"星云团子饼","来历":"合成聊天玩笑"}]';
+function source() { return Array.from({ length: 42 }, (_, i) => ({ role: i % 2 ? 'assistant' as const : 'user' as const, content: `星云团子饼 合成对话${i}`, time: new Date(now - (42 - i) * 1000).toISOString() })); }
 function temp() {
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-jokes-stop-')), store = jokeStore({ dir, log() {} });
     return { dir, store, path: join(dir, '10001.json'), options: { qq: 10001, userName: '合成甲', charName: '合成乙', history: source(), store, now, log() {} }, clean() {
@@ -40,7 +40,7 @@ test('小梗正常确认文件stop后保留，新owner/standalone遵守既有刷
     const options = { ...f.options, extract: async () => { calls++; return proposal; } };
     let next: ReturnType<typeof jokeRefresher> | undefined;
     try {
-        assert.equal(await owner.refresh(options), true); const saved = readFileSync(f.path, 'utf8'); assert.equal(f.store.load(10001).jokes[0]?.phrase, '星云土豆');
+        assert.equal(await owner.refresh(options), true); const saved = readFileSync(f.path, 'utf8'); assert.equal(f.store.load(10001).jokes[0]?.phrase, '星云团子饼');
         await owner.stop(); assert.equal(await owner.refresh(options), false); assert.equal(readFileSync(f.path, 'utf8'), saved);
         next = jokeRefresher(); assert.equal(await next.refresh(options), false); assert.equal(await refreshJokes(options), false); assert.equal(calls, 1);
     } finally { await owner.stop(); await next?.stop(); f.clean(); }
@@ -74,7 +74,7 @@ test('来源正常尾追加允许原快照提交，进度只记模型实际消�
     const task = owner.refresh({ ...f.options, history: messages, freshHistory: () => messages, extract: () => held });
     try {
         await tick(); messages.push({ role: 'user', content: '合成正常新消息', time: new Date(now).toISOString() });
-        release(proposal); assert.equal(await task, true); assert.equal(f.store.load(10001).messageCount, 42); assert.equal(f.store.load(10001).jokes[0]?.phrase, '星云土豆');
+        release(proposal); assert.equal(await task, true); assert.equal(f.store.load(10001).messageCount, 42); assert.equal(f.store.load(10001).jokes[0]?.phrase, '星云团子饼');
     } finally { release('[]'); await task; await owner.stop(); f.clean(); }
 });
 
@@ -88,7 +88,7 @@ test('在途后来源读取EIO明确失败，不保存旧正文或进度', async
 });
 
 test('未取消的provider失败仍向宿主报告，不伪称成功或改已确认文件', async () => {
-    const f = temp(), owner = jokeRefresher(); f.store.save(10001, { version: 1, jokes: [{ phrase: '星云土豆', origin: '合成已确认' }] });
+    const f = temp(), owner = jokeRefresher(); f.store.save(10001, { version: 1, jokes: [{ phrase: '星云团子饼', origin: '合成已确认' }] });
     const before = readFileSync(f.path, 'utf8');
     try { await assert.rejects(owner.refresh({ ...f.options, extract: async () => { throw new Error('SYNTHETIC_PROVIDER_FAILURE'); } }), /SYNTHETIC_PROVIDER_FAILURE/); assert.equal(readFileSync(f.path, 'utf8'), before); }
     finally { await owner.stop(); f.clean(); }

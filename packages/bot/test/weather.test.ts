@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { dayPlan } from '../src/life/day-plan.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { dayFrom, firstRealDay, mergeHours, parseOpenMeteo, useRealWeather, weatherFetcher, weatherText, type HourWeather, type RealWeather } from '../src/world/weather.ts';
 import { describeWeather, describeWorld, worldAt } from '../src/world/world.ts';
+import { syntheticCardPath, SYNTHETIC_WEATHER_PLACES } from './fixtures/card.ts';
 
 const at = (iso: string) => new Date(`${iso}+08:00`);
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -119,7 +120,7 @@ describe('真实天气（ADR 0048）', () => {
         let fail = false;
         let clock = at('2026-10-16T03:30:00').getTime();
         const urls: string[] = [];
-        const fetcher = weatherFetcher({
+        const fetcher = weatherFetcher({ places: SYNTHETIC_WEATHER_PLACES,
             dir, log: m => logs.push(m), now: () => clock,
             fetchJson: async url => {
                 urls.push(url);
@@ -132,18 +133,18 @@ describe('真实天气（ADR 0048）', () => {
         try {
             await fetcher.refresh();
             assert.equal(urls.length, 2);
-            assert.match(urls[0]!, /latitude=36\.65&longitude=117\.12.*timezone=Asia%2FShanghai/);
-            const saved = JSON.parse(readFileSync(join(dir, 'jinan.json'), 'utf8'));
+            assert.match(urls[0]!, /latitude=30\.5&longitude=110\.5.*timezone=Asia%2FShanghai/);
+            const saved = JSON.parse(readFileSync(join(dir, 'school-town.json'), 'utf8'));
             assert.equal(saved.since, '2026-10-16', '凌晨 3 点取到：当天就用');
-            assert.equal(fetcher.day('jinan', '2026-10-15', at('2026-10-16T14:30:00')), undefined, '开始用之前的日子照旧生成');
-            assert.deepEqual(fetcher.day('jinan', '2026-10-16', at('2026-10-16T14:30:00'))!.rainHours, [], '9 点的雨 3 点取时还只是预报');
+            assert.equal(fetcher.day('school-town', '2026-10-15', at('2026-10-16T14:30:00')), undefined, '开始用之前的日子照旧生成');
+            assert.deepEqual(fetcher.day('school-town', '2026-10-16', at('2026-10-16T14:30:00'))!.rainHours, [], '9 点的雨 3 点取时还只是预报');
             clock = at('2026-10-16T14:30:00').getTime();
             await fetcher.refresh();
-            assert.deepEqual(fetcher.day('jinan', '2026-10-16', at('2026-10-16T14:30:00'))!.rainHours, [9], '14:30 再取，9 点成了实况');
+            assert.deepEqual(fetcher.day('school-town', '2026-10-16', at('2026-10-16T14:30:00'))!.rainHours, [9], '14:30 再取，9 点成了实况');
             fail = true;
             await fetcher.refresh();
-            assert.ok(logs.some(line => /济南没取到，照旧用存着的（timeout）/.test(line)));
-            assert.deepEqual(fetcher.day('jinan', '2026-10-16', at('2026-10-16T14:30:00'))!.rainHours, [9]);
+            assert.ok(logs.some(line => /雾岚市没取到，照旧用存着的（timeout）/.test(line)));
+            assert.deepEqual(fetcher.day('school-town', '2026-10-16', at('2026-10-16T14:30:00'))!.rainHours, [9]);
         } finally {
             rmSync(root, { recursive: true, force: true });
         }
@@ -153,16 +154,16 @@ describe('真实天气（ADR 0048）', () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-weather-invalid-'));
         const dir = join(root, 'weather');
         mkdirSync(dir);
-        writeFileSync(join(dir, 'jinan.json'), JSON.stringify({
+        writeFileSync(join(dir, 'school-town.json'), JSON.stringify({
             since: '2026-10-16', fetchedAt: '2026-10-16T03:30:00.000Z',
             hours: { '2026-10-16T08': { t: 'cold', p: 0, c: 2 } },
         }));
         const logs: string[] = [];
         try {
-            const fetcher = weatherFetcher({ dir, log: message => logs.push(message), provider: { id: 'unused', fetchHourly: async () => ({}) } });
-            assert.equal(fetcher.day('jinan', '2026-10-16', at('2026-10-16T12:00:00')), undefined);
-            assert.equal(existsSync(join(dir, 'jinan.json')), false);
-            assert.ok(readdirSync(dir).some(name => name.startsWith('jinan.json.corrupt-')));
+            const fetcher = weatherFetcher({ places: SYNTHETIC_WEATHER_PLACES, dir, log: message => logs.push(message), provider: { id: 'unused', fetchHourly: async () => ({}) } });
+            assert.equal(fetcher.day('school-town', '2026-10-16', at('2026-10-16T12:00:00')), undefined);
+            assert.equal(existsSync(join(dir, 'school-town.json')), false);
+            assert.ok(readdirSync(dir).some(name => name.startsWith('school-town.json.corrupt-')));
             assert.ok(logs.some(message => message.includes('天气缓存') && message.includes('挪到')));
         } finally {
             rmSync(root, { recursive: true, force: true });
@@ -174,7 +175,7 @@ describe('真实天气（ADR 0048）', () => {
         const dir = join(root, 'bot', 'weather');
         let calls = 0;
         let reject = false;
-        const fetcher = weatherFetcher({
+        const fetcher = weatherFetcher({ places: SYNTHETIC_WEATHER_PLACES,
             dir, log: () => {}, now: () => at('2026-10-16T03:30:00').getTime(),
             fetchJson: async () => {
                 calls++;
@@ -190,11 +191,11 @@ describe('真实天气（ADR 0048）', () => {
             assert.equal(calls, 2, '两个地点各请求一次');
             const status = fetcher.status();
             assert.ok(status.fetchedAt);
-            assert.equal(status.places.jinan.hours, 24);
+            assert.equal(status.places['school-town']!.hours, 24);
             reject = true;
             await fetcher.refresh();
-            assert.equal(fetcher.status().places.jinan.error, '公开天气服务超时');
-            assert.equal(fetcher.status().places.jinan.hours, 24, '失败保留缓存');
+            assert.equal(fetcher.status().places['school-town']!.error, '公开天气服务超时');
+            assert.equal(fetcher.status().places['school-town']!.hours, 24, '失败保留缓存');
         } finally {
             rmSync(root, { recursive: true, force: true });
         }
@@ -207,10 +208,10 @@ describe('真实天气（ADR 0048）', () => {
         const logs: string[] = [];
         try {
             globalThis.fetch = (async () => ({ ok: true, text: async () => 'x'.repeat(2 * 1024 * 1024 + 1) })) as unknown as typeof fetch;
-            const fetcher = weatherFetcher({ dir, log: message => logs.push(message), now: () => at('2026-10-16T03:30:00').getTime() });
+            const fetcher = weatherFetcher({ places: SYNTHETIC_WEATHER_PLACES, dir, log: message => logs.push(message), now: () => at('2026-10-16T03:30:00').getTime() });
             await fetcher.refresh();
-            assert.equal(fetcher.status().places.jinan.error, '天气服务响应过大');
-            assert.equal(fetcher.status().places.jinan.hours, 0);
+            assert.equal(fetcher.status().places['school-town']!.error, '天气服务响应过大');
+            assert.equal(fetcher.status().places['school-town']!.hours, 0);
             assert.ok(logs.every(message => message.includes('天气服务响应过大')));
         } finally {
             globalThis.fetch = originalFetch;
@@ -224,26 +225,26 @@ describe('真实天气（ADR 0048）', () => {
         let now = at('2026-10-16T03:00:00').getTime();
         const provider = {
             id: 'test-provider',
-            async fetchHourly(request: { place: 'jinan' | 'qingdao'; latitude: number; longitude: number; signal: AbortSignal }) {
+            async fetchHourly(request: { place: string; latitude: number; longitude: number; signal: AbortSignal }) {
                 calls.push(`${request.place}:${request.latitude},${request.longitude}`);
                 const hours = hoursOf('2026-10-16');
                 // 供应商可能混入脏数据；weatherFetcher 应过滤非法键和值，而不是把它们写进世界账。
                 return { ...hours, 'not-a-time': { t: 20, p: 0, c: 2 }, '2026-10-16T24': { t: 999, p: 0, c: 2 } };
             },
         };
-        const fetcher = weatherFetcher({ dir: join(root, 'weather'), log: () => {}, now: () => now, provider, cacheMaxAgeMs: 1 });
+        const fetcher = weatherFetcher({ places: SYNTHETIC_WEATHER_PLACES, dir: join(root, 'weather'), log: () => {}, now: () => now, provider, cacheMaxAgeMs: 1 });
         try {
             await fetcher.refresh();
             now -= 120_000;
-            assert.equal(fetcher.status().places.jinan.stale, true, '缓存时间明显在未来时标为陈旧');
-            assert.equal(fetcher.day('jinan', '2026-10-16', at('2026-10-16T12:00:00')), undefined, '未来缓存不能进入世界');
+            assert.equal(fetcher.status().places['school-town']!.stale, true, '缓存时间明显在未来时标为陈旧');
+            assert.equal(fetcher.day('school-town', '2026-10-16', at('2026-10-16T12:00:00')), undefined, '未来缓存不能进入世界');
             now += 120_005;
             const status = fetcher.status();
             assert.equal(status.provider, 'test-provider');
             assert.equal(calls.length, 2);
-            assert.equal(status.places.jinan.hours, 24);
-            assert.equal(status.places.jinan.stale, true);
-            assert.equal(fetcher.day('jinan', '2026-10-16', at('2026-10-16T12:00:00'))?.real, true);
+            assert.equal(status.places['school-town']!.hours, 24);
+            assert.equal(status.places['school-town']!.stale, true);
+            assert.equal(fetcher.day('school-town', '2026-10-16', at('2026-10-16T12:00:00'))?.real, true);
         } finally {
             rmSync(root, { recursive: true, force: true });
         }
@@ -251,11 +252,11 @@ describe('真实天气（ADR 0048）', () => {
 });
 
 describe('真实天气进她的世界（ADR 0048）', () => {
-    const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+    const card = loadCharacterCard(syntheticCardPath('boyfriend'));
     const schedule = card.schedule!;
     const herWorld = card.herWorld!;
     const fake = (rain: number[]): RealWeather => ({
-        day: (place, date, until) => (place === 'jinan' && date === '2026-10-20' ? dayFrom(hoursOf('2026-10-20', rain), date, until) : undefined),
+        day: (place, date, until) => (place === 'school-town' && date === '2026-10-20' ? dayFrom(hoursOf('2026-10-20', rain), date, until) : undefined),
     });
 
     test('有数据的日子用真实的（生成的那天下雨，实际没下）；没数据的照旧', () => {
@@ -280,8 +281,10 @@ describe('真实天气进她的世界（ADR 0048）', () => {
     });
 
     test('一天的打算看那个时段：下午才下的雨不改上午出门的打算', () => {
-        const day = new Date(2026, 9, 20);
-        const byWindow = (rainHours: number[]) => Object.fromEntries(dayPlan(schedule, herWorld.plans, day, { rain: rainHours.length > 0, rainHours })
+        // 合成卡 10-14 上午打算「拿胶片机去湖边拍照」（出门）、下午「带新胶片机去操场转转」；合成卡的出门打算里没有下午的，测试补一条
+        const day = new Date(2026, 9, 14);
+        const plans = { ...herWorld.plans!, outings: [...herWorld.plans!.outings, { text: '带新胶片机去操场转转', indoors: '在宿舍整理照片' }] };
+        const byWindow = (rainHours: number[]) => Object.fromEntries(dayPlan(schedule, plans, day, { rain: rainHours.length > 0, rainHours })
             .map(slot => [slot.window, slot.because ?? '照打算']));
         assert.deepEqual(byWindow([15]), { morning: '照打算', afternoon: '下雨了', evening: '照打算' });
         assert.deepEqual(byWindow([9]), { morning: '下雨了', afternoon: '照打算', evening: '照打算' });

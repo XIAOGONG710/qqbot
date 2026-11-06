@@ -9,6 +9,7 @@ import { ChatHistory } from '../src/memory/history.ts';
 import type { MessageEvent } from '../src/platform/onebot.ts';
 import { AI_MARK, greetingOnly, markSignature, MINOR_NOTICE, minorHint, STRANGER_DAILY, strangerGuard } from '../src/social/strangers.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 // ADR 0209（用户 11-02）：陌生人从签名知道她是 AI；签名没写明之前不回；每天上限；只打招呼先不回；未成年人不陪
 const dirs: string[] = [];
@@ -62,7 +63,7 @@ describe('陌生人：进应用', () => {
         const cfg = {
             llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
             prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
-            characterCard: join(resolve(import.meta.dirname, '../../..'), 'characters/linmengyao/st/linmengyao-{tier}.json'),
+            characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend', knowsBot: true }],
             unlistedFriends: true, schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false,
             lifeInPrompt: false, grievance: false, feedbackCommands: false, realWeather: false, media: true,

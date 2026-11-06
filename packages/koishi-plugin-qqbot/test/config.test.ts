@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { DEFAULTS, parseAppConfig } from '../../bot/src/platform/config.ts';
+import { canonicalTimeZone } from '../../bot/src/platform/time-zone.ts';
 import { Config, migrateThinking, mountMobileCompanion, thinkingBody, toAppConfigInput } from '../src/index.ts';
 import type { CompanionWebSocketLike } from '@qqbot/mobile-companion/websocket';
 
@@ -402,4 +403,20 @@ test('实例模板 koishi.example.yml 里的 qqbot 一节能读，不需要迁�
     const config = Config(example.plugins.qqbot as never);
     assert.equal(migrateThinking(config), undefined);
     assert.equal(fromKoishi(example.plugins.qqbot).contacts.length, 1);
+});
+
+describe('她的时区（ADR 0331）：控制台里自由选择', () => {
+    test('不写是上海；下拉里任何一个时区都能选并原样进配置；列表之外的 IANA 名走「其他」手填也行', () => {
+        assert.equal(fromKoishi(minimal).timeZone, 'Asia/Shanghai');
+        for (const zone of ['Asia/Tokyo', 'America/St_Johns', 'Pacific/Kiritimati', 'UTC']) {
+            assert.equal(fromKoishi({ ...minimal, timeZone: zone }).timeZone, zone);
+        }
+        // 老别名不在 Node 的规范列表里，但仍是合法的 IANA 名；存下来的是规范写法
+        assert.equal(fromKoishi({ ...minimal, timeZone: 'Asia/Calcutta' }).timeZone, canonicalTimeZone('Asia/Calcutta'));
+    });
+
+    test('表单校验放行任意字符串（交给 parseAppConfig 报清楚的错），写错的时区不会静默变成上海', () => {
+        assert.doesNotThrow(() => Config({ ...minimal, timeZone: 'Mars/Olympus' } as never));
+        assert.throws(() => fromKoishi({ ...minimal, timeZone: 'Mars/Olympus' }), /不是认识的时区/);
+    });
 });

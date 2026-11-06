@@ -8,6 +8,7 @@ import {
     applyGuessDecision, emptyGuessesState, EXPIRE_DAYS, findGuessCandidates, freshGuess, guessesLine, guessesPath, loadGuessesState, NOTE_MAX, parseGuessDecision,
     pendingWorld, reviewGuessesIfDue, saveGuessesState, TEXT_MAX, worldFactsBetween, type Guess, type GuessesState, type WorldFact,
 } from '../src/life/her-guesses.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 import { PRIVATE_FILES } from '../src/platform/private-space.ts';
 import { GUESS_THEME, thinkNote, WATCH_THEME, type InnerThought } from '../src/proactive/inner.ts';
 import { withInner } from '../src/proactive/proactive.ts';
@@ -256,7 +257,7 @@ describe('她猜的事：到点对一次（整个流程）', () => {
 });
 
 describe('她猜的事：计划器（想事情时想这一件）', () => {
-    const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+    const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
     const planners: Planner[] = [];
     const dirs: string[] = [];
     afterEach(() => { for (const p of planners.splice(0)) p.stop(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });

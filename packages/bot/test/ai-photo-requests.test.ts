@@ -94,14 +94,14 @@ test('世界照片事件只在发生后建立带稳定事件键的事实上下�
         const fed = new Date(`${date}T08:00:00+08:00`);
         const world: WorldNow = {
             day: date, atSchool: true,
-            cat: { name: '土豆', today: { fed, seen: true }, yesterdayFed: true, foodDays: 3 },
+            cat: { name: '团子饼', today: { fed, seen: true }, yesterdayFed: true, foodDays: 3 },
             parcels: [], homework: [], events: [],
         };
         found = worldAiPhotoContexts(world, new Date(`${date}T23:00:00+08:00`)).find(value => value.kind === 'cat');
     }
     assert.ok(found);
     assert.match(found.eventKey, /^world:cat_photo:/);
-    assert.equal(found.subject.includes('土豆'), true);
+    assert.equal(found.subject.includes('团子饼'), true);
 });
 
 test('QQ 当前照片请求不拿旧图：无审核图先请求，有精确审核图才返回编号', async () => {

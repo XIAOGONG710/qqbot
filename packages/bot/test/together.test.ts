@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { blockReason, candidatesOn, type Candidate, type ProactiveInput } from '../src/proactive/proactive.ts';
 import { activityOf, describeTogether, TOGETHER_MAX_MS, togetherNow } from '../src/language/together.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // ADR 0111：答应邀约之后的两三个小时，她正和他一起玩
 const t = (h: number, m = 0) => new Date(2026, 9, 24, h, m).getTime();
@@ -61,7 +61,7 @@ describe('陪玩状态：谁邀谁答应', () => {
 });
 
 describe('陪玩状态：这段时间不插别的主动消息', () => {
-    const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+    const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
     const input = (patch: Partial<ProactiveInput> = {}): ProactiveInput => ({
         qq: 10001, schedule: boyfriend.schedule!, settings: boyfriend.proactive!, dates: [], history: [], records: [], mode: 'on', ...patch,
     });

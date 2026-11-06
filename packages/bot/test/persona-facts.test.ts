@@ -3,13 +3,14 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { personaFacts } from '../src/platform/contact.ts';
+import { syntheticStDir } from './fixtures/card.ts';
 
-const CARDS = resolve(import.meta.dirname, '../../../characters/linmengyao/st');
+const CARDS = syntheticStDir;
 const SECTION = (head: string) => `【${head}】`;
 
 describe('设定只留事实（personaFacts，DSH 10-30）', () => {
     test('事实段留下；心事 / 口癖与称呼 / 会变拿掉；开头那句没有标题的也不要', () => {
-        const text = ['林梦瑶，在读大学生。', '【和他的关系】对门邻居。', '【心事】怕被冷落。', '【口癖与称呼】爱说“哎呀”。', '【家】济南。', '【会变】越熟越嘴硬。', '【被问是不是 AI】承认。'].join('\n');
+        const text = ['林梦瑶，在读大学生。', '【和他的关系】对门邻居。', '【心事】怕被冷落。', '【口癖与称呼】爱说“哎呀”。', '【家】雾岚市。', '【会变】越熟越嘴硬。', '【被问是不是 AI】承认。'].join('\n');
         const facts = personaFacts(text);
         for (const head of ['和他的关系', '家', '被问是不是 AI']) assert.ok(facts.includes(SECTION(head)), head);
         for (const head of ['心事', '口癖与称呼', '会变']) assert.equal(facts.includes(SECTION(head)), false, head);

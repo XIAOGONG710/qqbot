@@ -5,6 +5,8 @@
 // - describeObstacles：他提到见面时放进时间块的一行（只给事实，是否推、怎么说由她定）。
 
 import type { BodyNow } from '../life/body.ts';
+import { createHash } from 'node:crypto';
+import { localDate } from '../local-date.ts';
 import { unwell } from '../life/body.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from '../life/promises.ts';
 import { classesOn, formatDate, herDay, type Schedule } from '../life/schedule.ts';
@@ -19,7 +21,7 @@ export type ObstacleKind = (typeof OBSTACLE_KINDS)[number];
 
 export interface Obstacle {
     kind: ObstacleKind;
-    /** 事实 id：`class:<日期>:<课>`、`homework:<到期时刻>`、`unwell:<日期>`、`meet:<约的 id>` */
+    /** 事实 id：class / homework / unwell / meet 前缀；作业含到期与完成时刻及来源指纹，不包含原始课程名。 */
     id: string;
     /** 一句事实，不带时间（「有课（机房课）」）；日志和说明里用 */
     text: string;
@@ -44,7 +46,7 @@ const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) => aStart.
 /** 她的一天从睡觉时刻（schedule.sleep，02:00）起算到第二天的这个时刻：herDay 的另一头，身体那一类的窗口用它（原来写成 [D 00:00, D+1 02:00)，凌晨两小时会算到前一天的身上） */
 function herDayWindow(schedule: Schedule, day: Date): { start: Date; end: Date } {
     const [h, m] = schedule.sleep.split(':').map(Number);
-    return { start: new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m), end: new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, h, m) };
+    return { start: localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m), end: localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1, h, m) };
 }
 
 function lessonName(facts: ObstacleFacts, lesson: ReturnType<typeof classesOn>['lessons'][number]): string {
@@ -66,7 +68,7 @@ function unwellText(body: BodyNow): string {
 export function obstaclesBetween(from: Date, to: Date, facts: ObstacleFacts, exclude?: string): Obstacle[] {
     const found = new Map<string, Obstacle>();
     const put = (obstacle: Obstacle) => { if (!found.has(obstacle.id)) found.set(obstacle.id, obstacle); };
-    for (let day = herDay(facts.schedule, from); day.getTime() < to.getTime(); day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)) {
+    for (let day = herDay(facts.schedule, from); day.getTime() < to.getTime(); day = localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1)) {
         const date = formatDate(day);
         for (const lesson of classesOn(facts.schedule, day).lessons) {
             if (!overlaps(lesson.start, lesson.end, from, to)) continue;
@@ -75,10 +77,10 @@ export function obstaclesBetween(from: Date, to: Date, facts: ObstacleFacts, exc
                 text: `有课（${lessonName(facts, lesson)}，${clock(lesson.start)}–${clock(lesson.end)}）`,
             });
         }
-        const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+        const dayStart = localDate(day.getFullYear(), day.getMonth(), day.getDate());
         const own = herDayWindow(facts.schedule, day);
         if (facts.bodyAt && overlaps(own.start, own.end, from, to)) {
-            const body = facts.bodyAt(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 15));
+            const body = facts.bodyAt(localDate(day.getFullYear(), day.getMonth(), day.getDate(), 15));
             if (unwell(body)) put({ kind: 'unwell', id: `unwell:${date}`, start: own.start, end: own.end, text: unwellText(body) });
         }
         const world = facts.worldAt?.(from.getTime() > dayStart.getTime() ? from : dayStart);
@@ -86,8 +88,9 @@ export function obstaclesBetween(from: Date, to: Date, facts: ObstacleFacts, exc
             if (h.done || h.due.getTime() - h.doneAt.getTime() > DAY_MS) continue;
             const start = new Date(h.doneAt.getTime() - OCCUPATION_MINUTES.homework * 60_000);
             if (!overlaps(start, h.doneAt, from, to)) continue;
+            const identity = createHash('sha256').update(JSON.stringify([h.course ?? '', h.assigned ?? ''])).digest('hex').slice(0, 16);
             put({
-                kind: 'homework', id: `homework:${h.due.getTime()}`, start, end: h.doneAt, ...(h.assigned ? { assigned: h.assigned } : {}),
+                kind: 'homework', id: `homework:${h.due.getTime()}:${h.doneAt.getTime()}:${identity}`, start, end: h.doneAt, ...(h.assigned ? { assigned: h.assigned } : {}),
                 text: `要赶作业${h.course ? `（${h.course}）` : ''}，${clock(h.doneAt)} 左右写完`,
             });
         }
@@ -129,7 +132,7 @@ const LINES_MAX = 6;
  * 凌晨一点他说「今天晚上一起吃饭」，原来算成已经过去的那一天，整桶丢掉（DSH 10-15 复核 0066 问题 1）
  */
 export function meetupDays(text: string, today: Date, now?: Date): Date[] {
-    const plus = (n: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + n);
+    const plus = (n: number) => localDate(today.getFullYear(), today.getMonth(), today.getDate() + n);
     const late = now !== undefined && formatDate(now) !== formatDate(today) ? 1 : 0;
     const dayIndex = (word: string) => WEEKDAYS.indexOf(word === '天' ? '日' : word);
     // 周一为一周的开头：下周X = 下一个周一再往后数
@@ -158,10 +161,10 @@ export function meetupDays(text: string, today: Date, now?: Date): Date[] {
 export function describeObstacles(days: readonly Date[], now: Date, facts: ObstacleFacts): string | undefined {
     const today = herDay(facts.schedule, now);
     // 「今天 / 明天」按日历日叫（凌晨一点他说的今天是日历上的今天）；身体那类只认她的那一天，不把前一个她的一天的身体说成「明天整天」
-    const calendarToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const calendarToday = localDate(now.getFullYear(), now.getMonth(), now.getDate());
     const lines: string[] = [];
     for (const day of days) {
-        const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+        const dayStart = localDate(day.getFullYear(), day.getMonth(), day.getDate());
         const from = new Date(Math.max(now.getTime(), dayStart.getTime()));
         const to = new Date(dayStart.getTime() + DAY_MS);
         if (from.getTime() >= to.getTime()) continue;

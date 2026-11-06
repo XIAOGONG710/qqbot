@@ -1,6 +1,8 @@
 # 记忆与数据：深入审查（进行中）
 
-阶段一。全部操作使用合成聊天、临时目录、假 API；未访问真实 runtime，未连接真实记忆库、模型或 QQ。此前模块完成不代表记忆模块完成。
+阶段一。修复复现实验使用合成聊天、临时目录和假API；未访问真实runtime，未连接真实记忆库、模型或QQ。此前模块完成不代表记忆模块完成。
+
+**验证资料范围更正（第十一批）**：此前“全部操作使用合成资料/未读取角色资料”的表述过宽；既有全量回归中有用例加载仓库角色卡。第十一批副代理也误跑了9项旧diary用例（两张仓库卡），已明确停止该类执行并重跑剔除它们的合成集；没有把卡或正文外发给服务。历史测试通过数量仍是当时实际结果，但不能据此称全合成。本轮主代理仅执行已确认以临时合成卡/假API工作的463项集合和全仓类型检查，没有新跑全仓测试；463项不冒充完整仓库覆盖。后续验证须先识别fixture来源，角色卡依赖用例在合成化之前不运行，不改弱断言凑绿。
 
 ## 文件与数据流清单
 
@@ -86,7 +88,7 @@
 
 新增37项正式回归：存储19、完整App14、缓冲IO1、隐私/归档3。关键原始媒体、缓冲丢载荷、脏观察及清单遗漏均有旧实现红灯证据；应用层全部使用临时合成角色卡、假语音/OCR/历史/模型，网络访问计数严格为0。最终全量2763/2763通过（bot2616、转换61、Koishi47、移动35、PWA4），全仓类型、模块登记4项及差异检查通过；记忆审查累计新增108项回归。
 
-本地独立提交：`6d12da19`持久预约/观察/追加守界，`b115dfbe`应用接线与恢复，`97230647`隐私/归档覆盖。未推送、未部署，原未跟踪AGENTS.md仍未提交。M20已确认的待媒体撤回窗口完成本批处理，仍保留ADR0301/0302所述协议边界；整个记忆模块未完成。
+本地独立提交：`6d12da19`持久预约/观察/追加守界，`b115dfbe`应用接线与恢复，`97230647`隐私/归档覆盖。未推送、未部署，原未跟踪AGENTS.md仍未提交。M20已确认的待媒体撤回窗口完成本批处理，仍保留ADR0301/0239所述协议边界；整个记忆模块未完成。
 
 ### 下一组已确认、未修复：long-term
 
@@ -187,3 +189,553 @@
 - 本地代码提交：`fa603d38`集中屏障状态，`ea4fde46`读取/生成调用链，`b5ef949c`隐私及归档；未推送、未部署，原未跟踪AGENTS.md保留。
 
 整个记忆模块未完成，后续先处理M33并继续M32b自动修订/有证据解封；不转入下一模块或社区比较。
+
+## 第七批：承诺来源修订、因果恢复与世界事实幂等
+
+第六批M33段落保留了当时未修的提取等待、同计数与重启反例，**本批已修下述有证据的M33路径，并处理独立发现的M34事实ID碰撞**。[repro/memory-promise-recall.mjs](repro/memory-promise-recall.mjs)现已改成正确行为探针：退出0表示拒绝迟到旧结果、对fresh同消息数来源重新抽取且重启不恢复旧约，不再以复现缺陷作为成功。该探针仍不安装world回调；世界相关结论仅限下述单独验证，不扩大旧证据。协议见[ADR0330](../adr/0330-promise-source-effects-and-world-identity.md)。
+
+- **M33，early与闭段统一来源**：PromiseState保持version1，新增可选sources、attemptSources、promiseVersions、loopVersions、uncertainSources。成功来源记录phase、完整片段count/digest及承诺/未了事项的最小before/after效果；失败尝试进度独立保存，不把当前摘要填成旧成功证明。闭段并不等于用户已经被回复，闭段同样核对来源，已extracted的片段发生可证变化时仍能重抽。
+- **M33，提取输入双重证据**：提取前冻结片段count/digest、称呼和有效pending/loops上下文，历史读取及world回调的片段参数隔离别名。成功或失败返回后复核当前片段及fresh来源投影后的上下文；任一实际输入失效则丢整次结果，不resolved、不执行world回调、不标early/完成或消耗新来源失败次数。另一来源撤回导致旧pending失效也能拒绝结果。无关的新user-only片段不在原prompt证据中，不因整联系人历史变化而使旧有效提取反复饥饿。
+- **M33，恢复原约而非只删early**：改地点、改期、取消、resolved及loops使用统一按ID因果版本和before/after效果，删除保留必要tombstone。来源失效时，只恢复仍匹配自己version与after像的效果；后来有效来源已接管的记录不回滚，多个失效来源按可核对版本链还原。重复同open的变更保留最初已确认base，不把上次临时改约当成已确认before。正式回归覆盖early/closed跨片段更新与取消、原约恢复、闭段新增和loop恢复、后来写者及重启；不是整份state回滚，也不是猜所有历史旧约取消。
+- **M33，读口即时核对**：describe、openLoops、plans与约见排期在使用前读取fresh来源并投影，不等下一次sync才停止使用失效来源。已提交prefix未变时，正常追加和助手后来回复不误伤原约，危机keep沿既有政策保留。每次读口对每个联系人至多一次history.load和一次split，复用episode索引；plans和约见排期不再先available后重复加载。长期仍有效的未来early即使旧计数裁剪，也保留来源和恢复依据。
+- **M33，未知与无约严格分开**：真实ChatHistory提取后删除临时JSONL已先红复现；来源文件缺失、活片段消失或截短时，日历和日记来源不可确认，不能通过自动undo变成空日历。恢复完整原文件后原约可重新核对；过期且没有活效果的缺源记录不永久阻塞日历。合法旧v1/无version及未知扩展保持兼容；旧状态有可信recalled证据却已丢before像时，持久记uncertainSources并保持待核实，不凭当前值重造原约。没有明确撤回证据时不批量取消旧记录。
+- **M33，元数据矛盾失败关闭**：完整校验来源、尝试、before/after、版本与tombstone形状，效果ID匹配且每来源每ID唯一。同一namespace、record ID、effect.version被不同来源认领会使恢复结果依JSON顺序变化，现拒绝该矛盾状态；beforeVersion不要求对应来源永远存在，允许合法裁剪。旧合法ID如constructor、__proto__按自有键字面读写版本，不把原型继承属性当已有版本或误暂停联系人；两ID在同一正式case先红后绿。
+- **M34，世界事实身份已处理本批碰撞**：真实PromiseKeeper与世界状态合成回归证明，世界写入成功、承诺进度EIO后重新抽取，模型数组从单笔10变成20、10的重排，会因旧位置ID把20吞掉。新conversation事实ID在既有验证与语义去重后，取contact、episode、kind、有效分钟、amount、target、subject的稳定摘要，不依数组位置。覆盖重排、部分成功、同分钟不同金额/目标及真正keeper进度写失败重试；旧ID保留，原同日/同金额/同目标等保守合并政策不变，不将该证据夸大为所有消费/世界动作均已去重。
+
+### 本批保证以外的恢复与事务边界
+
+本批不会自动逆改已经实际落入世界的动作或物理事实。M34稳定ID使已确认事实的重试不再因数组顺序碰撞，不能据此宣称撤回会自动撤销旧世界账，或模型抽取和所有存储已组成事务。承诺进度与世界事件仍是两份发布；外部手工写者、多实例竞争、强杀前未持久观察和任意网络exactly-once不在保证内。
+
+已经丢失的legacy before像仍无法自动恢复；uncertainSources不能靠一轮fresh模型或手工删字段假装确认。元数据及版本仍被活效果依赖时不能为限量而丢弃，坏状态保原件等待可信恢复。来源、before/after和进度保存在原专属promises文件，既有隐私清单覆盖；未新增包含原文的公开日志。
+
+**M32b自动派生修订worker与有证据解封继续open**，ADR0305的读取/生成屏障仍生效。本批承诺恢复与世界事实幂等不构成模型重建完成证据，不能解除derived guard；下一步继续该独立修订链及剩余记忆审查，不把本轮修复称为整个记忆协议完成。
+
+### 第七批验证与提交状态
+
+本批正式新增40项回归：承诺来源/因果22（21项revision及1项合法原型同名ID对照）、真实App4、来源schema7、世界事实7；记忆审查累计新增274项。新增覆盖关键错误行为的旧红证据、正常追加/已回复/危机keep对照、缺源与恢复、因果链及重启。全部使用临时合成资料、假提取/API和故障注入，未访问真实runtime、QQ、外部模型或私密角色资料，未部署。
+
+主代理最终确认115项定向组合、全仓类型和完整2929/2929测试通过（bot2782、转换61、Koishi47、移动35、PWA4）。整合后继续补真实缺源和矛盾owner检查，以及合法原型同名ID的先红后绿回归；没有在中间类型迁移状态或原型ID失败版本提交。
+
+- 最终全量结果：2929/2929通过，新增40项，记忆审查累计274项。
+- 最终life/world/memory三模块生成文档一致，模块登记4项、全仓类型及Git差异检查通过。
+- 本地代码提交：`2717f391`世界事实重试身份，`1ba7710a`承诺来源/因果投影协议；未推送、未部署，原未跟踪AGENTS.md保留。
+
+整个记忆模块仍未完成，不转入下一模块或社区比较。
+
+## 第八批：M32b私有关系模型的自动修复子集
+
+新增DerivedRepair有限状态机、固定版SDK证据接口和derived.json v2事件/租约/收据。旧模型读取保护不撤销，而是只有可信单一私人bank、完整已完成QQ来源前缀、精确服务器文档hash及唯一自有模型匹配时才开始。fresh统计同时检查pending/failed consolidation，完整分页检查未结/失败/取消任务；暂停自动刷新并重新等静止，clear读回空内容，再用full、原始world/experience、排除mental models及总结/chunks的安全来源刷新。独立UUID操作完成、typed outcome、严格is_stale=false、配置/目录与精确水位再核验，恢复原auto/间隔之后CAS提交新读取世代。未知、失败、保留旧正文outcome和坏状态不解封。
+
+- **稳定来源与收据**：撤回按真实角色/源时间/消息ID/序号集合生成稳定事件键，重复启动扫描不再次污染已修事件；新撤回增加世代。v1精确已知来源可经完整证据修复，未知allDocuments保留。源文件/进度有缺失不能仅靠当前模型推断安全。
+- **同步接线**：真实LongTerm按已完成retained前缀冻结manifest；阶段进行时普通追加仍保存在本地，不改变已确认远端来源，成功后继续正常同步。新撤回立即使旧来源失效并先修订源文档。修复停止取消纯读、等待已派mutation及确认检查点；重启从持久阶段续跑。接线只在完整真实SDK能力存在时开启，旧fake或自定义不完整API不冒充修复器。
+- **新增M31前缀余波**：此前pending比较完整episode，合法追加也被判正文变化，not_found不能重交原前缀且错误增加派生污染。现以原count前缀核验，不改不可变原派发意图；真实撤回改变前缀仍禁止重放。正式回归用旧HEAD LongTerm运行时替换确认失败，再对当前源码通过。
+- **跨世代未知HTTP旁路**：并行故障复核实证，原auto=false、旧refresh丢ACK无UUID后，新污染可换lease重建并解封，旧HTTP仍可能迟到。新增全journal未结扫描，store begin/commit及worker入口共同阻绕过；覆盖六类未结阶段。已派ACK仍允许归属旧journal确认，但不能清新事件。
+- **缓存世代**：关系、公共印象与实体缓存绑定持久读取世代；另一已缓存旧关系的实例也不能在新收据后复活旧正文。正常未修订追加的十分钟策略不变。
+- **审计和隐私**：配置/clear/refresh/restore只记bank/model/阶段等元数据，不读取模型正文；刷新只记录accepted且操作UUID只保存hash，不伪称completed。保原ACK及可选接口能力，账本失败不影响主ACK。四类新记录纳严格bank或公共person-owner归属，不凭正文猜人；共享链导出/遗忘保留策略不变。
+
+### 必须保留的修复边界
+
+模型收据不等于历史观测全部净化。官方v0.10.2孤儿观察回归明确：旧bug产生的观察可仍有效、可召回，而指向已不存在的源事实，不会再被consolidation选中。当前fresh统计不检查这种完整性。故本批只解私人relationship模型和已核对原始片段事实；所有曾污染bank的observation在请求与返回两侧仍排除，其他未污染bank原策略保持。公共含跨联系人和日记/周记/阶段总结的派生来源，旧进度无完整输入manifest，继续屏障，不猜删既有已回复事实。
+
+旧世代refresh-pending即使已有UUID，新污染后目前尚无自动settlement仲裁；正式边界回归确认它继续blocked，而不是把可查询证据冒充本实现已处理。旧无UUID/不明ACK、failed/cancelled任务、未知文档/模型及坏高级状态同样需核实恢复。此限制保安全但可能暂停该联系人自动修复，不能手改generation或删journal解锁。后续可实现带独立事实证据的旧世代收尾，以及官方DELETE observations对应的完整清理/重建协议；都必须先排空旧任务并持久记录未知派发，不能只请求删除即宣称干净。
+
+### 第八批最终验证检查点
+
+新增51项正式回归：SDK12、store12、worker12、真实LongTerm8、审计5、隐私2；记忆累计新增325项。store既有10项加新增全部为61项定向，全部通过。另原LongTerm/model/lifecycle/schema30项、审计13项、隐私14项通过，模块登记4项和全仓类型通过；最终完整2980/2980通过（bot2833、转换61、Koishi47、移动35、PWA4），全仓类型与差异检查均通过。旧HEAD LongTerm运行时替换的3个实际行为对照全部失败（未启动修复、pending合法追加、旧缓存恢复），当前8项整合通过；SDK/审计/隐私及跨世代缺口另有先红后绿证据。首轮脚本Windows import路径格式错误不算旧红证据，已改file URL后重跑得到上述断言失败。
+
+ADR0307记录范围、固定版本依据和恢复限制。代码本地提交`342a1e2a`。本批所有资料均为合成事件/临时文件、假HTTP/API和故障注入，未访问真实运行时或模型/数据库，未部署、未推送。记忆模块仍未完成。下一步先接续旧世代已知UUID收尾与独立观察重建/证据，公共日记/总结来源依赖及directretain协议不能用本批私人收据冒充已完成；其余模块待审边界保持。
+
+## 第九批：旧世代known UUID收尾与独立任务身份
+
+实际LongTerm新回归先红：第一次撤回已开始refresh-pending，第二次撤回改变generation；即使服务端后来completed，新来源仍永久blocked。现用严格typed settlement追加旧任务已结束的事实，保留原phase/evidence/新事件/世代，不恢复旧auto、不以旧正文解新污染。新lease承接当前safe paused配置必须有原auto/间隔/模型身份/配置匹配的已settled证据，随后独立重新clear/full/完成核验/恢复auto/CAS。每次最多仲裁一个旧job，无无限轮询；未知无UUID、失败/取消/404/preserved及证据不符继续保护。
+
+独立交叉复核又发现UUID证据复用：第二refresh返回旧UUID、查询只给旧content_written时，新clear后的空模型仍可被误认作新重建成功。临时反例及正式worker回归均实证，已修为同bank每个刷新UUID唯一lease归属（大小写规范化）：worker ACK、store checkpoint及持久schema三处守界，同lease重复ACK允许；跨lease复用保refresh-dispatched未知，不盲改UUID/重POST。
+
+新增17项正式回归：store5、worker7、真实LongTerm5，记忆累计新增342项。覆盖旧新来源、跨重启、await后再撤回、stop取消纯读/晚返回、仅新配置ACK收尾、fresh pending/failed/四态静止、错绑定/配置、发布前后IO与旧UUID复用。此前的“knownUUID跨世代必须人工”边界case改为独立重建后的正确行为，并保留未知及不支持outcome对照。主代理78项最终定向、全仓类型、模块登记4项、差异检查均通过；最终完整2997/2997通过（bot2850、转换61、Koishi47、移动35、PWA4）。代码本地提交`91b71b66`，ADR0308；未推送/部署，AGENTS.md未跟踪状态保留。
+
+### 观察重建只读研究结论：尚未实现
+
+固定v0.10.2 PostgreSQL DELETE observations确实在单事务清所有观察/历史并重置raw fact整合进度，不删raw文档或mental models，不清failed标记，也不自动重建；需另派consolidate并等待全部后继链。同步DELETE没有请求UUID，timeout后原HTTP可能迟到；读回零或第二次DELETE成功仍不能证明第一请求不再执行，不能自动重试后立即重建。fresh stats水位是现存行max(updated_at)，删除后可下降，不应任意要求递增。非PG分支的百万源扫描和外部store事务不同，不能承诺相同保证。官方固定源码/链接与本批边界见ADR0308。现有observation及公共派生屏障保持，不把只读研究算已修。
+
+### 独立审查确认的下一工作单元（全部未修）
+
+- **M35，未来历史进入长期事实**：固定now=12:00，29条已发生消息+12:01的一条未来消息，凑30条后两库retain都含未来正文。另一反例先正常retain两库，再仅追加未来危机行，未新增retain却提前delete现有公共ep。运行`node docs/reviews/repro/memory-future-history.mjs`与`memory-future-crisis.mjs`可复现；它们断言当前坏行为，exit0不是正确性回归。需贯通事实视图、来源摘要、pending/count与clock rollback/旧进度兼容，不只挡episode.end或危机分支；保留实际来源顺序和既定危机政策。
+- **M29b，civil接口余波**：Pacific/Apia合法文档日diary:2011-12-30被lastTouched Date接口滚到31日，Jan7仍clear而按8日应vague；phase同样迟一日，日记/总结窗口也受影响。`node docs/reviews/repro/memory-apia-civil.mjs`为未修诊断。另真实recallCommon假provider给occurred_start=2026-02-30、合法mentioned_at=Feb1，会在Mar2窗口输出“3月2日”的该事实；fading已有校验没有贯通long-term的onDay/mentionedOnDay/日期标签。需统一宽兼容provider日历解析及civil日期接口，不能用UTC Date冒充本地Date。
+- **M30b，遗忘全过程互斥与续跑**：两独立进程临时复现：forget已move联系人state、停在fake deleteDocument时，另进程真实acquireLock(bot.lock)仍成功并重写聊天。此时强杀没有report，普通重跑已丢历史old-bank目标、远端0次且failures空；正常首轮远端全部503也同样第一轮5失败，第二轮普通重跑0调用且空失败。旧目标仍可在trash/report人工恢复，但没有持久不可变job/自动或显式resume。本大类此前已列open，现补确证；应分全过程真实锁与删除计划/checkpoint恢复两个可验证单元，不能只检查bot.lock或在move后才保存计划。仅临时合成数据、假删除API与子进程，无真实删除。
+
+后续仍在记忆模块内按风险独立推进上述可修单元，同时保留观察/公共日记协议工作；已保护能力不等于所有已确认缺陷已修。用户追问速度后明确要求继续最高标准，不降低审查或验证深度，不转模块/社区比较。
+
+## 第十批：遗忘恢复、未来事实视图与民用日调用链
+
+### M30b：整个维护过程互斥与原计划恢复
+
+forget apply改为审计之前取得真实目录租约，覆盖所有移动、远端请求、报告与CLI审计后才释放。首次move之前在maintenance/forget-jobs/UUID.json持久保存不可变原计划、文件指纹、QQ/根目录、trash和CLI endpoint摘要；逐项记录移动及远端派发/确认，--resume只恢复原目标，不因state已move而生成空清单。真实子进程在rename成功、checkpoint前退出，可按目标hash确认旧移动并继续历史bank。原件改变、QQ/endpoint不符、路径/计划篡改或坏JSON停止，不覆盖恢复资料。
+
+强杀或网络/503等远端未知并未变成自动重放：dispatching/uncertain保留原任务、原目标和启动屏障，resume准确报告未确认；404或真实成功才done。5xx可来自网关，不能证明上游已停止，未增加布尔人工解锁。旧shared derived守卫/账本依原政策保留。API默认不另改共享审计链；CLI在锁内记只含元数据的审计。结果complete仅指该任务请求的步骤，local-only没有冒充外部删除。
+
+主代理实证原PID检查/unlink间存在新写者时，两租约能同时成功；新增bot.coordination.sqlite的长生命周期OS事务，PID仅诊断且尊重旧活写者，同PID租约保护保留。独立进程争stale PID、强杀接管、PID被删/坏而仍有OS持有者、坏coord、发布IO及释放均验证。旧lock夹具模拟“旧进程死亡”时补释放OS租约，没有放宽活租约安全。App在构造/任何prompt或世界修改前查全部未完成job；archive实际操作也全过程持锁、拒绝未完成job，不能通过换bank绕过。OS租约与JSON job分别解决活并发及崩溃后意图，不冒充全目录多文件事务。
+
+恢复日志及实际tmp按严格plan.qq纳隐私mixed清单、不可自动移动或复制整个journal；坏tmp只报告归属未知。交叉复核补修Windows同物理目录大小写别名被误判坏job，以及broken junction的existsSync=false绕过：root身份规范化比较、不改原hash；路径检查直接lstat，仅ENOENT可视缺失。维护目录/coord被外部整体删除或替换仍属不合作写者边界，运行中不可删换，50ms仅争锁预算。
+
+### M35：固定事实视图、来源进度与未知历史重分片
+
+每轮固定now，完整校验后只让已发生消息参与分片、阈值、敏感判断、修订及repair；每await后的实时钟回拨阻未派工作，已派ACK保存真实count并建立时间屏障。新增可选sourceTimes和不可变pending来源证据，旧无字段兼容，not_found仅能核对原前缀后重交原请求。普通未来首/中/尾到时可同步；未来crisis不再提前删除公共旧ep。
+
+继续复核发现首次实现raw先分片会被48小时未来中插截断过去30条为12条，后18条不足阈值失去远端覆盖，已正式红例修复：先筛事实再分片，未发生行不影响45分钟边界；既有ID用已完成/immutable来源首成员锚点保留。时钟追上后若真实重分片造成旧count归属不足/重复ID，保原文档和精确屏障暂停，不猜迁移；含legacy无sourceTimes的同类路径。此病态历史重分片的自动迁移仍待独立证据，不能称已自动恢复。真正过去正文编辑、撤回、stop/restart、known ACK和clock rollback均另有对照。
+
+### M29b：civil日与实际日期出口
+
+lastTouchedDay与civilDayNumber使用UTC中立日序表达民用日期，不强迫Apia不存在的2011-12-30成为当地Date。clarity、summary/diary窗口改用civil，保午夜exclusive、02:00与DST23/25小时规则；旧lastTouched Date只为兼容。providerTime贯通fading、onDay、mentionedOnDay及最终label，坏ISO日历不再滚到另一查询日，合法mentioned可回退。交叉补Z/UTC后缀、空白/小写t前缀绕过；合法RFC/offset/低年/epoch0仍兼容。
+
+### 验证与边界检查点
+
+新增45项正式：CLI恢复11、目录租约6、启动/归档4、维护隐私2、未来事实15、civil helper5、实际日期caller2，记忆审查累计新增387项。旧红证据包括M35首5、M29 helper及两真实caller、CLI原两行为及alias/link、锁3条、App/archive的HEAD运行时替换3条；未把脚本装载错误当源码失败。相关43项日期/未来/lifecycle整合、42项CLI相关、目录租约与模块检查均通过，全仓类型通过；最终完整3042/3042通过（bot2895、转换61、Koishi47、移动35、PWA4），模块登记4项和Git差异检查通过。
+
+原future-history/future-crisis/Apia诊断已改为正确行为探针，与正式回归分开，不能再用旧坏行为断言证明未修。本批ADR0309/0247分别记录恢复及时间协议，代码提交`b9adc611`（遗忘意图/维护租约）与`94352a7a`（事实视图/civil调用链）；只用合成聊天、假API、临时文件/真实子进程和IO注入，没有读取或删除真实运行时、聊天/角色或外部服务数据，没有部署或推送，AGENTS.md保持原未跟踪。
+
+M32b历史观察和公共日记/总结来源协议仍open；本批没有解除那些守卫。旧弱ID、未持久观察/legacy before、未知远端DELETE、病态历史重分片、非合作写者、fsync/网络FS与多文件非事务限制保持。记忆模块仍未完成，不转下一模块或社区比较。
+
+## 第十一批：外层停止所有权、日记回补与只读观察证据
+
+执行期间另有独立时区任务提交`58803856`。本批避开其config/package/Koishi/time-zone及测试改动；其成果不是本批实现，未覆盖或夹带其原修改。代码提交使用显式路径范围，AGENTS.md仍保持原未跟踪。
+
+### M36：外层发送与App停止
+
+presence/browsing.stop此前仅停timer，纯compose晚结果仍可发新动作；已派发送held时App可以先释放目录锁，再有晚ACK写历史/状态。现两实例永久停止，纯read/compose/未commit initiate可取消，已派mutation/send/已commit Responder由tick持有ACK及状态/历史收尾，stop返回可重复的drain，idle保undefined，start/reapply不复活。B站私有signal贯通initiate与sendLink；App汇合两个drain。
+
+真实App合成卡进一步确认封面await之后的子步骤旁路：封面held期间stop后会继续发文本。现每次真正send前查stop/signal，封面真实ACK按本次messageId记历史后不再派文本；已派链接文本则等ACK/ChatHistory完成才放锁。3项App回归在有效合成卡后先红后绿；首轮夹具缺earlySlot period、world people/events的加载失败不是源码反例，已修夹具后重新确认真实红灯。外层新8项加App3项共11，另覆盖在线、说说、戳、链接、DM/recordDm、评论/rpid及晚model/feed。提交`dfb64910`，ADR0311。
+
+范围仅记忆直接调用链的lifecycle，不代表B站/社交完整模块已审。永久不返回的mutation会阻drain；持续历史IO仍无durable发送outbox。资料卡多目标点赞中途停止的逐目标重启去重缺既有状态证据，未在本批臆造新频率政策或宣称全局exactly-once。
+
+### M29c：日记writer民用日期余波
+
+此前M29b只修reader/fading，writer的localDate回补仍可把Apia不存在的2011-12-30滚到31日，并提前把尚未结束的今天写入written；周记重复借31日，phase名义end缺日读入区间外日记。现civil目标先核身份，daily只补已结束且可表示当地日，week/phase以民用区间取真实日记；phase保名义ID/标题而timestamp用区间最后真实日记日。交叉又发现Nuuk晚23点缺时使23:30世界材料进入次日，现仅跨日时收束到本日最后真实瞬时，同日DST语义保持。新7项含Apia、Nuuk、DST/低年对照，确认合成49项重跑通过。旧written/texts未猜迁移；提交`3859cfa8`，ADR0332。
+
+### M32b：只读预检前进与能力证明阻点
+
+SDK新repairObservationStats严格fresh总数/fact-type计数/pending/failed和微秒水位；repairConsolidationStatus严格UUID/consolidation类型，单任务completed不冒充后继链已清。新6项，提交`811ba0af`，ADR0312；只读取，没有新增或调用清理/派发接口，没有解除任何guard，不能计为观察重建完成。
+
+固定官方v0.10.2 HTTP/version与bank/config不能独立证明database_backend及实际store_owned_for(bank)路径；知道版本或PG数据库也不等于观察事实走内置PG事务清理。未用布尔配置假造能力、未访问真实部署/数据库。需可信部署证明或真正后端无关的完整清空证据后，才能继续破坏性worker；同时unknown DELETE与公共旧源依赖屏障保持。
+
+日记直接retain的既有open另补真实writer+LongTerm+SDK假HTTP证据：三篇合法async receipt全pending且GET operations为0，writer已经written/texts，重启也不reconcile。可运行`node docs/reviews/repro/memory-diary-async-acceptance.mjs`，exit0仅证明当前坏行为，不是正确性回归。此不是新编号重复发现；必须prepared固定body/UUID/requestHash/来源manifest与typed实际完成回执一起贯通，不能只让LongTerm回bool而writer每轮重生成另一body。新日历修复和只读API都没有冒充这项已完成。
+
+### 第十一批验证与下一步
+
+正式新增24项（外层8/App3/日历7/读取API6），记忆累计新增411项，其中6项是后续预检接口证据校验，不代表6项清理缺陷已修。主代理最终463/463可确认合成回归通过（memory系列、纯B站卡片及模块登记），全仓类型/差异检查通过；后续ADR/模块映射生成后再核模块4项通过。没有把历史3042全量结果当作本轮全仓验证。
+
+下一步仍先贯通日记prepared/outbox、来源manifest与实际completed，再处理summary对confirmed diary版本的依赖；旧无manifest来源保legacy、不猜净化或删除已回复事实。观察后端能力缺证不以default猜测，继续保护。其余记忆直接CLI/归档多文件恢复、外层发送失败持久outbox与实际资源性能按风险取证；本批不降低验证深度，不转模块或社区比较。
+
+## 第十二批：公共日记的固定意图、完成回执与来源依赖
+
+本批接续M32b的directretain子集，没有解除历史观察或旧公共派生守卫。三路代理分别负责writer/来源、LongTerm/SDK/outbox、独立真实链路回归；主代理整合隐私/归档、App起点与协议复核。没有执行依赖真实角色卡的旧diary/presence/bilibili/app测试或未经核实的全仓npm test。
+
+### 异步accepted与重启
+
+旧真实SDK假HTTP复现已明确：accepted全pending而writer已written/texts，重启不poll。现writer先持久固定body/角色/日期/标题/UUID与材料、提示词及来源manifest；LongTerm在独立written-retain.json先存完整不可变MemoryItem/canonical requestHash，再允许派发。SDK只有对应UUID父任务和非空children全completed才算完成。pending不写written/texts，重启查询同UUID及原正文，不重新生成另一body；新body不能冒认旧完成。failed/cancelled、坏状态及缺JSON见证保留保护；原UUID/not_found依原文与仍有效授权才可重交。
+
+独立written-retain-coordination子目录避免冷读新outbox误创建derived.json的缺失见证。单文档排队；stop取消纯读与未派生成，已派HTTP/真实ACK和本地发布由drain持有，completed发布前后EIO可重启读回原请求。高级pending不能因接口降级走legacy重发；旧无高级任务的fake按原同步完成契约兼容。初始坏或未知新版diary状态保原失败关闭，不quarantine为空。
+
+### 来源、总结与实际POST前守卫
+
+manifest只记录真正入1500代码点材料的消息身份/片段摘要和QQ/tier/since，以及实际计划、上下文、提示词；App传入TierRecord ISO起点，明确known-unbounded与没有callback的unknown。新summary绑定每篇diary的bodyHash和confirmed/sourceHash；已知pending或sourceVerified=false不参与，confirmed消费前fresh核当前来源。旧written/texts保持legacy，允许既有兼容总结但依赖明确legacy与实际bodyHash，不捏造旧收据。
+
+独立回归先红后绿确认两处后续缺口：confirmed后since变仍能生成总结；writer验证以后LongTerm建库await期间since变仍实际submit一次。现前者先持久blocker并保真实written，后者以可重算canSubmit贯通writer→LongTerm→SDK，队列、建库/status以后及SDK内部六次backlog预查后的最后POST前均fresh核验。最终hook只读本地材料，纳共享deadline/AbortSignal与stop守卫，不以入口捕获的布尔当派发时授权。SDK内部held backlog另有正式回归。已派旧body最终完成仅记真实body与sourceVerified=false，query-only不建库/不派新任务；公共屏障不因ACK解开。
+
+交叉复核另修：summary结旧ACK时必须fresh合并writer状态，不能把依赖刚置false又由外层旧state覆盖true。原stop测试从“初始空文件原字节”改核“已持久派发prepared原字节与body/UUID保留、written/texts/confirmed不推进、drain失败”；日历测试保精确日期集合和跨日禁止断言，允许fresh验源重复读取同日材料。没有删除或弱化原安全契约。
+
+### 隐私与归档
+
+新来源变化屏障按公共bank/document持久单调记录，空QQ贡献也不伪造owner。受污染公共派生继续避用，精确未污染标准QQ原始world/experience和其他私人bank仍可用。共享diary.json、完整body的written-retain.json、marker、独立coord及实际tmp纳mixed清单，不复制/移动整份共享正文供单联系人导出/遗忘。archive在既有租约内先核状态，未结/坏状态/缺JSON见证在改tiers或prefix之前拒绝；已完成意图/收据/屏障与marker保活目录，不以归档换bank丢失原身份。
+
+ADR0313记录协议与兼容边界。memory-diary-async-acceptance.mjs已改正确行为探针：pending不written，重启poll同UUID/body，completed才发布匹配收据；不再用其旧坏行为断言作为未修证据。
+
+### 残余边界
+
+本批没有清理服务端历史观察、自动修订旧公共diary/week/phase或提供有证据解封；旧无manifest已接受任务不能自动追认。跨运行时区的pending若MemoryItem hash不匹配，保原失败关闭，不猜迁移。source变化但未能持久观察的强杀恢复、多文件/远端非事务、未知DELETE、旧weak ID/legacy before和不合作外部写者边界不变。SQLite仅OS协调，运行中不可删换，50ms仅争锁预算。真实服务/数据库未访问或验证，未部署、未推送；记忆模块仍未完成。
+
+### 第十二批最终验证与提交
+
+新增39项正式回归：writer/manifest11、真实链路独立整合12、LongTerm/outbox/SDK12、隐私/归档4；记忆审查累计新增450项。主代理最终502/502已确认合成集通过（memory*.test.ts、纯bilibili-dm-card及模块登记），全仓类型、生成模块文档与Git差异检查通过。正确行为探针单独通过。不是新一轮全仓全量，不把历史3042等数量外推。早期两处旧fixture契约失败均在提交前修正并纳最终502完整重跑；Windows import装载错误不算旧红证据。
+
+本地代码提交`2c7f25d5`，含ADR0313和生成模块文档。AGENTS.md保持原未跟踪，没有夹带用户资料或推送。下一轮继续M32b历史观察独立清理/重建、公共派生文档对新manifest的修订与有证据解封；仅本批prepared/completed/客户端来源保护已完成，不能再说accepted仍直接推进writer，也不能声称公共bank已净。其余CLI/归档多文件恢复、外层发送失败持久outbox与性能仍按确证风险接续，不转模块/社区比较。
+
+## 第十三批：完成后的来源变化、归档中断恢复及live清单
+
+### M32b：已完成资料不能永久信任旧来源
+
+真实合成ChatHistory→writer先完成三日记、周记及阶段总结后，撤回/since变更/重启/离开回填窗口均复现receipt仍true：旧代码只有待完成总结才重验，全部完成时直接跳过。该反例不等于App.noteRecall通用保护被绕过。现同步verifySources不限回填窗口核所有新confirmed日记，先持久公共blocker，再失效receipt和已完成依赖；保原文、written及真实远端事实，不猜删旧文档。
+
+独立复核确认非legacy依赖收据缺失不能当legacy；已知legacy正文实际变更也须核现存bodyHash，但缺正文不从远端补读或猜已变。每轮每联系人history/since只读一次并按日分组，真正未入1500尾部的改动不误标。未知history/计划/IO安全拒读，可恢复复核；catchUp显式只核已派UUID，未知的是其它日期也不能让本篇沿旧allowSubmit派发。
+
+LongTerm公共读口注册同步本地验证，App在回复器前接线；读取开始、cache/await之后及格式化最终出口均核验，递归或异常不回退旧正文。真实writer完成后仅变since、未再catchUp也会形成持久保护。私人bank和明确QQ原始事实保持。宿主未提供来源或关闭writer后的证据迁移仍待单独验证，不把本批接线说成任意宿主的全局保证。
+
+### M30c：归档的原计划与崩溃续跑
+
+独立子进程在首chat rename后退出，旧归档已更新tiers/移走聊天但配置仍旧prefix，App会越过维护检查进入业务。现完整不可变archive job先于任何copy/tiers/move/config保存，含原目标、步骤和前后hash；逐步checkpoint，App在卡/业务初始化前挡未完成/坏job。--resume UUID只原计划，配置rename前后退出均可精确核目标并续跑，不重新发现空清单或换新prefix。冲突/坏状态/孤立tmp保原失败关闭，不宣称多文件原子或自动rollback。
+
+交叉主代理反例证明：未完成archive后普通forget确实能移动归档已done目标并破坏续跑。现同目录租约内互查持久维护任务；不开始远端DELETE。新journal含共享配置文本及可能密钥，全部mixed；有效plan精确定位配置文本tmp（包括数据目录外配置），不整份导出/遗忘；坏journal/tmp也只列未知shared并保原，不猜QQ或外部位置。原pending隐私测试的宽泛archive子串计数，改为精确专属chats/archive四文件，另断言共享maintenance journal存在，保留原字节/不恢复旧pending等全部安全断言。
+
+### M32b：后端无关的live证据，不是观察清理
+
+SDK新增metadata-only完整observation及world/experience consolidation清单，固定官方v0.10.2的抽象store list契约，无q/tags/time/entity/doc过滤；严格UUID/字段/状态/稳定total/唯一ID，共享截止预算、10万项及8MiB累计metadata上限，超限拒完整证据。保留孤儿source IDs和微秒时标，不输出正文、不伪造bank/revision回显。
+
+offset分页没有snapshot token，也不能排除同ID改文；live0不证明invalidated archive或无live行的observation_history孤儿已空，更不能证明未知DELETE停止。当前没有清理/trigger/解封。可信写者/任务冻结和实际store一致性能力仍缺独立证明，按ADR0312/0255保持保护。仅官方固定源码研究、假HTTP/合成数据，无真实部署/DB/API访问。
+
+本批ADR0314/0254/0255分别记录来源、归档和只读证据。记忆模块仍未完成，不转模块/社区比较；其余未持久观察、legacy before/weak ID、未知DELETE、病态历史重分片、不合作外部写者及fsync/网络FS边界保持。
+
+### 第十三批最终验证与提交
+
+新增34项正式回归：持续来源13、公共真实读口5、归档恢复6、共享归档隐私/交叉维护3、SDK live证据7；记忆累计新增484项。主代理最终536/536确认合成集通过（memory*.test.ts、纯bilibili-dm-card、模块登记），全仓类型、生成模块文档及Git差异检查全部通过。首轮535/536唯一失败为旧pending隐私测试将新共享archive journal误计为聊天归档；改为精确专属范围并补共享断言后完整重跑536绿，不隐瞒或忽略失败。测试进程仍只用假API、合成角色/聊天、临时文件和实际子进程；没有执行未经核实的全仓npm test或旧真实卡用例。
+
+独立本地提交：`ba66ad1d`（持续来源/读口）、`6fb3456b`（归档原计划/恢复/隐私/互斥）、`248eb426`（只读live证据及模块映射）。App的两处独立接线按index hunk分开提交，没有把未提交依赖混进前一个任务。未跟踪AGENTS.md保留，未部署或推送。
+
+下一轮优先复核完整公共文档来源到远端修订/任务静止的证据协议，观察清理仍不可用live0、稳定total或布尔适配冒证。当前所有已知污染保保护，不能说整库已净。可独立继续writer关闭/来源配置移除的启动迁移、长历史持续验证资源成本、归档各阶段强杀覆盖与外层发送失败持久outbox；这些本轮未声称完成，不重复旧bug列表或为凑数猜重构。
+
+## 第十四批：已知作者意图的来源覆盖及同步资源成本
+
+### M32b：关闭writer与丢失来源文件
+
+两路子代理分别负责真实调用链缺口及实际资源计数，主代理整合宿主/元数据接口并追直接调用方。合成advanced completed→真实App移除全部schedule/since剪旧史，实际readDiary仍读出旧正文；另保留outbox completed但删除diary.json，重建writer把空confirmed当clean，也实际读出旧body。两个反例均先红，不是只断言缺少hook。
+
+App现在明确注册writer验证或null无来源模式。当前bank有已知作者意图却无writer时动态拒公共派生读取，无作者意图的正常QQ事实和私人bank不变，不把功能关闭永久标为污染。writer核每个current document/UUID对应prepared或confirmed及fresh来源；缺来源动态false，恢复正确原件后可核。confirmed不伪造旧requestHash，其UUID→不可变请求映射由store保证，现存正文另核bodyHash。pending日记/总结同步local-only重算，不远端补原文，不因prepare本身自锁；源真正变更仍按原持久屏障，旧ACK结算与完成事实保留。
+
+直接调用方搜索另发现sim/runner也拥有LongTerm/writer，初始和restart均漏新接线。新增真实模拟宿主合成卡/假API反例，旧运行后actual marker仍可读，现两个实例均保护。早期contacts为空、characterCard缺模板以及捕获实例计数的夹具失败均不算源码红证据；修好夹具后才记录实际正文泄漏红→绿。没有执行旧sim.test或仓库角色卡。
+
+### M32b资源：fresh字节与必要投影
+
+实际3650条/9.45MB合成outbox，三次查询读28.36MB并做21900次SHA，同步约424ms。现仍每次OS锁内读完整新字节、核路径与marker；只有与已完整验证的bytes完全相同才复用私有不可变metadata，对外副本。RMW仍全读/全验，dirty先flush，IO/hash/coord/见证坏不能回退cache。正式计数验证重复parse/SHA为0；同mtime同长度改字节、跨实例/子进程、缓存对象修改及失败RMW污染均覆盖。主代理同规模复测约55ms，agent约51ms，仍读同样完整字节；不是生产SLA或常数时间承诺。
+
+365篇confirmed及5万条无关早期历史，三次来源复核约902ms；可读口单次公共召回原有5次核验。现在仍校验每条旧timestamp，但实际瞬时早于最早所需当地日时省herDay投影，5000旧行正式计数由5104→104；UTC前一日的当地02点有效源仍纳入。同步过滤复用同栈已有结果，保所有await/格式化回调后的fresh检查，实际公共召回最多4次。没有mtime/TTL或world/计划输出缓存。复测同规模约652ms；全历史时间戳校验、文件字节读取及所有confirmed材料重算仍有线性成本，不能声称资源审查完结。
+
+性能探针已保存为可移植的memory-source-resource.mjs及memory-source-resource-diary.mjs；它们报告合成测量，不替代正确性回归。新元数据接口只返回doc/UUID/hash/phase和保护清单，不增加持久隐私文件；旧mixed清单/协调约定保持。ADR0317/0257记录协议。没有服务端观察清理/公共派生重建或解封，没有真实API/部署/运行时访问。
+
+### 第十四批验证与提交
+
+新增18项正式：来源缺失/覆盖及早期历史8、fresh-byte资源8、同步核验次数1、真实模拟宿主1；记忆审查累计新增502项。主553集通过后补模拟直接调用方，最终554/554确认合成集通过；随后类型检查指出undefined/null分支已返回、函数条件恒真，删除冗余条件后15项关联与全仓类型再绿，Git差异/模块登记及生成文档通过。未把过程中的类型错误或夹具错误冒称通过，未运行未经核实的全仓npm test/旧真实卡用例。
+
+独立本地代码提交`0f23a99a`（fresh-byte元数据复用）、`aaf33c17`（已知意图覆盖、App/模拟宿主与资源调用链）。AGENTS.md保持原未跟踪，未推送或部署。接续重点仍为M32b公共原文到远端旧派生的证据修订/清理；新source覆盖不是远端旧观察已净，保持ADR0312/0255的能力、历史行及未知DELETE边界。其余资源/生命周期/多文件恢复按风险证据继续，模块尚未完成。
+
+## 第十五批：来源索引完整性与归档参数入口（2026-11-05）
+
+M32b来源覆盖补查：合成completed outbox保留operations/marker，仅丢current后，旧guardState返回空意图，重启snapshot也接受。两项正式回归先报Missing expected exception。现在每个已知bank/document均须有current；多个completed历史版本仍合法，未完成版本仍必须current。损坏原件保留、恢复正确原件可读，不猜测最新版本；这不是抗恶意整体状态回滚协议。代码7bc1766c。新增2项，556/556核实合成集及全仓类型、模块登记、差异通过。
+
+并行归档CLI输入审查发现缺值回退默认路径：--data/--config/--koishi/--prefix末尾无值会到达真实archiveTestData入口，dryRun=false；用registerHooks替换纯capture后端取证，没有实际运行时读写。修复与最终验证见本批后续记录。
+
+并行模拟宿主生命周期审查确证：background relationship读取held，runScenario返回并删除两个测试bank后再释放失败，sim.log新增67字节，已返回steps.logs同时被改变。仅合成card/fake API，未改sim源；此问题待后续独立修复，不能把batch14来源接线称为完整模拟生命周期保障。restart/final所有者stop/drain及高级API转发需要连贯复核；高级API能力降级目前是代码线索，尚未作完整行为验证。
+
+远端公共旧派生与observation独立清理仍受既有证据阻点限制，本批未DELETE/触发整合/解除guard，不读取真实部署或角色数据。
+
+归档CLI修复已完成：单次parser先拒缺值/下一flag/空白、重复/未知及config/no-config冲突，合法路径/前缀/演练/原resume保持；5项正式回归先3红2绿后全绿，相关11项通过，全仓类型通过。代码b6e9223b。本批新增7项，记忆累计509项。最终整合重跑见进度检查点；首次561集560通过、模块文档一项失败，原因写补充时误建第二份0254文件导致模块扫描选错路径，已删除该临时误建文件并补回原ADR，模块4项独立复核通过，非生产缺陷。未弱化断言。
+
+模拟未修证据保存为docs/reviews/repro/memory-sim-owner-lifecycle.mjs；默认结束和--restart两种模式均是坏行为诊断，exit0不表示修复。restart时旧请求还能写入新step日志。下一轮优先修旧owner stop/drain及清库顺序，保已派发ACK事实，再验证switchable高级API能力是否被降级；不声称其余归档强杀阶段已全部覆盖。
+
+最终重跑561/561全绿（核实合成集，非全仓全量），全仓类型及差异检查通过。代码任务分别7bc1766c与b6e9223b；原未跟踪AGENTS.md保持，未推送/部署。
+
+## 第十六批：上下文摘要来源与模拟宿主记忆协议
+
+上下文摘要沿直接调用链确认旧key只看length/末条时间/正文。前文撤回但末条相同，内存、在途完成及重启缓存继续返回旧隐私摘要；3项合成回归先红后绿。改为实际summaryRequest完整内容的source-v2 SHA，覆盖实际使用的末200条材料、角色名、时区呈现与系统规则，派发复用同一请求快照。旧弱key不追认，实际未进入模型的更早材料不造成额外生成；默认关闭/窗口策略不改。提交99dd4017，全仓类型通过；旧context-window.test含真实角色加载，未执行。
+
+模拟Hindsight包装确认丢失advanced能力：真实runScenario＋真实SDK假HTTP全部retain仍pending但旧writer记3篇written。动态代理现在保真实能力、原api this、参数与取消；缺省仍缺省，down拒业务请求、deleteBank保清理例外。正式新增4项，相关17绿、全仓类型通过，提交d013e5b0。首次memory:true步骤夹具被parseScenario拒绝不计源码证据，修为memory:'sync'后才得到written=3的真红。
+
+生命周期正在独立修复。上轮--restart探针与本轮第一版回归按generate总次数判断重启，误把后台提取算对话；该特定证据口径更正，须识别实际重启后对话并在旧源码重证，不能用原错误触发点宣称旧实例跨restart。普通final晚读日志/报告、步骤异常、try前构造失败、已派retain尚未ACK却先清bank等反例已各自确证。交叉审另用realRain＋无效mood合成证明构造失败留下全局天气，已要求纳入同生命周期收尾。这里只记录证据，最终实现及验证见后续补记。
+
+生命周期最终实现c656ad9e：小型owner集合贯通早期构造异常、restart/final和forget；先失效旧epoch/插话timer和纯摘要生成等待，再同时stop全部owner，等待已派mutation ACK/状态及planner.running后替换或清bank。provider获得的log绑定派发epoch，晚raw/onPrompt/fact记录不改结束或新step报告；summary微任务派发前再查取消，重启/forget重建signal。天气早构造失败也按原约定恢复undefined，不声称并行场景global隔离。
+
+生命周期新增7项全绿。修正重启夹具后，以用户“合成重启后问候”实际prompt识别释放时机，registerHooks隔离加载d013e5b0旧runner，真实重启case仍明确红（lateDuringRestart true），新源绿；原“第2次generate”触发的旧证据撤回。portable探针普通/--restart均已改正确行为（lateLog0、报告不变），不再用旧坏行为断言。交叉代理独立天气及承诺抽取late logger探针也绿。
+
+类型验证更正：d013e5b0提交前主代理将npm类型输出重定向后接git diff --check，后者成功覆盖shell退出码，误报类型通过；实际两处新MemoryItem夹具缺context/document_id/tags/metadata。补齐必填字段提交76010813，相关4项重新通过，全仓类型实际exit0。没有修改生产协议规避类型。99dd4017的独立类型检查当时通过。最终575/575核实合成集绿，夹具修正后4项及全仓类型重新绿、差异/模块通过；不是全仓角色依赖测试全量。本批新增14（context3/capability4/lifecycle7），记忆累计523。
+
+后续：M32b公共diary/week/phase旧远端派生和历史observation清理/独立证据解封仍未实现，已有阻点不变；本批客户端来源和模拟owner不替代远端静止证明。新只读线索：App contextWindowFor创建的contextSummarizer有idle但无stop，App.stop尚未统一持有它，需用真实App合成held模型验证停止后是否仍写context/<QQ>.json/日志；这是候选，不能当已确证。之后按证据续审其它维护多文件和资源边界，记忆未完，不跳模块。未访问真实卡/runtime/部署/外部模型或数据库，AGENTS.md保原未跟踪。
+
+## 第十七批：App摘要停止与联系人缓存残留
+
+真实App+合成card/history/假generate证明：摘要held时await stop并释放bot.lock，随后旧成功仍写context/10001.json，旧失败和授予generate的log回调仍记日志。两条正式先红后绿，额外断言重复stop复用drain。core返回OwnedSummarizer，保原纯读取Summarizer类型；同步永久停止新派发/缓存读取，取消race与计时器后idle/drain可结束，不等不合作底层模型，晚成功/失败不写文件/cache/retry/log。派发微任务也复查stopped。已确认文件不删除，新实例仍按完整请求hash复用。App持有全部实际摘要实例并合并stop drain，再释放目录锁，另守授予模型的log。模拟器既有可重启adapter不误套永久stop。
+
+core新增5正式；旧文件registerHooks控制4项真实效果红（晚落盘/晚错误日志/微任务新派/停止后缓存供给），另1项仅新增API契约红，不算旧功能反例。App新增2，相关13项及随后582合成集/全仓类型绿；代码52c72e39。App responder集合只初始化与缺席时新增，没有现行同实例替换路径，交叉审的“替换时需失效”假设未列确证或阻点。
+
+隐私同类确认：真实writeJsonAtomic rename EIO且cleanup EPERM产context/QQ.json.tmp-PID-seq，真实坏JSON隔离产QQ.json.corrupt-time，两者含合成正文却audit artifacts为空；jokes/idioms实际失败写入产QQ.json.tmp同样漏。审计与forget-job ownedPath新增共享精确匹配，避免只加清单后apply schema拒绝；仅各目录真实命名，他人/近似号码/伪suffix/shared不纳入个人删除。新5正式覆盖真实残留/导出/完整apply+resume/归档后清单/链接；旧4业务红，链接案例初版empty-dir清理夹具错误已修，不计源缺陷。现有archive保留context/jokes/idioms政策不变，保留项仍能隐私审计/导出/遗忘。代码1cbd042e；ADR0043及0246补说明。
+
+最终587/587核实合成集、全仓类型实际exit0、模块登记及差异检查通过。本批新增12（core5/App2/privacy5），记忆累计535。只合成卡/聊天、假API、temp，未跑旧角色依赖suite，未推送/部署，AGENTS.md仍原未跟踪。
+
+下一步候选：startApp catch构造异常仅release租约，createApp内部在返回App对象前已创建memoryTimer和其它owner；若后续context文件读取等构造失败，可能旧任务仍持活，须假timer/真实App合成复现，未确证前不可称漏写或修复。M32b远端旧公共派生/历史observation清理与独立证据解封仍受已记录服务端证据限制；本批不提供远端清除保证，不转下一模块。
+
+## 第十八批：App构造失败资源收尾
+
+候选已真实合成确证：context文件EIO在memoryTimer创建后令startApp抛错；旧bot.lock被移除且同目录租约可重取，timer未clear、LongTerm仍可派发。独立设备probe进一步证明late startup访问未初始化stopped导致TDZ，service.stop零次，授予say仍外发。两者都是构造失败路径，不重复第十七批正常stop摘要缺陷。
+
+新增构造收尾scope，stopped在任何资源前初始化。每项取得后登记失败关闭，构造成功commit清登记；失败先同步停止所有已建资源，再等实际异步收尾后释放租约，保持同步抛原错误。登记天气首refresh/全局天气/interval、生活timer、双media、photoAbort、heartbeat、tastes两timer、pending设备及late服务stop、memory/promises/diary/context/responders与memoryTimer。presence/browsing/risk/replies/planner仅connected后启动，不能把不存在实例算遗漏。设备授予log/say/onAudit门控，late stop拒绝原promise交allSettled诊断，不吞成成功。
+
+天气无stop接口，首refresh已派请求不能靠clearInterval撤回。保存完整首刷新promise，故障关闭全局读口/定时器后仍持租约，让原两城市刷新成功缓存或失败正常收尾。正式假fetch成功两份原子写时锁均存在，失败不造缓存；未猜取消内部后继请求。未回滚构造期间已发生同步有效写入，不承诺多文件事务。正常stop设备/天气完整drain仍须独立验证；不合作startup/stop可使租约持续保留，global天气多实例隔离无新增保证。
+
+正式新增5（context构造EIO1，设备2，天气成功/失败2），均旧源真红→新源绿；设备/天气4用registerHooks仅换e8d67bdd App得到4/4红。相关13项先绿，最终592/592确认合成集，全仓类型实际exit0、模块新增ADR后4项再绿、差异通过。代码3ce7d0bc，ADR0320。记忆累计540项；未读真实卡/runtime、未外联QQ/天气/模型/DB、未部署推送，AGENTS.md未跟踪保留。
+
+下一轮：正常成功构造后的App.stop目前仍只void deviceService.stop/清weatherTimer，需复用合法合成天气/设备fixture独立验证held首刷新、后续interval刷新、设备startup/stop以及已派通知ACK与释放租约顺序，再按证据修（不能假定构造scope也覆盖正常stop）。M32b公共旧派生/历史observation独立清理与有证据解封仍受远端证据阻点，记忆尚未完成，不跳模块。
+
+## 第十九批：正常停止的设备通知与天气收尾
+
+独立真实App合成确认：无其它owner掩盖时，pending设备startup、held service.stop、已派say成功/失败ACK尚未结束，旧App.stop返回undefined并释放锁；首weather与后续interval刷新也在锁释放后落缓存。不是上一批构造失败的重复反例。
+
+共享幂等stopDevices聚合startup、服务stop和已派通知，构造失败与正常stop共用；late服务关闭一次，停止后拒新回调。交叉复核进一步真正确证公开transport同步调用app.stop时，原“调用后登记通知”漏入stop快照，成功/失败ACK期间锁已释放，同步throw还迟到诊断。改为调用前预登记settlement，仍立即发、不排队，成功/失败/同步throw均settle且已停止不日志。不新增通知聊天历史或重发策略，保已派事实。
+
+天气App层统一refresh入口，Set跟踪完整两城市singleflight任务；停止置位后不派新轮，正常stop快照全部weatherDrains，构造rollback也allSettled后汇总，保租约到落盘/失败降级结束。重复interval不重复底层请求；不改provider、不假取消后继城市。按同类重入风险新增fake fetch函数体同步stop验证，当前本来通过：withWeatherDeadline微任务边界让任务先登记，故无额外天气重入缺陷及生产重构。
+
+新增13项（设备9/天气4）：设备最初4和补重入3真红→绿，另startup/stop拒绝2为边界验证；天气最初3真红→绿+同步fetch1边界绿。相关20/8定向通过，最终605/605核实合成集、全仓类型实际exit0/模块/差异通过。代码a9f64d95，ADR0320补正常停止约定；记忆累计553项。仅合成卡、假timer/fetch/service/transport/temp，不访问真实角色/runtime/QQ/天气/模型/DB，不推送部署，AGENTS.md保原未跟踪。
+
+边界：不合作startup/service.stop/transport可阻drain，保证退出等待不等于强杀可恢复；无持久通知outbox、跨QQ+JSON事务或任意重试exactly-once，全局weather多实例隔离未解决。后续统一盘点App其余与记忆相关后台工作（优先tastes.reflect的定时启动、模型await后持久及stop链），用合成证据确认后修；尚未验证，不称新缺陷。M32b公共旧派生/历史observation远端清理与独立证据解封仍未完成，不以已完成owner工作代替该保证，不转下一模块。
+
+## 第二十批：偏好反思停止所有权与后台任务盘点（2026-11-05）
+
+真实 App、临时合成卡、六条合成 watched 经历、假 120 秒 timer 和 held generate 复现两条旧行为：stop/目录租约释放后成功结果写 tastes.json/lastReflectAt/时间线；失败及授予模型的 log 晚写日志。不是清 timer 就能完成的停止。代码 8d796d31：Tastes 登记每次任务，停止同步拒新、取消纯模型 race 并 drain 本体；微任务派发和 await 后复查，迟到结果不再写。App 正常 stop/构造回滚均登记；timer、模型 log、onChange 额外守宿主停止。原已确认文件、新实例读取和既有反思间隔保留，不改偏好证据/频率策略。底层不合作纯模型无需等完，但不声称远端已取消或任意模型自身副作用被终止；未扩展为并发 RMW 协议。
+
+新增 6 项正式回归：App 两项先红后绿；核心四项包括派发前停止、held 成功/失败、重复 drain、已确认文件与新实例。最终 611/611 核实合成集通过，全仓类型实际 exit 0、模块及 git diff --check 通过。记忆累计新增 559 项。仅 memory*.test.ts + 纯 bilibili-dm-card + modules；没有运行旧真实角色依赖 suite，也不是新全仓全量结果。
+
+### 本轮盘点及下一确证
+
+- 已有取消提交守卫：照片/食物发现共享 photoDiscovery.signal，core 每 await/提交前复查；周报同步入口，无待收尾异步任务。本轮不重做旧视觉缺陷。
+- 新确证未修：小梗后台提取。node docs/reviews/repro/memory-app-jokes-owner.mjs 用真实 App、42 条合成 history、临时两张合成卡与假 API，connected 派发 held extractor；stop 释放 bot.lock 时小梗文件尚不存在，释放结果后 lateFileExists=true、lateJokeCount=1、late 成功日志 1。退出 0 只是报告坏行为，不是正确性回归。App refreshAllJokes 只有入口 stopped，jokes await 后 save/log；下一批优先贯通 owner、取消和 fresh 来源核验及 stop/restart，先增加正式红绿回归。
+- 仅源码风险，尚未复现：口头习惯 await 后 save；watch/feed/memes 的 connected/interval 异步链以及 stickers queue/discover/mirror 无统一 stop/drain。不能将这些称已确认缺陷；图片表情收藏等已派 mutation ACK 需保真实事实，与纯读取/模型取消分开。B站/社交模块仍未整体审。
+
+M32b 远端公共 diary/week/phase 旧派生与历史 observation 清理/独立证据解封仍未完成。现有保护不解；本地任务取消不证明服务端 worker 静止。官方固定版 HTTP 及 live inventory 不能替代实际 store、可信 writer/task fence 和独立完成证据，未知 DELETE 不盲重试/猜成功。不访问真部署/角色/runtime/服务，记忆未完不转模块。
+
+## 第二十一批：小梗后台所有权与在途来源保护（2026-11-05）
+
+代码6e76e4f8，ADR0114补记。真实App停机成功/失败两项先红后绿：旧held extractor在目录租约释放后写jokes文件或授予log及catch日志。独立jokeRefresher拥有本地任务，调用时冻结source，微任务前登记，stop同步拒新并取消纯模型race、复用drain；App构造与正常停止等待本体，模型授予日志另守宿主。已确认文件及新owner/standalone原刷新间隔保留；取消不表示provider远端停止。
+
+A在途来源另有真实App红：42条同长度消息，未回复的两条唯一phrase来源被撤回占位，旧提取仍保存并进入下一轮实际prompt。现在App freshHistory贯通；微任务派发前及await后按完整原前缀role/time/content复查（回调后再守stop），正常尾追加允许但进度仅记实际消耗42条。改写、截短或fresh读取EIO不提交旧结果。独立调用不提供freshHistory只有快照语义。实际A新源绿，提示词未再含phrase/origin。夹具起初按connected立即假定extracts1，不适应新增微任务owner，已改until真实派发；不把夹具extract0算缺陷。
+
+新增16项正式回归（核心13/Appstop2/Apprecall1），记忆累计575；最终627/627核实合成集、全仓类型实际exit0、模块及差异全部通过。合成集仍是memory*.test.ts + 纯bilibili-dm-card + modules，不是新全仓全量，未运行旧真实角色suite。旧memory-app-jokes-owner.mjs已变正确stop探针，不再用旧坏断言。
+
+### 下一检查点：已完成小梗来历的持久依赖仍未修
+
+运行node docs/reviews/repro/memory-app-jokes-revision.mjs可比较两mode：held现在storedJokes0/promptHasOrigin=false；completed-restart仍storedJokes1/promptHasOrigin=true、extracts1。B先完成写入（origin唯一来自一条未回复消息，phrase另两条仍出现），撤回唯一origin来源，stop/restart且20小时窗口内不重抽，fresh历史已无origin，但旧文件供给实际prompt仍含origin。探针exit0只是报告事实，尤其B仍是未修缺陷。不能以phrase仍有两次或简单清RAM宣称解决；需持久完整来源/读口、重启及旧无manifest兼容，保已回复/危机语义，不猜迁移或删除全部既有事实。
+
+下一批优先该B，再按风险接idioms/watch/feed/memes/stickers源码候选（尚未逐项确证）。M32b远端公共旧派生/历史observation清理和独立证据解封仍未完成。现有保护保留；固定官方API/live inventory不能代替真实store一致性与可信writer/task fence，未知DELETE不盲重试。仅合成卡/聊天/fakeAPI/temp，未读真角色/runtime或访问外部服务，未部署推送。
+
+## 第二十二批：小梗已完成来历的持久来源与重启（2026-11-05）
+
+代码c777db5a，ADR0114补记。B真实App正式先红：完成保存后撤回origin唯一来源、phrase仍有另外两条，重启20h内不重抽，但旧origin进实际prompt。现每份缓存存source版本、完整历史前缀count/historyHash、派发前固定requestHash及jokesHash。生产提示词读口及状态可用数均fresh核验；前缀修改/截短/来源撤回遮盖整份派生内容，保原文件。新请求传副本，provider改参数不篡改本地指纹；请求hash不是远端回执。正常尾追加、已回复忽略撤回、危机keep未改事实均保持，未强迫危机轮显示小梗。
+
+旧无manifest保原暂避；显式坏source/集合hash不匹配拒读及刷新。保原20h冷却和40条窗口门槛，来源失效/legacy到期可绕MIN_NEW与旧cursor重新提取，不能永久等不到新消息；旧origin仅在原source有效时才能carry，新完整前缀包含全部继承依赖。失效/legacy旧内容不能借新hash洗白。sim作者明确预置梗接口不变。未新增原文/绝对路径/sidefile，现jokes/QQ.json与精确.tmp隐私规则仍覆盖。
+
+交叉故障核验另确证badJSON、readEIO、invalid-source诊断抛错会落原catch空白legacy，实际modelCalls1/refreshedtrue覆盖旧bytes；现除明确ENOENT外未知读取/schema状态统一source:null，诊断失败不绕屏障，原文件不动。最初all-log-throws只证明异常逃逸，不算覆盖缺陷；定向invalid诊断抛错才确证wash，最终回归更强为所有log抛错仍拒覆写。ENOENT正常首次写是正对照，不算缺陷。
+
+新增16（core12/App4），记忆累计591；最终643/643核实合成集、全仓类型实际exit0、模块和差异全部通过。仅memory*.test.ts+纯bilibili-dm-card+modules，不是新全仓全量。两mode memory-app-jokes-revision.mjs已改正确断言：A不落盘不进prompt；B保原1条及字节但不进prompt，extracts均1。勿再把B旧坏断言当当前未修。未跑旧真实角色suite，无外部服务/部署/推送。
+
+下一轮：优先合成验证idioms的后台owner与在途/已完成来源依赖（目前仍源码候选，不冒称已确证）；小梗重叠刷新RMW尚未作为本批覆盖，按具体证据补查。watch/feed/memes/stickers仍候选。记忆模块尚未完成，M32b远端公共旧派生/历史observation清理及独立完成证据仍未打通，现保护不解，不能以本地hash/source/stop等同远端净化。既有真实部署不可访问、未知DELETE、旧weakID/legacybefore/未持久观察、跨时区pending、多文件非事务及不合作写者边界保持。
+
+## 第二十三批：口头习惯停止/来源与重叠提交（2026-11-05）
+
+真实App使用临时合成卡、64条用户消息跨4日、假模型/transport/network拒真实访问；8项正式先4红4绿：停机后held成功写文件、失败/授予log晚写；在途4条依据撤回仍保存；已完成撤回3/4仅余一次，重启actual prompt仍称“平时爱说”。全撤时原idiomLine鲜度检查已拦，是绿对照，不冒称该场景泄漏。已回复忽略撤回、危机keep、正常append正对照保持。
+
+代码bd0cf0ad（ADR0138）：idiomRefresher拥有所有本地任务，微任务前登记/停止拒新、纯模型等待可取消且drain，App构造/正常stop接线及model log守界。freshHistory前缀核验贯通派发前/await后；持久source绑定完整role/time/content、请求指纹、items及blocked集合hash，生产提取/读口同idiomBlockedFor。旧分类来源失效暂避保原，legacy到期重学不被旧cursor永久挡，坏source/JSON/IO及诊断失败保原拒覆盖。原20h/60消息/20新消息/30日/4次3日/300x60输入与展示概率不改。无新raw/路径/sidefile，现idioms精确文件隐私链继续覆盖。独立低层调用不提供freshHistory仍只有自身快照，不宣称任意外部来源一致。
+
+并行实际文件确证两组重叠提交：小梗旧42条held，54条新结果先提交后旧结果把进度回退42；口头习惯64/84同样回退64。小梗fff7b97b先独立27定向+全仓类型+diff绿后提交，口头习惯随后正式先红再修入bd0cf0ad。保存前重读比较派发时状态摘要，改变则弃旧结果；新发布失败的对照仍允许旧任务正常提交，不伪造已发生事实。同步读比写依赖App目录单写者，非跨进程原子CAS，不消除重复模型成本，不泛称全并发已证明。
+
+新增30（小梗重叠2、口头习惯core18/App8/重叠2），记忆累计621。先671/671及类型绿后新增idioms重叠修复，最后完整重跑673/673、全仓类型实际exit0、模块/差异绿；最终结果覆盖最后代码，不沿用前一版。仍仅核实memory*.test.ts+纯bilibili-dm-card+modules，非新全仓全量，未跑旧真实卡suite。
+
+下一轮先真实App合成验证watchJob/feedJob的停止所有权、已派响应后落watched/feed/历史与后继外部请求；尚源码候选，未确证勿称缺陷。memes/stickers也待风险复核，照片/食物已取消守卫不重做；B站/社交模块未整体审。本轮小梗/idioms具体旧覆盖反例已修，不重复旧清单。M32b远端公共旧派生/历史observation清理及独立证据解封仍未完成，真实部署/服务不可访问，现保护不解，不把本地source/stop当远端净化。记忆仍未完成不转模块。
+
+## 第二十四批：观看/推荐流停止与持久风险收尾（2026-11-05）
+
+代码90cbec56，ADR0130/0168补记。观看真实App两项先红：held账号nav在stop后继续search/view/player/subtitle后继请求，held字幕stop后写watched。timeline:true确认字幕装饰器晚成功/失败副写；核心另两红后修，评论mutation ACK及signal/receiver透传作正对照。App ownPassiveRead派发前登记，watch/feed各自running与统一lifetime，构造/正常stop取消本地纯读/模型等待、sleep及后继派发，等待任务本体再释放目录。watchOne内部8段等待与BiliAccount search/subtitle的nav钥匙/view/player/字幕fetch/text全部贯通单次signal；不全局中止共享mutation，已确认观看文件不回滚。
+
+推荐流真实App7项先5红2绿：nav fetch/body与推荐fetch/body held均晚写feed，dryRun晚写draft；已同步完成on/dryRun保原是绿对照。feedOnce逐层取消request/text且保response this，晚nav不能派推荐；cancelled与done区分。公开awake/Date回调同步stop的分类、toLocaleString后draft、trim/getFullYear后save另实证并守最后提交；watchDue/trim同类单独真红后修。不能将所有新边界case都算独立缺陷。
+
+生产特有余波另2真红：不注入bilibiliRequest（该注入原会绕过breaker），使用fake全局fetch持有初nav HTTP429或200体-352，旧App heldLease=false后才写实际breaker。现真实guard完整请求在派发前登记settlement，正常/构造stop等待持久风险观察后才释放租约；保已派风险事实，不一律丢弃。纯假read/model仍可本地取消不等不合作provider，但带持久副作用guard若不合作可阻drain。只保证已派guard与本轮watch/feed链路，未接owner的其它任务将来再发请求不是该快照自动覆盖的保证。
+
+新增49（观看core22/App4、推荐流core12/App7、timeline4），记忆累计670。提前类型检查真实exit1发现ensureKeys新增required参数破坏旧mutation调用、closure丢mode narrowing、readonly text测试赋值；修为默认request/入口mode快照/defineProperty。最终完整722/722核实合成集、全仓类型实际exit0、模块/差异绿。仅memory*.test.ts+纯bilibili-dm-card+modules，不是新全仓全量，未跑旧卡suite。全部临时合成卡/凭证/聊天/假fetch/API，不访问真实账号/runtime/外网服务，不部署推送。
+
+下一轮先真实App合成验证refreshMemeJob：held accountSource/fetchLists/ask/gather后stop是否继续新请求、落memes或RAM/日志；目前源码候选，不冒称已确认。优先核其共享账号来源返回后新派guard不在前一stop已派快照的问题；不以本批guard登记假称全部后台任务已经关闭。stickers/replies/risk仍需直接owner证据盘点；B站/社交未整体审，photo/food及本批watch/feed旧反例不重复。M32b远端公共旧派生/历史observation清理与独立证据解封仍未完成，当前保护不解、不访问真部署DB，记忆未完不转模块。
+
+## 第二十五批：热梗后台读取与停止所有权（2026-11-05）
+
+代码08ef50fd，ADR0129补记。真实App7项先6红1绿，使用fake globalfetch经过真实realRequest/guardRequest而不注入绕过breaker的request。初始accountSource held后stop，旧代码从1次请求继续到12次（popular三页、hotword、weibo、baidu、搜索、view、player、字幕与热评），并晚落memes；列表JSON body、候选模型、gather搜索、解释模型分别held也能晚落盘，失败与授予模型logger可晚输出。正常完成后重启遵守12h间隔是绿对照。held账号/search的已派生产guard依旧按stop→释放响应→await drain收尾，不能误把必要的持久风险等待算取消失败。
+
+App refreshMemeJob复用ownPassiveRead/passiveRead/passiveLifetime，派发前登记任务，停止同步拒后续入口并取消本地纯模型/读取等待，scoped logger及最终RAM重新加载守停止。memes.ts新增可选signal：fetchLists逐fetch/json/分页/来源循环，gatherEvidence逐search/sleep/subtitle/hotComments，refreshMemes逐模型、来源格式化、日期与提交检查；catch不吞取消后继续下一来源。最终待保存对象先计算再检查，已确认保存事实不回滚。账号search/subtitle单次signal透传；公共热评使用passiveFetch。既有guard的完整持久风险settlement仍归宿主drain，不全局中止mutation。保持四来源、候选与证据限额及12h策略，不新增重试。
+
+新增24（核心17/App7），其中边界对照不是24组缺陷；核心覆盖四个held阶段真实旧落盘、fetch/json/间隔/字幕/热评、普通失败降级、日期回调同步停止以及提交后停止保事实。最终746/746核实合成集、全仓类型实际exit0、模块/差异检查通过。只执行memory*.test.ts+纯bilibili-dm-card+modules，不是全仓全量；所有卡/凭证/事件均临时合成，API/HTTP均假服务，不访问真实角色/runtime/账号/服务，不推送部署。
+
+独立确证尚未修复：memory-meme-author-race.mjs启动真实作者CLI（显式--dir临时绝对目录），后台候选模型held期间remove成功、文件0条；释放旧模型后原缓存条目被bump并保存回来。当前cliRemoved=true、afterRefresh含合成喵梗、authorRemovalPreserved=false；exit0仅事实报告，不是正确性回归。下轮先贯通后台和CLI原子跨进程读改写/作者意图、冲突重读、崩溃及IO，不以无锁状态摘要检查假称跨进程协议。CLI缺--dir值可能回默认路径仅源码候选，未执行可能触及真实默认目录的命令，不计确证缺陷。
+
+本批不涵盖该并发删除、不宣称远端请求已物理取消；不合作生产guard可持续阻drain。stickers/replies/risk直接owner仍待实证，B站/社交未整体审。M32b远端旧公共派生与历史observation清理/独立证据解封仍受既有可信store/writer/task证据边界保护；本地source/完成/停止不证明远端净化，不访问真部署DB。记忆模块未完成，继续本模块。
+
+## 第二十六批：热梗作者并发与实际读口（2026-11-05）
+
+代码74ecf5dc，ADR0129补记；新增meme-store.ts归语言模块，派生及作者混合缓存沿记忆直接链继续审查。生产写入清单只有refreshMemes与meme-cli；saveMemes显式替换也统一上锁，不遗漏未来调用。原真实CLI remove/add/update与两个ABA及发布后EIO共6行为红；两个App实际prompt原仍带作者已删/修的旧解释，另2真红。只锁最终rename或无锁hash比较无法解决这组问题。
+
+短SQLite OS锁在完整同步RMW期间持有，JSON为事实源；锁外模型结果提交时fresh重读，按作者世代+条目身份合并仍有效的旧词观察，旧删除不复活、旧解释不覆盖、独立新增保留。无界墓碑改为全局作者世代保护未知新词，作者介入则旧轮新学习保守延后；较旧轮迟到保持较新的refreshedAt。删除后下一全新榜单轮仍可按原政策学习，不额外发明永久禁用。旧合法v1缺revision字段视0，坏schema/JSON/计数溢出/坏协调库保原拒绝，不静默隔离成空白。所有写者须升级、运行中不能删换coord或手改JSON，无非合作旧写者/人工删库/断电fsync/networkFS保证。
+
+测试正式16并发/恢复项覆盖两进程各6次增量、busy回调不执行、强杀持锁进程、rename前后强杀、发布前EROFS与后EIO、ABA、legacy/坏库/安全整数上限及旧轮时间不回退。发布后异常锁内精确bytes读回承认事实，不能把已成功的作者动作伪报失败并自动重试；未知状态不盲重发。强杀夹具最初closure读取重写后的argv，在执行前复核改冻结变量，不计产品缺陷；新增API缺失也不计旧缺陷。边界绿与故障对照数量不等缺陷数量。
+
+App移除启动/刷新后RAM热梗快照，每次实际男友档提示词fresh读作者提交；2真实App新测试先因合成QQ时间小数被忽略而超时，改合法整数源秒后才取得旧解释断言真正失败，修后绿，不把夹具超时当原缺陷。新严格读取暴露refreshDue入口在try外，真实App坏库connected抛错，交叉追加1回归修为保原跳过后台；不是把新兼容余波混成既有严重问题。CLI缺--dir值旧fallback通过无IO原parser表达式证实；新纯parser5项覆盖拒缺/flag/空白/重复未知、合法选项和原默认行为，解析先于路径解析/任何读取。没有运行可能触及真实默认runtime的旧坏命令。
+
+新增24（并发16/App读口2/参数5/App坏库1），记忆累计718。初全仓类型实际exit1为schema字符串与closure narrowing，已显式typeof及局部const修复。最终787/787核实合成集：memory*.test.ts+纯bilibili-dm-card+modules共770，另本次完整核实memes.test.ts17项全temp和假API，无角色卡/外部读取，坏库旧1断言按有意协议加固更新且其余不弱化。全仓类型实际exit0、模块/差异全部通过，非全仓全量。正确行为probe现在断言CLI删除保持，原结果已不再是未修证据。未访问真角色/runtime/账号/服务/DB，无部署推送。
+
+新coord只承载OS协调不存正文/联系人，JSON只增整数元数据，不猜新增联系人归属；共享memes及残留不能按号码整份遗忘。本轮不解决远端M32b公共旧派生或历史观察清理，可信store/writer/task冻结与独立完成证据仍缺，既有屏障保持。下一轮从App discoverStickers/消息collect真实合成held链验证借用owner和停止：trend/favorites/download/describe/decide纯读取与favorites.add远端mutation ACK必须区别；只读候选尚未确证，不盲给外部共享StickerShelf加全局stop。replies/risk与其它性能继续按证据审，B站/社交未整体审，记忆模块未完成。
+
+## 第二十七批：表情收藏调用所有权与来源归还（2026-11-05）
+
+代码9c0c77e1，ADR0063补记。核对social/stickers.ts完整队列、favorites/BQB/Bili来源、App三个consider/discover入口、main与Koishi工厂及sim借用调用。main/Koishi各造货架但App注入接口不保证独占，不能永久stop整个货架。真实App12原case10红2绿：8个held纯阶段停机晚续派/落index/image/log、晚模型失败日志、已派收藏ACK提前释放目录并派第二add；正常事实及共享借用继续使用为绿对照。扩展3项验证同URL重试、失败ACK与transport同步stop+throw，不把绿对照全计缺陷数。
+
+per-call StickerWorkOptions.signal贯通串行纯任务，取消本地等待、最终提交守signal、pending token防旧回调删新任务身份。自身mirror ACK在调用返回前收尾，排队未派可取消、已派不race掉事实；App同步登记任务后才微任务派发，stop/构造abort本scope并drain后放目录租约。既有QQ写间隔保elapsed 2秒，失败batch仍停；不合作借用实现忽略signal会阻drain，不伪称中止任意外部工作。生命周期修复不保证index IO失败后的持久ACK恢复或远端exactly-once。
+
+来源独立9项：Bili7旧取消入口/各await/fallback真红后绿，缓存已完成部分保留，未完成不冒充新缓存；BQB晚成功原会写catalog/log真红，晚失败原就拒绝为绿对照。download/describe/decide实际参数和QQ只读来源传signal；默认判断器模型调用层另发现signal接口未接，不仅删除类型错误字段：共用LLM4红验证fetch/body/retry/预取消，新增可选信号阻止排队后新派、重试和旧正文交付，默认退避取消补1项。保旧无signal路径，不能承诺不合作自定义fetch/sleep自身副作用取消。
+
+借用来源2项：真实App仅构造安装Bili、不connected即stop，外部shelf.discover原仍由旧App闭包发出fake网络请求1次，现归还原来源；多层setTrend用活跃层/动态previous代理，A后B安装后先dispose A，再dispose B，不覆盖B、不复活A。构造与正常stop均登记归还。未新增权限或配额策略，未改变收藏/发送概率、来源筛选、同类默认频率。
+
+新增31（App15、来源9、借用2、LLM5），记忆累计749。首854合成测试绿但类型实际exit1（signal不属于LlmDeps），不是最终全绿；补实际LLM支持并最终完整859/859，类型实际exit0及模块/差异绿。859为已允许memory*+纯bili-card+modules801、此前核实memes17、新核实四个sticker相关旧suite41；四个源均逐一确认临时合成文件和fake fetch/API，无角色卡/真实runtime/外部请求。不是全仓全量，历史真实卡测试不冒称全合成。测试代理一次中间态等待中断留下全合成%TEMP%/qqbot-app-stickers-owner-vqFkxW，清理在核实无bot.lock/活测试进程后仍被自动审批以blocked by policy拒绝，未给具体原因，已保留并停止替代重试；此工具阻碍不等项目修复失败，也不计中间态为产品缺陷。
+
+新独立确证下一步：memory-sticker-eviction-io.mjs在临时货架容量1时，fake新图/描述判断后注入index.tmp写EROFS。现indexUnchanged=true且oldEntryStillCommitted=true，但旧图片exists=false；先删victim再提交index使失败后原已确认收藏悬空。诊断exit0只报告事实，尚未修。下一轮需要图片/索引/RAM/seen发布失败、重启、淘汰时机和已经确认QQ收藏事实的完整协议，不以本批cancel/drain当多文件事务；不猜删未知孤儿。M32b远端旧公共派生/历史observation清理与可信store/writer/task独立证据解封仍未完成，现屏障保持，不访问真实部署DB。记忆未完，不转模块或社区比较。
+第二十八批完成表情淘汰IO与索引发布恢复（0c58f868，ADR0063补记）：旧先删victim后index EROFS造成已确认收藏悬空，经正式故障注入和真实子进程强杀验证。现在新图先发布、完整候选index确认后才清本次已知旧图，失败不删已确认图片；全部keep/seen/used/trend/QQ回执提交成功才换RAM，rename后异常精确bytes读回，未知时供给/写入封闭至fresh恢复。已派QQ ACK保内存事实，下次工作/后继add前先补持久；无持久outbox，不保证强杀ACK→JSON恢复或跨实例RMW。坏schema/路径/非普通文件拒猜空白；wx冲突不删未知tmp，已提交后清理失败不回滚。
+
+隐私清单补index实际tmp/corrupt、明确来源图片及规范名称无索引图片/图片tmp，混合或未知归属原位保留，不整份导出/遗忘、不读图猜来源；其它联系人已知图片不误列本人。新增22项（持久17含真实链接权限跳过1、隐私5），记忆累计771项新增用例（含本批1项平台跳过，不能称全部已执行通过）。最终核实合成集881项：880通过、1跳过、0失败；全仓类型实际exit0、模块与差异通过，非全仓全量。链接因Windows EPERM未验证，不伪绿；所有数据temp/fake，没有真实角色/runtime/服务访问、部署推送。memory-sticker-eviction-io.mjs现正确探针三项true，勿重做旧坏断言。原自动审批拒清理的qqbot-app-stickers-owner-vqFkxW仍未重试。
+
+下一轮先盘点replies/risk后台与记忆持久的启动/停止所有权，真实App合成held API/timer先证后修；目前只是待核候选，不能声称已存在缺陷。表情多独立实例写入、持久QQ outbox及未知孤儿归属未保证，不扩大为已修事务。B站/社交尚未整体审。M32b公共旧diary/week/phase远端派生和历史observation独立清理/证据解封仍未完成，客户端保护不解、不访问真实部署DB，记忆未完不转模块或社区比较。继续保留旧weakID/legacybefore/未持久观察、未知DELETE及可信writer/store/task证据要求，不以读取零/版本/布尔/删guard假解封。
+
+
+第二十九批完成回复/风险监控停止所有权（0c8a1dcf，ADR0090）：真实App合成held账号/回复feed/模型在stop释放租约后仍续派/写state、corpus、draft及授予log；风险监控held unread/notices仍续查并发DM，均确证并修。永久stop同步拒新、取消纯读取/模型，派发前拥有任务、drain等待已派postReply/sendDm ACK及状态/语料收尾；App统一等待两owner。实际account三个纯读signal贯通body，replyComposer每次重试/await核signal、模型日志守宿主。真实guard等待首个请求并不包含后继，正式App覆盖这条区别。
+
+整合另确证已派postComment在stop后收到风险错误被旧check吞掉：按已派标记保失败/暂停，停止时用risk.record只持久已发生风险、不新发DM。hidden确认日志同步stop同样record并由原owner等待；活跃时仍trip通知。legacy自定义RiskGate无record兼容trip，不能保证外部实现无新副作用。纯取消不冒充远端取消；不合作mutation可阻drain，持久失败无outbox/强杀事务保证。频率/额度/披露/预留政策不改。
+
+新增43项（replies core12/App5、risk core10/App7、账号/写手6、已派评论失败1、hidden交接2），记忆累计814用例（含上一批Windows链接跳过1）。先922集通过后补hidden2，最终完整924项=923通过/1原权限跳过/0失败，全仓类型实际exit0、模块/差异绿；不是全仓全量，只有核实合成卡/temp/fake/API，没有真实角色/runtime/账号/外部服务、部署推送。replies-owner和risk-owner两probe已改正确断言，勿再用旧坏断言。
+
+下一批必须先处理两组新确证（未修）：①memory-risk-notice-retry.mjs首次unread1、notices抛一次后lastUnread1仍持久；15分钟后同数与重启都noticeReads1/haltedfalse，只有未读数改2才重读原警告并haltedtrue。须区分成功读取与失败/空内容/已观察风险提交，保30分钟通知限频、不盲重复DM。②memory-bili-state-schema.mjs畸形risk.until='not-a-time'被接受且不暂停；reply.count='not-a-number'在7个不同uid的同日tick发送7条超过5，持久count字符串追加。须完整schema/旧合法兼容与失败关闭及IO恢复，不只修已知两个字段。这两个exit0仍只是坏行为事实诊断，不是正确性回归。
+
+M32b公共旧diary/week/phase远端派生与历史observation证据清理仍未完成，保护不解、不访问真部署DB；记忆未完不转模块/社区比较，B站/社交仍非整体审完。旧弱身份、无manifest/未持久观察、未知DELETE/可信store及writer任务证据、多文件远端非事务边界保持。原自动审批拒清理的合成temp仍未重试。
+
+第三十批完成通知进度、完整状态与IO恢复（44c72044，ADR0090）：首次失败/空列表和同未读数下换成新警告均确证漏读；现每非零15min poll读列表，seen去重、失败/空不追认成功。seen/until/lastUnread同候选发布；未持久风险RAM仍暂停，后续及stop先本地flush，失败不派提醒，发布后异常精确bytes确认。并发trip共同账号await后原会发2DM，现提交前重核30min冷却，预留先持久，失败恢复宁少不盲重发。
+
+replies/risk完整已知schema、坏JSON/IO保原拒空白；合法旧v1最小状态/未知扩展保持。回复未派预留IO回退已确认RAM，已派终态pending恢复先flush，risk记录器异常也尝试保存回复真实失败。App单独捕获公共任务初始化错误，连接不因这些拒绝而中断，也不以缺省risk绕过；文件修复后可重新启动。低年份/epoch前brokenUntil、风险提醒及轮询缺省0错误均有合成回归，派生越界拒新发送。
+
+新增33（reply11/risk16/App6），记忆累计847用例含原Windows链接权限skip1。首types实际exit1是新测试闭包变量被推为never，改typed holder后真实exit0；首956集后补负时间poll真实红绿，最终完整957项=956通过/1原权限skip/0失败，全仓类型/模块/差异绿，非全仓全量。两个原schema/notice-retry probe已改正确断言，正常7人仍最多5条、同数下一poll读到警告且不重复DM，勿重做旧坏断言。仅临时合成卡/事件/凭证和fakeAPI，无真角色/runtime/账号/服务/DB、部署推送。
+
+下一轮优先新确证延迟戳回owner：docs/reviews/repro/memory-app-notice-owner.mjs真实App合成卡/fake timer/pokeFriend，已派请求held时stop已resolved且bot.lock=false；释放后成功/失败日志各晚写1。两模式最终诊断正常exit0仅报告未修坏事实，不是正确回归；前两次诊断自己timer残留导致进程中断不算产品缺陷或通过，已只清理诊断创建的handles。需派发前登记settlement覆盖同步重入stop/throw、等已派ACK/诊断后release，未派timer仍取消，保原不记录聊天历史政策。tellOwner通知只读候选未验证，不一并冒称确证。
+
+M32b远端公共旧派生/历史observation独立清理及有证据解封仍未完，现保护不解，不读真实部署DB；记忆未完不转模块或社区比较。B站/社交仍非整体审完。无多实例CAS、持久通知outbox/强杀恢复或全局事务；旧已seen缺until不能猜迁移，未持久观察崩溃不可凭空恢复。既有协调文件/弱ID/未知DELETE边界及拒清理合成temp保持。
+
+第三十一批完成直接提示/戳回停止所有权（2c9895cb，ADR0079/0161）：真实App合成确认延迟pokeFriend已派并held时，旧stop已释放bot.lock，ACK成功/失败日志随后晚写；主人设定审计等tellOwner提示也未等待已派sendPrivateText。统一sendOwnedNotice在调用transport前预登记settlement，覆盖同步重入stop、同步throw和诊断回调throw；App停止等待已派ACK及结果日志后才释放租约。未派戳回timer仍清除，停止后的晚DSH probe/advice结果被tellOwner入口拒新发送；成功/失败均不新增助手聊天历史，保运维提示不进history政策。
+
+新增15项（poke7、tellOwner8），记忆累计862用例含原Windows链接skip1；定向15/15及两个correctness probes通过。最终核实合成集972项=971通过/1原权限skip/0失败，全仓类型实际exit0、模块/差异绿，非全仓全量。仅合成卡/temp/fake transport及内存DSH hook，无真实角色/runtime/QQ/模型/服务或部署推送。旧poke诊断已改正确断言，held时stop未完成且lease仍在；早期诊断自有timer中断不算产品失败或通过。
+
+协议只保证当前进程已派运输和诊断收尾，没有持久通知outbox、强杀恢复或跨运输/历史事务；不合作transport可持续阻塞drain。DSH顾问底层任务、配对/封存文件操作不因tellOwner统一出口自动成为同一事务，须逐链取证。下一轮按证据复核仍绕过统一出口的直接sendPrivateText链，以及DSH底层晚任务；尚未确证的不冒称缺陷。
+
+M32b远端公共旧派生/历史observation清理及证据解封仍未完，保护不解、不访问真部署DB；记忆未完不转模块/社区比较，B站/社交仍未整体审完。既有弱身份/未知DELETE/多文件远端非事务/协调文件和拒清理合成temp边界保持。
+
+## 第三十二批：`/主动` 原因提示的停止所有权（2026-11-05）
+
+代码7d488fcd，ADR0156补记。`docs/reviews/repro/memory-app-direct-text-owner.mjs`用真实App、临时合成角色卡和fake transport确认两侧：主动功能关闭时收到`/主动`，同栈stop后旧`Promise.resolve(reason).then(...)`仍会派发；已经派出的sendPrivateText held时，旧stop已释放bot.lock，失败日志在释放后晚写。命令和提示均不进入ChatHistory是保留的绿边界。
+
+原因尚未派发且App已停止时直接丢弃；已派提示改走现有sendOwnedNotice，在调用transport前预登记settlement，因此成功/失败ACK、同步重入stop和同步throw的诊断都在租约内完成。没有新增聊天历史、重试、频率或文案策略。新增7项，记忆累计869；正式7/7及correctness probe通过，最终核实合成集979项=978通过/1原Windows权限skip/0失败，全仓类型实际exit0、模块/差异检查通过。无真实QQ/模型/角色/runtime访问。
+
+## 第三十三批：DSH排队咨询的本地取消与收尾（2026-11-05）
+
+代码bc85de64，ADR0223补记。独立probe只替换dsh-link依赖：首问advise held、第二问已入队，旧stop已resolved且bot.lock不存在；释放首问后，成功结果会把`SYNTHETIC_LATE_FIRST_ADVICE`写入RAM并作为第二次请求的recentTurns，失败也会继续派第二问。tellOwner已经挡住晚QQ发送，不能据此误判底层任务已停。
+
+DSH问答新增独立AbortController和pending计数。队列任务在执行前、advise等待后与错误分支均检查生命周期；stop令本地race结束并等待当时的队列尾。已经调用的无signal DshLink promise仍挂成功/失败处理器，晚结果只被吸收，不再写dshConversation、发QQ或触发后继。正常运行时两问仍严格串行，第二问仍得到第一问user+assistant连续上下文；每个完成请求移除abort监听，不随咨询次数积累。
+
+首次完整983项回归揭示本实现初版把从未使用DSH的idle stop也变成Promise，导致“空闲同步释放”断言失败，并连锁两项未await stop的锁用例；未提交该版本。改为只有dshAskPending非零时返回drain，相关28项重新全绿。另一次并行buffer用例清理临时目录遇Windows EPERM，独立重跑通过且无源码改动，按环境抖动记录而非产品修复。最终完整983项=982通过/1既有Windows符号链接权限skip/0失败；全仓类型实际exit0、模块和差异检查通过。新增4项，记忆累计873。两个成功/失败probe都已改正确行为断言。
+
+协议限制：DshLink当前不接signal，已经派到远端的请求可能继续计算，本批只保证本地放弃结果；不宣称远端取消、持久上下文恢复、强杀安全或exactly-once。`/dsh`连通性probe与手机伴侣各有独立owner，未由QQ咨询队列自动覆盖。直接通知仍无持久outbox，不合作transport可阻止drain。下一轮继续对设备命令等绕过统一通知出口的直接发送链和其它后台任务逐条用真实App合成取证；尚未证实的不批量重构。
+
+M32b公共diary/week/phase旧远端派生和历史observation独立清理/证据解封仍未完成；客户端屏障保持，不使用版本、布尔、live=0或未知DELETE假造净化证明，不访问真实部署/数据库。记忆模块未完成，不转下一模块或社区比较；B站/社交仍未整体审完。
+
+## 第三十四批：设备命令直接回复与入站收尾（2026-11-05）
+
+代码af539faa，ADR0148补记。两路真实App诊断分别覆盖设备`owner()`即时reply，以及`capture.run()`完成后的handled.reply。即时回复已派held时旧stop释放bot.lock，失败日志晚写；同步重入stop同样漏本次send，同步throw只走泛化入口错误。capture来源尚未返回时旧`if(stopped)`已正确丢弃晚结果，是保留的绿边界；但结果已经返回并派send后，旧stop仍立即释放，成功ACK后在无租约状态discardIncoming，失败ACK后incomingFailure晚写，transport同步重入也提前结束。
+
+sendOwnedNotice现返回已预登记settlement，既有忽略返回值的直接提示策略不变。即时设备提示复用该owner；capture提示await同一个settlement，成功回调内完成入站预约清理，清理IO错误和发送失败都交给既有incomingFailure后再结束settlement。这样stop快照看得到公开transport同步重入派发；未派capture来源仍不纳入drain，不让不合作看图任务永久占锁。直接提示继续不进普通聊天历史，失败预约仍保留给既有恢复链。
+
+新增9项，记忆累计882。正式覆盖停止后新receive、即时成功/失败、同步stop/throw、capture来源held、capture发送成功/失败及同步stop；两个probe改为正确行为断言。最终核实合成集992项=991通过/1既有Windows符号链接权限skip/0失败，全仓类型实际exit0、模块/差异检查通过。全部使用临时合成卡、fake DeviceService/transport，无真实屏幕、摄像头、QQ、runtime、网络或部署。
+
+限制：这里只保证当前进程已派transport和随后的本地预约提交在租约内收尾；没有持久通知outbox、强杀恢复或QQ ACK+JSON原子事务，不合作transport可持续阻塞drain。capture本体停止后晚结果直接放弃，不持久恢复。下一轮继续盘点剩余直接发送和后台owner；M32b公共旧派生/历史observation远端清理和独立完成证据仍未解决，客户端保护保持，记忆模块未完成，不转下一模块或社区比较。
+
+## 第三十五批：状态页健康探针晚结果（2026-11-05）
+
+代码1854f67b，ADR0010补记。真实App临时memory配置与fake `/health` 证明：status()派发健康读取后，stop同步释放bot.lock；晚成功仍把已停止实例的`memory.health`从空改为ok。第二实例有独立closure，未发生跨重启污染，也无文件或日志晚写，因此按真实影响修复而不夸大成持久数据损坏。
+
+stop现在同步清除probing；health成功、失败及finally只有App仍活跃才提交RAM。纯读请求不加入drain，不等待不合作HTTP；底层HindsightClient无signal，网络请求仍可能运行但结果被放弃。活跃成功仍更新一次并保持一分钟限频。新增3项，记忆累计885；定向3/3及双实例correctness probe通过，最终核实合成集995项=994通过/1既有Windows权限skip/0失败，全仓类型实际exit0、模块/差异绿。仅合成卡/temp/fake fetch，无真实memory服务/runtime访问。
+
+并行下一证据已确认markRead已派ACK不属于stop drain，晚失败会在释放租约后写日志；只确认已读回执，未外推typing/react。下一批从该精确链继续。M32b远端公共旧派生/历史observation清理仍未完成，保护不解，记忆模块未完成不转模块。
+
+## 第三十六批：已读、正在输入与表情回应的运输收尾（2026-11-05）
+
+代码a2df43d5，ADR0083补记。三份独立真实App诊断只使用临时合成角色卡和fake transport，先分别确认范围：`markRead`、`setInputStatus`与已读不回的`reactMessage`已经派发并held时，旧stop均会先返回并释放bot.lock；晚失败会在租约外写一次诊断，表情成功也会晚写成功日志。transport函数体同步调用stop时，本次Promise还没有进入旧停机快照。三条链都没有观察到额外后继请求、普通QQ文本发送、聊天历史或持久文件写入，因此没有把问题扩大描述成回复丢失或持久数据损坏。
+
+三个入口统一走现有`sendOwnedNotice`：在调用公开transport函数之前先登记settlement，成功/失败及诊断回调完成后才移除；同步throw、同步重入stop和普通异步确认都由同一收尾覆盖。App已经停止时入口直接拒绝新动作。原有产品行为保持：已读和表情失败仍按动作只记第一次，正在输入仍只记第一次错误，表情成功仍记既有一行；这些附属动作仍不进入普通聊天历史，也没有新增重试。
+
+新增12项正式回归（每条动作各覆盖成功、失败、同步重入stop、同步重入后throw），记忆累计897。三份诊断已改成正确行为探针；定向12/12与三份probe通过。最终核实合成集1007项=1006通过/1既有Windows符号链接权限skip/0失败，全仓类型实际exit0、模块和差异检查通过。不是全仓全量；没有运行未核角色卡依赖suite，也未访问真实角色、runtime、QQ、外部模型/服务、数据库或部署。
+
+边界：只保证当前进程中已经派发transport动作的ACK与诊断归当前App租约；没有持久动作outbox、强杀恢复、跨进程exactly-once或QQ动作与本地历史事务。不合作transport可持续阻塞drain。下一轮继续按证据复核剩余直接发送/后台owner，不把相邻调用一概批量改写。M32b公共diary/week/phase旧远端派生及历史observation清理/独立证据解封仍未完成；客户端保护不解，不以版本、布尔、live inventory、未知DELETE或删guard/改generation冒充服务端净化，也不访问真实部署/数据库。记忆模块未完成，不转下一模块或社区比较。
+
+## 第三十七批：好友申请控制面mutation与邻近绿边界（2026-11-05）
+
+代码007b1fb0，ADR0142补记。真实App、临时合成卡与fake `callAction`证明：名单内好友申请的`set_friend_add_request`已派并held时，旧stop已经返回且bot.lock消失；晚成功/失败随后把控制面审计追加到`account-audit.jsonl`并写结果日志。App停止后入口也没有总生命周期检查，仍可派发新申请。公开transport函数体同步重入stop时，本次`account.run`尚未进入旧停机快照。
+
+好友申请入口现在停止即拒绝新事件；允许执行的mutation复用调用前预登记的settlement，覆盖`account.run`内部真实ACK、审计追加以及外层一次成功/失败诊断。同步throw和同步重入stop同样先登记后执行。原`off/allow/all`、允许名单、一小时额度、审计字段和不写聊天历史政策保持，没有新增自动重试。新增5项覆盖成功、失败、停止后拒新、同步重入及同步throw；诊断改为正确行为探针。
+
+本批同时把两个相邻候选单独证伪并留下correctness probes。其一，`selfRecall→deleteMessage`位于Responder `sendBubble`拥有的整段`emitBubble`内：held成功/失败和同步重入stop均保持租约；成功撤回不留已撤助手消息，失败/同步throw保留实际已发错字，停止后不补发修正或晚写失败诊断。其二，`connected→friendHistory`是纯读取；stop可立即释放租约，但2247/2252的停止检查会使晚成功/失败不写history、日志、模型或发送，同目录replacement实例也不受旧结果污染。构造阶段不会派该读取。没有为这两个绿边界做生产重构。
+
+新增5项，记忆累计902。正式5/5及三份correctness probe通过；最终核实合成集1012项=1011通过/1既有Windows符号链接权限skip/0失败，全仓类型实际exit0、模块和差异检查通过。不是全仓全量；未访问真实角色、runtime、QQ、外部模型/服务、数据库或部署。
+
+边界：好友申请仅有当前进程正常停机所有权，没有持久mutation outbox、强杀重放、跨进程exactly-once或QQ mutation与本地审计的原子事务；不合作`callAction`可阻塞drain。`friendHistory`不合作实现可令旧`connected()` Promise长期pending，但本地副作用已被停止守卫隔离。下一轮继续按证据复核其它直接transport/控制面和后台owner。M32b远端公共旧派生/历史observation清理与独立证据解封仍未完成，客户端保护保持，记忆模块未完成不转模块。
+
+## 第三十八批：认识的人纯读取取消边界（2026-11-05）
+
+代码 b3293eae，ADR0163补记。真实App、临时合成卡与fake B站HTTP确认：`ReplyWatcher.stop()`已经取消 held `fetchReplies`，但`acquaintancesAccount`原先丢掉调用方的`AbortSignal`，旧纯读取释放后仍把回复写入`people.json`；目录租约因此被拖到旧请求完成，并且同目录replacement会继承本应取消的认识的人事实。已派`postReply` mutation是正确对照：仍须等待真实ACK、时间线与一次诊断收尾，不能按纯读取丢弃。
+
+账号装饰器现在原样透传signal，并在await后再次核验；取消后仍把底层已经返回的数组交还已取消调用栈，但不再调用`people.observe`。没有改变人物识别、40字摘录、两日熟悉、朋友只能作者设置或B站回复策略；不宣称远端HTTP已经取消、多进程JSON事务或任意外部账号实现合作取消。新增4项（core1、真实App3），记忆累计906。定向6+3项及correctness probe通过；随后与下一批合并完成最终允许集验证。
+
+## 第三十九批：Web continuity 停止、deadline 与替代实例隔离（2026-11-05）
+
+代码 d367c625，ADR0160补记。两份真实App合成证据确认：(1) Wikipedia fake fetch held时stop已释放目录，旧请求释放后仍派摘录模型、写Web时间线并继续联系人提示词构建日志；(2) continuity 25秒超时产生的孤儿请求可在replacement接管同目录后迟到写时间线，使新实例下一轮prompt包含旧查询事实。正常完成、时间线与同实例6小时缓存是绿边界。
+
+`WebLookup.line`新增可选生命周期signal，显式贯通网页读取、全部搜索商，并在分类、DNS/读取、provider、摘录、缓存、日志和时间线各await/提交边界重核。App为每轮Web continuity合并全局stop与25秒deadline；本地race在取消时立即结束等待，底层不合作promise晚返回只被吸收，不再派后继。deadline只放弃Web资料并照常回复；App stop用`AbortError`终止整次提示词构建，contact不把主动取消降级成普通continuity失败，Responder也不把它记成离线故障或修改failingSince。额度在远端派发前已记，超时不回滚，避免伪造未发生请求。底层无signal实现仍可运行，本批不宣称远端取消。
+
+新增3项真实App正式回归，记忆累计909。定向Web 16项、两份correctness probe通过；最终核实允许的合成集1018项=1017通过、1项既有Windows符号链接权限skip、0失败。全仓Bot类型、模块登记与差异检查通过；没有运行未经核实的真实角色卡suite，没有访问真runtime、QQ、外部模型、服务或数据库，无部署推送。
+
+**下一检查点：记忆模块仍未完成。** 下一轮先用真实App、fake DSH/传输验证手机伴侣`runtime.handle`、媒体读取、动作回执与App.stop/Koishi卸载的完整owner边界；当前`mobileCompanion()`对象在stop后仍可见，属于待证候选，未复现前不称缺陷。随后继续其它直接transport/后台owner与资源证据。M32b远端公共diary/week/phase旧派生及历史observation净化仍缺可信writer fence、完整四态任务静止、实际store一致性和未知DELETE停止证据；客户端屏障保持，不用版本、布尔、live=0、删UUID或改generation伪解封，不访问真实部署DB。记忆覆盖充分前不转社交/B站/平台模块或社区比较。
+
+## 第四十批：手机伴侣完整停止所有权（2026-11-05）
+
+代码 `1318e5a8` / `d46c21c0`，ADR0224补记。`memory-app-mobile-companion-owner.mjs`用真实App、临时合成角色卡和fake DSH确证：手机消息已进入held advice时，旧`App.stop()`先释放`bot.lock`，集成对象仍暴露且保持paired/connected；释放模型后旧请求返回正文，并可继续处理第二条消息和签发新配对码。
+
+`CompanionRuntime.stop()`现为永久边界：同步拒绝新会话/消息/下行动作，清配对、nonce、队列和监听器；纯读/DSH处理获得`AbortSignal`并取消本地等待，迟到结果不写短期上下文或交给旧设备；已派动作不伪装未发生，drain等它自然确认。媒体摘要等待期间unpair也不再派后续DSH。App正常停止和构造回滚都接线该drain，然后才释放目录租约，并不再从`mobileCompanion()`暴露旧对象。
+
+交叉复核发现旧对象还可直接调`pairing.issue()`和`media.put()`绕过集成层；第二提交使两个底层存储也永久stop，撤销待用凭证、清内存媒体并拒绝新写。残留Koishi Koa路由的envelope、媒体上传和动作轮询均只返回已停止/未授权，不复活会话；适配器后置调用不抛同步异常。
+
+新增8项回归（真实App 3、运行时/媒体摘要 3、媒体存储 1、Koa残留路由 1），记忆累计917。定向手机伴侣组50/50通过；最终允许合成集1021项=1020通过、1项既有Windows符号链接权限skip、0失败；全workspace类型、模块登记与差异检查通过。正确性probe现断言停止后不暴露、旧/新消息都拒绝、旧底层存储拒绝新写且迟到日志为0。只用合成卡/消息/媒体、fake DSH/HTTP和temp，未访问真实runtime、QQ、外部模型/服务/DB，未部署推送。
+
+边界：本地abort不等于远端DSH计算已取消；不合作的已派动作可阻drain；无持久手机动作outbox、强杀恢复或任意网络exactly-once。M32b远端公共旧派生/历史observation净化仍缺可信writer fence、四态任务静止、实际store一致性和未知DELETE停止证据；客户端屏障保持，不读真部署DB，不伪解封。
+
+**下一检查点：记忆模块仍未完成。** 手机伴侣App/runtime/media/pairing/Koishi停止链已覆盖，不重做旧候选。继续对记忆直接调用与后台owner做剩余盘点、资源故障注入和调用链回看；尚未证实的不批量重构。记忆覆盖充分前不转下一模块或社区比较。
+
+## 第四十一批：危机停机持久化、回复等待资源收尾与模块闭环（2026-11-05）
+
+代码 `414145cf`。最终停机盘点确证两项遗漏：
+
+1. 危机状态首次原子发布失败后，RAM 已按真实观察暂停主动消息并排了退避重试；正常停机若恰好发生在存储恢复但定时器尚未触发的窗口，旧代码只取消定时器并释放目录租约，重启会丢掉这次尚未落盘的安全观察。现在 `App.stop()` 在释放租约前做最后一次同步 `crisisState.flush()`；仍失败时保原文件和失败关闭边界，只写固定、不含底层错误正文的诊断，不伪造成功。
+2. 普通回复正处于 4 秒连发安静窗口时，旧 `Responder.stop()` 只让后续分支忽略结果，没有清默认定时器；进一步把定时器改成随生命周期中止后，冻结时钟又会让 `waitForQuiet` 在已停止状态立即 resolve 后忙循环。现在默认安静/重试/打字/气泡间隔定时器归实例生命周期并实际清理，`waitForQuiet` 停止后直接结束；纯等待不制造 mutation drain，已经派发的传输仍按 ADR0303 等 ACK 与本地事实收尾。注入的不合作 `sleep` 仍只能本地放弃，不能强杀底层实现。
+
+新增2项正式回归，记忆累计919：`memory-app-crisis-stop-review.test.ts` 覆盖发布失败→存储恢复→重试窗口内正常停机，`memory-responder-drain-review.test.ts` 覆盖默认4秒定时器被真正清除且冻结时钟不忙循环。定向11/11通过；最终允许的合成集1023项=1022通过/1项既有Windows符号链接权限跳过/0失败，全workspace类型、模块登记和差异检查通过。没有运行未核实的真实角色卡suite，没有访问真实runtime、QQ、模型服务、Hindsight数据库或私密资料，也未部署/推送。
+
+## 记忆与数据模块本轮完成检查点
+
+本轮已逐文件覆盖 `memory/` 的25个自有源文件，并复核直接调用与数据流；下表是最终覆盖闭环，不表示证明以后不会出现新缺陷：
+
+| 范围 | 已覆盖源文件与链路 | 主要证据 |
+| --- | --- | --- |
+| 输入、历史与时间 | `history.ts`、`backfill.ts`、`episodes.ts`、`fading.ts`、`civil-time.ts`、`tier-record.ts` | QQ来源身份/撤回/待媒体、补回与重启、未来历史过滤、低年份/DST/缺失民用日、档位副状态；坏行、同秒复用、IO与停止故障注入 |
+| 本地状态与审计 | `json-file.ts`、`state-schema.ts`、`transient-io.ts`、`ledger.ts`、`timeline.ts`、`identity.ts`、`memory-audit.ts` | schema失败关闭、原子发布前后异常、协调锁/多进程、账本hash、时间线、身份告知副状态、审计不复制正文及停止后的晚写保护 |
+| 长期与派生记忆 | `hindsight.ts`、`long-term.ts`、`derived-repair-protocol.ts`、`derived-repair.ts`、`derived-state.ts`、`written-retain.ts` | 请求大小/超时/形状、Contact/Common完整进度、稳定文档修订、撤回污染世代、私人relationship修复证据、旧UUID仲裁、日记/周记/阶段摘要prepared/confirmed/来源manifest和停止收尾 |
+| 维护、隐私与封存 | `archive.ts`、`archive-job.ts`、`forget-job.ts`、`privacy-audit.ts`、`privacy-forget.ts`、`dormancy.ts` | 全过程目录租约、不可变job与恢复、强杀/rename后异常、混合共享文件清单、精确导出/遗忘、链接守界、休眠封存与启动屏障 |
+
+直接调用链已覆盖配置解析、`platform/app.ts`/`contact.ts`/`main.ts`、Responder、Koishi dispose、独立宿主、sim restart/final、状态/连续性/归档/遗忘CLI，以及日记、承诺、世界、主动、B站、设备、Web和手机伴侣等会读写记忆或影响目录租约的后台所有者。配置、持久化、重复/并发、重启/失败恢复、撤回与来源、权限/隐私、停止/资源及实际线性开销均有针对性复现或边界记录。
+
+### 保留且不伪装成已修的边界
+
+- M32b 的公共 diary/week/phase 旧派生和历史 observation 服务端净化仍没有可安全自动完成的独立证据。固定 Hindsight v0.10.2 的公开 version/config/stats、live inventory、`live=0`、一次 DELETE/refresh ACK 都不能证明实际 backend/store、未知旧请求已停止或 observation history 孤儿已清。当前客户端持续按 bank/来源世代失败关闭：污染公共派生及历史观察不读、不再生成；私人 relationship 只在完整证据下修复。不能为“完成”而删 guard、改 generation、猜 PG 或访问真实部署数据库。
+- 旧无来源/弱message ID、未成功持久的崩溃前观察、legacy promise `before`、自然语言公共日记和旧无来源反馈不能凭空精确归属或自动迁移；审计会列限制，遗忘不会猜删共享资料。
+- JSONL/head、维护多文件与远端服务不是全局事务；SQLite只作本机OS协调锁，相关写者必须统一升级，运行中不能删换协调文件。50ms只表示争锁预算，不承诺网络文件系统、断电fsync或任意重试exactly-once。
+- 当前进程的正常stop会等待已派mutation/transport ACK及本地收尾；不合作外部实现可能持续阻塞drain，强杀且无持久outbox的QQ/外部ACK不能自动恢复。这些属于明确运维边界，不是用测试假造出来的保证。
+
+据此，“记忆与数据”本轮深入审查与已确认缺陷修复完成；后续若出现新证据仍回修，不声称证明无缺陷。按模块顺序，下一个尚未开始的模块是“在 QQ 上的样子（社交）”；本检查点不自动进入下一模块或社区比较。

@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import {
@@ -7,10 +6,11 @@ import {
     type Candidate, type NewsItem, type ProactiveInput, type ProactiveRecord,
 } from '../src/proactive/proactive.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // ADR 0133：主动发的话要有由头、有感觉、有话头；他没回的时候不再一条条报自己的小事
 // （用户 10-23：「现在她主动发的信息很莫名其妙，没来由的突然发一个，感觉十分突兀」）
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m).getTime();
 let nextId = 1;
@@ -28,7 +28,7 @@ const input = (patch: Partial<ProactiveInput> = {}): ProactiveInput => ({
 const kinds = (list: Candidate[]) => list.filter(c => c.occasion === 'news' || c.occasion === 'inner').map(c => (c.news ? c.news.kind : `inner-${c.inner!.goes}`));
 
 describe('他一直没回：不再一条条报自己的小事', () => {
-    test('她主动发的有一条他没回：小事 / 喂完土豆和吃饭拍的照片 / 心里惦记想告诉他的，都不排；想问他的还在', () => {
+    test('她主动发的有一条他没回：小事 / 喂完猫和吃饭拍的照片 / 心里惦记想告诉他的，都不排；想问他的还在', () => {
         const unanswered = { history: [user(t(11, 11, 22, 0)), her(t(11, 12, 10, 0), '早呀')], records: [record('2026-11-12:morning', t(11, 12, 10, 0))] };
         const plan = planFrom(t(11, 12, 10, 30), input(unanswered));
         const planned = kinds([...plan.upcoming, ...plan.yielded]);
@@ -48,7 +48,7 @@ describe('说自己的事的几个时机共用“别写成汇报”', () => {
     const base = (patch: Partial<ProactiveInput> = {}) => candidatesOn(day, input({ history: [user(t(11, 12, 9, 0)), her(t(11, 12, 9, 1))], ...patch }));
     const note = (c: Candidate) => occasionNote(c, '宝宝');
 
-    test('小事、土豆的照片、吃的照片、心里惦记（告诉他）都带 LEAD_NOTE；不再写“不要他回应”“像突然想起来”', () => {
+    test('小事、猫的照片、吃的照片、心里惦记（告诉他）都带 LEAD_NOTE；不再写“不要他回应”“像突然想起来”', () => {
         const list = base();
         for (const pick of [(c: Candidate) => c.news?.kind === 'small_thing', (c: Candidate) => c.news?.kind === 'cat_photo', (c: Candidate) => c.news?.kind === 'food_photo', (c: Candidate) => c.inner?.goes === 'tell']) {
             const c = list.find(pick);

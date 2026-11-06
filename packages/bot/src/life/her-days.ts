@@ -1,5 +1,6 @@
 // 她自己的日子（ADR 0015）：每日心情和在读的书。这里都是纯函数；接进时间块和出口检查在 contact.ts，日志和开关在 app.ts。
 
+import { localDate } from '../local-date.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { BodyNow } from './body.ts';
 import type { WorldNow } from '.././world/world.ts';
@@ -136,9 +137,10 @@ export function bookProgressOn(book: ReadingBook, day: Date): BookProgress {
     const days = Math.max(0, calendarDays(start, day));
     const advanced = book.progress.state === 'put_down' ? 0 : Math.floor(days / book.progress.everyDays) * book.progress.amount;
     const raw = book.progress.start + advanced;
-    const amount = book.progress.max === undefined ? raw : Math.min(raw, book.progress.max);
+    const total = book.total?.unit === book.progress.unit ? book.total.amount : Infinity;
+    const amount = Math.min(raw, book.progress.max ?? Infinity, total);
     const finished = book.total !== undefined && book.total.unit === book.progress.unit && amount >= book.total.amount;
-    const stopped = book.progress.state === 'put_down' || (book.progress.max !== undefined && amount >= book.progress.max);
+    const stopped = finished || book.progress.state === 'put_down' || (book.progress.max !== undefined && amount >= book.progress.max);
     return { amount, unit: book.progress.unit, finished, stopped };
 }
 
@@ -314,12 +316,16 @@ function specificBookTerms(book: ReadingBook): string[] {
 }
 
 function calendarDays(from: Date, to: Date): number {
-    return Math.floor((Date.UTC(to.getFullYear(), to.getMonth(), to.getDate()) - Date.UTC(from.getFullYear(), from.getMonth(), from.getDate())) / DAY_MS);
+    const start = new Date(0);
+    const end = new Date(0);
+    start.setUTCFullYear(from.getFullYear(), from.getMonth(), from.getDate());
+    end.setUTCFullYear(to.getFullYear(), to.getMonth(), to.getDate());
+    return Math.floor((end.getTime() - start.getTime()) / DAY_MS);
 }
 
 function parseDate(text: string): Date {
     const [year, month, day] = text.split('-').map(Number);
-    return new Date(year!, month! - 1, day);
+    return localDate(year!, month! - 1, day);
 }
 
 /** FNV-1a，和作息固定选空闲活动的算法一致。 */
@@ -383,6 +389,7 @@ export function parseBooks(value: unknown, source: string): ReadingBook[] {
             const item = object(book.total, `[${i}].total`);
             total = { amount: integer(item.amount, `[${i}].total.amount`, 1), unit: text(item.unit, `[${i}].total.unit`) };
             if (total.unit !== unit) fail(`[${i}].total.unit 要和 progress.unit 一样`);
+            if (progress.start > total.amount) fail(`[${i}].progress.start 不能大于 total.amount`);
         }
         const nodes = array(book.nodes, `[${i}].nodes`).map((rawNode, j) => {
             const node = object(rawNode, `[${i}].nodes[${j}]`);

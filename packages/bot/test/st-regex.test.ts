@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { cleanUpReply } from '../src/language/reply.ts';
 import { loadCharacterCard, parseCharacterCard } from '../src/st/card.ts';
 import { AI_OUTPUT, applyAiOutputScripts, parseRegexScripts, regexFromString, runRegexScript, type RegexScript } from '../src/st/regex.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // 对照 vendor/SillyTavern public/scripts/extensions/regex/engine.js（runRegexScript / getRegexedString）与 utils.js regexFromString
 
-const names = { user: '阿明', char: '林梦瑶' };
+const names = { user: '阿明', char: '测试角色' };
 const script = (s: Partial<RegexScript>): RegexScript => ({
     scriptName: 't', findRegex: '', replaceString: '', trimStrings: [], placement: [AI_OUTPUT],
     disabled: false, markdownOnly: false, promptOnly: false, substituteRegex: 0, ...s,
@@ -46,10 +46,10 @@ describe('runRegexScript（engine.js）', () => {
     });
     test('捕获内容去掉 trimStrings（trimStrings 先替换宏），替换结果再替换宏', () => {
         const s = script({ findRegex: '/<(.*)>/', replaceString: '$1，{{user}}', trimStrings: ['{{char}}：'] });
-        assert.equal(runRegexScript(s, '<林梦瑶：你好>', names), '你好，阿明');
+        assert.equal(runRegexScript(s, '<测试角色：你好>', names), '你好，阿明');
     });
     test('Find Regex 里的宏：RAW 原样替换，ESCAPED 先转义', () => {
-        assert.equal(runRegexScript(script({ findRegex: '/^{{char}}：/', substituteRegex: 1 }), '林梦瑶：在呢', names), '在呢');
+        assert.equal(runRegexScript(script({ findRegex: '/^{{char}}：/', substituteRegex: 1 }), '测试角色：在呢', names), '在呢');
         const dotted = { user: '阿明', char: 'a.b' };
         assert.equal(runRegexScript(script({ findRegex: '/{{char}}/g', substituteRegex: 2 }), 'axb a.b', dotted), 'axb ');
         assert.equal(runRegexScript(script({ findRegex: '/{{char}}/g', substituteRegex: 1 }), 'axb a.b', dotted), ' ');
@@ -81,16 +81,16 @@ describe('作用于 AI 输出的脚本（getRegexedString）', () => {
         assert.equal(card.regexScripts.length, 1);
     });
     test('cleanUpReply 先执行脚本，再做原来的清理', () => {
-        const scripts = [script({ findRegex: '/^林梦瑶：/gm', replaceString: '林梦瑶: ' })];
-        assert.equal(cleanUpReply('林梦瑶：在呢  ', names, scripts), '在呢');
+        const scripts = [script({ findRegex: '/^测试角色：/gm', replaceString: '测试角色: ' })];
+        assert.equal(cleanUpReply('测试角色：在呢  ', names, scripts), '在呢');
     });
 });
 
-describe('林梦瑶卡上的括号正则（ADR 0006 取证里的原句）', () => {
-    const { regexScripts } = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-classmate.json'));
+describe('合成卡上的括号正则（ADR 0006 取证里的原句）', () => {
+    const { regexScripts } = loadCharacterCard(syntheticCardPath('classmate'));
     const clean = (text: string) => cleanUpReply(text, names, regexScripts);
     test('整行括号、行首括号里的动作和心理活动删掉', () => {
-        assert.equal(clean('土豆在楼下\n（拍的照片）'), '土豆在楼下');
+        assert.equal(clean('团子饼在楼下\n（拍的照片）'), '团子饼在楼下');
         assert.equal(clean('（先看看他找我干嘛，顺便说一句我正喂猫呢，别让他以为我故意不理人）\n喂猫呢'), '喂猫呢');
         assert.equal(clean('（想拍张它的照片给你但拍不到）哦对，我发不了照片'), '哦对，我发不了照片');
         assert.equal(clean('  (停顿一下) 明天吃什么'), '明天吃什么');

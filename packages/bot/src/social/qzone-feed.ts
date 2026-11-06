@@ -65,7 +65,8 @@ function firstString(...values: unknown[]): string | undefined {
 
 function firstNumber(...values: unknown[]): number | undefined {
     for (const value of values) {
-        const n = typeof value === 'number' ? value : Number(value);
+        const n = typeof value === 'number' ? value
+            : typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN;
         if (Number.isFinite(n)) return n;
     }
     return undefined;

@@ -5,7 +5,7 @@
 // 数字不是编的：气泡字数档按真人聊天（情侣截图 482 个气泡 + 他自己发的话）的分布取，档的权重再按他这一轮的长短挪一挪。
 // 不适用：主动找他、收尾、他明着让她讲、危机回合（调用方不传）。他在难受、报大事、等安慰、问起她认识的人时只用长的几档（不会只回两个字）。
 
-import { ASKS_TO_EXPLAIN, saidSinceReply, unit, WORRIED_TEXT, type LengthContext } from './expression.ts';
+import { asksToExplain, saidSinceReply, unit, WORRIED_TEXT, type LengthContext } from './expression.ts';
 
 export type ShapeKind = 'micro' | 'short' | 'medium' | 'long' | 'wide';
 
@@ -58,7 +58,7 @@ export const PLAIN_SHARE = 0.7;
  * 30% 的轮次里她会带上和他刚说的话无关的、自己的事；她的回复在旧代码是 19%，开了形状控制后降到 12–15%（压短时顺带压掉了“补一句自己的事”）。
  * 取 0.25，不是 0.3：她的“自己的事”只能从她那边已有的事实 / 心情 / 身体里挑（不编），连着说同一件事会像复读。
  * 10-21 第一次重放（0.2，没限意图）：带事的轮次里 89% 真说了一件她那边的事、只有 6% 带问号，但自带议程只从 15% 涨到 19%，而且他问了问题时
- * （意图行写着「不另起话题」）后面挂一句「刚喂了土豆」很生硬——真人的自带议程在他问问题时只有 17%、不问时 34%，所以只在意图行不拦着的轮次里加
+ * （意图行写着「不另起话题」）后面挂一句「刚喂了猫」很生硬——真人的自带议程在他问问题时只有 17%、不问时 34%，所以只在意图行不拦着的轮次里加
  */
 export const AGENDA_SHARE = 0.25;
 
@@ -103,7 +103,7 @@ const FILLER_MAX_HIS = 12;
  * 忙着、两个人的事、她那边的事还没说过——那条本来就让她接着说），加上去会和意图行打架
  */
 const AGENDA_INTENT = /回应他刚说的那件事/;
-/** 他在撒娇 / 呜呜 / 哭的话（不一定被“难过”的意图行认出来，比如玩笑式的「呜呜呜」）：这时转头说自己的事很冷，10-21 第二次重放里「呜呜呜」后面挂「我刚下楼喂土豆来着」 */
+/** 他在撒娇 / 呜呜 / 哭的话（不一定被“难过”的意图行认出来，比如玩笑式的「呜呜呜」）：这时转头说自己的事很冷，10-21 第二次重放里「呜呜呜」后面挂「我刚下楼喂猫来着」 */
 const EMOTIVE = /呜|嘤|哭/;
 /**
  * 他在说倒霉事 / 难受的事（意图行不一定认得出：「悲，U盘坏了」第二次起的重放里她回「U盘坏了？里面的东西还读得出来不 / 我这边在捣鼓新相机」，他在难受她转头说自己的事）：
@@ -171,8 +171,8 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     if (context.initiating) return undefined;
     const last = context.history.findLast(message => message.role === 'user');
     if (!last) return undefined;
-    if (ASKS_TO_EXPLAIN.test(last.content)) return undefined;
     const said = saidSinceReply(context.history);
+    if (asksToExplain(said)) return undefined;
     const his = chars(said);
     const closing = Boolean(context.intent && CLOSING_INTENT.test(context.intent));
     const engaged = !closing && Boolean((context.intent && SUBSTANTIVE_INTENT.test(context.intent)) || WORRIED_TEXT.test(said) || context.aboutPerson);
@@ -225,7 +225,7 @@ export function planShape(context: ShapeContext): ShapePlan | undefined {
     const asking = Boolean(context.intent && /然后问一个你真想知道的问题/.test(context.intent));
     const plain = !agenda && !intimate && !asking && !asked && unit(`${key} shape plain`) < (context.shares?.plain ?? PLAIN_SHARE);
     // 要分成几条：上面抽出来的条数本来只是上限，真模型多半只写一行（重放里 85% 是 1 条，真人女生 59%）；开了 shapeSplit 就把它当成目标写进提示词
-    // 带自己的事的轮次：这一次说哪一件，按轮抽（同一轮每次一样）。10-22 用 72 句真人对话测：开了带事以后 21% 的回复提到相机 / 土豆 / 作业 / 快递（没开 7%），其中相机一件就 14%，模型总挑同两件
+    // 带自己的事的轮次：这一次说哪一件，按轮抽（同一轮每次一样）。10-22 用 72 句真人对话测：开了带事以后 21% 的回复提到相机 / 猫 / 作业 / 快递（没开 7%），其中相机一件就 14%，模型总挑同两件
     const topics = context.agendaTopics ?? [];
     const agendaTopic = agenda && topics.length ? topics[Math.floor(unit(`${key} agenda topic`) * topics.length)] : undefined;
     const parts = Boolean(context.split) && !closing && bucket.kind !== 'micro' && maxBubbles >= 2 ? maxBubbles : undefined;
@@ -368,6 +368,7 @@ export function trimToShape(reply: string, plan: ShapePlan): { reply: string; no
 export interface ShapeDeps {
     /** 在原来的提示词末尾加上这句说明重新生成，返回清理过的回复 */
     regenerate: (note: string) => Promise<string>;
+    onRewriteAccepted?: () => void;
     log: (message: string) => void;
 }
 
@@ -391,7 +392,7 @@ export async function shapeReply(reply: string, plan: ShapePlan, deps: ShapeDeps
     ];
     try {
         const rewritten = await deps.regenerate(`[上一版回复没有发出去：${reasons.join('；另外')}，只输出要发的消息。]`);
-        if (lines(rewritten).length > 0) current = rewritten;
+        if (lines(rewritten).length > 0) { current = rewritten; deps.onRewriteAccepted?.(); }
     } catch (error) {
         deps.log(`形状：重写失败（${error instanceof Error ? error.message : String(error)}），直接截断`);
     }

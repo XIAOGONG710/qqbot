@@ -1,3 +1,6 @@
+import { localDate } from '../local-date.ts';
+import { calendarDate } from '../memory/state-schema.ts';
+
 // 作息（ADR 0007 决策 2）：按角色卡的 extensions.qqbot.schedule（转换器从 legacy 的作息、课表按档位裁剪写入）
 // 算出某个时刻她在干什么：睡觉 / 上课 / 课间 / 空闲，在哪，到几点。都按本机时区的本地时间算。
 // - 睡觉：sleep（02:00）到起床；这一天第一节有课就 wake.early，否则 wake.lazy。00:00 到 sleep 算前一天的晚上。
@@ -5,12 +8,11 @@
 // - 空闲：上午（起床到 afternoonFrom）、下午（到 eveningFrom）、晚上（到睡觉）各从活动里按日期固定挑一条；
 //   起床或下课之后不到 45 分钟就有下一节的，算赶去上课 / 课间。
 
-import { localDate } from '../local-date.ts';
-import { calendarDate } from '../memory/state-schema.ts';
-
 export type CourseKind = 'hard' | 'machine' | 'water' | 'pe';
 
 export interface Course {
+    /** 持久匿名课程组，跨课表条目/披露档一致；不把课名或其裸哈希当身份。 */
+    groupId?: string;
     day: number;
     slot: string;
     weeks: string;
@@ -18,7 +20,11 @@ export interface Course {
     name?: string;
     room?: string;
     practice?: { fromWeek: number; room?: string };
+    /** 这门课出小测（everyday.ts）：math 数学类、core 专业课；卡上只有看得到课名的档位才有 */
+    quiz?: CourseQuiz;
 }
+
+export type CourseQuiz = 'math' | 'core';
 
 export interface Schedule {
     sleep: string;
@@ -50,6 +56,10 @@ export interface Schedule {
 export interface ClassToday {
     /** 课表数组里的稳定位置；各档即使看不到课名也一致。 */
     id?: string;
+    /** 内部匿名分组；和 id 一样不进入枚举快照与提示词。 */
+    groupId?: string;
+    /** 这门课出小测（Course.quiz）；和 id 一样不可枚举 */
+    quiz?: CourseQuiz;
     kind: CourseKind;
     name?: string;
     room?: string;
@@ -81,7 +91,7 @@ export interface State {
 }
 
 const DAY_MS = 86_400_000;
-/** 放完假这么多天之内，他在哪用假期的 partnerBack（「放完假回学校了」）：聊天记录里还留着假期里他说的「我在青岛」 */
+/** 放完假这么多天之内，他在哪用假期的 partnerBack（「放完假回学校了」）：聊天记录里还留着假期里他说的「我在老家」 */
 export const PARTNER_BACK_DAYS = 7;
 /** 起床或下课到下一节课不超过这么久，算赶去上课 / 课间，不挑空闲活动 */
 const BETWEEN_MAX_MS = 45 * 60_000;
@@ -145,6 +155,8 @@ export function classesOn(schedule: Schedule, day: Date): { lessons: ClassToday[
             };
             // 内部稳定标识不进日志、提示词或测试快照；各档课表数组顺序相同。
             Object.defineProperty(lesson, 'id', { value: `course-${index + 1}`, enumerable: false });
+            if (c.groupId) Object.defineProperty(lesson, 'groupId', { value: c.groupId, enumerable: false });
+            if (c.quiz) Object.defineProperty(lesson, 'quiz', { value: c.quiz, enumerable: false });
             return lesson;
         })
         .sort((a, b) => a.start.getTime() - b.start.getTime());
@@ -250,7 +262,7 @@ export function formatDate(date: Date): string {
 /**
  * 放完假那几天「他已经回学校了」那一行（partnerBack）；不是那几天就是 undefined。
  * 提示词里放在时间块事实的最后、离他最新的话最近（describeState 传 partnerApart）：放在第 4 行时，合进 ADR 0051 / 0052 的两段说明后
- * 「你不是在青岛吗」又回来了（schedule-boyfriend 10 次里 3 次；挪到最后 22 次里 1 次，2026-10-10）
+ * 「你不是在老家吗」又回来了（schedule-boyfriend 10 次里 3 次；挪到最后 22 次里 1 次，2026-10-10）
  */
 export function partnerBackLine(state: State, userName?: string): string | undefined {
     return state.partnerJustBack && state.partner ? `[${state.partner.replaceAll('{{user}}', userName ?? '他')}]` : undefined;
@@ -280,7 +292,7 @@ export function describeState(state: State, schedule: Schedule, options: { woken
             break;
     }
     const partner = state.partner?.replaceAll('{{user}}', options.userName ?? '他');
-    // 放完假那几天他在哪单独一行：跟在「你现在」最后时，她仍信聊天记录里假期中他说的「我在青岛」（ADR 0007 调整 2026-10-10）
+    // 放完假那几天他在哪单独一行：跟在「你现在」最后时，她仍信聊天记录里假期中他说的「我在老家」（ADR 0007 调整 2026-10-10）
     // partnerApart：那一行由调用方用 partnerBackLine 放到别处（提示词里放在时间块事实的最后）
     if (state.partnerJustBack && partner) return `[你现在：${[state.where, doing].filter(Boolean).join('；')}]${options.partnerApart ? '' : `\n[${partner}]`}`;
     return `[你现在：${[state.where, doing, partner].filter(Boolean).join('；')}]`;
@@ -361,10 +373,12 @@ export function parseSchedule(json: unknown, source: string): Schedule {
         courses: arr(s.courses, '.courses').map((c, i): Course => {
             const o = obj(c, `.courses[${i}]`);
             const at = `.courses[${i}]`;
+            if (o.groupId !== undefined && (typeof o.groupId !== 'string' || !/^cg-[0-9a-f]{32}$/.test(o.groupId))) fail(`${at}.groupId 应为匿名课程令牌`);
             const slot = str(o.slot, `${at}.slot`);
             if (!(slot in periods)) fail(`${at}.slot ${slot} 不在 periods 里`);
             const kind = str(o.kind, `${at}.kind`) as CourseKind;
             if (!KINDS.includes(kind)) fail(`${at}.kind ${kind} 不是课型`);
+            if (o.quiz !== undefined && o.quiz !== 'math' && o.quiz !== 'core') fail(`${at}.quiz 应为 math / core`);
             const practice = opt(o.practice, v => {
                 const p = obj(v, `${at}.practice`);
                 return { fromWeek: int(p.fromWeek, `${at}.practice.fromWeek`), ...(p.room !== undefined ? { room: str(p.room, `${at}.practice.room`) } : {}) };
@@ -374,9 +388,11 @@ export function parseSchedule(json: unknown, source: string): Schedule {
                 slot,
                 weeks: str(o.weeks, `${at}.weeks`, /^\d+(-\d+)?(,\d+(-\d+)?)*$/),
                 kind,
+                ...(o.groupId !== undefined ? { groupId: o.groupId as string } : {}),
                 ...(o.name !== undefined ? { name: str(o.name, `${at}.name`) } : {}),
                 ...(o.room !== undefined ? { room: str(o.room, `${at}.room`) } : {}),
                 ...(practice ? { practice } : {}),
+                ...(o.quiz !== undefined ? { quiz: o.quiz as CourseQuiz } : {}),
             };
         }),
         free: {
@@ -385,6 +401,19 @@ export function parseSchedule(json: unknown, source: string): Schedule {
             evening: texts(free.evening, '.free.evening'),
             afternoonFrom: str(free.afternoonFrom, '.free.afternoonFrom', TIME),
             eveningFrom: str(free.eveningFrom, '.free.eveningFrom', TIME),
+            ...(free.on !== undefined ? {
+                on: arr(free.on, '.free.on').map((v, i) => {
+                    const path = `.free.on[${i}]`;
+                    const o = obj(v, path);
+                    const date = str(o.date, `${path}.date`, DATE);
+                    const window = str(o.window, `${path}.window`) as 'morning' | 'afternoon' | 'evening';
+                    if (!['morning', 'afternoon', 'evening'].includes(window)) fail(`${path}.window 无效`);
+                    const text = str(o.text, `${path}.text`).trim();
+                    if (!text) fail(`${path}.text 不能为空`);
+                    if (o.home !== undefined && typeof o.home !== 'boolean') fail(`${path}.home 应为布尔值`);
+                    return { date, window, text, ...(o.home === undefined ? {} : { home: o.home as boolean }) };
+                }),
+            } : {}),
             ...(free.home !== undefined ? (() => {
                 const home = obj(free.home, '.free.home');
                 return { home: { morning: texts(home.morning, '.free.home.morning'), afternoon: texts(home.afternoon, '.free.home.afternoon'), evening: texts(home.evening, '.free.home.evening') } };

@@ -259,6 +259,11 @@ export interface DiaryState extends Record<string, unknown> {
     prepared: Record<string, DiaryPrepared>;
     confirmed: Record<string, DiaryConfirmed>;
 }
+/**
+ * lastDay 是内部时刻（toISOString 写出），不是日历键：低年份的一天在 UTC 可能落到公元前（如 0000-01-01 上海地方时 → -000001-12-31T15:54:17Z），
+ * 共用的 stateTimestamp 只认四位年份，会让写出的状态自己读不回。这里只要求是能原样往返的规范时刻。
+ */
+const canonicalInstant = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 const identity = (p: Pick<DiaryPrepared, 'kind' | 'documentId' | 'date' | 'lastDay' | 'title' | 'charName'>) => fingerprint({ kind: p.kind, documentId: p.documentId, date: p.date, lastDay: p.lastDay, title: p.title, charName: p.charName });
 function validManifest(value: unknown): value is DiarySourceManifest {
     return stateObject(value) && value.version === 1 && (value.kind === 'diary' || value.kind === 'summary')
@@ -273,7 +278,7 @@ function validManifest(value: unknown): value is DiarySourceManifest {
 }
 function validPrepared(value: unknown, id: string): value is DiaryPrepared {
     if (!stateObject(value) || value.version !== 1 || typeof value.kind !== 'string' || !['diary', 'week', 'phase'].includes(value.kind) || value.documentId !== id
-        || typeof value.date !== 'string' || !calendarDate(value.date) || !stateTimestamp(value.lastDay) || typeof value.title !== 'string' || typeof value.charName !== 'string'
+        || typeof value.date !== 'string' || !calendarDate(value.date) || !canonicalInstant(value.lastDay) || typeof value.title !== 'string' || typeof value.charName !== 'string'
         || typeof value.body !== 'string' || !value.body.trim() || bodyDigest(value.body) !== value.bodyHash
         || !digest(value.identityHash) || !digest(value.materialHash) || !digest(value.promptHash) || !digest(value.sourceHash)
         || !operationId(value.operationId)
@@ -513,7 +518,8 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         let body: string;
         try { body = (await read(() => options.generate(input.messages))).trim(); }
         catch (error) { if (error !== STOPPED) options.log('她的日记或总结没生成成功，本轮保留原状态'); return false; }
-        if (!body || !derivedReady()) return false;
+        if (!body) { options.log(`${data.kind === 'diary' ? '她的日记' : '她的总结'}：${data.documentId} 模型回了空的，下次再写`); return false; }
+        if (!derivedReady()) return false;
         const p: DiaryPrepared = { ...data, version: 1, charName: options.sources.charName, body, bodyHash: bodyDigest(body), identityHash: '',
             materialHash: input.manifest.materialHash, promptHash: input.manifest.promptHash, sourceHash: fingerprint(input.manifest), manifest: input.manifest, operationId: randomUUID(), phase: 'prepared' };
         p.identityHash = identity(p);

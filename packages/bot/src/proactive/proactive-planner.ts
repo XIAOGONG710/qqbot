@@ -1,3 +1,5 @@
+import { localDate } from '../local-date.ts';
+import { randomUUID } from 'node:crypto';
 // 主动消息的计划器（ADR 0011 决策 2、4、5、7）：一个联系人一个。按 proactive.ts 算下一次，等到点，再查一遍条件，交给回复器的 initiate。
 // - 记录文件 <数据目录>/proactive/<QQ>-<档位>.json：每个候选到点后记一条（发了、试运行、没发及原因、出错），记过的不再排；
 //   发之前先记（initiate 的 commit），之后崩溃、断线都不重发；只留 30 天。
@@ -17,8 +19,9 @@ import { detectCrisis } from '.././emotion/crisis.ts';
 import { aboutHer, expired, extractionPrompt, FOLLOW_UP_DAYS, mentions, parseExtraction, partText, tripAlreadyOver, type Extracted, type FollowUp } from './follow-ups.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import { writeJsonAtomic } from '../memory/json-file.ts';
+import { calendarDate, stateTimestamp } from '../memory/state-schema.ts';
 import { createTransientGate, describeError, isTransientIoError } from '../memory/transient-io.ts';
-import { readProactiveState, validProactiveState, type ProactiveState } from './proactive-state.ts';
+import { emptyProactiveState, readProactiveState, validProactiveState, type ProactiveState } from './proactive-state.ts';
 import { ModelUnreachable } from '../language/llm.ts';
 import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from '.././memory/episodes.ts';
 import type { OpenAIMessage } from '../language/prompt.ts';
@@ -52,6 +55,7 @@ export const RAIN_REPLAN_MS = 30 * 60_000;
 export const REACH_REPLAN_MS = 10 * 60_000;
 /** 状态文件暂时写不进时，多久补写一次 */
 export const DIRTY_RETRY_MS = 60_000;
+const supportedProjection = (at: Date) => Number.isFinite(at.getTime()) && calendarDate(formatDate(at)) && stateTimestamp(at.toISOString());
 
 /** 这一刻在下吗：这个钟头或上一个钟头下过（实况） */
 export function rainingAt(weather: DayWeather | undefined, at: Date): boolean {
@@ -66,7 +70,7 @@ export function rainOf(seen: { day: string; weather?: DayWeather } | undefined, 
     const weather = seen?.weather;
     if (!seen || !weather?.real) return undefined;
     const [y, m, d] = seen.day.split('-').map(Number);
-    const hourOf = (h: number) => new Date(y!, m! - 1, d, h).getTime();
+    const hourOf = (h: number) => localDate(y!, m! - 1, d, h).getTime();
     if (rainingAt(weather, at)) {
         let start = weather.rainHours!.includes(at.getHours()) ? at.getHours() : at.getHours() - 1;
         while (weather.rainHours!.includes(start - 1)) start--;
@@ -87,14 +91,21 @@ export function newsFrom(
 ): (now: number) => NewsItem[] {
     const kinds = options.kinds ?? DEFAULT_NEWS_KINDS;
     return now => {
-        const days = [now, now + DAY_MS].map(time => herDay(schedule, new Date(time)));
+        const instant = new Date(now);
+        if (!supportedProjection(instant)) throw new RangeError('主动世界查询时间超出支持范围');
+        const today = herDay(schedule, instant);
+        const days = [today, localDate(today.getFullYear(), today.getMonth(), today.getDate() + 1)].filter(day => calendarDate(formatDate(day)));
+        const tomorrow = localDate(instant.getFullYear(), instant.getMonth(), instant.getDate() + 1, instant.getHours(), instant.getMinutes(), instant.getSeconds(), instant.getMilliseconds());
         const dayTexts = new Set(days.map(formatDate));
-        const evening = (day: Date) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59);
+        const evening = (day: Date) => localDate(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59);
         const found: WorldNews[] = [];
-        for (const seen of [...days.map(day => worldAt(evening(day))), worldAt(new Date(now + DAY_MS))]) {
+        for (const seen of [...days.map(evening), tomorrow].filter(supportedProjection).map(at => worldAt(at))) {
             if (seen) found.push(...worldNews(seen, kinds));
         }
-        if (kinds.includes('unwell') && options.bodyAt) for (const day of days) found.push(...unwellNews(day, schedule, options.bodyAt));
+        if (kinds.includes('unwell') && options.bodyAt) for (const day of days) {
+            const noon = localDate(day.getFullYear(), day.getMonth(), day.getDate(), 15);
+            if (supportedProjection(noon) && supportedProjection(new Date(noon.getTime() - DAY_MS)) && supportedProjection(wakeOn(schedule, day))) found.push(...unwellNews(day, schedule, options.bodyAt));
+        }
         const seenIds = new Set<string>();
         return found
             .filter(item => !seenIds.has(item.id) && seenIds.add(item.id))
@@ -118,7 +129,9 @@ export function reschedulesFrom(options: {
         for (const meeting of options.appointments(new Date(now), new Date(now + 2 * DAY_MS))) {
             const { promise } = meeting;
             if (meeting.contact.qq !== options.qq || !promise.meet || meeting.start.getTime() <= now) continue;
-            const window = obstaclesBetween(new Date(meeting.start.getTime() - MEET_LEAD_MINUTES * 60_000), meeting.end, options.facts, promise.id);
+            const lead = new Date(meeting.start.getTime() - MEET_LEAD_MINUTES * 60_000);
+            if (![meeting.start, meeting.end, lead].every(supportedProjection)) continue;
+            const window = obstaclesBetween(lead, meeting.end, options.facts, promise.id);
             const first = newObstacles(window, promise).sort((a, b) => OBSTACLE_KINDS.indexOf(a.kind) - OBSTACLE_KINDS.indexOf(b.kind))[0];
             if (!first) continue;
             const day = herDay(options.facts.schedule, meeting.start);
@@ -248,18 +261,21 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     const waitUntil = deps.waitUntil ?? waitUntilReal;
     const { contact } = deps;
     const path = join(deps.dir, `${contact.qq}-${contact.tier}.json`);
-    mkdirSync(deps.dir, { recursive: true });
     const tag = deps.mode === 'dryRun' ? '（试运行）' : '';
 
-    let state: ProactiveState;
-    try { state = readProactiveState(path); }
+    let state: ProactiveState = emptyProactiveState();
+    let loading = false;
+    try { mkdirSync(deps.dir, { recursive: true }); state = readProactiveState(path); }
     catch (error) {
-        const reason = '主动消息状态读取或校验失败，已暂停；请修复后重新创建计划器';
-        deps.log(`主动：${reason}；原文件未重建（原因：${describeError(error)}）`);
-        return {
-            poke() {}, stop() {}, fireNow: async () => reason, syncFollowUps: async () => {}, running: Promise.resolve(), innerLine: () => undefined,
-            status: () => ({ mode: deps.mode, paused: reason, today: 0 }),
-        };
+        if (isTransientIoError(error)) loading = true;
+        else {
+            const reason = '主动消息状态读取或校验失败，已暂停；请修复后重新创建计划器';
+            deps.log(`主动：${reason}；原文件未重建（原因：${describeError(error)}）`);
+            return {
+                poke() {}, stop() {}, fireNow: async () => reason, syncFollowUps: async () => {}, running: Promise.resolve(), innerLine: () => undefined,
+                status: () => ({ mode: deps.mode, paused: reason, today: 0 }),
+            };
+        }
     }
     let records = state.records;
     let followUps = state.followUps;
@@ -268,10 +284,11 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     /** 没想成（正在回消息、没连上模型）的下一次再试 */
     let thinkRetryAt: number | undefined;
     /** 片段 id → 抽过了（true），或者抽失败了几次 */
-    const extracted = state.extracted;
+    let extracted = state.extracted;
     let extracting: Promise<void> | undefined;
     const startedAt = now();
     let stopped = false;
+    const lifecycle = new AbortController();
     let wake: AbortController | undefined;
     let next: Candidate | undefined;
     let paused: string | undefined;
@@ -283,8 +300,28 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     const gate = createTransientGate();
     let dirty = false;
 
+    // Stop settles the owned continuation even if an injected provider ignores cancellation.
+    function owned<T>(work: () => Promise<T>, signal: AbortSignal = lifecycle.signal): Promise<{ cancelled: true } | { cancelled: false; value: T }> {
+        signal = signal === lifecycle.signal ? signal : AbortSignal.any([lifecycle.signal, signal]);
+        return new Promise((resolve, reject) => {
+            let finished = false;
+            const clean = () => signal.removeEventListener('abort', abort);
+            const abort = () => { if (!finished) { finished = true; clean(); resolve({ cancelled: true }); } };
+            signal.addEventListener('abort', abort, { once: true });
+            if (signal.aborted) { abort(); return; }
+            try {
+                Promise.resolve(work()).then(value => { if (!finished) { finished = true; clean(); resolve({ cancelled: false, value }); } }, error => { if (!finished) { finished = true; clean(); reject(error); } });
+            } catch (error) { if (!finished) { finished = true; clean(); reject(error); } }
+        });
+    }
+    const historyNow = () => {
+        const current = now();
+        return deps.history.load(contact.qq).filter(message => Number.isFinite(Date.parse(message.time)) && Date.parse(message.time) <= current);
+    };
+
     function halt(reason?: unknown): void {
         stopped = true;
+        lifecycle.abort();
         next = undefined;
         paused = '主动消息状态处理失败，已暂停；请修复后重新创建计划器';
         wake?.abort();
@@ -292,23 +329,30 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         deps.log(`主动：${paused}；未清空原状态${reason === undefined ? '' : `（原因：${describeError(reason)}）`}`);
     }
 
-    function save(): void {
-        if (stopped) throw new Error('主动消息已暂停，不再写入状态');
+    function save(): boolean {
+        if (stopped || loading) throw new Error('主动消息已暂停或状态待恢复，不再写入状态');
+        let snapshot: ProactiveState | undefined;
         try {
             const keepFrom = now() - KEEP_DAYS * DAY_MS;
             records = records.filter(r => Date.parse(r.at) >= keepFrom);
             // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
             for (const id of Object.keys(extracted)) if (Number(id.slice(3)) < keepFrom) delete extracted[id];
-            const next: ProactiveState = { version: 1, records, followUps, extracted, ...(inner.thoughts.length || inner.lastThinkAt || inner.reflected?.length ? { inner } : {}) };
+            const next: ProactiveState = { ...state, version: 1, records, followUps, extracted, ...(inner.thoughts.length || inner.lastThinkAt || inner.reflected?.length ? { inner } : {}) };
             if (!validProactiveState(next)) throw new Error('拒绝写入不符合 schema 的主动消息状态');
+            snapshot = next;
             writeJsonAtomic(path, next);
             dirty = false;
             if (gate.ok('write')) deps.log('主动：状态文件写得进去了，恢复正常');
+            return true;
         } catch (error) {
+            // rename may publish successfully before reporting an IO error; do not invent a failure/replay.
+            if (snapshot) {
+                try { if (JSON.stringify(readProactiveState(path)) === JSON.stringify(snapshot)) { dirty = false; gate.ok('write'); return true; } } catch { /* Keep the original failure. */ }
+            }
             if (isTransientIoError(error) && gate.fail('write', now()) === 'retry') {
                 dirty = true;
                 if (gate.shouldLog('write', now())) deps.log(`主动：状态文件暂时写不进（${describeError(error)}），先用内存里的，每分钟补写一次；持续 5 分钟写不进才暂停`);
-                return;
+                return false;
             }
             halt(error);
             throw new Error('主动消息状态写入失败，已暂停');
@@ -331,19 +375,20 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     }
 
     /** 问这件事的主动消息发出去了：问到了就忘；没问出口的留着下次再问，第二次还没问出口也忘了 */
-    function asked(id: string, said: readonly string[], dryRun: boolean): void {
+    function prepareAsked(id: string, said: readonly string[], dryRun: boolean): string | undefined {
         const item = followUps.find(f => f.id === id);
         if (!item) return;
-        if (mentions(item, said)) return forget(id, dryRun ? '试运行里问过了' : '问过了');
-        if ((item.missed ?? 0) >= 1) return forget(id, '又没问出口');
+        if (mentions(item, said) || (item.missed ?? 0) >= 1) {
+            followUps = followUps.filter(f => f.id !== id);
+            return `待跟进：${mentions(item, said) ? dryRun ? '试运行里问过了' : '问过了' : '又没问出口'}，忘掉「${logBody(item.what)}」（${item.date} ${partText(item.time)}）`;
+        }
         followUps = followUps.map(f => (f.id === id ? { ...f, missed: (f.missed ?? 0) + 1 } : f));
-        save();
-        deps.log(`待跟进：她没问出口「${logBody(item.what)}」，留着下次再问`);
+        return `待跟进：她没问出口「${logBody(item.what)}」，留着下次再问`;
     }
 
     async function extractNow(): Promise<void> {
         if (!deps.extract) return;
-        const history = deps.history.load(contact.qq);
+        const history = historyNow();
         const closed = splitEpisodes(history).filter(e => now() - e.end.getTime() >= EPISODE_GAP_MS && extracted[e.id] !== true);
         let changed = false;
         for (const episode of closed) {
@@ -362,18 +407,21 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             }
             let result: Extracted;
             try {
-                result = parseExtraction(await deps.extract(extractionPrompt(episodeTranscript(episode, deps.names), followUps, deps.names)));
+                const response = await owned(() => deps.extract!(extractionPrompt(episodeTranscript(episode, deps.names), followUps, deps.names)));
+                if (response.cancelled || stopped) return;
+                result = parseExtraction(response.value);
             } catch (error) {
+                if (stopped) return;
                 if (error instanceof ModelUnreachable) {
                     // 没连上模型（断网、DNS）不算这一段的失败次数；后面的片段也连不上，这一轮先停
-                    deps.log(`待跟进：片段 ${episode.id} 没连上模型，等网络好了再抽：${error.message}`);
+                    deps.log(`待跟进：片段 ${episode.id} 没连上模型，等网络好了再抽（${describeError(error)}）`);
                     break;
                 }
                 const tries = (typeof extracted[episode.id] === 'number' ? extracted[episode.id] as number : 0) + 1;
                 // 模型回了、但连着 3 次都不对就放弃这一段（别一直调模型）
                 extracted[episode.id] = tries >= 3 ? true : tries;
                 save();
-                deps.log(`待跟进：片段 ${episode.id} 抽取失败（第 ${tries} 次${tries >= 3 ? '，不再抽' : '，下次再抽'}）：${error instanceof Error ? error.message : String(error)}`);
+                deps.log(`待跟进：片段 ${episode.id} 抽取失败（第 ${tries} 次${tries >= 3 ? '，不再抽' : '，下次再抽'}；${describeError(error)}）`);
                 continue;
             }
             if (stopped) return;
@@ -403,6 +451,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
 
     function record(candidate: Candidate, patch: Pick<ProactiveRecord, 'result'> & Partial<ProactiveRecord>): ProactiveRecord {
         const entry: ProactiveRecord = {
+            ...records.find(r => r.id === candidate.id),
+            reason: undefined, messageIds: undefined, retryAt: undefined, tries: undefined, obstacle: undefined,
             id: candidate.id, occasion: candidate.occasion, plannedAt: new Date(candidate.at).toISOString(), at: new Date(now()).toISOString(), ...patch,
             ...(candidate.reschedule ? { obstacle: candidate.reschedule.obstacle.kind } : {}),
         };
@@ -431,7 +481,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         const rain = deps.weather ? rainOf(deps.weather(now()), new Date(now())) : undefined;
         return {
             qq: contact.qq, schedule: deps.schedule, settings: deps.settings, dates: deps.dates,
-            history: deps.history.load(contact.qq), records, mode: deps.mode, followUps, ...(deps.skip ? { skip: deps.skip } : {}),
+            history: historyNow(), records, mode: deps.mode, followUps, ...(deps.skip ? { skip: deps.skip } : {}),
             ...(deps.asleep ? { asleep: deps.asleep } : {}),
             ...(deps.crisisPaused?.(now()) ? { crisisPaused: true } : {}),
             ...(deps.inner ? { inner: pendingIntents(inner.thoughts, now()) } : {}),
@@ -458,7 +508,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         return undefined;
     }
 
-    async function fire(candidate: Candidate, manual = false): Promise<void> {
+    async function fire(candidate: Candidate, manual = false): Promise<string | undefined> {
+        if (stopped || loading) return;
         const current = input();
         const reason = manual ? manualBlock(current) : blockReason(candidate, now(), current);
         if (reason) {
@@ -469,7 +520,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
                 deps.log(`主动${tag}：没回的消息还没回，先再回一次`);
                 deps.responder.catchUp();
             }
-            return;
+            return manual ? reason : undefined;
         }
         // 看他的反应（ADR 0212）：他明说过不想听这一类的不发；说自己的事时给她看一行他最近的反应（手动 /主动 不看）
         const seen = deps.reactions && !manual
@@ -482,57 +533,77 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         }
         if (seen.seen) deps.log(`主动${tag}：${candidateLabel(candidate)}看他的反应——${seen.log}${seen.canDecline ? '；这件正好是他不怎么接的那类，交给她决定说不说' : ''}`);
         let committed: ProactiveRecord | undefined;
+        let refused: string | undefined;
+        let followUpLog: string | undefined;
         const dryRun = deps.mode === 'dryRun';
         // 她那边的事没说成（ADR 0057 调整）：这一条顺带说
         const untold = untoldNews(candidate, now(), current);
         if (untold.length) deps.log(`主动${tag}：${candidateLabel(candidate)}顺带说没说成的事：${untold.map(n => n.what).join('、')}`);
-        const outcome: InitiateOutcome = await deps.responder.initiate({
-            label: candidateLabel(candidate),
-            note: occasionNote(candidate, contact.name, untold, seen.seen),
-            topic: recallTopic(candidate, contact.name),
-            maxBubbles: MAX_PROACTIVE_BUBBLES,
-            ...(candidate.occasion === 'reach' || candidate.occasion === 'invite' || candidate.occasion === 'ask' || seen.canDecline ? { canDecline: true } : {}),
-            ...(candidate.news?.kind === 'cat_photo' ? { photo: 'cat' as const } : {}),
-            ...(candidate.news?.kind === 'food_photo' && candidate.news.dish ? { photo: 'food' as const, photoDish: candidate.news.dish } : {}),
-            dryRun,
-            // 先记后发
-            commit: () => { committed = record(candidate, { result: dryRun ? 'dryRun' : 'sent' }); },
-        });
+        let outcome: InitiateOutcome | undefined;
+        try {
+            const response = await owned(() => deps.responder.initiate({
+                label: candidateLabel(candidate),
+                note: occasionNote(candidate, contact.name, untold, seen.seen),
+                topic: recallTopic(candidate, contact.name),
+                maxBubbles: MAX_PROACTIVE_BUBBLES,
+                ...(candidate.occasion === 'reach' || candidate.occasion === 'invite' || candidate.occasion === 'ask' || seen.canDecline ? { canDecline: true } : {}),
+                ...(candidate.news?.kind === 'cat_photo' ? { photo: 'cat' as const } : {}),
+                ...(candidate.news?.kind === 'food_photo' && candidate.news.dish ? { photo: 'food' as const, photoDish: candidate.news.dish } : {}),
+                dryRun,
+                signal: lifecycle.signal,
+                // 先记后发
+                commit: parts => {
+                    if (stopped || loading) throw new Error('主动消息已停止或状态待恢复，本次未提交');
+                    refused = manual ? manualBlock(input()) : blockReason(candidate, now(), input());
+                    if (refused) throw new Error('主动消息提交前条件已变化，本次未发送');
+                    const previousFollowUps = followUps; const previousInner = inner;
+                    // The reservation and consumption of this logical intent share one commit point.
+                    if (candidate.followUp) followUpLog = prepareAsked(candidate.followUp.item.id, parts, dryRun);
+                    if (candidate.inner && !dryRun) inner = { ...inner, thoughts: inner.thoughts.map(t => t.id === candidate.inner!.id ? { ...t, told: true as const } : t) };
+                    committed = record(candidate, { result: dryRun ? 'dryRun' : 'sent' });
+                    if (dirty) { followUps = previousFollowUps; inner = previousInner; followUpLog = undefined; refused = '发送前去重状态未能保存，本次不发送'; throw new Error(refused); }
+                },
+            }));
+            if (response.cancelled || stopped) return;
+            outcome = response.value;
+        } catch (error) { if (stopped) return; if (!refused) throw error; }
+        if (refused) {
+            record(candidate, { result: 'skipped', reason: refused });
+            deps.log(`主动${tag}：${candidateLabel(candidate)}不发：${refused}`);
+            return refused;
+        }
+        if (!outcome) return;
         switch (outcome.result) {
             case 'sent':
                 record(candidate, { result: 'sent', at: committed!.at, messageIds: outcome.messageIds });
                 deps.log(`主动找他（${candidateLabel(candidate)}）${outcome.parts.length > 1 ? `（${outcome.parts.length} 条）` : ''}：${logBody(outcome.parts.join(' / '))}`);
-                if (candidate.followUp) asked(candidate.followUp.item.id, outcome.parts, false);
-                // 心里惦记的念头说出去了：记成说过（聊天提示词里不再当“心里的小心思”放，也不会再变成主动消息）
-                if (candidate.inner) {
-                    inner = { ...inner, thoughts: inner.thoughts.map(t => (t.id === candidate.inner!.id ? { ...t, told: true as const } : t)) };
-                    save();
-                }
+                if (followUpLog) deps.log(candidate.followUp && !mentions(candidate.followUp.item, outcome.parts) && !followUps.some(f => f.id === candidate.followUp!.item.id) && !candidate.followUp.item.missed
+                    ? '待跟进：发送中断，已提交的跟进意图不再补说' : followUpLog);
                 break;
             case 'dryRun':
                 deps.log(`主动（试运行，没发）：${candidateLabel(candidate)}；今天第 ${usedToday()} 条；本来要说：${logBody(outcome.parts.join(' / '))}`);
-                if (candidate.followUp) asked(candidate.followUp.item.id, outcome.parts, true);
+                if (followUpLog) deps.log(followUpLog);
                 break;
             case 'skipped':
                 record(candidate, { result: 'skipped', reason: outcome.reason });
                 deps.log(`主动${tag}：${candidateLabel(candidate)}不发：${outcome.reason}`);
-                break;
+                return manual ? outcome.reason : undefined;
             case 'failed': {
                 // 没连上模型（断网、DNS）：过一会儿再试，同一天最多 UNREACHABLE_MAX_TRIES 次；别的错不再试
                 const tries = (records.find(r => r.id === candidate.id)?.tries ?? 0) + 1;
-                if (outcome.unreachable && !outcome.messageIds && tries < UNREACHABLE_MAX_TRIES) {
+                if (!manual && !committed && outcome.unreachable && !outcome.messageIds?.length && tries < UNREACHABLE_MAX_TRIES) {
                     const retryAt = now() + UNREACHABLE_RETRY_MS;
                     record(candidate, { result: 'failed', reason: outcome.reason, retryAt: new Date(retryAt).toISOString(), tries });
-                    deps.log(`主动${tag}：${candidateLabel(candidate)}没连上模型（第 ${tries} 次），${clock(retryAt)} 再试：${outcome.reason}`);
+                    deps.log(`主动${tag}：${candidateLabel(candidate)}没连上模型（第 ${tries} 次），${clock(retryAt)} 再试：${logBody(outcome.reason)}`);
                     break;
                 }
                 record(candidate, {
                     result: 'failed', reason: outcome.reason, ...(outcome.unreachable ? { tries } : {}),
                     ...(outcome.messageIds ? { messageIds: outcome.messageIds } : {}),
                 });
-                deps.log(`主动${tag}：${candidateLabel(candidate)}出错，不再试${outcome.unreachable ? `（没连上模型 ${tries} 次）` : ''}：${outcome.reason}`);
+                deps.log(`主动${tag}：${candidateLabel(candidate)}出错，不再试${outcome.unreachable ? `（没连上模型 ${tries} 次）` : ''}：${logBody(outcome.reason)}`);
                 if (outcome.messageIds?.length) deps.log(`主动${tag}：${candidateLabel(candidate)}只发出去了 ${outcome.messageIds.length} 条，后面的没发出去：按已发算（ADR 0011 核对 10-12 的取舍：宁可不重复），这件事不会再补说；要补得他问起或下次聊到`);
-                break;
+                return manual ? '本次主动生成或发送失败，请稍后再试' : undefined;
             }
         }
     }
@@ -542,17 +613,18 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     const MIN = 60_000;
     /** 睡着（作息上 / 说过睡了）的时刻不想 */
     const thinkAsleep = (time: number) => stateAt(deps.schedule, new Date(time)).activity.kind === 'sleep' || Boolean(deps.asleep?.(time));
-    const dayAfter = (day: Date) => new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+    const dayAfter = (day: Date) => localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1);
 
     /** 下一次什么时候想：上一次之后隔 90–150 分钟（按上一次的时刻取种子）；聊完一段（他说过话、之后 20 分钟没人说话）就早一点；睡着的推到起床后；一天最多 THINK_MAX_PER_DAY 次 */
     function nextThinkAt(): number {
-        const last = inner.lastThinkAt ? Date.parse(inner.lastThinkAt) : undefined;
+        const parsedLast = inner.lastThinkAt ? Date.parse(inner.lastThinkAt) : undefined;
+        const last = parsedLast !== undefined && parsedLast <= now() ? parsedLast : undefined;
         const today = herDay(deps.schedule, new Date(now()));
         let at = last === undefined
             ? wakeOn(deps.schedule, today).getTime() + THINK_AFTER_WAKE_MS
             : last + pick(`${contact.qq} ${last}`, 'think', [THINK_INTERVAL_MIN[0] * MIN, THINK_INTERVAL_MIN[1] * MIN]);
         if (last !== undefined) {
-            const chat = deps.history.load(contact.qq);
+            const chat = historyNow();
             const lastMessage = chat.at(-1);
             if (lastMessage && Date.parse(lastMessage.time) > last && chat.some(m => m.role === 'user' && Date.parse(m.time) > last)) {
                 at = Math.min(at, Math.max(Date.parse(lastMessage.time) + THINK_AFTER_CHAT_MS, last + THINK_MIN_GAP_MS));
@@ -561,7 +633,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         if (thinkRetryAt !== undefined) at = Math.max(at, thinkRetryAt);
         const day = herDay(deps.schedule, new Date(at));
         const dayText = formatDate(day);
-        const todayCount = inner.thoughts.filter(t => formatDate(herDay(deps.schedule, new Date(t.at))) === dayText).length;
+        const todayCount = inner.thoughts.filter(t => Date.parse(t.at) <= now() && formatDate(herDay(deps.schedule, new Date(t.at))) === dayText).length;
         if (todayCount >= THINK_MAX_PER_DAY) at = wakeOn(deps.schedule, dayAfter(day)).getTime() + THINK_AFTER_WAKE_MS;
         if (thinkAsleep(at)) {
             const d = herDay(deps.schedule, new Date(at));
@@ -577,6 +649,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     /** 想一次：借回复器的主动通道生成（带着她的时间、状态、心情、世界、记忆和最近的聊天），不发送；留下的念头存进状态文件 */
     async function think(): Promise<void> {
         const started = now();
+        const knownThoughts = inner.thoughts.filter(t => Number.isFinite(Date.parse(t.at)) && Date.parse(t.at) <= started);
         // 写成了对他说话（出现“你”）就再来一次，最多两次；别的不合格（重复、太短）不重来
         let parsed: ReturnType<typeof parseThought> | undefined;
         // 她最近看过的视频（ADR 0130）：还没专门想过的，这一次就想这一件；想过的只是多一个可选的题目
@@ -589,18 +662,20 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         const herToday = formatDate(herDay(deps.schedule, new Date(started)));
         const doubtNight = doubtDue(inner.doubtedOn, herToday, new Date(started).getHours(), forceWatch || forceGuess);
         for (const retry of [false, true]) {
-            const outcome = await deps.responder.initiate({
-                label: '内心', note: thinkNote(inner.thoughts.slice(-3), contact.name, inner.thoughts.length, retry, watched?.text, forceWatch, doubtNight, forceGuess ? guess!.text : undefined),
+            const response = await owned(() => deps.responder.initiate({
+                label: '内心', note: thinkNote(knownThoughts.slice(-3), contact.name, knownThoughts.length, retry, watched?.text, forceWatch, doubtNight, forceGuess ? guess!.text : undefined),
                 topic: `${contact.name}最近在忙什么、我自己最近惦记什么、担心什么、期待什么`,
                 maxBubbles: 1, dryRun: false, think: true, commit: () => undefined,
-            });
-            if (stopped) return;
+                signal: lifecycle.signal,
+            }));
+            if (response.cancelled || stopped) return;
+            const outcome = response.value;
             if (outcome.result !== 'thought') {
                 thinkRetryAt = now() + (outcome.result === 'failed' ? UNREACHABLE_RETRY_MS : THINK_RETRY_MS);
-                deps.log(`内心${tag}：没想成，${clock(thinkRetryAt)} 再试：${outcome.result === 'skipped' || outcome.result === 'failed' ? outcome.reason : ''}`);
+                deps.log(`内心${tag}：没想成，${clock(thinkRetryAt)} 再试：${outcome.result === 'skipped' || outcome.result === 'failed' ? logBody(outcome.reason) : ''}`);
                 return;
             }
-            parsed = parseThought(outcome.text, inner.thoughts.slice(-8), started, contact.name);
+            parsed = parseThought(outcome.text, knownThoughts.slice(-8), started, contact.name);
             if (!('rejected' in parsed) || (parsed.rejected !== '对他说话' && parsed.rejected !== '书面腔')) break;
             deps.log(`内心${tag}：写成了${parsed.rejected === '书面腔' ? '书面腔' : '对他说话'}，${retry ? '不留' : '再想一次'}`);
         }
@@ -648,11 +723,26 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
 
     async function loop(): Promise<void> {
         while (!stopped) {
+            if (loading) {
+                try {
+                    mkdirSync(deps.dir, { recursive: true }); state = readProactiveState(path);
+                    records = state.records; followUps = state.followUps; inner = state.inner ?? { thoughts: [] }; extracted = state.extracted;
+                    loading = false; paused = undefined; gate.ok('read');
+                    deps.log('主动：原状态读得到了，恢复计划（未清空去重事实）');
+                } catch (error) {
+                    if (!isTransientIoError(error) || gate.fail('read', now()) !== 'retry') { halt(error); return; }
+                    paused = '主动消息状态暂时读不到，等待恢复';
+                    if (gate.shouldLog('read', now())) deps.log(`主动：状态暂时读不到（${describeError(error)}），未开始计划，稍后重读`);
+                    wake = new AbortController();
+                    await owned(() => waitUntil(now() + DIRTY_RETRY_MS, wake!.signal), wake.signal); wake = undefined;
+                    continue;
+                }
+            }
             flushIfDirty();
             if (stopped) return;
             const today = herDay(deps.schedule, new Date(now()));
             for (const item of followUps.filter(f => expired(f, today))) forget(item.id, `过了 ${FOLLOW_UP_DAYS} 天还没问到`);
-            const his = deps.history.load(contact.qq).filter(m => m.role === 'user');
+            const his = historyNow().filter(m => m.role === 'user');
             for (const item of followUps.filter(f => tripAlreadyOver(f, his))) forget(item.id, '行程过去了，他后来又来聊过，不用再问');
             const current = input();
             const plan = planFrom(now(), current);
@@ -680,7 +770,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             }
             // 没有要发的：等到下一天开始再算
             const day = herDay(deps.schedule, new Date(now()));
-            const untilTomorrow = next?.at ?? new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, ...deps.schedule.sleep.split(':').map(Number) as [number, number], 1).getTime();
+            const untilTomorrow = next?.at ?? localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1, ...deps.schedule.sleep.split(':').map(Number) as [number, number], 1).getTime();
             // 有真实天气时最多睡这么久就重算：预报会变，雨可能提前、推后（ADR 0050）
             const withWeather = deps.weather ? Math.min(untilTomorrow, now() + RAIN_REPLAN_MS) : untilTomorrow;
             const planned = deps.settings.reach ? Math.min(withWeather, now() + REACH_REPLAN_MS) : withWeather;
@@ -689,7 +779,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             const withThink = thinkAt === undefined ? planned : Math.min(planned, thinkAt);
             const target = dirty ? Math.min(withThink, now() + DIRTY_RETRY_MS) : withThink;
             wake = new AbortController();
-            await waitUntil(target, wake.signal);
+            await owned(() => waitUntil(target, wake!.signal), wake.signal);
             const poked = wake.signal.aborted;
             wake = undefined;
             if (stopped) return;
@@ -714,27 +804,29 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         },
         async fireNow() {
             if (stopped) return '主动消息已经停了';
+            if (loading) return '主动消息状态暂时读不到，等待恢复';
             const reason = manualBlock(input());
             if (reason) {
                 deps.log(`主动${tag}：他让她现在找他，但不发：${reason}`);
                 return reason;
             }
             const day = formatDate(herDay(deps.schedule, new Date(now())));
-            const candidate: Candidate = { id: `${day}:share:manual-${now()}`, occasion: 'share', day, at: now(), reason: '他让她现在找他' };
+            const candidate: Candidate = { id: `${day}:share:manual-${now()}-${randomUUID()}`, occasion: 'share', day, at: now(), reason: '他让她现在找他' };
             deps.log(`主动${tag}：他让她现在找他`);
-            await fire(candidate, true);
-            return undefined;
+            return fire(candidate, true);
         },
         syncFollowUps() {
-            if (stopped) return Promise.resolve();
+            if (stopped || loading) return Promise.resolve();
             extracting ??= extractNow().catch(error => { if (!stopped) halt(error); }).finally(() => { extracting = undefined; });
             return extracting;
         },
         stop() {
             stopped = true;
+            next = undefined;
+            lifecycle.abort();
             wake?.abort();
         },
-        innerLine: () => (deps.inner
+        innerLine: () => (deps.inner && !stopped && !loading
             ? [innerLineOf(inner.thoughts, now()), learnedLine(inner.learned, now())].filter(Boolean).join('\n') || undefined
             : undefined),
         status: () => ({

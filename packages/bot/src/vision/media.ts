@@ -8,7 +8,8 @@
 // - 聊天记录就是缓存：进了记录的消息（按 QQ 消息 id）不再转（app.ts 先查记录）；同一条正在转的（实时收到的和补回的撞上）共用一次调用（mediaReading）。
 // - 回复节奏：听完才回（reply-timing.ts 按 listenMs 把听的时间加在看到之后）。
 
-import { readFile } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import type { AudioHearing } from './hearing.ts';
 import { AsyncGate } from '../social/async-gate.ts';
 import type { Segment } from '../platform/onebot.ts';
@@ -57,6 +58,9 @@ export const OCR_MAX_IMAGES = 3;
 /** 听语音：知道秒数按秒数；只知道字按每秒 4 个字（最少 2 秒）；都不知道按这么久 */
 export const LISTEN_DEFAULT_MS = 6000;
 const LISTEN_MAX_MS = 60_000;
+/** Only optional duration metadata is read locally; larger audio still goes through transcription. */
+export const VOICE_METADATA_MAX_BYTES = 2 * 1024 * 1024;
+const audioGate = new AsyncGate(2);
 const voiceGate = new AsyncGate(2);
 const ocrGate = new AsyncGate(2);
 const stickerGate = new AsyncGate(2);
@@ -77,8 +81,12 @@ export function needsReading(message: Segment[] | string, stickers = false): boo
 /** 放进方括号里的字：去掉换行和方括号（免得把这一行截断，也免得和别的方括号行混），太长截断 */
 function inline(text: string, max: number): string {
     const flat = text.replace(/\s+/g, ' ').replace(/\[/g, '【').replace(/\]/g, '】').trim();
-    const chars = [...flat];
-    return chars.length > max ? `${chars.slice(0, max).join('')}…` : flat;
+    const chars: string[] = [];
+    for (const char of flat) {
+        if (chars.length === max) return `${chars.join('')}…`;
+        chars.push(char);
+    }
+    return flat;
 }
 
 /** 聊天记录里的一条语音 */
@@ -124,10 +132,11 @@ export function ocrLines(data: unknown): string[] {
  * 或 AMR-NB（开头「#!AMR\n」，每帧 20 毫秒，长度看帧头）。认不出来返回 undefined。
  */
 export function voiceSeconds(file: Uint8Array): number | undefined {
+    if (file.byteLength > VOICE_METADATA_MAX_BYTES) return undefined;
     const buffer = Buffer.from(file.buffer, file.byteOffset, file.byteLength);
     let frames = 0;
     const silk = buffer.indexOf('#!SILK_V3');
-    if (silk === 0 || silk === 1) {
+    if (silk === 0 || (silk === 1 && buffer[0] === 0x02)) {
         for (let at = silk + 9; at + 2 <= buffer.length;) {
             const size = buffer.readInt16LE(at);
             if (size <= 0 || at + 2 + size > buffer.length) break;
@@ -137,7 +146,10 @@ export function voiceSeconds(file: Uint8Array): number | undefined {
     } else if (buffer.subarray(0, 6).toString('latin1') === '#!AMR\n') {
         const sizes = [12, 13, 15, 17, 19, 20, 26, 31, 5, 0, 0, 0, 0, 0, 0, 0];
         for (let at = 6; at < buffer.length;) {
-            const size = sizes[(buffer[at]! >> 3) & 0x0f]!;
+            const type = (buffer[at]! >> 3) & 0x0f;
+            // RFC 4867: AMR-NB storage allows modes 0–8 and NO_DATA=15, not reserved 9–14.
+            if (type >= 9 && type <= 14) return undefined;
+            const size = sizes[type]!;
             if (at + 1 + size > buffer.length) break;
             frames++;
             at += 1 + size;
@@ -149,20 +161,66 @@ export function voiceSeconds(file: Uint8Array): number | undefined {
 }
 
 /** 超时或上层停机时主动取消；旧适配器不接 signal 时仍按原来的降级逻辑返回。 */
+class MediaTimeout extends Error {}
 function within<T>(work: (signal: AbortSignal) => Promise<T>, ms: number, parent?: AbortSignal): Promise<T> {
+    if (parent?.aborted) return Promise.reject(parent.reason ?? new DOMException('已取消', 'AbortError'));
+    if (!Number.isSafeInteger(ms) || ms <= 0 || ms > 2_147_483_647) return Promise.reject(new RangeError('媒体读取时限无效'));
     const controller = new AbortController();
     const signal = parent ? AbortSignal.any([parent, controller.signal]) : controller.signal;
-    const timer = setTimeout(() => controller.abort(new Error(`超时 ${ms / 1000} 秒`)), ms);
-    let task: Promise<T>;
-    try { task = work(signal); } catch (error) { task = Promise.reject(error); }
-    task.catch(() => {});
-    const cancelled = new Promise<never>((_, reject) => {
-        signal.addEventListener('abort', () => reject(signal.reason ?? new DOMException('已取消', 'AbortError')), { once: true });
+    return new Promise<T>((resolve, reject) => {
+        let finished = false;
+        const cleanup = () => { clearTimeout(timer); signal.removeEventListener('abort', abort); };
+        const fail = (error: unknown) => { if (!finished) { finished = true; cleanup(); reject(error); } };
+        const abort = () => fail(signal.reason ?? new DOMException('已取消', 'AbortError'));
+        const timer = setTimeout(() => controller.abort(new MediaTimeout(`超时 ${ms / 1000} 秒`)), ms);
+        // Attach before work: an adapter is allowed to synchronously abort its parent signal.
+        signal.addEventListener('abort', abort, { once: true });
+        if (signal.aborted) { abort(); return; }
+        try {
+            Promise.resolve(work(signal)).then(value => {
+                if (!finished) { finished = true; cleanup(); resolve(value); }
+            }, fail);
+        } catch (error) { fail(error); }
     });
-    return Promise.race([task, cancelled]).finally(() => clearTimeout(timer));
 }
 
-const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
+/** Include queue wait in the deadline while keeping active uncooperative adapters from holding a slot. */
+function gatedWithin<T>(gate: AsyncGate, work: (signal: AbortSignal) => Promise<T>, ms: number, parent?: AbortSignal): Promise<T> {
+    return within(signal => gate.run(() => within(work, ms, signal), signal), ms, parent);
+}
+
+/** Read only regular, bounded files, and recheck after stat so growth cannot trigger an unbounded readFile. */
+async function localVoiceSeconds(path: string, signal: AbortSignal): Promise<number | undefined> {
+    signal.throwIfAborted();
+    const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+    let closing: Promise<void> | undefined;
+    const close = () => (closing ??= file.close());
+    const abort = () => { void close().catch(() => {}); };
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+        signal.throwIfAborted();
+        const stat = await file.stat();
+        signal.throwIfAborted();
+        if (!stat.isFile() || !Number.isSafeInteger(stat.size) || stat.size < 0 || stat.size > VOICE_METADATA_MAX_BYTES) return undefined;
+        const buffer = Buffer.alloc(stat.size + 1);
+        let total = 0;
+        while (total < buffer.length) {
+            signal.throwIfAborted();
+            const { bytesRead } = await file.read(buffer, total, Math.min(64 * 1024, buffer.length - total), null);
+            if (!bytesRead) break;
+            total += bytesRead;
+        }
+        signal.throwIfAborted();
+        if (total > stat.size) return undefined;
+        return voiceSeconds(buffer.subarray(0, total));
+    } finally {
+        signal.removeEventListener('abort', abort);
+        await close();
+    }
+}
+
+// Service errors can contain image URLs, paths or transcription text. Only our own timeout has safe detail.
+const reason = (error: unknown) => error instanceof MediaTimeout ? error.message : '读取失败';
 const seconds = (since: number) => `${((Date.now() - since) / 1000).toFixed(1)} 秒`;
 
 async function hear(data: Record<string, unknown>, messageId: number, sources: MediaSources, log: (message: string) => void, signal?: AbortSignal): Promise<string> {
@@ -170,10 +228,10 @@ async function hear(data: Record<string, unknown>, messageId: number, sources: M
     const started = Date.now();
     const path = typeof data.path === 'string' && data.path ? data.path : undefined;
     const [length, text] = await Promise.all([
-        path ? within(() => readFile(path), limits.voice, signal).then(voiceSeconds, () => undefined) : Promise.resolve(undefined),
+        path ? gatedWithin(audioGate, inner => localVoiceSeconds(path, inner), limits.voice, signal).catch(() => undefined) : Promise.resolve(undefined),
         sources.reader?.voiceToText
-            ? voiceGate.run(() => within(inner => sources.reader!.voiceToText!(messageId, inner), limits.voice, signal), signal).then(
-                raw => inline(String(raw ?? ''), VOICE_MAX_CHARS) || undefined,
+            ? gatedWithin(voiceGate, inner => sources.reader!.voiceToText!(messageId, inner), limits.voice, signal).then(
+                raw => typeof raw === 'string' ? inline(raw, VOICE_MAX_CHARS) || undefined : undefined,
                 error => { log(`听语音：没转出来（${reason(error)}）`); return undefined; },
             )
             : Promise.resolve(undefined),
@@ -203,9 +261,9 @@ async function look(data: Record<string, unknown>, sources: MediaSources, log: (
     const started = Date.now();
     const [ocr, description] = await Promise.all([
         sources.reader?.ocr
-            ? ocrGate.run(() => within(inner => sources.reader!.ocr!(url, inner), limits.ocr, signal), signal).then(
+            ? gatedWithin(ocrGate, inner => sources.reader!.ocr!(url, inner), limits.ocr, signal).then(
                 result => {
-                    const lines = Array.isArray(result) ? result : [];
+                    const lines = Array.isArray(result) ? result.filter((line): line is string => typeof line === 'string') : [];
                     const text = inline(lines.join(' '), OCR_MAX_CHARS);
                     // 照片里零星认出一两个字符（噪点）不算有字
                     const meaningful = text.replace(/[\p{P}\p{S}\s]/gu, '').length >= 2;
@@ -218,7 +276,7 @@ async function look(data: Record<string, unknown>, sources: MediaSources, log: (
         sources.vision
             ? within(inner => sources.vision!.describe({ url, ...(typeof data.file === 'string' ? { file: data.file } : {}), signal: inner }), limits.vision, signal).then(
                 text => {
-                    const description = inline(String(text ?? ''), OCR_MAX_CHARS) || undefined;
+                    const description = typeof text === 'string' ? inline(text, OCR_MAX_CHARS) || undefined : undefined;
                     // 只记字数，不记图上是什么
                     if (description) log(`看图：看图模型说了 ${description.length} 个字（${seconds(started)}）`);
                     return description;

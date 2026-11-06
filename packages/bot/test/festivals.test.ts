@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { festivalActivities, festivalDays, festivalYears, solarTerm, withFestivalActivities, withFestivals, FESTIVAL_MODES } from '../src/world/festivals.ts';
 import { stateAt } from '../src/life/schedule.ts';
 import { candidatesOn, dayMatches, type ImportantDay, type ProactiveInput } from '../src/proactive/proactive.ts';
 import { describeDays } from '../src/language/time-context.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const at = (text: string) => new Date(text);
 const dateOf = (days: ImportantDay[], name: string, year: number) => days.find(d => d.name === name && d.year === year)?.date;
 const input = (dates: ImportantDay[]): ProactiveInput => ({
@@ -126,9 +126,10 @@ describe('公共节日：主动说', () => {
 
     test('卡上自己的日子（生日）不受影响，和节日同一天并成一条', () => {
         const mixed = [...boyfriend.dates, ...greetDays];
-        const july = candidatesOn(new Date(2027, 6, 17), input(mixed)).filter(c => c.occasion === 'dates');
-        assert.equal(july.length, 1);
-        assert.deepEqual(july[0]!.importantDays!.map(d => d.name), ['你的生日', '你们在一起的纪念日']);
+        // 卡上的纪念日和第一次一起出去玩的日子都是 05-20，和公共节日「520」同一天
+        const may = candidatesOn(new Date(2027, 4, 20), input(mixed)).filter(c => c.occasion === 'dates');
+        assert.equal(may.length, 1);
+        assert.deepEqual(may[0]!.importantDays!.map(d => d.name), ['在一起的纪念日', '第一次一起出去玩的日子', '520']);
     });
 });
 
@@ -138,18 +139,14 @@ describe('公共节日：并进卡', () => {
         const once = withFestivals(boyfriend.dates, now, 'greet');
         assert.equal(withFestivals(once, now, 'greet').length, once.length);
         assert.equal(withFestivals(boyfriend.dates, now, 'off').length, boyfriend.dates.length);
-        assert.deepEqual(once.slice(0, 3).map(d => d.name), ['你的生日', '你们在一起的纪念日', '他的生日']);
+        assert.deepEqual(once.slice(0, 4).map(d => d.name), ['你的生日', '在一起的纪念日', '第一次一起出去玩的日子', '他的生日']);
         assert.equal(once.length, boyfriend.dates.length + 19 * 3);
     });
 });
 
 describe('公共节日：那一天她在做的事', () => {
     const schedule = structuredClone(boyfriend.schedule!);
-    // 寒假（在家过，2027-01-04 起）写在 claude/release-cards 的卡里；卡还没上线时测试自己补上同样的一段，测的是代码
-    if (!schedule.holidays.some(holiday => holiday.name === '寒假')) {
-        schedule.holidays.push({ name: '寒假', start: '2027-01-04', end: '2027-02-28', where: '期末考完回青岛了，在家住', home: true });
-        schedule.free.home = { morning: ['在家睡到自然醒，窝在床上刷手机', '在家收拾房间'], afternoon: ['在家打独立游戏', '在家追剧', '陪妈妈出去买东西'], evening: ['在追一部剧', '跟爸妈一起看电视', '刷手机刷到忘了时间'] };
-    }
+    // 合成卡上有寒假（在家过，2027-01-16 起）和在家的空闲活动
     const state = (text: string) => stateAt(schedule, new Date(text));
     const doing = (text: string) => { const a = state(text).activity; return a.kind === 'free' ? a.text : undefined; };
 

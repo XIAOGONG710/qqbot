@@ -52,23 +52,29 @@ export function createDshCompanionHandlers<TState = unknown, TVoice = unknown>(o
     let resetGeneration = 0;
 
     return {
-        async onMessage(message: CompanionMessage, clientId: string): Promise<CompanionMessage> {
+        async onMessage(message: CompanionMessage, clientId: string, signal?: AbortSignal): Promise<CompanionMessage> {
+            signal?.throwIfAborted();
             const generation = resetGeneration;
             const askedAt = now();
-            const turns = conversations.get(clientId) ?? [];
-            const described = !message.text?.trim() && options.describeMedia ? await options.describeMedia(message, clientId) : undefined;
+            // 在模型确认返回前只改候选副本；取消或 reset 不能把半轮用户话重新塞回已清理的上下文。
+            const turns = [...(conversations.get(clientId) ?? [])];
+            const described = !message.text?.trim() && options.describeMedia
+                ? await abortable(options.describeMedia(message, clientId), signal)
+                : undefined;
+            signal?.throwIfAborted();
+            if (generation !== resetGeneration) return { kind: 'text', text: '这台设备的配对已失效，请重新配对。' };
             const question = message.text?.trim() || described?.trim().slice(0, 4000) || `[收到${message.kind}消息]`;
             const recentTurns = (options.sharedConversation?.recent(clientId) ?? turns).slice(-Math.min(6, maxTurns));
             if (!options.sharedConversation) turns.push({ role: 'user', content: question });
-            const reply = (await options.advisor.advise({
+            const reply = (await abortable(options.advisor.advise({
                 question,
                 ...(options.state ? { state: options.state(clientId) } : {}),
                 ...(recentTurns.length ? { recentTurns } : {}),
                 ...(options.voice ? { voice: options.voice(clientId) } : {}),
                 ...(message.media ? { media: message.media } : {}),
-            })).trim() || '我刚才没整理好，你再问我一次。';
+            }), signal)).trim() || '我刚才没整理好，你再问我一次。';
             // 配对撤销可能发生在模型等待期间；旧请求不应把已清掉的上下文重新写回来，也不应把结果继续交给旧设备。
-            if (generation !== resetGeneration) return { kind: 'text', text: '这台设备的配对已失效，请重新配对。' };
+            if (generation !== resetGeneration || signal?.aborted) return { kind: 'text', text: '这台设备的配对已失效，请重新配对。' };
             if (options.sharedConversation) {
                 options.sharedConversation.commit(clientId, question, reply, askedAt, now());
                 return { kind: 'text', text: reply };
@@ -92,4 +98,17 @@ export function createDshCompanionHandlers<TState = unknown, TVoice = unknown>(o
             else conversations.clear();
         },
     };
+}
+
+/** 不强制底层模型支持取消；只让宿主在生命周期结束时及时收回本地等待，并吸收迟到成功或失败。 */
+async function abortable<T>(task: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+    if (!signal) return task;
+    signal.throwIfAborted();
+    let onAbort!: () => void;
+    const cancelled = new Promise<never>((_, reject) => {
+        onAbort = () => reject(signal.reason ?? new Error('手机伴侣已经停止'));
+        signal.addEventListener('abort', onAbort, { once: true });
+    });
+    try { return await Promise.race([task, cancelled]); }
+    finally { signal.removeEventListener('abort', onAbort); }
 }

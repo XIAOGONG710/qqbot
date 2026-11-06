@@ -20,7 +20,7 @@ const at = (hoursAgo: number) => new Date(NOW - hoursAgo * 3_600_000).toISOStrin
 const him = (content: string, hoursAgo: number): StoredMessage => ({ time: at(hoursAgo), role: 'user', content });
 const her = (content: string, hoursAgo: number): StoredMessage => ({ time: at(hoursAgo), role: 'assistant', content });
 const ASK = '你想成为自己想成为的样子，还是我喜欢的样子？';
-const guard: QuestionGuard = { people: ['阿明', '苏雨桐'] };
+const guard: QuestionGuard = { people: ['阿明', '许小禾'] };
 
 const question = (patch: Partial<OpenQuestion> = {}): OpenQuestion => ({ id: 'q-2026-10-31-1', at: NOW - 3_600_000, his: ASK, hers: '不知道', context: ['他：我觉得你剪短发更好看', '你：是吗'], nights: 0, ...patch });
 const thought = (patch: Partial<Thought> = {}): Thought => ({ id: 'o-1', q: ASK, text: '我大概是想先做我自己，但你喜欢的那个样子里有一部分我也是愿意的', at: 1, ...patch });
@@ -139,7 +139,7 @@ describe('夜里她自己想：解析和落地', () => {
         assert.match(thoughtProblem(text(THOUGHT_MIN - 1), state, guard)!, /太短/);
         assert.match(thoughtProblem(text(THOUGHT_MAX + 1), state, guard)!, /太长/);
         assert.match(thoughtProblem('我其实只是个程序，哪来的想成为什么样子呢', state, guard)!, /程序/);
-        assert.match(thoughtProblem('要是苏雨桐问我我就说我想做自己啦', state, guard)!, /别人的名字/);
+        assert.match(thoughtProblem('要是许小禾问我我就说我想做自己啦', state, guard)!, /别人的名字/);
         state.thoughts.push(thought({ text: '我想先做我自己，但你喜欢的我也会听一点' }));
         assert.match(thoughtProblem('我想先做我自己，但你喜欢的我也会听一点', state, guard)!, /一模一样/);
         for (const ok of ['不是为了让你喜欢才变成什么样，是我自己想变成什么样', '我还没想明白，卡在不知道我自己到底想要什么', '很有意思，我选你喜欢的那个，因为我也想看看']) {

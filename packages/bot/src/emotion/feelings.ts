@@ -12,6 +12,7 @@ import { ignoredNow, IGNORED_GAP_MS, IGNORED_MAX_MS } from './grievance.ts';
 import { endingText, goodNewsText, needsCareText } from '../language/intent.ts';
 import { worldNews, type WorldNow } from '../world/world.ts';
 import { NEWS_KINDS } from '../proactive/proactive.ts';
+import { stateTimestamp } from '../memory/state-schema.ts';
 
 type Said = Pick<StoredMessage, 'role' | 'content'> & { time?: string | undefined };
 
@@ -96,7 +97,7 @@ function eventAppraisals(world: WorldNow): Appraisal[] {
     }] : []));
 }
 
-/** 她那边的事：世界快照里能看到的（今天的），news 的几类 + 作业快到期 + 土豆 */
+/** 她那边的事：世界快照里能看到的（今天的），news 的几类 + 作业快到期 + 猫 */
 function worldAppraisals(world: WorldNow, now: number): Appraisal[] {
     const out: Appraisal[] = [];
     for (const news of worldNews(world, NEWS_KINDS)) {
@@ -113,7 +114,7 @@ function worldAppraisals(world: WorldNow, now: number): Appraisal[] {
         if (due > now && due - now <= 18 * HOUR) out.push({ id: `world:hw18:${due}`, at: due - 18 * HOUR, kind: 'worry', strength: 1, cause: `${name}快到期了还没写完`, source: 'world', halfLifeH: 6 });
         if (due > now && due - now <= 6 * HOUR) out.push({ id: `world:hw6:${due}`, at: due - 6 * HOUR, kind: 'worry', strength: 2, cause: `${name}快到期了还没写完`, source: 'world', halfLifeH: 6 });
     }
-    // 土豆：今天去喂了，见到 / 没见到
+    // 猫：今天去喂了，见到 / 没见到
     const fed = world.cat && 'fed' in world.cat.today ? world.cat.today : undefined;
     if (world.cat && fed && fed.fed.getTime() <= now) {
         if (fed.seen === true) out.push({ id: `world:cat-seen:${world.day}`, at: fed.fed.getTime(), kind: 'joy', strength: 1, cause: `${world.cat.name}今天出来蹭你了`, source: 'world', halfLifeH: 3 });
@@ -124,6 +125,8 @@ function worldAppraisals(world: WorldNow, now: number): Appraisal[] {
 
 /** 他做的事：哄她 / 想她、认真道歉、说他不舒服、有好事、她难过时晾了她很久、她发的话他一直没回 */
 function historyAppraisals(history: readonly Said[], now: number): Appraisal[] {
+    // 未来消息还没有改变等待/回应关系；无时间记录保留为未知，不能据此推断一直没回。
+    history = history.filter(message => !(atOf(message) > now));
     const out: Appraisal[] = [];
     const seen = new Set<string>();
     const add = (appraisal: Appraisal) => { if (!seen.has(appraisal.id)) { seen.add(appraisal.id); out.push(appraisal); } };
@@ -163,6 +166,7 @@ function historyAppraisals(history: readonly Said[], now: number): Appraisal[] {
 
 function momentAppraisals(moments: readonly Moment[]): Appraisal[] {
     return moments.flatMap(moment => {
+        if (!validMoment(moment)) return [];
         const at = Date.parse(moment.at);
         return Number.isFinite(at) ? [{ id: `author:${moment.id}`, at, kind: moment.kind, strength: moment.strength, cause: moment.cause, source: 'author' as const, ...(moment.halfLifeH ? { halfLifeH: moment.halfLifeH } : {}) }] : [];
     });
@@ -198,10 +202,17 @@ const levelOf = (weight: number): Level => (weight >= STRONG ? 'strong' : weight
 
 /** 某一刻她心里有哪些感受：分量从大到小，不到“刚能察觉”的不算 */
 export function feelingsAt(list: readonly Appraisal[], now: number): Felt[] {
+    if (!Number.isFinite(now)) return [];
     const byKind = new Map<FeelingKind, { weight: number; top: Appraisal; topWeight: number }>();
     for (const item of list) {
+        if (!isObject(item) || typeof item.id !== 'string' || !item.id.trim() || !Number.isFinite(item.at)
+            || !FEELING_KINDS.includes(item.kind) || ![1, 2, 3].includes(item.strength)
+            || typeof item.cause !== 'string' || !item.cause.trim() || !['world', 'him', 'author', 'self'].includes(item.source)
+            || (item.aboutHim !== undefined && typeof item.aboutHim !== 'boolean')) continue;
         if (item.at > now) continue;
+        if (item.halfLifeH !== undefined && typeof item.halfLifeH !== 'number') continue;
         const halfLife = (item.halfLifeH ?? HALF_LIFE_H[item.kind]) * HOUR;
+        if (!Number.isFinite(halfLife) || halfLife <= 0) continue;
         const age = now - item.at;
         if (age > halfLife * HALF_LIVES_KEPT) continue;
         const weight = AMPLITUDE[item.strength] * 0.5 ** (age / halfLife);
@@ -241,13 +252,13 @@ const VOICED: Record<FeelingKind, RegExp> = {
 };
 
 export function voicedKinds(history: readonly Said[], now: number): Set<FeelingKind> {
-    const mine = history.filter(message => message.role === 'assistant' && now - atOf(message) <= 3 * HOUR).slice(-6);
+    const mine = history.filter(message => message.role === 'assistant' && now - atOf(message) >= 0 && now - atOf(message) <= 3 * HOUR).slice(-6);
     return new Set(FEELING_KINDS.filter(kind => mine.some(message => VOICED[kind].test(message.content))));
 }
 
 /** 她前面已经哭过 / 说想哭了（不再给“可以哭”的许可） */
 export function criedRecently(history: readonly Said[], now: number): boolean {
-    return history.filter(message => message.role === 'assistant' && now - atOf(message) <= 6 * HOUR).slice(-8)
+    return history.filter(message => message.role === 'assistant' && now - atOf(message) >= 0 && now - atOf(message) <= 6 * HOUR).slice(-8)
         .some(message => /哭了|哭出来|掉眼泪|眼睛红|\[大哭\]|\[快哭了\]/.test(message.content));
 }
 
@@ -320,12 +331,21 @@ export function describeFeelings(felt: readonly Felt[], userName: string, contex
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
+function validCause(value: unknown): value is string {
+    if (typeof value !== 'string') return false;
+    let count = 0;
+    for (const _ of value) if (++count > 60) return false;
+    let meaningful = 0;
+    for (const _ of value.trim()) if (++meaningful >= 2) return true;
+    return false;
+}
+
 export function validMoment(value: unknown): value is Moment {
     return isObject(value) && typeof value.id === 'string' && /^[\w-]{1,40}$/.test(value.id)
-        && typeof value.at === 'string' && !Number.isNaN(Date.parse(value.at))
+        && stateTimestamp(value.at)
         && FEELING_KINDS.includes(value.kind as FeelingKind)
         && (value.strength === 1 || value.strength === 2 || value.strength === 3)
-        && typeof value.cause === 'string' && value.cause.trim().length >= 2 && [...value.cause].length <= 60
+        && validCause(value.cause)
         && (value.halfLifeH === undefined || (typeof value.halfLifeH === 'number' && value.halfLifeH > 0 && value.halfLifeH <= 72));
 }
 

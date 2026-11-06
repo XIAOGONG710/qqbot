@@ -90,6 +90,7 @@ export function repairUnfinished(reply: string, found: readonly Unfinished[]): {
 export interface FinishDeps {
     /** 在原来的提示词末尾加上这句说明重新生成，返回清理过的回复 */
     regenerate: (note: string) => Promise<string>;
+    onRewriteAccepted?: () => void;
     log: (message: string) => void;
 }
 
@@ -105,7 +106,7 @@ export async function finishReply(reply: string, deps: FinishDeps): Promise<stri
     let current = reply;
     try {
         const rewritten = await deps.regenerate(NOTE);
-        if (lines(rewritten).length > 0) current = rewritten;
+        if (lines(rewritten).length > 0) { current = rewritten; deps.onRewriteAccepted?.(); }
     } catch (error) {
         deps.log(`话没说完：重写失败（${error instanceof Error ? error.message : String(error)}），直接处理`);
     }

@@ -8,6 +8,7 @@ import type { AppConfig } from '../src/platform/config.ts';
 import { ChatHistory } from '../src/memory/history.ts';
 import { otherSegmentText, renderForward, segmentsToText, type MessageEvent } from '../src/platform/onebot.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 // 11-02「检查类似的问题」：和引用丢了一样，有些东西进她的提示词之前被丢掉、写错或者认不出是谁说的
 const text = (value: string) => ({ type: 'text', data: { text: value } });
@@ -19,7 +20,7 @@ describe('认不出的消息段写成人话，不写英文类型名', () => {
         assert.equal(otherSegmentText('rps', { result: '2' }), '[猜拳]');
         assert.equal(otherSegmentText('mface', { summary: '[好耶]' }), '[好耶]');
         assert.equal(otherSegmentText('mface', {}), '[商城表情]');
-        assert.equal(otherSegmentText('location', { title: '山大路科技市场', content: '济南市历下区' }), '[位置：山大路科技市场 济南市历下区]');
+        assert.equal(otherSegmentText('location', { title: '山大路科技市场', content: '雾岚市市历下区' }), '[位置：山大路科技市场 雾岚市市历下区]');
         assert.equal(otherSegmentText('contact', { type: 'group', id: '1' }), '[推荐了一个群]');
         assert.equal(otherSegmentText('contact', { type: 'qq', id: '1' }), '[推荐了一个QQ好友]');
         assert.equal(otherSegmentText('markdown', { content: '## 今晚 **一起** 吃饭' }), '今晚 一起 吃饭');
@@ -63,7 +64,7 @@ describe('进应用：转发问 NapCat、语音没发成就用文字', () => {
         const cfg = {
             llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
             prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
-            characterCard: join(resolve(import.meta.dirname, '../../..'), 'characters/linmengyao/st/linmengyao-{tier}.json'),
+            characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }],
             unlistedFriends: false, schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false,
             lifeInPrompt: false, grievance: false, feedbackCommands: false, realWeather: false, media: true,

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { describePick, pickBest, scoreCandidate, type PickRules } from '../src/language/candidates.ts';
 
-const rules = (kind: PickRules['kind'], maxLines: number, heard = ''): PickRules => ({ kind, maxLines, heard, own: ['土豆', '相机', '药屋少女的呢喃', '追剧'], banned: [] });
+const rules = (kind: PickRules['kind'], maxLines: number, heard = ''): PickRules => ({ kind, maxLines, heard, own: ['团子饼', '相机', '药屋少女的呢喃', '追剧'], banned: [] });
 
 describe('候选选择（ADR 0041）', () => {
     test('扣分：说多了、扯到自己的事、约「写完跟我说」、他哭时叮嘱作息；他自己说到的不算', () => {
@@ -10,8 +10,8 @@ describe('候选选择（ADR 0041）', () => {
         const long = scoreCandidate('一\n二\n三\n四', rules('care', 2));
         assert.equal(long.penalty, 4);
         assert.deepEqual(long.reasons, ['说了 4 句']);
-        assert.match(scoreCandidate('抱抱\n我刚喂完土豆', rules('care', 2)).reasons.join(), /扯到自己的「土豆」/);
-        assert.equal(scoreCandidate('土豆没事吧', rules('care', 2, '土豆今天咋样')).penalty, 0, '他问的就是土豆');
+        assert.match(scoreCandidate('抱抱\n我刚喂完团子饼', rules('care', 2)).reasons.join(), /扯到自己的「团子饼」/);
+        assert.equal(scoreCandidate('团子饼没事吧', rules('care', 2, '团子饼今天咋样')).penalty, 0, '他问的就是团子饼');
         assert.match(scoreCandidate('去吧\n写完跟我说一声', rules('ending', 2)).reasons.join(), /约「写完跟我说一声」/);
         assert.match(scoreCandidate('怎么了\n早点睡吧', rules('care', 2)).reasons.join(), /他难过时叮嘱作息/);
         assert.equal(scoreCandidate('去吧\n早点睡', rules('ending', 2)).penalty, 0, '收尾时叮嘱是她的性格');

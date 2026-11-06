@@ -6,6 +6,7 @@
 import { resolve } from 'node:path';
 import { worldAt, type FriendDate } from '../world/world.ts';
 import { loadCharacterCard } from '../st/card.ts';
+import { localDate } from '../local-date.ts';
 
 const [fromText = '2026-11-02', daysText = '28', tier = 'boyfriend'] = process.argv.slice(2);
 const card = loadCharacterCard(resolve(import.meta.dirname, `../../../../characters/linmengyao/st/linmengyao-${tier}.json`));
@@ -17,10 +18,10 @@ const days = Number(daysText);
 // 每天 23:00 的世界（那一刻今天、明天已经说到她这里的约都在），去重
 const seen = new Map<string, FriendDate>();
 for (let i = -1; i <= days; i++) {
-    for (const date of worldAt(world, schedule, new Date(y!, m! - 1, d! + i, 23))?.dates ?? []) seen.set(date.id, date);
+    for (const date of worldAt(world, schedule, localDate(y!, m! - 1, d! + i, 23))?.dates ?? []) seen.set(date.id, date);
 }
-const first = new Date(y!, m! - 1, d!).getTime();
-const last = new Date(y!, m! - 1, d! + days).getTime();
+const first = localDate(y!, m! - 1, d!).getTime();
+const last = localDate(y!, m! - 1, d! + days).getTime();
 const dates = [...seen.values()].filter(x => x.start.getTime() >= first && x.start.getTime() < last).sort((a, b) => a.start.getTime() - b.start.getTime());
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];

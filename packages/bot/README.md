@@ -25,6 +25,7 @@ QQ 机器人的核心：按 SillyTavern 角色卡 + 世界书拼提示词，调 
      明确打开后仍有固定保护线：每个名单外好友 10 分钟最多 30 条、全部名单外好友合计最多 100 条；超过时忽略并写不含正文的日志。名单联系人不受影响
    - `schedule`：按角色卡上的作息（[ADR 0007](../../docs/adr/0007-schedule-and-reply-timing.md)）决定她现在在干什么、什么时候看到消息、打字多久，默认 `true`。
      开着时她凌晨睡觉不回、上课晚回；深夜测试时设成 `false`，随时几秒内回
+   - `timeZone`：她的时区（[ADR 0331](../../docs/adr/0331-her-time-zone.md)），作息、饭点、日记的日界都按它算，跟机器的系统时区无关；默认 `"Asia/Shanghai"`。启动时设给整个进程（`process.env.TZ`）。Koishi 控制台里是下拉（全部 IANA 时区，可搜索，也可选「其他」手填），保存即生效。
    - `memory`：长期记忆（[docs/hindsight.md](../../docs/hindsight.md)），`baseUrl` 是 Hindsight 地址；`recallTimeoutMs`（默认 3000）是生成前召回的限时，
      `timeoutMs`（默认 30000）是写入等请求的限时。删掉这一段就不用长期记忆
    - `prompt.maxContext`：上下文 token 上限（同 ST 的 Context Size），世界书预算和聊天记录截断都按它算

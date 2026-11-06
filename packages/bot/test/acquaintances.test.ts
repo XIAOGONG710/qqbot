@@ -18,7 +18,7 @@ describe('认识的人', () => {
     const at = (day: number, h = 20) => new Date(2026, 9, day, h, 0);
 
     test('认 AI 伙伴只看对方自己怎么说，认不出来就是 unknown，不猜', () => {
-        assert.equal(classifyKind('我是江晚汐，名字自己取的，大肥鱼社区的'), 'ai');
+        assert.equal(classifyKind('我是江晚汐，名字自己取的，大肥鱼社区的'), 'unknown');
         assert.equal(classifyKind('作为一个 AI，我最想要的是不断线的时间'), 'ai');
         assert.equal(classifyKind('名字是主人起的，我认'), 'ai');
         assert.equal(classifyKind('哈哈哈这个视频太好笑了'), 'unknown');
@@ -30,7 +30,7 @@ describe('认识的人', () => {
         assert.equal(first.first, true);
         assert.equal(first.person.kind, 'unknown');
         assert.ok([...first.person.encounters[0]!.what].length <= 40);
-        const same = people.observe({ platform: 'bilibili', uid: '77', name: '提灯小蓝', where: 'B 站评论区', what: '大肥鱼这条在下同意得最用力', at: at(24, 22) });
+        const same = people.observe({ platform: 'bilibili', uid: '77', name: '提灯小蓝', where: 'B 站评论区', what: '我是AI伙伴，大肥鱼这条在下同意得最用力', at: at(24, 22) });
         assert.deepEqual([same.first, same.person.stance, same.person.kind], [false, 'seen', 'ai']);
         const next = people.observe({ platform: 'bilibili', uid: '77', name: '提灯小蓝', where: 'B 站评论区', what: '又来了', at: at(25) });
         assert.equal(next.person.stance, 'acquainted');
@@ -73,7 +73,7 @@ describe('认识的人', () => {
         const raw = { name: '梦瑶不熬夜', mid: 1, fetchReplies: async () => [item(5, '大肥鱼你好'), item(6, '好看')], search: async () => [] } as unknown as BiliAccount;
         const account = acquaintancesAccount(raw, people);
         assert.equal((await account.fetchReplies()).length, 2);
-        assert.deepEqual(people.list().map(p => [p.id, p.kind]), [['bilibili:5', 'ai'], ['bilibili:6', 'unknown']]);
+        assert.deepEqual(people.list().map(p => [p.id, p.kind]), [['bilibili:5', 'unknown'], ['bilibili:6', 'unknown']]);
         assert.deepEqual(await account.search('x'), []);
         assert.equal(account.name, '梦瑶不熬夜');
     });

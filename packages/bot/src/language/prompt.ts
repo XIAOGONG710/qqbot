@@ -87,6 +87,8 @@ export interface PromptResult {
     activatedWorldInfo: WorldInfoEntry[];
     /** 为保留最新聊天而省略的低优先级运行时背景段数（不含内容） */
     omittedAfterHistory?: number;
+    /** 预算放不下固定内容或当前消息时直接回复，不调用缺少当前问题的模型。 */
+    fallbackReply?: string;
 }
 
 /**
@@ -193,8 +195,16 @@ export function buildPrompt(input: PromptInput): PromptResult {
         }
     }
     let remaining = baseRemaining - afterHistory.reduce((sum, message) => sum + cost(message), 0);
+    // 挤掉低优先级背景段之后，当前这条（和它的日期行）还是放不下：直接回一句，不调用缺少当前问题的模型
+    const required = latest?.role === 'user' ? latestReserve : 0;
+    if (remaining < 0 || required > remaining) {
+        return {
+            messages: [], activatedWorldInfo: [],
+            fallbackReply: remaining < 0 ? '我这会儿没处理过来，稍后再试一下' : '这条消息太长了，分几段发给我吧',
+        };
+    }
 
-    // 聊天记录隔了一天就插一行日期（ADR 0049，像 QQ 隔天显示时间）：分得清哪句是哪天说的（放完假还以为他在青岛，ADR 0007 调整 2026-10-10）。
+    // 聊天记录隔了一天就插一行日期（ADR 0049，像 QQ 隔天显示时间）：分得清哪句是哪天说的（放完假还以为他在老家，ADR 0007 调整 2026-10-10）。
     // 绝对日期，旧消息前面那一行不会变，不影响缓存；放进去的最早一条前面也有一行
     const chat: OpenAIMessage[] = [];
     const addHistory = () => {

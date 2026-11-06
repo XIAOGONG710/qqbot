@@ -6,6 +6,7 @@ import { afterEach, describe, test } from 'node:test';
 import { airQualityCategory, airQualityFetcher, parseOpenMeteoAirQuality, useRealAirQuality } from '../src/world/air-quality.ts';
 import { describeWorld, worldAt } from '../src/world/world.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { SYNTHETIC_WEATHER_PLACES, syntheticCardPath } from './fixtures/card.ts';
 
 const at = (iso: string) => new Date(`${iso}+08:00`);
 const hours = (date: string) => Array.from({ length: 24 }, (_, h) => `${date}T${String(h).padStart(2, '0')}:00`);
@@ -37,29 +38,29 @@ describe('真实空气质量（ADR 0227）', () => {
         let now = at('2026-11-03T03:30:00').getTime();
         let fail = false;
         const logs: string[] = [];
-        const fetcher = airQualityFetcher({
+        const fetcher = airQualityFetcher({ places: SYNTHETIC_WEATHER_PLACES,
             dir: join(root, 'air-quality'), now: () => now, log: message => logs.push(message),
             fetchJson: async () => { if (fail) throw new Error('timeout'); return payload('2026-11-03'); },
         });
         try {
             await fetcher.refresh();
-            assert.equal(fetcher.day('jinan', '2026-11-04', at('2026-11-04T02:30:00')), undefined, '未来日期没有已观测小时时不写空气质量');
-            const first = fetcher.day('jinan', '2026-11-03', at('2026-11-03T03:30:00'))!;
+            assert.equal(fetcher.day('school-town', '2026-11-04', at('2026-11-04T02:30:00')), undefined, '未来日期没有已观测小时时不写空气质量');
+            const first = fetcher.day('school-town', '2026-11-03', at('2026-11-03T03:30:00'))!;
             assert.deepEqual(first, { pm25: 15, pm10: 28, aqi: 38, category: '优', observedAt: '2026-11-03T03:00', real: true });
             const fetchedAt = now;
             now -= 120_000;
-            assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T03:30:00')), undefined, '缓存时间明显在未来时失败关闭');
-            assert.equal(fetcher.status().places.jinan.stale, true);
+            assert.equal(fetcher.day('school-town', '2026-11-03', at('2026-11-03T03:30:00')), undefined, '缓存时间明显在未来时失败关闭');
+            assert.equal(fetcher.status().places['school-town']!.stale, true);
             now = fetchedAt;
             now = at('2026-11-03T14:30:00').getTime();
             await fetcher.refresh();
             fail = true;
             await fetcher.refresh();
-            assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T14:30:00'))?.observedAt, '2026-11-03T14:00');
+            assert.equal(fetcher.day('school-town', '2026-11-03', at('2026-11-03T14:30:00'))?.observedAt, '2026-11-03T14:00');
             assert.ok(logs.some(line => line.includes('没取到') && line.includes('timeout')));
             now = at('2026-11-03T17:30:00').getTime();
-            assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T17:30:00')), undefined, '缓存过期不写进当前世界');
-            assert.equal(JSON.parse(readFileSync(join(root, 'air-quality', 'jinan.json'), 'utf8')).since, '2026-11-03');
+            assert.equal(fetcher.day('school-town', '2026-11-03', at('2026-11-03T17:30:00')), undefined, '缓存过期不写进当前世界');
+            assert.equal(JSON.parse(readFileSync(join(root, 'air-quality', 'school-town.json'), 'utf8')).since, '2026-11-03');
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
@@ -67,7 +68,7 @@ describe('真实空气质量（ADR 0227）', () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-air-quality-truncated-'));
         let now = at('2026-11-03T03:30:00').getTime();
         let truncated = false;
-        const fetcher = airQualityFetcher({
+        const fetcher = airQualityFetcher({ places: SYNTHETIC_WEATHER_PLACES,
             dir: join(root, 'air-quality'), now: () => now, log: () => {}, cacheMaxAgeMs: 60 * 60_000,
             fetchJson: async () => truncated ? {
                 hourly: { time: ['2026-11-03T04:00'], pm2_5: [20], pm10: [30], us_aqi: [40] },
@@ -75,14 +76,14 @@ describe('真实空气质量（ADR 0227）', () => {
         });
         try {
             await fetcher.refresh();
-            const firstFetchedAt = fetcher.status().places.jinan.fetchedAt;
+            const firstFetchedAt = fetcher.status().places['school-town']!.fetchedAt;
             now = at('2026-11-03T04:00:00').getTime();
             truncated = true;
             await fetcher.refresh();
-            const status = fetcher.status().places.jinan;
+            const status = fetcher.status().places['school-town']!;
             assert.equal(status.fetchedAt, firstFetchedAt, '不完整响应不能刷新旧缓存时间');
             assert.match(status.error ?? '', /当前日空气质量不完整/);
-            assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T04:00:00'))?.observedAt, '2026-11-03T03:00');
+            assert.equal(fetcher.day('school-town', '2026-11-03', at('2026-11-03T04:00:00'))?.observedAt, '2026-11-03T03:00');
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
@@ -90,7 +91,7 @@ describe('真实空气质量（ADR 0227）', () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-air-quality-history-'));
         let now = at('2026-11-03T03:30:00').getTime();
         let response = payload('2026-11-03');
-        const fetcher = airQualityFetcher({
+        const fetcher = airQualityFetcher({ places: SYNTHETIC_WEATHER_PLACES,
             dir: join(root, 'air-quality'), now: () => now, log: () => {},
             fetchJson: async () => response,
         });
@@ -99,15 +100,15 @@ describe('真实空气质量（ADR 0227）', () => {
             now = at('2026-11-05T03:30:00').getTime();
             response = combinedPayload('2026-11-04', '2026-11-05');
             await fetcher.refresh();
-            assert.equal(fetcher.day('jinan', '2026-11-04', at('2026-11-04T23:00:00')), undefined,
+            assert.equal(fetcher.day('school-town', '2026-11-04', at('2026-11-04T23:00:00')), undefined,
                 '已经按缺失数据度过的历史日不能事后变成真实空气质量');
-            assert.equal(fetcher.day('jinan', '2026-11-05', at('2026-11-05T03:30:00'))?.observedAt, '2026-11-05T03:00',
+            assert.equal(fetcher.day('school-town', '2026-11-05', at('2026-11-05T03:30:00'))?.observedAt, '2026-11-05T03:00',
                 '联网恢复后的当前日仍应正常接入');
         } finally { rmSync(root, { recursive: true, force: true }); }
     });
 
     test('进入世界提示词，但不改变原有天气和生活事件', () => {
-        const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+        const card = loadCharacterCard(syntheticCardPath('boyfriend'));
         useRealAirQuality({ day: () => ({ pm25: 18, pm10: 32, aqi: 42, category: '优', observedAt: '2026-10-20T12:00:00', real: true }) });
         const now = worldAt(card.herWorld!, card.schedule!, at('2026-10-20T21:00:00'))!;
         assert.equal(now.airQuality?.aqi, 42);
@@ -119,16 +120,16 @@ describe('真实空气质量（ADR 0227）', () => {
         const root = mkdtempSync(join(tmpdir(), 'qqbot-air-quality-invalid-'));
         const dir = join(root, 'air-quality');
         mkdirSync(dir);
-        writeFileSync(join(dir, 'jinan.json'), JSON.stringify({
+        writeFileSync(join(dir, 'school-town.json'), JSON.stringify({
             since: '2026-11-03', fetchedAt: '2026-11-03T03:30:00.000Z',
             hours: { '2026-11-03T03': { pm25: -1, pm10: 20, aqi: 30, o: 1 } },
         }));
         const logs: string[] = [];
         try {
-            const fetcher = airQualityFetcher({ dir, log: message => logs.push(message), now: () => at('2026-11-03T03:30:00').getTime(), fetchJson: async () => ({}) });
-            assert.equal(fetcher.day('jinan', '2026-11-03', at('2026-11-03T03:30:00')), undefined);
-            assert.equal(existsSync(join(dir, 'jinan.json')), false);
-            assert.ok(readdirSync(dir).some(name => name.startsWith('jinan.json.corrupt-')));
+            const fetcher = airQualityFetcher({ places: SYNTHETIC_WEATHER_PLACES, dir, log: message => logs.push(message), now: () => at('2026-11-03T03:30:00').getTime(), fetchJson: async () => ({}) });
+            assert.equal(fetcher.day('school-town', '2026-11-03', at('2026-11-03T03:30:00')), undefined);
+            assert.equal(existsSync(join(dir, 'school-town.json')), false);
+            assert.ok(readdirSync(dir).some(name => name.startsWith('school-town.json.corrupt-')));
             assert.ok(logs.some(message => message.includes('空气质量缓存') && message.includes('挪到')));
         } finally { rmSync(root, { recursive: true, force: true }); }
     });

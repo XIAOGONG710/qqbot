@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
@@ -9,9 +9,9 @@ import type { OpenAIMessage } from '../src/language/prompt.ts';
 import { runScenario, type SimHindsight } from '../src/sim/runner.ts';
 import { parseScenario, type Step } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
-const repoRoot = resolve(import.meta.dirname, '../../..');
-const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+const card = loadTierCard(syntheticCardPattern, 'boyfriend');
 const llm: BotConfig['llm'] = {
     baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000,
     promptPostProcessing: '', extraBody: {},
@@ -72,7 +72,7 @@ describe('重启一致（ADR 0039）', () => {
     test('同一场景中途重启和不重启，之后每一轮的提示词一样', async () => {
         const steps: Step[] = [
             { say: '在干嘛' },
-            { say: '苏雨桐最近咋样' },
+            { say: '林小满最近咋样' },
             { restart: true },
             { say: '她好了没' },
             { say: '初中那会儿你是不是天天抄我数学作业' },

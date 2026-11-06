@@ -7,11 +7,21 @@ const MAX_TITLE = 40;
 const MAX_NAME = 40;
 
 /** 去掉换行、方括号（会和占位符的括号搞混）、两头空白，截短 */
-function clean(value: unknown, max: number): string {
+function clean(value: unknown, max: number, links = false): string {
     if (typeof value !== 'string') return '';
-    const text = value.replace(/[\r\n\t]+/g, ' ').replace(/[[\]【】]/g, '').replace(/\s+/g, ' ').trim();
-    return text.length > max ? `${text.slice(0, max)}…` : text;
+    // 卡片的标题 / prompt 也可能直接是网址；先去掉，免得截短后留下带私有参数的半条链接。
+    const source = links ? value.replace(/https?:\/\/[^\s<>"'《》「」，。！？、）)\]]+/gi, '') : value;
+    const text = source.replace(/[\r\n\t]+/g, ' ').replace(/[[\]【】]/g, '').replace(/\s+/g, ' ').trim();
+    let result = '';
+    let count = 0;
+    for (const char of text) {
+        if (++count > max) return `${result}…`;
+        result += char;
+    }
+    return result;
 }
+
+const shareClean = (value: unknown, max: number) => clean(value, max, true);
 
 function record(value: unknown): Record<string, unknown> | undefined {
     return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
@@ -34,25 +44,25 @@ export function shareText(raw: unknown): string {
     const [kind, body] = Object.entries(meta ?? {}).map(([key, value]) => [key, record(value)] as const).find(([, value]) => value) ?? [];
     if (kind && body) {
         if (kind === 'music') {
-            const title = clean(body.title, MAX_TITLE);
-            const singer = clean(body.desc, MAX_TITLE);
+            const title = shareClean(body.title, MAX_TITLE);
+            const singer = shareClean(body.desc, MAX_TITLE);
             if (title) return `[分享音乐：${title}${singer ? ` - ${singer}` : ''}]`;
         } else {
             // 小程序：title 是小程序名（哔哩哔哩），desc 是内容标题；网页：title 是文章标题，tag 是站点名
             const miniapp = typeof card.app === 'string' && card.app.includes('miniapp');
-            const source = clean(miniapp ? body.title : body.tag, MAX_TITLE);
-            const title = clean(miniapp ? body.desc : body.title, MAX_TITLE);
+            const source = shareClean(miniapp ? body.title : body.tag, MAX_TITLE);
+            const title = shareClean(miniapp ? body.desc : body.title, MAX_TITLE);
             if (source && title) return `[分享：${source}《${title}》]`;
             if (title || source) return `[分享：${title || source}]`;
         }
     }
     const labelled = /^\s*\[([^\]]{1,10})\](.*)$/.exec(typeof card.prompt === 'string' ? card.prompt : '');
     if (labelled) {
-        const label = clean(labelled[1], 10);
-        const rest = clean(labelled[2], MAX_TITLE * 2);
+        const label = shareClean(labelled[1], 10);
+        const rest = shareClean(labelled[2], MAX_TITLE * 2);
         return label && rest ? `[${label}：${rest}]` : '[分享]';
     }
-    const prompt = clean(card.prompt, MAX_TITLE * 2);
+    const prompt = shareClean(card.prompt, MAX_TITLE * 2);
     return prompt ? `[分享：${prompt}]` : '[分享]';
 }
 

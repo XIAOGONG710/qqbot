@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 一位联系人的回复流水线：召回长期记忆 → 按 ST 顺序拼提示词 → 后处理 → 生成 → 清理（含卡上的 ST 正则）→ 出口检查 → 拆条发送（responder.ts 调度）。
 // 出口检查带上聊天记录里她最近几次回复和对方最近几条，查说话的毛病（ADR 0014，配置 speechCheck）。
 // 她自己的日子（ADR 0015，配置 herDays）：时间块里状态行下面加今天的心情，聊到书或她正在看书时再加「在读的书」，那一轮出口检查顺带查进度数字。
@@ -6,12 +7,13 @@
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
 import { dirname, join } from 'node:path';
+import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
-import { faceContext, reviewCrisisReply, reviewReply, type ReviewOptions } from '.././language/exit-check.ts';
+import { crisisFallback, faceContext, finalizeReply, reviewCrisisReply, reviewReply, type ReviewOptions } from '.././language/exit-check.ts';
 import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
 import { checkFacts, type FactCheckMode, type FactRecord } from '.././language/fact-check.ts';
-import { chatCompletion, forExtraction } from '.././language/llm.ts';
+import { chatCompletion, completionMaxTokens, forExtraction } from '.././language/llm.ts';
 import type { Log } from './log.ts';
 import { CLEAR_DAYS, recentChat, type FadeStats } from '.././memory/fading.ts';
 import { heardSinceReply, initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from '.././memory/long-term.ts';
@@ -31,7 +33,7 @@ import { describeIntent, needsCareText } from '.././language/intent.ts';
 import { describeObstacles, meetupDays } from '.././world/obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { describeQuote, planQuote, quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
-import { alreadyTold, ASKS_TO_EXPLAIN, describeLength, ENGAGED_INTENT, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from '.././language/expression.ts';
+import { alreadyTold, asksToExplain, describeLength, ENGAGED_INTENT, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from '.././language/expression.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
 import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from '.././language/shape.ts';
 import { finishReply } from '.././language/unfinished.ts';
@@ -86,7 +88,7 @@ import { describeCloseness } from '.././language/relationship.ts';
 import { describeHumanState, describeHumanValues, type HumanValues } from '.././human-values.ts';
 import { auditDevelopment, describeDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
 import { describeTogether, togetherNow } from '.././language/together.ts';
-import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
+import { photoAllowance, photoIntent, photoWanted, stripPhotoArtifacts, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
 
 /**
@@ -164,6 +166,8 @@ export function recapText(day: string, lines: readonly string[], written?: strin
 export function loadTierCard(pattern: string, tier: string, options: { everydayLife?: boolean; everydayFrom?: string; menu?: boolean; menuFrom?: string; worldDrama?: boolean; threadsFrom?: string } = {}): TierCard {
     const path = pattern.replaceAll('{tier}', tier);
     const loaded = loadCharacterCard(path);
+    // 猫的名字、学校和家所在的城市记下来（ADR 0335）：文案和正则从这里取，源码里不写死
+    noteCharacterTerms(loaded.herWorld);
     // 补充的日常小事和小测（ADR 0106，配置 everydayLife）：代码里加进世界的“小事”块，不改角色卡
     const withDays = options.everydayLife && loaded.herWorld ? { ...loaded, herWorld: withEveryday(loaded.herWorld, tier, options.everydayFrom, options.worldDrama)! } : loaded;
     // 她那边的事有后续（ADR 0216，配置 worldThreads）：从 threadsFrom 起，昨天的事今天可能有个尾巴、闹心的事有冷却期
@@ -213,6 +217,8 @@ export interface ContactPipelineOptions {
     absorb?: (userId: number, part: string) => void;
     /** 存进聊天记录前清洗发送文本（内部标记、贴纸说明等） */
     historyContent?: (sent: string) => string;
+    /** 已确认消息的发送快照；缺省仍用照片/表情货架转换，旧调用方不受影响。 */
+    sentHistory?: (sent: string, messageId: number) => string | undefined;
     /** 引用回复（ADR 0136，配置 quoteReply）：他连发里有个不是最后一条的问题时，第一条引用它来回；打错字撤回失败补「*对的词」时有时引用那条错的 */
     quoteReply?: boolean;
     /** 逐条事实检查（ADR 0137，配置 factCheck）：log 只查、记日志；fix 有对不上事实的说法就带说明重写一次。不传 / off 不查 */
@@ -236,7 +242,7 @@ export interface ContactPipelineOptions {
     react?: (userId: number, messageId: number, text: string) => void;
     /** 图片表情收藏：给模型列可选编号、校验输出；实际发送由 app.ts 的 send 接线。 */
     stickers?: StickerShelf;
-    /** 照片货架（ADR 0109，配置 photos）：他要看土豆 / 风景 / 她的片子时，货架里有就发；只对男朋友档 */
+    /** 照片货架（ADR 0109，配置 photos）：他要看猫 / 风景 / 她的片子时，货架里有就发；只对男朋友档 */
     photos?: PhotoShelf;
     /** AI 生活照（ADR 0240）：只解析“现在/刚刚”的明确请求；新图只建待审核草稿，返回 approved 才能发匹配编号。 */
     currentAiPhoto?: (request: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => CurrentAiPhotoResult;
@@ -468,16 +474,21 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let photoPromptNow: string | undefined;
     /** 明确索要“现在”的照片但没有已审核匹配图：告诉模型如实说发不了，不能拿旧图冒充。 */
     let currentPhotoUnavailableNow = false;
-    /** 这一轮回复里摘出来的设备令牌（ADR 0148）：最后一次 clean 对应最终要发的那份；发送前由 beforeSend 登记。没开设备控制的一律只摘不用 */
+    /** 当前被选中草稿的动作；废弃的重写稿只解析，不替换这里。 */
     let deviceNow: ParsedTokens | undefined;
-    const clean = (reply: string) => {
-        deviceNow = options.devices ? options.devices.parse(reply) : undefined;
-        const text = cleanUpReply(deviceNow ? deviceNow.reply : stripDeviceTokens(reply), names, character.regexScripts);
+    const prepareReply = (reply: string): { text: string; devices: ParsedTokens | undefined } => {
+        const devices = options.devices?.parse(reply);
+        const text = cleanUpReply(devices ? devices.reply : stripDeviceTokens(reply), names, character.regexScripts);
         const stickered = options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
-        const cleaned = options.photos ? options.photos.clean(stickered, photoNow !== undefined) : stickered;
-        if (!stickerOnlyNow) return cleaned;
+        const cleaned = options.photos ? options.photos.clean(stickered, photoNow !== undefined, photoNow ? { kind: photoNow, ...(photoDishNow ? { dish: photoDishNow } : {}) } : undefined) : stripPhotoArtifacts(stickered);
+        if (!stickerOnlyNow) return { text: cleaned, devices };
         const only = cleaned.split('\n').map(line => line.trim()).filter(line => /^<sticker:[a-f0-9]{12}>$/i.test(line));
-        return only.length ? only.join('\n') : cleaned;
+        return { text: only.length ? only.join('\n') : cleaned, devices };
+    };
+    const clean = (reply: string) => {
+        const draft = prepareReply(reply);
+        deviceNow = draft.devices;
+        return draft.text;
     };
     const schedule = options.schedule ? character.schedule : undefined;
     const herSchedule = options.herDays ? character.schedule : undefined;
@@ -536,7 +547,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         const today = herDay(herSchedule, time);
         const back = Math.round((today.getTime() - dayStart.getTime()) / 86_400_000);
         if (back < 1 || back > RECAP_DAYS) return undefined;
-        const at = (h: number, m: number) => new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), h, m);
+        const at = (h: number, m: number) => localDate(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), h, m);
         const then = options.worldState?.at(character.herWorld, herSchedule, at(23, 30)) ?? worldAt(character.herWorld, herSchedule, at(23, 30));
         if (!then) return undefined;
         const lines = recapDay(then);
@@ -565,6 +576,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         userId: contact.qq,
         history: options.history,
         buildPrompt: async (chat, { woken, initiate, offlineSince }) => {
+            deviceNow = undefined;
             const time = new Date(now());
             const humanValues = options.humanValues?.({ contact, history: chat, at: time });
             if (humanValues) log(describeHumanValues(humanValues));
@@ -804,7 +816,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(grievance ? { grievance } : {}),
                 ...(untold.length ? { news: untold } : {}),
             });
-            // 照片（ADR 0109）：他明确要看土豆 / 风景 / 她的片子，货架里有这一类，允许发（没连着发、今天没发够、不是危机 / 吵醒 / 小别扭 / 他难过），就发；
+            // 照片（ADR 0109）：他明确要看猫 / 风景 / 她的片子，货架里有这一类，允许发（没连着发、今天没发够、不是危机 / 吵醒 / 小别扭 / 他难过），就发；
             // 没有明确对象（只说“发张照片”）取手上有的第一类；要的是她本人（自拍）不在货架里，照旧走“先不发”
             photoNow = undefined;
             photoDishNow = undefined;
@@ -944,7 +956,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她在 B 站看过的（ADR 0130）：他问到“最近看了什么 / 刷到什么”才放
             const watchedNow = options.watched && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? watchedLine(options.watched(), chat, time) : undefined;
             if (watchedNow) log('她看视频：这一轮提示词里放了她最近看过的（日志不记内容）');
-            // 主动发的那条（喂完土豆拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
+            // 主动发的那条（喂完猫拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
             // 被打断的这一轮（ADR 0115）：不带“先直接回答他刚问的”这类意图、不套形状 / 长短提示——它们和“先接他的话、顺带说一声刚被什么岔了一下”冲突，模型会按更紧的那条来、把打断吞掉（模拟 5/5 没提）
             const intent = photoNow && !initiate
                 ? (photoPromptNow ? '[这一轮你想：他明确要看现在的照片，你有一张与此刻匹配、已经审核过的：自然带一句后发这一张；别换成别的照片]' : photoIntent(photoNow))
@@ -1013,7 +1025,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (options.stickers && !thinking && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             // 深思（ADR 0151）：他是认真在问她的轮次，不套字数和条数、换更强的模型、提示词只留一句“先想清楚”；危机 / 小别扭 / 亲近等别的意图照旧让路
             const deliberateEligible = Boolean(options.deliberate) && !initiate && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !grievanceActive;
-            const lexicalDeep = deliberateEligible && deliberateTurn(intent, saidNow, ASKS_TO_EXPLAIN.test(saidNow));
+            const lexicalDeep = deliberateEligible && deliberateTurn(intent, saidNow, asksToExplain(saidNow));
             // 语义路由（ADR 0202）：关键词没认出来的轮次问一次小模型；只在「关键词说不是、分类说值得认真」时多放行一轮，关键词认出来的照旧
             const routed = deliberateEligible && !lexicalDeep && options.turnWeight && saidNow.trim()
                 ? await options.turnWeight({ history: chat, said: saidNow }).catch(() => undefined)
@@ -1045,7 +1057,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 形状控制开着：用具体的字数和条数代替「回短一点」的软提示；不适用的轮次（他明着让她讲、主动找他、收尾）照旧走 lengthHint
             // 她这一天半里已经主动说过的事（ADR 0098）；带自己的事的轮次从她还没说过的事里挑一件说
             const told = !crisisNow ? alreadyTold(chat, time.getTime()) : [];
-            const TOLD_LABEL: Record<string, RegExp> = { 相机: /相机/, 猫: /土豆|猫/, 作业: /作业/, 快递: /快递/ };
+            const TOLD_LABEL: Record<string, RegExp> = { 相机: /相机/, 猫: new RegExp(`${catAlternative()}猫`), 作业: /作业/, 快递: /快递/ };
             const worldLabels = world ? world.replace(/^\[你那边（[^）]*）：/, '').replace(/\]$/, '').split('｜').map(item => item.split('：')[0]!.trim()).filter(Boolean) : [];
             const agendaTopics = [
                 ...worldLabels.filter(label => !told.some(name => TOLD_LABEL[name]?.test(label))),
@@ -1172,7 +1184,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                         ...(plansLine ? [plansLine] : []),
                         ...(promised ? [promised] : []),
                         ...(obstacleLine ? [obstacleLine] : []),
-                        // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在青岛」
+                        // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
                         ...(partnerBack ? [partnerBack] : []),
                         ...(togetherLine ? [togetherLine] : []),
                         ...(closenessLine ? [closenessLine] : []),
@@ -1248,7 +1260,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 now: time,
                 settings: {
                     maxContext: options.prompt.maxContext,
-                    maxTokens: llm.maxTokens,
+                    maxTokens: completionMaxTokens(useNow() ?? llm),
                     worldInfo: options.prompt.worldInfo,
                     pinExamples: options.prompt.pinExamples,
                 },
@@ -1256,6 +1268,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             });
             if (prompt.omittedAfterHistory) log(`提示词预算：为保留他最后一条消息，省略 ${prompt.omittedAfterHistory} 段较低优先级背景（日志不记内容）`);
             promptSource = prompt.messages;
+            if (prompt.fallbackReply && crisisNow) prompt.fallbackReply = crisisFallback(crisisNow.level);
             return {
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
@@ -1296,20 +1309,22 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return typo.recall ? { parts: typo.parts, recall: typo.recall } : typo.parts;
         },
         review: async (reply, messages, reviewContext) => {
-            const regenerate = async (note: string) => clean(await generate(postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names), log, useNow()));
+            let rewrittenDraft: ReturnType<typeof prepareReply> | undefined;
+            const regenerate = async (note: string) => {
+                rewrittenDraft = prepareReply(await generate(postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names), log, useNow()));
+                return rewrittenDraft.text;
+            };
+            const onRewriteAccepted = () => { deviceNow = rewrittenDraft?.devices; };
+            const factOptions = options.factCheck && options.factCheck !== 'off' && !crisisNow && !reviewContext?.allowRepeat && promptSource ? {
+                mode: options.factCheck, source: promptSource, names, mayDropAll: Boolean(reviewContext?.initiating), ...(options.factAboutHim ? { aboutHim: true } : {}),
+                audit: options.factAudit ?? ((auditMessages: OpenAIMessage[]) => chatCompletion({ ...forExtraction(llm), temperature: 0 }, auditMessages, { log })),
+                regenerate, onRewriteAccepted, log, ...(options.onFactCheck ? { onRecord: options.onFactCheck } : {}),
+            } : undefined;
             // 逐条事实检查（ADR 0137）：先于出口检查——重写出来的话还要过出口检查这一关；危机回合、固定说法（allowRepeat）不查
-            const factual = options.factCheck && options.factCheck !== 'off' && !crisisNow && !reviewContext?.allowRepeat && promptSource
-                ? await checkFacts(reply, {
-                    mode: options.factCheck, source: promptSource, names, mayDropAll: Boolean(reviewContext?.initiating), ...(options.factAboutHim ? { aboutHim: true } : {}),
-                    audit: options.factAudit ?? ((auditMessages: OpenAIMessage[]) => chatCompletion({ ...forExtraction(llm), temperature: 0 }, auditMessages, { log })),
-                    regenerate, log, ...(options.onFactCheck ? { onRecord: options.onFactCheck } : {}),
-                })
-                : reply;
+            const factual = factOptions ? await checkFacts(reply, factOptions) : reply;
             // 事实检查判定“想说的那部分被删光了”：这轮不发；主动消息那边会按“生成的是空的”跳过
             if (factual === '' && reply !== '') return '';
-            let reviewed = await (crisisNow
-                ? (text: string, reviewOptions: ReviewOptions) => reviewCrisisReply(text, reviewOptions, crisisNow!.level)
-                : reviewReply)(factual, {
+            const reviewOptions: ReviewOptions = {
                 // 角色卡的禁用词 + 医书里的词（“肚子坠着”之类，expression.ts 的 ODD_BODY_WORDS）：出了就让她重写
                 banned: [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS],
                 userName: contact.name,
@@ -1320,8 +1335,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(textIntimacy ? { textIntimacy: true } : {}),
                 ...(options.stickers ? { imageStickers: true } : {}),
                 regenerate,
+                onRewriteAccepted,
                 log,
-            });
+            };
+            let reviewed = crisisNow ? await reviewCrisisReply(factual, reviewOptions, crisisNow.level) : await reviewReply(factual, reviewOptions);
+            if (crisisNow) {
+                deviceNow = undefined;
+                return reviewed;
+            }
             // 她想查才查：看到她写 <<查：…>> 才去查，查到就带着结果重写一次；标记不发出去
             const pull = /<<查[：:]\s*([\s\S]*?)>>/.exec(reviewed);
             if (pull) {
@@ -1334,9 +1355,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 reviewed = reviewed.replace(/<<查[：:][\s\S]*?>>/g, '').trim();
             }
             // 形状控制（配置 shape）：出口检查之后再看字数和条数，超了重写一次、还超就在分句处截断
-            const shaped = shapeNow && !crisisNow ? await shapeReply(reviewed, shapeNow, { regenerate, log }) : reviewed;
+            const shaped = shapeNow ? await shapeReply(reviewed, shapeNow, { regenerate, onRewriteAccepted, log }) : reviewed;
             // 话说到一半（ADR 0141）：形状之后再看，并回去 / 退回去会让一条变长，放在字数检查前面会被再截一次；危机回合不走
-            return options.speechCheck && !crisisNow ? finishReply(shaped, { regenerate, log }) : shaped;
+            const finished = options.speechCheck ? await finishReply(shaped, { regenerate, onRewriteAccepted, log }) : shaped;
+            const final = finalizeReply(finished, reviewOptions);
+            return factOptions && final !== factual ? checkFacts(final, { ...factOptions, finalOnly: true }) : final;
         },
         send: options.send,
         ...(options.absorb ? { absorb: (part: string) => options.absorb!(contact.qq, part) } : {}),
@@ -1345,7 +1368,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         ...(options.recallOwn ? { recallOwn: options.recallOwn } : {}),
         ...(options.markRead ? { markRead: () => options.markRead!(contact.qq) } : {}),
         ...(options.react ? { react: (messageId: number, text: string) => options.react!(contact.qq, messageId, text) } : {}),
-        ...(options.historyContent || options.stickers || options.photos ? { historyContent: (sent: string) => {
+        ...(options.historyContent ? { stripMarkers: (sent: string) => options.historyContent!(sent) } : {}),
+        ...(options.historyContent || options.stickers || options.photos || options.sentHistory ? { historyContent: (sent: string, messageId?: number) => {
+            const snapshot = messageId === undefined ? undefined : options.sentHistory?.(sent, messageId);
+            if (snapshot !== undefined) return snapshot;
             const clean = options.historyContent ? options.historyContent(sent) : sent;
             const withSticker = options.stickers ? options.stickers.history(clean) : clean;
             return withSticker === clean && options.photos ? options.photos.history(clean) : withSticker;

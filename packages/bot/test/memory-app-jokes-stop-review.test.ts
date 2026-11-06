@@ -18,7 +18,7 @@ for (const failure of [false, true]) test(`真实App.stop取消小梗提取，�
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
             contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], jokes: true, idioms: false, schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         const history = new ChatHistory(dataDir);
-        for (let i = 0; i < 42; i++) history.append(10001, { role: i % 2 ? 'assistant' : 'user', content: `星云土豆 合成对话${i}`, time: new Date(now - (42 - i) * 1000).toISOString(), messageId: i + 1 });
+        for (let i = 0; i < 42; i++) history.append(10001, { role: i % 2 ? 'assistant' : 'user', content: `星云团子饼 合成对话${i}`, time: new Date(now - (42 - i) * 1000).toISOString(), messageId: i + 1 });
         globalThis.fetch = async () => { assert.fail('Network prohibited in synthetic jokes-stop fixture'); };
         app = startApp({ config, log: line => logs.push(line), sensitive: { on: () => false, describe: () => '' },
             transport: { friendHistory: async () => [], sendPrivateText: async () => 1 }, pipeline: { now: () => now, generate: async (messages, log) => {
@@ -27,7 +27,7 @@ for (const failure of [false, true]) test(`真实App.stop取消小梗提取，�
         await app.connected(20000); await tick(); assert.equal(entered, 1); const file = join(dataDir, 'jokes', '10001.json'); assert.equal(existsSync(file), false);
         await app.stop(); const before = [...logs]; assert.equal(existsSync(join(dataDir, 'bot.lock')), false); assert.ok(modelLog);
         modelLog('SYNTHETIC_LATE_JOKES_PROVIDER_LOG');
-        if (failure) reject(new Error('SYNTHETIC_LATE_JOKES_FAILURE')); else release('[{"梗":"星云土豆","来历":"合成聊天玩笑"}]');
+        if (failure) reject(new Error('SYNTHETIC_LATE_JOKES_FAILURE')); else release('[{"梗":"星云团子饼","来历":"合成聊天玩笑"}]');
         await tick(); await tick();
         assert.equal(existsSync(file), false, '目录租约释放后不能保存旧小梗'); assert.deepEqual(logs, before, '晚模型及提取本体不能写结束日志'); assert.equal(entered, 1);
     } finally {

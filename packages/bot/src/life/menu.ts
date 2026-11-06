@@ -5,6 +5,9 @@
 // 不存状态——菜是日期的函数。一个循环里不重样（按日期分块洗牌，块与块交界处也不连着重样）。
 // 菜单是通用的学生日常（食堂、外卖、在家都说得过去），不写店名、不写谁做的饭——那是作者才定的事。想换菜单：世界书 routine.menu（或改这里的默认）。
 
+import { localDate } from '../local-date.ts';
+import { calendarDate, stateObject } from '../memory/state-schema.ts';
+import { TransientStateError } from '../memory/transient-io.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { formatDate } from './schedule.ts';
 import type { World } from '.././world/world.ts';
@@ -42,7 +45,9 @@ const DAY_MS = 86_400_000;
 /** 从 YYYY-MM-DD 取“第几天”（按日历日，不受夏令时 / 时区影响） */
 function dayNumber(date: string): number {
     const [y, m, d] = date.split('-').map(Number) as [number, number, number];
-    return Math.floor(Date.UTC(y, m - 1, d) / DAY_MS);
+    const at = new Date(0);
+    at.setUTCFullYear(y, m - 1, d);
+    return Math.floor(at.getTime() / DAY_MS);
 }
 
 /** 这一块（一个循环）的菜序：按“块号 + 这顿 + 菜名”取哈希排序，是一次洗牌 */
@@ -80,13 +85,26 @@ export function menuOf(value: unknown): Menu {
 
 /**
  * 第一次开 menu 时定下“从哪天起”并存进文件，以后重启都读同一个（和 everyday-from.json 一个办法）：从第二天起，已经过完的日子不改——
- * 她以前随口说过什么就是什么，不会被新菜单改写。文件读不了就用今天之后的一天
+ * 她以前随口说过什么就是什么，不会被新菜单改写。只有文件不存在时创建；已有文件读不了则保留并明确失败
  */
 export function loadMenuFrom(path: string, now: Date, log: (message: string) => void = () => undefined): string {
-    const existing = readJsonOr<{ version?: number; from?: string }>(path, {}, message => log(`吃什么：${message}`));
-    if (existing.version === 1 && typeof existing.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(existing.from)) return existing.from;
-    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    // 仅 ENOENT 使用缺省值；损坏的已有锚点不能重算，否则会改写历史生效范围。
+    let existing: { version: 1; from: string } | undefined;
+    try {
+        existing = readJsonOr<{ version: 1; from: string } | undefined>(path, undefined, undefined, {
+            validate: (value): value is { version: 1; from: string } => stateObject(value)
+                && value.version === 1 && typeof value.from === 'string' && calendarDate(value.from),
+            invalid: 'throw', label: '菜单启用状态',
+        });
+    } catch (error) {
+        if (error instanceof TransientStateError) throw error;
+        // JSON 解析异常可能含文件正文，不将原异常交给普通启动日志。
+        throw new Error('菜单启用状态无效或读取失败；原文件未重建，请修复后重试');
+    }
+    if (existing) return existing.from;
+    const tomorrow = localDate(now.getFullYear(), now.getMonth(), now.getDate() + 1);
     const from = formatDate(tomorrow);
+    if (!calendarDate(from)) throw new RangeError('菜单启用日期超出支持范围');
     writeJsonAtomic(path, { version: 1, from });
     log(`吃什么：从 ${from} 起生效（已经过完的日子不改）`);
     return from;
@@ -102,7 +120,7 @@ export function withMenu(world: World | undefined, from?: string): World | undef
 export function dishesBetween(from: Date, days: number, menu: Menu = DEFAULT_MENU, menuFrom?: string): string[] {
     const out: string[] = [];
     for (let i = 0; i < days; i++) {
-        const date = formatDate(new Date(from.getFullYear(), from.getMonth(), from.getDate() + i));
+        const date = formatDate(localDate(from.getFullYear(), from.getMonth(), from.getDate() + i));
         if (menuFrom && date < menuFrom) continue;
         for (const kind of ['lunch', 'dinner'] as const) {
             const dish = dishOn(date, kind, menu);

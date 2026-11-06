@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { startApp, type Transport } from '../src/platform/app.ts';
 import type { AppConfig } from '../src/platform/config.ts';
@@ -12,11 +12,11 @@ import { FACE_NAMES, faceText, facesIn, normalizeFaces, onlyFaces, SENDABLE_FACE
 import { isAck, isReaction, moodySkip } from '../src/social/reply-timing.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
+import { syntheticCardPath, syntheticCardPattern } from './fixtures/card.ts';
 
 // 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管
 useSensitiveSwitch(SENSITIVE_ON);
 
-const repoRoot = resolve(import.meta.dirname, '../../..');
 const face = (id: number | string) => ({ type: 'face', data: { id: String(id) } });
 const text = (t: string) => ({ type: 'text', data: { text: t } });
 
@@ -72,7 +72,7 @@ describe('QQ 小黄脸：她发的（ADR 0051）', () => {
     });
     test('卡上写的名字都在白名单里；男朋友档写全了，同学档只写几个不亲近的', () => {
         const listed = (tier: 'boyfriend' | 'classmate') => {
-            const { description } = JSON.parse(readFileSync(join(repoRoot, `characters/linmengyao/st/linmengyao-${tier}.json`), 'utf8')).data as { description: string };
+            const { description } = JSON.parse(readFileSync(syntheticCardPath(tier), 'utf8')).data as { description: string };
             const line = description.split('\n').find(l => l.includes('小黄脸'));
             assert.ok(line, `${tier} 卡上有小黄脸那一句`);
             return [...line.matchAll(/\[([^\]]+)\]/g)].map(m => m[1]!);
@@ -186,10 +186,10 @@ describe('QQ 小黄脸：编排（ADR 0051）', () => {
             llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
             dsh: { enabled: false },
             prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
-            characterCard: join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'),
+            characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '宝宝', tier: 'boyfriend' }],
             unlistedFriends: false, schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false, lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, photos: false, photoShares: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, hisHours: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, foodPhotos: false, memes: false, watching: false, texture: false, biliStickers: false, quoteReply: false, factCheck: 'off', idioms: false, tailCap: false, deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, worldDrama: false, pursuits: false, shapeSplit: false, shapeAsk: false, shapeLong: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, acquaintances: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false, feedbackCommands: false, realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false, media: false,
-            candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir,
+            candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir, timeZone: 'Asia/Shanghai',
         };
         const sent: { text: string; segments: ReturnType<typeof textToSegments> }[] = [];
         const prompts: string[] = [];
@@ -233,10 +233,10 @@ describe('QQ 小黄脸：编排（ADR 0051）', () => {
             llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
             dsh: { enabled: false },
             prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
-            characterCard: join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'),
+            characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '宝宝', tier: 'boyfriend' }, { qq: 10002, name: '阿杰', tier: 'boyfriend' }],
             unlistedFriends: false, schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false, lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, photos: false, photoShares: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, hisHours: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, foodPhotos: false, memes: false, watching: false, texture: false, biliStickers: false, quoteReply: false, factCheck: 'off', idioms: false, tailCap: false, deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, worldDrama: false, pursuits: false, shapeSplit: false, shapeAsk: false, shapeLong: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, acquaintances: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false, feedbackCommands: false, realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false, media: false,
-            candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir,
+            candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir, timeZone: 'Asia/Shanghai',
         };
         const sent: string[] = [];
         const attempts: string[] = [];

@@ -26,7 +26,7 @@
     "eval:companion": "node src/ops/companion-eval-cli.ts",
     "eval:personhood": "node src/ops/personhood-eval-cli.ts",
     "verify:cross-end": "node src/ops/cross-end-drill-cli.ts",
-    "test": "node --test \"test/**/*.test.ts\""
+    "test": "node --import ./test/time-zone-setup.ts --test \"test/**/*.test.ts\""
   },
   "dependencies": {
     "@qqbot/mobile-companion": "*",

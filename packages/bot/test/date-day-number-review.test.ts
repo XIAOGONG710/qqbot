@@ -5,7 +5,7 @@ import { trimWatched, watchDue, watchedFacts, type Watched } from '../src/langua
 import { feedDue, trimFeed, type FeedFile, type FeedRecord } from '../src/bilibili/feed-browsing.ts';
 
 const at = (day: string) => new Date(`${day}T15:00:00`);
-const meme = (day: string): MemeEntry => ({ term: '合成土豆', meaning: '用于轻松闲聊的合成意思', example: '随便聊聊', why: '用合成的夸张凑个反差', avoid: '对方认真难过的时候', confidence: 'high', firstSeen: day, lastSeen: day, seen: 1 });
+const meme = (day: string): MemeEntry => ({ term: '合成团子饼', meaning: '用于轻松闲聊的合成意思', example: '随便聊聊', why: '用合成的夸张凑个反差', avoid: '对方认真难过的时候', confidence: 'high', firstSeen: day, lastSeen: day, seen: 1 });
 const watched = (day: string): Watched => ({ bvid: 'BV-test', title: '合成视频', owner: '合成UP', tname: '日常', excerpt: '合成字幕内容', hot: [], day });
 const record = (day: string): FeedRecord => ({ day, at: at(day).getTime(), mode: 'on', stayed: [], skipped: 0 });
 const feed = (days: string[]): FeedFile => ({ version: 1, seen: [], days: days.map(record) });

@@ -4,8 +4,10 @@
 // - 小感冒按概率，几天里从嗓子疼到快好了。
 // - 和世界一样按「日期 + 名目」取哈希，同一天对所有人一样，不存状态。进提示词的只有事实和一句约束（describeBody），不写台词。
 
+import { localDate } from '../local-date.ts';
 import { ODD_BODY_WORDING } from '../language/expression.ts';
 import { classesOn, formatDate, herDay, wakeTime, type Schedule } from './schedule.ts';
+import { calendarDate, stateObject } from '../memory/state-schema.ts';
 
 export interface Body {
     period?: { first: string; cycle: [number, number]; days: number; crampsChance: number; detail: boolean };
@@ -29,6 +31,8 @@ const DAY_MS = 86_400_000;
 const MAX_CYCLES = 400;
 /** 一天课的分钟数到这么多算课多 */
 const BUSY_MINUTES = 270;
+/** 限制一次状态投影的最大回看工作量，不是对真实病程的医学判断。 */
+const MAX_COLD_DAYS = 366;
 
 /** 某一刻她身上的事实（同一天对所有人一样；档位只决定看得到哪些、生理期说不说得出口） */
 export function bodyAt(body: Body, schedule: Schedule, now: Date): BodyNow {
@@ -45,6 +49,9 @@ export function bodyAt(body: Body, schedule: Schedule, now: Date): BodyNow {
     const { lessons } = classesOn(schedule, day);
     const minutesOfDay = now.getHours() * 60 + now.getMinutes();
     const woke = wakeTime(schedule, day, lessons);
+    // 课表推出来的「早八上午困」只在起床正好是 wake.early 的日子成立；10-26 起床时间有了浮动以后就不再出现（ADR 0219：
+    // 早上的困改从真实的昨晚来，nights.ts 的 withLastNight；她说「别给我按课表编个『早八所以很累』出来」）。
+    // 合并 main（2026-11-06）时 main 把这里改成按第一节课判断，会让课表那条在浮动以后又出现，所以保留 DSH 线的写法
     const early = woke.getHours() * 60 + woke.getMinutes() === toMinutes(schedule.wake.early);
     // 她的一天到 02:00 才结束：零点以后的「现在」在日历上是第二天
     const afterMidnight = now.getTime() - day.getTime() >= DAY_MS;
@@ -126,6 +133,8 @@ function cycleStart(period: NonNullable<Body['period']>, day: Date): Date | unde
 
 /** 今天是不是在感冒（某天开始，按概率；持续 days 天），第几天 */
 function coldOn(cold: NonNullable<Body['cold']>, day: Date): BodyNow['cold'] | undefined {
+    // bodyAt 也会被直接调用，不能仅依赖配置加载时的检查来避免无限或巨量回看。
+    if (!validCold(cold)) throw new RangeError('.body.cold 格式不对');
     const chance = cold.perMonth / 30;
     for (let back = cold.days - 1; back >= 0; back--) {
         const start = addDays(day, -back);
@@ -136,15 +145,28 @@ function coldOn(cold: NonNullable<Body['cold']>, day: Date): BodyNow['cold'] | u
 
 export function parseBody(value: unknown, fail: (what: string) => never): Body | undefined {
     if (value === undefined || value === null) return undefined;
+    if (!stateObject(value)) fail('.body 应为对象');
     const body = value as Body;
-    if (body.period) {
-        const p = body.period;
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(p.first) || !Array.isArray(p.cycle) || p.cycle.length !== 2 || !(p.days >= 1) || typeof p.crampsChance !== 'number' || typeof p.detail !== 'boolean') {
-            fail('.body.period 格式不对');
-        }
-    }
-    if (body.cold && !(body.cold.perMonth >= 0 && body.cold.days >= 1)) fail('.body.cold 格式不对');
+    if (body.period !== undefined && !validPeriod(body.period)) fail('.body.period 格式不对');
+    if (body.cold !== undefined && !validCold(body.cold)) fail('.body.cold 格式不对');
     return body;
+}
+
+const positiveDay = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
+const probability = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+
+function validPeriod(value: unknown): value is NonNullable<Body['period']> {
+    if (!stateObject(value)) return false;
+    const { first, cycle, days, crampsChance, detail } = value;
+    return typeof first === 'string' && calendarDate(first)
+        && Array.isArray(cycle) && cycle.length === 2 && cycle.every(positiveDay) && cycle[0]! <= cycle[1]!
+        && positiveDay(days) && days <= cycle[0]! && probability(crampsChance) && typeof detail === 'boolean';
+}
+
+function validCold(value: unknown): value is NonNullable<Body['cold']> {
+    if (!stateObject(value)) return false;
+    return typeof value.perMonth === 'number' && Number.isFinite(value.perMonth) && value.perMonth >= 0 && value.perMonth <= 30
+        && positiveDay(value.days) && value.days <= MAX_COLD_DAYS;
 }
 
 function unit(text: string): number {
@@ -162,10 +184,10 @@ function toMinutes(time: string): number {
 }
 
 function addDays(date: Date, days: number): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+    return localDate(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
 
 function parseDate(text: string): Date {
     const [y, m, d] = text.split('-').map(Number);
-    return new Date(y!, m! - 1, d);
+    return localDate(y!, m! - 1, d);
 }

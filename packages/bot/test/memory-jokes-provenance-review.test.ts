@@ -9,11 +9,11 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { JOKES_REFRESH_MS, jokeStore, refreshJokes, verifiedJokes } from '../src/language/jokes.ts';
 
 const now = Date.parse('2026-11-05T12:00:00+08:00');
-const proposal = (origin = '旧来历唯一') => JSON.stringify([{ 梗: '星云土豆', 来历: origin }]);
+const proposal = (origin = '旧来历唯一') => JSON.stringify([{ 梗: '星云团子饼', 来历: origin }]);
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 function fixture() {
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-jokes-provenance-')), store = jokeStore({ dir, log() {} }), history = Array.from({ length: 42 }, (_, i) => ({
-        role: i % 2 ? 'assistant' as const : 'user' as const, content: `星云土豆 合成记录${i}${i === 0 ? '旧来历唯一' : ''}`, time: new Date(now - (42 - i) * 1000).toISOString(),
+        role: i % 2 ? 'assistant' as const : 'user' as const, content: `星云团子饼 合成记录${i}${i === 0 ? '旧来历唯一' : ''}`, time: new Date(now - (42 - i) * 1000).toISOString(),
     }));
     return { dir, store, history, path: join(dir, '10001.json'), options: { qq: 10001, userName: '合成甲', charName: '合成乙', history, store, now, log() {} },
         clean() { assert.equal(dirname(resolve(dir)), resolve(tmpdir())); assert.ok(basename(dir).startsWith('qqbot-jokes-provenance-')); rmSync(dir, { recursive: true, force: true }); },
@@ -26,7 +26,7 @@ test('持久清单绑定完整历史前缀、原样实际请求和phrase+origin�
         await refreshJokes({ ...f.options, extract: async messages => { request = structuredClone(messages); messages[0]!.content = '供应商改了自己收到的对象'; return proposal(); } });
         const state = f.store.load(10001); assert.ok(state.source); assert.equal(state.source.count, 42);
         assert.equal(state.source.historyHash, digest(f.history.map(message => [message.role, message.time, message.content])));
-        assert.equal(state.source.requestHash, digest(request)); assert.equal(state.source.jokesHash, digest([['星云土豆', '旧来历唯一']]));
+        assert.equal(state.source.requestHash, digest(request)); assert.equal(state.source.jokesHash, digest([['星云团子饼', '旧来历唯一']]));
         const restarted = jokeStore({ dir: f.dir, log() {} }), bytes = readFileSync(f.path, 'utf8');
         assert.equal(verifiedJokes(restarted.load(10001), f.history).length, 1);
         f.history.push({ role: 'user', content: '合成追加', time: new Date(now).toISOString() });
@@ -74,7 +74,7 @@ test('失效源保20h冷却，到期无新消息也可重建，但不能carry旧
 test('legacy不猜已证明，保原暂避且到期可重建，正常40条门槛保持', async () => {
     const f = fixture(); let calls = 0;
     try {
-        f.store.save(10001, { version: 1, jokes: [{ phrase: '星云土豆', origin: '无来源的旧来历' }], updatedAt: new Date(now).toISOString(), messageCount: 42 });
+        f.store.save(10001, { version: 1, jokes: [{ phrase: '星云团子饼', origin: '无来源的旧来历' }], updatedAt: new Date(now).toISOString(), messageCount: 42 });
         const before = readFileSync(f.path, 'utf8'), extract = async () => { calls++; return proposal('重新核验的来历'); };
         assert.deepEqual(verifiedJokes(f.store.load(10001), f.history), []);
         assert.equal(await refreshJokes({ ...f.options, now: now + 1, extract }), false); assert.equal(readFileSync(f.path, 'utf8'), before);

@@ -14,6 +14,7 @@ export interface PairingTicket {
 export class MemoryPairingStore implements PairingVerifier {
     private readonly entries = new Map<string, { pairingCode: string; issuedAt: number; expiresAt: number }>();
     private readonly ttlMs: number;
+    private stopped = false;
 
     constructor(ttlMs = 5 * 60_000) {
         if (!Number.isInteger(ttlMs) || ttlMs < 10_000 || ttlMs > 24 * 60 * 60_000) {
@@ -23,6 +24,7 @@ export class MemoryPairingStore implements PairingVerifier {
     }
 
     issue(clientId: string, now = Date.now()): PairingTicket {
+        if (this.stopped) throw new Error('配对存储已经停止');
         if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{5,127}$/.test(clientId)) throw new Error('clientId 不合法');
         this.prune(now);
         while (this.entries.size >= MAX_PENDING_PAIRINGS) {
@@ -37,6 +39,7 @@ export class MemoryPairingStore implements PairingVerifier {
     }
 
     consume(clientId: string, pairingCode: string, now: number): boolean {
+        if (this.stopped) return false;
         const entry = this.entries.get(clientId);
         if (!entry || entryExpired(entry, now) || entry.pairingCode !== pairingCode) {
             if (entry && entryExpired(entry, now)) this.entries.delete(clientId);
@@ -50,11 +53,17 @@ export class MemoryPairingStore implements PairingVerifier {
         this.entries.delete(clientId);
     }
 
-    /** 宿主解除配对或关闭伴侣时撤销全部尚未使用的票据。 */
+    /** 宿主解除配对、关闭伴侣或永久停止时撤销全部尚未使用的票据。 */
     clear(): number {
         const removed = this.entries.size;
         this.entries.clear();
         return removed;
+    }
+
+    /** 永久撤销待使用凭证，并拒绝旧集成对象再签发。 */
+    stop(): void {
+        this.stopped = true;
+        this.clear();
     }
 
     private prune(now: number): void {

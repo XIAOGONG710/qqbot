@@ -55,7 +55,7 @@ test('真实App移除全部schedule后不能让已完成日记绕过不可核验
     const logs: string[] = []; let documentReads = 0;
     try {
         // The former author's messages still exist, but the current tier view
-        // no longer permits them. No recall marker is used to trigger ADR0242.
+        // no longer permits them. No recall marker is used to trigger ADR0305.
         writeFileSync(join(f.dataDir, 'tiers.json'), JSON.stringify({ [A.qq]: { tier: A.tier, since: '2026-11-07T00:00:00Z' } }));
         for (const tier of ['classmate', 'classmate-open']) writeFileSync(join(f.root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(f.root, 'synthetic-{tier}.json'), dataDir: f.dataDir,

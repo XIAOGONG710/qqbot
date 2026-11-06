@@ -38,14 +38,14 @@ describe('宏', () => {
 
 describe('关键词匹配', () => {
     test('只扫描最近 depth 条消息（默认 2）', () => {
-        const list = entries({ key: ['土豆'], content: '猫' });
-        assert.equal(scan(list, ['阿明: 在吗', '林梦瑶: 嗯', '阿明: 土豆呢']).activated.length, 0);
-        assert.equal(scan(list, ['阿明: 在吗', '林梦瑶: 土豆在楼下']).activated.length, 1);
+        const list = entries({ key: ['团子饼'], content: '猫' });
+        assert.equal(scan(list, ['阿明: 在吗', '林梦瑶: 嗯', '阿明: 团子饼呢']).activated.length, 0);
+        assert.equal(scan(list, ['阿明: 在吗', '林梦瑶: 团子饼在楼下']).activated.length, 1);
     });
 
     test('条目级 scanDepth 覆盖全局深度', () => {
-        const list = entries({ key: ['土豆'], content: '猫', scanDepth: 3 });
-        assert.equal(scan(list, ['阿明: 在吗', '林梦瑶: 嗯', '阿明: 土豆呢']).activated.length, 1);
+        const list = entries({ key: ['团子饼'], content: '猫', scanDepth: 3 });
+        assert.equal(scan(list, ['阿明: 在吗', '林梦瑶: 嗯', '阿明: 团子饼呢']).activated.length, 1);
     });
 
     test('扫描文本带“名字: ”前缀（ST 的 world_info_include_names 默认开启）', () => {

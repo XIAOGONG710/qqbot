@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import type { Schedule } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import type { LifeEventDraft } from '../src/world/life-events.ts';
 import { describeWorld, occupationAt, parseWorld, recapDay, simulateWorld, worldAt, worldLogger, worldNews, worldState, type World, type WorldAction } from '../src/world/world.ts';
 import { busySpans } from '../src/world/life-selector.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-const cards = resolve(import.meta.dirname, '../../../characters/linmengyao/st');
-const boyfriend = loadCharacterCard(join(cards, 'linmengyao-boyfriend.json'));
-const classmate = loadCharacterCard(join(cards, 'linmengyao-classmate.json'));
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
+const classmate = loadCharacterCard(syntheticCardPath('classmate'));
 const schedule = boyfriend.schedule!;
 const world = boyfriend.herWorld!;
 const at = (text: string) => new Date(`${text}+08:00`);
@@ -23,6 +23,9 @@ const patch = (change: (w: World) => void): World => {
     return copy;
 };
 
+/** 合成卡上她自己攒的钱 10-11 就够买相机；把起始存款清零，「没人给钱就攒不够、不买」才成立（买相机那几条用这个） */
+const ownShort = patch(w => { w.cameraFund!.saved = 0; });
+
 describe('她的世界（ADR 0021 W1）', () => {
     test('卡上有世界；同一时刻可复现，各档位同一天的猫、天气、快递一样，只是看得到的块不同', () => {
         const now = at('2026-10-11T21:30:00');
@@ -33,7 +36,7 @@ describe('她的世界（ADR 0021 W1）', () => {
         assert.deepEqual(low.cat, a.cat);
         assert.deepEqual(low.parcels, a.parcels);
         assert.ok(a.cameraFund && !low.cameraFund, '相机基金只给 BFGK');
-        assert.equal(low.familyCall, undefined);
+        assert.equal(low.money, undefined, '钱只给前四档');
     });
 
     test('猫：下雨不下楼；喂一次少一天猫粮，剩得少了下单猫粮，取回来就加一袋；吃完了不喂', () => {
@@ -90,7 +93,7 @@ describe('她的世界（ADR 0021 W1）', () => {
             assert.ok(item.course, '男朋友档看得到课名');
         }
         const none = patch(w => { w.homework!.kinds = ['pe']; w.homework!.chance = 1; });
-        assert.ok(simulateWorld(none, schedule, at('2026-09-20T23:00:00')).homework.every(h => !/Linux|MySQL/.test(h.course)));
+        assert.ok(simulateWorld(none, schedule, at('2026-09-20T23:00:00')).homework.every(h => !/操作系统实验|数据库原理/.test(h.course)));
     });
 
     test('相机基金：每周那天晚上存一笔，到目标停；存之前还是上周的数', () => {
@@ -117,15 +120,15 @@ describe('她的世界（ADR 0021 W1）', () => {
 describe('「你那边」进时间块（ADR 0021 W2）', () => {
     test('只写事实和约束：天气、猫、快递、作业、相机基金、小事；人名按档位换；有总说明「别照着念、没写的别编」', () => {
         const now = at('2026-10-11T21:30:00');
-        const text = describeWorld(worldAt(world, schedule, now)!, now)!;
+        const text = describeWorld(worldAt(ownShort, schedule, now)!, now)!;
         assert.match(text, /^\[你那边（今天到现在的事实，用不用、怎么说你自己定，别照着念；这里没写的别编）：/);
-        assert.match(text, /土豆（楼下的流浪猫）：[^｜]*；昨天(喂过|没喂)/, '昨天喂没喂总写上');
+        assert.match(text, /团子饼（楼下的流浪猫）：[^｜]*；昨天(喂过|没喂)/, '昨天喂没喂总写上');
         assert.match(text, /的作业(已经写完了|还没写)（(明天|后天|周.)交）/, '先写写没写完，再写哪天交');
-        assert.match(text, /攒钱买相机：\d+ \/ 4500 元/);
+        assert.match(text, /攒钱买相机：\d+ \/ 3000 元/);
         assert.doesNotMatch(text, /[我你]觉得|好开心|好烦|！/, '不写情绪和能照抄的句子');
-        const friend = patch(w => { w.events = [{ id: 'x', text: '{person}在微信上跟你互损了几句', person: 'chen_jianing', window: 'morning', chance: 1, when: 'any' }]; });
+        const friend = patch(w => { w.events = [{ id: 'x', text: '{person}在微信上跟你互损了几句', person: 'roommate', window: 'morning', chance: 1, when: 'any' }]; });
         const withFriend = describeWorld(worldAt(friend, schedule, now)!, now)!;
-        assert.match(withFriend, /陈佳宁在微信上跟你互损了几句（陈佳宁：高中同班，你的死党/);
+        assert.match(withFriend, /许小禾在微信上跟你互损了几句（许小禾：室友/);
     });
 
     test('看不到课名的档位，几份一样的作业合成一条', () => {
@@ -183,7 +186,7 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
             id: `ep-${at('2026-09-15T18:00:00').getTime()}`,
             start: at('2026-09-15T18:00:00'), end: at('2026-09-15T19:00:00'),
             messages: [
-                { role: 'user' as const, content: '土豆呢', time: at('2026-09-15T18:00:00').toISOString() },
+                { role: 'user' as const, content: '团子饼呢', time: at('2026-09-15T18:00:00').toISOString() },
                 { role: 'assistant' as const, content: '刚喂完', time: at('2026-09-15T19:00:00').toISOString() },
             ],
         };
@@ -199,7 +202,7 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
             const resumed = worldState(rainy, schedule, () => undefined, dir, () => now.getTime());
             assert.equal(resumed.actions().length, 1);
             assert.ok('fed' in resumed.at(rainy, schedule, now)!.cat!.today);
-            assert.ok(logs.some(line => line.includes('喂了土豆')));
+            assert.ok(logs.some(line => line.includes('喂了团子饼')));
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
@@ -269,48 +272,48 @@ describe('说出口的行为回写世界（ADR 0027 W3）', () => {
             id: '1:ep-gift:1:receive_money', kind: 'receive_money', day: '2026-10-10', at: '2026-10-10T15:41', contact: 1, episode: 'ep-gift',
             amount: 2000, target: 'camera_fund',
         };
-        const fund = world.cameraFund!.purchase!;
+        const fund = ownShort.cameraFund!.purchase!;
         assert.equal(fund.date, '2026-10-11');
-        const eve = worldAt(world, schedule, at('2026-10-10T21:00:00'), [gift])!;
-        assert.match(describeWorld(eve, at('2026-10-10T21:00:00'))!, new RegExp(`攒钱买相机：4500 / 4500 元，攒够了.*；明天 14:00 打算去${fund.where}买，看中的是${fund.what}`), '前一天就知道明天去买');
-        const before = worldAt(world, schedule, at('2026-10-11T13:00:00'), [gift])!;
+        const eve = worldAt(ownShort, schedule, at('2026-10-10T21:00:00'), [gift])!;
+        assert.match(describeWorld(eve, at('2026-10-10T21:00:00'))!, new RegExp(`攒钱买相机：3000 / 3000 元，攒够了.*；明天 14:00 打算去${fund.where}买，看中的是${fund.what}`), '前一天就知道明天去买');
+        const before = worldAt(ownShort, schedule, at('2026-10-11T13:00:00'), [gift])!;
         assert.equal(before.cameraFund!.camera!.state, 'planned');
-        assert.equal(occupationAt(worldAt(world, schedule, at('2026-10-11T13:30:00'), [gift])!, at('2026-10-11T13:30:00')), `在宿舍准备出门，14:00 去${fund.where}买相机`, '出门前那一会儿');
-        assert.doesNotMatch(occupationAt(worldAt(world, schedule, at('2026-10-11T12:20:00'), [gift])!, at('2026-10-11T12:20:00')) ?? '', /准备出门/, '一个半小时以前照作息');
-        assert.match(describeWorld(before, at('2026-10-11T13:00:00'))!, new RegExp(`相机：钱攒够了（4500 元），今天 14:00 要去${fund.where}买，看中的是${fund.what}`));
-        const out = worldAt(world, schedule, at('2026-10-11T15:00:00'), [gift])!;
+        assert.equal(occupationAt(worldAt(ownShort, schedule, at('2026-10-11T13:30:00'), [gift])!, at('2026-10-11T13:30:00')), `在宿舍准备出门，14:00 去${fund.where}买相机`, '出门前那一会儿');
+        assert.doesNotMatch(occupationAt(worldAt(ownShort, schedule, at('2026-10-11T12:20:00'), [gift])!, at('2026-10-11T12:20:00')) ?? '', /准备出门/, '一个半小时以前照作息');
+        assert.match(describeWorld(before, at('2026-10-11T13:00:00'))!, new RegExp(`相机：钱攒够了（3000 元），今天 14:00 要去${fund.where}买，看中的是${fund.what}`));
+        const out = worldAt(ownShort, schedule, at('2026-10-11T15:00:00'), [gift])!;
         assert.equal(occupationAt(out, at('2026-10-11T15:00:00')), `在${fund.where}挑相机`);
-        assert.equal(occupationAt(worldAt(world, schedule, at('2026-10-11T16:40:00'), [gift])!, at('2026-10-11T16:40:00')), '刚买完相机回到宿舍，在摆弄新相机', '买完回来那一会儿');
-        const back = worldAt(world, schedule, at('2026-10-11T17:00:00'), [gift])!;
+        assert.equal(occupationAt(worldAt(ownShort, schedule, at('2026-10-11T16:40:00'), [gift])!, at('2026-10-11T16:40:00')), '刚买完相机回到宿舍，在摆弄新相机', '买完回来那一会儿');
+        const back = worldAt(ownShort, schedule, at('2026-10-11T17:00:00'), [gift])!;
         assert.equal(occupationAt(back, at('2026-10-11T17:00:00')), '刚买完相机回到宿舍，在摆弄新相机');
-        assert.doesNotMatch(occupationAt(worldAt(world, schedule, at('2026-10-11T18:10:00'), [gift])!, at('2026-10-11T18:10:00')) ?? '', /相机/, '一个半小时以后照作息（这会儿在吃晚饭）');
+        assert.doesNotMatch(occupationAt(worldAt(ownShort, schedule, at('2026-10-11T18:10:00'), [gift])!, at('2026-10-11T18:10:00')) ?? '', /相机/, '一个半小时以后照作息（这会儿在吃晚饭）');
         assert.equal(back.cameraFund!.camera!.state, 'bought');
         const line = describeWorld(back, at('2026-10-11T17:00:00'))!;
         assert.match(line, new RegExp(`相机：今天下午去${fund.where}买的${fund.what}（${fund.price} 元：别人给的 2000 加上你自己攒的 ${fund.price - 2000}）`), '不知道是谁给的：别人');
         // 钱从哪来按正在看的人说（ADR 0053 调整，10-11：「攒的钱买的」跟他知道的对不上）
         assert.match(describeWorld(back, at('2026-10-11T17:00:00'), qq => (qq === 1 ? '阿明' : undefined))!, new RegExp(`（${fund.price} 元：阿明给的 2000 加上你自己攒的 ${fund.price - 2000}）`));
-        assert.match(describeWorld(back, at('2026-10-11T17:00:00'), qq => (qq === 1 ? '男朋友' : undefined))!, /（4280 元：男朋友给的 2000 加上你自己攒的 2280）/);
-        assert.match(describeWorld(worldAt(world, schedule, at('2026-10-11T17:00:00'))!, at('2026-10-11T17:00:00'))!, /攒钱买相机/, '没人给钱：攒不够就不买');
+        assert.match(describeWorld(back, at('2026-10-11T17:00:00'), qq => (qq === 1 ? '男朋友' : undefined))!, /（2800 元：男朋友给的 2000 加上你自己攒的 800）/);
+        assert.match(describeWorld(worldAt(ownShort, schedule, at('2026-10-11T17:00:00'))!, at('2026-10-11T17:00:00'))!, /攒钱买相机/, '没人给钱：攒不够就不买');
         assert.doesNotMatch(line, /攒钱买相机/);
-        const left = simulateWorld(world, schedule, at('2026-10-11T17:00:00'), [gift]).ledger.find(e => e.what === '买完相机剩下的');
-        assert.equal(left?.amount, 4500 - fund.price, '剩下的回到手上');
+        const left = simulateWorld(ownShort, schedule, at('2026-10-11T17:00:00'), [gift]).ledger.find(e => e.what === '买完相机剩下的');
+        assert.equal(left?.amount, 3000 - fund.price, '剩下的回到手上');
         assert.ok(recapDay(back).some(item => item.includes(`去${fund.where}买了相机`)));
         assert.ok(busySpans(back).some(span => span.text === `去${fund.where}买相机` && span.start.getTime() === at('2026-10-11T14:00:00').getTime()));
-        // 主动消息「她那边的事」（ADR 0057）：出门前就知道几点了结，16:30 买到
-        assert.deepEqual(worldNews(before), [{ id: 'camera', kind: 'camera', at: at('2026-10-11T16:30:00'), what: `在${fund.where}买到了${fund.what}` }]);
+        // 主动消息「她那边的事」（ADR 0057）：出门前就知道几点了结，16:00 买到
+        assert.deepEqual(worldNews(before), [{ id: 'camera', kind: 'camera', at: at('2026-10-11T16:00:00'), what: `在${fund.where}买到了${fund.what}` }]);
         // 下周日不再往相机基金里存；那天以后说的是哪天买的
         // 零点过后她还没睡（凌晨 2 点前算前一天）：还是「今天下午」
-        assert.match(describeWorld(worldAt(world, schedule, at('2026-10-12T00:30:00'), [gift])!, at('2026-10-12T00:30:00'))!, new RegExp(`相机：今天下午去${fund.where}买的`));
-        assert.match(describeWorld(worldAt(world, schedule, at('2026-10-12T20:00:00'), [gift])!, at('2026-10-12T20:00:00'))!, new RegExp(`相机：昨天下午去${fund.where}买的`));
-        const nextWeek = worldAt(world, schedule, at('2026-10-18T22:00:00'), [gift])!;
+        assert.match(describeWorld(worldAt(ownShort, schedule, at('2026-10-12T00:30:00'), [gift])!, at('2026-10-12T00:30:00'))!, new RegExp(`相机：今天下午去${fund.where}买的`));
+        assert.match(describeWorld(worldAt(ownShort, schedule, at('2026-10-12T20:00:00'), [gift])!, at('2026-10-12T20:00:00'))!, new RegExp(`相机：昨天下午去${fund.where}买的`));
+        const nextWeek = worldAt(ownShort, schedule, at('2026-10-18T22:00:00'), [gift])!;
         assert.match(describeWorld(nextWeek, at('2026-10-18T22:00:00'))!, new RegExp(`相机：10 月 11 日下午去${fund.where}买的`));
-        assert.equal(simulateWorld(world, schedule, at('2026-10-18T22:00:00'), [gift]).ledger.filter(e => e.kind === 'deposit' && e.at > at('2026-10-11T00:00:00') && e.what === '存进相机基金').length, 0);
+        assert.equal(simulateWorld(ownShort, schedule, at('2026-10-18T22:00:00'), [gift]).ledger.filter(e => e.kind === 'deposit' && e.at > at('2026-10-11T00:00:00') && e.what === '存进相机基金').length, 0);
         assert.ok(!busySpans(nextWeek).some(span => span.text.includes('买相机')));
         // 没有那笔钱：10-11 攒不够，不买
-        const plain = worldAt(world, schedule, at('2026-10-11T17:00:00'))!;
+        const plain = worldAt(ownShort, schedule, at('2026-10-11T17:00:00'))!;
         assert.equal(plain.cameraFund!.camera, undefined);
         assert.deepEqual(worldNews(plain), []);
-        assert.match(describeWorld(plain, at('2026-10-11T17:00:00'))!, /攒钱买相机：\d+ \/ 4500 元，还差/);
+        assert.match(describeWorld(plain, at('2026-10-11T17:00:00'))!, /攒钱买相机：\d+ \/ 3000 元，还差/);
     });
 
     test('作业用稳定目标跨档回写：低档看不到课名，仍完成和男朋友档同一份', () => {
@@ -414,7 +417,7 @@ describe('统一生活事件账本（ADR 0029）', () => {
             assert.equal(state.events()[0]!.source, 'conversation');
             state.recordEvents([{
                 id: 'sim:read-1', kind: 'read_book', at: at('2026-09-15T21:00:00').toISOString(),
-                source: 'simulation', result: 'succeeded', subject: '局外人',
+                source: 'simulation', result: 'succeeded', subject: 'fog-harbor',
             }]);
             const disk = JSON.parse(readFileSync(join(dir, 'events.json'), 'utf8'));
             assert.equal(disk.version, 1);

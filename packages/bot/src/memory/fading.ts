@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 记忆变淡、一提就想起（ADR 0018 决策 1）：召回之后、整理成一段之前，给每条算现在还记得多清楚。
 // - 长期知道的不变淡：Hindsight 写入时在事实开头标了【长期】（偏好、习惯、他是做什么的、一直在做的事）或【重要】的
 //   （整合成观察后标记会丢，所以也看观察背后的事实），还没到日子的计划。日记、周记、阶段总结里的【长期】不算，按那段时间。
@@ -92,13 +93,6 @@ export function lastTouched(result: RecallResult): Date | undefined {
     const times = [result.occurred_start, result.occurred_end, result.mentioned_at].map(time).filter(t => t !== undefined);
     return times.length ? new Date(Math.max(...times)) : undefined;
 }
-
-const localDate = (year: number, month: number, day: number) => {
-    const value = new Date(0);
-    value.setFullYear(year, month, day);
-    value.setHours(0, 0, 0, 0);
-    return value;
-};
 
 /** Document dates are civil labels, including dates absent from the host timezone. */
 export function lastTouchedDay(result: RecallResult): number | undefined {

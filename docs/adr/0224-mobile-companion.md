@@ -48,6 +48,12 @@
 - 客户端最多同时保留 32 个 pending 请求，nonce / requestId 追踪只保留最近 256 个，长时间运行不会无限增长。
 - `CompanionClient.reset()` 用于本地注销 / 切换设备，清空 pending、nonce 和 requestId 窗口，避免旧会话污染新配对。
 - `CompanionRuntime.status()` 只返回已配对 clientId、connected、队列总数和上限，不包含消息正文、配对码或 nonce，可安全供控制台显示。
+
+## 停止与宿主所有权（2026-11-05 补强）
+
+- `App.stop()` 和构造失败回滚都必须永久停止当前手机伴侣集成，在其 drain 完成前不释放数据目录租约。停止后不再暴露集成对象，旧对象也不得新建会话、签发配对码、接受消息、上传媒体或下发动作。待使用配对码、会话、下行队列和内存媒体一并清理。
+- 纯读/DSH 模型处理器通过 `AbortSignal` 收回本地等待；迟到成功或失败不得重建短期上下文或返回给旧设备。已经派发的动作/回执不伪装成“未发生”；运行时 drain 等它们自然确认和本地收尾。
+- 本地取消不等于远端 DSH 请求已被取消；不合作的已派发动作处理器仍可以阻止 drain。这一边界不提供持久 outbox、强杀恢复或任意网络 exactly-once 保证。
 - `packages/mobile-companion-app` 提供零依赖 PWA / WebView 客户端：复用 `CompanionClient` 的状态层，支持文字、麦克风录音、媒体引用、服务端表情和白名单动作确认；浏览器脚本对宿主下行动作保留 256 项 nonce 窗口，重复下行不会再次执行；原生 Android UI 后续只需替换展示和网络适配，不复制协议规则。
 - `media.ts` / `media-http.ts` 提供可选的短期内存媒体上传链路：必须先完成 HTTP session 配对，单设备、单进程和总字节数都有上限；上传返回的 `mediaId` 再进入普通消息包，不把文件写入运行时目录。
 - QQ 侧提供 `/dsh unpair` 显式撤销入口：立即清掉配对身份、连接和 nonce，便于设备遗失或需要立刻换机时止损；重新使用 `/dsh pair` 获取一次性配对码。

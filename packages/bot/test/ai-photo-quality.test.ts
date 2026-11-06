@@ -32,7 +32,7 @@ function webp(width = 900, height = 1200): Uint8Array {
 }
 
 const facts = (patch: Partial<AiPhotoWorldFacts> = {}): AiPhotoWorldFacts => ({
-    kind: 'cat', at: '2026-11-04T18:20:00+08:00', subject: '土豆蹲在自行车棚旁边', weather: '阴', timeOfDay: 'dusk', ...patch,
+    kind: 'cat', at: '2026-11-04T18:20:00+08:00', subject: '团子饼蹲在自行车棚旁边', weather: '阴', timeOfDay: 'dusk', ...patch,
 });
 
 const cleanReview = (patch: Partial<AiPhotoVisualReview> = {}): AiPhotoVisualReview => ({

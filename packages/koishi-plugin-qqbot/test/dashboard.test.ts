@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
-import { aiPhotoRuntimeRows, attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, lifeTrend, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from '../client/dashboard.js';
+import { aiPhotoRuntimeRows, attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, lifeTrend, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText, timeZoneLine } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
@@ -172,7 +172,7 @@ describe('客户端的纯函数', () => {
         assert.match(rows[1].text, /还没有/);
         assert.equal(rows[2].text, '11月22日生成');
         assert.equal(extrasRows({ report: { name: 'internal-report.dat' } })[0].text, '已生成', '不把内部文件名显示给用户');
-        assert.match(extrasRows({ photos: { count: 5, cat: 3, view: 2, work: 0 } })[0].text, /5 张（土豆 3、天空 2）/);
+        assert.match(extrasRows({ photos: { count: 5, cat: 3, view: 2, work: 0 } })[0].text, /5 张（猫 3、天空 2）/);
         assert.deepEqual(extrasRows({ aiPhotoDrafts: { total: 4, pending: 2, approved: 1, rejected: 1 } }), [
             { label: 'AI 照片草稿', text: '2 张待审核（共 4 张；已通过 1、已拒绝 1）' },
         ]);
@@ -242,8 +242,8 @@ describe('客户端的纯函数', () => {
         });
         assert.equal(healthy.text, '正常');
         assert.equal(healthy.healthy, true);
-        assert.match(healthy.detail, /天气正常（济南、青岛；48 小时；来源 Open-Meteo；更新 \d+月\d+日 \d{2}:\d{2}）/);
-        assert.match(healthy.detail, /交通正常（济南、青岛；来源 自定义交通数据；更新 \d+月\d+日 \d{2}:\d{2}）/);
+        assert.match(healthy.detail, /天气正常（2 个地方；48 小时；来源 Open-Meteo；更新 \d+月\d+日 \d{2}:\d{2}）/);
+        assert.match(healthy.detail, /交通正常（2 个地方；来源 自定义交通数据；更新 \d+月\d+日 \d{2}:\d{2}）/);
         assert.match(healthy.detail, /法定日历正常（覆盖 2026、2027 年；来源 法定日历服务；更新 \d+月\d+日 \d{2}:\d{2}）/);
         assert.doesNotMatch(healthy.detail, /secret-provider|内部线路详情|delayed|2026-11-03|T00/);
         const warning = realWorldStatus({
@@ -262,7 +262,7 @@ describe('客户端的纯函数', () => {
         const unknown = realWorldStatus({
             weather: { provider: 'token=hidden-provider', fetchedAt: 'bad-time', places: { private_site: { hours: 1 } } },
         });
-        assert.equal(unknown.detail, '天气正常（1 小时）');
+        assert.equal(unknown.detail, '天气正常（1 个地方；1 小时）', '只说有几个地方，不写地名');
         assert.doesNotMatch(unknown.detail, /hidden|private|bad-time|时间未知/);
     });
 
@@ -281,7 +281,7 @@ describe('客户端的纯函数', () => {
             today: {
                 mood: { name: '有点开心', reason: '下午的作业提前写完了' },
                 books: [{ title: '长安的荔枝', amount: 52, unit: '页', finished: false, putDown: false }],
-                highlights: [{ at: '2026-11-04T10:20:00.000Z', text: '喂过土豆，也见到它了' }],
+                highlights: [{ at: '2026-11-04T10:20:00.000Z', text: '喂过团子饼，也见到它了' }],
             },
         });
         assert.deepEqual(rows, [
@@ -291,7 +291,7 @@ describe('客户端的纯函数', () => {
             { label: '心情', text: '有点开心，下午的作业提前写完了' },
             { label: '你们之间', text: '和你很亲近，信任稳定' },
             { label: '在读', text: '《长安的荔枝》第 52 页' },
-            { label: '刚发生', text: '喂过土豆，也见到它了' },
+            { label: '刚发生', text: '喂过团子饼，也见到它了' },
         ]);
         assert.doesNotMatch(JSON.stringify(rows), /2026-|T10|intimacy|trust|friction/);
         assert.deepEqual(lifePulse({ schedule: false, contacts: [], today: { highlights: [] } }), [
@@ -306,14 +306,29 @@ describe('客户端的纯函数', () => {
 
     test('私有生活片段只取合法的世界账摘要并限制数量', () => {
         const moments = lifeMoments({ today: { highlights: [
-            { at: '2026-11-04T10:20:00.000Z', text: '  喂过土豆  ' },
+            { at: '2026-11-04T10:20:00.000Z', text: '  喂过团子饼  ' },
             { at: 'bad-time', text: '坏时间' },
             { at: '2026-11-04T09:00:00.000Z', text: '' },
             ...Array.from({ length: 8 }, (_, index) => ({ at: `2026-11-04T0${index}:00:00.000Z`, text: `片段${index}` })),
         ] } });
         assert.equal(moments.length, 6);
-        assert.deepEqual(moments[0], { at: '2026-11-04T10:20:00.000Z', text: '喂过土豆' });
+        assert.deepEqual(moments[0], { at: '2026-11-04T10:20:00.000Z', text: '喂过团子饼' });
         assert.ok(moments.every((moment: { text: string }) => !moment.text.includes('坏')));
         assert.deepEqual(lifeMoments(undefined), []);
+    });
+});
+
+describe('状态页「她的时区」一行（ADR 0331）', () => {
+    const at = Date.parse('2026-11-06T06:05:00Z');
+    test('时区、此刻的 UTC 偏移、她那边现在几点；同一时刻不同时区各算各的', () => {
+        assert.equal(timeZoneLine('Asia/Shanghai', at), 'Asia/Shanghai（UTC+08:00），她那边现在 14:05');
+        assert.equal(timeZoneLine('America/New_York', at), 'America/New_York（UTC-05:00），她那边现在 01:05');
+        assert.equal(timeZoneLine('Asia/Kolkata', at), 'Asia/Kolkata（UTC+05:30），她那边现在 11:35');
+        assert.equal(timeZoneLine('UTC', at), 'UTC（UTC±00:00），她那边现在 06:05');
+    });
+    test('没有这个字段（插件还是旧代码）返回 undefined，页面提示重启；坏的时区名不让页面崩', () => {
+        assert.equal(timeZoneLine(undefined, at), undefined);
+        assert.equal(timeZoneLine('', at), undefined);
+        assert.equal(timeZoneLine('Mars/Olympus', at), 'Mars/Olympus');
     });
 });

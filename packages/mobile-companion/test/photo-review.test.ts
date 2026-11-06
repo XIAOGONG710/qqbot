@@ -8,7 +8,7 @@ import { validatePhotoDraftSummary, validatePhotoReviewDecisionRequest } from '.
 
 const draft = {
     id: 'abcdef123456', kind: 'cat' as const, status: 'pending_review' as const,
-    caption: '土豆在路边待着', createdAt: '2026-11-04T04:00:00.000Z',
+    caption: '团子饼在路边待着', createdAt: '2026-11-04T04:00:00.000Z',
     thumbnail: { mediaId: 'abcdef0123456789', mime: 'image/jpeg' as const, bytes: 4096, width: 320, height: 320 },
 };
 
@@ -18,7 +18,7 @@ const envelope = (kind: 'photo.review.list' | 'photo.review.decide', requestId: 
 
 describe('手机伴侣照片审核协议（ADR 0245）', () => {
     test('摘要严格排除路径、提示词和任意缩略图 URL', () => {
-        assert.equal(validatePhotoDraftSummary(draft).caption, '土豆在路边待着');
+        assert.equal(validatePhotoDraftSummary(draft).caption, '团子饼在路边待着');
         assert.throws(() => validatePhotoDraftSummary({ ...draft, file: '../../secret.jpg' }), /不允许的字段/);
         assert.throws(() => validatePhotoDraftSummary({ ...draft, prompt: 'hidden prompt' }), /不允许的字段/);
         assert.throws(() => validatePhotoDraftSummary({ ...draft, thumbnail: { ...draft.thumbnail, url: 'https://example.invalid/a.jpg' } }), /不允许的字段/);

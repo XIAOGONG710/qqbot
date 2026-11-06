@@ -1,9 +1,9 @@
 // 她每天碰到的小事和小测（ADR 0106）：目录要干净、条件要满足、频率要合理、小测的线要连得上、带感受的要进心境。
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { loadTierCard } from '../src/platform/contact.ts';
 import {
@@ -12,9 +12,9 @@ import {
 import { appraisals, feelingsAt } from '../src/emotion/feelings.ts';
 import { quizRecord } from '../src/life/pursuits.ts';
 import { simulateWorld, worldAt, type WorldNow } from '../src/world/world.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
-const repoRoot = resolve(import.meta.dirname, '../../..');
-const pattern = join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json');
+const pattern = syntheticCardPattern;
 const boyfriend = loadTierCard(pattern, 'boyfriend', { everydayLife: true }).character;
 const plain = loadTierCard(pattern, 'boyfriend').character;
 const classmate = loadTierCard(pattern, 'classmate', { everydayLife: true }).character;
@@ -33,8 +33,8 @@ describe('目录', () => {
             assert.ok(def.chance > 0 && def.chance <= 1, def.id);
             assert.ok(['morning', 'afternoon', 'evening'].includes(def.window), def.id);
             assert.ok(['school', 'class_day', 'any', 'off_day'].includes(def.when), def.id);
-            assert.equal(def.text.includes('{person}'), Boolean(def.person), `${def.id}：{person} 和 person 要同时有`);
-            if (def.person) assert.ok(['chen_jianing', 'su_yutong'].includes(def.person), def.id);
+            assert.equal(def.text.includes('{person}'), Boolean(def.role), `${def.id}：{person} 和 role 要同时有`);
+            if (def.role) assert.ok(['nearby', 'faraway'].includes(def.role), def.id);
             if (def.feel) assert.ok(['joy', 'relief', 'worry', 'sad', 'annoyed', 'tired'].includes(def.feel.kind) && [1, 2, 3].includes(def.feel.strength), def.id);
             for (const month of def.months ?? []) assert.ok(month >= 1 && month <= 12, def.id);
             for (const weekday of def.weekdays ?? []) assert.ok(weekday >= 1 && weekday <= 7, def.id);
@@ -100,7 +100,7 @@ describe('世界里的日子', () => {
         assert.ok(avg >= 3 && avg <= 5, String(avg));
     });
 
-    test('条件：下雨的事只在下雨那天，晴天的事不在雨天；土豆的事只在见到 / 没见到那天，且在喂完之后；月份、星期对得上', () => {
+    test('条件：下雨的事只在下雨那天，晴天的事不在雨天；猫的事只在见到 / 没见到那天，且在喂完之后；月份、星期对得上', () => {
         for (const date of dates) {
             const record = timeline.days.get(date)!;
             for (const event of record.events) {
@@ -119,7 +119,7 @@ describe('世界里的日子', () => {
         }
     });
 
-    test('闺蜜的事跟着她的状态：苏雨桐感冒 / 在家的日子没有一起自习、分零食这类；花钱的小事记了账', () => {
+    test('闺蜜的事跟着她的状态：闺蜜感冒 / 在家的日子没有一起自习、分零食这类；花钱的小事记了账', () => {
         const withMoney = timeline.ledger.filter(e => e.what === '文具' || e.what === '打印' || e.what === '水果');
         const fromEvents = [...timeline.days.values()].flatMap(record => record.events).filter(e => ['ed_pen', 'ed_print_queue', 'ed_fruit'].includes(e.id)).length;
         assert.equal(withMoney.length, fromEvents);
@@ -145,8 +145,8 @@ describe('小测的一条线', () => {
         const quizzes = days.flatMap(date => quizzesOn(schedule, day(date)).map(q => ({ ...q, date })));
         assert.ok(quizzes.length > 8);
         for (const quiz of quizzes) {
-            assert.ok(/高等数学|概率论|数据结构|计算机网络|MySQL|Linux|大数据|数据采集/.test(quiz.course), quiz.course);
-            assert.ok(!/形势与政策|创业基础|思想概论|Python数据分析|体育/.test(quiz.course), quiz.course);
+            assert.ok(/高等数学|概率论|线性代数|离散|数据结构|计算机网络|MySQL|数据库|操作系统|Linux|大数据|数据采集/.test(quiz.course), quiz.course);
+            assert.ok(!/形势与政策|体育/.test(quiz.course), quiz.course);
             assert.ok(quiz.date >= '2026-09-14' && quiz.date < '2026-12-20', quiz.date);
         }
         const math = quizzes.filter(q => q.category === 'math');
@@ -266,7 +266,7 @@ describe('从哪天起才有（她已经过完的日子不改写）', () => {
         assert.equal(quizRecord(schedule, new Date('2026-10-25T20:00:00+08:00'), from).length, 0, '才过了两天，还没有出分的');
     });
 
-    test('第一次开的时候定下“第二天”并存进文件，以后重启读同一个；文件坏了也不往前改', () => {
+    test('第一次开的时候定下“第二天”并存进文件，以后重启读同一个；文件坏了失败关闭', () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-everyday-'));
         try {
             const path = join(dir, 'everyday-from.json');
@@ -275,7 +275,8 @@ describe('从哪天起才有（她已经过完的日子不改写）', () => {
             assert.ok(logs.some(line => line.includes('从 2026-10-23 起生效')));
             assert.equal(loadEverydayFrom(path, new Date('2026-11-30T10:00:00+08:00')), '2026-10-23', '重启后读同一个');
             writeFileSync(path, '{ 坏了');
-            assert.equal(loadEverydayFrom(path, new Date('2026-11-30T10:00:00+08:00')), '2026-12-01', '读不了就用今天之后的一天，不去改写已经过的日子');
+            assert.throws(() => loadEverydayFrom(path, new Date('2026-11-30T10:00:00+08:00')), /日常小事启用状态无效或读取失败/);
+            assert.equal(readFileSync(path, 'utf8'), '{ 坏了', '加固策略：保留原路径和内容，等待明确修复或删除');
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

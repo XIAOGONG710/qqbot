@@ -6,14 +6,18 @@ import type { CardWorld } from './st-format.ts';
 
 export type WorldWindow = 'morning' | 'afternoon' | 'evening';
 
-/** 天气：先按日期生成（济南各月大概的气温，按 rain_chance 下雨）；以后接真实天气（W5） */
+/** 天气：按日期生成（她学校所在地各月大概的气温，按 rain_chance 下雨）；places 写了就取那里的真实天气（ADR 0048） */
 export interface WeatherSource {
     tiers: string[];
     rain_chance: number;
     /** 月份（1–12）→ [最低, 最高] ℃ */
     temps: Record<string, [number, number]>;
+    /** 真实天气取哪里（bot 的 weather.ts）：在学校按 school、放假在家按 home；id 是数据目录里缓存文件的名字，改了就从头取 */
+    places?: { tiers: string[]; school: WeatherPlaceSource; home: WeatherPlaceSource };
     note?: string;
 }
+
+export interface WeatherPlaceSource { id: string; name: string; latitude: number; longitude: number }
 
 /** 楼下的流浪猫：晚上空的时候下楼喂；下雨、不在学校、晚上有课到窗口结束都不下楼；猫粮一袋喂几天，剩得少了就下单 */
 export interface CatSource {
@@ -61,6 +65,8 @@ export interface HomeworkSource {
     kinds: string[];
     chance: number;
     early_chance: number;
+    /** 从这天布置的作业才按匿名课程组找下次课；旧日作业继续使用旧身份规则。 */
+    grouped_from?: string;
     note?: string;
 }
 
@@ -83,6 +89,11 @@ export interface WorldPersonSource {
     relation: string;
     tiers: string[];
     named_tiers: string[];
+    /**
+     * 这个人在她日子里的位置（bot 按它认人，不按 id）：nearby 同校、能一起吃饭自习的朋友；faraway 在外地、只在微信上来往的朋友。
+     * 日常小事（everyday.ts）和约（npc-asks.ts）按它挑人；每种最多一个人，不写就不参与
+     */
+    role?: PersonRole;
     /** 她自己的日子（ADR 0033）：生病、忙、回家，按日期推 */
     life?: NpcLifeSource;
     note?: string;
@@ -119,6 +130,10 @@ export interface WorldEventSource {
     only_when?: NpcStateKind[];
     /** 这件事花了钱（ADR 0035）：多少（范围里按哈希取）、记账时叫什么（「奶茶」） */
     cost?: { amount: [number, number]; what: string };
+    /** 和 person 一起的这件事附在哪个行动上（life-selector.ts）：meal 那顿饭是和她一起吃的，class 上课时帮她做的事；不写就单独占一小段 */
+    attach?: EventAttach;
+    /** 开了约（ADR 0061）就不再按概率发生，只通过约发生（免得一天两顿）；要写 person、attach: meal */
+    asks_instead?: boolean;
     note?: string;
 }
 
@@ -203,6 +218,7 @@ export interface WorldSource {
 export function worldTiers(world: WorldSource): { at: string; tiers: string[] }[] {
     return [
         { at: 'weather', tiers: world.weather.tiers },
+        ...(world.weather.places ? [{ at: 'weather.places', tiers: world.weather.places.tiers }] : []),
         { at: 'cat', tiers: world.cat.tiers },
         { at: 'parcels', tiers: world.parcels.tiers },
         { at: 'camera_fund', tiers: world.camera_fund.tiers },
@@ -224,7 +240,8 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
     const card: CardWorld = {
         startDay: world.start_day,
         awayHolidays: [...world.away_holidays],
-        ...(sees(world.weather.tiers) ? { weather: { rainChance: world.weather.rain_chance, temps: structuredClone(world.weather.temps) } } : {}),
+        ...(sees(world.weather.tiers) ? { weather: { rainChance: world.weather.rain_chance, temps: structuredClone(world.weather.temps),
+            ...(world.weather.places && sees(world.weather.places.tiers) ? { places: { school: { ...world.weather.places.school }, home: { ...world.weather.places.home } } } : {}) } } : {}),
         ...(sees(world.cat.tiers) ? {
             cat: { name: world.cat.name, feed: [...world.cat.feed] as [string, string], seenChance: world.cat.seen_chance, food: { bagDays: world.cat.food.bag_days, left: world.cat.food.left, reorderAt: world.cat.food.reorder_at } },
         } : {}),
@@ -240,10 +257,12 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
                 ...(world.camera_fund.purchase ? { purchase: { ...world.camera_fund.purchase } } : {}),
             },
         } : {}),
-        ...(sees(world.homework.tiers) ? { homework: { kinds: [...world.homework.kinds], chance: world.homework.chance, earlyChance: world.homework.early_chance } } : {}),
+        ...(sees(world.homework.tiers) ? { homework: { kinds: [...world.homework.kinds], chance: world.homework.chance, earlyChance: world.homework.early_chance,
+            ...(world.homework.grouped_from !== undefined ? { groupedFrom: world.homework.grouped_from } : {}) } } : {}),
         ...(sees(world.family_call.tiers) ? { familyCall: { weekday: world.family_call.weekday, time: world.family_call.time } } : {}),
         people: world.people.filter(person => sees(person.tiers)).map(person => ({
             id: person.id, name: sees(person.named_tiers) ? person.name : person.label, relation: person.relation,
+            ...(person.role ? { role: person.role } : {}),
             ...(person.life ? { life: npcLifeCard(person.life) } : {}),
         })),
         // 涉及的人这一档看不到的事件不写
@@ -252,6 +271,7 @@ export function worldForTier(world: WorldSource | undefined, tier: string): Card
             ...(event.person ? { person: event.person } : {}), ...(event.weekday ? { weekday: event.weekday } : {}),
             ...(event.skip_when ? { skipWhen: [...event.skip_when] } : {}), ...(event.only_when ? { onlyWhen: [...event.only_when] } : {}),
             ...(event.cost ? { cost: { amount: [...event.cost.amount] as [number, number], what: event.cost.what } } : {}),
+            ...(event.attach ? { attach: event.attach } : {}), ...(event.asks_instead ? { asksInstead: true as const } : {}),
         })),
         ...(world.routine && sees(world.routine.tiers) ? {
             routine: {
@@ -300,6 +320,10 @@ const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const WINDOWS: WorldWindow[] = ['morning', 'afternoon', 'evening'];
 const WHEN = ['school', 'class_day', 'any'] as const;
+export const PERSON_ROLES = ['nearby', 'faraway'] as const;
+export type PersonRole = (typeof PERSON_ROLES)[number];
+export const EVENT_ATTACH = ['meal', 'class'] as const;
+export type EventAttach = (typeof EVENT_ATTACH)[number];
 const COURSE_KINDS = ['hard', 'machine', 'water', 'pe'];
 
 class At {
@@ -350,16 +374,45 @@ class At {
     }
 }
 
+function checkWeatherPlaces(at: At, value: unknown): NonNullable<WeatherSource['places']> {
+    const o = at.object(value);
+    at.keys(o, ['tiers', 'school', 'home', 'note']);
+    const place = (key: 'school' | 'home'): WeatherPlaceSource => {
+        const p = at.at(key);
+        const v = p.object(o[key]);
+        p.keys(v, ['id', 'name', 'latitude', 'longitude']);
+        const id = p.at('id').string(v.id);
+        if (!/^[a-z][a-z0-9_-]*$/.test(id)) p.at('id').fail('应为小写字母开头的字母、数字、- 或 _（它是缓存文件名）');
+        return { id, name: p.at('name').string(v.name), latitude: p.at('latitude').number(v.latitude, -90, 90), longitude: p.at('longitude').number(v.longitude, -180, 180) };
+    };
+    const school = place('school');
+    const home = place('home');
+    if (school.id === home.id) at.fail('school 和 home 的 id 不能一样');
+    return { tiers: at.at('tiers').strings(o.tiers), school, home };
+}
+
+function validCalendarDate(value: string): boolean {
+    const time = Date.parse(`${value}T00:00:00Z`);
+    return DATE.test(value) && Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
+}
+
+/** UTC 仅作与机器时区无关的民用日期运算；四位日期边界不能只靠 JS Date 是否有限判断。 */
+function checkCivilResult(time: number, at: At): void {
+    const result = new Date(time);
+    if (!Number.isFinite(result.getTime()) || !validCalendarDate(result.toISOString().slice(0, 10))) at.fail('超出支持的四位日期范围');
+}
+
 export function checkWorld(raw: unknown): WorldSource {
     const root = new At('world.yml');
     const o = root.object(raw);
     root.keys(o, ['start_day', 'away_holidays', 'weather', 'cat', 'parcels', 'camera_fund', 'homework', 'family_call', 'people', 'events', 'body', 'routine', 'plans', 'money', 'note']);
     const startDay = root.at('start_day').string(o.start_day);
-    if (!DATE.test(startDay)) root.at('start_day').fail(`应为 YYYY-MM-DD：${startDay}`);
+    if (!validCalendarDate(startDay)) root.at('start_day').fail('应为真实 YYYY-MM-DD 日期');
 
     const w = root.at('weather');
     const weather = w.object(o.weather);
-    w.keys(weather, ['tiers', 'rain_chance', 'temps', 'note']);
+    w.keys(weather, ['tiers', 'rain_chance', 'temps', 'places', 'note']);
+    const places = weather.places === undefined || weather.places === null ? undefined : checkWeatherPlaces(w.at('places'), weather.places);
     const tempsRaw = w.at('temps').object(weather.temps);
     const temps: Record<string, [number, number]> = {};
     for (let month = 1; month <= 12; month++) {
@@ -381,7 +434,7 @@ export function checkWorld(raw: unknown): WorldSource {
     const parcels = p.object(o.parcels);
     p.keys(parcels, ['tiers', 'per_week', 'arrive_days', 'keep_days', 'items', 'after_meal_from', 'note']);
     const afterMealFrom = parcels.after_meal_from === undefined ? undefined : p.at('after_meal_from').string(parcels.after_meal_from);
-    if (afterMealFrom !== undefined && !DATE.test(afterMealFrom)) p.at('after_meal_from').fail(`应为 YYYY-MM-DD：${afterMealFrom}`);
+    if (afterMealFrom !== undefined && !validCalendarDate(afterMealFrom)) p.at('after_meal_from').fail('应为真实 YYYY-MM-DD 日期');
 
     const f = root.at('camera_fund');
     const fund = f.object(o.camera_fund);
@@ -390,12 +443,16 @@ export function checkWorld(raw: unknown): WorldSource {
     const purchase = fund.purchase === undefined ? undefined : fp.object(fund.purchase);
     if (purchase) {
         fp.keys(purchase, ['date', 'from', 'minutes', 'where', 'what', 'price']);
-        if (typeof purchase.date !== 'string' || !DATE.test(purchase.date)) fp.at('date').fail(`应为 YYYY-MM-DD：${String(purchase.date)}`);
+        if (typeof purchase.date !== 'string' || !validCalendarDate(purchase.date)) fp.at('date').fail('应为真实 YYYY-MM-DD 日期');
     }
 
     const h = root.at('homework');
     const homework = h.object(o.homework);
-    h.keys(homework, ['tiers', 'kinds', 'chance', 'early_chance', 'note']);
+    h.keys(homework, ['tiers', 'kinds', 'chance', 'early_chance', 'grouped_from', 'note']);
+    const groupedFrom = homework.grouped_from === undefined ? undefined : h.at('grouped_from').string(homework.grouped_from);
+    if (groupedFrom !== undefined) {
+        if (!validCalendarDate(groupedFrom)) h.at('grouped_from').fail('应为真实 YYYY-MM-DD 日期');
+    }
     const kinds = h.at('kinds').strings(homework.kinds, false);
     for (const kind of kinds) if (!COURSE_KINDS.includes(kind)) h.at('kinds').fail(`${kind} 不是课型（${COURSE_KINDS.join(' / ')}）`);
 
@@ -407,7 +464,9 @@ export function checkWorld(raw: unknown): WorldSource {
     const people = peopleRaw.map((value, i): WorldPersonSource => {
         const e = root.at(`people[${i}]`);
         const person = e.object(value);
-        e.keys(person, ['id', 'name', 'label', 'relation', 'tiers', 'named_tiers', 'life', 'note']);
+        e.keys(person, ['id', 'name', 'label', 'relation', 'tiers', 'named_tiers', 'role', 'life', 'note']);
+        const role = person.role === undefined || person.role === null ? undefined : e.at('role').string(person.role) as PersonRole;
+        if (role && !PERSON_ROLES.includes(role)) e.at('role').fail(`应为 ${PERSON_ROLES.join(' / ')}`);
         const tiers = e.at('tiers').strings(person.tiers);
         const named = e.at('named_tiers').strings(person.named_tiers);
         for (const tier of named) if (!tiers.includes(tier)) e.at('named_tiers').fail(`${tier} 不在 tiers 里`);
@@ -418,17 +477,19 @@ export function checkWorld(raw: unknown): WorldSource {
             relation: e.at('relation').string(person.relation),
             tiers,
             named_tiers: named,
+            ...(role ? { role } : {}),
             ...(person.life === undefined || person.life === null ? {} : { life: checkNpcLife(e.at('life'), person.life) }),
             ...e.at('note').note(person.note),
         };
     });
     if (new Set(people.map(person => person.id)).size !== people.length) root.at('people').fail('id 重复');
+    for (const role of PERSON_ROLES) if (people.filter(person => person.role === role).length > 1) root.at('people').fail(`role: ${role} 最多一个人`);
 
     const eventsRaw: unknown[] = o.events === undefined || o.events === null ? [] : Array.isArray(o.events) ? o.events : root.at('events').fail('应为数组');
     const events = eventsRaw.map((value, i): WorldEventSource => {
         const e = root.at(`events[${i}]`);
         const event = e.object(value);
-        e.keys(event, ['id', 'text', 'person', 'tiers', 'window', 'chance', 'when', 'weekday', 'skip_when', 'only_when', 'cost', 'note']);
+        e.keys(event, ['id', 'text', 'person', 'tiers', 'window', 'chance', 'when', 'weekday', 'skip_when', 'only_when', 'cost', 'attach', 'asks_instead', 'note']);
         const person = event.person === undefined || event.person === null ? undefined : e.at('person').string(event.person);
         if (person && !people.some(p => p.id === person)) e.at('person').fail(`people 里没有 ${person}`);
         if (person && !String(event.text).includes('{person}')) e.at('text').fail('写了 person 就要在 text 里用 {person}');
@@ -449,6 +510,12 @@ export function checkWorld(raw: unknown): WorldSource {
         const costRaw = event.cost === undefined || event.cost === null ? undefined : e.at('cost').object(event.cost);
         if (costRaw) e.at('cost').keys(costRaw, ['amount', 'what']);
         const cost = costRaw ? { amount: e.at('cost.amount').range(costRaw.amount, 0, 10_000, true), what: e.at('cost.what').string(costRaw.what) } : undefined;
+        const attach = event.attach === undefined || event.attach === null ? undefined : e.at('attach').string(event.attach) as EventAttach;
+        if (attach && !EVENT_ATTACH.includes(attach)) e.at('attach').fail(`应为 ${EVENT_ATTACH.join(' / ')}`);
+        if (attach && !person) e.at('attach').fail('要写 person');
+        if (event.asks_instead !== undefined && event.asks_instead !== null && typeof event.asks_instead !== 'boolean') e.at('asks_instead').fail('应为 true / false');
+        const asksInstead = event.asks_instead === true;
+        if (asksInstead && attach !== 'meal') e.at('asks_instead').fail('要写 person 和 attach: meal');
         return {
             id: e.at('id').string(event.id),
             text: e.at('text').string(event.text),
@@ -461,6 +528,8 @@ export function checkWorld(raw: unknown): WorldSource {
             ...(skipWhen ? { skip_when: skipWhen } : {}),
             ...(onlyWhen ? { only_when: onlyWhen } : {}),
             ...(cost ? { cost } : {}),
+            ...(attach ? { attach } : {}),
+            ...(asksInstead ? { asks_instead: true } : {}),
             ...e.at('note').note(event.note),
         };
     });
@@ -474,7 +543,7 @@ export function checkWorld(raw: unknown): WorldSource {
     const result: WorldSource = {
         start_day: startDay,
         away_holidays: awayHolidays,
-        weather: { tiers: w.at('tiers').strings(weather.tiers), rain_chance: w.at('rain_chance').number(weather.rain_chance, 0, 1), temps, ...w.at('note').note(weather.note) },
+        weather: { tiers: w.at('tiers').strings(weather.tiers), rain_chance: w.at('rain_chance').number(weather.rain_chance, 0, 1), temps, ...(places ? { places } : {}), ...w.at('note').note(weather.note) },
         cat: {
             name: c.at('name').string(cat.name),
             tiers: c.at('tiers').strings(cat.tiers),
@@ -515,6 +584,7 @@ export function checkWorld(raw: unknown): WorldSource {
             kinds,
             chance: h.at('chance').number(homework.chance, 0, 1),
             early_chance: h.at('early_chance').number(homework.early_chance, 0, 1),
+            ...(groupedFrom === undefined ? {} : { grouped_from: groupedFrom }),
             ...h.at('note').note(homework.note),
         },
         family_call: {
@@ -531,6 +601,23 @@ export function checkWorld(raw: unknown): WorldSource {
         ...(money ? { money } : {}),
         ...root.at('note').note(o.note),
     };
+    const civilStart = Date.parse(`${result.start_day}T00:00:00Z`);
+    if (result.parcels.per_week > 0 && result.parcels.tiers.length) {
+        checkCivilResult(civilStart + result.parcels.arrive_days[1] * 86_400_000, p.at('arrive_days'));
+        checkCivilResult(civilStart + (result.parcels.arrive_days[1] + result.parcels.keep_days - 1) * 86_400_000, p.at('keep_days'));
+    }
+    if (result.cat.tiers.length && result.cat.food.left <= result.cat.food.reorder_at + 1) {
+        // 与运行时一致：首日可能补货时，两天到货，沿用快递保管天数。
+        // 猫可见而 parcels 被裁掉的档位会使用默认三天，不能只检查完整档的期限。
+        const usesDefault = result.cat.tiers.some(tier => !result.parcels.tiers.includes(tier));
+        const usesShared = result.cat.tiers.some(tier => result.parcels.tiers.includes(tier));
+        const keep = Math.max(usesShared ? result.parcels.keep_days : 0, usesDefault ? 3 : 0);
+        checkCivilResult(civilStart + (2 + keep - 1) * 86_400_000, c.at('food'));
+    }
+    if (result.camera_fund.purchase) {
+        const trip = result.camera_fund.purchase;
+        checkCivilResult(Date.parse(`${trip.date}T${trip.from}:00Z`) + trip.minutes * 60_000, fp.at('minutes'));
+    }
     // 吃完饭再取快递（ADR 0042）：看得到快递的档位都要看得到饭点，不然各档取件的时刻不一样
     if (result.parcels.after_meal_from) {
         for (const tier of result.parcels.tiers) if (!result.routine?.tiers.includes(tier)) root.at('parcels.after_meal_from').fail(`看得到快递的 ${tier} 也要看得到 routine（取件的时刻要一样）`);
@@ -663,7 +750,7 @@ function checkBody(b: At, value: unknown): BodySource {
         const raw = p.object(body.period);
         p.keys(raw, ['first', 'cycle', 'days', 'cramps_chance', 'detail_tiers']);
         const first = p.at('first').string(raw.first);
-        if (!DATE.test(first)) p.at('first').fail(`应为 YYYY-MM-DD：${first}`);
+        if (!validCalendarDate(first)) p.at('first').fail('应为真实 YYYY-MM-DD 日期');
         const detail = p.at('detail_tiers').strings(raw.detail_tiers);
         for (const tier of detail) if (!tiers.includes(tier)) p.at('detail_tiers').fail(`${tier} 不在 body.tiers 里`);
         period = { first, cycle: p.at('cycle').range(raw.cycle, 20, 45, true), days: p.at('days').integer(raw.days, 1, 10), cramps_chance: p.at('cramps_chance').number(raw.cramps_chance, 0, 1), detail_tiers: detail };

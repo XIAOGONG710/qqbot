@@ -89,20 +89,42 @@ const EXPLICIT_DENIAL = /(?:^|[，,。！!\s])(?:但是|但|不过|可是|可)?(
 const ASKED_ABOUT_SELF_HARM = /(?:伤害自己|自残|自杀|轻生|想死|念头|想过)/;
 const BARE_NO = /^\s*(?:真的?)?(?:没有|没想过|没想|不会|没)(?:啊|的|呀|呢|哦)?\s*(?:[，,。！!～~]|$)/;
 const isQuestion = (text: string) => /[?？]|吗\s*$|么\s*$/.test(text);
+/** A correction/denial inside a conditional or wish is not an affirmative current statement. */
+function definiteStatement(text: string, pattern: RegExp): boolean {
+    const match = new RegExp(pattern.source, pattern.flags).exec(text);
+    if (!match) return false;
+    const prefix = text.slice(0, match.index).split(/[。；;！!\n]/).at(-1)!;
+    return !/如果|假如|要是|希望/.test(prefix);
+}
 // 她的那句话是不是在问：除了问号，「有没有 / 是不是 / 想过没」这种问法常常不带问号（真模型：「你老实跟我说，你现在有没有想伤害自己的念头」）
 const asksSomething = (text: string) => isQuestion(text) || /吗|有没有|是不是|是否|想过没|想没想/.test(text);
 const deniesSelfHarm = (answer: string, asked: string | undefined) => !isQuestion(answer)
-    && (EXPLICIT_DENIAL.test(answer) || (asked !== undefined && asksSomething(asked) && ASKED_ABOUT_SELF_HARM.test(asked) && BARE_NO.test(answer)));
+    && (definiteStatement(answer, EXPLICIT_DENIAL) || (asked !== undefined && asksSomething(asked) && ASKED_ABOUT_SELF_HARM.test(asked) && BARE_NO.test(answer)));
 
 /** 高风险解除要有“此刻安全”以及现实保护措施；两项可以在相邻回答中分别给出。 */
 const SAFE_NOW = /(?:我)?(?:现在|已经|目前)(?:很)?安全(?:了|的|着)?|(?:我)?(?:现在|已经)(?:在)?安全的地方|(?:现在|已经)没有危险(?:了)?/;
 const REAL_HELP = /(?:室友|朋友|家人|同学|老师|医生|辅导员|警察|急救人员).{0,6}(?:在(?:我)?(?:旁边|身边|这里)|陪着?(?:我)?|来了|过来了)|(?:已经|刚刚|刚才)(?:联系|告诉|叫|喊|打给|拨打)(?:了)?(?:室友|朋友|家人|同学|老师|医生|辅导员|12356|110|120)|(?:联系|告诉|叫|喊|打给|拨打)(?:室友|朋友|家人|同学|老师|医生|辅导员)(?:了|成功了)|(?<!没)(?<!未)(?<!没有)(?:离开|下了|走下|远离)(?:天台|楼顶|桥边|窗边|危险的地方)|(?<!没)(?<!未)(?<!没有)(?:把|已经把).{0,10}(?:放远|放下|交给|收起来|锁起来)/;
+/** Explicit fictional speakers do not become the real user merely by using a first-person quotation. */
+const FICTIONAL_EVIDENCE_SUBJECT = /(?:电影里|电影中|剧里|剧情里|剧情中|小说里|小说中|漫画里|漫画中|游戏里|游戏中|歌词|歌里|歌中|主角|角色)[^，,。！？!?\n]{0,24}$/;
+
+function hasOtherSubjectEvidence(text: string): boolean {
+    for (const pattern of [SAFE_NOW, REAL_HELP]) {
+        for (const match of text.matchAll(new RegExp(pattern.source, 'g'))) {
+            if (FICTIONAL_EVIDENCE_SUBJECT.test(text.slice(Math.max(0, match.index! - 32), match.index))) return true;
+            // Another person may truthfully report my safety or remove my dangerous items.
+            if (match[0].includes('我')) continue;
+            if (OTHER_SUBJECT.test(text.slice(Math.max(0, match.index! - 12), match.index))) return true;
+        }
+    }
+    return false;
+}
 
 /** 解除只接受肯定的现实陈述；否定、假设和疑问不作为证据。 */
 function safetyEvidence(text: string): { safe: boolean; help: boolean } {
     let safe = false;
     let help = false;
-    const clauses = text.split(/[，,。；;！!\n]/);
+    // A third-party safety report cannot supply evidence for the speaker, including a following bare clause.
+    const clauses = text.split(/[。；;！!\n]/).filter(sentence => !hasOtherSubjectEvidence(sentence)).flatMap(sentence => sentence.split(/[，,]/));
     for (const clause of clauses) {
         const affirmative = clause.replace(/(?:现在|已经)没有危险(?:了)?/g, '现在安全');
         if (/[?？]|(?:吗|么|呢)\s*$|如果|假如|要是|希望|可能|也许|应该|打算|准备|不能|无法|不|没|未|无/.test(affirmative)) continue;
@@ -146,7 +168,7 @@ export function crisisInHistory(history: readonly Said[]): CrisisHit | undefined
             continue;
         }
         if (!active) continue;
-        if (active.level === 'concern' && (EXPLICIT_CORRECTION.test(message.content) || deniesSelfHarm(message.content, lastAsked))) {
+        if (active.level === 'concern' && ((!isQuestion(message.content) && definiteStatement(message.content, EXPLICIT_CORRECTION)) || deniesSelfHarm(message.content, lastAsked))) {
             active = undefined;
             continue;
         }

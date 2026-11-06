@@ -132,7 +132,19 @@ describe('风险转私信：看系统通知', () => {
         assert.equal(s.dms.length, 1, '冷却内不重复提醒');
         s.state.t += RISK_ALERT_GAP_MS;
         await risk.tick();
-        assert.equal(s.dms.length, 2, '冷却过了仍读不出内容，再提醒一次');
+        assert.equal(s.dms.length, 1, '未读数没变不再提醒');
+        assert.ok(s.logs.some(line => line.includes('还是读不出内容，已经提醒过')), '读取照样重试（ADR 0090 2026-11-05）');
+        await risk.stop();
+        const restarted = s.make();
+        s.state.t += RISK_ALERT_GAP_MS + RISK_POLL_MS;
+        await restarted.tick();
+        assert.equal(s.dms.length, 1, '重启后同一个未读数也不再提醒');
+        s.state.unread = 3;
+        s.state.t += RISK_ALERT_GAP_MS + RISK_POLL_MS;
+        await restarted.tick();
+        assert.equal(s.dms.length, 2, '未读数又涨了，再提醒一次');
+        assert.ok(s.dms[1]!.text.includes('3 条未读的系统通知'));
+        await restarted.stop();
 
         const down = setup({ unread: new Error('断网') });
         const d = down.make();

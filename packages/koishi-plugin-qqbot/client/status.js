@@ -2,7 +2,7 @@
 import { computed, defineComponent, h, ref } from 'vue';
 import { send, store } from '@koishijs/client';
 import { c, clock, tag, tierLabel } from './common.js';
-import { attentionDetail, capabilityBundles, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, lifeMoments, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText } from './dashboard.js';
+import { attentionDetail, capabilityBundles, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, lifeMoments, lifePulse, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText, timeZoneLine } from './dashboard.js';
 
 const PROACTIVE_MODES = { off: ['关', 'info'], dryRun: ['试运行（只写日志不发）', 'warning'], on: ['开', 'success'] };
 
@@ -225,6 +225,8 @@ export const StatusTab = defineComponent({
             const worldData = realWorldStatus(status);
             const rows = status ? [
                 ['作息', status ? [status.schedule ? tag('按作息运行', 'success') : tag('未启用', 'warning')] : [tag('—', 'info')]],
+                // 页面文件是从仓库直接读的：插件还是旧代码（没重启）时状态里没有时区这一项
+                ['她的时区', status ? (timeZoneLine(status.timeZone, data.updatedAt) ? [h('span', null, timeZoneLine(status.timeZone, data.updatedAt))] : [tag('重启 Koishi 后才有', 'info')]) : [tag('—', 'info')]],
                 ['按心情回复', status ? [status.moody && status.schedule ? tag('已启用', 'success') : tag('未启用', 'info')] : [tag('—', 'info')]],
                 ['说话检查', status ? [status.speechCheck === false ? tag('未启用', 'info') : tag('已启用', 'success')] : [tag('—', 'info')]],
                 ['陌生好友', status ? [status.unlistedFriends ? tag('也回复', 'warning') : tag('不回复', 'info')] : [tag('—', 'info')]],

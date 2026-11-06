@@ -15,19 +15,19 @@ import { createResponder, DEFAULT_SETTLE, HESITATE_CHANCE, HESITATE_PAUSE_MS, PA
 import { pick } from '../src/social/reply-timing.ts';
 import type { SilenceInfo } from '../src/social/silence.ts';
 
-const names = { user: '阿明', char: '林梦瑶' };
+const names = { user: '阿明', char: '测试角色' };
 
 describe('回复清理（同 ST cleanUpMessage 默认设置）', () => {
     test('去掉行首的“角色名:”和首尾空白', () => {
-        assert.equal(cleanUpReply('林梦瑶: 在呢  \n', names), '在呢');
-        assert.equal(cleanUpReply('嗯\n林梦瑶: 干嘛', names), '嗯\n干嘛');
+        assert.equal(cleanUpReply('测试角色: 在呢  \n', names), '在呢');
+        assert.equal(cleanUpReply('嗯\n测试角色: 干嘛', names), '嗯\n干嘛');
     });
     test('以对方名字开头的整条作废，中途出现的截断', () => {
         assert.equal(cleanUpReply('阿明: 我来替你说', names), '');
         assert.equal(cleanUpReply('好呀\n阿明: 那走吧', names), '好呀');
     });
     test('按行拆成几条，空行和行首尾空白去掉', () => {
-        assert.deepEqual(splitReply('躺着呢 刷土豆的照片\n\n  怎么了嘛 \r\n这么晚'), ['躺着呢 刷土豆的照片', '怎么了嘛', '这么晚']);
+        assert.deepEqual(splitReply('躺着呢 刷团子饼的照片\n\n  怎么了嘛 \r\n这么晚'), ['躺着呢 刷团子饼的照片', '怎么了嘛', '这么晚']);
         assert.deepEqual(splitReply('\n \n'), []);
     });
     test('图片表情指令那一行自己占一条，合并时绝不并进文字（ADR 0063，10-12 模拟器：文字、表情、文字最多 2 条时编号被并进上一句，发出去就成了文字）', () => {
@@ -375,13 +375,13 @@ describe('回复调度', () => {
     });
 
     test('多行回复拆成几条依次发，每条单独记录', async () => {
-        const { responder, stored, sent, gaps } = setup({ generate: async () => '土豆是猫啊\n\n你能不能上点心\n我拍好多张呢' });
-        responder.receive('土豆是什么', 1, new Date());
+        const { responder, stored, sent, gaps } = setup({ generate: async () => '团子饼是猫啊\n\n你能不能上点心\n我拍好多张呢' });
+        responder.receive('团子饼是什么', 1, new Date());
         await responder.whenIdle();
-        assert.deepEqual(sent, ['土豆是猫啊', '你能不能上点心', '我拍好多张呢']);
+        assert.deepEqual(sent, ['团子饼是猫啊', '你能不能上点心', '我拍好多张呢']);
         assert.deepEqual(gaps, [PART_GAP_MS, PART_GAP_MS]);
         assert.deepEqual(stored.map(m => `${m.role}:${m.content}:${m.messageId}`), [
-            'user:土豆是什么:1', 'assistant:土豆是猫啊:101', 'assistant:你能不能上点心:102', 'assistant:我拍好多张呢:103',
+            'user:团子饼是什么:1', 'assistant:团子饼是猫啊:101', 'assistant:你能不能上点心:102', 'assistant:我拍好多张呢:103',
         ]);
     });
 
@@ -493,13 +493,13 @@ describe('回复调度', () => {
         c.set(500);
         responder.receive('看到一只猫', 2, new Date());
         c.set(1000);
-        responder.receive('好像是土豆', 3, new Date());
+        responder.receive('好像是团子饼', 3, new Date());
         await c.wakeAt(4000); // 离最后一条才 3 秒，再等 1 秒
         assert.deepEqual(prompts, []);
         await c.wakeAt(5000);
         await responder.whenIdle();
         assert.deepEqual(c.asked, [4000, 1000]);
-        assert.deepEqual(prompts, [['user:刚才下楼', 'user:看到一只猫', 'user:好像是土豆']]);
+        assert.deepEqual(prompts, [['user:刚才下楼', 'user:看到一只猫', 'user:好像是团子饼']]);
         assert.deepEqual(sent, ['下楼干嘛']);
     });
 
@@ -776,7 +776,7 @@ describe('回复调度', () => {
     test('回复里整条只有内部标记的气泡（单独一行的 <<日记>>）：不发、不「打字」、不往聊天记录留空行；标记交给 absorb 处理一次，不因为中途他插话而丢', async () => {
         const strip = (text: string) => text.replace(/<<(?:记住|日记|私密)[：:][\s\S]*?>>/g, '').trim();
         const absorbed: string[] = [];
-        const normal = setup({ generate: async () => '好\n<<日记：写了一篇>>\n嗯', historyContent: strip, absorb: part => { absorbed.push(part); } });
+        const normal = setup({ generate: async () => '好\n<<日记：写了一篇>>\n嗯', historyContent: strip, stripMarkers: strip, absorb: part => { absorbed.push(part); } });
         normal.responder.receive('在吗', 1, new Date());
         await normal.responder.whenIdle();
         assert.deepEqual(normal.sent, ['好', '嗯']);
@@ -787,7 +787,7 @@ describe('回复调度', () => {
         // 标记在最后、中途他插话：后面的不发，标记也已经处理了
         absorbed.length = 0;
         const interrupted = setup({
-            generate: async () => '好\n嗯\n<<记住：他爱吃辣>>', historyContent: strip, absorb: part => { absorbed.push(part); },
+            generate: async () => '好\n嗯\n<<记住：他爱吃辣>>', historyContent: strip, stripMarkers: strip, absorb: part => { absorbed.push(part); },
             sleep: async () => { interrupted.stored.push({ time: new Date().toISOString(), role: 'user', content: '在', messageId: 9 }); },
         });
         interrupted.responder.receive('在吗', 1, new Date());
@@ -795,7 +795,7 @@ describe('回复调度', () => {
         assert.deepEqual(interrupted.sent, ['好']);
         assert.deepEqual(absorbed, ['<<记住：他爱吃辣>>']);
         // 没有 absorb（模拟器这类）：不处理、不报错，照样不发
-        const bare = setup({ generate: async () => '好\n<<日记：x>>', historyContent: strip });
+        const bare = setup({ generate: async () => '好\n<<日记：x>>', historyContent: strip, stripMarkers: strip });
         bare.responder.receive('在吗', 1, new Date());
         await bare.responder.whenIdle();
         assert.deepEqual(bare.sent, ['好']);
@@ -883,7 +883,7 @@ describe('回复调度', () => {
             const strip = (text: string) => text.replace(/<<(?:记住|日记|私密)[：:][\s\S]*?>>/g, '').trim();
             const { responder, stored, sent } = setup({
                 generate: async () => '早\n<<日记：今天起得早，心情不错>>\n醒了没',
-                historyContent: strip, absorb: part => { absorbed.push(part); },
+                historyContent: strip, stripMarkers: strip, absorb: part => { absorbed.push(part); },
                 log: line => { logs.push(line); },
             });
             const outcome = await responder.initiate(request({ maxBubbles: 3 }));
@@ -894,7 +894,7 @@ describe('回复调度', () => {
             // 中途他插话、后面的不发：标记也已经处理过了，不因此丢
             const interrupted = setup({
                 generate: async () => '早\n醒了没\n<<日记：写了一篇>>',
-                historyContent: strip, absorb: part => { absorbed.push(part); },
+                historyContent: strip, stripMarkers: strip, absorb: part => { absorbed.push(part); },
                 sleep: async () => { interrupted.stored.push({ time: new Date().toISOString(), role: 'user', content: '在', messageId: 9 }); },
             });
             absorbed.length = 0;
@@ -903,7 +903,7 @@ describe('回复调度', () => {
             assert.deepEqual(absorbed, ['<<日记：写了一篇>>']);
             // absorb 抛错：记日志、照常发，不影响这一轮
             const failing = setup({
-                generate: async () => '早\n<<记住：他爱吃辣>>', historyContent: strip,
+                generate: async () => '早\n<<记住：他爱吃辣>>', historyContent: strip, stripMarkers: strip,
                 absorb: () => { throw new Error('写不进去'); }, log: line => { logs.push(line); },
             });
             assert.equal((await failing.responder.initiate(request({ maxBubbles: 3 }))).result, 'sent');
@@ -911,7 +911,7 @@ describe('回复调度', () => {
             assert.ok(logs.some(line => line.includes('内部标记没处理成：写不进去')));
             // 试运行不处理（没有真的发）
             absorbed.length = 0;
-            const dry = setup({ generate: async () => '早\n<<日记：试运行>>', historyContent: strip, absorb: part => { absorbed.push(part); } });
+            const dry = setup({ generate: async () => '早\n<<日记：试运行>>', historyContent: strip, stripMarkers: strip, absorb: part => { absorbed.push(part); } });
             await dry.responder.initiate(request({ dryRun: true, maxBubbles: 3 }));
             assert.deepEqual(absorbed, []);
         });

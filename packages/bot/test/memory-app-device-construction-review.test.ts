@@ -9,6 +9,7 @@ import { parseAppConfig } from '../src/platform/config.ts';
 import type { DeviceService, DeviceServiceOptions } from '../src/platform/device-service.ts';
 import { acquireLock } from '../src/platform/lock.ts';
 import { realWeather } from '../src/world/weather.ts';
+import { SYNTHETIC_WEATHER_PLACES } from './fixtures/card.ts';
 
 const tick = () => new Promise<void>(done => setImmediate(done));
 const deferred = <T>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; };
@@ -87,7 +88,9 @@ for (const fail of [false, true]) test(`构造失败持有租约直至已派天�
     const held = deferred<void>(), writeLocks: boolean[] = [], timers = new Set<ReturnType<typeof setInterval>>(); let calls = 0;
     const schedule = { sleep: '02:00', wake: { early: '08:00', lazy: '08:00', earlySlot: '1' }, periods: { '1': { start: '08:00', end: '09:30' } }, semester: { start: '2026-09-01', weeks: 30 }, holidays: [], makeups: [], kinds: { hard: {}, machine: {}, water: {}, pe: {} }, courses: [], free: { morning: ['合成休息'], afternoon: ['合成休息'], evening: ['合成休息'], afternoonFrom: '12:00', eveningFrom: '18:00' }, where: '合成地点' };
     try {
-        const card = { spec: 'chara_card_v2', data: { name: '合成角色', extensions: { qqbot: { schedule, world: { startDay: '2026-11-01', awayHolidays: [], people: [], events: [] } } } } };
+        // 真实天气取卡上 weather.places 的地方（合成的两个）
+        const SYNTHETIC_WEATHER = { rainChance: 0.3, temps: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [String(i + 1), [10, 20]])), places: { school: SYNTHETIC_WEATHER_PLACES[0], home: SYNTHETIC_WEATHER_PLACES[1] } };
+        const card = { spec: 'chara_card_v2', data: { name: '合成角色', extensions: { qqbot: { schedule, world: { startDay: '2026-11-01', awayHolidays: [], people: [], events: [], weather: SYNTHETIC_WEATHER } } } } };
         for (const tier of ['boyfriend', 'boyfriend-open', 'classmate']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify(card));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
             contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic-weather-construction', timeoutMs: 1000, recallTimeoutMs: 100 },
@@ -118,8 +121,8 @@ for (const fail of [false, true]) test(`构造失败持有租约直至已派天�
         held.resolve(); for (let i = 0; i < 8; i++) await tick();
         assert.equal(calls, 2, '首轮已拥有的两地点刷新完整收尾');
         assert.equal(existsSync(join(dataDir, 'bot.lock')), false);
-        if (fail) { assert.deepEqual(writeLocks, []); assert.equal(existsSync(join(dataDir, 'weather', 'jinan.json')), false); }
-        else { assert.deepEqual(writeLocks, [true, true], '每份天气缓存仍在原租约内落盘'); assert.ok(existsSync(join(dataDir, 'weather', 'jinan.json'))); assert.ok(existsSync(join(dataDir, 'weather', 'qingdao.json'))); }
+        if (fail) { assert.deepEqual(writeLocks, []); assert.equal(existsSync(join(dataDir, 'weather', 'school-town.json')), false); }
+        else { assert.deepEqual(writeLocks, [true, true], '每份天气缓存仍在原租约内落盘'); assert.ok(existsSync(join(dataDir, 'weather', 'school-town.json'))); assert.ok(existsSync(join(dataDir, 'weather', 'home-town.json'))); }
         assert.equal(timers.size, 0);
     } finally {
         held.resolve(); for (let i = 0; i < 8; i++) await tick();

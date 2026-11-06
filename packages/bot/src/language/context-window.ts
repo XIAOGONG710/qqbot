@@ -124,13 +124,18 @@ export function contextSummarizer(options: {
             return options.generate(request);
         }), timeout, cancelled]).then(output => {
             if (stopped) return;
-            const points = output.split('\n').map(line => line.trim()).filter(line => /^[-•]\s*\S/.test(line) && !/^[-•]\s*无$/.test(line));
+            const rows = output.trim().split('\n').map(line => line.trim()).filter(Boolean);
+            const empty = rows.length === 1 && /^[-•]\s*无$/.test(rows[0]!);
+            const points = rows.filter(line => /^[-•]\s*\S/.test(line) && !/^[-•]\s*无$/.test(line));
+            if (!empty && (!points.length || points.length > 12 || output.length > 6000)) {
+                throw new Error('摘要格式无效');
+            }
             const text = points.length ? `${SUMMARY_HEADER}（更早的聊天原文没放进来，这是要点，只作参考；和下面从记忆里想起来的对不上时，以这里为准）：\n${points.join('\n')}]` : undefined;
-            cached = { key, text };
             if (options.file) writeJsonAtomic(options.file, text === undefined ? { key } : { key, text });
+            cached = { key, text };
             failedAt.delete(key);
             options.log(`上下文要点：较早的 ${count} 条整理成 ${points.length} 条（请求约 ${tokens} token，用了 ${((now() - began) / 1000).toFixed(1)} 秒）`);
-        }, error => {
+        }).catch(error => {
             if (stopped) return;
             // 整理失败：这一段过一会儿再试；在那之前照旧放原文
             failedAt.set(key, now());

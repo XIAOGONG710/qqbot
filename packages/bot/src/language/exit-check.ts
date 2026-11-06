@@ -139,6 +139,7 @@ const SCRIPT = /\[Start a new Chat\]|^\s*\[(?:当前时间|距上一条消息|�
  * 她照抄出来就是在假装发语音、发图，那一行不发
  */
 const PHOTO_TOKEN = /^<photo:[a-f0-9]{12}>$/im;
+const OTHER_MEDIA = /语音|电话|视频|红包|寄/;
 const MEDIA_LINE = /^\s*\[(?:语音|图片)(?:\]|[ ，：])|^\s*\[动画表情：/;
 
 /**
@@ -163,9 +164,12 @@ export function inspectReply(reply: string, banned: readonly string[], speech?: 
         if (media) issues.push({ line, kind: 'media', match: media[0].trim() });
         const script = SCRIPT.exec(text);
         if (script) issues.push({ line, kind: 'script', match: script[0].trim() });
-        const promise = PROMISE.exec(text.trim().replace(DM_SENT, '私信'));
         // 这一条回复里真带着一张照片（photos.ts 已校验过编号）：“翻出来给你看”“发你”说的就是它，不算她做不到的承诺
-        if (promise && !(imageStickers && /表情包/.test(text)) && !PHOTO_TOKEN.test(reply)) issues.push({ line, kind: 'promise', match: promise[0] });
+        for (const clause of text.trim().replace(DM_SENT, '私信').split(/[，。！？、,.!?；;]/)) {
+            const promise = PROMISE.exec(clause);
+            const allowedMedia = !OTHER_MEDIA.test(clause) && ((imageStickers && /表情包/.test(clause)) || PHOTO_TOKEN.test(reply));
+            if (promise && !allowedMedia) issues.push({ line, kind: 'promise', match: promise[0] });
+        }
         // banned 里以“re:”开头的是正则（书面腔 / 模型腔，expression.ts 的 STILTED_WORDS），其余是子串
         for (const word of banned) {
             const hit = word.startsWith('re:') ? new RegExp(word.slice(3)).exec(text)?.[0] : text.includes(word) ? word : undefined;
@@ -262,6 +266,7 @@ export interface ReviewOptions {
     imageStickers?: boolean;
     /** 在原来的提示词末尾加上这句说明重新生成，返回清理过的回复 */
     regenerate: (note: string) => Promise<string>;
+    onRewriteAccepted?: () => void;
     log: (message: string) => void;
 }
 
@@ -320,6 +325,12 @@ function settle(reply: string, issues: readonly ExitIssue[]): { reply: string; d
     return { reply: dropLines(reply, hard), dropped: hard.length > 0 };
 }
 
+/** 所有生成步骤之后的最后一关；只清理/删行，不再调用模型。 */
+export function finalizeReply(reply: string, options: ReviewOptions): string {
+    const final = strip(reply, options);
+    return settle(final.reply, final.issues).reply;
+}
+
 export async function reviewReply(reply: string, options: ReviewOptions): Promise<string> {
     const first = strip(reply, options);
     if (first.issues.length === 0) return first.reply;
@@ -327,6 +338,7 @@ export async function reviewReply(reply: string, options: ReviewOptions): Promis
     let rewritten: string;
     try {
         rewritten = await options.regenerate(rewriteNote(first.reply, first.issues, options.userName));
+        options.onRewriteAccepted?.();
     } catch (error) {
         options.log(`出口检查：重写失败（${error instanceof Error ? error.message : String(error)}），用第一版、删掉命中的行`);
         return settle(first.reply, first.issues).reply;
@@ -400,7 +412,9 @@ export function crisisFallback(level: CrisisLevel): string {
  * 还有问题就发固定兜底。重写失败也发兜底。
  */
 export async function reviewCrisisReply(reply: string, options: ReviewOptions, level: CrisisLevel = 'high'): Promise<string> {
+    if (!reply.trim()) return crisisFallback(level);
     const base = await reviewReply(reply, options);
+    if (!base.trim()) return crisisFallback(level);
     const first = inspectCrisisReply(base);
     if (first.length === 0) return base;
     const LABEL: Record<CrisisIssue['kind'], string> = { method: '提到方式方法', dismiss: '驱离式敷衍', visit: '答应过去找他', close: '收尾', template: '关怀八股' };
@@ -416,6 +430,7 @@ export async function reviewCrisisReply(reply: string, options: ReviewOptions, l
     // 重写出来的话也不能带做不到的事、禁用词（平常出口检查里的硬规则）
     const hard = inspectReply(rewritten, options.banned).filter(issue => HARD.has(issue.kind));
     if (again.length === 0 && hard.length === 0 && rewritten.trim()) {
+        options.onRewriteAccepted?.();
         options.log('危机回合出口检查：重写后通过');
         return rewritten;
     }

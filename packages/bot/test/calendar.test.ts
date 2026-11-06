@@ -6,6 +6,7 @@ import { afterEach, describe, test } from 'node:test';
 import { calendarFetcher, parseHolidayApi, useRealCalendar } from '../src/world/calendar.ts';
 import { describeWorld, summarizeWorld, worldAt } from '../src/world/world.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 const at = (iso: string) => new Date(`${iso}+08:00`);
 const payload = (year = 2026) => ({ holiday: {
@@ -84,7 +85,7 @@ describe('现实法定日历（ADR 0231）', () => {
     });
 
     test('进入世界，但不改学校课表', () => {
-        const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+        const card = loadCharacterCard(syntheticCardPath('boyfriend'));
         useRealCalendar({ day: date => date === '2026-10-10' ? { date, name: '国庆节（班）', kind: 'workday', real: true } : undefined });
         const now = worldAt(card.herWorld!, card.schedule!, at('2026-10-10T14:00'))!;
         assert.equal(now.publicHoliday?.kind, 'workday');

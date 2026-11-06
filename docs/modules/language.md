@@ -1,6 +1,6 @@
 # 模块：说话（语言）
 
-> 由 `packages/bot/src/modules.ts` 生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
+> 由 `packages/bot/src/platform/modules.ts` 清单生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
 
 **管什么**：她每一句话怎么说：提示词怎么拼、这一轮的意图、每条多长几条、口头禅和书面词、出口检查（助手腔 / 禁用词 / 医书词）、小梗、被打断、关系阶段、陪玩。
 
@@ -99,4 +99,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0091](../adr/0091-reply-shape.md)、[ADR 0095](../adr/0095-filler-turns.md)、[ADR 0096](../adr/0096-split-and-share.md)、[ADR 0099](../adr/0099-too-smooth.md)、[ADR 0113](../adr/0113-relationship-stage.md)、[ADR 0114](../adr/0114-running-jokes.md)、[ADR 0115](../adr/0115-interruptions.md)、[ADR 0111](../adr/0111-together.md)、[ADR 0121](../adr/0121-odd-words.md)、[ADR 0137](../adr/0137-fact-check.md)、[ADR 0138](../adr/0138-idioms.md)、[ADR 0167](../adr/0167-selfcheck.md)、[ADR 0193](../adr/0193-nightly-speech-notes.md)、[ADR 0195](../adr/0195-speech-feedback.md)、[ADR 0196](../adr/0196-speech-trend.md)、[ADR 0198](../adr/0198-read-through-fixes.md)、[ADR 0202](../adr/0202-depth-routing.md)、[ADR 0205](../adr/0205-trope-shares.md)、[ADR 0203](../adr/0203-fact-check-him.md)、[ADR 0214](../adr/0214-after-no.md)、[ADR 0221](../adr/0221-chat-review.md)、[ADR 0256](../adr/0256-speaking-direct-answer.md)、[ADR 0257](../adr/0257-latest-turn-budget.md)
+[ADR 0091](../adr/0091-reply-shape.md)、[ADR 0095](../adr/0095-filler-turns.md)、[ADR 0096](../adr/0096-split-and-share.md)、[ADR 0099](../adr/0099-too-smooth.md)、[ADR 0113](../adr/0113-relationship-stage.md)、[ADR 0114](../adr/0114-running-jokes.md)、[ADR 0115](../adr/0115-interruptions.md)、[ADR 0111](../adr/0111-together.md)、[ADR 0121](../adr/0121-odd-words.md)、[ADR 0137](../adr/0137-fact-check.md)、[ADR 0138](../adr/0138-idioms.md)、[ADR 0167](../adr/0167-selfcheck.md)、[ADR 0193](../adr/0193-nightly-speech-notes.md)、[ADR 0195](../adr/0195-speech-feedback.md)、[ADR 0196](../adr/0196-speech-trend.md)、[ADR 0198](../adr/0198-read-through-fixes.md)、[ADR 0202](../adr/0202-depth-routing.md)、[ADR 0205](../adr/0205-trope-shares.md)、[ADR 0203](../adr/0203-fact-check-him.md)、[ADR 0214](../adr/0214-after-no.md)、[ADR 0221](../adr/0221-chat-review.md)、[ADR 0256](../adr/0256-speaking-direct-answer.md)、[ADR 0257](../adr/0257-latest-turn-budget.md)、[ADR 0321](../adr/0321-language-review.md)

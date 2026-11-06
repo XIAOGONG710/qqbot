@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import { blockReason, candidatesOn, planFrom, usedOn, withRoom, type Candidate, type ProactiveInput, type ProactiveRecord } from '../src/proactive/proactive.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // ADR 0124：给主动名额留余地。10-22：他一整天没回，早安 + 催他 ×2 + 冷场把每天 4 条占满，随口说件事、下课、睡前全被挤掉
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (h: number, m = 0) => new Date(2026, 10, 10, h, m).getTime();
 const day = new Date(2026, 10, 10);

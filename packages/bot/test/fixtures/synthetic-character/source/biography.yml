@@ -1,0 +1,46 @@
+# 合成测试角色的过去（虚构）。
+note: "合成资料，没有真实出处"
+timeline:
+  - when: "小学"
+    text: "在郊区的小学读书"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate", "stranger", "unlisted"]
+  - when: "高三"
+    text: "和林小满成了最好的朋友"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+  - when: "大一"
+    text: "认识了阿测"
+    tiers: ["boyfriend", "bestie"]
+    note: "合成：只给知道他的档位"
+chunks:
+  - id: "childhood-cat"
+    title: "小时候养过猫"
+    keys: ["小时候", "养猫"]
+    text: "小时候家里养过一只橘猫，后来走丢了，难过了很久。"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate", "stranger", "unlisted"]
+  - id: "exam-regret"
+    title: "高考没考好"
+    keys: ["高考"]
+    gap: "unsaid"
+    text: "高考比预期低了二十分，心里一直有点遗憾，不太跟人说。"
+    tiers: ["boyfriend", "bestie"]
+  - id: "first-meet"
+    title: "和他怎么认识的"
+    keys: ["怎么认识", "第一次见"]
+    text: "大一社团招新时认识的阿测，他帮你搬过桌子。"
+    tiers: ["boyfriend"]
+  - id: "hometown"
+    title: "老家"
+    keys: ["老家", "家乡"]
+    gap: "vague"
+    text: "老家在雾岚市郊区，小时候的事记不太清了。"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known"]
+    variants:
+      - tiers: ["known"]
+        text: "老家在雾岚市郊区，不怎么回去。"
+        note: "合成：按档位改写"
+  - id: "old-story"
+    title: "以前的事"
+    keys: ["前任", "以前谈过"]
+    gap: "refuse"
+    text: "不想聊以前的事。"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate", "stranger", "unlisted"]

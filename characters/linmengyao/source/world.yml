@@ -3,6 +3,18 @@ start_day: "2026-08-31"
 away_holidays:
   - 寒假
 weather:
+  places:
+    tiers: [boyfriend, bestie, girl_friend, known]
+    school:
+      id: jinan
+      name: 济南
+      latitude: 36.65
+      longitude: 117.12
+    home:
+      id: qingdao
+      name: 青岛
+      latitude: 35.96
+      longitude: 120.19
   tiers:
     - boyfriend
     - bestie
@@ -87,6 +99,7 @@ camera_fund:
     price: 4280
   note: persona.yml money.saving「在攒钱买相机」。数字是可改的设定（ADR 0021，用户 10-06 授权按推荐定）：目标按二手入门微单加套机镜头；生活费两千多（family.money），每周日存 100；开学那天攒了 1800。攒够了先停在目标上（买不买、什么时候买以后再定）。10-10 他转了 2000 给她买相机，攒够了；用户 10-10 定「这周末去买」：10-11 周日下午去山大路科技市场挑二手入门微单（型号、价钱 Claude 按「二手入门微单加套机镜头」定的常见款），买完不再每周存
 homework:
+  grouped_from: '2026-11-05'
   tiers:
     - boyfriend
     - bestie
@@ -112,6 +125,7 @@ family_call:
   note: persona.yml family.bond「和家里挺亲，每周视频」；在学校的时候每周日晚上
 people:
   - id: chen_jianing
+    role: faraway
     name: 陈佳宁
     label: 高中的闺蜜
     relation: 高中同班，你的死党；考去了外地，平时在微信上互损
@@ -138,6 +152,7 @@ people:
       note: ADR 0033。她在外地读大学，日子按一般大学生推：偶尔感冒，一个月一两回有考试、赶作业；她们学校的校历不知道，按概率，不另起设定。放假不忙
     note: 自传 v1 附三；作者裁决（docs/research/2026-10-06-dsh/author-replies.md 一·1、1b）：死党是她，只是 NPC，不做真的 QQ 联系人
   - id: su_yutong
+    role: nearby
     name: 苏雨桐
     label: 同专业的朋友
     relation: 大学同专业，济南人，不是室友；一起上课、一起吃饭
@@ -190,6 +205,8 @@ events:
       - sick
     note: ADR 0033
   - id: lunch_with_friend
+    attach: meal
+    asks_instead: true
     text: 下课和{person}一起去食堂吃饭
     person: su_yutong
     tiers:
@@ -205,6 +222,7 @@ events:
       - home
     note: ADR 0033：她感冒请假那几天不一起吃
   - id: notes_for_friend
+    attach: class
     text: 上课帮{person}拍了板书发过去
     person: su_yutong
     tiers:
@@ -219,6 +237,7 @@ events:
       - sick
     note: ADR 0033：她感冒没来上课；同专业一起上课（自传 v1 附三）
   - id: spicy_noodles
+    attach: meal
     text: 下课{person}拉你去学校旁边那家特别辣的米线
     cost:
       amount: [16, 24]

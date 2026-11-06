@@ -1,6 +1,6 @@
 # 模块：她的世界（世界账）
 
-> 由 `packages/bot/src/modules.ts` 生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
+> 由 `packages/bot/src/platform/modules.ts` 清单生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
 
 **管什么**：她那边正在发生的事：天气、节日、NPC、障碍、生活事件与选择、可重放的动作队列；世界状态是所有“她那边”的事实来源。
 
@@ -25,6 +25,7 @@
 - `world/life-events.ts`
 - `world/life-selector.ts`
 - `world/action-queue.ts`
+- `world/world-config.ts`
 
 ## 开关
 
@@ -67,4 +68,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0007](../adr/0007-schedule-and-reply-timing.md)、[ADR 0026](../adr/0026-diary-of-her-day.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0216](../adr/0216-world-threads.md)、[ADR 0217](../adr/0217-diary-lookback.md)、[ADR 0227](../adr/0227-real-air-quality.md)、[ADR 0228](../adr/0228-real-daylight.md)、[ADR 0229](../adr/0229-world-needs-projection.md)、[ADR 0230](../adr/0230-holiday-in-world.md)、[ADR 0231](../adr/0231-real-public-calendar.md)、[ADR 0232](../adr/0232-real-transport-facts.md)
+[ADR 0007](../adr/0007-schedule-and-reply-timing.md)、[ADR 0026](../adr/0026-diary-of-her-day.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0216](../adr/0216-world-threads.md)、[ADR 0217](../adr/0217-diary-lookback.md)、[ADR 0227](../adr/0227-real-air-quality.md)、[ADR 0228](../adr/0228-real-daylight.md)、[ADR 0229](../adr/0229-world-needs-projection.md)、[ADR 0230](../adr/0230-holiday-in-world.md)、[ADR 0231](../adr/0231-real-public-calendar.md)、[ADR 0232](../adr/0232-real-transport-facts.md)、[ADR 0323](../adr/0323-world-review-fixes.md)、[ADR 0324](../adr/0324-course-groups-and-world-config.md)、[ADR 0325](../adr/0325-local-calendar-boundaries.md)、[ADR 0330](../adr/0330-promise-source-effects-and-world-identity.md)

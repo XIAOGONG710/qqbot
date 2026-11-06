@@ -70,6 +70,15 @@ test('系统时钟明显回拨后清理短期媒体', () => {
     assert.equal(store.get('android-clock', record.mediaId), undefined);
 });
 
+test('内存媒体仓库停止后清空旧数据并永久拒绝新写入', () => {
+    const store = new MemoryCompanionMediaStore({ id: () => '0123456789abcdef' });
+    const oldData = png('private'); const old = store.put({ clientId: 'android-stop', mime: 'image/png', data: oldData, bytes: oldData.length });
+    store.stop(); store.stop();
+    assert.equal(store.get('android-stop', old.mediaId), undefined);
+    const newData = png('new'); assert.throws(() => store.put({ clientId: 'android-stop', mime: 'image/png', data: newData, bytes: newData.length }), /已经停止/);
+    assert.equal(store.clear(), 0);
+});
+
 test('媒体 HTTP 上传必须使用已配对 session，并返回短期 mediaId', async () => {
     let now = 10_000;
     const pairing = new MemoryPairingStore(60_000);

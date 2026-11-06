@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { homeworkSprints } from '../src/life/actions.ts';
 import { actionQueue, settlingWorld } from '../src/world/action-queue.ts';
@@ -15,10 +15,11 @@ import { classesOn, formatDate, herDay } from '../src/life/schedule.ts';
 import { auditLedgerCoverage, auditLifeStatus } from '../src/sim/life-audit.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { herStatus } from '../src/language/status-line.ts';
-import { worldAt, worldState, type WorldAction } from '../src/world/world.ts';
+import { worldAt, worldState, type World, type WorldAction } from '../src/world/world.ts';
 import { dayFrom, useRealWeather, type HourWeather } from '../src/world/weather.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const card = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = card.schedule!;
 const herWorld = card.herWorld!;
 const at = (text: string) => new Date(`${text}+08:00`);
@@ -27,16 +28,19 @@ const plain: LifeSources = {
     worldAt: time => worldAt(herWorld, schedule, time), events: () => [],
     ...(herWorld.body ? { bodyAt: (time: Date) => bodyAt(herWorld.body!, schedule, time) } : {}),
 };
+/** 合成卡上的 NPC 事件（和室友一起吃午饭 lunch_with_friend、买奶茶、高中闺蜜打电话……） */
+const npcWorld: World = herWorld;
+const npcSources: LifeSources = { ...plain, worldAt: time => worldAt(npcWorld, schedule, time) };
 
 /** 从 start 起每小时推一次到 end，返回她自己的行动（事件账里 life: 开头的）和日志 */
-function live(dir: string, start: Date, end: Date, restartAt?: Date, sources: LifeSources = plain) {
+function live(dir: string, start: Date, end: Date, restartAt?: Date, sources: LifeSources = plain, herWorldUsed: World = herWorld) {
     let clock = start.getTime();
     const logs: string[] = [];
     const open = () => {
-        const ledger = worldState(herWorld, schedule, message => logs.push(message), join(dir, 'world'), () => clock);
+        const ledger = worldState(herWorldUsed, schedule, message => logs.push(message), join(dir, 'world'), () => clock);
         const queue = actionQueue(join(dir, 'world', 'action-queue.json'), message => logs.push(message));
         const world = settlingWorld(ledger, queue, () => clock);
-        const executor = lifeExecutor({ ...sources, worldAt: time => world.at(herWorld, schedule, time), events: () => ledger.events() }, queue, { since: start, log: message => logs.push(message) });
+        const executor = lifeExecutor({ ...sources, worldAt: time => world.at(herWorldUsed, schedule, time), events: () => ledger.events() }, queue, { since: start, log: message => logs.push(message) });
         return { world, executor };
     };
     let { world, executor } = open();
@@ -102,7 +106,7 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         assert.ok('intent' in free && ['leisure', 'study', 'rest', 'read_book', 'work_on_project'].includes(free.intent.kind));
     });
 
-    test('买相机那天：行动账让出出门前、山大路和回来摆弄的三段，不再同时记作息活动', () => {
+    test('买相机那天：行动账让出出门前、相机店和回来摆弄的三段，不再同时记作息活动', () => {
         const gift: WorldAction = {
             id: '1:camera-gift:1:receive_money', kind: 'receive_money', day: '2026-10-10', at: '2026-10-10T15:41',
             contact: 1, episode: 'camera-gift', amount: 2000, target: 'camera_fund',
@@ -110,14 +114,14 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         const cameraDay: LifeSources = { ...plain, worldAt: time => worldAt(herWorld, schedule, time, [gift]) };
         const spans = dayBusy(cameraDay, at('2026-10-11T13:00:00')).filter(span => /相机/.test(span.text));
         assert.deepEqual(spans.map(span => [span.start.toISOString(), span.end.toISOString(), span.text]), [
-            ['2026-10-11T04:30:00.000Z', '2026-10-11T06:00:00.000Z', '在宿舍准备出门，14:00 去山大路科技市场买相机'],
-            ['2026-10-11T06:00:00.000Z', '2026-10-11T08:30:00.000Z', '去山大路科技市场买相机'],
-            ['2026-10-11T08:30:00.000Z', '2026-10-11T10:00:00.000Z', '刚买完相机回到宿舍，在摆弄新相机'],
+            ['2026-10-11T04:30:00.000Z', '2026-10-11T06:00:00.000Z', '在宿舍准备出门，14:00 去城南的二手相机店买相机'],
+            ['2026-10-11T06:00:00.000Z', '2026-10-11T08:00:00.000Z', '去城南的二手相机店买相机'],
+            ['2026-10-11T08:00:00.000Z', '2026-10-11T09:30:00.000Z', '刚买完相机回到宿舍，在摆弄新相机'],
         ]);
         for (const [time, until] of [
             ['2026-10-11T13:30:00', '2026-10-11T14:00:00'],
-            ['2026-10-11T15:00:00', '2026-10-11T16:30:00'],
-            ['2026-10-11T17:00:00', '2026-10-11T18:00:00'],
+            ['2026-10-11T15:00:00', '2026-10-11T16:00:00'],
+            ['2026-10-11T17:00:00', '2026-10-11T17:30:00'],
         ] as const) {
             const choice = chooseAt(at(time), cameraDay);
             assert.ok('skipTo' in choice && choice.skipTo.getTime() === at(until).getTime(), `${time}: ${JSON.stringify(choice)}`);
@@ -143,7 +147,7 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         assert.deepEqual(motivate(project, { at: new Date().toISOString(), energy: 60, hunger: 30, stress: 76 }, '躺着歇会儿').action,
             { kind: 'rest', subject: '躺着歇会儿' });
         assert.deepEqual(motivate(project, { at: new Date().toISOString(), energy: 60, hunger: 30, stress: 50 }).action, project);
-        const study = { kind: 'study' as const, subject: '计算机网络技术的作业' };
+        const study = { kind: 'study' as const, subject: '数据结构的作业' };
         assert.deepEqual(motivate(study, { at: new Date().toISOString(), energy: 60, hunger: 30, stress: 90 }).action, study,
             '压力高只降低项目效用，不能盖掉学习和截止时间');
     });
@@ -177,13 +181,13 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         const base = worldAt(herWorld, schedule, time)!;
         const urgent = {
             ...base,
-            homework: [{ course: '数据库', due: at('2026-10-15T12:00:00'), done: false, doneAt: at('2026-10-14T22:00:00') }],
+            homework: [{ course: '数据结构', due: at('2026-10-15T12:00:00'), done: false, doneAt: at('2026-10-14T22:00:00') }],
         };
         const enabled: LifeSources = { ...plain, projectChoice: true, worldAt: () => urgent };
         const picked = chooseAt(time, enabled);
         assert.ok('intent' in picked);
         if (!('intent' in picked)) return;
-        assert.deepEqual([picked.intent.kind, picked.intent.subject], ['study', '数据库作业']);
+        assert.deepEqual([picked.intent.kind, picked.intent.subject], ['study', '数据结构作业']);
 
         const status = herStatus(schedule, time, {
             extraFree: readingActivities(card.books), world: urgent,
@@ -191,16 +195,16 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             projectChoice: { events: [], books: card.books },
         });
         assert.equal(status.project?.action.subject, picked.intent.subject);
-        assert.equal(status.doing, '在赶数据库作业');
+        assert.equal(status.doing, '在赶数据结构作业');
         const audited: LifeEvent = {
             id: lifeActionIdFor(time, 'study'), actor: 'linmengyao', kind: 'study', day: '2026-10-13',
             startedAt: time.toISOString(), endedAt: new Date(time.getTime() + 30 * 60_000).toISOString(),
-            source: 'simulation', result: 'succeeded', subject: '数据库作业',
+            source: 'simulation', result: 'succeeded', subject: '数据结构作业',
         };
         assert.deepEqual(auditLifeStatus([audited], { ...enabled, events: () => [audited] }), []);
 
         const disabled = chooseAt(time, { ...plain, worldAt: () => urgent });
-        assert.ok(!('intent' in disabled) || disabled.intent.subject !== '数据库作业', '默认关闭时沿用原选择器');
+        assert.ok(!('intent' in disabled) || disabled.intent.subject !== '数据结构作业', '默认关闭时沿用原选择器');
         const lesson = classesOn(schedule, at('2026-10-12T12:00:00')).lessons[0]!;
         const hard = chooseAt(lesson.start, enabled);
         assert.ok('intent' in hard && hard.intent.kind === 'attend_class');
@@ -216,16 +220,17 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
     });
 
     test('NPC 事实不是提示词装饰：一起吃饭附在午饭行动，微信来往成为独立的类型化行动', () => {
-        const lunch = worldAt(herWorld, schedule, at('2026-10-13T12:00:00'))!.routine!.meals.find(m => m.kind === 'lunch')!;
-        const together = chooseAt(lunch.start, plain);
+        const lunch = worldAt(npcWorld, schedule, at('2026-10-13T12:00:00'))!.routine!.meals.find(m => m.kind === 'lunch')!;
+        const together = chooseAt(lunch.start, npcSources);
         assert.ok('intent' in together);
-        if ('intent' in together) assert.deepEqual([together.intent.kind, together.intent.target], ['eat', 'su_yutong']);
+        if ('intent' in together) assert.deepEqual([together.intent.kind, together.intent.target], ['eat', 'roommate']);
 
-        const chat = chooseAt(at('2026-10-07T22:35:00'), plain);
+        // 合成卡上 11-08 14:17 和室友去买了奶茶（卡上的事件）：那一刻成为独立的 NPC 来往
+        const chat = chooseAt(at('2026-11-08T14:17:00'), plain);
         assert.ok('intent' in chat);
         if ('intent' in chat) assert.deepEqual(
             [chat.intent.kind, chat.intent.target, chat.intent.subject],
-            ['interact_npc', 'chen_jianing', '在微信上跟陈佳宁聊了会儿'],
+            ['interact_npc', 'roommate', '在微信上跟许小禾聊了会儿'],
         );
     });
 
@@ -371,7 +376,8 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
             try {
                 const date = meeting('p-dinner', '和他去东门吃麻辣烫', dinner.start, 90);
                 const lead = new Date(date.start.getTime() - 15 * 60_000);
-                const cancelledAt = at('2026-10-18T18:30:00');
+                // 合成卡 10-18 的晚饭是 18:05–18:35：取消落在饭点过后，不在食堂再吃一顿，接着排别的
+                const cancelledAt = at('2026-10-18T18:40:00');
                 const { events, logs } = liveMeet(dir, at('2026-10-18T15:00:00'), at('2026-10-18T22:00:00'), clock => (clock < cancelledAt.getTime() ? [date] : []));
                 const meet = events.filter(event => event.kind === 'meet');
                 assert.deepEqual(meet.map(e => [e.startedAt, e.endedAt]), [[lead.toISOString(), cancelledAt.toISOString()]]);
@@ -387,8 +393,8 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         test('出门前改了时间：按新的时间出门，旧时间那段照常过', () => {
             const dir = mkdtempSync(join(tmpdir(), 'life-meet-'));
             try {
-                const first = meeting('p-walk', '和他去趵突泉逛逛', at('2026-10-18T15:00:00'), 90);
-                const moved = meeting('p-walk', '和他去趵突泉逛逛', at('2026-10-18T19:00:00'), 90);
+                const first = meeting('p-walk', '和他去湖边逛逛', at('2026-10-18T15:00:00'), 90);
+                const moved = meeting('p-walk', '和他去湖边逛逛', at('2026-10-18T19:00:00'), 90);
                 const movedAt = at('2026-10-18T14:00:00').getTime();
                 const { events } = liveMeet(dir, at('2026-10-18T13:00:00'), at('2026-10-18T22:00:00'), clock => [clock < movedAt ? first : moved]);
                 const meet = events.filter(event => event.kind === 'meet');
@@ -416,20 +422,20 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         });
     });
 
-    test('真实天气下午三点开始下雨（G2）：图书馆赶作业停在三点，之后在宿舍赶作业；三点以前那段不倒着改', () => {
+    test('真实天气上午十一点开始下雨（G2）：出门拍照停在十一点，之后在宿舍整理照片；十一点以前那段不倒着改', () => {
         const dir = mkdtempSync(join(tmpdir(), 'life-rain-'));
-        // 11-29（周日）下午打算在图书馆赶作业（原来用 10-24、再后来 11-01；每次空闲活动的抽签列表变了，具体哪天跟着挪：10-21 起补了日常活动）
-        const date = '2026-11-29';
-        const rain = [15, 16, 17];
+        // 11-08（周日）上午打算拿胶片机去湖边拍照（合成卡上出门的打算只有上午那一条；空闲活动的抽签列表变了，具体哪天跟着挪）
+        const date = '2026-11-08';
+        const rain = [11, 12, 13];
         const hours: Record<string, HourWeather> = Object.fromEntries(Array.from({ length: 24 }, (_, h) => [`${date}T${String(h).padStart(2, '0')}`,
             { t: 16, p: rain.includes(h - 1) ? 1.2 : 0, c: rain.includes(h) ? 61 : 2, o: 1 as const }]));
-        useRealWeather({ day: (place, day, until) => (place === 'jinan' && day === date ? dayFrom(hours, day, until) : undefined) });
+        useRealWeather({ day: (place, day, until) => (place === 'school-town' && day === date ? dayFrom(hours, day, until) : undefined) });
         try {
-            const { events } = live(dir, at('2026-11-29T12:00:00'), at('2026-11-29T19:00:00'));
-            const library = events.filter(event => event.subject === '在图书馆赶作业');
-            const dorm = events.filter(event => event.subject === '在宿舍赶作业');
-            const three = at('2026-11-29T15:00:00');
-            assert.ok(library.length > 0, '下雨前在图书馆');
+            const { events } = live(dir, at('2026-11-08T08:00:00'), at('2026-11-08T14:00:00'));
+            const library = events.filter(event => event.subject === '拿胶片机去湖边拍照');
+            const dorm = events.filter(event => event.subject === '在宿舍整理照片');
+            const three = at('2026-11-08T11:00:00');
+            assert.ok(library.length > 0, '下雨前在湖边拍照');
             assert.ok(library.every(event => Date.parse(event.endedAt) <= three.getTime()), library.map(event => `${event.startedAt}–${event.endedAt}`).join('，'));
             assert.ok(library.some(event => event.endedAt === three.toISOString()), '停在开始下雨的那一刻');
             assert.ok(dorm.some(event => event.startedAt === three.toISOString()), dorm.map(event => event.startedAt).join('，'));
@@ -442,29 +448,30 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
     test('三天半没人聊天：一件接一件、不重叠；每天睡觉、两顿饭、课都在；喂猫、洗澡的时候不记别的', () => {
         const dir = mkdtempSync(join(tmpdir(), 'life-selector-'));
         try {
-            const start = at('2026-10-12T08:00:00');
-            const { events, logs } = live(dir, start, at('2026-10-15T21:00:00'));
+            // 合成卡上 11-02 那一周摄影项目（拿胶片机出去拍）推进得够：用这三天半
+            const start = at('2026-11-02T08:00:00');
+            const { events, logs } = live(dir, start, at('2026-11-05T21:00:00'), undefined, npcSources, npcWorld);
             const sorted = [...events].sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
             for (let i = 1; i < sorted.length; i++) {
                 assert.ok(Date.parse(sorted[i]!.startedAt) >= Date.parse(sorted[i - 1]!.endedAt), `${sorted[i - 1]!.id} 和 ${sorted[i]!.id} 重叠`);
             }
             assert.deepEqual(logs.filter(line => line.includes('排不上') || line.includes('死信')), []);
             const of = (day: string, kind: string) => events.filter(e => e.kind === kind && formatDate(herDay(schedule, new Date(e.startedAt))) === day);
-            for (const day of ['2026-10-12', '2026-10-13', '2026-10-14']) {
+            for (const day of ['2026-11-02', '2026-11-03', '2026-11-04']) {
                 assert.equal(of(day, 'eat').length, 2, `${day} 两顿饭`);
                 const lessons = classesOn(schedule, new Date(`${day}T12:00:00+08:00`)).lessons;
                 assert.equal(of(day, 'attend_class').length, lessons.length, `${day} 的课`);
             }
-            // 02:00 入睡算第二天（她的一天从 02:00 换）：10-13 到 10-15 每天一次
-            for (const day of ['2026-10-13', '2026-10-14', '2026-10-15']) assert.equal(of(day, 'sleep').length, 1, `${day} 睡觉`);
+            // 02:00 入睡算第二天（她的一天从 02:00 换）：11-03 到 11-05 每天一次
+            for (const day of ['2026-11-03', '2026-11-04', '2026-11-05']) assert.equal(of(day, 'sleep').length, 1, `${day} 睡觉`);
             // 世界里的事那段时间不记别的
-            for (const day of ['2026-10-12', '2026-10-13', '2026-10-14']) {
-                for (const span of dayBusy(plain, new Date(`${day}T20:00:00+08:00`))) {
+            for (const day of ['2026-11-02', '2026-11-03', '2026-11-04']) {
+                for (const span of dayBusy(npcSources, new Date(`${day}T20:00:00+08:00`))) {
                     const clash = events.find(e => e.kind !== 'eat' && Date.parse(e.startedAt) < span.end.getTime() && Date.parse(e.endedAt) > span.start.getTime());
                     assert.equal(clash, undefined, `${day} ${span.text} 和 ${clash?.id} 撞了`);
                 }
                 // 赶作业那一段（ADR 0042）：只有学习
-                for (const sprint of homeworkSprints(worldAt(herWorld, schedule, new Date(`${day}T19:00:00+08:00`)))) {
+                for (const sprint of homeworkSprints(worldAt(npcWorld, schedule, new Date(`${day}T19:00:00+08:00`)))) {
                     const clash = events.find(e => e.kind !== 'study' && Date.parse(e.startedAt) < sprint.end.getTime() && Date.parse(e.endedAt) > sprint.start.getTime());
                     assert.equal(clash, undefined, `${day} 赶${sprint.course}作业的时候在 ${clash?.id}`);
                 }
@@ -476,15 +483,15 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
                 assert.ok(events.some(other => other.kind === 'attend_class' && other.startedAt === e.endedAt), `${e.id} 停下的时候没有课`);
             }
             const social = events.filter(e => ['eat', 'attend_class', 'interact_npc'].includes(e.kind) && e.target);
-            assert.ok(social.some(e => e.target === 'su_yutong'), '72 小时里和苏雨桐的来往进入类型化行动账');
+            assert.ok(social.some(e => e.target === 'roommate'), '72 小时里和室友的来往进入类型化行动账');
             const project = events.filter(e => e.kind === 'work_on_project' && e.target === 'photography_growth');
             const projectMinutes = project.reduce((sum, e) => sum + (Date.parse(e.endedAt) - Date.parse(e.startedAt)) / 60_000, 0);
             assert.ok(projectMinutes >= 120, `摄影项目只推进了 ${projectMinutes} 分钟`);
-            assert.deepEqual(auditLifeStatus(events, { ...plain, events: () => events }), [], '事件账里的行动和同一时刻状态行规则一致');
-            assert.deepEqual(auditLedgerCoverage(events, { ...plain, events: () => events }), [], '反方向：状态行说她在做的，账上那一刻都有行动');
+            assert.deepEqual(auditLifeStatus(events, { ...npcSources, events: () => events }), [], '事件账里的行动和同一时刻状态行规则一致');
+            assert.deepEqual(auditLedgerCoverage(events, { ...npcSources, events: () => events }), [], '反方向：状态行说她在做的，账上那一刻都有行动');
             // 反例：拿掉一段摄影项目，状态行那段还说她在修片，审计要报出来
             const dropped = project.find(e => Date.parse(e.endedAt) - Date.parse(e.startedAt) >= 30 * 60_000)!;
-            const holes = auditLedgerCoverage(events.filter(e => e.id !== dropped.id), plain);
+            const holes = auditLedgerCoverage(events.filter(e => e.id !== dropped.id), npcSources);
             assert.equal(holes.length, 1, JSON.stringify(holes));
             assert.equal(holes[0]!.expectedKind, 'work_on_project');
             assert.ok(Date.parse(holes[0]!.from) <= Date.parse(dropped.startedAt) && Date.parse(holes[0]!.to) >= Date.parse(dropped.endedAt));
@@ -497,12 +504,13 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
         const a = mkdtempSync(join(tmpdir(), 'life-needs-a-'));
         const b = mkdtempSync(join(tmpdir(), 'life-needs-b-'));
         try {
-            const start = at('2026-10-12T08:00:00');
-            const end = at('2026-10-26T08:00:00');
+            // 合成卡的生活比较松：10 月中以后的两周压力大半时间落在 0；9 月上旬那两周不会
+            const start = at('2026-09-07T08:00:00');
+            const end = at('2026-09-21T08:00:00');
             const anchor: NeedsSnapshot = { at: start.toISOString(), energy: 68, hunger: 35, stress: 24 };
             const sources: LifeSources = { ...plain, needsAnchor: anchor };
             const direct = live(a, start, end, undefined, sources).events;
-            const restarted = live(b, start, end, at('2026-10-19T08:00:00'), sources).events;
+            const restarted = live(b, start, end, at('2026-09-14T08:00:00'), sources).events;
             const shape = (events: readonly LifeEvent[]) => events.map(e => [e.id, e.endedAt, e.result, e.subject, e.target]);
             assert.deepEqual(shape(restarted), shape(direct));
 
@@ -546,29 +554,28 @@ describe('规则自主选择器 v1（ADR 0040）', () => {
     test('赶作业抢走休闲（ADR 0042）：没有「先赶作业」的打算时，晚上打游戏打到开始赶作业那一刻，接着赶作业', () => {
         const dir = mkdtempSync(join(tmpdir(), 'life-selector-deadline-'));
         try {
-            // 不带一天的打算（plans）：晚上照作息的空闲活动，作业明天交也不先赶；20:30 起在赶计算机网络技术（22:00 写完）
-            const { events } = live(dir, at('2026-10-12T18:00:00'), at('2026-10-12T23:00:00'), undefined, { ...plain, plans: undefined });
+            // 不带一天的打算（plans）：晚上照作息的空闲活动，作业明天交也不先赶；20:30 起在赶数据结构（22:00 写完）
+            const { events } = live(dir, at('2026-10-14T18:00:00'), at('2026-10-14T23:00:00'), undefined, { ...plain, plans: undefined });
             const cut = events.find(e => e.reason === 'interrupted_by_deadline');
             assert.ok(cut, '没有被赶作业打断的');
-            assert.equal(cut.endedAt, at('2026-10-12T20:30:00').toISOString());
+            assert.equal(cut.endedAt, at('2026-10-14T20:30:00').toISOString());
             assert.notEqual(cut.kind, 'study');
             const sprint = events.find(e => e.startedAt === cut.endedAt);
-            assert.deepEqual([sprint?.kind, sprint?.subject, sprint?.endedAt], ['study', '计算机网络技术的作业', at('2026-10-12T22:00:00').toISOString()]);
+            assert.deepEqual([sprint?.kind, sprint?.subject, sprint?.endedAt], ['study', '数据结构的作业', at('2026-10-14T22:00:00').toISOString()]);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
     });
 
-    test('在读的书停了（读到最新一卷），那一段记成休闲，不再整晚排不上（ADR 0042）', () => {
+    test('在读的书停了（合成卡上的书 11-13 读完），那一段记成休闲，不再整晚排不上（ADR 0042）', () => {
         const dir = mkdtempSync(join(tmpdir(), 'life-selector-book-'));
         try {
-            const { events, logs } = live(dir, at('2026-10-16T17:00:00'), at('2026-10-17T10:00:00'));
+            const { events, logs } = live(dir, at('2026-11-13T17:00:00'), at('2026-11-14T10:00:00'));
             assert.deepEqual(logs.filter(line => line.includes('排不上')), []);
-            const evening = events.filter(e => Date.parse(e.startedAt) >= at('2026-10-16T18:00:00').getTime() && e.kind !== 'sleep');
+            const evening = events.filter(e => Date.parse(e.startedAt) >= at('2026-11-13T18:00:00').getTime() && e.kind !== 'sleep');
             assert.ok(evening.length >= 2);
-            // 前三本都停了 / 读完了；DSH 56c6dda 新加的《人间草木》是一周一篇、一直在读的，只许它排上
-            assert.ok(evening.every(e => e.kind !== 'read_book' || e.subject === 'renjiancaomu'));
-            assert.ok(events.some(e => e.kind === 'sleep' && e.startedAt === at('2026-10-17T02:00:00').toISOString()));
+            assert.ok(evening.every(e => e.kind !== 'read_book'));
+            assert.ok(events.some(e => e.kind === 'sleep' && e.startedAt === at('2026-11-14T02:00:00').toISOString()));
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
@@ -611,7 +618,7 @@ describe('聊天里说过的事改写还没过的（ADR 0042）', () => {
         assert.deepEqual(overlapping(events, '2026-10-13T00:32:00', '2026-10-13T09:30:00').map(e => e.kind), ['sleep']);
     }));
 
-    test('聊天里说 20:40 下楼喂了土豆（21:25 才抽出来）：正刷着的手机停在 20:40，喂完 20:50 接着刷；那十分钟不记别的', () => withDir(dir => {
+    test('聊天里说 20:40 下楼喂了团子饼（21:25 才抽出来）：正刷着的手机停在 20:40，喂完 20:50 接着刷；那十分钟不记别的', () => withDir(dir => {
         const feed: LifeEventDraft = { id: 'chat:feed', kind: 'feed_cat', at: iso('2026-10-13T20:40:00'), source: 'conversation', result: 'succeeded' };
         const { events, all } = liveChat(dir, at('2026-10-13T17:00:00'), at('2026-10-13T23:30:00'), { chat: [{ recordAt: at('2026-10-13T21:25:00'), event: feed }] });
         assert.equal(all.find(e => e.id === 'chat:feed')?.result, 'succeeded');
@@ -622,22 +629,23 @@ describe('聊天里说过的事改写还没过的（ADR 0042）', () => {
     }));
 
     test('聊天里说 21:40 作业写完了：正赶着的作业停在 21:40（做完了），之后回到原来的打算', () => withDir(dir => {
-        const done: LifeEventDraft = { id: 'chat:homework', kind: 'finish_homework', at: iso('2026-10-12T21:40:00'), source: 'conversation', result: 'succeeded' };
-        const { events, all } = liveChat(dir, at('2026-10-12T17:00:00'), at('2026-10-12T23:00:00'), { chat: [{ recordAt: at('2026-10-12T21:50:00'), event: done }] });
+        const done: LifeEventDraft = { id: 'chat:homework', kind: 'finish_homework', at: iso('2026-10-14T21:40:00'), source: 'conversation', result: 'succeeded' };
+        const { events, all } = liveChat(dir, at('2026-10-14T17:00:00'), at('2026-10-14T23:00:00'), { chat: [{ recordAt: at('2026-10-14T21:50:00'), event: done }] });
         assert.equal(all.find(e => e.id === 'chat:homework')?.result, 'succeeded');
-        const study = events.find(e => e.endedAt === iso('2026-10-12T21:40:00'));
+        const study = events.find(e => e.endedAt === iso('2026-10-14T21:40:00'));
         assert.deepEqual([study?.kind, study?.result], ['study', 'succeeded']);
-        const next = events.find(e => e.startedAt === iso('2026-10-12T21:40:00'));
+        const next = events.find(e => e.startedAt === iso('2026-10-14T21:40:00'));
         assert.equal(next?.kind, 'leisure');
-        assert.deepEqual(overlapping(events, '2026-10-12T21:40:00', '2026-10-12T22:00:00').filter(e => e.kind === 'study'), []);
+        assert.deepEqual(overlapping(events, '2026-10-14T21:40:00', '2026-10-14T22:00:00').filter(e => e.kind === 'study'), []);
     }));
 
-    test('聊天里说 21:00 作业写完了（21:50 才抽出来）：21:26 排上的赶作业从来没发生，去掉；21:26 起回到原来的打算', () => withDir(dir => {
-        const done: LifeEventDraft = { id: 'chat:homework', kind: 'finish_homework', at: iso('2026-10-12T21:00:00'), source: 'conversation', result: 'succeeded' };
-        const { events, logs } = liveChat(dir, at('2026-10-12T17:00:00'), at('2026-10-12T23:00:00'), { chat: [{ recordAt: at('2026-10-12T21:50:00'), event: done }] });
+    test('聊天里说 20:00 作业写完了（20:50 才抽出来）：20:28 排上的赶作业从来没发生，去掉；20:28 起回到原来的打算', () => withDir(dir => {
+        // 合成卡 10-14 晚上在赶数据结构（22:00 写完）：18:28 起一段、20:28 起又排一段
+        const done: LifeEventDraft = { id: 'chat:homework', kind: 'finish_homework', at: iso('2026-10-14T20:00:00'), source: 'conversation', result: 'succeeded' };
+        const { events, logs } = liveChat(dir, at('2026-10-14T17:00:00'), at('2026-10-14T23:00:00'), { chat: [{ recordAt: at('2026-10-14T20:50:00'), event: done }] });
         assert.ok(logs.some(line => line.includes('去掉 study')), '排着的赶作业去掉了');
-        assert.equal(events.find(e => e.startedAt === iso('2026-10-12T21:26:00'))?.kind, 'leisure');
-        assert.deepEqual(events.filter(e => e.kind === 'study' && Date.parse(e.startedAt) >= at('2026-10-12T21:26:00').getTime()), []);
+        assert.equal(events.find(e => e.startedAt === iso('2026-10-14T20:28:00'))?.kind, 'leisure');
+        assert.deepEqual(events.filter(e => e.kind === 'study' && Date.parse(e.startedAt) >= at('2026-10-14T20:28:00').getTime()), []);
     }));
 
     test('抽出来时那段已经落账了：过去的不改，两件并存', () => withDir(dir => {

@@ -104,7 +104,7 @@ describe('最近几次开头用的同一个起头词（repeatedOpener）', () =>
     });
 
     test('开头各不相同、只出现一次、没有常见起头词：不算；他的话不算', () => {
-        assert.equal(repeatedOpener([her('刚下课'), user('嗯'), her('作业还没写'), user('嗯'), her('对了土豆呢'), user('嗯'), her('今天好冷')]), undefined);
+        assert.equal(repeatedOpener([her('刚下课'), user('嗯'), her('作业还没写'), user('嗯'), her('对了团子饼呢'), user('嗯'), her('今天好冷')]), undefined);
         assert.equal(repeatedOpener([user('刚刚'), her('嗯'), user('刚下班'), her('好'), user('刚吃完'), her('哦')]), undefined);
         assert.equal(repeatedOpener([]), undefined);
     });

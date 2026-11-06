@@ -4,8 +4,10 @@
   "type": "module",
   "scripts": {
     "convert": "node src/cli.ts",
+    "convert:synthetic": "node src/cli.ts --source packages/bot/test/fixtures/synthetic-character/source --out packages/bot/test/fixtures/synthetic-character/st --prefix synthetic",
     "typecheck": "tsc -p .",
-    "test": "node --test \"test/**/*.test.ts\""
+    "test": "node --test \"test/**/*.test.ts\"",
+    "test:real": "node --test \"test-real/**/*.test.ts\""
   },
   "dependencies": {
     "js-yaml": "^4.1.0"

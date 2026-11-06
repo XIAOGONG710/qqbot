@@ -8,6 +8,7 @@
 // 纯函数 + 状态校验；什么时候想、调模型、存盘在 proactive-planner.ts。
 
 import { stiltedHit } from '../language/expression.ts';
+import { stateTimestamp } from '../memory/state-schema.ts';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -82,14 +83,19 @@ const MAX_CHARS = 80;
 /** 和最近的念头像到这个程度（字对的重合比例）就当重复，丢掉 */
 const SIMILAR = 0.5;
 
-const chars = (text: string) => [...text].length;
+// 只需区分持久化上限 200 字，不为异常长输出展开整个字符数组。
+const chars = (text: string) => {
+    let count = 0;
+    for (const _ of text) if (++count > 200) break;
+    return count;
+};
 
 /**
  * 一个念头可以想什么：每次只给两样让她挑，免得老围着“他怎么还没回”转（10-22 线上和模拟里的念头一半像发给他的消息、一半是同一句催）。
  * 都是从她已经知道的事实里挑一件想，不是编新事
  */
 export const THOUGHT_THEMES = [
-    '你自己手头的事（攒钱、作业、土豆、身体、今天的打算）：接下来怎么办，是什么感觉',
+    '你自己手头的事（攒钱、作业、楼下的猫、身体、今天的打算）：接下来怎么办，是什么感觉',
     '刚过去的一件事（你这边今天发生的，或者最近聊天里提到的）在你心里留下的印象：回想它、琢磨它',
     '他说过的一件具体的事（不是“他怎么还不回”）：现在大概是什么样了，你有点好奇或惦记',
     '接下来几天你想做的、盼着的或有点发愁的事',
@@ -97,8 +103,8 @@ export const THOUGHT_THEMES = [
     // 「愿意啊，但我不想一直钻……想不通就先搁着，不急着给自己下结论」——她自己的条件写在这一条里；想不通的可以问他（用户 11-02「想不通的可以问我」）
     '你对自己拿不准的地方（喜欢的是不是真喜欢、记得的是不是真那样、你为什么是现在这样、你到底算什么）：可以怀疑，想不通就先搁着，不用急着给自己下结论；想不通的也可以拿去问他',
     // 10-31 问她「有没有自己特别想弄明白的事」，她说：「有啊……就那种，突然卡住了，非要知道，不知道心里痒。」
-    // （举例：手机和相机差在哪、土豆每天六点蹲楼下是从哪儿来的）——好奇不是让她去读新闻，是她自己被什么卡住了
-    '你自己卡住过的一件事（一个看不懂的参数、一个说法、某样东西到底怎么用、土豆为什么那样）：不知道心里痒，想弄明白它',
+    // （举例：手机和相机差在哪、猫每天六点蹲楼下是从哪儿来的）——好奇不是让她去读新闻，是她自己被什么卡住了
+    '你自己卡住过的一件事（一个看不懂的参数、一个说法、某样东西到底怎么用、楼下的猫为什么那样）：不知道心里痒，想弄明白它',
 ] as const;
 
 /** 怀疑自己的那一样（ADR 0208）：平时和别的轮着给，晚上专门想的那一次只给它 */
@@ -170,27 +176,48 @@ const GOES_MARK: readonly [ThoughtGoes, RegExp][] = [['tell', /告诉他/], ['as
  * 不合格：空的、太短太长、带链接 / 表情指令、和最近的念头重复
  */
 export function parseThought(raw: string, recent: readonly InnerThought[], at: number, callName?: string): { thought: InnerThought; wants?: string; todo?: string } | { rejected: string } {
-    const lines = raw.replace(/\r/g, '').split('\n').map(line => line.trim()).filter(Boolean);
+    if (typeof raw !== 'string') return { rejected: '输出格式不对' };
+    if (!Number.isSafeInteger(at) || Math.abs(at) > 8.64e15) return { rejected: '时间无效' };
+    const timestamp = new Date(at).toISOString();
+    if (!stateTimestamp(timestamp)) return { rejected: '时间无效' };
+    // 协议是两行，外加可选的「想查：…」「想做：…」各一行（ADR 0180 / 0182）；第五个非空行即拒绝，不把异常多行响应展开成几百万个数组项。
+    const lines: string[] = [];
+    for (let offset = 0; offset <= raw.length;) {
+        const end = raw.indexOf('\n', offset);
+        const line = raw.slice(offset, end < 0 ? raw.length : end).replace(/\r/g, '').trim();
+        if (line) lines.push(line);
+        if (lines.length > 4) return { rejected: '去向不明确' };
+        if (end < 0) break;
+        offset = end + 1;
+    }
     if (!lines.length) return { rejected: '空的' };
+    // 第三、四行只能是「想查：」「想做：」：别的（比如又写了一个去向）就是去向不明确
+    if (lines.slice(2).some(line => !/^想(?:查|做)[：:]/.test(line))) return { rejected: '去向不明确' };
     let goes: ThoughtGoes = 'keep';
-    for (const line of lines.slice(1)) {
-        const hit = GOES_MARK.find(([, pattern]) => pattern.test(line));
-        if (hit) { goes = hit[0]; break; }
+    let explicitGoes: ThoughtGoes | undefined;
+    if (lines[1]) {
+        const mark = /^(?:(?:第?[二2]行?|去向)[:：.、]\s*)?[「“"『]?(告诉他|问他|自己想想)[」”"』]?$/.exec(lines[1]);
+        if (!mark) return { rejected: '去向不明确' };
+        explicitGoes = GOES_MARK.find(([, pattern]) => pattern.test(mark[1]!))![0];
+        goes = explicitGoes;
     }
     // 第一行：去掉「第一行：」「1.」这类标号、引号，以及挤在行尾的去向
     let text = lines[0]!.replace(/^(?:第?[一1]行?[:：.、]\s*|心里的话[:：]\s*)/, '').replace(/^[「“"『]+|[」”"』]+$/g, '').trim();
     const tail = /[（(【\[]\s*(告诉他|问他|自己想想)\s*[）)】\]]\s*$/.exec(text);
     if (tail) {
         goes = GOES_MARK.find(([, pattern]) => pattern.test(tail[1]!))![0];
+        if (explicitGoes && goes !== explicitGoes) return { rejected: '去向不明确' };
+        explicitGoes = goes;
         text = text.slice(0, tail.index).trim();
     }
     // 去向没另起一行也没加括号，直接接在句子后面（「……晚点问问他好点没。自己想想」「（……答不上来。）告诉他」）：前面要有标点、空白或右括号隔着，免得把“问问他”当成去向
     const inline = /(?<=[，,。.！!…\s）)」』】\]])(告诉他|问他|自己想想)\s*$/.exec(text);
     if (inline) {
         goes = GOES_MARK.find(([, pattern]) => pattern.test(inline[1]!))![0];
+        if (explicitGoes && goes !== explicitGoes) return { rejected: '去向不明确' };
         text = text.slice(0, inline.index).replace(/[，,。.！!…\s]+$/, '').trim();
     }
-    // 整句被括号包着（「（翻着相册里土豆昨天那张……）」）：去掉外面那层
+    // 整句被括号包着（「（翻着相册里猫昨天那张……）」）：去掉外面那层
     const wrapped = /^[（(]([^（）()]+)[）)]$/.exec(text);
     if (wrapped) text = wrapped[1]!.trim();
     if (chars(text) < MIN_CHARS) return { rejected: '太短' };
@@ -222,12 +249,13 @@ export function parseThought(raw: string, recent: readonly InnerThought[], at: n
             if (chars(text) >= 2 && chars(text) <= 60 && !/https?:|<sticker|\[[^\]]{1,6}\]/.test(text)) todo = text;
         }
     }
-    return { thought: { id: `th-${at}`, at: new Date(at).toISOString(), text, goes }, ...(wants ? { wants } : {}), ...(todo ? { todo } : {}) };
+    return { thought: { id: `th-${at}`, at: timestamp, text, goes }, ...(wants ? { wants } : {}), ...(todo ? { todo } : {}) };
 }
 
 /** 放进聊天提示词的一行：最近几个钟头她心里在想的；没有就没有 */
 export function innerLine(thoughts: readonly InnerThought[], now: number): string | undefined {
-    const recent = thoughts.filter(t => now - Date.parse(t.at) < INNER_LINE_WINDOW_MS && Date.parse(t.at) <= now).slice(-INNER_LINE_MAX);
+    const recent = thoughts.filter(t => now - Date.parse(t.at) < INNER_LINE_WINDOW_MS && Date.parse(t.at) <= now)
+        .sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).slice(-INNER_LINE_MAX);
     if (!recent.length) return undefined;
     return `[你这几个钟头心里在想（是你自己的小心思，不是发生过的事，不用照着念；话题接得上、他问起时才自然带一句，接不上就别硬说）：${recent.map(t => `「${t.text}」`).join('')}]`;
 }
@@ -242,16 +270,16 @@ export function learnedLine(learned: readonly InnerLookup[] | undefined, now: nu
 
 /** 想告诉他 / 想问他、还没说、没过期的念头 */
 export function pendingIntents(thoughts: readonly InnerThought[], now: number): InnerThought[] {
-    return thoughts.filter(t => t.goes !== 'keep' && !t.told && now - Date.parse(t.at) < INTENT_WINDOW_MS);
+    return thoughts.filter(t => t.goes !== 'keep' && !t.told && Date.parse(t.at) <= now && now - Date.parse(t.at) < INTENT_WINDOW_MS);
 }
 
 // ---------- 状态校验（存在主动消息的状态文件里）----------
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
-const isTime = (value: unknown): value is string => typeof value === 'string' && !Number.isNaN(Date.parse(value));
+const isTime = stateTimestamp;
 
 export function validThought(value: unknown): value is InnerThought {
-    return isObject(value) && typeof value.id === 'string' && /^th-\d+$/.test(value.id) && isTime(value.at)
+    return isObject(value) && typeof value.id === 'string' && /^th--?\d+$/.test(value.id) && isTime(value.at)
         && typeof value.text === 'string' && chars(value.text) >= 1 && chars(value.text) <= 200
         && THOUGHT_GOES.includes(value.goes as ThoughtGoes) && (value.told === undefined || value.told === true);
 }

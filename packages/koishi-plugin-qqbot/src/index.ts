@@ -41,6 +41,7 @@ import { biliStickerScreen } from '../../bot/src/language/bili-stickers.ts';
 import { webFoodSource, webPhotoSource } from '../../bot/src/vision/photo-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 import { EXTERNAL_PLATFORM_MODES, type ExternalPlatformMode } from '../../bot/src/social/external-platforms.ts';
+import { claimTimeZone, DEFAULT_TIME_ZONE, timeZoneChoices } from '../../bot/src/platform/time-zone.ts';
 
 // koishi 的 ESM 入口是坏的（@koishijs/loader/lib/index.mjs 默认导入了一个 CJS 文件）：取 loader 自己用的那份 CJS
 const { Schema } = createRequire(import.meta.url)('koishi') as typeof Koishi;
@@ -145,6 +146,7 @@ export interface Config {
     contacts: { qq: number; name: string; tier: ContactTier; persona?: string; intro?: string; knowsBot?: boolean; feedback?: boolean }[];
     unlistedFriends: boolean;
     schedule: boolean;
+    timeZone?: string;
     media: boolean;
     stickers: StickerMode;
     vision: { enabled: boolean; baseUrl?: string; model?: string; timeoutMs?: number };
@@ -325,6 +327,12 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**名单外的好友**：默认关闭。打开后私聊按 unlisted 档回复（被认真问到时承认是 AI）；每人 10 分钟最多 30 条，全部名单外好友合计最多 100 条'),
         schedule: Schema.boolean().default(DEFAULTS.schedule)
             .description('**作息**：按角色卡上的作息，凌晨睡觉不回、上课晚回、打字有时间。深夜测试时关掉'),
+        timeZone: Schema.union([
+            ...timeZoneChoices().map(choice => Schema.const(choice.zone).description(choice.label)),
+            Schema.string().description('其他（填 IANA 时区名）'),
+        ]).default(DEFAULT_TIME_ZONE)
+            .description('**她的时区**（ADR 0331，一般不用改）：作息、饭点、日记的日界都按这个时区算，跟机器的系统时区无关。'
+                + '下拉里是全部 IANA 时区（常用的在前，其余按 UTC 偏移排，括号里是此刻的偏移，夏令时由系统自己换）；列表里没有的选「其他」手填'),
         media: Schema.boolean().default(DEFAULTS.media)
             .description('**听语音、看图上的字**（ADR 0052）：他发的语音用 QQ 自带的语音转文字，照片、截图用 NapCat 的 OCR 取上面的字（只有 Windows），她就着内容回，听完语音才回。'
                 + '转不出来、没字、超时（5 秒）照旧只知道是语音、图片；表情包照旧用名字'),
@@ -389,11 +397,11 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         proactiveInvite: Schema.boolean().default(DEFAULTS.proactiveInvite)
             .description('**约他一起玩**（ADR 0107，要「主动消息」开着）：晚上（19:30 以后）她想起你们的固定节目——卡上写着的我的世界存档、王者双排——随口约他一句。一周最多 3 次、两次之间至少隔 2 天（他回的第一句像拒绝就隔 4 天）；他没回不催；他说过去忙 / 去睡了、他今晚有事、她自己很累 / 不舒服 / 心情不好，就不约。默认关。'),
         photos: Schema.boolean().default(DEFAULTS.photos)
-            .description('**照片货架**（ADR 0109）：他要看土豆（楼下的流浪猫）/ 天空时，货架里有就发一张高清照片（只对男朋友档）。照片由她自己从网上找：Wikimedia Commons 里 CC0 / 公有领域的原图（不用署名），看图模型逐张把关——有人脸、有水印 / 文字 / 相框、不清晰、不是三花猫 / 天空的都不收；猫只收同一只（同一个系列）。需要「看图」开着才会去找；货架空着这个开关什么都不做。她本人的自拍、吃的不在里面。默认关。'),
+            .description('**照片货架**（ADR 0109）：他要看楼下的流浪猫 / 天空时，货架里有就发一张高清照片（只对男朋友档）。照片由她自己从网上找：Wikimedia Commons 里 CC0 / 公有领域的原图（不用署名），看图模型逐张把关——有人脸、有水印 / 文字 / 相框、不清晰、不是三花猫 / 天空的都不收；猫只收同一只（同一个系列）。需要「看图」开着才会去找；货架空着这个开关什么都不做。她本人的自拍、吃的不在里面。默认关。'),
         aiPhotos: Schema.boolean().default(DEFAULTS.aiPhotos)
-            .description('**AI 生活照草稿**（ADR 0240）：世界事件或明确索要“现在的照片”时尝试生成不露脸的土豆、饭、书桌或窗景；必须另配生图服务和看图审查。只进入待审核区，不自动通过、不自动发送。默认关。'),
+            .description('**AI 生活照草稿**（ADR 0240）：世界事件或明确索要“现在的照片”时尝试生成不露脸的猫、饭、书桌或窗景；必须另配生图服务和看图审查。只进入待审核区，不自动通过、不自动发送。默认关。'),
         photoShares: Schema.boolean().default(DEFAULTS.photoShares)
-            .description('**她主动发照片**（ADR 0110，要「照片货架」和「主动消息」开着）：喂完土豆、见到它的日子里，约三分之一的天她拍了张照片，过十来分钟发给他、配一句话（不用他回应）。货架里没有土豆的照片就不发；刚发过 / 今天发够了也不发。默认关。'),
+            .description('**她主动发照片**（ADR 0110，要「照片货架」和「主动消息」开着）：喂完猫、见到它的日子里，约三分之一的天她拍了张照片，过十来分钟发给他、配一句话（不用他回应）。货架里没有猫的照片就不发；刚发过 / 今天发够了也不发。默认关。'),
         together: Schema.boolean().default(DEFAULTS.together)
             .description('**陪玩状态**（ADR 0111）：他答应了她的邀约（或她答应了他的“今晚王者双排吗”）之后的两三个小时，她正和他一起玩——回话短一点、慢一点，聊眼前这局 / 存档里的事；这段时间不插“你人呢”之类别的主动消息；谁说“下了 / 不玩了 / 睡了 / 晚安”就结束。只对男朋友档。默认关。'),
         comeBack: Schema.boolean().default(DEFAULTS.comeBack)
@@ -443,7 +451,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         tailCap: Schema.boolean().default(DEFAULTS.tailCap)
             .description('**句尾「吧」「呢」封顶**（ADR 0146）：她多出来的句尾语气字几乎全在这两个字上（吧 5.0% 对他的 2.2%，呢 5.0% 对他的 1.8%；啊 / 嘛 / 呀 / 啦在真人范围内，不动）。开了以后，她最近 80 条气泡里以“吧”收尾的占比到 3%、以“呢”收尾的到 2.5% 时，这一轮再用它收尾的就把那个字去掉（不重写）；固定搭配（干嘛 / 好吧 / 行吧）、省略问句（你呢）和太短的应声不动。默认关'),
         factCheck: Schema.union(FACT_CHECK_MODES.map(mode => Schema.const(mode).description(FACT_CHECK_LABELS[mode]))).default(DEFAULTS.factCheck)
-            .description('**逐条事实检查**（ADR 0137）：她最容易露馅的是编——事实里只有“土豆今天没下楼”，她写“土豆一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。回复发出去之前让模型当审稿员，把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。off 不查；log 只查、只在日志里记（敏感调试关着时只记条数），回复照发——先看误报多不多；fix 有问题就带说明重写一次，重写后再查，还有就删那几行。危机回合不查，查不成一律照发。'),
+            .description('**逐条事实检查**（ADR 0137）：她最容易露馅的是编——事实里只有“猫今天没下楼”，她写“猫一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。回复发出去之前让模型当审稿员，把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。off 不查；log 只查、只在日志里记（敏感调试关着时只记条数），回复照发——先看误报多不多；fix 有问题就带说明重写一次，重写后再查，还有就删那几行。危机回合不查，查不成一律照发。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
@@ -466,7 +474,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         worldThreads: Schema.boolean().default(DEFAULTS.worldThreads)
             .description('**她那边的事有后续**（ADR 0216，要 everydayLife 和 worldDrama 都开着）：现在她的日子一天一页、第二天翻篇。开着时：昨天和舍友拌了嘴，今天早上搭句话就过去了；昨天淋了雨，今天嗓子有点发紧；水卡丢了，第二天找到或去补办……一天最多一条后续，往收尾走；水卡丢了、被人说冷这类闹心的事有冷却期，不会接二连三。照她本人的话：「拌嘴基本不过夜」「鸡毛蒜皮翻篇就翻篇」「水卡那种别老丢」。从第一次开的第二天起才有（world/threads-from.json），已经过完的日子不改写。'),
         worldDrama: Schema.boolean().default(DEFAULTS.worldDrama).description('她日子里的小起伏（一天之内的难过/烦/高兴）')
-            .description('**她每天碰到的小事**（ADR 0106）：线上事件账全是课、饭、睡这样的例行。开了以后世界里多约 90 条日常尺度的小事（外卖晚了、老师拖堂、下雨没带伞、舍友的闹钟、晚霞拍了几张、和苏雨桐 / 陈佳宁的来往、土豆的事……），按日期哈希、有天气 / 月份 / 星期条件，一天最多多 4 件；另有“小测”一条线（高数 / 概率论 / 专业课每四周一次，前一次课老师说、当天写、两天后出分，数学类偏低）。不改角色卡。带感受的小事会成为她开心 / 烦 / 担心 / 难过的来由（要开「心境」）。默认关。'),
+            .description('**她每天碰到的小事**（ADR 0106）：线上事件账全是课、饭、睡这样的例行。开了以后世界里多约 90 条日常尺度的小事（外卖晚了、老师拖堂、下雨没带伞、舍友的闹钟、晚霞拍了几张、和室友 / 闺蜜的来往、猫的事……），按日期哈希、有天气 / 月份 / 星期条件，一天最多多 4 件；另有“小测”一条线（高数 / 概率论 / 专业课每四周一次，前一次课老师说、当天写、两天后出分，数学类偏低）。不改角色卡。带感受的小事会成为她开心 / 烦 / 担心 / 难过的来由（要开「心境」）。默认关。'),
         pursuits: Schema.boolean().default(DEFAULTS.pursuits)
             .description('**她自己的追求**（ADR 0104，只给男朋友档）：内置两条自传里写明的——「别挂科」和「用新相机拍出自己满意的东西」（买到相机之后分五步，进度来自她真的拍过 / 修过几回）。做完一步她会开心、好几天没碰有点愧疚；时间块里一小段让她知道自己在追什么（不用主动提）；配合「会拒绝」，她正在修片时他让她先放下，她可以先弄完这一小段。作者可在数据目录 pursuits.json 里暂停 / 放下 / 加自己的。默认关。'),
         shapeSplit: Schema.boolean().default(DEFAULTS.shapeSplit)
@@ -541,21 +549,21 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         grievance: Schema.boolean().default(DEFAULTS.grievance)
             .description('**有起因的小别扭与和好**（ADR 0074）：男朋友档，他隔了 3 天以上才来、这几天她发的一直没回时，她回来的头一两轮淡一点、点一句，他一解释 / 道歉 / 哄就软下来。只由这一个具体事件触发，一次只有一档，不存跨天的情绪，每轮从聊天记录的时间重算。默认关'),
         npcAsks: Schema.boolean().default(DEFAULTS.npcAsks)
-            .description('**闺蜜的约**（ADR 0061）：陈佳宁、苏雨桐会约她（一起吃饭、去图书馆、微信视频），有时迟到、改到晚一点、临时取消；她按自己的课、身体、作业答应或推掉。进她的一天（状态行）和「你那边」。只给看得到这两个人的档位。默认关'),
+            .description('**闺蜜的约**（ADR 0061）：室友和闺蜜会约她（一起吃饭、去图书馆、微信视频），有时迟到、改到晚一点、临时取消；她按自己的课、身体、作业答应或推掉。进她的一天（状态行）和「你那边」。只给看得到这两个人的档位。默认关'),
         feedbackCommands: Schema.boolean().default(DEFAULTS.feedbackCommands)
             .description('**反馈通道**（ADR 0073）：男朋友档收到只有「假」或「像」一个字的消息（可带前面的 / 、后面的标点或一个小黄脸、QQ 的回复引用）时，记下她那一轮话是「假」还是「像」，不当聊天、她不回应。记录在数据目录的 feedback/ 里，不进日志正文。默认关'),
         realWeather: Schema.boolean().default(DEFAULTS.realWeather)
-            .description('**真实天气**（ADR 0048）：她的世界里的天气按济南（在学校）/ 青岛（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成'),
+            .description('**真实天气**（ADR 0048）：她的世界里的天气按卡上写的地方（学校、家，weather.places）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成'),
         realAirQuality: Schema.boolean().default(DEFAULTS.realAirQuality)
-            .description('**真实空气质量**（ADR 0227）：只取济南 / 青岛当前已观测的 AQI、PM2.5、PM10；失败或过期不写进她的世界。默认关'),
+            .description('**真实空气质量**（ADR 0227）：只取卡上写的地方（学校、家，weather.places）当前已观测的 AQI、PM2.5、PM10；失败或过期不写进她的世界。默认关'),
         realDaylight: Schema.boolean().default(DEFAULTS.realDaylight)
-            .description('**真实日照**（ADR 0228）：取济南 / 青岛的日出、日落和当前光线阶段；失败或过期不写进她的世界。默认关'),
+            .description('**真实日照**（ADR 0228）：取卡上写的地方（学校、家）的日出、日落和当前光线阶段；失败或过期不写进她的世界。默认关'),
         realCalendar: Schema.boolean().default(DEFAULTS.realCalendar)
             .description('**法定节假日与调休**（ADR 0231）：读取当前年和下一年的法定休假、调休上班日；失败或过期不写进她的世界，不改学校课表。默认关'),
         realTransport: Schema.intersect([
             Schema.object({
                 enabled: Schema.boolean().default(DEFAULTS.realTransport.enabled)
-                    .description('**现实交通**（ADR 0232）：明确打开后才读取济南 / 青岛的结构化交通状态。失败或过期不写进她的世界，不改变课表或行动。默认关'),
+                    .description('**现实交通**（ADR 0232）：明确打开后才读取卡上写的地方（学校、家）的结构化交通状态。失败或过期不写进她的世界，不改变课表或行动。默认关'),
             }),
             Schema.union([
                 Schema.object({
@@ -607,7 +615,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         herGuesses: Schema.boolean().default(DEFAULTS.herGuesses)
             .description('**她猜的事和后来的结果**（ADR 0213，要名单里有男朋友档、要她那边的世界）：她天天在猜——小测估分、快递哪天到、下不下雨——猜完就忘了自己猜过。开着时：白天只留意她说的「我猜 / 估计 / 肯定会……」+「小测 / 快递 / 下雨 / 作业……」，每晚 22 点以后她自己挑哪几句是真在猜（情绪上来的气话不算，她本人的条件），挂着的对照世界账这几天真实发生的事看对没对（结果只能是世界账里的事，不能编），对上了记一句（不写检讨），7 天没结果的放下；刚对上的那件，她下次一个人想事情（innerLife）时就想这一件，想不想跟他说她自己定；他聊到同一类事才放进提示词最多两条。存在 her-guesses.json（私人空间，没有命令念给他，日志只记个数）。'),
         hisReactions: Schema.boolean().default(DEFAULTS.hisReactions)
-            .description('**看他的反应**（ADR 0212，只男朋友档，要 proactive 开着）：她主动说自己的事（随口说件事、冷场、小事 / 土豆 / 吃的照片）之后，他是接着聊、回个嗯、没回，还是明说「别老发这个」——按话题（土豆、吃的、课和作业、朋友、看的玩的、买东西、天气）算三周内的，下次她主动开口时提示词多一行事实：「土豆的事他多半会接着聊；课和作业他多半就回个嗯」，说什么、说多说少她自己拿捏，不禁话题。他明说过不想听的那一类照片 / 小事 7 天内不发；话题定了、正好是他不怎么接的小事 / 吃的照片，交给她决定说不说（土豆照发，她本人的条件）。她不舒服、关心他吃饭睡觉的话不进统计。不落盘，每次从聊天记录重算；日志只记话题和次数。'),
+            .description('**看他的反应**（ADR 0212，只男朋友档，要 proactive 开着）：她主动说自己的事（随口说件事、冷场、小事 / 猫 / 吃的照片）之后，他是接着聊、回个嗯、没回，还是明说「别老发这个」——按话题（猫、吃的、课和作业、朋友、看的玩的、买东西、天气）算三周内的，下次她主动开口时提示词多一行事实：「猫的事他多半会接着聊；课和作业他多半就回个嗯」，说什么、说多说少她自己拿捏，不禁话题。他明说过不想听的那一类照片 / 小事 7 天内不发；话题定了、正好是他不怎么接的小事 / 吃的照片，交给她决定说不说（猫的照片照发，她本人的条件）。她不舒服、关心他吃饭睡觉的话不进统计。不落盘，每次从聊天记录重算；日志只记话题和次数。'),
         rhythm: Schema.boolean().default(DEFAULTS.rhythm)
             .description('**回复节奏**（ADR 0075）：打字的时间按字数算（0.6 秒 + 每字 0.18 秒，0.9–9 秒），回之前先「看 + 想」一会儿（多半 0.8–3.5 秒，偶尔几秒到半分钟）；热聊的第一条中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒，1–4 秒）'),
         shortReplies: Schema.boolean().default(DEFAULTS.shortReplies)
@@ -747,6 +755,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         contacts: config.contacts.map(contact => dropUndefined(contact)),
         unlistedFriends: config.unlistedFriends,
         schedule: config.schedule,
+        ...(config.timeZone !== undefined ? { timeZone: config.timeZone } : {}),
         // 旧的 koishi.yml 没有这几项：parseAppConfig 按默认值（看心情不回开、说话的毛病开、她自己的日子开、主动消息关）
         ...(config.moody !== undefined ? { moody: config.moody } : {}),
         ...(config.speechCheck !== undefined ? { speechCheck: config.speechCheck } : {}),
@@ -946,15 +955,23 @@ export function apply(ctx: Context, config: Config) {
     }
 
     let appConfig: AppConfig;
+    let releaseTimeZone: () => void = () => {};
     try {
         appConfig = parseAppConfig(toAppConfigInput(config), repoRoot);
         setConsoleState({ dataDir: appConfig.dataDir });
         ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} hisReactions=${appConfig.hisReactions} herGuesses=${appConfig.herGuesses} diaryLookback=${appConfig.diaryLookback ?? false} memoryFeelings=${appConfig.memoryFeelings ?? false} realNights=${appConfig.realNights ?? false} chatReview=${appConfig.chatReview ?? false} worldThreads=${appConfig.worldThreads ?? false} afterNo=${appConfig.afterNo ?? false} openQuestions=${appConfig.openQuestions}`);
+        // 她的时区（ADR 0331）：整个 Koishi 进程跟着她的时区走，作息和日界不再取决于机器设置；
+        // 插件停用或重载时还原（还原只在没有更新的实例占用时才做，见 claimTimeZone）
+        releaseTimeZone = claimTimeZone(appConfig.timeZone);
     } catch (error) {
         const plain = plainError('配置有误，插件没有启动', error);
         setConsoleState({ error: plain.message });
         throw plain;
     }
+    // 兜底：占用成功后立刻登记。apply 在后面注册正式的 dispose 之前抛错（图片表情索引不可用、手机伴侣挂载失败……）时，
+    // Koishi 只会跑已经登记的 dispose，这一条保证进程时区仍然被还原；正式的 dispose 登记时会接手释放（要等收尾做完）。
+    const timeZoneLease = { handedOver: false };
+    ctx.on('dispose', () => { if (!timeZoneLease.handedOver) releaseTimeZone(); });
     // 同一份按天日志（runtime/bot/logs），grep 的核对方式不变；控制台里看 ctx.logger 那份
     const fileLog = createLog(join(appConfig.dataDir, 'logs'), undefined, () => {});
     const logger = ctx.logger('qqbot');
@@ -1042,6 +1059,7 @@ export function apply(ctx: Context, config: Config) {
         const foodSource = appConfig.photos && appConfig.foodPhotos && appConfig.menu ? webFoodSource(appConfig, log) : undefined;
         app = startApp({ config: appConfig, transport, log, media, vision, ...(stickerReader ? { stickerReader } : {}), ...(stickers ? { stickers } : {}), ...(photoSource ? { photoSource } : {}), ...(foodSource ? { foodSource } : {}) });
     } catch (error) {
+        releaseTimeZone();
         const plain = plainError('插件没有启动', error);
         setConsoleState({ error: plain.message });
         throw plain;
@@ -1054,9 +1072,20 @@ export function apply(ctx: Context, config: Config) {
         log,
     );
     if (unmountMobileCompanion) ctx.on('dispose', unmountMobileCompanion);
+    timeZoneLease.handedOver = true; // 从这里起由下面的 dispose 释放（兜底那条在它之前登记，先跑，所以要在登记时就交接）
     ctx.on('dispose', () => {
-        const drained = app.stop();
+        let drained: Promise<void> | undefined;
+        try { drained = app.stop(); }
+        catch (error) {
+            // stop 同步抛错也要把控制台状态和时区收拾好
+            setConsoleState({ running: false, status: undefined });
+            releaseTimeZone();
+            throw error;
+        }
         setConsoleState({ running: false, status: undefined });
+        // 收尾还在按她的时区算日期，等做完再还原进程时区
+        if (drained) return Promise.resolve(drained).finally(releaseTimeZone);
+        releaseTimeZone();
         return drained;
     });
 

@@ -1,8 +1,8 @@
 # 模块：她的日子（生活）
 
-> 由 `packages/bot/src/modules.ts` 生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
+> 由 `packages/bot/src/platform/modules.ts` 清单生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
 
-**管什么**：她自己的一天：作息、世界账（天气、猫、快递、作业、钱）、日常小事和小测、项目与追求、身体、心情和在读的书、闺蜜、节日、承诺和日记。
+**管什么**：她自己的一天：作息、世界账（天气、猫、快递、作业、钱）、日常小事和小测、项目与追求、身体、心情和在读的书、真人式连续数值、闺蜜、节日、承诺和日记。
 
 ## 文件（`packages/bot/src/` 下）
 
@@ -41,6 +41,7 @@
 - `life/understanding.ts`
 - `life/development.ts`
 - `human-values.ts`
+- `character-terms.ts`
 
 ## 开关
 
@@ -83,4 +84,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0178](../adr/0178-self-set-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)、[ADR 0194](../adr/0194-diary-insights.md)、[ADR 0204](../adr/0204-reading-takes.md)、[ADR 0213](../adr/0213-her-guesses.md)、[ADR 0219](../adr/0219-real-nights.md)、[ADR 0222](../adr/0222-human-values.md)、[ADR 0233](../adr/0233-environment-action-policy.md)、[ADR 0251](../adr/0251-personhood-development.md)、[ADR 0313](../adr/0313-diary-prepared-retention-and-sources.md)、[ADR 0314](../adr/0314-completed-authored-source-validation.md)、[ADR 0318](../adr/0318-authored-intent-source-coverage.md)
+[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0178](../adr/0178-self-set-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)、[ADR 0194](../adr/0194-diary-insights.md)、[ADR 0204](../adr/0204-reading-takes.md)、[ADR 0213](../adr/0213-her-guesses.md)、[ADR 0219](../adr/0219-real-nights.md)、[ADR 0222](../adr/0222-human-values.md)、[ADR 0233](../adr/0233-environment-action-policy.md)、[ADR 0251](../adr/0251-personhood-development.md)、[ADR 0313](../adr/0313-diary-prepared-retention-and-sources.md)、[ADR 0314](../adr/0314-completed-authored-source-validation.md)、[ADR 0318](../adr/0318-authored-intent-source-coverage.md)、[ADR 0322](../adr/0322-life-review-fixes.md)、[ADR 0325](../adr/0325-local-calendar-boundaries.md)、[ADR 0330](../adr/0330-promise-source-effects-and-world-identity.md)、[ADR 0332](../adr/0332-diary-civil-targets.md)

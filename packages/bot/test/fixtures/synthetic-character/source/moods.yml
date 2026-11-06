@@ -1,0 +1,37 @@
+# 合成测试角色的每日心情（虚构）。
+moods:
+  - name: "平静"
+    weight: 3
+    style:
+      text: "平常心，正常聊"
+      tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate"]
+    when:
+      - day: "early"
+        factor: 0.8
+        reason: "今天有早课，起得早"
+  - name: "烦躁"
+    weight: 1
+    style:
+      text: "有点烦，回得短"
+      tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate"]
+      variants:
+        - tiers: ["boyfriend"]
+          text: "有点烦，会跟他抱怨两句"
+    when:
+      - day: "busy"
+        factor: 2
+        reason: "今天课多"
+  - name: "开心"
+    weight: 2
+    style:
+      text: "心情好，话多一点"
+      tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate"]
+    when:
+      - day: "no_class"
+        factor: 1.5
+        reason: "今天没课"
+      - day: "holiday"
+        factor: 2
+        reason: "放假了"
+    note: "合成：陌生人档看不到这一种"
+note: "合成心情表"

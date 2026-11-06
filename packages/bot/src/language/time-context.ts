@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 运行时自己的时间提示（ADR 0004 决策 2，调研方案 5.3）：每次生成时算，放在聊天记录之后、末尾指令之前。
 // - 当前日期、星期、时间（本机时区）
 // - 距上一条消息多久：对方连发几条时按这一组的第一条算，不按最后一条（ST 的 idleDuration 按倒数第二条用户消息算，连发时只有几秒）。
@@ -55,7 +56,7 @@ export const DAYS_AHEAD = 7;
 
 /** 重要的日子临近、当天的说明（一行一个日子）；这几天没有就返回 undefined */
 export function describeDays(dates: readonly ImportantDay[], now: Date): string | undefined {
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const today = localDate(now.getFullYear(), now.getMonth(), now.getDate());
     const lines: string[] = [];
     for (const important of dates) {
         if (dayMatches(important, today) === 'lunar') {
@@ -64,7 +65,7 @@ export function describeDays(dates: readonly ImportantDay[], now: Date): string 
             if (!important.date) continue;
         }
         for (let ahead = 0; ahead <= (important.ahead ?? DAYS_AHEAD); ahead++) {
-            const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() + ahead);
+            const day = localDate(today.getFullYear(), today.getMonth(), today.getDate() + ahead);
             // 只写了农历的日子，提前几天也按农历算
             if (important.date ? dayMatches(important, day) !== 'solar' : lunarMonthDay(day) !== important.lunar) continue;
             const whenText = ahead === 0 ? '今天' : ahead === 1 ? '明天' : ahead === 2 ? '后天' : `再过 ${ahead} 天（${day.getMonth() + 1}月${day.getDate()}日）`;
@@ -91,7 +92,7 @@ function clock(date: Date): string {
 
 /** 今天 21:05 / 昨天 21:05 / 10月1日 21:05 / 2025年10月1日 21:05 */
 export function when(date: Date, now: Date): string {
-    const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const day = (d: Date) => localDate(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     const days = Math.round((day(now) - day(date)) / 86_400_000);
     if (days === 0) return `今天 ${clock(date)}`;
     if (days === 1) return `昨天 ${clock(date)}`;

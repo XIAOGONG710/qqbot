@@ -16,9 +16,9 @@ export const EVENT_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
     read_book: ['书', '小说', '章', '卷', '看到'],
     leisure: ['刷', '视频', '剧', '番', '游戏', '歌'],
     work_on_project: ['拍', '修图', '调色', '相机', '片子', '作品', '摄影'],
-    feed_cat: ['猫', '土豆', '猫粮'],
+    feed_cat: ['猫', '猫粮', '喂猫'],
     receive_money: ['转账', '钱', '红包'],
-    interact_npc: ['闺蜜', '室友', '同学', '雨桐'],
+    interact_npc: ['闺蜜', '室友', '同学'],
     meet: ['见面', '约', '一起'],
     rest: ['歇', '躺', '休息'],
 };

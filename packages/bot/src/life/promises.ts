@@ -98,7 +98,7 @@ export function promisePrompt(transcript: string, pending: readonly HerPromise[]
         `  他接着说了别的，这段聊天里一直没回答，what 写她问的是什么。随口的关心和闲聊里的问句不算（在干嘛、吃了没、几点下班、今天干什么了、笑什么、`,
         `  哪家店），反问、玩笑也不算；她约他、他没接茬的算这一类，不算 unsettled。一段聊天最多记一条，挑最要紧的那件；`,
         `- unsettled：两个人已经说好的事最后没成（约好了又取消、说好的没做到）、或者一件正事说到一半就断了，what 写发生了什么`,
-        '  （例如「10月5日说好一起回青岛，最后没走成」）；她提了他还没答应的不算（那是 unanswered）。不高兴、闹别扭也只写那件事本身。',
+        '  （例如「10月5日说好一起回老家，最后没走成」）；她提了他还没答应的不算（那是 unanswered）。不高兴、闹别扭也只写那件事本身。',
         `下面「还挂着的事」（id 以 a-、q-、u- 开头）在这段聊天里有了结果、${user}回答了、或者那件事了结了，也把 id 写进 resolved。`,
         `最后抽取${char}在聊天里明确说自己已经做完、并会改变她身边现实的动作，写进 world：`,
         `- feed_cat：已经下楼喂猫；pick_parcel：已经取快递；finish_homework：已经写完作业；family_call：已经和家里视频。`,
@@ -141,8 +141,20 @@ export interface ExtractedPromises {
 export function parsePromises(text: string): ExtractedPromises {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
-    if (start < 0 || end < start) throw new Error(`模型输出里没有 JSON：${text.slice(0, 80).replace(/\s*\n\s*/g, ' / ')}`);
-    const data = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+    if (start < 0 || end < start) throw new Error('模型输出里没有 JSON');
+    const array = text.indexOf('[');
+    if (array >= 0 && array < start) throw new Error('抽取结果必须是 JSON 对象');
+    let parsed: unknown;
+    try { parsed = JSON.parse(text.slice(start, end + 1)); }
+    catch { throw new Error('模型输出里的 JSON 无法解析'); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('抽取结果必须是 JSON 对象');
+    const data = parsed as Record<string, unknown>;
+    // 兼容只返回某一类结果的旧格式；错误对象不能伪装成“没有发现”，否则会标已抽并清除提前约定。
+    const fields = ['add', 'waiting', 'unanswered', 'unsettled', 'resolved', 'world'];
+    if (!fields.some(field => Object.hasOwn(data, field))
+        || fields.some(field => Object.hasOwn(data, field) && !Array.isArray(data[field]))) {
+        throw new Error('抽取结果缺少有效的结果数组');
+    }
     const items = (value: unknown) => (Array.isArray(value) ? value : []).flatMap(item => {
         const o = (item ?? {}) as Record<string, unknown>;
         const what = typeof o.what === 'string' ? o.what.trim() : '';
@@ -206,7 +218,7 @@ export function meetWindow(item: HerPromise): { start: Date; end: Date } | undef
     if (!item.meet || !item.date) return undefined;
     const [hour, minute] = item.meet.time.split(':').map(Number);
     const day = parseDay(item.date);
-    const start = new Date(day.getFullYear(), day.getMonth(), day.getDate() + (hour! < 5 ? 1 : 0), hour, minute);
+    const start = localDate(day.getFullYear(), day.getMonth(), day.getDate() + (hour! < 5 ? 1 : 0), hour, minute);
     return { start, end: new Date(start.getTime() + item.meet.minutes * 60_000) };
 }
 
@@ -257,7 +269,7 @@ export function mentionsMeetup(messages: readonly { content: string }[]): boolea
 
 function parseDay(date: string): Date {
     const [y, m, d] = date.split('-').map(Number);
-    return new Date(y!, m! - 1, d);
+    return localDate(y!, m! - 1, d);
 }
 
 const daysFrom = (date: string, day: Date) => Math.round((day.getTime() - parseDay(date).getTime()) / DAY_MS);
@@ -570,7 +582,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         for (const item of state.promises.filter(p => forgotten(p, day))) log(`过了日子没做，忘了「${logBody(item.what)}」`);
         state.promises = state.promises.filter(p => !forgotten(p, day));
         const loopsBefore = state.loops.length;
-        for (const loop of state.loops.filter(l => loopForgotten(l, day))) loopLog(`过了几天，放下「${loop.what}」`);
+        for (const loop of state.loops.filter(l => loopForgotten(l, day))) loopLog(`过了几天，放下「${logBody(loop.what)}」`);
         state.loops = state.loops.filter(l => !loopForgotten(l, day));
         changed ||= state.promises.length !== before || state.loops.length !== loopsBefore;
         const closed = episodes.filter(e => now() - e.end.getTime() >= EPISODE_GAP_MS && needsClosed(state!, e));
@@ -635,7 +647,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
                 const loop = state.loops.find(l => l.id === id);
                 if (loop) {
                     state.loops = state.loops.filter(l => l.id !== id);
-                    loopLog(`了结「${loop.what}」`);
+                    loopLog(`了结「${logBody(loop.what)}」`);
                 }
             }
             const earlier = previousEarly;

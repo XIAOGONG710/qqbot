@@ -25,6 +25,7 @@
     "test:scripts": "node --test scripts/*.test.mjs",
     "restore:drill": "node scripts/restore-drill.mjs",
     "restore:hindsight": "node scripts/hindsight-restore-drill.mjs",
+    "test:real": "npm run test:real --workspace @qqbot/character-tools",
     "audit:gate": "npm --workspace @qqbot/bot run audit:gate --",
     "state-check": "npm --workspace @qqbot/bot run state-check --",
     "golive-check": "npm --workspace @qqbot/bot run golive-check --",

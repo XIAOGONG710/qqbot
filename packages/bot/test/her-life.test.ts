@@ -134,7 +134,7 @@ describe('生活引擎：不编关于真人的事，结果可复现', () => {
     test('跑 400 次（约两天半）：事件里没有「鸽鸽」，同学的事照样有', async () => {
         const events = await run(400, 11);
         assert.ok(events.some(text => /同学/.test(text)), '有同学的事');
-        assert.ok(events.some(text => /苏雨桐|妈妈|爸爸/.test(text)), '室友、家人的事也有');
+        assert.ok(events.some(text => /许小禾|妈妈|爸爸/.test(text)), '室友、家人的事也有');
         assert.ok(!events.some(text => text.includes('鸽鸽')), events.filter(text => text.includes('鸽鸽')).join(' / '));
     });
 

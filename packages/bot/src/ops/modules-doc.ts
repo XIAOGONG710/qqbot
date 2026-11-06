@@ -1,4 +1,4 @@
-// node src/ops/modules-doc.ts（ADR 0122）：由 src/modules.ts 重新生成 docs/modules/*.md（README.md + 每个模块一份）
+// node packages/bot/src/ops/modules-doc.ts（ADR 0122）：由 src/platform/modules.ts 清单重新生成 docs/modules/*.md（README.md + 每个模块一份）
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -78,7 +78,7 @@ export class ModelGuard {
 
     async run<T>(purpose: ModelPurpose, work: () => Promise<T>, unreachable: (error: unknown) => boolean = () => false, signal?: AbortSignal): Promise<T> {
         signal?.throwIfAborted();
-        const probe = this.#admit(purpose);
+        let probe = this.#admit(purpose);
         try {
             await this.#acquire(purpose, signal);
         } catch (error) {
@@ -88,6 +88,8 @@ export class ModelGuard {
         try {
             // 获得位置和启动请求之间也可能取消，不能留下幽灵请求或占用位置。
             signal?.throwIfAborted();
+            // 排队期间可能已经熔断；真正开始工作前复核，不重复扣日额度。
+            if (!probe) probe = this.#admitBreaker(purpose);
             const result = await work();
             this.#failures = 0;
             this.#openUntil = 0;
@@ -126,6 +128,12 @@ export class ModelGuard {
             throw new GuardRejected('budget', `今天的模型调用额度用完了（${this.#calls}/${limit}）`);
         }
         if (this.#calls >= dailyCalls * 0.8) this.#once('budget-80', `模型额度：今天已经调用 ${this.#calls} 次，超过日额度 ${dailyCalls} 的 80%`);
+        const probe = this.#admitBreaker(purpose);
+        this.#calls++;
+        return probe;
+    }
+
+    #admitBreaker(purpose: ModelPurpose): boolean {
         let probe = false;
         if (this.#options.now() < this.#openUntil || this.#failures >= this.#options.breakerFailures) {
             const halfOpen = this.#options.now() >= this.#openUntil;
@@ -134,7 +142,6 @@ export class ModelGuard {
             this.#probing = true;
             probe = true;
         }
-        this.#calls++;
         return probe;
     }
 

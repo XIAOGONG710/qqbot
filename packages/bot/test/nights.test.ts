@@ -6,10 +6,12 @@ import { bodyAt, describeBody } from '../src/life/body.ts';
 import { describeNight, HARD_HOURS, lastNight, SLEEPY_HOURS, withLastNight } from '../src/life/nights.ts';
 import { classesOn, describeState, stateAt, wakeTime } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // ADR 0219：昨晚真的怎么睡的。她：「那不是从身上长出来的，是我记着的」「别给我按课表编个『早八所以很累』出来，听着假」
-const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
-const schedule = card.schedule!;
+const card = loadCharacterCard(syntheticCardPath('boyfriend'));
+// 真实卡从 10-26 起起床时间带浮动（ADR 0078），这些测试的前提就是它（按课表的「早八上午困」从此对不上）；合成卡上补同样的设定
+const schedule = { ...card.schedule!, wake: { ...card.schedule!.wake, jitter: { from: '2026-10-26', spreadMin: 40, weekendMin: 60 } } };
 const body = card.herWorld!.body!;
 const HIM = 10001;
 const OTHER = 10002;

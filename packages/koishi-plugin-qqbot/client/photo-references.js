@@ -5,7 +5,7 @@ import { c, tag } from './common.js';
 import { dashboardTime } from './dashboard.js';
 
 const KINDS = [
-    { value: 'cat', label: '土豆的外观' },
+    { value: 'cat', label: '猫的外观' },
     { value: 'desk', label: '书桌与房间' },
     { value: 'tableware', label: '餐具与饭桌' },
     { value: 'view', label: '窗外与常见场景' },
@@ -115,7 +115,7 @@ export const PhotoReferencesTab = defineComponent({
             h('div', { class: 'qqbot-photo-review-head' }, [
                 h('div', null, [
                     h('h2', { class: 'qqbot-status-title' }, '视觉参考'),
-                    h('p', { class: 'qqbot-muted' }, '让土豆、书桌、餐具和窗外在不同照片里保持连贯。参考图保存在本机受控状态目录；质量审查时会随候选图发送到已配置的看图服务，但不会发送到 QQ。'),
+                    h('p', { class: 'qqbot-muted' }, '让猫、书桌、餐具和窗外在不同照片里保持连贯。参考图保存在本机受控状态目录；质量审查时会随候选图发送到已配置的看图服务，但不会发送到 QQ。'),
                 ]),
                 h(c('el-button'), { disabled: loading.value, onClick: refresh }, () => '刷新'),
             ]),
@@ -128,7 +128,7 @@ export const PhotoReferencesTab = defineComponent({
                     }, () => KINDS.map(item => h(c('el-option'), { key: item.value, label: item.label, value: item.value })))]),
                     h('label', null, [h('span', null, '参考名称'), h(c('el-input'), {
                         modelValue: referenceName.value, 'onUpdate:modelValue': value => { referenceName.value = value; },
-                        placeholder: '例如 土豆正面', maxlength: 64, disabled: saving.value,
+                        placeholder: '例如 猫的正面', maxlength: 64, disabled: saving.value,
                     })]),
                     h('label', null, [h('span', null, '本地图片'), h('input', {
                         class: 'qqbot-reference-file', type: 'file', accept: 'image/jpeg,image/png,image/webp', disabled: saving.value,

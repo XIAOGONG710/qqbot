@@ -19,6 +19,7 @@ import type { HumanValues } from '../human-values.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from '../life/promises.ts';
 import { chooseProject, projectActivity } from '../life/projects.ts';
 import { formatDate, herDay, stateAt, type ExtraFreeActivity, type Schedule } from '../life/schedule.ts';
+import { localDate } from '../local-date.ts';
 import { dateSpan, OCCUPATION_MINUTES, type WorldNow } from './world.ts';
 
 export interface LifeSources {
@@ -74,7 +75,7 @@ function mealDate(sources: Pick<LifeSources, 'worldAt'>, appointment: Appointmen
 }
 
 /** 一次约定对应一个稳定行动；联系人自己的 promise id 只在该联系人内唯一，所以把 QQ 一起放进幂等键。 */
-function appointmentActions(sources: LifeSources, from: Date, to: Date): ActionAppointment[] {
+function appointmentActions(sources: LifeSources, from: Date, to: Date): (ActionAppointment & { meetingAt: Date })[] {
     const saidBedtimes = sources.bedtimes?.() ?? [];
     return (sources.appointmentsBetween?.(from, to) ?? []).flatMap(appointment => {
         const lead = new Date(appointment.start.getTime() - MEET_LEAD_MINUTES * 60_000);
@@ -94,6 +95,7 @@ function appointmentActions(sources: LifeSources, from: Date, to: Date): ActionA
         return segments.filter(segment => segment.start < to && segment.end > from).map(segment => ({
             id: `${lifeActionId(segment.start, 'meet')}:${appointment.contact.qq}:${appointment.promise.id}`,
             ...segment,
+            meetingAt: appointment.start,
             subject: appointment.promise.what,
             target: `contact:${appointment.contact.qq}`,
             // 只有真正走到约定结束的最后一段才算把这顿饭吃完；被课或睡觉截断的前段不结算饱腹。
@@ -146,35 +148,35 @@ export function dayBusy(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: 
     return busySpans(dayWorld(sources, at));
 }
 
-const MEAL_SOCIAL = new Set(['lunch_with_friend', 'spicy_noodles']);
-const CLASS_SOCIAL = new Set(['notes_for_friend']);
 
 /** 世界里已有的 NPC 事实进入类型化行动：一起吃饭 / 帮拍板书附在那件硬行动上，微信来往单独占一小段时间。 */
 function npcFacts(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date) {
     return (dayWorld(sources, at)?.events ?? []).filter(event => event.person);
 }
 
-function targetForMeal(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date): string | undefined {
-    const social = npcFacts(sources, at).find(event => MEAL_SOCIAL.has(event.id))?.person?.id;
+function targetForMeal(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, meal: { kind: 'lunch' | 'dinner'; start: Date; end: Date }): string | undefined {
+    const social = npcFacts(sources, meal.start).find(event => event.attach === 'meal'
+        && (event.mealKind ? event.mealKind === meal.kind : event.at >= meal.start && event.at < meal.end))?.person?.id;
     if (social) return social;
     // 闺蜜约的那顿午饭（ADR 0061）：真的发生了的才算
-    const world = dayWorld(sources, at);
-    return world?.dates?.find(d => d.held && d.kind === 'canteen' && formatDate(d.start) === world.day)?.person.id;
+    const world = dayWorld(sources, meal.start);
+    return world?.dates?.find(d => d.held && (d.kind === 'canteen' || d.kind === 'dinner')
+        && dateSpan(d).start < meal.end && dateSpan(d).end > meal.start)?.person.id;
 }
 
 function targetForClass(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date, end: Date): string | undefined {
-    return npcFacts(sources, at).find(event => CLASS_SOCIAL.has(event.id) && event.at >= at && event.at < end)?.person?.id;
+    return npcFacts(sources, at).find(event => event.attach === 'class' && event.at >= at && event.at < end)?.person?.id;
 }
 
 function directNpcFacts(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date) {
-    return npcFacts(sources, at).filter(event => !MEAL_SOCIAL.has(event.id) && !CLASS_SOCIAL.has(event.id));
+    return npcFacts(sources, at).filter(event => !event.attach);
 }
 
 /** 她这一天晚上那一段里的某一刻（windowEnd 取到的就是第二天入睡） */
 function herDayEvening(schedule: Schedule, at: Date): Date {
     const day = herDay(schedule, at);
     const [h, m] = schedule.free.eveningFrom.split(':').map(Number);
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+    return localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
 }
 
 /** 那一天要赶的作业：写完之前那一段在赶（ADR 0030 的 OCCUPATION_MINUTES.homework） */
@@ -199,7 +201,7 @@ function windowEnd(schedule: Schedule, at: Date): Date {
     const day = herDay(schedule, at);
     const time = (hhmm: string, offset = 0) => {
         const [h, m] = hhmm.split(':').map(Number);
-        return new Date(day.getFullYear(), day.getMonth(), day.getDate() + offset, h, m);
+        return localDate(day.getFullYear(), day.getMonth(), day.getDate() + offset, h, m);
     };
     return [time(schedule.free.afternoonFrom), time(schedule.free.eveningFrom), time(schedule.sleep, 1)].find(end => end > at)!;
 }
@@ -249,7 +251,7 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     if (meal && leaving) {
         if (leaving.meal) return { skipTo: leaving.start, why: `等着出去吃（${leaving.subject}）` };
         if (meal.start.getTime() !== at.getTime() || minutesBetween(at, leaving.start) < MIN_MEAL_MINUTES) return { skipTo: leaving.start, why: '要出门了，来不及吃饭' };
-        const target = meal.kind === 'lunch' ? targetForMeal(sources, at) : undefined;
+        const target = targetForMeal(sources, meal);
         return {
             intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at, durationMinutes: minutesBetween(at, leaving.start), ...(target ? { target } : {}) },
             why: `出门前先把${meal.kind === 'lunch' ? '午饭' : '晚饭'}吃了`,
@@ -258,12 +260,13 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
     // 落在饭点中间、这顿还没吃（账上没有，也没在约会里一起吃过），还剩 MIN_MEAL_MINUTES 以上：从这一刻吃——忙到 17:48 也照样去吃晚饭。
     // 原来只在饭点开头那一刻排吃饭，落在中间就当「饭吃到一半」跳过：10-09 线上执行器起点带秒（15:07:51），修片记到 17:47:51，晚饭整顿没记上
     if (meal && meal.start < at && minutesBetween(at, meal.end) >= MIN_MEAL_MINUTES && !ateAlready(sources, meal)) {
-        return { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at }, why: `晚了一点吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}` };
+        const target = targetForMeal(sources, meal);
+        return { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at, ...(target ? { target } : {}) }, why: `晚了一点吃${meal.kind === 'lunch' ? '午饭' : '晚饭'}` };
     }
     if (meal) {
-        const target = meal.kind === 'lunch' ? targetForMeal(sources, at) : undefined;
+        const target = targetForMeal(sources, meal);
         return meal.start.getTime() === at.getTime()
-            ? { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at, ...(target ? { target } : {}) }, why: meal.kind === 'lunch' ? '和朋友吃午饭' : '晚饭' }
+            ? { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at, ...(target ? { target } : {}) }, why: `${target ? '和朋友吃' : ''}${meal.kind === 'lunch' ? '午饭' : '晚饭'}` }
             : { skipTo: meal.end, why: '饭吃到一半' };
     }
     const blocks = dayBusy(sources, at);
@@ -465,21 +468,24 @@ export function lifeExecutor(sources: LifeSources, queue: ActionQueue, options: 
 
 /**
  * 排着的见面按现在的约定再看一遍（G1，审查 P1-1）：ADR 0047 起聊着就会改时间、取消。行动 id 里带着出门时刻和约定 id，
- * 改了时间 id 就变了。约定还在、时段没变——不动；约定取消了或改了时间——还没出门的去掉（从来没发生，之后按新的约定排），
+ * 改了时间 id 就变了。约定还在则重验时段并同步内容；约定取消了或改了时间——还没出门的去掉（从来没发生，之后按新的约定排），
  * 已经出门的停在这一刻（她出去了一趟，这段算数）；改成提前结束的，停在新的结束时刻
  */
 function reviseMeet(item: QueuedAction, sources: LifeSources, queue: ActionQueue, now: Date): void {
-    if (item.event.result === 'failed') return;
+    if (item.event.result === 'failed' || item.meetingCancelled) return;
     const start = new Date(item.event.startedAt ?? item.event.at);
     const end = new Date(item.event.at);
     const still = appointmentActions(sources, start, end).find(other => other.id === item.id);
-    if (still && still.end.getTime() >= end.getTime()) return;
     if (still) {
-        queue.shorten(item.id, still.end, '约好的见面改成早点结束');
+        queue.refreshMeeting(still, { schedule: sources.schedule, books: sources.books, events: sources.events() });
         return;
     }
     if (now.getTime() <= start.getTime()) queue.drop(item.id, '约好的见面改了时间或取消了，还没出门');
-    else if (now.getTime() < end.getTime()) queue.shorten(item.id, now, '约好的见面中途取消了');
+    else if (now.getTime() < end.getTime()) queue.shorten(item.id, now, '约好的见面中途取消了', {
+        // 只有明确保存了约见时刻且尚未到点，才能确定只是出门准备、没有吃完这顿饭。
+        ...(item.meetingAt && now.getTime() < Date.parse(item.meetingAt) ? { meal: false } : {}),
+        meetingCancelled: true,
+    });
 }
 
 /** 灵活的行动：聊天里说过的事能让它提前停；睡觉、吃饭、上课不动 */

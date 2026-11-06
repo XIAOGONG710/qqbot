@@ -4,7 +4,7 @@
 // DSH 行动复核（10-08）之后：排队时队列里还没结算的计划也算占用；能取消、改时间；事件账不收的挪到死信区，不堵后面的；
 // 结算挂在读世界之前（settlingWorld），和世界用同一个时钟。
 
-import type { ActionContext, ActionIntent, ActionVerdict, TypedActionKind } from '../life/actions.ts';
+import type { ActionAppointment, ActionContext, ActionIntent, ActionVerdict, TypedActionKind } from '../life/actions.ts';
 import { judgeAction } from '../life/actions.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import type { LifeEvent, LifeEventDraft } from './life-events.ts';
@@ -19,6 +19,10 @@ export interface QueuedAction {
     requestedMinutes: number;
     /** 取消（还没开始）的是 0 */
     actualMinutes: number;
+    /** 约见本身的开始时刻，和提前出门时刻分开；旧队列可缺省。 */
+    meetingAt?: string;
+    /** 取消后保留已经出门的事实，但不能再被后续刷新重新延长。 */
+    meetingCancelled?: boolean;
 }
 
 /** 事件账没收的（格式、日子在开学前、账本的时钟还没到）：留着查，不再重试，也不堵后面的 */
@@ -37,6 +41,8 @@ export interface Ledger {
 export interface ActionQueue {
     /** 同一 id 已排队时原样返回，不重复排；失败裁决不进队列。队列里还没结算的计划也算占用（和事件账里的一样）。 */
     schedule(intent: ActionIntent, context: ActionContext): ActionVerdict;
+    /** 最新约定重新裁判同 ID 的未结算见面，保留原开始时刻和稳定身份，更新内容及结束时刻。 */
+    refreshMeeting(appointment: ActionAppointment & { meetingAt: Date }, context: ActionContext): ActionVerdict | undefined;
     /**
      * 改时间（作业提前交、换个时间去）：at 时还没开始的计划，按新的开始时间 / 时长重新裁判，同一 id。
      * 裁判不过就保留原计划，返回失败的裁决；没有这条或已经开始了返回 undefined（开始了的用 cancel 打断）
@@ -51,7 +57,7 @@ export interface ActionQueue {
      * 提前停（ADR 0042）：开始了的计划在 at 这一刻做完（succeeded，做了的那段算数）——聊天里说她去睡了、下楼喂猫了、作业写完了，世界变了。
      * 和选择器事先知道时一样（到那一刻自然地停），所以不是 interrupted；at 不在开始和结束之间、取消了的返回 undefined
      */
-    shorten(id: string, at: Date, why: string): QueuedAction | undefined;
+    shorten(id: string, at: Date, why: string, change?: { meal?: boolean; meetingCancelled?: boolean }): QueuedAction | undefined;
     /**
      * 去掉还没落账的计划（ADR 0042）：聊天里说过的事表明那一段她在干别的（说了睡了以后排的休闲），这条计划从来没发生，
      * 不进事件账（和 cancel 不同：cancel 是她本来要做、没做成，她记得）
@@ -84,15 +90,19 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
     if (items.length !== raw.length) log(`她的行动队列：忽略 ${raw.length - items.length} 条格式损坏的计划`);
     let dead = (Array.isArray(loaded.dead) ? loaded.dead : []).filter((item): item is DeadAction =>
         validQueuedAction(item) && typeof (item as DeadAction).deadAt === 'string' && typeof (item as DeadAction).why === 'string').slice(-MAX_DEAD_ACTIONS);
-    const persist = () => writeJsonAtomic(path, { version: 1, items, ...(dead.length ? { dead } : {}) });
+    const commit = (nextItems: QueuedAction[], nextDead = dead) => {
+        writeJsonAtomic(path, { version: 1, items: nextItems, ...(nextDead.length ? { dead: nextDead } : {}) });
+        // 只有原子写入成功才能发布新内存状态，否则同 ID 重试会把未落盘的计划误当成功。
+        items = nextItems;
+        dead = nextDead;
+    };
     /** 裁判时把队列里别的计划也当成占用（schedule 时 judgeAction 只看事件账） */
     const withPlans = (context: ActionContext, except?: string): ActionContext => ({
         ...context,
         events: [...(context.events ?? []), ...items.filter(item => item.id !== except).map(item => planned(item, context.schedule))],
     });
     const replace = (item: QueuedAction) => {
-        items = [...items.filter(other => other.id !== item.id), item].sort(byEnd);
-        persist();
+        commit([...items.filter(other => other.id !== item.id), item].sort(byEnd));
     };
 
     return {
@@ -106,6 +116,26 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
                 requestedMinutes: verdict.requestedMinutes, actualMinutes: verdict.actualMinutes,
             });
             log(`她的行动队列：排入 ${intent.kind}，${new Date(verdict.event.at).toISOString()}`);
+            return verdict;
+        },
+        refreshMeeting: (appointment, context) => {
+            const item = items.find(other => other.id === appointment.id);
+            if (!item || item.kind !== 'meet' || item.event.result !== 'succeeded' || item.meetingCancelled
+                || Date.parse(item.event.startedAt ?? item.event.at) !== appointment.start.getTime()
+                || !Number.isFinite(appointment.meetingAt.getTime())) return undefined;
+            const verdict = judgeAction({ id: item.id, kind: 'meet', startedAt: appointment.start, source: item.event.source },
+                withPlans({ ...context, appointments: [appointment] }, item.id));
+            if (!verdict.ok) {
+                log(`她的行动队列：见面刷新不行（${verdict.reason}），保留原计划`);
+                return verdict;
+            }
+            const updated: QueuedAction = { ...item, event: verdict.event, occupation: verdict.occupation,
+                requestedMinutes: verdict.requestedMinutes, actualMinutes: verdict.actualMinutes,
+                meetingAt: appointment.meetingAt.toISOString() };
+            if (JSON.stringify(updated) !== JSON.stringify(item)) {
+                replace(updated);
+                log('她的行动队列：按最新约定刷新见面');
+            }
             return verdict;
         },
         reschedule: (id, at, change, context) => {
@@ -141,15 +171,16 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
             log(`她的行动队列：${item.kind}${cancelled.event.result === 'failed' ? '取消' : '打断'}（${why}）`);
             return cancelled;
         },
-        shorten: (id, at, why) => {
+        shorten: (id, at, why, change) => {
             const item = items.find(other => other.id === id);
             if (!item || item.event.result === 'failed') return undefined;
             const start = Date.parse(item.event.startedAt ?? item.event.at);
             if (at.getTime() <= start || at.getTime() >= Date.parse(item.event.at)) return undefined;
             // 原来被课打断的（interrupted_by_class）提前停了，就不是被课打断的：原因去掉
-            const event: LifeEventDraft = { ...item.event, at: at.toISOString(), result: 'succeeded' };
+            const event: LifeEventDraft = { ...item.event, at: at.toISOString(), result: 'succeeded', ...(change?.meal === undefined ? {} : { meal: change.meal }) };
             delete event.reason;
-            const shortened: QueuedAction = { ...item, event, actualMinutes: (at.getTime() - start) / 60_000 };
+            const shortened: QueuedAction = { ...item, event, actualMinutes: (at.getTime() - start) / 60_000,
+                ...(change?.meetingCancelled === undefined ? {} : { meetingCancelled: change.meetingCancelled }) };
             replace(shortened);
             log(`她的行动队列：${item.kind} 提前到 ${at.toISOString()} 停（${why}）`);
             return shortened;
@@ -157,8 +188,7 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
         drop: (id, why) => {
             const item = items.find(other => other.id === id);
             if (!item) return undefined;
-            items = items.filter(other => other.id !== id);
-            persist();
+            commit(items.filter(other => other.id !== id));
             log(`她的行动队列：去掉 ${item.kind}（${item.id}）：${why}`);
             return item;
         },
@@ -173,15 +203,24 @@ export function actionQueue(path: string, log: (message: string) => void = () =>
                     log(`她的行动队列：结算 ${item.kind}（${item.id}）写事件账失败，下次再试：${error instanceof Error ? error.message : String(error)}`);
                     break;
                 }
-                items = items.filter(other => other.id !== item.id);
                 // recordEvents 以 id 幂等、不收的不报错。只有事实账真的有这条才算结算；没收的挪到死信区，不然每次都卡在这一条
-                if (!ledger.events().some(event => event.id === item.id)) {
-                    dead = [...dead, { ...item, deadAt: now.toISOString(), why: '事件账没收' }].slice(-MAX_DEAD_ACTIONS);
-                    persist();
+                let accepted: boolean;
+                try { accepted = ledger.events().some(event => event.id === item.id); }
+                catch (error) {
+                    log(`她的行动队列：确认 ${item.kind}（${item.id}）事件账失败，下次再试：${error instanceof Error ? error.message : String(error)}`);
+                    break;
+                }
+                const nextItems = items.filter(other => other.id !== item.id);
+                const nextDead = accepted ? dead : [...dead, { ...item, deadAt: now.toISOString(), why: '事件账没收' }].slice(-MAX_DEAD_ACTIONS);
+                try { commit(nextItems, nextDead); }
+                catch (error) {
+                    log(`她的行动队列：结算 ${item.kind}（${item.id}）队列写入失败，下次再试：${error instanceof Error ? error.message : String(error)}`);
+                    break;
+                }
+                if (!accepted) {
                     log(`她的行动队列：${item.kind}（${item.id}）事件账没收，挪到死信区`);
                     continue;
                 }
-                persist();
                 settled++;
                 log(`她的行动队列：结算 ${item.kind}（${item.event.result}）`);
             }
@@ -243,6 +282,8 @@ function validQueuedAction(value: unknown): value is QueuedAction {
         && typeof item.occupation === 'string'
         && typeof item.requestedMinutes === 'number' && item.requestedMinutes > 0
         && typeof item.actualMinutes === 'number' && (item.actualMinutes > 0 || cancelled)
+        && (item.meetingAt === undefined || (typeof item.meetingAt === 'string' && Number.isFinite(Date.parse(item.meetingAt))))
+        && (item.meetingCancelled === undefined || typeof item.meetingCancelled === 'boolean')
         && Boolean(event) && event!.id === item.id && event!.kind === item.kind
         && typeof event!.startedAt === 'string' && Number.isFinite(Date.parse(event!.startedAt))
         && typeof event!.at === 'string' && Number.isFinite(Date.parse(event!.at))

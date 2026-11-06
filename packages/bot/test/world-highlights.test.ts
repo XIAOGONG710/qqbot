@@ -12,7 +12,7 @@ function world(patch: Partial<WorldNow> = {}): WorldNow {
 describe('控制台的「今天发生」', () => {
     test('只取已经发生的事实，按时间倒序并限制条数', () => {
         const result = worldHighlights(world({
-            cat: { name: '土豆', today: { fed: at(18, 20), seen: true }, yesterdayFed: true, foodDays: 4 },
+            cat: { name: '团子饼', today: { fed: at(18, 20), seen: true }, yesterdayFed: true, foodDays: 4 },
             routine: { meals: [
                 { kind: 'lunch', start: at(12), end: at(12, 30), where: 'canteen', dish: '番茄鸡蛋面' },
                 { kind: 'dinner', start: at(19), end: at(19, 30), where: 'canteen', dish: '米饭' },
@@ -20,12 +20,12 @@ describe('控制台的「今天发生」', () => {
             parcels: [{ item: '相机背带', status: 'picked_today', when: at(17, 40) }],
             homework: [{ course: '高数', due: at(23), done: true, doneAt: at(16) }],
             events: [
-                { id: 'past', text: '苏雨桐请她喝了奶茶', at: at(15) },
+                { id: 'past', text: '许小禾请她喝了奶茶', at: at(15) },
                 { id: 'future', text: '晚上才会发生', at: at(21) },
             ],
         }), at(18, 30), 3);
 
-        assert.deepEqual(result.map(item => item.text), ['喂过土豆，也见到它了', '取了相机背带', '高数作业写完了']);
+        assert.deepEqual(result.map(item => item.text), ['喂过团子饼，也见到它了', '取了相机背带', '高数作业写完了']);
         assert.ok(result.every(item => Date.parse(item.at) <= at(18, 30).getTime()));
     });
 

@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 她在 QQ 上「有个人在」的几处对外可见的小事（ADR 0083）：在线状态、给他的资料卡点赞、个性签名、QQ 空间说说。
 // 都是 NapCat 的扩展动作（set_online_status / send_like / set_self_longnick / send_qzone_msg），都有各自的开关，默认关。
 // 这个文件是纯规则 + 一个每分钟看一眼的小循环（createPresence）；「回复他的消息时」的两件事（已读、表情回应）在 responder 里。
@@ -80,7 +81,7 @@ export function likePlan(qq: number, day: string): { minutes: number; times: num
 
 /** 平时的签名（她的口吻，短；改成什么由日期哈希挑，不连着两次一样） */
 export const SIGNATURES: readonly string[] = [
-    '今天也在好好吃饭', '困', '土豆又胖了', '想去海边', '周末快点来',
+    '今天也在好好吃饭', '困', '楼下的猫又胖了', '想去海边', '周末快点来',
     '路过的猫都很可爱', '慢慢来', '今天的云很好看', '想吃烤冷面', '没有灵感', '平静', '少熬夜', '又是想放假的一天',
     '食堂的面今天不错', '作业会自己写完的（不会）', '晚上吃点好的', '日子平平淡淡', '一切都会好的',
     '在攒钱', '不想动', '天气好就出去走走', '好好生活', '今天不想说话', '想拍点好看的东西',
@@ -104,7 +105,7 @@ export const SIGNATURE_HOURS: [number, number] = [10, 22];
 export function signatureDueAt(lastChangedAt: number): number {
     const days = pick(String(lastChangedAt), 'signature-gap', [3, 5]);
     const day = new Date(lastChangedAt);
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate() + days,
+    return localDate(day.getFullYear(), day.getMonth(), day.getDate() + days,
         pick(String(lastChangedAt), 'signature-hour', SIGNATURE_HOURS), pick(String(lastChangedAt), 'signature-minute', [0, 59])).getTime();
 }
 
@@ -208,6 +209,8 @@ interface PresenceFile {
     version: 1;
     status?: { label: string; at: number };
     likedDay?: string;
+    /** 当天各目标的保守预留。先持久化再发，避免较晚目标到点前每分钟/重启重复点赞。 */
+    likeProgress?: { day: string; targets: number[] };
     signature?: { text: string; at: number; next: number; draft?: boolean };
     qzone: QzoneRecord[];
     qzoneAttemptDay?: string;
@@ -267,7 +270,7 @@ export interface PresenceOptions {
 function agoText(at: number, now: number): string {
     const a = new Date(at);
     const b = new Date(now);
-    const days = Math.round((new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime() - new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime()) / 86_400_000);
+    const days = Math.round((localDate(b.getFullYear(), b.getMonth(), b.getDate()).getTime() - localDate(a.getFullYear(), a.getMonth(), a.getDate()).getTime()) / 86_400_000);
     const hour = a.getHours();
     const part = hour < 6 ? '凌晨' : hour < 12 ? '上午' : hour < 18 ? '下午' : '晚上';
     return days <= 0 ? `今天${part}` : days === 1 ? `昨天${part}` : `${days} 天前`;
@@ -286,9 +289,9 @@ export function describeSelf(input: { signature?: { text: string; draft?: boolea
     if (parts.length) lines.push(`[你在 QQ 上的样子（他点开你的资料卡、空间能看到的；他问起或提到时照这个说，没写的别编）：${parts.join('；')}]`);
     // 她刷空间看到的是别人发的，和上面「他能看到的你」是两回事，分开一行，免得她把别人的话当成自己发的
     const seen: string[] = [];
-    if (input.browse && now - input.browse.at <= 6 * 3_600_000) seen.push(input.browse.note);
-    if (input.peek && now - input.peek.at <= 6 * 3_600_000) seen.push(input.peek.note);
-    if (input.strangers && now - input.strangers.at <= 6 * 3_600_000) seen.push(input.strangers.note);
+    if (input.browse && input.browse.at <= now && now - input.browse.at <= 6 * 3_600_000) seen.push(input.browse.note);
+    if (input.peek && input.peek.at <= now && now - input.peek.at <= 6 * 3_600_000) seen.push(input.peek.note);
+    if (input.strangers && input.strangers.at <= now && now - input.strangers.at <= 6 * 3_600_000) seen.push(input.strangers.note);
     if (seen.length) lines.push(`[你刚才刷空间看到的（是别人发的，不是你发的；用不上就不提，没写的别编）：${seen.join('；')}]`);
     return lines.length ? lines.join('\n') : undefined;
 }
@@ -305,9 +308,71 @@ export interface Presence {
 }
 
 const STATE_VERSION = 1;
-const validFile = (value: unknown): value is PresenceFile =>
-    typeof value === 'object' && value !== null && (value as PresenceFile).version === STATE_VERSION
-    && Array.isArray((value as PresenceFile).qzone) && Array.isArray((value as PresenceFile).photosUsed);
+const stateRecord = (value: unknown): Record<string, unknown> | undefined =>
+    typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const text = (value: unknown, max = 10_000): value is string => typeof value === 'string' && value.length <= max;
+const optional = (value: unknown, check: (candidate: unknown) => boolean): boolean => value === undefined || check(value);
+const stringList = (value: unknown, maxItems: number, maxLength: number): value is string[] =>
+    Array.isArray(value) && value.length <= maxItems && value.every(item => text(item, maxLength));
+const numberList = (value: unknown, maxItems: number): value is number[] =>
+    Array.isArray(value) && value.length <= maxItems && value.every(finite);
+const attemptDay = (value: unknown): value is string => text(value, 32);
+
+function validSignature(value: unknown): boolean {
+    const record = stateRecord(value);
+    return Boolean(record && text(record.text, 1_000) && finite(record.at) && finite(record.next)
+        && optional(record.draft, (candidate): candidate is boolean => typeof candidate === 'boolean'));
+}
+
+function validLikeProgress(value: unknown): boolean {
+    const record = stateRecord(value);
+    return Boolean(record && attemptDay(record.day) && Array.isArray(record.targets) && record.targets.length <= 1_000
+        && record.targets.every(target => Number.isSafeInteger(target) && (target as number) > 0));
+}
+
+function validQzoneRecord(value: unknown): boolean {
+    const record = stateRecord(value);
+    return Boolean(record && finite(record.at) && text(record.text, 1_000)
+        && optional(record.photo, (candidate): candidate is string => text(candidate, 255))
+        && optional(record.tid, (candidate): candidate is string => text(candidate, 1_000))
+        && (record.mode === 'dryRun' || record.mode === 'on'));
+}
+
+function validSeen(value: unknown, kind: 'browse' | 'peek' | 'strangers'): boolean {
+    const record = stateRecord(value);
+    if (!record || !finite(record.at) || !Number.isSafeInteger(record.count) || (record.count as number) < 0 || !text(record.note, 20_000)) return false;
+    if (kind === 'peek') return Number.isSafeInteger(record.uin) && (record.uin as number) > 0;
+    return text(record.action, 1_000);
+}
+
+/**
+ * presence.json is durable progress for externally visible actions, not a disposable cache.  A
+ * partially-shaped value must not turn "already liked/posted/poked today" into "not done".
+ * Unknown extra keys remain forward-compatible, but every field we consume is checked here.
+ */
+const validFile = (value: unknown): value is PresenceFile => {
+    const record = stateRecord(value);
+    if (!record || record.version !== STATE_VERSION) return false;
+    if (!Array.isArray(record.qzone) || record.qzone.length > 1_000 || !record.qzone.every(validQzoneRecord)) return false;
+    if (!stringList(record.photosUsed, 10_000, 255)) return false;
+    if (!optional(record.status, candidate => {
+        const status = stateRecord(candidate);
+        return Boolean(status && text(status.label, 100) && finite(status.at));
+    })) return false;
+    if (!optional(record.likedDay, attemptDay)
+        || !optional(record.likeProgress, (candidate): candidate is PresenceFile['likeProgress'] => validLikeProgress(candidate))
+        || !optional(record.signature, (candidate): candidate is PresenceFile['signature'] => validSignature(candidate))) return false;
+    if (!optional(record.qzoneAttemptDay, attemptDay) || !optional(record.pokeOutAttemptDay, attemptDay)) return false;
+    if (!optional(record.browse, (candidate): candidate is PresenceFile['browse'] => validSeen(candidate, 'browse'))
+        || !optional(record.peek, (candidate): candidate is PresenceFile['peek'] => validSeen(candidate, 'peek'))
+        || !optional(record.strangers, (candidate): candidate is PresenceFile['strangers'] => validSeen(candidate, 'strangers'))) return false;
+    if (!optional(record.browseAttemptAt, finite) || !optional(record.peekAttemptAt, finite)
+        || !optional(record.peekRetryAt, finite) || !optional(record.strangersAttemptAt, finite)) return false;
+    if (!optional(record.peekSeen, (candidate): candidate is string[] => stringList(candidate, 1_000, 1_000))) return false;
+    if (!optional(record.pokesOut, (candidate): candidate is number[] => numberList(candidate, 1_000))) return false;
+    return true;
+};
 
 export const PRESENCE_TICK_MS = 60_000;
 
@@ -316,7 +381,11 @@ export function createPresence(options: PresenceOptions): Presence {
     mkdirSync(dir, { recursive: true });
     const statePath = join(dir, 'presence.json');
     const draftsPath = join(dir, 'drafts.md');
-    const state = readJsonOr<PresenceFile>(statePath, { version: STATE_VERSION, qzone: [], photosUsed: [] }, log, { validate: validFile, label: '存在感状态' });
+    const state = readJsonOr<PresenceFile>(statePath, { version: STATE_VERSION, qzone: [], photosUsed: [] }, log, {
+        validate: validFile,
+        invalid: 'throw',
+        label: '存在感状态',
+    });
     const save = () => writeJsonAtomic(statePath, state);
     const failed = new Set<string>();
     const fail = (what: string, error: unknown) => {
@@ -387,12 +456,20 @@ export function createPresence(options: PresenceOptions): Presence {
         if (!flags.profileLikes || !transport.sendLike || !awake || state.likedDay === day) return;
         const date = new Date(t);
         const minutes = date.getHours() * 60 + date.getMinutes();
+        const progress = state.likeProgress?.day === day ? state.likeProgress : { day, targets: [] };
+        const reserved = new Set(progress.targets);
         let waiting = false;
         for (const qq of options.likeTargets) {
             check();
             const plan = likePlan(qq, day);
             if (!plan) continue;
             if (minutes < plan.minutes) { waiting = true; continue; }
+            if (reserved.has(qq)) continue;
+            // 点赞和 JSON 不是事务。按既有“一天不重试”政策先持久预留，宁可在未知结果时少点，
+            // 也不能在较晚目标到点前每分钟、重启或崩溃恢复后重复点同一个人。
+            reserved.add(qq);
+            state.likeProgress = { day, targets: [...reserved] };
+            save();
             try {
                 check();
                 await transport.sendLike(qq, plan.times);
@@ -406,6 +483,7 @@ export function createPresence(options: PresenceOptions): Presence {
         // 点没点成都记这一天做过了（不一整天每分钟重试）；还有没到点的就等
         if (!waiting) {
             state.likedDay = day;
+            delete state.likeProgress;
             save();
         }
     }

@@ -1,0 +1,74 @@
+# 合成测试角色的书（虚构书名、虚构作者）。
+books:
+  - id: "fog-harbor"
+    title: "雾港旧事"
+    aliases: ["雾港"]
+    author: "虚构作者甲"
+    kind: "小说"
+    platform: "某读书App"
+    status: "在读"
+    activity:
+      window: "evening"
+      text: "睡前看几章《雾港旧事》"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate"]
+    total:
+      amount: 120
+      unit: "章"
+      source: "合成资料，非真实书目"
+    progress:
+      start_day: "2026-08-31"
+      start: 10
+      every_days: 2
+      amount: 3
+      unit: "章"
+      max: 120
+      state: "reading"
+    attitude: "挺喜欢，节奏慢但耐看"
+    unread_keywords: ["结局", "大结局"]
+    nodes:
+      - id: "opening"
+        topic: "开头"
+        from: 0
+        keywords: ["主角", "开头"]
+        points: ["主角在港口长大"]
+        sources: ["合成"]
+      - id: "lighthouse"
+        topic: "灯塔"
+        from: 40
+        keywords: ["灯塔"]
+        points: ["灯塔里藏着一封信"]
+        sources: ["合成"]
+        tiers: ["boyfriend", "bestie"]
+        note: "合成：只给前两档的节点"
+  - id: "paper-plane"
+    title: "纸飞机物语"
+    aliases: []
+    author: "虚构作者乙"
+    kind: "漫画"
+    platform: "某漫画App"
+    status: "弃坑"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate"]
+    progress:
+      start_day: "2026-08-31"
+      start: 30
+      every_days: 7
+      amount: 0
+      unit: "话"
+      state: "put_down"
+    attitude: "画风好但剧情拖"
+    unread_keywords: []
+    nodes: []
+read_books:
+  - id: "clear-sky-train"
+    title: "晴空列车"
+    aliases: ["晴空"]
+    author: "虚构作者丙"
+    kind: "小说"
+    platform: "纸书"
+    status: "读完"
+    tiers: ["boyfriend", "bestie", "girl_friend", "known", "classmate"]
+    attitude: "高中时最喜欢"
+    points: ["列车每站停一天"]
+    avoid: ["没看过续作"]
+    sources: ["合成"]
+note: "合成书单"

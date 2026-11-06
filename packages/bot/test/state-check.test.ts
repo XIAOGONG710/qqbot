@@ -26,24 +26,25 @@ describe('状态文件兼容检查（ADR 0070 第 13 项）', () => {
         mkdirSync(join(dir, 'transport'));
         const bad = JSON.stringify({ version: 99 });
         writeFileSync(join(dir, 'proactive', '10001-boyfriend.json'), bad);
-        writeFileSync(join(dir, 'weather', 'jinan.json'), JSON.stringify({ since: '2026-10-11', fetchedAt: '2026-10-31T12:36:45.984Z', hours: { '2026-10-11T08': { t: 'cold', p: 0, c: 2 } } }));
-        writeFileSync(join(dir, 'weather', 'test.json'), '{}');
-        writeFileSync(join(dir, 'air-quality', 'jinan.json'), JSON.stringify({ since: '2026-10-11', fetchedAt: '2026-10-31T12:36:45.984Z', hours: { '2026-10-11T08': { pm25: -1, pm10: 20, aqi: 30 } } }));
-        writeFileSync(join(dir, 'daylight', 'jinan.json'), JSON.stringify({ fetchedAt: '2026-10-31T12:36:45.984Z', days: { '2026-10-31': { sunrise: '2026-10-31T18:00', sunset: '2026-10-31T06:00' } } }));
+        writeFileSync(join(dir, 'weather', 'school-town.json'), JSON.stringify({ since: '2026-10-11', fetchedAt: '2026-10-31T12:36:45.984Z', hours: { '2026-10-11T08': { t: 'cold', p: 0, c: 2 } } }));
+        // 地点缓存的文件名是卡上的地点 id（ADR 0334）：小写字母开头的才按天气缓存校验，别的名字仍只查语法
+        writeFileSync(join(dir, 'weather', 'Notes.json'), '{}');
+        writeFileSync(join(dir, 'air-quality', 'school-town.json'), JSON.stringify({ since: '2026-10-11', fetchedAt: '2026-10-31T12:36:45.984Z', hours: { '2026-10-11T08': { pm25: -1, pm10: 20, aqi: 30 } } }));
+        writeFileSync(join(dir, 'daylight', 'school-town.json'), JSON.stringify({ fetchedAt: '2026-10-31T12:36:45.984Z', days: { '2026-10-31': { sunrise: '2026-10-31T18:00', sunset: '2026-10-31T06:00' } } }));
         writeFileSync(join(dir, 'calendar', 'calendar.json'), JSON.stringify({ fetchedAt: '2026-10-31T12:36:45.984Z', yearFetchedAt: { 2026: '2026-10-31T12:36:45.984Z' }, years: { 2026: { '2026-02-30': { date: '2026-02-30', name: '不存在的假期', kind: 'holiday', real: true } } } }));
-        writeFileSync(join(dir, 'transport', 'transport.json'), JSON.stringify({ fetchedAt: '2026-10-31T12:36:45.984Z', facts: { jinan: { location: '济南', status: 'normal', observedAt: 'not-a-time', source: 'test', real: true } } }));
+        writeFileSync(join(dir, 'transport', 'transport.json'), JSON.stringify({ fetchedAt: '2026-10-31T12:36:45.984Z', facts: { 'school-town': { location: '雾岚市', status: 'normal', observedAt: 'not-a-time', source: 'test', real: true } } }));
         writeFileSync(join(dir, 'memory', '10001-boyfriend.json'), JSON.stringify({ bankId: 'memory-bank', retained: 'not-an-object' }));
         writeFileSync(join(dir, 'memory', 'diary.json'), JSON.stringify({ written: { '2026-02-30': 10 }, texts: {}, weeks: {}, phases: {} }));
         const checks = checkStates(dir);
         assert.equal(checks.find(c => c.name === 'proactive/10001-boyfriend.json')!.ok, false);
-        assert.equal(checks.find(c => c.name === 'weather/jinan.json')!.ok, false);
-        assert.equal(checks.find(c => c.name === 'air-quality/jinan.json')!.ok, false);
-        assert.equal(checks.find(c => c.name === 'daylight/jinan.json')!.ok, false);
+        assert.equal(checks.find(c => c.name === 'weather/school-town.json')!.ok, false);
+        assert.equal(checks.find(c => c.name === 'air-quality/school-town.json')!.ok, false);
+        assert.equal(checks.find(c => c.name === 'daylight/school-town.json')!.ok, false);
         assert.equal(checks.find(c => c.name === 'calendar/calendar.json')!.ok, false);
         assert.equal(checks.find(c => c.name === 'transport/transport.json')!.ok, false);
         assert.equal(checks.find(c => c.name === 'memory/10001-boyfriend.json')!.ok, false);
         assert.equal(checks.find(c => c.name === 'memory/diary.json')!.ok, false);
-        assert.match(checks.find(c => c.name === 'weather/test.json')!.detail, /仅 JSON 语法/);
+        assert.match(checks.find(c => c.name === 'weather/Notes.json')!.detail, /仅 JSON 语法/);
         assert.equal(readFileSync(join(dir, 'proactive', '10001-boyfriend.json'), 'utf8'), bad, '原目录不动');
     });
 

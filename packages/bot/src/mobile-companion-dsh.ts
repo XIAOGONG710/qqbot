@@ -19,6 +19,7 @@ export interface MobileCompanionIntegration {
     issuePairing(clientId: string, now?: number): PairingTicket;
     /** 解除全部待配对票据、当前会话、队列、设备本地上下文和媒体；宿主共享的跨端上下文不在此处删除。 */
     reset(): void;
+    stop(): Promise<void> | undefined;
 }
 
 /** 让手机伴侣复用 QQ 侧同一条 DSH 连接、状态摘要和角色语气。 */
@@ -84,6 +85,7 @@ export function createMobileCompanion(options: {
     const runtime = new CompanionRuntime(gateway, createMobileDshHandlers(options), options.now);
     const media = new MemoryCompanionMediaStore({ now: options.now });
     const issuedClients = new Set<string>();
+    let stopped = false;
     return {
         pairing,
         gateway,
@@ -91,6 +93,7 @@ export function createMobileCompanion(options: {
         media,
         actionCapabilities: PHONE_ACTION_CAPABILITIES,
         issuePairing: (clientId, now = options.now?.() ?? Date.now()) => {
+            if (stopped) throw new Error('手机伴侣已经停止');
             const ticket = pairing.issue(clientId, now);
             issuedClients.add(clientId);
             return ticket;
@@ -103,6 +106,13 @@ export function createMobileCompanion(options: {
             issuedClients.clear();
             runtime.reset();
             media.clear();
+        },
+        stop: () => {
+            if (stopped) return runtime.stop();
+            stopped = true;
+            pairing.stop();
+            media.stop();
+            return runtime.stop();
         },
     };
 }

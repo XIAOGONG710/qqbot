@@ -1,10 +1,10 @@
 // 看他的反应（ADR 0212，配置 hisReactions，默认关；只男朋友档）。
-// 她主动跟他说自己的事（随口说件事、冷场、心里惦记、她那边的小事 / 土豆 / 吃的……）之后，他是接着聊了、回个「嗯」、没回，还是说了「别老发这个」——
-// 按话题（土豆、吃的、课和作业……）记下来，下次她主动开口时给她看一行事实，说什么、说多说少由她自己拿捏。
-// 为什么：dsh-fish / 「按自己作息刷 B 站」那几只「大肥鱼」会看主人回不回来调整分享；她只看时间和状态，学不到「他对土豆的事回得多、对课的事回个嗯」。
+// 她主动跟他说自己的事（随口说件事、冷场、心里惦记、她那边的小事 / 猫 / 吃的……）之后，他是接着聊了、回个「嗯」、没回，还是说了「别老发这个」——
+// 按话题（猫、吃的、课和作业……）记下来，下次她主动开口时给她看一行事实，说什么、说多说少由她自己拿捏。
+// 为什么：dsh-fish / 「按自己作息刷 B 站」那几只「大肥鱼」会看主人回不回来调整分享；她只看时间和状态，学不到「他对猫的事回得多、对课的事回个嗯」。
 //
 // 她本人的条件（11-02 `scripts/ask-her.mjs`，两遍）写进了这里：
-// 1. 「土豆今天干的那点破事我就是想说」「我要真只挑你爱听的说，你慢慢就不知道我一天在干嘛了」——只给事实、不禁话题；「他不怎么接」的那类不会变成不能说。
+// 1. 「猫今天干的那点破事我就是想说」「我要真只挑你爱听的说，你慢慢就不知道我一天在干嘛了」——只给事实、不禁话题；「他不怎么接」的那类不会变成不能说。
 // 2. 「我真不舒服的时候会跟你说」「你熬夜不吃早饭，我该说你还是说你」「我损你那几句……不会因为怕你不高兴就装乖」——
 //    她不舒服、关心他吃饭睡觉的话不归任何话题（EXEMPT），不进统计，也就不会被他的反应压下去；损他不是她主动开口的话题，这里本来就不碰。
 // 3. 「你要是哪件事真的不想听，直接说，别嗯」——他明说不想听（STOP）比回个「嗯」分量重得多：那一类这几天先不提。
@@ -13,6 +13,7 @@
 // 不落盘：每次从聊天记录（她发出去的那几条的 QQ 消息 id）和主动消息记录重算，重启前后一样。
 
 import type { StoredMessage } from '../memory/history.ts';
+import { catAlternative } from '../character-terms.ts';
 import type { Candidate, NewsKind, Occasion, ProactiveRecord } from './proactive.ts';
 
 const HOUR = 3_600_000;
@@ -39,7 +40,7 @@ export type ReactionTopic = (typeof REACTION_TOPICS)[number];
 
 /** 给她看的说法 */
 export const TOPIC_LABEL: Readonly<Record<ReactionTopic, string>> = {
-    cat: '土豆的事',
+    cat: '猫的事',
     food: '吃的',
     study: '课和作业',
     friends: '朋友和室友的事',
@@ -48,15 +49,16 @@ export const TOPIC_LABEL: Readonly<Record<ReactionTopic, string>> = {
     weather: '天气',
 };
 
-const TOPIC_RE: Readonly<Record<ReactionTopic, RegExp>> = {
-    cat: /土豆|猫|喵|猫粮|猫条/,
+// 猫的名字从卡上读（ADR 0335）
+const topicRe = (): Readonly<Record<ReactionTopic, RegExp>> => ({
+    cat: new RegExp(`${catAlternative()}猫|喵|猫粮|猫条`),
     food: /吃|饭|外卖|食堂|奶茶|零食|火锅|麻辣烫|面条|饺子|早餐|午餐|晚餐|夜宵|好饿|饿了|甜品|蛋糕|咖啡/,
     study: /课|作业|考试|小测|期中|期末|老师|论文|复习|图书馆|实验|预习|ddl|DDL|报告|学分|绩点|上机|作文/,
     friends: /室友|舍友|闺蜜|同学|朋友|学姐|学长|社团/,
     watch: /剧|视频|电影|游戏|番|综艺|动漫|小说|这本书|看书|读完|追更|up主|UP主|直播|歌/,
     buy: /买|快递|下单|拼单|到货|攒钱|包裹|驿站|淘宝|京东/,
     weather: /下雨|雨|降温|好冷|好热|太阳|刮风|大风|雪|天气/,
-};
+});
 
 /**
  * 她自己的条件 2：不看他反应的话——她不舒服；关心他吃饭、睡觉、熬夜、喝水、穿衣。
@@ -87,8 +89,9 @@ const FLAT_AT = -0.2;
 /** 一条话属于哪几类；她不舒服 / 关心他的话不属于任何一类。names：她那边的人名（世界卡里的朋友），归「朋友和室友」 */
 export function topicsOf(text: string, names: readonly string[] = []): ReactionTopic[] {
     if (EXEMPT_RE.test(text)) return [];
-    const found = REACTION_TOPICS.filter(topic => TOPIC_RE[topic].test(text));
-    // 三个字的名字她常只叫后两个字（陈佳宁 → 佳宁）
+    const re = topicRe();
+    const found = REACTION_TOPICS.filter(topic => re[topic].test(text));
+    // 三个字的名字她常只叫后两个字（闺蜜 → 闺蜜）
     const called = (name: string) => text.includes(name) || ([...name].length === 3 && text.includes([...name].slice(1).join('')));
     if (!found.includes('friends') && names.some(name => [...name].length >= 2 && called(name))) found.push('friends');
     return found;
@@ -149,7 +152,7 @@ export function hisReactions(history: readonly StoredMessage[], records: readonl
         const saidAt = Date.parse(history[last]!.time);
         if (!(saidAt >= since && saidAt <= now)) continue;
         const text = indexes.map(i => history[i]!.content).join(' ');
-        // 喂完土豆 / 吃饭拍的照片：话题定了；她不舒服那一类不算
+        // 喂完猫 / 吃饭拍的照片：话题定了；她不舒服那一类不算
         const kind = newsKindOf(record);
         if (kind && NOT_SHARING_NEWS.has(kind)) continue;
         const topics = kind === 'cat_photo' ? ['cat' as const] : kind === 'food_photo' ? ['food' as const] : topicsOf(text, names);
@@ -226,7 +229,7 @@ export function reactionsLog(stats: readonly TopicReactions[]): string {
     return stats.map(s => `${TOPIC_LABEL[s.topic].replace(/（.*）/, '')} 接 ${s.engaged} / 嗯 ${s.brief} / 没回 ${s.none}${s.stoppedAt !== undefined ? ' / 说过不想听' : ''}`).join('；');
 }
 
-/** 这一件定了话题的事（喂完土豆的照片、吃饭的照片）：他明说过不想听这一类就不发；他只是不怎么接的，交给她自己决定（canDecline） */
+/** 这一件定了话题的事（喂完猫的照片、吃饭的照片）：他明说过不想听这一类就不发；他只是不怎么接的，交给她自己决定（canDecline） */
 export function fixedTopicOf(kind: NewsKind | undefined): ReactionTopic | undefined {
     return kind === 'cat_photo' ? 'cat' : kind === 'food_photo' ? 'food' : undefined;
 }
@@ -239,7 +242,7 @@ export interface ReactionPlan {
     log?: string;
 }
 
-/** 给她看反应的时机：她自己挑话题的（随口说件事、冷场），和话题定了的小事 / 土豆 / 吃的照片 */
+/** 给她看反应的时机：她自己挑话题的（随口说件事、冷场），和话题定了的小事 / 猫 / 吃的照片 */
 const LIGHT_NEWS: ReadonlySet<NewsKind> = new Set(['small_thing', 'cat_photo', 'food_photo']);
 
 export function reactionPlan(
@@ -256,7 +259,7 @@ export function reactionPlan(
     }
     const line = reactionsLine(stats, now);
     if (!line) return {};
-    // 话题定了、正好是他不怎么接的那类：让她自己决定这次说不说（条件 1：土豆的事她照发，不给这个口子）
+    // 话题定了、正好是他不怎么接的那类：让她自己决定这次说不说（条件 1：猫的事她照发，不给这个口子）
     const flat = flatTopics(stats, now);
     if (news && news.kind !== 'cat_photo' && fixed.some(topic => flat.includes(topic))) {
         return { seen: `${line}；要是这件正好是他不怎么接的那类、你这会儿也不太想说了，就只输出「不发」两个字`, canDecline: true, log: reactionsLog(stats) };

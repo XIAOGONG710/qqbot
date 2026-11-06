@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { CURIOUS_ASK_NOTE, CURIOUS_INTENT, CURIOUS_MIN_CHARS, CURIOUS_RECENT, CURIOUS_SHARE, curiousTurn } from '../src/language/curious.ts';
 import { ENGAGED_INTENT } from '../src/language/expression.ts';
@@ -7,6 +6,7 @@ import { describeIntent } from '../src/language/intent.ts';
 import { candidatesOn, occasionNote, withAsk, withCurious, type Candidate, type ProactiveInput } from '../src/proactive/proactive.ts';
 import { planShape } from '../src/language/shape.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // ADR 0126：会追问。线上量过：问句率 12%（和真人持平），但问的多是口头语，问他刚说那件事的很少——
 // 因为他说自己的事时意图行写着“别急着追问细节，真要问也只问一两个字”
@@ -88,7 +88,7 @@ describe('说话的形状：追问的轮次留得下一个问题', () => {
 });
 
 describe('主动问他：ask 时机换成“想多了解他一点”', () => {
-    const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+    const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
     const input = (settings: ProactiveInput['settings']): ProactiveInput => ({ qq: 10001, schedule: boyfriend.schedule!, settings, dates: [], history: [], records: [], mode: 'on' });
     const firstAsk = (settings: ProactiveInput['settings']): Candidate => {
         for (let i = 0; i < 40; i++) {

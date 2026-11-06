@@ -95,7 +95,7 @@ export function aiPhotoReviewModelFromImageDescriber(create: (prompt: string) =>
     };
 }
 
-/** 世界账所在时区的可靠时段映射；默认与济南/青岛世界账一致。 */
+/** 世界账所在时区的可靠时段映射；默认与学校那边 / 老家世界账一致。 */
 export function aiPhotoTimeOfDay(at: string, timeZone = 'Asia/Shanghai'): AiPhotoTimeOfDay {
     const date = new Date(at);
     if (!Number.isFinite(date.getTime())) throw new Error('照片时间不是有效日期');

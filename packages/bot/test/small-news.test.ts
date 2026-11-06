@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { loadTierCard } from '../src/platform/contact.ts';
 import { EVERYDAY_EVENT_DEFS } from '../src/life/everyday.ts';
@@ -9,9 +8,10 @@ import {
     type Candidate, type NewsItem, type ProactiveInput,
 } from '../src/proactive/proactive.ts';
 import { SMALL_TELL_CHANCE, SMALL_TELL_GROUPS, worldAt, worldNews, type WorldNow } from '../src/world/world.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 // ADR 0127：她会主动讲今天碰到的一件小事（news 的新一类 small_thing，配置 smallNews，要 everydayLife）
-const pattern = resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-{tier}.json');
+const pattern = syntheticCardPattern;
 const boyfriend = loadTierCard(pattern, 'boyfriend', { everydayLife: true }).character;
 const schedule = boyfriend.schedule!;
 const dayText = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -27,7 +27,7 @@ describe('世界账：今天碰到的一件小事', () => {
         assert.ok(hits.length >= 120 * SMALL_TELL_CHANCE * 0.35 && hits.length <= 120 * SMALL_TELL_CHANCE * 1.1, `120 天里 ${hits.length} 天`);
         for (const d of days) assert.ok(worldNews(endOf(d), ['small_thing']).length <= 1);
         assert.deepEqual(worldNews(hits[0]!.now, ['small_thing']), worldNews(hits[0]!.now, ['small_thing']));
-        assert.equal(worldNews(hits[0]!.now, DEFAULT_NEWS_KINDS).length, 0);
+        assert.deepEqual(worldNews(hits[0]!.now, DEFAULT_NEWS_KINDS).filter(n => n.kind === 'small_thing'), [], '默认的几类里没有小事');
     });
 
     test('挑的是当天发生过的、能讲的那几组（食堂、宿舍、同学……），不是天气 / 身体 / 学习 / 家里；时间在发生后 10–40 分钟', () => {
@@ -75,7 +75,7 @@ describe('主动：随口讲一件小事', () => {
 
     test('为什么说（ADR 0152）：按这件事自带的感觉定下是分享 / 吐槽 / 随口讲；不编反转；手上没有的图和话不说「给你看」', () => {
         const c = candidate();
-        const joy = occasionNote({ ...c, news: { ...c.news!, what: '陈佳宁发来一张搞笑图，互损了几句', feel: 'joy' } }, '宝宝');
+        const joy = occasionNote({ ...c, news: { ...c.news!, what: '许小禾发来一张搞笑图，互损了几句', feel: 'joy' } }, '宝宝');
         assert.match(joy, /是分享，不是吐槽，更不是求安慰/);
         assert.match(joy, /不要编「原来……」「没想到……」「才反应过来」这类反转/);
         assert.match(joy, /别说「给你看看」「转给你」「发你」/);

@@ -10,9 +10,9 @@ const tick = () => new Promise<void>(done => setImmediate(done));
 async function settle() { for (let i = 0; i < 16; i++) await tick(); }
 async function until(check: () => boolean) { const deadline = Date.now() + 3000; while (!check()) { assert.ok(Date.now() < deadline, '合成热梗等待超时'); await new Promise(done => setTimeout(done, 5)); } }
 type Stage = 'account' | 'lists-body' | 'candidate-model' | 'gather-search' | 'explain-model' | 'none';
-const term = '霓虹土豆';
+const term = '霓虹团子饼';
 const login = { code: 0, data: { isLogin: true, uname: '合成账号', mid: 123, wbi_img: { img_url: `https://synthetic.invalid/${'a'.repeat(32)}.png`, sub_url: `https://synthetic.invalid/${'b'.repeat(32)}.png` } } };
-const explanation = JSON.stringify({ 是梗: true, 意思: '表示遇到有趣小事时的合成玩笑', 例句: "这波霓虹土豆", 为什么好笑: "拿土豆的平常和霓虹的夸张硬凑在一起", 什么时候别用: "对方认真难过的时候", 把握: "高", 适合聊天: true });
+const explanation = JSON.stringify({ 是梗: true, 意思: '表示遇到有趣小事时的合成玩笑', 例句: "这波霓虹团子饼", 为什么好笑: "拿团子饼的平常和霓虹的夸张硬凑在一起", 什么时候别用: "对方认真难过的时候", 把握: "高", 适合聊天: true });
 
 async function fixture(stage: Stage, failModel = false, corruptLibrary = false) {
     const root = mkdtempSync(join(tmpdir(), 'qqbot-app-memes-review-')), dataDir = join(root, 'data'); mkdirSync(join(dataDir, 'secrets'), { recursive: true });

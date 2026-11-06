@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { availableActions, judgeAction, typedOccupation } from '../src/life/actions.ts';
 import type { LifeEvent } from '../src/world/life-events.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { formatDate, herDay } from '../src/life/schedule.ts';
 import { worldAt } from '../src/world/world.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const card = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = card.schedule!;
 const books = card.books;
 const at = (text: string) => new Date(`${text}+08:00`);
@@ -15,23 +15,24 @@ const context = (time: Date, events: LifeEvent[] = []) => ({ schedule, books, wo
 
 describe('类型化行动与世界裁判（ADR 0037）', () => {
     test('睡觉：入睡时刻（02:00）前三个半钟头内都能去睡，睡到那一晚该起的时候；上课严格对上真实课程', () => {
-        const sleep = judgeAction({ id: 'sleep', kind: 'sleep', startedAt: at('2026-10-09T02:00:00') }, context(at('2026-10-09T02:00:00')));
+        // 10-14 周三有早课（第 1 节 08:20），早上 07:40 起
+        const sleep = judgeAction({ id: 'sleep', kind: 'sleep', startedAt: at('2026-10-14T02:00:00') }, context(at('2026-10-14T02:00:00')));
         assert.equal(sleep.ok, true);
-        if (sleep.ok) assert.equal(sleep.event.at, at('2026-10-09T07:40:00').toISOString());
+        if (sleep.ok) assert.equal(sleep.event.at, at('2026-10-14T07:40:00').toISOString());
         // 早点睡（00:30、头一天 22:30）、熬到三点：都睡到同一个起床时刻（DSH 行动复核 1.5）
-        for (const start of ['2026-10-09T00:30:00', '2026-10-08T22:30:00', '2026-10-09T03:00:00']) {
+        for (const start of ['2026-10-14T00:30:00', '2026-10-13T22:30:00', '2026-10-14T03:00:00']) {
             const verdict = judgeAction({ id: `sleep-${start}`, kind: 'sleep', startedAt: at(start) }, context(at(start)));
             assert.equal(verdict.ok, true, start);
-            if (verdict.ok) assert.equal(verdict.event.at, at('2026-10-09T07:40:00').toISOString(), start);
+            if (verdict.ok) assert.equal(verdict.event.at, at('2026-10-14T07:40:00').toISOString(), start);
         }
-        assert.deepEqual(judgeAction({ id: 'early', kind: 'sleep', startedAt: at('2026-10-08T22:00:00') }, context(at('2026-10-08T22:00:00'))), {
+        assert.deepEqual(judgeAction({ id: 'early', kind: 'sleep', startedAt: at('2026-10-13T22:00:00') }, context(at('2026-10-13T22:00:00'))), {
             ok: false,
-            event: { id: 'early', kind: 'sleep', startedAt: at('2026-10-08T22:00:00').toISOString(), at: at('2026-10-08T22:00:00').toISOString(), source: 'simulation', result: 'failed', reason: 'unavailable' },
+            event: { id: 'early', kind: 'sleep', startedAt: at('2026-10-13T22:00:00').toISOString(), at: at('2026-10-13T22:00:00').toISOString(), source: 'simulation', result: 'failed', reason: 'unavailable' },
             reason: 'unavailable',
         });
-        assert.equal(judgeAction({ id: 'nap', kind: 'sleep', startedAt: at('2026-10-09T15:00:00') }, context(at('2026-10-09T15:00:00'))).ok, false, '白天的睡是 rest');
+        assert.equal(judgeAction({ id: 'nap', kind: 'sleep', startedAt: at('2026-10-14T15:00:00') }, context(at('2026-10-14T15:00:00'))).ok, false, '白天的睡是 rest');
 
-        const lesson = judgeAction({ id: 'class', kind: 'attend_class', startedAt: at('2026-10-09T08:20:00') }, context(at('2026-10-09T08:20:00')));
+        const lesson = judgeAction({ id: 'class', kind: 'attend_class', startedAt: at('2026-10-14T08:20:00') }, context(at('2026-10-14T08:20:00')));
         assert.equal(lesson.ok, true);
         if (lesson.ok) assert.match(lesson.occupation, /^在上/);
         assert.equal(judgeAction({ id: 'holiday', kind: 'attend_class', startedAt: at('2026-10-03T09:00:00') }, context(at('2026-10-03T09:00:00'))).ok, false);
@@ -66,7 +67,8 @@ describe('类型化行动与世界裁判（ADR 0037）', () => {
     });
 
     test('学习撞上硬边界会中断；短到不足最低时长就不开始', () => {
-        const start = at('2026-10-12T16:50:00');
+        // 10-12 的晚饭 17:59 开始：17:10 起学一个钟头，学到饭点被打断
+        const start = at('2026-10-12T17:10:00');
         const judged = judgeAction({ id: 'study', kind: 'study', startedAt: start, durationMinutes: 60 }, context(start));
         assert.equal(judged.ok, true);
         if (judged.ok) {
@@ -82,25 +84,25 @@ describe('类型化行动与世界裁判（ADR 0037）', () => {
     });
 
     test('硬事件打断（ADR 0042）：上课打断休闲；赶作业那一段抢走休闲，本来在学习的接着学，那一段里不能开始休闲', () => {
-        // 10-12 15:15 有课：12:35 开始打游戏，打到 15:15 去上课
-        const noon = at('2026-10-12T12:35:00');
+        // 10-14 15:15 有课：吃完午饭 12:50 开始打游戏，打到 15:15 去上课
+        const noon = at('2026-10-14T12:50:00');
         const game = judgeAction({ id: 'game', kind: 'leisure', startedAt: noon, subject: '打独立游戏', durationMinutes: 240 }, context(noon));
         assert.ok(game.ok);
         if (game.ok) {
-            assert.deepEqual([game.event.at, game.event.result, game.event.reason], [at('2026-10-12T15:15:00').toISOString(), 'interrupted', 'interrupted_by_class']);
+            assert.deepEqual([game.event.at, game.event.result, game.event.reason], [at('2026-10-14T15:15:00').toISOString(), 'interrupted', 'interrupted_by_class']);
         }
-        // 10-12 晚上：计算机网络技术 10-13 交，22:00 写完，20:30 起在赶
-        const evening = at('2026-10-12T19:30:00');
-        assert.ok(context(evening).world!.homework.some(h => h.doneAt.getTime() === at('2026-10-12T22:00:00').getTime()));
+        // 10-14 晚上：数据结构 10-15 交，22:00 写完，20:30 起在赶
+        const evening = at('2026-10-14T19:30:00');
+        assert.ok(context(evening).world!.homework.some(h => h.doneAt.getTime() === at('2026-10-14T22:00:00').getTime()));
         const scroll = judgeAction({ id: 'scroll', kind: 'leisure', startedAt: evening, subject: '刷手机', durationMinutes: 120 }, context(evening));
         assert.ok(scroll.ok);
-        if (scroll.ok) assert.deepEqual([scroll.event.at, scroll.event.reason], [at('2026-10-12T20:30:00').toISOString(), 'interrupted_by_deadline']);
+        if (scroll.ok) assert.deepEqual([scroll.event.at, scroll.event.reason], [at('2026-10-14T20:30:00').toISOString(), 'interrupted_by_deadline']);
         const lying = judgeAction({ id: 'lying', kind: 'rest', startedAt: evening, durationMinutes: 120 }, context(evening));
         assert.ok(lying.ok && lying.event.reason === 'interrupted_by_deadline');
         const study = judgeAction({ id: 'study', kind: 'study', startedAt: evening, subject: '作业', durationMinutes: 120 }, context(evening));
         assert.ok(study.ok);
-        if (study.ok) assert.deepEqual([study.event.at, study.event.result], [at('2026-10-12T21:30:00').toISOString(), 'succeeded']);
-        const late = at('2026-10-12T20:45:00');
+        if (study.ok) assert.deepEqual([study.event.at, study.event.result], [at('2026-10-14T21:30:00').toISOString(), 'succeeded']);
+        const late = at('2026-10-14T20:45:00');
         const during = judgeAction({ id: 'during', kind: 'leisure', startedAt: late, subject: '刷手机', durationMinutes: 30 }, context(late));
         assert.equal(during.ok, false);
         if (!during.ok) assert.equal(during.reason, 'conflict');
@@ -145,10 +147,10 @@ describe('类型化行动与世界裁判（ADR 0037）', () => {
         }
 
         const social = judgeAction({
-            id: 'social', kind: 'interact_npc', startedAt: start, subject: '在微信上跟陈佳宁聊了会儿', target: 'chen_jianing', durationMinutes: 15,
+            id: 'social', kind: 'interact_npc', startedAt: start, subject: '在微信上跟许小禾聊了会儿', target: 'roommate', durationMinutes: 15,
         }, context(start));
         assert.equal(social.ok, true);
-        if (social.ok) assert.equal(social.event.target, 'chen_jianing');
+        if (social.ok) assert.equal(social.event.target, 'roommate');
     });
 
     test('选择器只给这一刻现实中能做的动作，同一输入结果一致', () => {

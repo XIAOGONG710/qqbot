@@ -99,7 +99,9 @@ export interface ResponderDeps {
     /** 她看到了却决定不回（看心情不回、收尾后的附和）：给他最后一条消息点个表情回应（ADR 0083，配置 reactions）；不传就什么都不做 */
     react?: (messageId: number, text: string) => void;
     /** 实际发送内容与聊天记录表示不同时转换（图片表情编号 -> 可读描述）。 */
-    historyContent?: (sent: string, messageId: number) => string;
+    historyContent?: (sent: string, messageId?: number) => string;
+    /** 只剥掉内部标记（<<记住>> / <<日记>>…），判断一条气泡是不是只有标记；和 historyContent 分开：那个是发送确认之后才调用的 */
+    stripMarkers?: (sent: string) => string;
     /**
      * 整条只有内部标记（比如单独一行的 <<记住>> / <<日记>> / <<同意工作>>）的气泡：不发、不进记录，但里面的标记要处理，由这里交给调用方。
      * 10-28 的「只有内部标记的气泡不发」把这类气泡在到发送函数之前就跳过了，标记从此再没被处理过——写在单独一行的 <<日记>> 全丢了
@@ -160,7 +162,7 @@ export interface InitiateRequest {
     commit: (parts: string[]) => void;
     /** 这句话本来就是固定的习惯说法，出口检查不按“最近说过一模一样的”去掉（B 站私信之后的提醒，ADR 0089） */
     allowRepeat?: boolean;
-    /** 这一条要带一张照片（ADR 0110，喂完土豆拍的）：回复器让货架的这一类照片进提示词，并允许输出一行 <photo:编号> */
+    /** 这一条要带一张照片（ADR 0110，喂完猫拍的）：回复器让货架的这一类照片进提示词，并允许输出一行 <photo:编号> */
     photo?: 'cat' | 'food';
     /** 带的是吃的照片时，是哪道菜（ADR 0128）：货架里只拿这道菜的 */
     photoDish?: string;
@@ -170,6 +172,24 @@ export interface InitiateRequest {
     think?: boolean;
     /** 宿主取消这一次主动请求；停止时会与回复器生命周期信号合并。 */
     signal?: AbortSignal;
+}
+
+class InitiateCancelled extends Error {
+    constructor() { super('主动请求已取消'); }
+}
+function checkInitiate(signal?: AbortSignal): void { if (signal?.aborted) throw new InitiateCancelled(); }
+function initiateWork<T>(work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return work();
+    if (signal.aborted) return Promise.reject(new InitiateCancelled());
+    return new Promise<T>((resolve, reject) => {
+        let done = false;
+        const cleanup = () => signal.removeEventListener('abort', cancel);
+        const cancel = () => { if (!done) { done = true; cleanup(); reject(new InitiateCancelled()); } };
+        signal.addEventListener('abort', cancel, { once: true });
+        Promise.resolve().then(() => { checkInitiate(signal); return work(); }).then(value => {
+            if (!done) { done = true; cleanup(); resolve(value); }
+        }, error => { if (!done) { done = true; cleanup(); reject(error); } });
+    });
 }
 
 export type InitiateOutcome =
@@ -244,7 +264,7 @@ export function createResponder(deps: ResponderDeps): Responder {
      * 撤回失败（超过两分钟、NapCat 报错）：错的留着，补发「*对的词」，和不撤回时一样，两条都进聊天记录
      */
     /** 整条只有内部标记（单独一行的 <<记住>> / <<日记>> / <<同意工作>>…）：没有东西可发，也不进聊天记录 */
-    const markerOnly = (part: string) => !(deps.historyContent?.(part, 0) ?? part).trim();
+    const markerOnly = (part: string) => !(deps.stripMarkers?.(part) ?? part).trim();
     /**
      * 这类气泡里的标记还是要处理（absorb），而且一开始就处理完：不因为中途他插话、后面的不发就丢，也不为它「打字」。
      * 以前回复路径把它当一条消息发给发送函数（发送函数里处理标记、返回 0）并往聊天记录里留一行空的，还要为它打字；
@@ -300,44 +320,54 @@ export function createResponder(deps: ResponderDeps): Responder {
         const quoted = replyTo === undefined ? undefined : { replyTo };
         if (!recall) return { messageId: await deps.send(deps.userId, part, quoted), content: part };
         const wrongId = await deps.send(deps.userId, recall.wrong, quoted);
-        await sleep(recall.afterMs);
+        if (signal?.aborted) return { messageId: wrongId, content: recall.wrong };
+        try { await initiateWork(() => sleep(recall.afterMs), signal); }
+        catch (error) { if (error instanceof InitiateCancelled) return { messageId: wrongId, content: recall.wrong }; throw error; }
+        if (signal?.aborted) return { messageId: wrongId, content: recall.wrong };
         try {
             await deps.recallOwn!(wrongId);
         } catch (error) {
+            if (signal?.aborted) return { messageId: wrongId, content: recall.wrong };
             deps.log(`撤回自己打错的那条失败，补一条改口：${error instanceof Error ? error.message : String(error)}`);
             recordConfirmed({ messageId: wrongId, content: recall.wrong });
             // 补「*对的词」：有时引用刚才那条错的（ADR 0136）
             const fixQuote = deps.quoteFix?.(wrongId) ? { replyTo: wrongId } : undefined;
+            if (signal?.aborted) return undefined;
             return { messageId: await deps.send(deps.userId, recall.fix, fixQuote), content: recall.fix };
         }
+        if (signal?.aborted) return undefined;
         deps.log('打错字，撤回重发');
-        await (deps.timing ? sleepTyping(deps.timing.typingMs(part)) : sleep(PART_GAP_MS));
+        try { await (deps.timing ? sleepTyping(deps.timing.typingMs(part), signal) : initiateWork(() => sleep(PART_GAP_MS), signal)); }
+        catch (error) { if (error instanceof InitiateCancelled) return undefined; throw error; }
+        if (signal?.aborted) return undefined;
         return { messageId: await deps.send(deps.userId, part, quoted), content: part };
     }
 
     async function sleepTyping(ms: number, signal?: AbortSignal): Promise<void> {
         signal ??= lifecycle.signal;
-        if (signal.aborted) return;
-        if (!deps.typing || ms < TYPING_MIN_MS) { await sleep(ms); return; }
+        checkInitiate(signal);
+        if (!deps.typing || ms < TYPING_MIN_MS) return initiateWork(() => sleep(ms), signal);
         const seed = `${deps.userId} ${Math.floor(now() / 1000)}`;
         if (deps.hesitate !== false && ms >= HESITATE_MIN_TYPING_MS && pick(seed, 'hesitate', [0, 999]) < HESITATE_CHANCE * 1000) {
             const before = Math.round(ms * 0.45);
-            await typeFor(before);
+            await typeFor(before, signal);
+            checkInitiate(signal);
             if (stopped) return;
             const pause = pick(seed, 'hesitate-pause', HESITATE_PAUSE_MS);
             deps.log(`打字打到一半停了 ${Math.round(pause / 1000)} 秒`);
-            await sleep(pause);
-            return typeFor(ms - before);
+            await initiateWork(() => sleep(pause), signal);
+            return typeFor(ms - before, signal);
         }
-        return typeFor(ms);
+        return typeFor(ms, signal);
     }
-    async function typeFor(ms: number): Promise<void> {
+    async function typeFor(ms: number, signal?: AbortSignal): Promise<void> {
         const end = now() + ms;
         for (;;) {
+            checkInitiate(signal);
             try { deps.typing!(deps.userId); } catch { /* 显示不出来不影响发送 */ }
             const left = end - now();
-            if (left <= TYPING_REFRESH_MS || stopped) return sleep(Math.max(0, left));
-            await sleep(TYPING_REFRESH_MS);
+            if (left <= TYPING_REFRESH_MS || stopped) return initiateWork(() => sleep(Math.max(0, left)), signal);
+            await initiateWork(() => sleep(TYPING_REFRESH_MS), signal);
         }
     }
     const now = deps.now ?? Date.now;
@@ -452,11 +482,14 @@ export function createResponder(deps: ResponderDeps): Responder {
             deps.log(`生成回复：${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}${prompt.note ? `，${prompt.note}` : ''}`);
 
             if (stopped) return;
-            const raw = await deps.generate(prompt.messages);
-            if (stopped) { deps.log('已停止，这次生成的回复不发'); return; }
-            reply = deps.clean(raw);
+            if (prompt.fallbackReply != null) reply = prompt.fallbackReply;
+            else {
+                const raw = await deps.generate(prompt.messages);
+                if (stopped) { deps.log('已停止，这次生成的回复不发'); return; }
+                reply = deps.clean(raw);
+            }
             if (stopped) return;
-            if (deps.review) reply = await deps.review(reply, prompt.messages);
+            if (deps.review && !prompt.fallbackReply) reply = await deps.review(reply, prompt.messages);
             if (stopped) {
                 deps.log('已停止，这次生成的回复不发');
                 return;
@@ -549,24 +582,38 @@ export function createResponder(deps: ResponderDeps): Responder {
         if (phase.phase !== 'retry' || stopped) setPhase({ phase: 'idle' });
     }
 
+    /** 主动计划和发送共用事实时界；普通回复路径保持自己的接收/补回政策。 */
+    function initiateHistory(history: StoredMessage[]): StoredMessage[] {
+        const current = now();
+        return history.filter(message => {
+            const time = Date.parse(message.time);
+            return Number.isFinite(time) && time <= current;
+        });
+    }
+
     /** 主动找他一次（initiate 已确认此刻空闲、没有要回的消息） */
     async function initiateOnce(request: InitiateRequest): Promise<InitiateOutcome> {
+        checkInitiate(request.signal);
         const stored = deps.history.load(deps.userId);
         const input = stored.length;
         const startedAt = now();
         setPhase({ phase: 'initiating', reason: request.label });
-        const prompt = await deps.buildPrompt(stored.map(({ role, content, time }) => ({ role, content, time })), { initiate: { note: request.note, topic: request.topic, ...(request.think ? { think: true } : {}), ...(request.photo ? { photo: request.photo } : {}), ...(request.photoDish ? { photoDish: request.photoDish } : {}) } });
+        const prompt = await initiateWork(async () => deps.buildPrompt(initiateHistory(stored).map(({ role, content, time }) => ({ role, content, time })), { initiate: { note: request.note, topic: request.topic, ...(request.think ? { think: true } : {}), ...(request.photo ? { photo: request.photo } : {}), ...(request.photoDish ? { photoDish: request.photoDish } : {}) } }), request.signal);
+        checkInitiate(request.signal);
+        if (prompt.fallbackReply) return { result: 'skipped', reason: '提示词超出预算' };
         deps.onPrompt?.(prompt);
         const hits = prompt.activatedWorldInfo.map(e => e.comment || String(e.uid));
         deps.log(`主动找他（${request.label}）：生成，${prompt.messages.length} 条消息，命中世界书 ${hits.length ? hits.join('、') : '无'}`);
-        const raw = await deps.generate(prompt.messages);
+        const raw = await initiateWork(() => deps.generate(prompt.messages), request.signal);
+        checkInitiate(request.signal);
         if (request.think) return { result: 'thought', text: raw };
         // 她想了想决定先不发（ADR 0100）：只有「不发」两个字，带不带括号都算
         if (request.canDecline && /^\s*[（(【[]?\s*不发\s*[）)】\]]?[。.！!]?\s*$/.test(raw)) return { result: 'skipped', reason: '她想了想，先不发' };
         let reply = deps.clean(raw);
-        if (deps.review) reply = await deps.review(reply, prompt.messages, { initiating: true, ...(request.allowRepeat ? { allowRepeat: true } : {}) });
+        if (deps.review) reply = await initiateWork(() => deps.review!(reply, prompt.messages, { initiating: true, ...(request.allowRepeat ? { allowRepeat: true } : {}) }), request.signal);
+        checkInitiate(request.signal);
         if (stopped) return { result: 'skipped', reason: '已停止' };
-        if (deps.history.load(deps.userId).slice(input).some(m => m.role === 'user')) {
+        if (initiateHistory(deps.history.load(deps.userId).slice(input)).some(m => m.role === 'user')) {
             return { result: 'skipped', reason: '生成期间他来了消息，草稿不发，照常回他' };
         }
         // 空的不再生成（宁可少发）
@@ -575,7 +622,9 @@ export function createResponder(deps: ResponderDeps): Responder {
         const decorated = deps.decorate ? deps.decorate(split, request.maxBubbles) : split;
         const parts = Array.isArray(decorated) ? decorated : decorated.parts;
         const recall = Array.isArray(decorated) || !deps.recallOwn ? undefined : decorated.recall;
+        checkInitiate(request.signal);
         request.commit(parts);
+        checkInitiate(request.signal);
         if (request.dryRun) return { result: 'dryRun', parts };
         deps.beforeSend?.();
         absorbMarkerOnly(parts);
@@ -583,27 +632,31 @@ export function createResponder(deps: ResponderDeps): Responder {
         const { timing } = deps;
         if (timing) {
             const due = startedAt + timing.typingMs(parts[0]!) - now();
-            if (due > 0) await sleepTyping(due);
+            if (due > 0) await sleepTyping(due, request.signal);
         }
         const messageIds: number[] = [];
         const sent: string[] = [];
         for (const [i, part] of parts.entries()) {
+            if (request.signal?.aborted) break;
             // 只有内部标记（比如 <<记住>>）的条目不发、也不进记录（标记上面已经处理了）
             if (markerOnly(part)) continue;
             if (i > 0) {
-                await (timing ? sleepTyping(timing.typingMs(part)) : sleep(PART_GAP_MS));
-                if (deps.history.load(deps.userId).slice(input).some(m => m.role === 'user')) {
+                try { await (timing ? sleepTyping(timing.typingMs(part), request.signal) : initiateWork(() => sleep(PART_GAP_MS), request.signal)); }
+                catch (error) { if (error instanceof InitiateCancelled) break; throw error; }
+                if (initiateHistory(deps.history.load(deps.userId).slice(input)).some(m => m.role === 'user')) {
                     deps.log(`发送中途对方插话，剩下 ${parts.length - i} 条不发`);
                     break;
                 }
             }
-            if (stopped) {
+            if (stopped || request.signal?.aborted) {
                 deps.log(`已停止，剩下 ${parts.length - i} 条不发`);
                 break;
             }
             let bubble: { messageId: number; content: string } | undefined;
             try {
-                bubble = await sendBubble(part, recall?.index === i ? recall : undefined);
+                const confirmed = await sendBubble(part, recall?.index === i ? recall : undefined, undefined, request.signal);
+                if (!confirmed) break;
+                bubble = confirmed;
             } catch (error) {
                 return { result: 'failed', reason: `发送失败：${error instanceof Error ? error.message : String(error)}`, ...(messageIds.length ? { messageIds } : {}) };
             }
@@ -648,12 +701,13 @@ export function createResponder(deps: ResponderDeps): Responder {
         initiate(request) {
             const skip = (reason: string) => Promise.resolve<InitiateOutcome>({ result: 'skipped', reason });
             if (stopped) return skip('已停止');
+            if (request.signal?.aborted) return skip('主动请求已取消');
             if (running) return skip('正在回消息');
             request = { ...request, signal: request.signal ? AbortSignal.any([lifecycle.signal, request.signal]) : lifecycle.signal };
             // 按「不回」处理过的（看心情没回的「哈哈」）不挡主动消息
-            const stored = deps.history.load(deps.userId);
+            const stored = initiateHistory(deps.history.load(deps.userId));
             if (pendingMessages(stored).length && !deps.timing?.skip(stored)) return skip(PENDING_REASON);
-            const task = initiateOnce(request).catch((error): InitiateOutcome => ({
+            const task = initiateOnce(request).catch((error): InitiateOutcome => error instanceof InitiateCancelled ? { result: 'skipped', reason: '主动请求已取消' } : ({
                 result: 'failed', reason: `生成失败：${error instanceof Error ? error.message : String(error)}`,
                 ...(error instanceof ModelUnreachable ? { unreachable: true as const } : {}),
             }));

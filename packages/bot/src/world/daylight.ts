@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { cacheAgeMs } from './cache-freshness.ts';
 import { sanitizeExternalError } from './external-error.ts';
-import { PLACES, type Place } from './weather.ts';
+import type { Place, WeatherPlace } from './weather.ts';
 
 export type DaylightPhase = '夜间' | '清晨' | '白天' | '傍晚';
 export interface Daylight { sunrise: string; sunset: string; phase: DaylightPhase; real: true }
@@ -101,6 +101,8 @@ export function parseOpenMeteoDaylight(data: unknown): Record<string, SolarTimes
 
 export interface DaylightFetcherOptions {
     dir: string;
+    /** 取哪几个地方（卡上的 weather.places，ADR 0334）；id 是缓存文件名 */
+    places: readonly WeatherPlace[];
     log: (message: string) => void;
     now?: () => number;
     fetchJson?: (url: string) => Promise<unknown>;
@@ -115,6 +117,8 @@ export interface DaylightFetcher extends RealDaylight { refresh(): Promise<void>
 
 export function daylightFetcher(options: DaylightFetcherOptions): DaylightFetcher {
     const now = options.now ?? Date.now;
+    const byId = new Map(options.places.map(place => [place.id, place] as const));
+    if (byId.size !== options.places.length || options.places.some(place => !/^[a-z][a-z0-9_-]*$/.test(place.id))) throw new Error('地点 id 要互不相同，且是小写字母开头的字母、数字、- 或 _');
     const timeoutMs = options.timeoutMs ?? 20_000;
     const cacheMaxAgeMs = options.cacheMaxAgeMs ?? 24 * 60 * 60_000;
     const fetchJson = options.fetchJson ?? (async (url: string) => {
@@ -148,9 +152,9 @@ export function daylightFetcher(options: DaylightFetcherOptions): DaylightFetche
         refresh: () => {
             if (inFlight) return inFlight;
             inFlight = (async () => {
-                for (const place of Object.keys(PLACES) as Place[]) {
+                for (const place of options.places.map(place => place.id)) {
                     try {
-                        const { latitude, longitude } = PLACES[place];
+                        const { latitude, longitude } = byId.get(place)!;
                         const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}`
                             + '&daily=sunrise,sunset&past_days=2&forecast_days=16&timezone=Asia%2FShanghai';
                         const days = parseOpenMeteoDaylight(await fetchJson(url));
@@ -165,7 +169,7 @@ export function daylightFetcher(options: DaylightFetcherOptions): DaylightFetche
                     } catch (error) {
                         const reason = sanitizeExternalError(error);
                         errors.set(place, reason); errorAt.set(place, new Date(now()).toISOString());
-                        options.log(`真实日照：${PLACES[place].name}没取到，照旧不写进世界（${reason}）`);
+                        options.log(`真实日照：${byId.get(place)?.name ?? place}没取到，照旧不写进世界（${reason}）`);
                     }
                 }
             })().finally(() => { inFlight = undefined; });
@@ -174,7 +178,7 @@ export function daylightFetcher(options: DaylightFetcherOptions): DaylightFetche
         status: () => {
             const places = {} as Record<Place, DaylightPlaceStatus>;
             let fetchedAt: string | undefined;
-            for (const place of Object.keys(PLACES) as Place[]) {
+            for (const place of options.places.map(place => place.id)) {
                 const store = load(place);
                 const dates = Object.keys(store?.days ?? {}).sort();
                 const item: DaylightPlaceStatus = { days: dates.length, ...(dates.length ? { from: dates[0], to: dates.at(-1) } : {}) };

@@ -73,7 +73,10 @@ export function scheduleForTier(schedule: ScheduleSource, tier: string): CardSch
             slot: c.slot,
             weeks: c.weeks,
             kind: c.kind,
+            ...(c.course_group !== undefined ? { groupId: c.course_group } : {}),
             ...(detail ? { name: c.name, room: c.room } : {}),
+            // 小测要写课名，只给看得到课名的档位
+            ...(detail && c.quiz ? { quiz: c.quiz } : {}),
             ...(practice ? { practice } : {}),
         };
     });

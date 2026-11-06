@@ -5,9 +5,10 @@ import { buildPrompt, ST_DEFAULT_PRESET, type ChatMessage, type OpenAIMessage, t
 import { loadCharacterCard, parseCharacterCard, type Character } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, loadWorldInfo, parseWorldInfo } from '../src/st/world-info.ts';
 import { estimateTokens } from '../src/language/tokens.ts';
+import { syntheticStDir, syntheticCardPath } from './fixtures/card.ts';
 
-const stDir = resolve(import.meta.dirname, '../../../characters/linmengyao/st');
-const card = loadCharacterCard(resolve(stDir, 'linmengyao-boyfriend.json'));
+const stDir = syntheticStDir;
+const card = loadCharacterCard(syntheticCardPath('boyfriend'));
 const lorebook = loadWorldInfo(resolve(stDir, `${card.world}.json`), card.world);
 
 const settings = { maxContext: 8192, maxTokens: 300, worldInfo: DEFAULT_WORLD_INFO_SETTINGS };
@@ -27,14 +28,14 @@ function build(history: ChatMessage[], overrides: Partial<PromptInput> = {}) {
 const minimalCard = (data: Record<string, unknown>): Character =>
     parseCharacterCard({ spec: 'chara_card_v2', data: { name: '小红', ...data } });
 
-describe('用林梦瑶的角色卡拼提示词', () => {
+describe('用合成角色卡拼提示词', () => {
     test('消息顺序同 ST 默认预设，宏已替换', () => {
         const { messages } = build([{ role: 'user', content: '宝宝在干嘛' }]);
         const scene = lorebook.find(e => e.key.includes('在干嘛'))!;
-        assert.equal(messages[0]!.content, '你是林梦瑶，正在用 QQ 和阿明私聊。下面是你的设定。');
-        assert.ok(messages[1]!.content.startsWith('林梦瑶，在读大学生。下文的「你」就是林梦瑶'));
+        assert.equal(messages[0]!.content, '你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。');
+        assert.ok(messages[1]!.content.startsWith('测试角色，在读大学生，大二，学测绘。下文的「你」就是测试角色'));
         assert.equal(messages[2]!.content, card.personality);
-        assert.ok(messages[3]!.content.startsWith('正在和你私聊的阿明就是你的男朋友'));
+        assert.ok(messages[3]!.content.startsWith('阿明是你的男朋友'));
         assert.equal(messages[4]!.content, scene.content, '世界书 after 放在角色设定之后');
         // 示例对话：每块一条 [Example Chat]，接着一问一答
         const examples = messages.slice(5, -3);
@@ -57,21 +58,21 @@ describe('用林梦瑶的角色卡拼提示词', () => {
 
     test('只按最近两条消息匹配场景（她自己的上一句也算）', () => {
         const history: ChatMessage[] = [
-            { role: 'user', content: '要抱抱' },
+            { role: 'user', content: '想你了' },
             { role: 'assistant', content: '才不要' },
             { role: 'user', content: '好吧' },
         ];
         assert.equal(build(history).activatedWorldInfo.length, 0);
         const recent = build([{ role: 'assistant', content: '在干嘛呢你' }, { role: 'user', content: '好吧' }]);
-        assert.ok(recent.activatedWorldInfo.some(e => e.key.includes('干嘛呢')));
+        assert.ok(recent.activatedWorldInfo.some(e => e.key.includes('在干嘛')));
     });
 
-    test('上一段聊天不算：隔了一夜她主动道早安，不因昨晚的「晚安」命中「深夜道晚安」（10-09 线上）', () => {
+    test('上一段聊天不算：隔了一夜她主动道早安，不因昨晚的「想你」命中「撒娇」（10-09 线上）', () => {
         const lastNight: ChatMessage[] = [
-            { role: 'assistant', content: '睡了，晚安', time: '2026-10-09T00:32:39+08:00' },
-            { role: 'user', content: '晚安', time: '2026-10-09T00:32:50+08:00' },
+            { role: 'assistant', content: '睡了，想你', time: '2026-10-09T00:32:39+08:00' },
+            { role: 'user', content: '我也想你', time: '2026-10-09T00:32:50+08:00' },
         ];
-        const goodnight = (r: ReturnType<typeof build>) => r.activatedWorldInfo.some(e => e.key.includes('晚安'));
+        const goodnight = (r: ReturnType<typeof build>) => r.activatedWorldInfo.some(e => e.key.includes('想你'));
         assert.ok(goodnight(build(lastNight, { now: new Date('2026-10-09T00:33:00+08:00') })), '同一段里照旧命中');
         assert.ok(!goodnight(build(lastNight, { now: new Date('2026-10-09T08:08:56+08:00') })), '第二天早上主动找他');
         // 隔了一段又来：只看新的这段
@@ -79,7 +80,7 @@ describe('用林梦瑶的角色卡拼提示词', () => {
         assert.ok(!goodnight(again));
         // 一段里隔得再近也连着：40 分钟一条，往回都算这一段
         const slow = build([
-            { role: 'user', content: '我先睡啦', time: '2026-10-09T00:00:00+08:00' },
+            { role: 'user', content: '我先睡啦，想你', time: '2026-10-09T00:00:00+08:00' },
             { role: 'assistant', content: '嗯', time: '2026-10-09T00:40:00+08:00' },
         ], { now: new Date('2026-10-09T01:20:00+08:00') });
         assert.ok(goodnight(slow));
@@ -101,25 +102,26 @@ describe('用林梦瑶的角色卡拼提示词', () => {
 });
 
 describe('说到才想起的设定（DSH 诊断 2.4）', () => {
-    test('同学档：王者荣耀那段不在卡里，说到王者、空洞骑士时才从世界书进来', () => {
-        const classmate = loadCharacterCard(resolve(stDir, 'linmengyao-classmate.json'));
+    test('同学档：打游戏那段不在卡里，说到打游戏、星海拾光时才从世界书进来；同学档看不到的相机那段说到也不进来', () => {
+        const classmate = loadCharacterCard(syntheticCardPath('classmate'));
         const book = loadWorldInfo(resolve(stDir, `${classmate.world}.json`), classmate.world);
         const prompt = (content: string) => build([{ role: 'user', content }], { character: classmate, worldInfo: book });
         const text = (content: string) => prompt(content).messages.map(m => m.content).join('\n');
-        assert.doesNotMatch(text('孩子你无敌了'), /本命英雄是貂蝉/);
-        assert.match(text('今晚打王者吗'), /本命英雄是貂蝉/);
-        assert.match(text('空洞骑士那个boss过了没'), /菜猫/);
+        assert.doesNotMatch(text('孩子你无敌了'), /周末能打一下午/);
+        assert.match(text('今晚打游戏吗'), /周末能打一下午/);
+        assert.match(text('星海拾光那关过了没'), /周末能打一下午/);
+        assert.doesNotMatch(text('你买相机了吗'), /胶片机/);
     });
 
     test('已读书库：说书名才加载，人物名和泛问看书不加载', () => {
         const readEntry = (content: string) => build([{ role: 'user', content }]).activatedWorldInfo
             .filter(entry => entry.comment.includes('read-book-'));
-        const byTitle = readEntry('你看过《撒野》吗');
+        const byTitle = readEntry('你看过《晴空列车》吗');
         assert.equal(byTitle.length, 1);
-        assert.match(byTitle[0]!.content, /你读过的书·《撒野》/);
-        assert.equal(readEntry('你觉得蒋丞这个人怎么样').length, 0, '人物名不加载整本书');
-        assert.equal(readEntry('你最近看什么书').length, 0, '泛问不加载八本已读书');
-        assert.match(readEntry('伪渣讲什么')[0]!.content, /《伪装学渣》/);
+        assert.match(byTitle[0]!.content, /你读过的书·《晴空列车》/);
+        assert.equal(readEntry('你觉得列车长这个人怎么样').length, 0, '人物名不加载整本书');
+        assert.equal(readEntry('你最近看什么书').length, 0, '泛问不加载已读书');
+        assert.match(readEntry('晴空讲什么')[0]!.content, /《晴空列车》/);
     });
 });
 
@@ -244,14 +246,14 @@ describe('拼装规则', () => {
         assert.throws(() => parseCharacterCard({ entries: {} }), /不是角色卡/);
     });
 
-    test('回复节奏系数（extensions.qqbot.pace，ADR 0013）：没写是 1，超出 0.5–3 报错；生成的卡里同学档 1.6、名单外 2.2', () => {
+    test('回复节奏系数（extensions.qqbot.pace，ADR 0013）：没写是 1，超出 0.5–3 报错；生成的卡里同学档 2、陌生人和名单外 3', () => {
         const parse = (qqbot: object) => parseCharacterCard({ spec: 'chara_card_v2', data: { name: '小红', extensions: { qqbot } } });
         assert.equal(parse({ banned: [] }).pace, 1);
         assert.equal(parse({ banned: [], pace: 1.6 }).pace, 1.6);
         assert.throws(() => parse({ banned: [], pace: 5 }), /pace 应为 0\.5–3 的数/);
         assert.throws(() => parse({ banned: [], pace: '2' }), /pace/);
-        const pace = (tier: string) => loadCharacterCard(resolve(stDir, `linmengyao-${tier}.json`)).pace;
-        assert.deepEqual(['boyfriend', 'classmate', 'stranger', 'unlisted'].map(pace), [1, 1.6, 2.2, 2.2]);
+        const pace = (tier: string) => loadCharacterCard(syntheticCardPath(tier)).pace;
+        assert.deepEqual(['boyfriend', 'classmate', 'stranger', 'unlisted'].map(pace), [1, 2, 3, 3]);
     });
 
     test('personaDescription（dummyId 100001）插在世界书 before 之后、角色描述之前，宏已替换', () => {
@@ -277,7 +279,7 @@ describe('聊天记录隔天插日期（ADR 0049）', () => {
 
     test('隔天的那一条前面一行日期，最早那一条前面也有；同一天的不插；不是今年的带年份', () => {
         const history: ChatMessage[] = [
-            { role: 'user', content: '我在青岛好无聊', time: at('2026-10-05T14:00:00') },
+            { role: 'user', content: '我在老家好无聊', time: at('2026-10-05T14:00:00') },
             { role: 'assistant', content: '想我了就早点回来', time: at('2026-10-05T14:01:00') },
             { role: 'user', content: '在干嘛', time: at('2026-10-12T08:30:00') },
             { role: 'assistant', content: '上课呢', time: at('2026-10-12T08:31:00') },
@@ -286,7 +288,7 @@ describe('聊天记录隔天插日期（ADR 0049）', () => {
         const { messages } = build(history, { now: new Date(at('2026-10-12T12:30:00')) });
         const part = chatPart(messages);
         assert.deepEqual(part.slice(0, 7), [
-            '[10月5日 星期一]', 'user:我在青岛好无聊', 'assistant:想我了就早点回来',
+            '[10月5日 星期一]', 'user:我在老家好无聊', 'assistant:想我了就早点回来',
             '[10月12日 星期一]', 'user:在干嘛', 'assistant:上课呢', 'user:我在你宿舍楼下',
         ]);
         const old = build([{ role: 'user', content: '新年快乐', time: at('2025-12-31T23:59:00') }], { now: new Date(at('2026-01-01T00:10:00')) });

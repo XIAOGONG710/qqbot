@@ -33,6 +33,12 @@ export interface LlmOptions {
 /** 后台抽取（她答应的事、挂着的事、待跟进的事）的输出上限：开思考时思考也算在 max_tokens 里，4096 偶尔不够，正文就是空的（10-07 线上和模拟器里都有） */
 export const EXTRACT_MAX_TOKENS = 8192;
 
+/** 与最终请求体保持一致，extraBody 可以覆盖输出上限。 */
+export function completionMaxTokens(options: LlmOptions): number {
+    const override = options.extraBody.max_tokens;
+    return typeof override === 'number' && Number.isFinite(override) && override > 0 ? override : options.maxTokens;
+}
+
 /** 后台抽取用的模型配置：同一个模型，输出上限放到 EXTRACT_MAX_TOKENS */
 export function forExtraction(options: LlmOptions): LlmOptions {
     return { ...options, maxTokens: Math.max(options.maxTokens, EXTRACT_MAX_TOKENS) };

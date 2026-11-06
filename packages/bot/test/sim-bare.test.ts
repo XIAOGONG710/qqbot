@@ -4,9 +4,10 @@ import { describe, test } from 'node:test';
 import { bareMessages, bubblesOf, runBare, type BareCase, type BareSetup } from '../src/sim/bare.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS, loadWorldInfo } from '../src/st/world-info.ts';
+import { syntheticStDir, syntheticCardPath } from './fixtures/card.ts';
 
-const stDir = resolve(import.meta.dirname, '../../../characters/linmengyao/st');
-const character = loadCharacterCard(resolve(stDir, 'linmengyao-boyfriend-open.json'));
+const stDir = syntheticStDir;
+const character = loadCharacterCard(syntheticCardPath('boyfriend', true));
 const setup: BareSetup = {
     card: { character, worldInfo: loadWorldInfo(resolve(stDir, `${character.world}.json`), character.world) },
     userName: '宝宝',
@@ -24,7 +25,7 @@ describe('「不带框架」对照臂（ADR 0175）', () => {
         const messages = bareMessages(setup, item);
         const system = messages.filter(m => m.role === 'system').map(m => m.content).join('\n');
         assert.ok(system.includes('在读大学生'), '角色卡的描述在（宏已替换）');
-        assert.ok(system.includes('口语，短句，偶尔跑题'), '卡自己写的说话规矩在——B 是「卡作者写的东西」，不是空白模型');
+        assert.ok(system.includes('说话短，一条消息一两句'), '卡自己写的说话规矩在（persona 的 reply_style）——B 是「卡作者写的东西」，不是空白模型');
         const chat = messages.filter(m => m.role !== 'system');
         assert.deepEqual(chat.map(m => [m.role, m.content]), [['user', '吃饭了没'], ['assistant', '刚吃完'], ['user', '在吗'], ['user', '想你了']]);
         // 运行时才有的东西（contact.ts 现拼的「他最后说的是」、时间提示）一律不带；整块「系统部分每轮不变」见下一条

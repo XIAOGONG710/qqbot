@@ -2,6 +2,8 @@
 // 模型和未来的自主选择器只提交“想做什么”；本模块按真实课表、日常、读书状态和事件账决定能否发生。
 // 首刀只把时间当硬资源，不另造一套精力、钱或章节进度，避免和 body.ts、money.ts、her-days.ts 形成双事实源。
 
+import { localDate } from '../local-date.ts';
+import { calendarDate, stateTimestamp } from '../memory/state-schema.ts';
 import { bookProgressAt, type ReadingBook } from './her-days.ts';
 import type { LifeEvent, LifeEventDraft, LifeEventSource } from '.././world/life-events.ts';
 import { dishNote } from './menu.ts';
@@ -78,7 +80,8 @@ const FLEXIBLE: Record<'study' | 'rest' | 'read_book' | 'leisure' | 'work_on_pro
 /** 同一输入得到同一裁决。事件只应在 endedAt 已经过后再交给 WorldState.recordEvents。 */
 export function judgeAction(intent: ActionIntent, context: ActionContext): ActionVerdict {
     const start = intent.startedAt;
-    if (!intent.id.trim() || !Number.isFinite(start.getTime())) return failed(intent, 'invalid_time');
+    if (!intent.id.trim() || !supportedDate(start) || !calendarDate(formatDate(herDay(context.schedule, start)))) return failed(intent, 'invalid_time');
+    if (intent.durationMinutes !== undefined && (!Number.isInteger(intent.durationMinutes) || intent.durationMinutes <= 0)) return failed(intent, 'invalid_time');
     if (context.events?.some(event => event.id === intent.id.trim())) return failed(intent, 'already_done');
 
     if (intent.kind === 'sleep') return fixedAction(intent, sleepSpan(start, context.schedule), atHome(context.schedule, herDay(context.schedule, start)) ? '在家睡觉' : '在宿舍睡觉', context);
@@ -182,6 +185,7 @@ export function typedOccupation(event: LifeEvent, at: Date, books: readonly Read
 function fixedAction(intent: ActionIntent, span: { start: Date; end: Date } | undefined, occupation: string,
     context: ActionContext, ignoresFlexible = false): ActionVerdict {
     if (!span || !sameInstant(span.start, intent.startedAt)) return failed(intent, 'unavailable');
+    if (!Number.isFinite(span.end.getTime()) || span.end <= span.start) return failed(intent, 'invalid_time');
     if (!ignoresFlexible && firstExistingCollision(span.start, span.end, context.events)) return failed(intent, 'conflict');
     const minutes = minutesBetween(span.start, span.end);
     return succeeded(intent, span.end, occupation, minutes, minutes, 'succeeded');
@@ -189,6 +193,8 @@ function fixedAction(intent: ActionIntent, span: { start: Date; end: Date } | un
 
 function succeeded(intent: ActionIntent, end: Date, occupation: string, requestedMinutes: number, actualMinutes: number,
     result: 'succeeded' | 'interrupted', reason?: string): ActionVerdict {
+    // 队列/事件账只支持四位日历；裁决不能先成功再等落盘时被拒绝。
+    if (!supportedDate(end)) return failed(intent, 'invalid_time');
     const subject = intent.subject?.trim() || undefined;
     const target = intent.target?.trim() || undefined;
     return {
@@ -227,7 +233,7 @@ function sleepSpan(start: Date, schedule: Schedule): { start: Date; end: Date } 
     // 过了入睡时刻、还没到起床（醒了又睡）：睡到该起的时候
     if (state.activity.kind === 'sleep') return { start, end: state.activity.until };
     const [hour, minute] = schedule.sleep.split(':').map(Number);
-    const bedtime = new Date(start.getFullYear(), start.getMonth(), start.getDate(), hour, minute);
+    const bedtime = localDate(start.getFullYear(), start.getMonth(), start.getDate(), hour, minute);
     if (bedtime <= start) bedtime.setDate(bedtime.getDate() + 1);
     if (minutesBetween(start, bedtime) > EARLY_BED_MINUTES) return undefined;
     const night = stateAt(schedule, bedtime);
@@ -243,7 +249,7 @@ function firstCollision(start: Date, end: Date, context: ActionContext, deadline
     add(context.world?.routine?.meals ?? [], 'interrupted_by_commitment');
     add(context.busy ?? [], 'interrupted_by_commitment');
     const [sleepHour, sleepMinute] = context.schedule.sleep.split(':').map(Number);
-    const sleep = new Date(start.getFullYear(), start.getMonth(), start.getDate(), sleepHour, sleepMinute);
+    const sleep = localDate(start.getFullYear(), start.getMonth(), start.getDate(), sleepHour, sleepMinute);
     if (sleep <= start) sleep.setDate(sleep.getDate() + 1);
     add([{ start: sleep, end: addMinutes(sleep, 12 * 60) }], 'interrupted_by_commitment');
     add((context.events ?? []).filter(event => event.result !== 'failed').map(event => ({ start: new Date(event.startedAt), end: new Date(event.endedAt) })), 'interrupted_by_commitment');
@@ -270,5 +276,9 @@ function findBook(books: readonly ReadingBook[], subject: string | undefined): R
 }
 
 function sameInstant(a: Date, b: Date): boolean { return a.getTime() === b.getTime(); }
+function supportedDate(at: Date): boolean {
+    return Number.isFinite(at.getTime()) && at.getFullYear() >= 0 && at.getFullYear() <= 9999
+        && stateTimestamp(at.toISOString());
+}
 function addMinutes(at: Date, minutes: number): Date { return new Date(at.getTime() + minutes * 60_000); }
 function minutesBetween(start: Date, end: Date): number { return (end.getTime() - start.getTime()) / 60_000; }

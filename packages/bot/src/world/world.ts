@@ -7,6 +7,7 @@
 
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { localDate } from '../local-date.ts';
 import { join } from 'node:path';
 import type { Contact } from '../platform/config.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
@@ -15,7 +16,7 @@ import type { Episode } from '.././memory/episodes.ts';
 import { classesOn, formatDate, herDay, stateAt, wakeOn, type ClassToday, type Schedule } from '../life/schedule.ts';
 import { realAirQuality, type DayAirQuality } from './air-quality.ts';
 import { realDaylight, type Daylight } from './daylight.ts';
-import { realWeather, type DayWeather } from './weather.ts';
+import { realWeather, type DayWeather, type WeatherPlace } from './weather.ts';
 import { bodyAt, parseBody, unwell, type Body, type BodyNow } from '../life/body.ts';
 import type { NeedsSnapshot } from '../life/needs.ts';
 import { realCalendar, type PublicCalendarDay } from './calendar.ts';
@@ -24,8 +25,8 @@ import { DEFAULT_NEWS_KINDS, type NewsKind } from '../proactive/proactive.ts';
 import { EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, quizEvents, type EventFeel } from '../life/everyday.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
 import { inCooldown, threadStepsFor } from './threads.ts';
-import { describeNpc, npcAllows, npcSpans, npcStates, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
-import { DEFAULT_ASKS, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
+import { describeNpc, npcAllows, npcSpans, npcStates, validateNpcLife, type NpcLife, type NpcState, type NpcStateKind } from './npc.ts';
+import { asksByPerson, coordinateNpcDates, judgeAsk, npcAsksOn, type AskFacts, type AskOutcome, type NpcAsk } from './npc-asks.ts';
 import type { Plans } from '../life/day-plan.ts';
 import { ASK_HOME_TIME, depositFor, lastPayday, MISC_TIME, nextPayday, ORDER_TIME, PAY_TIME, parcelPrice, priceIn, sideJobOn, spendItems, type Money, type MoneyEntry } from '../life/money.ts';
 import { calendarDate } from '../memory/state-schema.ts';
@@ -35,13 +36,17 @@ let needsView: WorldNeedsView | undefined;
 /** 线上由 app.ts 接入已有 needs 锚点；没有锚点时世界保持旧形状。 */
 export function useWorldNeeds(source: WorldNeedsView | undefined): void { needsView = source; }
 export function worldNeeds(): WorldNeedsView | undefined { return needsView; }
+import { validateWorldConfig } from './world-config.ts';
 
 export type WorldWindow = 'morning' | 'afternoon' | 'evening';
+export type PersonRole = 'nearby' | 'faraway';
+export type EventAttach = 'meal' | 'class';
 
 export interface World {
     startDay: string;
     awayHolidays: string[];
-    weather?: { rainChance: number; temps: Record<string, [number, number]> };
+    /** places：真实天气取哪里（ADR 0048，weather.ts）；只在看得到她在哪座城市的档位上有 */
+    weather?: { rainChance: number; temps: Record<string, [number, number]>; places?: { school: WeatherPlace; home: WeatherPlace } };
     cat?: { name: string; feed: [string, string]; seenChance: number; food: { bagDays: number; left: number; reorderAt: number } };
     /** afterMealFrom：从这天起取件的时刻撞上饭点就吃完再去（ADR 0042）；之前的日子照旧 */
     parcels?: { perWeek: number; arriveDays: [number, number]; keepDays: number; items: string[]; afterMealFrom?: string };
@@ -50,16 +55,23 @@ export interface World {
         /** 攒够以后哪天去买（用户 10-10「这周末去买」）：那天 from 出门 minutes 分钟，去 where 买 what，花 price；那天钱不够就不买 */
         purchase?: { date: string; from: string; minutes: number; where: string; what: string; price: number };
     };
-    homework?: { kinds: string[]; chance: number; earlyChance: number };
+    homework?: {
+        kinds: string[]; chance: number; earlyChance: number;
+        /** 从这天新布置的作业起按完整课程组找下次课；旧作业与旧无组格式保留原规则。 */
+        groupedFrom?: string;
+    };
     familyCall?: { weekday: number; time: string };
     /** life：她们自己的日子（ADR 0033，npc.ts） */
-    people: { id: string; name: string; relation: string; life?: NpcLife }[];
+    /** role：nearby 同校的朋友、faraway 外地的朋友；日常小事和约按它认人，不按 id */
+    people: { id: string; name: string; relation: string; role?: PersonRole; life?: NpcLife }[];
     /** skipWhen / onlyWhen：person 那天的状态（ADR 0033）：她感冒了就不一起吃饭，感冒了才有「帮她拍板书」 */
     events: {
         id: string; text: string; person?: string; window: WorldWindow; chance: number; when: 'school' | 'class_day' | 'any' | 'off_day'; weekday?: number; skipWhen?: NpcStateKind[]; onlyWhen?: NpcStateKind[];
         /** 花了钱（ADR 0035） */
         cost?: { amount: [number, number]; what: string };
-        /** 以下是补充的日常小事才有的（ADR 0106，everyday.ts）：星期几 / 哪几个月 / 天气 / 一天一组最多一件 / 在她心里留下什么 / 要土豆见到了没见到 / 买了相机以后 */
+        /** 附在哪个行动上（life-selector.ts）：meal 和 person 一起吃的那顿饭，class 上课时的事；asksInstead：开了约就只通过约发生 */
+        attach?: EventAttach; asksInstead?: true;
+        /** 以下是补充的日常小事才有的（ADR 0106，everyday.ts）：星期几 / 哪几个月 / 天气 / 一天一组最多一件 / 在她心里留下什么 / 要猫见到了没见到 / 买了相机以后 */
         weekdays?: number[]; months?: number[]; weather?: 'rain' | 'dry' | 'cold' | 'hot'; group?: string; feel?: EventFeel;
         requires?: 'cat_seen' | 'cat_unseen'; afterCamera?: boolean; everyday?: boolean;
     }[];
@@ -105,6 +117,8 @@ export interface Homework {
     id: string;
     course: string;
     assigned: string;
+    /** 最早从本次课开始才成为她已知的作业，不猜测课内具体布置分钟。 */
+    assignedAt: Date;
     due: Date;
     done: Date;
 }
@@ -131,7 +145,7 @@ export interface WorldActionDraft {
     forCamera?: boolean;
 }
 
-/** 落盘的动作；id 按联系人、片段和序号去重，day 按她的一天算。 */
+/** 落盘的动作；新id按已验证事实身份去重，兼容旧联系人/片段/序号id，day按她的一天算。 */
 export interface WorldAction extends WorldActionDraft {
     id: string;
     day: string;
@@ -209,7 +223,7 @@ export interface WorldNow {
     /** 她这一天的日常（ADR 0031）：午饭、晚饭在哪吃、几点到几点；洗澡几点到几点（不洗的日子没有） */
     routine?: { meals: { kind: 'lunch' | 'dinner'; start: Date; end: Date; where: 'canteen' | 'takeout' | 'home'; /** 吃的是什么（ADR 0125，配置 menu） */ dish?: string }[]; shower?: { start: Date; end: Date } };
     /** 今天已经发生的小事（text 已换好人名） */
-    events: { id: string; text: string; at: Date; person?: { id: string; name: string; relation: string }; feel?: EventFeel }[];
+    events: { id: string; text: string; at: Date; person?: { id: string; name: string; relation: string }; feel?: EventFeel; mealKind?: 'lunch' | 'dinner'; attach?: EventAttach }[];
     /** 她身边的人今天怎么样（ADR 0033）：只有有事的（病了、忙、回家了） */
     people?: { name: string; relation: string; states: NpcState[] }[];
     /** 她的钱（ADR 0035）：手上还有多少、下次几号到账、今天到现在花的；detail 是这一档说得出口 */
@@ -251,13 +265,13 @@ export function worldErrands(now: WorldNow): { start: Date; end: Date; text: str
     return camera && formatDate(camera.start) === now.day ? [{ start: camera.start, end: camera.end, text: `去${camera.where}买相机` }] : [];
 }
 
-/** 喂完见到土豆的日子里，这一天拍了照片的概率（平均一周两三次，不是天天） */
+/** 喂完见到猫的日子里，这一天拍了照片的概率（平均一周两三次，不是天天） */
 export const CAT_PHOTO_CHANCE = 0.35;
 /** 喂完过了多久想起来发（分钟范围） */
 const CAT_PHOTO_DELAY_MIN: [number, number] = [8, 25];
 
 /**
- * 喂完土豆、见到它的日子里，有的天她拍了张照片想发给他（ADR 0110）：按“日期”取哈希，同一天每次一样。
+ * 喂完猫、见到它的日子里，有的天她拍了张照片想发给他（ADR 0110）：按“日期”取哈希，同一天每次一样。
  * 了结的时刻 = 喂完之后几分钟；没见到它的天没有照片可拍
  */
 function newsCatPhoto(now: WorldNow): WorldNews[] {
@@ -336,7 +350,9 @@ function newsHomework(now: WorldNow): WorldNews[] {
  * 不舒服（unwell）不在这里：身体不在世界快照里，见 unwellNews
  */
 export function worldNews(now: WorldNow, kinds: readonly NewsKind[] = DEFAULT_NEWS_KINDS): WorldNews[] {
-    return [...(kinds.includes('food_photo') ? newsFoodPhoto(now) : []), ...(kinds.includes('small_thing') ? newsSmallThing(now) : []), ...(kinds.includes('cat_photo') ? newsCatPhoto(now) : []), ...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
+    const news = [...(kinds.includes('food_photo') ? newsFoodPhoto(now) : []), ...(kinds.includes('small_thing') ? newsSmallThing(now) : []), ...(kinds.includes('cat_photo') ? newsCatPhoto(now) : []), ...(kinds.includes('camera') ? newsCamera(now) : []), ...(kinds.includes('homework_done') ? newsHomework(now) : []), ...(kinds.includes('friend_changed') ? newsFriend(now) : []), ...(kinds.includes('friend_sick') ? newsFriendSick(now) : [])];
+    assertWorldDates(news);
+    return news;
 }
 
 /**
@@ -380,7 +396,7 @@ function newsFriend(now: WorldNow): WorldNews[] {
  * bodyAt 由调用方按这一档的卡给，说得出口的程度（生理期细节）跟着档位
  */
 export function unwellNews(day: Date, schedule: Schedule, bodyAt: (time: Date) => BodyNow): WorldNews[] {
-    const noon = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 15);
+    const noon = localDate(day.getFullYear(), day.getMonth(), day.getDate(), 15);
     const today = bodyAt(noon);
     if (!unwell(today) || unwell(bodyAt(new Date(noon.getTime() - DAY_MS)))) return [];
     const parts: string[] = [];
@@ -418,6 +434,7 @@ interface Timeline {
 
 /** 从 startDay 推到 until（含），按天记下发生的事；纯函数，同样的输入同样的输出 */
 export function simulateWorld(world: World, schedule: Schedule, until: Date, actions: readonly WorldAction[] = []): Timeline {
+    assertWorldDates(until);
     const days = new Map<string, DayRecord>();
     const parcels: Parcel[] = [];
     const homework: Homework[] = [];
@@ -437,6 +454,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
     let camera: CameraTrip | undefined;
     const start = parseDate(world.startDay);
     const end = startOfDay(until);
+    const completeCourseGroups = schedule.courses.length > 0 && schedule.courses.every(course => Boolean(course.groupId));
     for (let day = start; day <= end; day = addDays(day, 1)) {
         const date = formatDate(day);
         const todayActions = actions.filter(action => action.day === date && new Date(action.at) <= until);
@@ -446,8 +464,9 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         const record: DayRecord = { date, atSchool, events: [] };
         days.set(date, record);
         const threadsOn = Boolean(world.threads) && (!world.threadsFrom || date >= world.threadsFrom);
-        // 真实天气（ADR 0048）：在学校按济南、放假在家按青岛；没有数据的日子照旧按日期生成
-        if (world.weather) record.weather = realWeather()?.day(atSchool ? 'jinan' : 'qingdao', date, until) ?? weatherOn(world.weather, day);
+        // 真实天气按卡上的地点（weather.places）：在学校取学校那里的，放假在家取家里的
+        const place = world.weather?.places ? (atSchool ? world.weather.places.school : world.weather.places.home).id : undefined;
+        if (world.weather) record.weather = (place ? realWeather()?.day(place, date, until) : undefined) ?? weatherOn(world.weather, day);
 
         // 快递：到了驿站的，在学校、不上课时取；有时拖一天；过了最后一天没取就退回
         // 取件的时刻撞上饭点（12:20 总落在午饭里，ADR 0040 验证一节）：从 afterMealFrom 那天起吃完饭再去（ADR 0042）；之前的日子照旧，过完的日子不被新规则改写
@@ -472,7 +491,20 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             const item = p.items[Math.floor(unit(`${date} parcel item`) * p.items.length)]!;
             const wait = p.arriveDays[0] + Math.floor(unit(`${date} parcel days`) * (p.arriveDays[1] - p.arriveDays[0] + 1));
             const arrive = at(addDays(day, wait), '10:00');
-                parcels.push({ id: `${date}:${item}`, item, ordered: date, arrive, deadline: formatDate(addDays(arrive, p.keepDays - 1)) });
+                parcels.push({ id: `${date}:${item}`, item, ordered: date, arrive, deadline: worldDate(addDays(arrive, p.keepDays - 1)) });
+        }
+
+        // 先兑现实际取件时刻，喂猫才能使用当时已经取回的猫粮；没有自动取件计划时也要补库存。
+        for (const action of todayActions.filter(a => a.kind === 'pick_parcel')) {
+            const time = new Date(action.at);
+            const available = parcels.filter(parcel => !parcel.returned && parcel.arrive <= time && (!parcel.picked || parcel.picked > time));
+            const matched = action.target ? available.find(parcel => parcel.id === action.target) : action.subject
+                ? available.find(parcel => parcel.item.includes(action.subject!) || action.subject!.includes(parcel.item))
+                : available[0];
+            if (matched) {
+                if (matched.food && !matched.picked && world.cat) food += world.cat.food.bagDays;
+                matched.picked = time;
+            }
         }
 
         // 楼下的猫：晚上空的时候下楼；下雨、不在学校、猫粮没了不去；晚上有课就下课后去，窗口里都在上课就不去
@@ -486,7 +518,8 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             if (blocking) time = new Date(blocking.end.getTime() + 10 * 60_000);
             // 真实天气按喂猫那个钟头和前一个钟头下没下（ADR 0048）：还没到点不知道，过了点照实际；生成的天气照旧按一整天
             const rainy = record.weather?.rainHours ? record.weather.rainHours.some(h => h >= time.getHours() - 1 && h <= time.getHours()) : record.weather?.rain;
-            const skipped = !atSchool ? 'away' : rainy ? 'rain' : food <= 0 ? 'no_food' : time > at(day, to) ? 'class' : undefined;
+            const pendingFood = parcels.filter(p => p.food && p.picked && sameDay(p.picked, day) && p.picked > time).length * cat.food.bagDays;
+            const skipped = !atSchool ? 'away' : rainy ? 'rain' : food - pendingFood <= 0 ? 'no_food' : time > at(day, to) ? 'class' : undefined;
             if (skipped) record.cat = { skipped, foodAfter: food };
             else {
                 food -= 1;
@@ -495,7 +528,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             // 剩得少了就下单（没有在路上的）
             if (food <= cat.food.reorderAt && !parcels.some(p => p.food && !p.picked && !p.returned)) {
                 const arrive = at(addDays(day, FOOD_ARRIVE_DAYS), '10:00');
-                parcels.push({ id: `${date}:猫粮`, item: '猫粮', ordered: date, arrive, deadline: formatDate(addDays(arrive, (world.parcels?.keepDays ?? 3) - 1)), food: true });
+                parcels.push({ id: `${date}:猫粮`, item: '猫粮', ordered: date, arrive, deadline: worldDate(addDays(arrive, (world.parcels?.keepDays ?? 3) - 1)), food: true });
             }
             // W3：她已经说自己喂过，就以实际说出的动作为准；原计划当天也会喂时不重复扣猫粮。
             const action = todayActions.filter(a => a.kind === 'feed_cat').at(-1);
@@ -517,20 +550,22 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             const hw = world.homework;
             for (const lesson of lessons) {
                 if (!hw.kinds.includes(lesson.kind) || unit(`${date} ${clock(lesson.start)} homework`) >= hw.chance) continue;
-                const due = nextLesson(schedule, lesson, day);
+                const due = nextLesson(schedule, lesson, day, completeCourseGroups && hw.groupedFrom !== undefined && date >= hw.groupedFrom);
                 if (!due) continue;
                 const early = unit(`${date} ${clock(lesson.start)} homework early`) < hw.earlyChance;
                 const done = early ? at(day, '21:30') : at(addDays(startOfDay(due), -1), '22:00');
                 // 晚上的课下课比 21:30 还晚时，写完的时刻往后挪到下课后一小时
-                homework.push({
+                const assignment: Homework = {
                     id: `${date}:${lesson.id!}`,
-                    course: lesson.name ?? '', assigned: date, due, done: new Date(Math.max(done.getTime(), lesson.end.getTime() + 3_600_000)),
-                });
+                    course: lesson.name ?? '', assigned: date, assignedAt: lesson.start, due, done: new Date(Math.max(done.getTime(), lesson.end.getTime() + 3_600_000)),
+                };
+                assertWorldDates(assignment);
+                homework.push(assignment);
             }
             // W3：只改已经存在、当时还没交的作业；说清课名时优先对那一份。
             for (const action of todayActions.filter(a => a.kind === 'finish_homework')) {
                 const time = new Date(action.at);
-                const available = homework.filter(item => item.assigned <= date && item.due > time && item.done > time);
+                const available = homework.filter(item => item.assignedAt <= time && item.due > time && item.done > time);
                 const matched = action.target ? available.find(item => item.id === action.target) : action.subject
                     ? available.find(item => item.course.includes(action.subject!) || action.subject!.includes(item.course))
                     : available[0];
@@ -543,21 +578,11 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         const called = todayActions.filter(a => a.kind === 'family_call').at(-1);
         if (world.familyCall && called) record.call = new Date(called.at);
 
-        // W3：她说已经取了快递，只能对上确实已经到站、没有退回的那一件；不凭一句话凭空造包裹。
-        for (const action of todayActions.filter(a => a.kind === 'pick_parcel')) {
-            const time = new Date(action.at);
-            const available = parcels.filter(parcel => !parcel.returned && parcel.arrive <= time && (!parcel.picked || parcel.picked > time));
-            const matched = action.target ? available.find(parcel => parcel.id === action.target) : action.subject
-                ? available.find(parcel => parcel.item.includes(action.subject!) || action.subject!.includes(parcel.item))
-                : available[0];
-            if (matched) matched.picked = time;
-        }
-
         // 学校和宿舍里的小事
         for (const event of world.events) {
             if (event.everyday) continue;
-            // 开了闺蜜的约（ADR 0061）：和苏雨桐吃午饭只通过「约」发生，免得一天两顿
-            if (world.asks && event.id === 'lunch_with_friend') continue;
+            // 开了约（ADR 0061）：和朋友一起吃的那顿只通过「约」发生，免得一天两顿
+            if (world.asks && event.asksInstead) continue;
             if (event.weekday && (day.getDay() || 7) !== event.weekday) continue;
             const ok = event.when === 'any' || (event.when === 'school' ? atSchool : atSchool && lessons.length > 0);
             if (!ok || unit(`${date} ${event.id}`) >= event.chance) continue;
@@ -589,7 +614,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
             if (event.person && !person) continue;
             if (person && !npcAllows(npcStates(person.id, person.life, schedule, day), event.skipWhen, event.onlyWhen)) continue;
-            // 土豆的事发生在她喂完之后
+            // 猫的事发生在她喂完之后
             const time = event.requires && record.cat?.fed
                 ? new Date(record.cat.fed.getTime() + (2 + Math.floor(unit(`${date} ${event.id} time`) * 7)) * 60_000)
                 : new Date(at(day, WINDOWS[event.window][0]).getTime() + Math.floor(unit(`${date} ${event.id} time`) * (minutes(WINDOWS[event.window][1]) - minutes(WINDOWS[event.window][0]))) * 60_000);
@@ -601,6 +626,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
             if (extraCount >= EVERYDAY_MAX_PER_DAY) break;
             const group = event.group ?? event.id;
             if (groupsToday.has(`group:${group}`)) continue;
+            assertWorldDates(time);
             groupsToday.add(`group:${group}`);
             extraCount++;
             record.events.push({ id: event.id, text: event.text, at: time, ...(event.person ? { person: event.person } : {}), ...(event.feel ? { feel: event.feel } : {}) });
@@ -638,10 +664,14 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         // 他给的钱（10-10 用户裁决：打字发的「［转账］」也当真）：记一笔收入；说了是买相机的存进相机基金，存满目标为止，多的留在手上
         const purchase = world.cameraFund?.purchase?.date === date ? world.cameraFund.purchase : undefined;
         const tripStart = purchase ? at(day, purchase.from) : undefined;
+        let purchaseDecided = false;
         const buyCamera = () => {
+            if (purchaseDecided) return;
+            purchaseDecided = true;
             // 攒够以后去买（用户 10-10）：钱从相机基金出，剩下的回到手上；之后不再存
             if (!purchase || !tripStart || camera || saved < purchase.price) return;
             const end = new Date(tripStart.getTime() + purchase.minutes * 60_000);
+            assertWorldDates(end);
             camera = { start: tripStart, end, where: purchase.where, what: purchase.what, price: purchase.price, ...(fundGifts.length ? { gifts: fundGifts } : {}) };
             if (saved > purchase.price) book(end, saved - purchase.price, '买完相机剩下的', 'income');
             saved = 0;
@@ -651,7 +681,7 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         const gifts = todayActions.filter(a => a.kind === 'receive_money' && a.amount).sort((a, b) => a.at.localeCompare(b.at));
         for (const action of gifts) {
             const time = new Date(action.at);
-            if (tripStart && time >= tripStart) buyCamera();
+            if (tripStart && time > tripStart) buyCamera();
             book(time, action.amount!, '收到的钱', 'income');
             if (action.target === CAMERA_FUND_TARGET && world.cameraFund && !camera && saved < world.cameraFund.goal) {
                 const put = Math.min(action.amount!, world.cameraFund.goal - saved);
@@ -712,19 +742,18 @@ function friendDatesFor(world: World, schedule: Schedule, now: Date, days: reado
     };
     const out: FriendDate[] = [];
     for (const day of days) {
-        for (const ask of npcAsksOn(world.people, schedule, day, DEFAULT_ASKS, anchors)) {
+        for (const ask of npcAsksOn(world.people, schedule, day, asksByPerson(world.people), anchors)) {
             if (ask.askedAt > now) continue;
             out.push(friendDate(world, schedule, ask, timeline, detail));
         }
     }
-    return out.sort((a, b) => a.start.getTime() - b.start.getTime());
+    return coordinateNpcDates(out);
 }
 
 function friendDate(world: World, schedule: Schedule, ask: NpcAsk, timeline: Timeline, detail: boolean): FriendDate {
     const person = world.people.find(p => p.id === ask.person)!;
     const day = new Date(`${ask.day}T00:00`);
-    const askedOn = formatDate(startOfDay(ask.askedAt));
-    const due = timeline.homework.filter(h => h.assigned <= askedOn && h.due > ask.askedAt && h.done > ask.askedAt).sort((a, b) => a.due.getTime() - b.due.getTime())[0]?.due;
+    const due = timeline.homework.filter(h => h.assignedAt <= ask.askedAt && h.due > ask.askedAt && h.done > ask.askedAt).sort((a, b) => a.due.getTime() - b.due.getTime())[0]?.due;
     const facts: AskFacts = {
         classes: classesOn(schedule, day).lessons.map(l => ({ start: l.start, end: l.end })),
         meetups: [],
@@ -809,14 +838,16 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     }
     const publicHoliday = realCalendar()?.day(date);
     if (publicHoliday) result.publicHoliday = publicHoliday;
-    const place = record.atSchool ? 'jinan' : 'qingdao';
+    // 空气质量、日照按卡上的地点（weather.places，ADR 0334）：在学校取学校那里的，放假在家取家里的；卡上没写就没有
+    const places = world.weather?.places;
+    const place = places ? (record.atSchool ? places.school : places.home).id : undefined;
     if (record.weather) result.weather = record.weather;
-    const airQuality = realAirQuality()?.day(place, date, now);
+    const airQuality = place ? realAirQuality()?.day(place, date, now) : undefined;
     if (airQuality) result.airQuality = airQuality;
-    const daylight = realDaylight()?.day(place, date, now);
+    const daylight = place ? realDaylight()?.day(place, date, now) : undefined;
     if (daylight) result.daylight = daylight;
     let transport: TransportFact | undefined;
-    try { transport = realTransport()?.day(place, now); }
+    try { transport = place ? realTransport()?.day(place, now) : undefined; }
     catch { /* 供应商故障不能阻塞世界快照；本轮不写交通事实。 */ }
     if (transport) result.transport = transport;
     const needs = worldNeeds()?.at(now);
@@ -827,7 +858,8 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
             : c.fed ? { later: world.cat.feed[0] }
                 : { skipped: c.skipped! };
         // 还没去的时候，猫粮按昨天晚上的算
-        const foodDays = c.fed && c.fed > now ? c.foodAfter + 1 : c.foodAfter;
+        const futureFood = timeline.parcels.filter(p => p.food && p.picked && sameDay(p.picked, day) && p.picked > now).length * world.cat.food.bagDays;
+        const foodDays = Math.max(0, (c.fed && c.fed > now ? c.foodAfter + 1 : c.foodAfter) - futureFood);
         result.cat = { name: world.cat.name, today, yesterdayFed: Boolean(yesterday?.cat?.fed), foodDays };
     }
     for (const parcel of timeline.parcels) {
@@ -857,7 +889,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
         };
     }
     for (const item of timeline.homework) {
-        if (item.assigned > date || item.due <= now || item.due.getTime() - startOfDay(now).getTime() > 3 * DAY_MS) continue;
+        if (item.assignedAt > now || item.due <= now || item.due.getTime() - startOfDay(now).getTime() > 3 * DAY_MS) continue;
         result.homework.push({ course: item.course, due: item.due, done: item.done <= now, doneAt: item.done, assigned: item.assigned });
     }
     if (record.call) result.familyCall = { at: record.call, done: record.call <= now };
@@ -865,7 +897,11 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     for (const event of record.events) {
         if (event.at > now) continue;
         const person = event.person ? world.people.find(p => p.id === event.person) : undefined;
-        result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: event.at, ...(person ? { person: { id: person.id, name: person.name, relation: person.relation } } : {}), ...(event.feel ? { feel: event.feel } : {}) });
+        // 卡上的饭后叙事在整个 afternoon/evening 窗口取时刻，不能把叙事钟点误当成吃饭开始。
+        const def = world.events.find(item => item.id === event.id);
+        const window = def?.attach === 'meal' ? def.window : undefined;
+        const mealKind = window === 'afternoon' ? 'lunch' as const : window === 'evening' ? 'dinner' as const : undefined;
+        result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: event.at, ...(person ? { person: { id: person.id, name: person.name, relation: person.relation } } : {}), ...(event.feel ? { feel: event.feel } : {}), ...(mealKind ? { mealKind } : {}), ...(def?.attach ? { attach: def.attach } : {}) });
     }
     const people = world.people.map(p => ({ name: p.name, relation: p.relation, states: npcStates(p.id, p.life, schedule, day) })).filter(p => p.states.length);
     if (people.length) result.people = people;
@@ -884,6 +920,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
             detail: world.money.detail,
         };
     }
+    assertWorldDates(result);
     return result;
 }
 
@@ -1029,6 +1066,7 @@ function routineOn(routine: NonNullable<World['routine']>, schedule: Schedule, d
         const plan = routine[kind];
         const start = new Date(at(day, plan.from).getTime() + Math.floor(unit(`${date} ${kind}`) * (plan.spread + 1)) * 60_000);
         const end = new Date(start.getTime() + plan.minutes * 60_000);
+        assertWorldDates([start, end]);
         if (lessons.some(l => l.start < end && start < l.end)) return [];
         const where = !atSchool ? 'home' as const : off && unit(`${date} ${kind} takeout`) < routine.takeoutChance ? 'takeout' as const : 'canteen' as const;
         const dish = menu && (!menu.from || date >= menu.from) ? dishOn(date, kind, menu.menu) : undefined;
@@ -1038,6 +1076,7 @@ function routineOn(routine: NonNullable<World['routine']>, schedule: Schedule, d
     const [min, max] = routine.shower.minutes;
     const start = new Date(at(day, routine.shower.from).getTime() + Math.floor(unit(`${date} shower at`) * (routine.shower.spread + 1)) * 60_000);
     const end = new Date(start.getTime() + (min + Math.floor(unit(`${date} shower long`) * (max - min + 1))) * 60_000);
+    assertWorldDates([start, end]);
     return { meals, shower: { start, end } };
 }
 
@@ -1085,7 +1124,7 @@ export function occupationAt(now: WorldNow, at: Date): string | undefined {
     if (parcel) return `刚去驿站取了快递（${parcel.item}），在往回走`;
     const homework = now.homework.find(h => !h.done && within(new Date(h.doneAt.getTime() - OCCUPATION_MINUTES.homework * 60_000), OCCUPATION_MINUTES.homework));
     if (homework) return `在赶${homework.course ? `${homework.course}的` : ''}作业，${clock(homework.doneAt)} 左右能写完`;
-    // 闺蜜的约（ADR 0061）：在一起的那一段（迟到、改约的按实际的时刻）；比吃饭先说，免得「在食堂吃午饭」盖掉「和苏雨桐」
+    // 闺蜜的约（ADR 0061）：在一起的那一段（迟到、改约的按实际的时刻）；比吃饭先说，免得「在食堂吃午饭」盖掉「和室友」
     const together = now.dates?.find(d => d.held && at >= dateSpan(d).start && at < dateSpan(d).end);
     if (together) return together.doing;
     // 吃饭（ADR 0031）
@@ -1290,6 +1329,8 @@ export function worldState(
     events = [...events, ...legacyActions.filter(action => !eventIds.has(action.id)).map(actionToLifeEvent)]
         .sort(compareLifeEvents);
     let actions = projectWorldActions(events);
+    const projectionFingerprint = (items: readonly WorldAction[]) => JSON.stringify(items.map(actionToLifeEvent).sort(compareLifeEvents));
+    let projectionDirty = projectionFingerprint(legacyActions) !== projectionFingerprint(actions);
     let logged: string | undefined;
 
     const persistState = (now: Date) => {
@@ -1301,18 +1342,28 @@ export function worldState(
         catch (error) { log(`她的世界：${what}失败（${error instanceof Error ? error.message : String(error)}）`); }
     };
 
+    const repairProjection = () => {
+        if (!projectionDirty) return;
+        writeJsonAtomic(actionsPath, { actions });
+        projectionDirty = false;
+    };
     const persist = (nextEvents: LifeEvent[]) => {
         const nextActions = projectWorldActions(nextEvents);
         // 事件先落盘；旧投影失败时抛出，让上层重试。重试由事件 id 幂等，不会重复执行。
         writeLifeEvents(eventsPath, nextEvents);
-        writeJsonAtomic(actionsPath, { actions: nextActions });
         events = nextEvents;
         actions = nextActions;
+        projectionDirty = true;
+        repairProjection();
     };
 
     const append = (drafts: readonly LifeEventDraft[]): LifeEvent[] => {
+        repairProjection();
         const added: LifeEvent[] = [];
         for (const draft of drafts) {
+            if (typeof draft.id !== 'string' || typeof draft.kind !== 'string'
+                || (draft.amount !== undefined && (!Number.isSafeInteger(draft.amount) || draft.amount <= 0))
+                || (draft.contact !== undefined && (!Number.isSafeInteger(draft.contact) || draft.contact < 0))) continue;
             const id = draft.id.trim();
             const kind = draft.kind.trim();
             const endedAt = new Date(draft.at);
@@ -1327,7 +1378,10 @@ export function worldState(
                 || (draft.amount !== undefined && (!Number.isSafeInteger(draft.amount) || draft.amount <= 0 || draft.amount > MAX_GIFT))
                 || (draft.seen !== undefined && typeof draft.seen !== 'boolean')
                 || (draft.contact !== undefined && (!Number.isSafeInteger(draft.contact) || draft.contact <= 0))
-                || (draft.episode !== undefined && (typeof draft.episode !== 'string' || !draft.episode.trim()))) continue;
+                || (draft.episode !== undefined && (typeof draft.episode !== 'string' || !draft.episode.trim()))
+                || endedAt.getFullYear() < 0 || endedAt.getFullYear() > 9999
+                || startedAt.getFullYear() < 0 || startedAt.getFullYear() > 9999
+                || !/^\d{4}-/.test(endedAt.toISOString()) || !/^\d{4}-/.test(startedAt.toISOString())) continue;
             if (events.some(event => event.id === id) || added.some(event => event.id === id)) continue;
             const day = formatDate(herDay(schedule, endedAt));
             if (day < world.startDay) continue;
@@ -1349,7 +1403,7 @@ export function worldState(
                         if (matched) target = matched.id;
                         else result = 'failed';
                     } else {
-                        const available = timeline.homework.filter(item => item.assigned <= day && item.due > endedAt && item.done > endedAt);
+                        const available = timeline.homework.filter(item => item.assignedAt <= endedAt && item.due > endedAt && item.done > endedAt);
                         const matched = target ? available.find(item => item.id === target)
                             : subject ? available.find(item => item.course.includes(subject) || subject.includes(item.course)) : available[0];
                         if (matched) target = matched.id;
@@ -1388,6 +1442,7 @@ export function worldState(
             safely(() => persistState(now), 'state.json 写入');
         },
         record: (contact, episode, drafts) => {
+            repairProjection();
             const assistant = episode.messages.filter(message => message.role === 'assistant');
             if (!assistant.length || !drafts.length) return;
             const added: WorldAction[] = [];
@@ -1429,7 +1484,7 @@ export function worldState(
                         if (!matched) continue;
                         target = matched.id;
                     } else {
-                        const available = timeline.homework.filter(item => item.assigned <= day && item.due > at && item.done > at);
+                        const available = timeline.homework.filter(item => item.assignedAt <= at && item.due > at && item.done > at);
                         const matched = subject
                             ? available.find(item => item.course.includes(subject) || subject.includes(item.course))
                             : available[0];
@@ -1518,6 +1573,7 @@ function validAction(value: unknown): value is WorldAction {
         && typeof action.episode === 'string' && Boolean(action.episode.trim()) && action.episode.length <= 120
         && typeof action.day === 'string' && calendarDate(action.day)
         && typeof action.at === 'string' && LOCAL_MINUTE.test(action.at) && calendarDate(action.at.slice(0, 10)) && Number.isFinite(new Date(action.at).getTime())
+        && /^\d{4}-/.test(new Date(action.at).toISOString())
         && typeof action.kind === 'string' && ACTION_KINDS.has(action.kind as WorldActionKind)
         && (action.subject === undefined || typeof action.subject === 'string')
         && (action.target === undefined || typeof action.target === 'string')
@@ -1542,7 +1598,7 @@ export function readWorldActions(path: string, log?: (message: string) => void):
 
 function localMinute(date: Date): string {
     const pad = (value: number) => String(value).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return `${formatDate(date)}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function actionLabel(action: WorldAction, world: World): string {
@@ -1562,11 +1618,22 @@ export function parseWorld(value: unknown, source: string): World | undefined {
     const fail = (what: string): never => { throw new Error(`${source}：extensions.qqbot.world${what}`); };
     const obj = (v: unknown, where: string) => (typeof v === 'object' && v !== null && !Array.isArray(v) ? v as Record<string, unknown> : fail(`${where} 应为对象`));
     const w = obj(value, '');
+    validateWorldConfig(value, fail);
     if (typeof w.startDay !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(w.startDay)) fail('.startDay 应为 YYYY-MM-DD');
     if (!Array.isArray(w.awayHolidays) || !Array.isArray(w.events) || !Array.isArray(w.people)) fail(' 缺 awayHolidays / people / events');
+    for (const [i, p] of (w.people as unknown[]).entries()) {
+        const person = obj(p, `.people[${i}]`);
+        if (typeof person.id !== 'string' || !person.id.trim() || typeof person.name !== 'string' || !person.name.trim()
+            || typeof person.relation !== 'string') fail(`.people[${i}] 要有 id、name、relation`);
+        if (person.role !== undefined && person.role !== 'nearby' && person.role !== 'faraway') fail(`.people[${i}].role 应为 nearby / faraway`);
+        validateNpcLife(person.life, message => fail(`.people[${i}].life${message}`));
+    }
+    for (const role of ['nearby', 'faraway']) if ((w.people as { role?: unknown }[]).filter(p => p.role === role).length > 1) fail(`.people 里 role: ${role} 最多一个人`);
     for (const [i, e] of (w.events as unknown[]).entries()) {
         const event = obj(e, `.events[${i}]`);
         if (typeof event.text !== 'string' || !(String(event.window) in WINDOWS) || typeof event.chance !== 'number') fail(`.events[${i}] 格式不对`);
+        if (event.attach !== undefined && ((event.attach !== 'meal' && event.attach !== 'class') || typeof event.person !== 'string')) fail(`.events[${i}].attach 应为 meal / class，且要有 person`);
+        if (event.asksInstead !== undefined && (event.asksInstead !== true || event.attach !== 'meal')) fail(`.events[${i}].asksInstead 只能是 true，且要 attach: meal`);
     }
     if (w.cat) {
         const cat = obj(w.cat, '.cat');
@@ -1606,14 +1673,32 @@ function weatherOn(weather: NonNullable<World['weather']>, day: Date): DayWeathe
     const [low, high] = weather.temps[String(day.getMonth() + 1)]!;
     const shift = Math.floor(unit(`${date} temp`) * 5) - 2;
     const rain = unit(`${date} rain`) < weather.rainChance;
-    return { rain, low: low + shift, high: high + shift - (rain ? 3 : 0) };
+    // 只修复降温把窄区间上限压到低温以下的情况；原来有序的历史结果保持不变。
+    return { rain, low: low + shift, high: Math.max(low + shift, high + shift - (rain ? 3 : 0)) };
 }
 
-/** 同一门课下一次上（有课名按课名，没有按星期几和开始时间），三周内找不到就不留 */
-function nextLesson(schedule: Schedule, lesson: ClassToday, day: Date): Date | undefined {
+/** 持久世界只支持四位本地公历年及四位 UTC 瞬时编码；纯循环控制临时日期不限。 */
+function worldDate(date: Date): string {
+    if (!Number.isFinite(date.getTime()) || date.getFullYear() < 0 || date.getFullYear() > 9999) throw new RangeError('世界投影日期超出支持范围');
+    return formatDate(date);
+}
+
+function assertWorldDates(value: unknown, seen = new WeakSet<object>()): void {
+    if (value instanceof Date) {
+        if (!Number.isFinite(value.getTime()) || value.getFullYear() < 0 || value.getFullYear() > 9999
+            || !/^\d{4}-/.test(value.toISOString())) throw new RangeError('世界投影日期超出支持范围');
+    } else if (value && typeof value === 'object' && !seen.has(value)) {
+        seen.add(value);
+        for (const item of Object.values(value)) assertWorldDates(item, seen);
+    }
+}
+
+/** 下一日的同组课；旧规则仅按课表条目身份，三周内找不到就不留。组身份不使用可见课名。 */
+function nextLesson(schedule: Schedule, lesson: ClassToday, day: Date, grouped = false): Date | undefined {
     for (let i = 1; i <= 21; i++) {
         const next = addDays(day, i);
-        const found = classesOn(schedule, next).lessons.find(l => l.id === lesson.id);
+        if (next.getFullYear() < 0 || next.getFullYear() > 9999) break;
+        const found = classesOn(schedule, next).lessons.find(l => grouped ? l.groupId === lesson.groupId : l.id === lesson.id);
         if (found) return found.start;
     }
     return undefined;
@@ -1660,22 +1745,24 @@ function clock(date: Date): string {
 
 function at(day: Date, time: string): Date {
     const [h, m] = time.split(':').map(Number);
-    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+    const result = localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+    assertWorldDates(result);
+    return result;
 }
 
 function startOfDay(date: Date): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    return localDate(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 function endOfDay(date: Date): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59);
+    return localDate(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59);
 }
 
 function addDays(date: Date, days: number): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+    return localDate(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
 
 function parseDate(text: string): Date {
     const [y, m, d] = text.split('-').map(Number);
-    return new Date(y!, m! - 1, d);
+    return localDate(y!, m! - 1, d);
 }

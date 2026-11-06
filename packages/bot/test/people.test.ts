@@ -14,6 +14,7 @@ import type { OpenAIMessage } from '../src/language/prompt.ts';
 import { runChecks, runScenario, type SimHindsight } from '../src/sim/runner.ts';
 import { parseScenario } from '../src/sim/scenario.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 /** 抽她答应的事的请求（ADR 0018）：假模型单独回，不算进聊天的生成 */
 const isPromises = (messages: OpenAIMessage[]) => messages[0]?.role === 'system' && messages[0].content.includes('答应过的事」');
@@ -87,8 +88,7 @@ describe('她认识的人（ADR 0016）', () => {
 });
 
 describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight）', () => {
-    const repoRoot = resolve(import.meta.dirname, '../../..');
-    const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend');
     const llm: BotConfig['llm'] = {
         baseUrl: 'http://127.0.0.1:1', model: 'x', apiKey: 'x', temperature: 0.7, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: '', extraBody: {},
     };
@@ -402,22 +402,22 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
 });
 
 describe('公共记忆的线索（ADR 0017）', () => {
-    const entities = ['鸽鸽', '林梦瑶', '宝宝', '流浪地球3', '杭州', '猫'];
-    const cue = (...said: string[]) => commonCue(said.map(he), me, entities, '林梦瑶');
+    const entities = ['鸽鸽', '测试角色', '宝宝', '流浪地球3', '杭州', '猫'];
+    const cue = (...said: string[]) => commonCue(said.map(he), me, entities, '测试角色');
 
     test('他这次的话里有公共库里的人和事：最长的那个；她自己、他自己的名字和单字不算', () => {
         assert.equal(cue('你看过流浪地球3吗'), '流浪地球3');
         assert.equal(cue('杭州好玩吗'), '杭州');
         assert.equal(cue('宝宝来了'), undefined, '他自己的称呼');
-        assert.equal(cue('林梦瑶在吗'), undefined);
+        assert.equal(cue('测试角色在吗'), undefined);
         assert.equal(cue('我家的猫'), undefined, '单字');
         // 只看她上次回复之后的
-        assert.equal(commonCue([he('杭州好玩吗'), she('还行'), he('嗯')], me, entities, '林梦瑶'), undefined);
+        assert.equal(commonCue([he('杭州好玩吗'), she('还行'), he('嗯')], me, entities, '测试角色'), undefined);
     });
 
     test('线索是公共库里的事、同时在问她过去的某天：asksPast 也认（ADR 0032：「周一你那快递拿了没」的线索是「快递」）', () => {
         const withParcel = [...entities, '快递', '下雨'];
-        assert.equal(commonCue([he('周一你那快递拿了没')], me, withParcel, '林梦瑶'), '快递');
+        assert.equal(commonCue([he('周一你那快递拿了没')], me, withParcel, '测试角色'), '快递');
         assert.equal(asksPast([he('周一你那快递拿了没')]), true);
         assert.equal(asksPast([he('昨天下雨了吗')]), true);
         assert.equal(asksPast([he('快递到了吗')]), false, '没有时间词');
@@ -516,11 +516,11 @@ describe('公共记忆的线索（ADR 0017）', () => {
         const schedule = { holidays: [{ name: '国庆节', start: '2026-10-01', end: '2026-10-07' }] } as unknown as Schedule;
         assert.deepEqual(holidayWords(schedule), ['国庆节', '国庆']);
         assert.deepEqual(holidayWords(undefined), []);
-        assert.equal(commonCue([he('国庆过得怎么样')], me, entities, '林梦瑶'), undefined, '没给假期名');
-        assert.equal(commonCue([he('国庆过得怎么样')], me, entities, '林梦瑶', holidayWords(schedule)), '问她过去的事');
-        assert.equal(commonCue([he('那国庆呢')], me, entities, '林梦瑶', holidayWords(schedule)), '问她过去的事');
-        assert.equal(commonCue([he('你上周忙啥了')], me, entities, '林梦瑶'), '问她过去的事');
-        assert.equal(commonCue([he('这周过得怎么样')], me, entities, '林梦瑶'), '问她过去的事');
+        assert.equal(commonCue([he('国庆过得怎么样')], me, entities, '测试角色'), undefined, '没给假期名');
+        assert.equal(commonCue([he('国庆过得怎么样')], me, entities, '测试角色', holidayWords(schedule)), '问她过去的事');
+        assert.equal(commonCue([he('那国庆呢')], me, entities, '测试角色', holidayWords(schedule)), '问她过去的事');
+        assert.equal(commonCue([he('你上周忙啥了')], me, entities, '测试角色'), '问她过去的事');
+        assert.equal(commonCue([he('这周过得怎么样')], me, entities, '测试角色'), '问她过去的事');
     });
 
     test('刚想起来的还在不在：之后她回了两次以内（连发算一次）、10 分钟以内', () => {
@@ -537,7 +537,7 @@ describe('公共记忆的线索（ADR 0017）', () => {
     });
 
     test('陌生人档、名单外没有线索', () => {
-        assert.equal(commonCue([he('你今天干嘛了')], { qq: 9, name: '路人', tier: 'stranger' }, entities, '林梦瑶'), undefined);
-        assert.equal(commonCue([he('你今天干嘛了')], { qq: 9, name: '路人', tier: 'unlisted' }, entities, '林梦瑶'), undefined);
+        assert.equal(commonCue([he('你今天干嘛了')], { qq: 9, name: '路人', tier: 'stranger' }, entities, '测试角色'), undefined);
+        assert.equal(commonCue([he('你今天干嘛了')], { qq: 9, name: '路人', tier: 'unlisted' }, entities, '测试角色'), undefined);
     });
 });

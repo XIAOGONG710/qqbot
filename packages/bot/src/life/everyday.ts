@@ -7,10 +7,13 @@
 // 档位只看得到自己该看的（宿舍、闺蜜这些只给亲近档位）。
 // 另有“小测”的一条线：高数 / 概率论 / 专业课每四周一次，前一次课老师说，当天写，两天后出分——分数是她难过或开心的真正来由（数学类偏低，自传：怕数学）。
 
+import { localDate } from '../local-date.ts';
+import { calendarDate, stateObject } from '../memory/state-schema.ts';
+import { TransientStateError } from '../memory/transient-io.ts';
 import type { FeelingKind } from '.././emotion/feelings.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { classesOn, formatDate, type ClassToday, type Schedule } from './schedule.ts';
-import type { World, WorldWindow } from '.././world/world.ts';
+import type { PersonRole, World, WorldWindow } from '.././world/world.ts';
 
 export type EventWeather = 'rain' | 'dry' | 'cold' | 'hot';
 export type EventTier = 'boyfriend' | 'bestie' | 'girl_friend' | 'known' | 'classmate' | 'stranger' | 'unlisted';
@@ -30,7 +33,8 @@ interface Def {
     chance: number;
     when: 'school' | 'class_day' | 'any' | 'off_day';
     tiers?: EventTier[];
-    person?: string;
+    /** 和谁：按 world.people 的 role 认人（nearby 同校的朋友、faraway 外地的朋友）；这一档的世界里没有这种人就没有这件事 */
+    role?: PersonRole;
     weekdays?: number[];
     months?: number[];
     weather?: EventWeather;
@@ -40,7 +44,7 @@ interface Def {
     cost?: { amount: [number, number]; what: string };
     skipWhen?: ('sick' | 'busy' | 'home')[];
     onlyWhen?: ('sick' | 'busy' | 'home')[];
-    /** 要这一天土豆见到了 / 没见到 */
+    /** 要这一天猫见到了 / 没见到 */
     requires?: 'cat_seen' | 'cat_unseen';
     /** 买了相机以后才有 */
     afterCamera?: boolean;
@@ -132,26 +136,26 @@ const DEFS: Def[] = [
     { id: 'ed_leaves', text: '校园里的银杏黄了，路过拍了几张', window: 'afternoon', chance: 0.2, when: 'school', weather: 'dry', months: [10, 11], group: 'weather', feel: f('joy') },
     { id: 'ed_moon', text: '晚上月亮特别圆，在楼下站着看了一会儿', window: 'evening', chance: 0.04, when: 'any', weather: 'dry', tiers: CLOSE, group: 'weather' },
 
-    // ───── 土豆 ─────
-    { id: 'ed_cat_belly', text: '土豆今天蹭了蹭她的手，还翻出了肚皮', window: 'evening', chance: 0.12, when: 'any', requires: 'cat_seen', group: 'cat', feel: f('joy') },
-    { id: 'ed_cat_fast', text: '土豆今天吃得特别快，碗舔得干干净净', window: 'evening', chance: 0.1, when: 'any', requires: 'cat_seen', group: 'cat' },
-    { id: 'ed_cat_grass', text: '土豆身上沾了草屑，帮它摘了好一会儿', window: 'evening', chance: 0.05, when: 'any', requires: 'cat_seen', group: 'cat' },
-    { id: 'ed_cat_photo', text: '给土豆拍了几张照片，有一张特别好', window: 'evening', chance: 0.1, when: 'any', requires: 'cat_seen', group: 'cat', feel: f('joy') },
-    { id: 'ed_cat_other_feeder', text: '碰到别的同学也在喂土豆', window: 'evening', chance: 0.04, when: 'any', requires: 'cat_seen', group: 'cat' },
-    { id: 'ed_cat_waiting', text: '喊了好几声土豆没出来，猫碗放在老地方', window: 'evening', chance: 0.2, when: 'any', requires: 'cat_unseen', group: 'cat', feel: f('worry') },
+    // ───── 猫 ─────
+    { id: 'ed_cat_belly', text: '{cat}今天蹭了蹭她的手，还翻出了肚皮', window: 'evening', chance: 0.12, when: 'any', requires: 'cat_seen', group: 'cat', feel: f('joy') },
+    { id: 'ed_cat_fast', text: '{cat}今天吃得特别快，碗舔得干干净净', window: 'evening', chance: 0.1, when: 'any', requires: 'cat_seen', group: 'cat' },
+    { id: 'ed_cat_grass', text: '{cat}身上沾了草屑，帮它摘了好一会儿', window: 'evening', chance: 0.05, when: 'any', requires: 'cat_seen', group: 'cat' },
+    { id: 'ed_cat_photo', text: '给{cat}拍了几张照片，有一张特别好', window: 'evening', chance: 0.1, when: 'any', requires: 'cat_seen', group: 'cat', feel: f('joy') },
+    { id: 'ed_cat_other_feeder', text: '碰到别的同学也在喂{cat}', window: 'evening', chance: 0.04, when: 'any', requires: 'cat_seen', group: 'cat' },
+    { id: 'ed_cat_waiting', text: '喊了好几声{cat}没出来，猫碗放在老地方', window: 'evening', chance: 0.2, when: 'any', requires: 'cat_unseen', group: 'cat', feel: f('worry') },
 
-    // ───── 朋友（陈佳宁在外地，苏雨桐是同专业济南人；只做互动，不加新人新事） ─────
-    { id: 'ed_jn_meme', text: '{person}发来一张搞笑图，互损了几句', window: 'evening', chance: 0.14, when: 'any', person: 'chen_jianing', skipWhen: ['busy'], tiers: CLOSE, group: 'social', feel: f('joy') },
-    { id: 'ed_jn_campus', text: '{person}吐槽她们学校的食堂，笑死了', window: 'evening', chance: 0.09, when: 'any', person: 'chen_jianing', skipWhen: ['busy'], tiers: CLOSE, group: 'social', feel: f('joy') },
-    { id: 'ed_jn_exam', text: '{person}说她们快考试了，在微信上哀嚎', window: 'evening', chance: 0.12, when: 'any', person: 'chen_jianing', months: [11, 12, 1], tiers: CLOSE, group: 'social' },
-    { id: 'ed_yt_notes', text: '{person}把上课的笔记拍给她', window: 'afternoon', chance: 0.07, when: 'class_day', person: 'su_yutong', skipWhen: ['sick'], tiers: CLOSE, group: 'social' },
-    { id: 'ed_yt_study', text: '和{person}在图书馆一起自习', window: 'afternoon', chance: 0.08, when: 'school', person: 'su_yutong', skipWhen: ['sick', 'home'], tiers: CLOSE, group: 'social' },
-    { id: 'ed_yt_snack', text: '{person}分了她一包零食', window: 'afternoon', chance: 0.06, when: 'class_day', person: 'su_yutong', skipWhen: ['sick', 'home'], tiers: CLOSE, group: 'social', feel: f('joy') },
-    { id: 'ed_yt_powerbank', text: '借了{person}的充电宝，下课还了', window: 'afternoon', chance: 0.04, when: 'class_day', person: 'su_yutong', skipWhen: ['sick', 'home'], tiers: CLOSE, group: 'social' },
-    { id: 'ed_yt_gossip', text: '{person}聊起班里的八卦，听得津津有味', window: 'evening', chance: 0.06, when: 'school', person: 'su_yutong', skipWhen: ['sick'], tiers: CLOSE, group: 'social' },
-    { id: 'ed_yt_hw', text: '和{person}一起研究一道作业题，研究了半天', window: 'evening', chance: 0.08, when: 'school', person: 'su_yutong', skipWhen: ['sick'], tiers: CLOSE, group: 'social', feel: f('relief') },
-    { id: 'ed_yt_drama', text: '{person}推荐了一部剧，先收藏了', window: 'evening', chance: 0.05, when: 'any', person: 'su_yutong', skipWhen: ['sick'], tiers: CLOSE, group: 'social' },
-    { id: 'ed_yt_walk', text: '和{person}绕着操场走了两圈', window: 'evening', chance: 0.06, when: 'school', person: 'su_yutong', skipWhen: ['sick', 'home'], weather: 'dry', months: [3, 4, 5, 9, 10], tiers: CLOSE, group: 'social' },
+    // ───── 朋友（闺蜜在外地，室友是同专业的本地人；只做互动，不加新人新事） ─────
+    { id: 'ed_jn_meme', text: '{person}发来一张搞笑图，互损了几句', window: 'evening', chance: 0.14, when: 'any', role: 'faraway', skipWhen: ['busy'], tiers: CLOSE, group: 'social', feel: f('joy') },
+    { id: 'ed_jn_campus', text: '{person}吐槽她们学校的食堂，笑死了', window: 'evening', chance: 0.09, when: 'any', role: 'faraway', skipWhen: ['busy'], tiers: CLOSE, group: 'social', feel: f('joy') },
+    { id: 'ed_jn_exam', text: '{person}说她们快考试了，在微信上哀嚎', window: 'evening', chance: 0.12, when: 'any', role: 'faraway', months: [11, 12, 1], tiers: CLOSE, group: 'social' },
+    { id: 'ed_yt_notes', text: '{person}把上课的笔记拍给她', window: 'afternoon', chance: 0.07, when: 'class_day', role: 'nearby', skipWhen: ['sick'], tiers: CLOSE, group: 'social' },
+    { id: 'ed_yt_study', text: '和{person}在图书馆一起自习', window: 'afternoon', chance: 0.08, when: 'school', role: 'nearby', skipWhen: ['sick', 'home'], tiers: CLOSE, group: 'social' },
+    { id: 'ed_yt_snack', text: '{person}分了她一包零食', window: 'afternoon', chance: 0.06, when: 'class_day', role: 'nearby', skipWhen: ['sick', 'home'], tiers: CLOSE, group: 'social', feel: f('joy') },
+    { id: 'ed_yt_powerbank', text: '借了{person}的充电宝，下课还了', window: 'afternoon', chance: 0.04, when: 'class_day', role: 'nearby', skipWhen: ['sick', 'home'], tiers: CLOSE, group: 'social' },
+    { id: 'ed_yt_gossip', text: '{person}聊起班里的八卦，听得津津有味', window: 'evening', chance: 0.06, when: 'school', role: 'nearby', skipWhen: ['sick'], tiers: CLOSE, group: 'social' },
+    { id: 'ed_yt_hw', text: '和{person}一起研究一道作业题，研究了半天', window: 'evening', chance: 0.08, when: 'school', role: 'nearby', skipWhen: ['sick'], tiers: CLOSE, group: 'social', feel: f('relief') },
+    { id: 'ed_yt_drama', text: '{person}推荐了一部剧，先收藏了', window: 'evening', chance: 0.05, when: 'any', role: 'nearby', skipWhen: ['sick'], tiers: CLOSE, group: 'social' },
+    { id: 'ed_yt_walk', text: '和{person}绕着操场走了两圈', window: 'evening', chance: 0.06, when: 'school', role: 'nearby', skipWhen: ['sick', 'home'], weather: 'dry', months: [3, 4, 5, 9, 10], tiers: CLOSE, group: 'social' },
     { id: 'ed_mom_msg', text: '妈妈发微信问她吃得怎么样、冷不冷', window: 'evening', chance: 0.12, when: 'any', tiers: CLOSE, group: 'family' },
 
     // ───── 身体 / 睡眠 ─────
@@ -171,11 +175,6 @@ const DEFS: Def[] = [
     { id: 'ed_card_lost', text: '饭卡找了半天，原来在外套口袋里', window: 'afternoon', chance: 0.03, when: 'school', group: 'shop', feel: f('relief') },
 ];
 
-/** 小测的一条线涉及的课：名字里有这些词的才有（水课没有） */
-const MATH_COURSE = /高等数学|概率论|线性代数|离散/;
-const CORE_COURSE = /数据结构|计算机网络|MySQL|数据库|操作系统|Linux|大数据|数据采集/;
-
-
 // ── 起伏（2026-11-02，用户：「直接模拟现实世界」）─────────────────────────────
 // 原来的小事都是「今天食堂换窗口」这种平的事；10-30 量过她五天里难过、烦、累一次都没有。
 // 这一层只加**一天之内的起伏**（不是家里变故、不是恋爱剧情、不新增有名字的人），
@@ -190,7 +189,7 @@ export const DRAMA_EVENT_DEFS: readonly Def[] = [
     { id: 'drama_sunset', text: '从教学楼出来正好赶上晚霞，站着看了两分钟，顺手拍了几张', window: 'evening', chance: 0.13, when: 'any', weather: 'dry', group: 'drama', feel: { kind: 'joy', strength: 2 } },
     { id: 'drama_caught_rain', text: '没带伞，从食堂跑回宿舍淋了半身，鞋里都是水', window: 'afternoon', chance: 0.2, when: 'any', weather: 'rain', group: 'drama', feel: { kind: 'sad', strength: 2 } },
     { id: 'drama_good_news_family', text: '家里打电话说点好事，挂了电话心情一直挺好', window: 'evening', chance: 0.1, when: 'any', group: 'drama', feel: { kind: 'joy', strength: 3 } },
-    { id: 'drama_cat_mess', text: '土豆把桌上的笔扒了一地，收拾的时候一边骂一边笑', window: 'evening', chance: 0.1, when: 'any', group: 'drama', feel: { kind: 'joy', strength: 2 } },
+    { id: 'drama_cat_mess', text: '{cat}把桌上的笔扒了一地，收拾的时候一边骂一边笑', window: 'evening', chance: 0.1, when: 'any', group: 'drama', feel: { kind: 'joy', strength: 2 } },
     { id: 'drama_deep_talk', text: '和同专业的同学在楼道聊了半个多小时，聊到以后要做什么，回来有点茫然', window: 'evening', chance: 0.1, when: 'class_day', group: 'drama', feel: { kind: 'sad', strength: 2 } },
     { id: 'drama_small_win', text: '卡了三天的一段代码终于跑通了，自己在桌边小声“卧槽”了一句', window: 'afternoon', chance: 0.12, when: 'any', group: 'drama', feel: { kind: 'joy', strength: 2 } },
     { id: 'drama_overheard', text: '在食堂听见隔壁桌说她“挺冷的”，愣了下，也没回头', window: 'afternoon', chance: 0.09, when: 'any', group: 'drama', feel: { kind: 'sad', strength: 2 } },
@@ -207,10 +206,12 @@ const baseTier = (tier: string): EventTier => tier.replace(/-open$/, '') as Even
 /** 一个档位看得到的补充小事；人物不在这一档的世界里（没有这个人）的不要；没有“小事”块的世界（陌生人 / 名单外）原样返回 */
 export function everydayEventsFor(world: World, tier: string, drama = false): WorldEventDef[] {
     const visible = baseTier(tier);
-    return [...DEFS, ...(drama ? DRAMA_EVENT_DEFS : [])].filter(def => (def.tiers ?? ALL).includes(visible) && (!def.person || world.people.some(person => person.id === def.person)))
+    const personFor = (role: PersonRole | undefined) => (role ? world.people.find(person => person.role === role)?.id : undefined);
+    return [...DEFS, ...(drama ? DRAMA_EVENT_DEFS : [])].filter(def => (def.tiers ?? ALL).includes(visible) && (!def.role || personFor(def.role)))
         .map((def): WorldEventDef => ({
-            id: def.id, text: def.text, window: def.window, chance: Math.round(def.chance * EVERYDAY_SCALE * 1000) / 1000, when: def.when,
-            ...(def.person ? { person: def.person } : {}), ...(def.skipWhen ? { skipWhen: def.skipWhen } : {}), ...(def.onlyWhen ? { onlyWhen: def.onlyWhen } : {}),
+            // {cat}：楼下那只猫的名字（卡上的 world.cat.name；猫的事要见到 / 没见到猫，没有猫的世界本来就没有）
+            id: def.id, text: def.text.replaceAll('{cat}', world.cat?.name ?? '猫'), window: def.window, chance: Math.round(def.chance * EVERYDAY_SCALE * 1000) / 1000, when: def.when,
+            ...(def.role ? { person: personFor(def.role)! } : {}), ...(def.skipWhen ? { skipWhen: def.skipWhen } : {}), ...(def.onlyWhen ? { onlyWhen: def.onlyWhen } : {}),
             ...(def.cost ? { cost: def.cost } : {}), ...(def.weekdays ? { weekdays: def.weekdays } : {}), ...(def.months ? { months: def.months } : {}),
             ...(def.weather ? { weather: def.weather } : {}), group: def.group, ...(def.feel ? { feel: def.feel } : {}),
             ...(def.requires ? { requires: def.requires } : {}), ...(def.afterCamera ? { afterCamera: true } : {}), everyday: true,
@@ -225,13 +226,26 @@ export function withEveryday(world: World | undefined, tier: string, from?: stri
 
 /**
  * 第一次开 everydayLife 时定下“从哪天起”并存进文件，以后重启都读同一个（和 needs-anchor.json 一个办法）：从第二天起，今天已经过的不改。
- * 文件读不了就用今天之后的一天，不去改写已经过的日子
+ * 只有文件不存在时创建；已有文件读不了则保留并明确失败，不去改写已经过的日子
  */
 export function loadEverydayFrom(path: string, now: Date, log: (message: string) => void = () => undefined): string {
-    const existing = readJsonOr<{ version?: number; from?: string }>(path, {}, message => log(`日常小事：${message}`));
-    if (existing.version === 1 && typeof existing.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(existing.from)) return existing.from;
-    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    // 仅 ENOENT 使用缺省值；损坏的已有锚点不能重算，否则会改写历史生效范围。
+    let existing: { version: 1; from: string } | undefined;
+    try {
+        existing = readJsonOr<{ version: 1; from: string } | undefined>(path, undefined, undefined, {
+            validate: (value): value is { version: 1; from: string } => stateObject(value)
+                && value.version === 1 && typeof value.from === 'string' && calendarDate(value.from),
+            invalid: 'throw', label: '日常小事启用状态',
+        });
+    } catch (error) {
+        if (error instanceof TransientStateError) throw error;
+        // JSON 解析异常可能含文件正文，不将原异常交给普通启动日志。
+        throw new Error('日常小事启用状态无效或读取失败；原文件未重建，请修复后重试');
+    }
+    if (existing) return existing.from;
+    const tomorrow = localDate(now.getFullYear(), now.getMonth(), now.getDate() + 1);
     const from = formatDate(tomorrow);
+    if (!calendarDate(from)) throw new RangeError('日常启用日期超出支持范围');
     writeJsonAtomic(path, { version: 1, from });
     log(`日常小事：从 ${from} 起生效（已经过完的日子不改）`);
     return from;
@@ -255,12 +269,12 @@ const unitOf = (text: string): number => {
     h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
     return (h >>> 0) / 2 ** 32;
 };
-const startOf = (day: Date) => new Date(day.getFullYear(), day.getMonth(), day.getDate());
+const startOf = (day: Date) => localDate(day.getFullYear(), day.getMonth(), day.getDate());
 const weekOf = (schedule: Schedule, day: Date) => Math.floor((startOf(day).getTime() - new Date(`${schedule.semester.start}T00:00:00`).getTime()) / (7 * DAY_MS)) + 1;
 
-function categoryOf(name: string | undefined): Quiz['category'] | undefined {
-    if (!name) return undefined;
-    return MATH_COURSE.test(name) ? 'math' : CORE_COURSE.test(name) ? 'core' : undefined;
+/** 小测的一条线涉及的课：卡上课程的 quiz（schedule.yml 的 courses[].quiz）；看不到课名的档位没有 */
+function categoryOf(lesson: ClassToday): Quiz['category'] | undefined {
+    return lesson.name ? lesson.quiz : undefined;
 }
 
 /**
@@ -291,13 +305,13 @@ function computeQuizzesOn(schedule: Schedule, day: Date): Quiz[] {
     if (outsideSemester) return [];
     const week = weekOf(schedule, day);
     const out: Quiz[] = [];
-    for (const lesson of lessons) {
-        const category = categoryOf(lesson.name);
+    for (const lesson of [...lessons].sort((a, b) => a.start.getTime() - b.start.getTime())) {
+        const category = categoryOf(lesson);
         if (!category || !quizWeek(lesson.name!, week, schedule.semester.weeks, category)) continue;
         // 每门课那一周的第一次课：前面几天里没有同名的课
         const earlier = Array.from({ length: 6 }, (_, i) => classesOn(schedule, new Date(day.getTime() - (i + 1) * DAY_MS)))
             .some(({ lessons: before }, i) => weekOf(schedule, new Date(day.getTime() - (i + 1) * DAY_MS)) === week && before.some(l => l.name === lesson.name));
-        if (!earlier) out.push({ course: lesson.name!, category, lesson });
+        if (!earlier && !out.some(quiz => quiz.course === lesson.name)) out.push({ course: lesson.name!, category, lesson });
     }
     return out;
 }
@@ -327,12 +341,17 @@ export function quizFeel(score: number, category: Quiz['category']): EventFeel |
 
 const SCORE_WORD = (score: number) => (score >= 90 ? '考得不错' : score >= 80 ? '还可以' : score >= 70 ? '中规中矩' : score >= 60 ? '刚过及格线附近' : '没考好');
 
+/** 同一成绩的世界事件和追求视图共用公布时刻，不能只按出分日期提前知道成绩。 */
+export function quizReleaseAt(course: string, quizDay: Date): Date {
+    const day = localDate(quizDay.getFullYear(), quizDay.getMonth(), quizDay.getDate() + 2);
+    return localDate(day.getFullYear(), day.getMonth(), day.getDate(), 20, 10 + Math.floor(unitOf(`${formatDate(day)} ${course} score time`) * 40));
+}
+
 /** 小测这条线在某一天发生的事：前一次课老师说要小测、当天小测、两天后出分；day 是她的这一天（0 点） */
 export function quizEvents(schedule: Schedule, day: Date, atSchool: boolean): { id: string; text: string; at: Date; feel?: EventFeel }[] {
     if (!atSchool) return [];
     const date = formatDate(day);
     const events: { id: string; text: string; at: Date; feel?: EventFeel }[] = [];
-    const clock = (base: Date, h: number, m: number) => new Date(base.getFullYear(), base.getMonth(), base.getDate(), h, m);
     // 今天的小测
     for (const quiz of quizzesOn(schedule, day)) {
         const score = quizScore(quiz, date);
@@ -343,7 +362,7 @@ export function quizEvents(schedule: Schedule, day: Date, atSchool: boolean): { 
     for (const quiz of quizzesOn(schedule, back)) {
         const score = quizScore(quiz, formatDate(back));
         const feel = quizFeel(score, quiz.category);
-        events.push({ id: `quiz_score:${quiz.course}:${formatDate(back)}`, text: `${quiz.course}小测的分数出来了，${score} 分（${SCORE_WORD(score)}）`, at: clock(day, 20, 10 + Math.floor(unitOf(`${date} ${quiz.course} score time`) * 40)), ...(feel ? { feel } : {}) });
+        events.push({ id: `quiz_score:${quiz.course}:${formatDate(back)}`, text: `${quiz.course}小测的分数出来了，${score} 分（${SCORE_WORD(score)}）`, at: quizReleaseAt(quiz.course, back), ...(feel ? { feel } : {}) });
     }
     // 明天有小测：今天最后一次同名课上老师说了（课后）
     const next = new Date(day.getTime() + DAY_MS);
@@ -353,7 +372,7 @@ export function quizEvents(schedule: Schedule, day: Date, atSchool: boolean): { 
     }
     // 下一次课有小测但不在明天：在今天最后一次课上老师说“下次课小测”
     for (const lesson of classesOn(schedule, day).lessons) {
-        const category = categoryOf(lesson.name);
+        const category = categoryOf(lesson);
         if (!category) continue;
         const nextQuizDay = Array.from({ length: 20 }, (_, i) => new Date(day.getTime() + (i + 2) * DAY_MS)).find(d => quizzesOn(schedule, d).some(q => q.course === lesson.name));
         if (!nextQuizDay) continue;

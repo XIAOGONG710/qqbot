@@ -16,7 +16,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CORE_SCHEMA, dump, load } from 'js-yaml';
 import { checkBiography, type BiographySource } from './biography-to-card.ts';
-import type { CourseKind } from './st-format.ts';
+import type { CourseKind, CourseQuiz } from './st-format.ts';
 import { checkWorld, type WorldSource } from './world-source.ts';
 
 /** 一段文字。人设各段的字段有 tiers（给哪些档位）；variants 是某几档用的改写版本，按顺序取第一条含这一档的 */
@@ -244,7 +244,11 @@ export interface ScheduleSource {
     holidays: { name: string; start: string; end: string; where?: ByTier[]; partner?: string; partner_back?: string; home?: boolean; note?: string }[];
     /** 调休补课：补星期几（1–7，0 = 没定，按没课） */
     makeups: { date: string; as_day: number; note?: string }[];
-    courses: { name: string; day: number; slot: string; room: string; kind: CourseKind; weeks: string; practice?: number; practice_room?: string }[];
+    courses: { name: string; day: number; slot: string; room: string; kind: CourseKind; weeks: string; practice?: number; practice_room?: string;
+        /** 一次分配后持久保存的匿名同课程身份；不得从课程名哈希或每次按数组位置重编号。 */
+        course_group?: string;
+        /** 这门课出小测（bot 的 everyday.ts）：math 数学类（她怕数学，分数偏低）、core 专业课；不写就不出 */
+        quiz?: CourseQuiz }[];
     /** 空闲时做什么；tiers 没写 = 所有档位都能看到 */
     /** cover：看不到这条的档位换成这句（ADR 0034：各档的列表一样长，同一时刻挑到同一格，不会男朋友看到「修片」、同学看到「打游戏」） */
     /** from：从这一天起才有（ADR 0053 之后：买了相机才有的活动；那天以前的抽签列表不变，过去的日子不被改写） */
@@ -419,14 +423,19 @@ function daySource(c: Checker, value: unknown): DaySource {
     c.keys(o, ['name', 'date', 'lunar', 'midnight']);
     const monthDay = (key: 'date' | 'lunar') => {
         const text = c.at(key).optionalString(o[key]);
-        if (text !== undefined && !MONTH_DAY.test(text)) c.at(key).fail(`应为 MM-DD：${text}`);
+        if (text !== undefined) {
+            if (!MONTH_DAY.test(text)) c.at(key).fail('应为 MM-DD');
+            const [month, day] = text.split('-').map(Number);
+            // 周年日保留公历 02-29；农历不猜具体年份的大小月，但没有三十一日。
+            const limit = key === 'lunar' ? 30 : [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month! - 1]!;
+            if (day! > limit) c.at(key).fail(key === 'lunar' ? '农历一个月最多 30 天，应为有效月日' : '应为有效月日');
+        }
         return text;
     };
     const day: DaySource = { name: c.at('name').string(o.name) };
     const solar = monthDay('date');
     const lunar = monthDay('lunar');
     if (!solar && !lunar) c.fail('公历日期（date）和农历日期（lunar）至少写一个');
-    if (lunar && Number(lunar.slice(3)) > 30) c.at('lunar').fail(`农历一个月最多 30 天：${lunar}`);
     if (solar) day.date = solar;
     if (lunar) day.lunar = lunar;
     if (o.midnight !== undefined && o.midnight !== null && typeof o.midnight !== 'boolean') c.at('midnight').fail('应为 true 或 false');
@@ -484,6 +493,7 @@ function byTier(c: Checker, value: unknown): ByTier[] {
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const KINDS: CourseKind[] = ['hard', 'machine', 'water', 'pe'];
+const COURSE_QUIZZES: CourseQuiz[] = ['math', 'core'];
 
 function time(c: Checker, value: unknown): string {
     const text = c.string(value);
@@ -493,7 +503,8 @@ function time(c: Checker, value: unknown): string {
 
 function date(c: Checker, value: unknown): string {
     const text = c.string(value);
-    if (!DATE.test(text)) c.fail(`应为 YYYY-MM-DD：${text}`);
+    const at = Date.parse(`${text}T00:00:00Z`);
+    if (!DATE.test(text) || !Number.isFinite(at) || new Date(at).toISOString().slice(0, 10) !== text) c.fail('应为真实 YYYY-MM-DD 日期');
     return text;
 }
 
@@ -643,7 +654,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
         courses: h.at('courses').array(schedule.courses).map((value, i) => {
             const c = h.at(`courses[${i}]`);
             const o = c.object(value);
-            c.keys(o, ['name', 'day', 'slot', 'room', 'kind', 'weeks', 'practice', 'practice_room']);
+            c.keys(o, ['name', 'day', 'slot', 'room', 'kind', 'weeks', 'practice', 'practice_room', 'course_group', 'quiz']);
             const kind = c.at('kind').string(o.kind) as CourseKind;
             if (!KINDS.includes(kind)) c.at('kind').fail(`${kind} 不是课型（${KINDS.join(' / ')}）`);
             const slot = c.at('slot').string(o.slot);
@@ -652,6 +663,16 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
                 name: c.at('name').string(o.name), day: c.at('day').integer(o.day, 1, 7), slot,
                 room: c.at('room').string(o.room), kind, weeks: c.at('weeks').string(o.weeks),
             };
+            if (o.course_group !== undefined) {
+                const group = c.at('course_group').string(o.course_group);
+                if (!/^cg-[0-9a-f]{32}$/.test(group)) c.at('course_group').fail('应为 cg- 后接 32 个小写十六进制字符的匿名令牌');
+                course.course_group = group;
+            }
+            if (o.quiz !== undefined && o.quiz !== null) {
+                const quiz = c.at('quiz').string(o.quiz) as CourseQuiz;
+                if (!COURSE_QUIZZES.includes(quiz)) c.at('quiz').fail(`应为 ${COURSE_QUIZZES.join(' / ')}`);
+                course.quiz = quiz;
+            }
             if (o.practice !== undefined && o.practice !== null) {
                 course.practice = c.at('practice').integer(o.practice, 1, 60);
                 course.practice_room = c.at('practice_room').string(o.practice_room);

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { loadTierCard } from '../src/platform/contact.ts';
 import { appraisals, feelingsAt } from '../src/emotion/feelings.ts';
@@ -11,13 +11,13 @@ import { describeIntent, dropsHerThing, holdPursuitIntent } from '../src/languag
 import type { LifeEvent } from '../src/world/life-events.ts';
 import { PHOTOGRAPHY_PROJECT_ID } from '../src/life/projects.ts';
 import {
-    BUILTIN_PURSUITS, CAMERA_STALL_DAYS, CAMERA_STEPS, CAMERA_THRESHOLDS, cameraProgress, describePursuits, mergePursuits, pursuitViews, pursuitsReader, quizRecord, validPursuits,
+    BUILTIN_PURSUITS, CAMERA_STALL_DAYS, CAMERA_STEP_COUNT, cameraSteps, CAMERA_THRESHOLDS, cameraProgress, describePursuits, mergePursuits, pursuitViews, pursuitsReader, quizRecord, validPursuits,
     type Pursuit, type PursuitFacts,
 } from '../src/life/pursuits.ts';
 import type { WorldNow } from '../src/world/world.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
-const repoRoot = resolve(import.meta.dirname, '../../..');
-const schedule = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend').character.schedule!;
+const schedule = loadTierCard(syntheticCardPattern, 'boyfriend').character.schedule!;
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
@@ -41,7 +41,8 @@ describe('内置的两条', () => {
         assert.deepEqual(BUILTIN_PURSUITS.map(item => item.id), ['courses', 'camera']);
         const text = BUILTIN_PURSUITS.map(item => `${item.title}${item.why}`).join('');
         for (const word of ['考研', '就业', '实习', '出国', '妈妈', '期待', '毕业']) assert.ok(!text.includes(word), word);
-        assert.equal(CAMERA_STEPS.length, CAMERA_THRESHOLDS.length);
+        assert.equal(cameraSteps().length, CAMERA_STEP_COUNT);
+        assert.equal(CAMERA_STEP_COUNT, CAMERA_THRESHOLDS.length);
     });
 
     test('摄影这条：相机没买就没有；买了之后按她认真弄过几回数到第几步（2 / 5 / 9 / 13 / 16 回）', () => {
@@ -55,7 +56,7 @@ describe('内置的两条', () => {
         assert.equal(cameraProgress(before, bought, new Date('2026-10-22T20:00:00+08:00')).sessions.length, 0);
         const [view] = pursuitViews([camera()], facts({ events: sessions(6, bought.getTime() + 2 * HOUR), world: world() }));
         assert.match(view!.text, /现在在第 3 步（拍一组校园的秋天）/);
-        assert.match(view!.text, /做完的有：熟悉新相机的设置、拍一组土豆/);
+        assert.match(view!.text, /做完的有：熟悉新相机的设置、拍一组团子饼/);
         assert.match(view!.text, /认真弄过 6 回，上一回是/);
     });
 

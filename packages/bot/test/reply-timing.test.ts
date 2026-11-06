@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import {
     arrivedWhileAsleep, isAck, isAckAfterClosing, isReaction, MOODY_CHANCE, MOODY_MAX_CHANCE, moodySkip, legacyTypingMs, pendingMessages, replyDelays, thinkMs, typingMs, wakeUpTime, whenSeen,
 } from '../src/social/reply-timing.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-const schedule = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;
+const schedule = loadCharacterCard(syntheticCardPath('boyfriend')).schedule!;
 const boyfriend = { schedule, wakeable: true };
 const classmate = { schedule, wakeable: false };
 /** 本地时间 2026 年的毫秒时间戳 */
@@ -63,24 +63,26 @@ describe('回复时机：什么时候看到', () => {
         assert.deepEqual(whenSeen(hot, t(10, 12, 23, 20), busy), { at: t(10, 12, 22, 40), reason: '正聊着' }, '洗完以后照常');
     });
 
-    test('上硬课：5–20 分钟后看到，最多回 1 条；上机房课 2–6 分钟、最多 2 条；水课照常', () => {
+    test('上硬课：20–40 分钟后看到，最多回 1 条；上机房课 5–15 分钟、最多 3 条；水课照常', () => {
+        // 周一 09:55 起计算机网络是硬课
         const hard = whenSeen([user(t(10, 12, 10))], t(10, 12, 10), boyfriend)!;
-        assert.ok(hard.at >= t(10, 12, 10, 5) && hard.at <= t(10, 12, 10, 20));
+        assert.ok(hard.at >= t(10, 12, 10, 20) && hard.at <= t(10, 12, 10, 40));
         assert.equal(hard.maxBubbles, 1);
-        assert.equal(hard.reason, '在上专业课，认真听');
+        assert.equal(hard.reason, '在上硬课');
 
+        // 周一 08:20 起操作系统实验是机房课
         const machine = whenSeen([user(t(10, 12, 8, 30))], t(10, 12, 8, 30), boyfriend)!;
-        assert.ok(machine.at >= t(10, 12, 8, 32) && machine.at <= t(10, 12, 8, 36));
-        assert.equal(machine.maxBubbles, 2);
+        assert.ok(machine.at >= t(10, 12, 8, 35) && machine.at <= t(10, 12, 8, 45));
+        assert.equal(machine.maxBubbles, 3);
 
-        // 周四晚上的 Python数据分析 是水课
-        const water = whenSeen([user(t(10, 15, 19))], t(10, 15, 19), boyfriend)!;
+        // 周二 13:30 起形势与政策是水课
+        const water = whenSeen([user(t(10, 13, 14))], t(10, 13, 14), boyfriend)!;
         assert.equal(water.maxBubbles, undefined);
-        assert.ok(water.at <= t(10, 15, 19, 1));
+        assert.ok(water.at <= t(10, 13, 14, 1));
     });
 
     test('快下课时来的消息：下课后 0.5–2 分钟看到', () => {
-        // Linux 09:40 下课
+        // 操作系统实验 09:40 下课
         const seen = whenSeen([user(t(10, 12, 9, 39))], t(10, 12, 9, 39), boyfriend)!;
         assert.ok(seen.at <= t(10, 12, 9, 42) && seen.at >= t(10, 12, 9, 40, 30), String(new Date(seen.at)));
     });

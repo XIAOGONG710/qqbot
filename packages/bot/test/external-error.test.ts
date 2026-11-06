@@ -7,6 +7,7 @@ import { airQualityFetcher } from '../src/world/air-quality.ts';
 import { calendarFetcher } from '../src/world/calendar.ts';
 import { daylightFetcher } from '../src/world/daylight.ts';
 import { weatherFetcher } from '../src/world/weather.ts';
+import { SYNTHETIC_WEATHER_PLACES } from './fixtures/card.ts';
 
 const SECRET_ERROR = 'HTTP 401 https://user:password@example.test/data?api_key=supplier-secret '
     + 'Authorization: Bearer bearer-value Cookie=cookie-value ' + 'x'.repeat(300);
@@ -24,21 +25,21 @@ test('天气、空气质量、日照和日历的供应商异常在日志与状�
     const now = () => Date.parse('2026-11-03T04:00:00.000Z');
     const fail = async () => { throw new Error(SECRET_ERROR); };
     try {
-        const weather = weatherFetcher({
+        const weather = weatherFetcher({ places: SYNTHETIC_WEATHER_PLACES,
             dir: join(root, 'weather'), now, log: message => logs.push(message),
             provider: { id: 'test', fetchHourly: fail },
         });
-        const air = airQualityFetcher({ dir: join(root, 'air'), now, log: message => logs.push(message), fetchJson: fail });
-        const daylight = daylightFetcher({ dir: join(root, 'daylight'), now, log: message => logs.push(message), fetchJson: fail });
+        const air = airQualityFetcher({ places: SYNTHETIC_WEATHER_PLACES, dir: join(root, 'air'), now, log: message => logs.push(message), fetchJson: fail });
+        const daylight = daylightFetcher({ places: SYNTHETIC_WEATHER_PLACES, dir: join(root, 'daylight'), now, log: message => logs.push(message), fetchJson: fail });
         const calendar = calendarFetcher({
             dir: join(root, 'calendar'), now, log: message => logs.push(message), years: () => [2026], fetchJson: fail,
         });
 
         await Promise.all([weather.refresh(), air.refresh(), daylight.refresh(), calendar.refresh()]);
         const errors = [
-            weather.status().places.jinan.error,
-            air.status().places.jinan.error,
-            daylight.status().places.jinan.error,
+            weather.status().places['school-town']!.error,
+            air.status().places['school-town']!.error,
+            daylight.status().places['school-town']!.error,
             calendar.status().error,
         ];
         errors.forEach((error, index) => safe(error ?? '', `status-${index}`));

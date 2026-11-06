@@ -8,14 +8,14 @@ import { addAiPhotoReference, aiPhotoPreview, aiPhotoRuntimeStatus, characterPat
 import { aiPhotoDraftStore } from '../../bot/src/vision/ai-photo-drafts.ts';
 import { photoShelf } from '../../bot/src/vision/photos.ts';
 import { createExternalDraftStore } from '../../bot/src/social/external-drafts.ts';
+import { syntheticSourceDir, syntheticStDir } from '../../bot/test/fixtures/card.ts';
 
-const repoRoot = resolve(import.meta.dirname, '../../..');
 const dir = mkdtempSync(join(tmpdir(), 'qqbot-console-'));
-cpSync(join(repoRoot, 'characters/linmengyao/source'), join(dir, 'source'), { recursive: true });
-cpSync(join(repoRoot, 'characters/linmengyao/st'), join(dir, 'st'), { recursive: true });
+cpSync(syntheticSourceDir, join(dir, 'source'), { recursive: true });
+cpSync(syntheticStDir, join(dir, 'st'), { recursive: true });
 after(() => rmSync(dir, { recursive: true, force: true }));
 
-const paths = characterPaths(join(dir, 'st', 'linmengyao-{tier}.json'))!;
+const paths = characterPaths(join(dir, 'st', 'synthetic-{tier}.json'))!;
 setConsoleState({ character: paths });
 const mtimes = () => Object.fromEntries(readdirSync(join(dir, 'st')).map(f => [f, statSync(join(dir, 'st', f)).mtimeMs]));
 
@@ -24,7 +24,7 @@ describe('控制台的角色资料（ADR 0010）', () => {
         const report = runConsoleHealthCheck({
             running: true, napcat: { online: true }, phoneActions: [], updatedAt: Date.now(),
             status: {
-                runtime: { commit: 'abc', branch: 'test', dirty: false, startedAt: new Date().toISOString() }, contacts: [], unlistedFriends: false, schedule: true, moody: false, speechCheck: true, herDays: false, proactive: 'off', features: [],
+                runtime: { commit: 'abc', branch: 'test', dirty: false, startedAt: new Date().toISOString() }, timeZone: 'Asia/Shanghai', contacts: [], unlistedFriends: false, schedule: true, moody: false, speechCheck: true, herDays: false, proactive: 'off', features: [],
                 memory: { baseUrl: 'http://secret.internal', health: { ok: false, at: Date.now(), error: 'token=secret' } },
                 externalPlatforms: { tieba: 'off', douyin: 'off', xiaohongshu: 'off' }, externalDrafts: { total: 1, pending: 1, approved: 0, publishing: 0, failed: 0, byPlatform: { tieba: 1, douyin: 0, xiaohongshu: 0 } },
                 dsh: { enabled: true }, mobileCompanion: { enabled: true, connected: false, queued: 0, maxQueuedPerClient: 32 },
@@ -35,7 +35,7 @@ describe('控制台的角色资料（ADR 0010）', () => {
         assert.doesNotMatch(JSON.stringify(report), /secret|token|internal|http/);
     });
     test('从角色卡路径推出资料目录和文件名前缀', () => {
-        assert.deepEqual(paths, { stDir: join(dir, 'st'), sourceDir: join(dir, 'source'), prefix: 'linmengyao' });
+        assert.deepEqual(paths, { stDir: join(dir, 'st'), sourceDir: join(dir, 'source'), prefix: 'synthetic' });
     });
 
     test('只检查不写；资料没变时保存也不改 st/ 下的文件（插件监听 st/，没变就不重启）', () => {
@@ -48,21 +48,24 @@ describe('控制台的角色资料（ADR 0010）', () => {
 
     test('改了一个场景：写回 source/，重新生成用到它的世界书', () => {
         const source = readSource(paths.sourceDir);
-        const scene = source.scenes.find(s => s.tiers.includes('boyfriend') && s.tiers.length === 1)!;
+        // 场景按场景档（tiers.yml 的 scenes）归属：找只属于男朋友档那一组的场景
+        const group = source.tiers.tiers.find(t => t.name === 'boyfriend')!.scenes;
+        assert.deepEqual(source.tiers.tiers.filter(t => t.scenes === group).map(t => t.name), ['boyfriend'], '合成资料里这一组只给男朋友档');
+        const scene = source.scenes.find(s => s.tiers.length === 1 && s.tiers[0] === group)!;
         scene.examples.push('虚构的一句新例句');
         const result = saveCharacter('scenes', source.scenes);
         // 用到这个场景的世界书：这一档的原卡一本，加上它的承认版一本（ADR 0067）
-        assert.deepEqual(result, { ok: true, written: ['linmengyao-scenes-boyfriend.json', 'linmengyao-scenes-boyfriend-open.json'] });
+        assert.deepEqual(result, { ok: true, written: ['synthetic-scenes-boyfriend.json', 'synthetic-scenes-boyfriend-open.json'] });
         assert.ok(readFileSync(join(dir, 'source', 'scenes.yml'), 'utf8').includes('虚构的一句新例句'));
-        assert.ok(readFileSync(join(dir, 'st', 'linmengyao-scenes-boyfriend.json'), 'utf8').includes('「虚构的一句新例句」'));
-        assert.ok(readFileSync(join(dir, 'st', 'linmengyao-scenes-boyfriend-open.json'), 'utf8').includes('「虚构的一句新例句」'));
+        assert.ok(readFileSync(join(dir, 'st', 'synthetic-scenes-boyfriend.json'), 'utf8').includes('「虚构的一句新例句」'));
+        assert.ok(readFileSync(join(dir, 'st', 'synthetic-scenes-boyfriend-open.json'), 'utf8').includes('「虚构的一句新例句」'));
     });
 
     test('档位隐私检查不过：不写，返回哪一档、哪个场景、哪个词', () => {
         const source = readSource(paths.sourceDir);
         const before = readFileSync(join(dir, 'source', 'scenes.yml'), 'utf8');
         const word = source.tiers.tiers.find(t => t.name === 'classmate')!.banned[0]!;
-        const scene = source.scenes.find(s => s.tiers.includes('classmate'))!;
+        const scene = source.scenes.find(s => s.tiers.includes(source.tiers.tiers.find(t => t.name === 'classmate')!.scenes))!;
         scene.avoid.push(word);
         const result = saveCharacter('scenes', source.scenes);
         assert.equal(result.ok, false);
@@ -88,10 +91,10 @@ describe('控制台的角色资料（ADR 0010）', () => {
         assert.deepEqual(mtimes(), before);
 
         const moods = structuredClone(source.moods)!;
-        moods.moods.find(mood => mood.name === '安静')!.style.text = '今天有点蔫，回得短（虚构的改写）';
+        moods.moods.find(mood => mood.name === '开心')!.style.text = '今天有点蔫，回得短（虚构的改写）';
         const saved = saveCharacter('moods', moods);
-        assert.ok(saved.ok && saved.written.includes('linmengyao-classmate.json') && !saved.written.includes('linmengyao-stranger.json'));
-        assert.ok(readFileSync(join(dir, 'st', 'linmengyao-classmate.json'), 'utf8').includes('虚构的改写'));
+        assert.ok(saved.ok && saved.written.includes('synthetic-classmate.json') && !saved.written.includes('synthetic-stranger.json'));
+        assert.ok(readFileSync(join(dir, 'st', 'synthetic-classmate.json'), 'utf8').includes('虚构的改写'));
 
         const books = structuredClone(source.books)!;
         (books.books[0] as { activity?: unknown }).activity = { window: '', text: '' };
@@ -103,7 +106,7 @@ describe('控制台的角色资料（ADR 0010）', () => {
 
         const word = source.tiers.tiers.find(t => t.name === 'classmate')!.banned[0]!;
         const leaky = structuredClone(source.books)!;
-        leaky.books[1]!.nodes[0]!.points.push(`虚构的一句${word}`);
+        leaky.books.find(book => book.nodes.length)!.nodes[0]!.points.push(`虚构的一句${word}`);
         const leak = saveCharacter('books', leaky);
         assert.ok(!leak.ok && leak.problems?.some(p => p.tier === 'classmate' && p.word === word));
     });
@@ -159,14 +162,14 @@ describe('控制台的 AI 照片审核（ADR 0239）', () => {
         setConsoleState({ dataDir });
         const store = aiPhotoDraftStore({ dir: join(dataDir, 'ai-photo-drafts'), now: () => new Date('2026-11-04T10:00:00.000Z') });
         const draft = await store.generate({
-            kind: 'cat', eventKey: 'console-cat', subject: '土豆蹲在车棚边', caption: '土豆蹲在车棚边看落叶', at: '2026-11-04T18:20:00+08:00',
+            kind: 'cat', eventKey: 'console-cat', subject: '团子饼蹲在车棚边', caption: '团子饼蹲在车棚边看落叶', at: '2026-11-04T18:20:00+08:00',
         }, async () => ({ bytes: jpeg(1), model: 'secret-model-name' }));
 
         const listed = listAiPhotoDrafts('pending_review', 24, new Date('2026-11-04T10:00:00.000Z'));
         assert.equal(listed.ok, true);
         if (!listed.ok) return;
         assert.deepEqual(listed.entries, [{
-            id: draft.id, kind: 'cat', caption: '土豆蹲在车棚边看落叶', at: '2026-11-04T10:20:00.000Z',
+            id: draft.id, kind: 'cat', caption: '团子饼蹲在车棚边看落叶', at: '2026-11-04T10:20:00.000Z',
             createdAt: '2026-11-04T10:00:00.000Z', expiresAt: '2026-11-04T16:20:00.000Z', expired: false, status: 'pending_review',
         }]);
         assert.doesNotMatch(JSON.stringify(listed), /secret-model|console-cat|promptHash|\\|ai-photo-drafts/);
@@ -195,7 +198,7 @@ describe('控制台的 AI 照片审核（ADR 0239）', () => {
 
         // 这条测试自己造一张待审的草稿（以前是捡上一条测试留下的，隔离目录以后就得自己生）
         await aiPhotoDraftStore({ dir: join(dataDir, 'ai-photo-drafts') }).generate({
-            kind: 'cat', eventKey: 'console-pending', subject: '土豆趴在窗台', caption: '土豆趴在窗台上晒太阳',
+            kind: 'cat', eventKey: 'console-pending', subject: '团子饼趴在窗台', caption: '团子饼趴在窗台上晒太阳',
             at: new Date(Date.now() - 60_000).toISOString(),
         }, async () => ({ bytes: jpeg(3), model: 'm' }));
         const pending = listAiPhotoDrafts('pending_review', 24);

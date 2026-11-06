@@ -82,11 +82,21 @@ export function needsAt(anchor: NeedsSnapshot, events: readonly LifeEvent[], at:
     if (target < anchorAt) throw new RangeError('需要投影不能早于锚点');
     if (target === anchorAt) return snapshot(at, anchor);
 
-    const relevant = effectiveLifeEvents(events)
+    const ordered = effectiveLifeEvents(events)
         .filter(event => event.result !== 'failed')
         .map(event => ({ event, start: Date.parse(event.startedAt), end: Date.parse(event.endedAt) }))
-        .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end >= item.start
-            && (item.end === item.start
+        .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end >= item.start)
+        .sort((a, b) => a.start - b.start || a.end - b.end || a.event.id.localeCompare(b.event.id));
+    // 部分重叠的低优先级饭不算完整吃完一顿（needs-v1：重叠坏账只取稳定优先级的一件）。在完整事件序列上判定，
+    // 不能因为重启锚点已经越过阻挡事件的末尾，就忘了后面那顿曾经只执行了一部分
+    const fullyActive = new Set<string>();
+    let occupiedUntil = -Infinity;
+    for (const item of ordered) {
+        if (item.start >= occupiedUntil) fullyActive.add(item.event.id);
+        occupiedUntil = Math.max(occupiedUntil, item.end);
+    }
+    const relevant = ordered
+        .filter(item => (item.end === item.start
                 ? item.end > anchorAt && item.end <= target
                 : item.end > anchorAt && item.start < target))
         .sort((a, b) => a.start - b.start || a.end - b.end || a.event.id.localeCompare(b.event.id));
@@ -118,7 +128,7 @@ export function needsAt(anchor: NeedsSnapshot, events: readonly LifeEvent[], at:
             // 对话或 DSH 上报的“刚吃完”事实可能没有可靠耗时，会以零时长入账。
             // 它不改变持续速率，但成功结束的这一顿仍应结算一次饱腹；同 ID 已在
             // effectiveLifeEvents 去重，锚点之后的严格时间窗也保证分段投影不重放。
-            if (item.start !== item.end && !activeEventIds.has(item.event.id)) continue;
+            if (item.start !== item.end && (!activeEventIds.has(item.event.id) || !fullyActive.has(item.event.id))) continue;
             if ((item.event.kind === 'eat' || item.event.meal) && item.event.result === 'succeeded') hunger = clamp(hunger - MEAL_HUNGER_RELIEF);
         }
     }

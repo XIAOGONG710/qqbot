@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { createVideoBrowsing, type BiliFetch } from '../src/bilibili/bilibili.ts';
 import { createPresence, type PresenceTransport } from '../src/social/presence.ts';
 import { stateAt } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // 长跑（ADR 0083、0084）：把存在感的五项和刷 B 站全开，假时钟每分钟走一次、走 60 天，每隔几天「重启」一次（重新建，读同一份状态文件），
 // 看频率和间隔是不是始终在界内——单日的单元测试看不出「一周最多 3 条」「隔 3–5 天」「36 小时」这类跨天的界。
-const schedule = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json')).schedule!;
+const schedule = loadCharacterCard(syntheticCardPath('boyfriend')).schedule!;
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-soak-')); dirs.push(d); return d; };
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });

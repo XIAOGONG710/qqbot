@@ -51,7 +51,8 @@ export interface CharacterCardV2 {
 export interface CardWorld {
     startDay: string;
     awayHolidays: string[];
-    weather?: { rainChance: number; temps: Record<string, [number, number]> };
+    /** places：真实天气取哪里（ADR 0048）；只在 places.tiers 的档位上有 */
+    weather?: { rainChance: number; temps: Record<string, [number, number]>; places?: { school: WeatherPlace; home: WeatherPlace } };
     cat?: { name: string; feed: [string, string]; seenChance: number; food: { bagDays: number; left: number; reorderAt: number } };
     /** afterMealFrom：从这天起取快递撞上饭点就吃完再去（ADR 0042） */
     parcels?: { perWeek: number; arriveDays: [number, number]; keepDays: number; items: string[]; afterMealFrom?: string };
@@ -59,11 +60,13 @@ export interface CardWorld {
         goal: number; saved: number; weekly: number; depositDay: number;
         purchase?: { date: string; from: string; minutes: number; where: string; what: string; price: number };
     };
-    homework?: { kinds: string[]; chance: number; earlyChance: number };
+    homework?: { kinds: string[]; chance: number; earlyChance: number; groupedFrom?: string };
     familyCall?: { weekday: number; time: string };
     /** 她世界里的人（NPC）：name 已按档位换成这一档的叫法 */
     people: {
         id: string; name: string; relation: string;
+        /** nearby 同校的朋友、faraway 外地的朋友：bot 按它认人（日常小事、约），不按 id */
+        role?: 'nearby' | 'faraway';
         /** 她们自己的日子（ADR 0033） */
         life?: { sick?: { perMonth: number; days: [number, number] }; busy?: { perMonth: number; days: [number, number]; labels: string[] }; home?: { weekendChance: number; holidays: boolean } };
     }[];
@@ -72,6 +75,10 @@ export interface CardWorld {
         skipWhen?: ('sick' | 'busy' | 'home')[]; onlyWhen?: ('sick' | 'busy' | 'home')[];
         /** 花了钱（ADR 0035） */
         cost?: { amount: [number, number]; what: string };
+        /** 附在哪个行动上：meal 和她一起吃的那顿饭、class 上课时的事（life-selector.ts） */
+        attach?: 'meal' | 'class';
+        /** 开了约就只通过约发生（ADR 0061） */
+        asksInstead?: true;
     }[];
     /** 她的身体（ADR 0025）：period.detail 是这一档说得出口生理期 */
     body?: { period?: { first: string; cycle: [number, number]; days: number; crampsChance: number; detail: boolean }; cold?: { perMonth: number; days: number } };
@@ -88,6 +95,9 @@ export interface CardWorld {
         detail: boolean;
     };
 }
+
+/** 真实天气的一个地点：id 是缓存文件名 */
+export interface WeatherPlace { id: string; name: string; latitude: number; longitude: number }
 
 /** 她的过去（ADR 0022）：这一档看得到的年表（「何时：何事」一行一件）和素材块；keys 不进提示词 */
 export interface CardBiography {
@@ -146,6 +156,8 @@ export interface CardProactive {
 
 /** 课型：硬课、机房课、水课、体育（timetable.toml 的 tier） */
 export type CourseKind = 'hard' | 'machine' | 'water' | 'pe';
+/** 出小测的课：math 数学类、core 专业课（bot 的 everyday.ts） */
+export type CourseQuiz = 'math' | 'core';
 
 /** 一个档位的作息（ADR 0007 决策 1）。时间 HH:MM、日期 YYYY-MM-DD，都是本地时间；没写的字段是这一档不该知道的 */
 export interface CardSchedule {
@@ -163,7 +175,11 @@ export interface CardSchedule {
     /** label：课型的叫法；seeAfterMin：上这种课时过多少分钟才看到消息；maxBubbles：最多回几条 */
     kinds: Record<CourseKind, { label?: string; seeAfterMin?: [number, number]; maxBubbles?: number }>;
     /** day 1–7 是周一到周日；weeks 如 "1-2,4-16,18"；practice：从第几周起转机房实训（按机房课算） */
-    courses: { day: number; slot: string; weeks: string; kind: CourseKind; name?: string; room?: string; practice?: { fromWeek: number; room?: string } }[];
+    courses: { day: number; slot: string; weeks: string; kind: CourseKind; name?: string; room?: string; practice?: { fromWeek: number; room?: string };
+        /** 与披露档无关的持久匿名课程身份，仅供内部事实排程使用。 */
+        groupId?: string;
+        /** 这门课出小测（math 数学类 / core 专业课）；只在看得到课名的档位上有 */
+        quiz?: CourseQuiz }[];
     /** 没课时在干什么：上午（起床到 afternoonFrom）、下午（到 eveningFrom）、晚上（到睡觉）各几条，同一天同一时段固定一条 */
     free: {
         morning: string[]; afternoon: string[]; evening: string[]; afternoonFrom: string; eveningFrom: string;

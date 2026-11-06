@@ -7,7 +7,7 @@ import { emptyLists, fetchLists, gatherEvidence, loadMemes, refreshDue, refreshM
 import { fileOps } from '../src/memory/json-file.ts';
 
 const tick = () => new Promise<void>(done => setImmediate(done));
-const term = '星云土豆', candidates = '{"词":"星云土豆","来源":"合成热搜"}', explanation = '{"是梗":true,"意思":"朋友间形容轻松快乐的状态","例句":"今天真是星云土豆","为什么好笑":"把宇宙和土豆硬凑在一起的反差","什么时候别用":"对方认真难过的时候","把握":"高","适合聊天":true}';
+const term = '星云团子饼', candidates = '{"词":"星云团子饼","来源":"合成热搜"}', explanation = '{"是梗":true,"意思":"朋友间形容轻松快乐的状态","例句":"今天真是星云团子饼","为什么好笑":"把宇宙和团子饼硬凑在一起的反差","什么时候别用":"对方认真难过的时候","把握":"高","适合聊天":true}';
 function fixture() {
     const root = mkdtempSync(join(tmpdir(), 'qqbot-memes-owner-')), path = join(root, 'memes.json'), controller = new AbortController(), calls: string[] = [], logs: string[] = [];
     saveMemes(path, { version: 1, refreshedAt: '2026-11-04T00:00:00Z', entries: [{ term: '合成旧梗', meaning: '合成且已经确认的解释', example: '合成例句', confidence: 'high', firstSeen: '2026-11-01', lastSeen: '2026-11-04', seen: 1 }] });
@@ -65,7 +65,7 @@ for (const stage of ['fetch', 'json'] as const) test(`热榜held ${stage}取消�
 for (const stage of ['search', 'sleep', 'subtitle', 'hotComments'] as const) test(`证据held ${stage}取消后不取后继视频/热评且不返回部分证据`, async () => {
     const controller = new AbortController(), calls: string[] = []; let release!: (value: unknown) => void, entered = false;
     const held = new Promise<unknown>(done => { release = done; });
-    const video = { bvid: 'BV1abcdefghj', aid: 1, title: '星云土豆是什么梗', desc: '合成简介', owner: '合成作者', category: '日常', views: 1, likes: 1, duration: 60, link: 'https://synthetic.invalid/video' };
+    const video = { bvid: 'BV1abcdefghj', aid: 1, title: '星云团子饼是什么梗', desc: '合成简介', owner: '合成作者', category: '日常', views: 1, likes: 1, duration: 60, link: 'https://synthetic.invalid/video' };
     const results = { search: [video], sleep: undefined, subtitle: { status: 'ok' as const, lan: 'zh', lines: ['合成解释字幕'] }, hotComments: ['合成热评'] };
     const deps = { signal: controller.signal, search: async () => { calls.push('search'); return results.search; }, sleep: async () => { calls.push('sleep'); },
         subtitle: async () => { calls.push('subtitle'); return results.subtitle; }, hotComments: async () => { calls.push('hotComments'); return results.hotComments; } };

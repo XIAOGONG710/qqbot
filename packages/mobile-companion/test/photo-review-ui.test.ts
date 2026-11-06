@@ -8,7 +8,7 @@ const draft = {
     id: 'abcdef123456',
     kind: 'cat' as const,
     status: 'pending_review' as const,
-    caption: '土豆趴在窗边晒太阳',
+    caption: '团子饼趴在窗边晒太阳',
     createdAt: '2026-11-04T07:30:00.000Z',
     expiresAt: '2026-11-04T09:00:00.000Z',
     thumbnail: {

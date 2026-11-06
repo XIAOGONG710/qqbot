@@ -13,6 +13,7 @@
 // 她写的是她的私人空间（ADR 0200，PRIVATE_FILES）：没有命令念给他，日志只记个数。
 
 import { join } from 'node:path';
+import { catAlternative } from '../character-terms.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { OpenAIMessage } from './prompt.ts';
@@ -49,9 +50,10 @@ const LONG_MIN = 25;
 const REPEAT_EPISODES = 3;
 const EPISODE_GAP = 45 * 60_000;
 /** 她那边常被她反复带出来的几件事（ADR 0098 的 TOLD_LABEL，加上 11-02 重放里看到的） */
-const TOPICS: Readonly<Record<string, RegExp>> = {
-    作业: /作业|概率论|高数|ddl|DDL/, 土豆: /土豆/, 相机: /相机/, 快递: /快递|驿站/, 小测: /小测/, 外卖: /外卖/, 熬夜: /熬夜|几点睡/,
-};
+// 猫的名字从卡上读（ADR 0335）
+const topics = (): Readonly<Record<string, RegExp>> => ({
+    作业: /作业|概率论|高数|ddl|DDL/, 猫: new RegExp(`${catAlternative()}猫`), 相机: /相机/, 快递: /快递|驿站/, 小测: /小测/, 外卖: /外卖/, 熬夜: /熬夜|几点睡/,
+});
 /** 每一类最多给她看几处 */
 export const SHOW_PER_KIND = 2;
 export const NOTE_MIN = 6;
@@ -141,7 +143,7 @@ export function reviewFlags(messages: readonly StoredMessage[], from: number, to
         const hisLen = len(his.replace(/\s|\//g, ''));
         const herLen = len(turn.text.replace(/\s|\//g, ''));
         if (his && herLen >= LONG_MIN && herLen >= hisLen * LONG_RATIO) all.push({ kind: 'long', ...base });
-        for (const [topic, pattern] of Object.entries(TOPICS)) {
+        for (const [topic, pattern] of Object.entries(topics())) {
             if (!pattern.test(turn.text)) continue;
             const set = episodesByTopic.get(topic) ?? new Set<number>();
             set.add(episode);

@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { classesOn } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { worldAt, type FriendDate } from '../src/world/world.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
 // 闺蜜的约（ADR 0061）过一整个学期：走世界层（线上开着 npcAsks 时的那条路），每天 23:00 看一次，把两个月里的约收齐，检查跨天、跨人的界。
-const card = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+const card = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = card.schedule!;
 const world = { ...card.herWorld!, asks: true };
 
@@ -24,7 +24,7 @@ describe('闺蜜的约：一个学期的审计（ADR 0061）', () => {
         for (const x of dates) perMonth.set(month(x), (perMonth.get(month(x)) ?? 0) + 1);
         assert.deepEqual([...perMonth.keys()].sort(), ['2026-11', '2026-12']);
         assert.ok([...perMonth.values()].every(n => n >= 5 && n <= 9), JSON.stringify([...perMonth]));
-        assert.deepEqual([...new Set(dates.map(x => x.person.id))].sort(), ['chen_jianing', 'su_yutong']);
+        assert.deepEqual([...new Set(dates.map(x => x.person.id))].sort(), ['friend', 'roommate']);
 
         const window = (x: FriendDate) => { const start = x.actualStart ?? x.start; return { start, end: new Date(start.getTime() + x.minutes * 60_000) }; };
         const accepted = dates.filter(x => x.outcome !== 'cancelled' && !x.declined);

@@ -1,30 +1,34 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { DEFAULT_ASKS, describeAsk, judgeAsk, npcAsksBetween, npcAsksOn, type AskFacts, type AsksConfig, type NpcAsk } from '../src/world/npc-asks.ts';
 import { classesOn, formatDate } from '../src/life/schedule.ts';
 import { npcStates } from '../src/world/npc.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-const card = (tier: string) => loadCharacterCard(resolve(import.meta.dirname, `../../../characters/linmengyao/st/linmengyao-${tier}.json`));
+const card = (tier: string) => loadCharacterCard(syntheticCardPath(tier));
 const boyfriend = card('boyfriend');
 const classmate = card('classmate');
 const schedule = boyfriend.schedule!;
 const people = boyfriend.herWorld!.people;
 const day = (m: number, d: number, y = 2026) => new Date(y, m - 1, d);
 const minutes = (t: Date) => t.getHours() * 60 + t.getMinutes();
+// 源码里的默认约（DEFAULT_ASKS）按真实角色的 NPC id 写的；合成卡的两个 NPC 用同样两份配置：
+// 室友（在学校、一起吃饭自习）用第一份，高中闺蜜（不在一个学校、视频）用第二份
+const [nearby, faraway] = Object.values(DEFAULT_ASKS) as [AsksConfig, AsksConfig];
+const ASKS: Record<string, AsksConfig> = { 'roommate': nearby, 'friend': faraway };
 
 // 一个学期多一点：学期第 1 周起 ~20 周（课表按学期算），再加一整年看分布
-const semester = npcAsksBetween(people, schedule, day(9, 14), day(12, 31));
+const semester = npcAsksBetween(people, schedule, day(9, 14), day(12, 31), ASKS);
 // 真课表只有一个学期（学期外不约），统计占比要样本：把学期拉长到三年多、去掉假期，其余照旧
 const longSchedule = { ...schedule, semester: { ...schedule.semester, weeks: 200 }, holidays: [] as typeof schedule.holidays, courses: schedule.courses.map(c => ({ ...c, weeks: '1-200' })) };
-const many = npcAsksBetween(people, longSchedule, day(9, 14), day(12, 31, 2029));
+const many = npcAsksBetween(people, longSchedule, day(9, 14), day(12, 31, 2029), ASKS);
 
 describe('闺蜜的约（ADR 0061）', () => {
     test('按日期推，重放一样；按天取和按段取是同一批', () => {
-        const again = npcAsksBetween(people, schedule, day(9, 14), day(12, 31));
+        const again = npcAsksBetween(people, schedule, day(9, 14), day(12, 31), ASKS);
         assert.deepEqual(semester.map(a => a.id), again.map(a => a.id));
-        assert.deepEqual(npcAsksOn(people, schedule, day(10, 17)).map(a => a.id), semester.filter(a => a.day === '2026-10-17').map(a => a.id));
+        assert.deepEqual(npcAsksOn(people, schedule, day(10, 17), ASKS).map(a => a.id), semester.filter(a => a.day === '2026-10-17').map(a => a.id));
         assert.deepEqual(semester, again);
         assert.equal(new Set(many.map(a => a.id)).size, many.length, 'id 不重复');
     });
@@ -33,10 +37,10 @@ describe('闺蜜的约（ADR 0061）', () => {
         const weeks = (day(12, 31).getTime() - day(9, 14).getTime()) / (7 * 86_400_000);
         const perWeek = semester.length / weeks;
         assert.ok(perWeek > 0.8 && perWeek < 2.2, `学期里每周 ${perWeek.toFixed(2)} 次`);
-        const su = semester.filter(a => a.person === 'su_yutong').length;
-        const chen = semester.filter(a => a.person === 'chen_jianing').length;
-        assert.ok(su >= 8 && su <= 20, `苏雨桐 ${su}`);
-        assert.ok(chen >= 6 && chen <= 16, `陈佳宁 ${chen}`);
+        const roommate = semester.filter(a => a.person === 'roommate').length;
+        const friend = semester.filter(a => a.person === 'friend').length;
+        assert.ok(roommate >= 8 && roommate <= 20, `室友 ${roommate}`);
+        assert.ok(friend >= 6 && friend <= 16, `高中闺蜜 ${friend}`);
     });
 
     test('每个约都合理：在上课的日子 / 周末，不在放假、学期外；开始落在那一段里；和课前后各留十分钟；一天一个人最多一个', () => {
@@ -45,7 +49,7 @@ describe('闺蜜的约（ADR 0061）', () => {
             const { lessons, outsideSemester } = classesOn(longSchedule, d);
             assert.ok(!outsideSemester, `${ask.id} 学期外`);
             assert.ok(!longSchedule.holidays.some(h => h.start <= ask.day && ask.day <= h.end), `${ask.id} 放假`);
-            const config = DEFAULT_ASKS[ask.person]!;
+            const config = ASKS[ask.person]!;
             const kind = config.kinds.find(k => k.id === ask.kind)!;
             if (kind.when === 'class_day') assert.ok(lessons.length > 0, `${ask.id} 没课的日子约了上课日的事`);
             if (kind.when === 'weekend') assert.ok(d.getDay() === 0 || d.getDay() === 6, `${ask.id} 不是周末`);
@@ -83,18 +87,18 @@ describe('闺蜜的约（ADR 0061）', () => {
         within('cancelled', 0.03, 0.13);
         assert.ok(many.length > 200, `三年多只有 ${many.length} 次`);
         for (const ask of by('late')) {
-            const [lo, hi] = DEFAULT_ASKS[ask.person]!.late.minutes;
+            const [lo, hi] = ASKS[ask.person]!.late.minutes;
             const late = (ask.actualStart!.getTime() - ask.start.getTime()) / 60_000;
             assert.ok(late >= lo && late <= hi, `${ask.id} 迟到 ${late} 分钟`);
-            assert.ok(DEFAULT_ASKS[ask.person]!.late.reasons.some(r => r.text === ask.reason!.text));
+            assert.ok(ASKS[ask.person]!.late.reasons.some(r => r.text === ask.reason!.text));
         }
         for (const ask of by('moved')) {
-            const [lo, hi] = DEFAULT_ASKS[ask.person]!.moved.shiftMinutes;
+            const [lo, hi] = ASKS[ask.person]!.moved.shiftMinutes;
             const shift = (ask.actualStart!.getTime() - ask.start.getTime()) / 60_000;
             assert.ok(shift >= lo && shift <= hi && shift % 10 === 0, `${ask.id} 改到 ${shift} 分钟以后`);
             assert.ok(minutes(ask.actualStart!) + ask.minutes <= 22 * 60 + 30, `${ask.id} 改得太晚`);
         }
-        for (const ask of by('cancelled').filter(a => !a.fromState)) assert.ok(DEFAULT_ASKS[ask.person]!.cancelled.reasons.some(r => r.text === ask.reason!.text));
+        for (const ask of by('cancelled').filter(a => !a.fromState)) assert.ok(ASKS[ask.person]!.cancelled.reasons.some(r => r.text === ask.reason!.text));
         for (const ask of by('on_time')) assert.equal(ask.reason, undefined);
     });
 
@@ -102,21 +106,23 @@ describe('闺蜜的约（ADR 0061）', () => {
         let quiet = 0;
         for (let start = day(9, 14); start < day(12, 17); start = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7)) {
             const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 13);
-            const asks = npcAsksBetween(people, schedule, start, end);
+            const asks = npcAsksBetween(people, schedule, start, end, ASKS);
             if (!asks.some(a => a.outcome !== 'on_time')) quiet++;
         }
         assert.ok(quiet <= 6, `${quiet} 个两周窗口里一次变卦都没有`);
     });
 
-    test('同学档以下的卡上没有这两个人，也就没有他们的约；没写配置的人没有约', () => {
-        assert.deepEqual(npcAsksBetween(classmate.herWorld?.people ?? [], classmate.schedule!, day(9, 14), day(12, 31)), []);
+    test('同学档的卡上没有高中闺蜜，也就没有她的约；没写配置的人没有约', () => {
+        const friendOnly = { 'friend': ASKS['friend']! };
+        assert.ok(npcAsksBetween(people, schedule, day(9, 14), day(12, 31), friendOnly).length > 0, '男朋友档有她的约');
+        assert.deepEqual(npcAsksBetween(classmate.herWorld?.people ?? [], classmate.schedule!, day(9, 14), day(12, 31), friendOnly), []);
         assert.deepEqual(npcAsksBetween(people, schedule, day(9, 14), day(12, 31), {}), []);
     });
 
     test('一次放鸽子不会让别的约不发生（每个约各自按哈希，互不影响）', () => {
-        const only = (id: string): Record<string, AsksConfig> => ({ [id]: DEFAULT_ASKS[id]! });
-        const together = semester.filter(a => a.person === 'su_yutong').map(a => a.id);
-        const alone = npcAsksBetween(people, schedule, day(9, 14), day(12, 31), only('su_yutong')).map(a => a.id);
+        const only = (id: string): Record<string, AsksConfig> => ({ [id]: ASKS[id]! });
+        const together = semester.filter(a => a.person === 'roommate').map(a => a.id);
+        const alone = npcAsksBetween(people, schedule, day(9, 14), day(12, 31), only('roommate')).map(a => a.id);
         assert.deepEqual(together, alone);
     });
 });

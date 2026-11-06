@@ -1,3 +1,4 @@
+import { localDate } from '../local-date.ts';
 // 长期记忆（ADR 0004 决策 3）：名单里的联系人每人每个档位一个 Hindsight bank（ADR 0003「实现时的调整」第 3 条：
 // 降档后不会召回高档位时的记忆）。
 // - 写入：聊天记录按片段（episodes.ts）写入，一个片段一个 document_id。片段结束（安静 45 分钟）时写，
@@ -60,7 +61,7 @@ export const SHARED_RECALLED = 6;
 export const TODAY_OTHERS = 3;
 export const PERSON_RECALLED = 6;
 /**
- * 同一个人和事（召回结果的实体）一次最多放几条（DSH 诊断 1.2）：同学档 10-08 召回 8 条里 3 条是土豆（10-05 一条、10-07 两条，说的是一件事），
+ * 同一个人和事（召回结果的实体）一次最多放几条（DSH 诊断 1.2）：同学档 10-08 召回 8 条里 3 条是猫（10-05 一条、10-07 两条，说的是一件事），
  * 他前一天刚嫌过「你怎么总说它的事」，她还是接着说猫。他这次说到的不限
  */
 export const SAME_THING_RECALLED = 2;
@@ -1007,7 +1008,7 @@ export class LongTermMemory {
             const item: MemoryItem = {
                 content: `${title}\n${text}`,
                 // 日记是睡前写的：时间写那天晚上
-                timestamp: localIso(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 22)),
+                timestamp: localIso(localDate(day.getFullYear(), day.getMonth(), day.getDate(), 22)),
                 context: `${char}自己写的${tag === 'diary' ? '日记' : tag === 'week' ? '周记' : '阶段总结'}`,
                 document_id: documentId,
                 tags: [...TAGS, tag],
@@ -1652,8 +1653,8 @@ function currentEpisodeId(chat: readonly ChatMessage[]): string | undefined {
 /**
  * 放进她提示词的记忆（召回、关系概况、印象）里她的名字换成「你」（ADR 0018 决策 4）：Hindsight 按名字写（「林梦瑶的日记」「林梦瑶说……」），
  * 提示词里其他地方都是用「你」跟她说话。
- * 带她名字的那一行里的「她」也是说她（「林梦瑶养了一只叫土豆的宠物，她说自己还没喂它」，DSH 诊断 1.2），一起换；
- * 那一行还提到别的女生（women：苏雨桐、闺蜜……）时分不清是谁，「她」不换
+ * 带她名字的那一行里的「她」也是说她（「林梦瑶养了一只猫，她说自己还没喂它」，DSH 诊断 1.2），一起换；
+ * 那一行还提到别的女生（women：室友、闺蜜……）时分不清是谁，「她」不换
  */
 export function secondPerson(text: string, char: string, women: readonly string[] = []): string {
     if (!char) return text;

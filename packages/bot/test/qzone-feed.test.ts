@@ -20,6 +20,16 @@ describe('读 QQ 空间动态（ADR 0142）', () => {
         assert.equal(normalizeQzoneFeed(null).length, 0);
     });
 
+    test('null、布尔值和数组不能经 Number 强转伪装成动态 id 或 QQ 号', () => {
+        const items = normalizeQzoneFeed({ msgList: [
+            { tid: null, content: '没有真实 id' },
+            { tid: false, content: '布尔 id' },
+            { tid: [], content: '数组 id' },
+            { tid: '8', content: '合法数字字符串', uin: true, createTime: null },
+        ] });
+        assert.deepEqual(items, [{ id: '8', text: '合法数字字符串', images: 0 }]);
+    });
+
     test('候选动作逐个试：第一个不存在就换下一个，并记住哪个能用', async () => {
         const tried: string[] = [];
         const feed = await readQzoneFeed(async action => {

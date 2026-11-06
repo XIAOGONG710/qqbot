@@ -9,6 +9,7 @@ import { join, resolve } from 'node:path';
 import { createVideoBrowsing, type BiliFetch } from '../bilibili/bilibili.ts';
 import { createPresence } from '../social/presence.ts';
 import { loadCharacterCard } from '../st/card.ts';
+import { localDate } from '../local-date.ts';
 
 const [fromText = '2026-11-02', daysText = '7'] = process.argv.slice(2);
 const [y, m, d] = fromText.split('-').map(Number);
@@ -17,7 +18,7 @@ const card = loadCharacterCard(resolve(import.meta.dirname, '../../../../charact
 const schedule = card.schedule!;
 const MINUTE = 60_000;
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
-const clock = { t: new Date(y!, m! - 1, d!, 0, 0).getTime() };
+const clock = { t: localDate(y!, m! - 1, d!, 0, 0).getTime() };
 const end = clock.t + days * 86_400_000;
 const dir = mkdtempSync(join(tmpdir(), 'qqbot-presence-preview-'));
 
@@ -59,7 +60,7 @@ rmSync(dir, { recursive: true, force: true });
 console.log(`# 存在感一周预览 ${fromText} 起 ${days} 天（开关全开；聊天一直安静，所以戳他是上限）\n`);
 let counts = { status: 0, like: 0, sig: 0, qzone: 0, poke: 0, bili: 0 };
 for (let i = 0; i < days; i++) {
-    const start = new Date(y!, m! - 1, d! + i).getTime();
+    const start = localDate(y!, m! - 1, d! + i).getTime();
     const day = log.filter(entry => entry.t >= start && entry.t < start + 86_400_000);
     const date = new Date(start);
     console.log(`## ${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} 周${WEEKDAYS[date.getDay()]}`);

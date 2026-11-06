@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import {
@@ -13,17 +13,21 @@ import type { InitiateOutcome, InitiateRequest } from '../src/social/responder.t
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { CAT_PHOTO_CHANCE, worldNews, type WorldNow } from '../src/world/world.ts';
+import { syntheticCardPath, useSyntheticTerms } from './fixtures/card.ts';
 
-// ADR 0110：喂完土豆见到它的日子里，有的天她拍了张照片发给他（news 的新一类 cat_photo，配置 photoShares）
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+// 猫名、城市名用合成角色的（ADR 0335）
+useSyntheticTerms();
+
+// ADR 0110：喂完团子饼见到它的日子里，有的天她拍了张照片发给他（news 的新一类 cat_photo，配置 photoShares）
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m).getTime();
 const dayText = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const worldOf = (d: Date, cat: WorldNow['cat']): WorldNow => ({ day: dayText(d), atSchool: true, parcels: [], homework: [], events: [], ...(cat ? { cat } : {}) } as WorldNow);
-const fedSeen = (d: Date, seen: boolean | 'unknown' = true) => worldOf(d, { name: '土豆', today: { fed: new Date(d.getFullYear(), d.getMonth(), d.getDate(), 20, 50), ...(seen === 'unknown' ? {} : { seen }) }, yesterdayFed: true, foodDays: 5 });
+const fedSeen = (d: Date, seen: boolean | 'unknown' = true) => worldOf(d, { name: '团子饼', today: { fed: new Date(d.getFullYear(), d.getMonth(), d.getDate(), 20, 50), ...(seen === 'unknown' ? {} : { seen }) }, yesterdayFed: true, foodDays: 5 });
 
-describe('世界账：喂完土豆拍的照片', () => {
+describe('世界账：喂完团子饼拍的照片', () => {
     test('只在喂了、见到的日子里，约 CAT_PHOTO_CHANCE 的天有；时间在喂完之后 8–25 分钟；同一天每次一样', () => {
         const days = Array.from({ length: 200 }, (_, i) => new Date(2026, 9, 1 + i));
         const hits = days.flatMap(d => worldNews(fedSeen(d), ['cat_photo']).map(n => ({ d, n })));
@@ -31,7 +35,7 @@ describe('世界账：喂完土豆拍的照片', () => {
         for (const { d, n } of hits) {
             assert.equal(n.kind, 'cat_photo');
             assert.equal(n.id, `cat_photo:${dayText(d)}`);
-            assert.equal(n.what, '给土豆拍了张照片');
+            assert.equal(n.what, '给团子饼拍了张照片');
             const minutes = (n.at.getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate(), 20, 50).getTime()) / 60_000;
             assert.ok(minutes >= 8 && minutes <= 25, `${minutes}`);
         }
@@ -44,15 +48,15 @@ describe('世界账：喂完土豆拍的照片', () => {
         const day = hitDay(Array.from({ length: 60 }, (_, i) => new Date(2026, 9, 1 + i)));
         assert.equal(worldNews(fedSeen(day, false), ['cat_photo']).length, 0, '没见到');
         assert.equal(worldNews(fedSeen(day, 'unknown'), ['cat_photo']).length, 0, '见没见到没记');
-        assert.equal(worldNews(worldOf(day, { name: '土豆', today: { later: '20:30' }, yesterdayFed: true, foodDays: 5 }), ['cat_photo']).length, 0, '还没去');
-        assert.equal(worldNews(worldOf(day, { name: '土豆', today: { skipped: 'rain' }, yesterdayFed: true, foodDays: 5 }), ['cat_photo']).length, 0, '下雨不去');
+        assert.equal(worldNews(worldOf(day, { name: '团子饼', today: { later: '20:30' }, yesterdayFed: true, foodDays: 5 }), ['cat_photo']).length, 0, '还没去');
+        assert.equal(worldNews(worldOf(day, { name: '团子饼', today: { skipped: 'rain' }, yesterdayFed: true, foodDays: 5 }), ['cat_photo']).length, 0, '下雨不去');
         assert.equal(worldNews(worldOf(day, undefined), ['cat_photo']).length, 0, '没有猫');
         assert.equal(worldNews(fedSeen(day), DEFAULT_NEWS_KINDS).length, 0, '默认只有相机');
         assert.ok(d);
     });
 });
 
-describe('主动：喂完土豆拍的照片', () => {
+describe('主动：喂完团子饼拍的照片', () => {
     test('withCatPhoto：加上 news 时机和 cat_photo 这一类，卡上原来的不动', () => {
         const base = boyfriend.proactive!;
         const on = withCatPhoto(base);
@@ -63,7 +67,7 @@ describe('主动：喂完土豆拍的照片', () => {
         assert.deepEqual(withCatPhoto(on), on, '重复加不叠');
     });
 
-    const item = (day: string): NewsItem => ({ id: `cat_photo:${day}`, kind: 'cat_photo', day, at: t(10, 24, 21, 5), what: '给土豆拍了张照片' });
+    const item = (day: string): NewsItem => ({ id: `cat_photo:${day}`, kind: 'cat_photo', day, at: t(10, 24, 21, 5), what: '给团子饼拍了张照片' });
     const input = (patch: Partial<ProactiveInput> = {}): ProactiveInput => ({
         qq: 10001, schedule, settings: withCatPhoto(boyfriend.proactive!), dates: [], history: [], records: [], mode: 'on', news: [item('2026-10-24')], ...patch,
     });
@@ -75,8 +79,8 @@ describe('主动：喂完土豆拍的照片', () => {
         const note = occasionNote(c, '宝宝');
         assert.ok(note.includes('拍了它一张照片') && note.includes('另起一行单独发照片') && note.includes('别写成一句平平的汇报') && !note.includes('不要他回应'), note);
         assert.equal(blockReason(c, c.at, input({ photoReady: () => true })), undefined);
-        assert.match(blockReason(c, c.at, input())!, /货架里没有土豆的照片/, '没给 photoReady = 不发');
-        assert.match(blockReason(c, c.at, input({ photoReady: () => false }))!, /货架里没有土豆的照片/);
+        assert.match(blockReason(c, c.at, input())!, /货架里没有猫的照片/, '没给 photoReady = 不发');
+        assert.match(blockReason(c, c.at, input({ photoReady: () => false }))!, /货架里没有猫的照片/);
         const chatted: StoredMessage[] = [{ time: new Date(t(10, 24, 21, 6)).toISOString(), role: 'user', content: '在吗' }, { time: new Date(t(10, 24, 21, 7)).toISOString(), role: 'assistant', content: '在' }];
         assert.ok(blockReason(c, t(10, 24, 22, 30), input({ photoReady: () => true, history: chatted })), '那之后聊过了');
     });
@@ -106,12 +110,12 @@ describe('主动：喂完土豆拍的照片', () => {
             responder: {
                 initiate: async (request: InitiateRequest): Promise<InitiateOutcome> => {
                     requests.push(request);
-                    request.commit(['喂完土豆啦']);
-                    return { result: 'dryRun', parts: ['喂完土豆啦'] };
+                    request.commit(['喂完团子饼啦']);
+                    return { result: 'dryRun', parts: ['喂完团子饼啦'] };
                 },
             },
             dir, log: () => {}, now: clock.now, waitUntil: clock.waitUntil,
-            names: { user: '阿明', char: '林梦瑶' },
+            names: { user: '阿明', char: '测试角色' },
             news: () => [item('2026-10-24')],
             photoReady: () => true,
         });

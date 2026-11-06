@@ -11,6 +11,7 @@ import {
     applyTakesDecision, bookItems, emptyTakesState, findItem, loadTakesState, MAX_ACTIVE, MAX_ADD, MAX_ITEMS, needsTake, parseTakesDecision, pickItems, PER_ITEM, reflectIfDue,
     reflectionMessages, saveTakesState, takeProblem, takesLine, takesPath, takesReader, videoItems, type Take, type TakeItem, type TakeGuard,
 } from '../src/life/reading-takes.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
 
 const dirs: string[] = [];
@@ -18,7 +19,7 @@ const temp = () => { const dir = mkdtempSync(join(tmpdir(), 'qqbot-takes-')); di
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
-const card = loadTierCard(join(repoRoot, 'characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend');
+const card = loadTierCard(syntheticCardPattern, 'boyfriend');
 const schedule = card.character.schedule!;
 const NOW = new Date(2026, 9, 30, 22, 30);
 const NOW_MS = NOW.getTime();

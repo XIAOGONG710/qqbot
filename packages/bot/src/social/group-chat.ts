@@ -1,10 +1,11 @@
 // 群聊（ADR 0210，用户 2026-11-02「下一步做群聊和陌生人互动」）。
 // 用户定的：只进他拉她进的群，而且要加进配置 groups 才说话；他来标哪些群的人都知道她是 AI（标了的群承不承认由她，没标的按不知道：认真问到就承认）。
-// 她本人（scripts/ask-her.mjs）：「基本潜水」「有人点我名了，或者话题正好撞我枪口上——吃的、剧、土豆」「有人在群里损你，那我得出来说两句」；
+// 她本人（scripts/ask-her.mjs）：「基本潜水」「有人点我名了，或者话题正好撞我枪口上——吃的、剧、猫」「有人在群里损你，那我得出来说两句」；
 // 「群里肯定得收着点……但你也别装得跟不认识我似的……就正常说话，别喊得那么黏」。
 // 这里是纯函数：群里的记录、谁说的、该不该开口、每个群的额度、给她的说明。调模型、发消息在 app.ts。
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { catAlternative } from '../character-terms.ts';
 import { join } from 'node:path';
 import { pick } from './reply-timing.ts';
 import type { Segment } from '../platform/onebot.ts';
@@ -27,8 +28,8 @@ export const GROUP_CONTEXT = 30;
 
 /** 她的叫法：群里有人这样叫就算叫到她 */
 export const HER_NAMES = ['林梦瑶', '梦瑶', '瑶瑶', '瑶姐'] as const;
-/** 她熟的话题（她本人：吃的、剧、土豆） */
-const HER_TOPICS = /吃什么|吃啥|饭|外卖|奶茶|火锅|烧烤|零食|追剧|这剧|电视剧|番剧|新番|电影|猫|土豆|相机|拍照|摄影|修图|照片/;
+/** 她熟的话题（她本人：吃的、剧、楼下的猫；猫的名字从卡上读，ADR 0335） */
+const herTopics = () => new RegExp(`吃什么|吃啥|饭|外卖|奶茶|火锅|烧烤|零食|追剧|这剧|电视剧|番剧|新番|电影|猫|${catAlternative()}相机|拍照|摄影|修图|照片`);
 /** 损人的话（有人这样说他） */
 const TEASING = /菜|笨|傻|蠢|丑|怂|废物|拉胯|垃圾|太弱|弱鸡|不行啊|就这|笑死|好惨|活该|单身狗/;
 /** 想伤害自己、绝望（群里有人这么说，她认真接，不当玩笑） */
@@ -60,7 +61,7 @@ export function speakReason(message: Segment[] | string, text: string, from: num
         const namesHim = (ctx.boyfriendNames ?? []).some(name => name.length >= 2 && text.includes(name));
         if ((atHim || namesHim) && TEASING.test(text)) return 'defend';
     }
-    if (HER_TOPICS.test(text) && ctx.topicToday < GROUP_LIMITS.topicPerDay
+    if (herTopics().test(text) && ctx.topicToday < GROUP_LIMITS.topicPerDay
         && pick(String(messageId), 'group-topic', [0, 999]) < GROUP_LIMITS.topicChance * 1000) return 'topic';
     return undefined;
 }

@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import {
@@ -7,9 +6,10 @@ import {
     type Candidate, type ProactiveInput, type ProactiveRecord,
 } from '../src/proactive/proactive.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
+import { syntheticCardPath } from './fixtures/card.ts';
 
-// ADR 0100：他没回也继续找他、可以催他一下（配置 proactiveReach）。用转换器生成的真卡（男朋友档）；国庆假期 10-05 没有课，起床 09:30
-const boyfriend = loadCharacterCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-boyfriend.json'));
+// ADR 0100：他没回也继续找他、可以催他一下（配置 proactiveReach）。用转换器生成的合成卡（男朋友档）；国庆假期 10-05 没有课，起床 09:30
+const boyfriend = loadCharacterCard(syntheticCardPath('boyfriend'));
 const schedule = boyfriend.schedule!;
 const t = (month: number, day: number, h: number, m = 0) => new Date(2026, month - 1, day, h, m).getTime();
 const HOUR = 3_600_000;

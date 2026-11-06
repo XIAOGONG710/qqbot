@@ -6,8 +6,8 @@ import { describe, test } from 'node:test';
 import { aiPhotoDraftFreshness, aiPhotoDraftStore, buildAiPhotoPrompt, generateAiPhoto, type AiPhotoContext } from '../src/vision/ai-photo-drafts.ts';
 
 const context = (patch: Partial<AiPhotoContext> = {}): AiPhotoContext => ({
-    kind: 'cat', eventKey: 'cat:2026-11-04:evening', subject: '土豆蹲在自行车棚旁边',
-    caption: '土豆蹲在自行车棚旁边看落叶', at: '2026-11-04T18:20:00+08:00',
+    kind: 'cat', eventKey: 'cat:2026-11-04:evening', subject: '团子饼蹲在自行车棚旁边',
+    caption: '团子饼蹲在自行车棚旁边看落叶', at: '2026-11-04T18:20:00+08:00',
     weather: '阴，12°C', place: '宿舍楼下的普通自行车棚', activity: '下楼喂猫', ...patch,
 });
 
@@ -16,8 +16,8 @@ const jpeg = (marker = 1) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, marker, 0, 
 
 describe('AI 生活照草稿（ADR 0239）', () => {
     test('提示词只带清洗后的世界事实，并明确禁止人物、文字与电影感', () => {
-        const prompt = buildAiPhotoPrompt(context({ subject: '土豆\n蹲着\u0000', place: '宿舍楼下\r\n自行车棚' }));
-        assert.match(prompt, /土豆 蹲着/);
+        const prompt = buildAiPhotoPrompt(context({ subject: '团子饼\n蹲着\u0000', place: '宿舍楼下\r\n自行车棚' }));
+        assert.match(prompt, /团子饼 蹲着/);
         assert.match(prompt, /宿舍楼下 自行车棚/);
         assert.match(prompt, /Show no person, face, body part, hand/);
         assert.match(prompt, /no readable text, logo, watermark or timestamp/);

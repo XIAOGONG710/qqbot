@@ -9,7 +9,7 @@ const FILTERS = [
     { value: 'approved', label: '已通过' },
     { value: 'rejected', label: '已拒绝' },
 ];
-const KIND_NAMES = { cat: '土豆', food: '吃的', desk: '书桌', view: '窗外与路上' };
+const KIND_NAMES = { cat: '猫', food: '吃的', desk: '书桌', view: '窗外与路上' };
 const STATUS_NAMES = { pending_review: '待审核', approved: '已通过', rejected: '已拒绝' };
 const STATUS_TYPES = { pending_review: 'warning', approved: 'success', rejected: 'info' };
 

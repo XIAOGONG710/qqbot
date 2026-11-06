@@ -7,6 +7,7 @@ import type { RecallResult } from '../src/memory/hindsight.ts';
 import { formatRecalled } from '../src/memory/long-term.ts';
 import { loadTierCard, recapText } from '../src/platform/contact.ts';
 import { worldAt } from '../src/world/world.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 // ADR 0218：回忆带着当时的感觉。她：「连当时谁说了什么都在，但就是没有那个『我当时什么感觉』」
 const at = (d: number, h: number, m = 0) => new Date(2026, 10, d, h, m).getTime();
@@ -76,7 +77,7 @@ describe('回忆带着当时的感觉：接进记忆和那天的流水账', () =
 
 describe('回忆带着当时的感觉：用真实的卡算（世界里那天发生的事）', () => {
     test('有起伏的那天晚上，算出来的感觉就是那件事；来由都是世界里真发生的', () => {
-        const card = loadTierCard(resolve(import.meta.dirname, '../../../characters/linmengyao/st/linmengyao-{tier}.json'), 'boyfriend', { everydayLife: true, everydayFrom: '2026-11-03', worldDrama: true });
+        const card = loadTierCard(syntheticCardPattern, 'boyfriend', { everydayLife: true, everydayFrom: '2026-11-03', worldDrama: true });
         const world = card.character.herWorld!;
         const schedule = card.character.schedule!;
         let checked = 0;
@@ -87,7 +88,9 @@ describe('回忆带着当时的感觉：用真实的卡算（世界里那天发�
             if (!now || !drama) continue;
             const felt = feltDuring(appraisals({ now: evening.getTime(), history: [], world: now }), new Date(2026, 10, d).getTime(), evening.getTime());
             assert.ok(felt.length >= 1, `${now.day} ${drama.text}`);
-            assert.ok(felt.every(f => now.events.some(e => e.text === f.cause)), `${now.day}：来由都是那天的事 ${JSON.stringify(felt)}`);
+            // 来由是那天世界里真发生的：今天的小事，或者「你那边」猫那一行（喂猫时见没见到它，feelings.ts 的 world:cat-*）
+            const catFacts = now.cat && 'fed' in now.cat.today ? [`${now.cat.name}今天出来蹭你了`, `${now.cat.name}今天没出来`] : [];
+            assert.ok(felt.every(f => now.events.some(e => e.text === f.cause) || catFacts.includes(f.cause)), `${now.day}：来由都是那天的事 ${JSON.stringify(felt)}`);
             checked++;
         }
         assert.ok(checked >= 2, `只找到 ${checked} 天`);

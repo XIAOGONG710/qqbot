@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { checkConsistency, describeFindings, type SaidRow } from '../platform/consistency.ts';
 import { loadCharacterCard } from '../st/card.ts';
 import { worldState } from '../world/world.ts';
+import { localDate } from '../local-date.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
@@ -39,7 +40,7 @@ const rainAt = world && card.herWorld ? (time: number) => {
     const d = new Date(time);
     const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`;
     if (!cache.has(key)) {
-        const now = world.at(card.herWorld!, card.schedule!, new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), 59));
+        const now = world.at(card.herWorld!, card.schedule!, localDate(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), 59));
         cache.set(key, now?.weather ? Boolean(now.weather.rainHours?.includes(d.getHours())) : undefined);
     }
     return cache.get(key);
