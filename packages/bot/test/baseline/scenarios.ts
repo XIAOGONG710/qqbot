@@ -5,7 +5,8 @@
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗与在看、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
-// 逐条事实检查（factCheck，它的审稿调用不经 pipeline.generate）。
+// 逐条事实检查（factCheck，它的审稿调用不经 pipeline.generate）、设定账本（identityLedger：写死读真实角色目录 characters/linmengyao 并调 git，
+// 基线不能碰真实资料，也不能随每次提交的 HEAD 变）。
 
 import type { Contact } from '../../src/platform/config.ts';
 import type { AppConfig } from '../../src/platform/config.ts';
@@ -26,7 +27,7 @@ export const RICH: Partial<AppConfig> = {
     festivals: 'greet', pokes: true, pokeBack: true, recalls: true,
     proactive: 'on', proactiveReach: true, innerLife: true, proactiveInvite: true, proactiveAsk: true, comeBack: true,
     hisHours: true, smallNews: true, proactiveRoom: true,
-    feedbackCommands: true, identityLedger: true, timeline: true, tastes: true, dormancy: true, deliberate: true, weeklyReport: true,
+    feedbackCommands: true, timeline: true, tastes: true, dormancy: true, deliberate: true, weeklyReport: true,
 };
 
 /** 按轮换着回几种说法；后台要 JSON 的给空的 */
