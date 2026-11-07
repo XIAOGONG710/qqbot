@@ -19,6 +19,8 @@ SillyTavern 只用来编写、试聊角色并定义数据格式（角色卡 / �
 - 运行时数据、密钥、NapCat 运行包放在 `runtime/`（已被忽略）。
 - 测试只用合成角色（`packages/bot/test/fixtures/synthetic-character/`，ADR 0260），不读真实角色资料；`npm test` 可随时全量跑。
   校验真实资料本身的测试在 `packages/character-tools/test-real/`，改了转换器或真实 `source/` 后在本机跑 `npm run test:real`，失败时只看断言行。
+- 架构迁移（ADR 0263）期间，行为基线 `packages/bot/test/baseline/snapshots/` 必须逐字不变；不要为了让测试通过而 `UPDATE_BASELINE=1`。
+  只有有意改变行为的单独提交才更新快照，并在提交说明里写清哪里变了、为什么。
 
 ## 环境
 
