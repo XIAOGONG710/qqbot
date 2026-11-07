@@ -17,6 +17,7 @@ import type { CrisisHit } from '../emotion/crisis.ts';
 import type { Grievance } from '../emotion/grievance.ts';
 import type { Executor } from '../executor/executor.ts';
 import type { WorldNow } from '../world/world.ts';
+import type { Together } from '../language/together.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -50,6 +51,8 @@ export interface TurnFacts {
     world?: WorldNow;
     /** 被打断（ADR 0115，modules/interruptions.ts 写）：聊着的时候她那边刚发生的一件小事；旧逻辑读它决定这一轮不带意图 / 深思 / 形状 / 长短 */
     interruption?: { text: string; minutesAgo: number };
+    /** 陪玩（ADR 0111，modules/together.ts 写）：此刻正和他一起玩什么、从哪一刻答应的 */
+    together?: Together;
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */

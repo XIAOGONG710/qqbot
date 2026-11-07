@@ -9,6 +9,7 @@ import { idiomsTurnModule } from '../src/modules/idioms.ts';
 import { interruptionsModule } from '../src/modules/interruptions.ts';
 import { closenessAllowed, closenessModule } from '../src/modules/closeness.ts';
 import { playfulAllowed } from '../src/modules/playful.ts';
+import { togetherAllowed, togetherModule } from '../src/modules/together.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
 
@@ -225,5 +226,44 @@ describe('关系阶段模块（ADR 0113 / 0263）', () => {
         assert.ok(pieces[0]!.text.includes('这个月已经聊了 20 天'));
         assert.deepEqual(logs, ['[1] 关系：最近几乎天天在聊，她更放得开一点（提示词里多一行）']);
         assert.deepEqual(module.contribute!({ ...boyfriend, history: history.slice(0, 30) }), []);
+    });
+});
+
+describe('陪玩模块（ADR 0111 / 0263）', () => {
+    const at = new Date('2026-11-27T20:30:00+08:00');
+    const history = [
+        { role: 'user' as const, content: '今晚王者双排吗', time: new Date('2026-11-27T20:00:00+08:00').toISOString() },
+        { role: 'assistant' as const, content: '来呀', time: new Date('2026-11-27T20:01:00+08:00').toISOString() },
+        { role: 'user' as const, content: '这把输了', time: new Date('2026-11-27T20:29:50+08:00').toISOString() },
+    ];
+    const boyfriend: Turn = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history };
+    test('只有男朋友档；主动找他（含只想一想）、危机时不算；小别扭、他难过时照样算', () => {
+        assert.equal(togetherAllowed(boyfriend), true);
+        assert.equal(togetherAllowed({ ...boyfriend, facts: { grievance: {} as never } }), true);
+        assert.equal(togetherAllowed({ ...boyfriend, facts: { baseIntent: '[这一轮你想：先接住他此刻的情绪]' } }), true);
+        assert.equal(togetherAllowed({ ...boyfriend, contact: { ...boyfriend.contact, tier: 'classmate' } }), false);
+        assert.equal(togetherAllowed({ ...boyfriend, initiate: { note: '', topic: '' } }), false);
+        assert.equal(togetherAllowed({ ...boyfriend, initiate: { note: '', topic: '', think: true } as never, thinking: true }), false);
+        assert.equal(togetherAllowed({ ...boyfriend, facts: { crisis: { level: 'high' } as never } }), false);
+    });
+    test('assess 写进 facts.together 并记日志，contribute 放进 together 槽；说了下了就不算', () => {
+        const logs: string[] = [];
+        const module = togetherModule(line => logs.push(line));
+        const live: Turn = { ...boyfriend, facts: {} };
+        module.assess!(live);
+        assert.deepEqual(live.facts.together, { activity: 'wzry', since: Date.parse('2026-11-27T20:01:00+08:00') });
+        assert.deepEqual(logs, ['[1] 陪玩：他们正一起打王者（从答应起 29 分钟）']);
+        const pieces = module.contribute!(live) as Piece[];
+        assert.equal(pieces.length, 1);
+        assert.equal(pieces[0]!.slot, 'together');
+        assert.ok(pieces[0]!.text.includes('打王者（双排）（已经玩了约 29 分钟）'));
+        const ended: Turn = { ...boyfriend, history: [...history, { role: 'user', content: '我先下了', time: history[2]!.time }], facts: {} };
+        module.assess!(ended);
+        assert.equal(ended.facts.together, undefined);
+        assert.deepEqual(module.contribute!(ended), []);
+        const crisis: Turn = { ...boyfriend, facts: { crisis: { level: 'high' } as never } };
+        module.assess!(crisis);
+        assert.equal(crisis.facts.together, undefined);
+        assert.equal(logs.length, 1);
     });
 });
