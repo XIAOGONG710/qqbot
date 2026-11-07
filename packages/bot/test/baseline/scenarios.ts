@@ -4,9 +4,9 @@
 // 戳一戳与撤回、连上时补回漏掉的消息、停止时正在等 / 正在生成、主动消息过一整天、本地功能全开的两天聊天（提示词各槽位、深思换模型）、
 // 小梗（连上后抽一次、过 6 小时的定时检查、回复时按轮放进提示词）、口头习惯（连上后学一次、定时检查、约一半的轮次放进提示词）、
 // 被打断（聊天正在进行时她那边的小事，含他难过时让路）、关系阶段（天天聊之后更放得开；主动、只想一想、小别扭、危机、别的档位）、
-// 陪玩（约了一起打游戏之后的两个多小时；危机、说下了、换个游戏、过了时限、别的档位）。
+// 陪玩（约了一起打游戏之后的两个多小时；危机、说下了、换个游戏、过了时限、别的档位）、热梗（库里预置的梗放进提示词；不连网学）。
 //
-// 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗与在看、
+// 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、在看、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
 // 逐条事实检查（factCheck，它的审稿调用不经 pipeline.generate）、设定账本（identityLedger：写死读真实角色目录 characters/linmengyao 并调 git，
 // 基线不能碰真实资料，也不能随每次提交的 HEAD 变）。
@@ -400,6 +400,61 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.at('2026-11-28T01:10:00+08:00');
             d.say(boyfriend.qq, '还在吗');
             await d.at('2026-11-28T02:00:00+08:00');
+        },
+    },
+    {
+        name: 'memes',
+        about: '网络热梗（ADR 0129）：库里预先有几个梗（不连网学）；他用了梗就放意思，没用约两成的轮次放“最近刷到的”；他消失几天回来那一轮的小别扭、他难过、危机、主动找他、同学用梗（这几轮不放）',
+        start: '2026-11-29T06:30:00+08:00',
+        contacts: [boyfriend, classmate],
+        config: { ...RICH, memes: true },
+        seed: (dataDir, start) => {
+            const entry = (term: string, meaning: string) => ({ term, meaning, example: '', confidence: 'high', firstSeen: '2026-11-20', lastSeen: '2026-11-28', seen: 3 });
+            mkdirSync(join(dataDir, 'memes'), { recursive: true });
+            writeFileSync(join(dataDir, 'memes', 'memes.json'), JSON.stringify({
+                version: 1, refreshedAt: '2026-11-28T20:00:00+08:00',
+                entries: [
+                    entry('显眼包', '爱出风头、在人群里特别显眼的人，多半是调侃'), entry('班味', '上班 / 上学久了身上那种疲惫麻木的气质'),
+                    entry('尊嘟假嘟', '“真的假的”的卖萌说法'), entry('破防', '心理防线被击穿，被戳中、绷不住了'),
+                    entry('松弛感', '不紧绷、不焦虑、随遇而安的状态'), entry('city不city', '洋不洋气、时髦不时髦'),
+                ],
+            }));
+            // 男朋友：10 天前到 5 天前天天聊；之后他四天没出现、她发了两次没人回——他今天第一次回来那一轮是小别扭（ADR 0074）
+            const chats = new ChatHistory(dataDir);
+            for (let day = 10; day >= 5; day--) {
+                ['早', '晚安'].forEach((text, i) => {
+                    const at = start - day * 86_400_000 + (2 + i * 12) * 3600_000;
+                    const id = 700 + (10 - day) * 4 + i * 2;
+                    chats.append(boyfriend.qq, { time: new Date(at).toISOString(), role: 'user', content: text, messageId: id });
+                    chats.append(boyfriend.qq, { time: new Date(at + 60_000).toISOString(), role: 'assistant', content: '嗯嗯', messageId: id + 1 });
+                });
+            }
+            for (const [day, text] of [[3, '在吗'], [2, '你怎么都不理我']] as const) {
+                chats.append(boyfriend.qq, { time: new Date(start - day * 86_400_000 + 12 * 3600_000).toISOString(), role: 'assistant', content: text, messageId: 690 + day });
+            }
+        },
+        reply: () => rotating(CHAT_LINES),
+        script: async d => {
+            await d.at('2026-11-29T12:20:00+08:00');
+            d.say(boyfriend.qq, '你这也太显眼包了吧');
+            await d.at('2026-11-29T12:40:00+08:00');
+            d.say(boyfriend.qq, '今天好有班味');
+            await d.at('2026-11-29T13:00:00+08:00');
+            d.say(boyfriend.qq, '尊嘟假嘟');
+            await d.at('2026-11-29T15:00:00+08:00');
+            d.say(classmate.qq, '你今天好显眼包');
+            const plain = ['在干嘛', '吃饭了吗', '下午上课了吗', '我刚到宿舍', '室友在打游戏', '你那边冷吗', '晚上有课吗', '我想喝奶茶', '你猫呢', '今天老师拖堂了'];
+            for (const [i, line] of plain.entries()) {
+                await d.at(new Date(Date.parse('2026-11-29T18:00:00+08:00') + i * 6 * 60_000).toISOString());
+                d.say(boyfriend.qq, line);
+            }
+            await d.at('2026-11-29T20:30:00+08:00');
+            d.say(boyfriend.qq, '我好难过，考砸了，破防了');
+            await d.at('2026-11-29T21:30:00+08:00');
+            d.say(boyfriend.qq, '我不想活了，彻底破防');
+            await d.wait(10 * 60_000);
+            d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
+            await d.at('2026-11-30T01:00:00+08:00');
         },
     },
 ];
