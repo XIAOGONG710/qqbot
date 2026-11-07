@@ -3,7 +3,7 @@
 // 覆盖：私聊回复（7 个档位 + 名单外）、连发合并、生成中又来消息（丢掉重来）、发送中插话、作息里的等待和吵醒、危机回合、
 // 戳一戳与撤回、连上时补回漏掉的消息、停止时正在等 / 正在生成、主动消息过一整天、本地功能全开的两天聊天（提示词各槽位、深思换模型）、
 // 小梗（连上后抽一次、过 6 小时的定时检查、回复时按轮放进提示词）、口头习惯（连上后学一次、定时检查、约一半的轮次放进提示词）、
-// 被打断（聊天正在进行时她那边的小事，含他难过时让路）。
+// 被打断（聊天正在进行时她那边的小事，含他难过时让路）、关系阶段（天天聊之后更放得开；主动、只想一想、小别扭、危机、别的档位）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗与在看、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
@@ -319,6 +319,45 @@ export const SCENARIOS: readonly Scenario[] = [
                 d.say(boyfriend.qq, line);
             }
             await d.wait(30 * 60_000);
+        },
+    },
+    {
+        name: 'closeness',
+        about: '关系阶段（ADR 0113）：过去 20 天天天在聊，她对男朋友更放得开一点；一整天里有她主动找他（照样放）、只想一想、他消失四天后回来的小别扭、白天聊几句、晚上一句危机的话（这几轮不放）、同样天天聊的同学（不放）',
+        start: '2026-11-25T06:30:00+08:00',
+        contacts: [boyfriend, classmate],
+        config: RICH,
+        seed: (dataDir, start) => {
+            const chats = new ChatHistory(dataDir);
+            const his = ['早', '今天降温了', '食堂人好多', '晚安'];
+            // 男朋友：24 天前到 5 天前天天聊；之后他四天没出现，她发了两次没人回——他今天第一次回来那一轮是小别扭（ADR 0074）。同学：20 天天天聊到昨天
+            for (const [n, qq, from, to] of [[0, boyfriend.qq, 24, 5], [1, classmate.qq, 20, 1]] as const) {
+                for (let day = from; day >= to; day--) {
+                    his.forEach((text, i) => {
+                        const at = start - day * 86_400_000 + (2 + i * 4) * 3600_000 + n * 600_000;
+                        const id = 500 + n * 1000 + (24 - day) * 8 + i * 2;
+                        chats.append(qq, { time: new Date(at).toISOString(), role: 'user', content: text, messageId: id });
+                        chats.append(qq, { time: new Date(at + 60_000).toISOString(), role: 'assistant', content: '嗯嗯', messageId: id + 1 });
+                    });
+                }
+            }
+            for (const [day, text] of [[3, '在吗'], [2, '你怎么都不理我']] as const) {
+                chats.append(boyfriend.qq, { time: new Date(start - day * 86_400_000 + 12 * 3600_000).toISOString(), role: 'assistant', content: text, messageId: 480 + day });
+            }
+        },
+        reply: () => rotating(['早呀\n今天好冷', '刚下课\n饿了', '你在干嘛', '我在\n你现在安全吗', '那就好\n我陪你说会话']),
+        script: async d => {
+            await d.at('2026-11-25T12:20:00+08:00');
+            d.say(boyfriend.qq, '吃饭了吗');
+            await d.at('2026-11-25T12:40:00+08:00');
+            d.say(boyfriend.qq, '下午有课吗');
+            await d.at('2026-11-25T15:00:00+08:00');
+            d.say(classmate.qq, '你周末去图书馆吗');
+            await d.at('2026-11-25T21:30:00+08:00');
+            d.say(boyfriend.qq, '我不想活了');
+            await d.wait(10 * 60_000);
+            d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
+            await d.at('2026-11-26T01:00:00+08:00');
         },
     },
 ];
