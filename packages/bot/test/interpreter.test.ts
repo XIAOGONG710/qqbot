@@ -7,6 +7,7 @@ import { createExecutor } from '../src/executor/executor.ts';
 import { jokesTurnModule } from '../src/modules/jokes.ts';
 import { idiomsTurnModule } from '../src/modules/idioms.ts';
 import { interruptionsModule } from '../src/modules/interruptions.ts';
+import { closenessAllowed, closenessModule } from '../src/modules/closeness.ts';
 import { playfulAllowed } from '../src/modules/playful.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
@@ -198,5 +199,31 @@ describe('被打断模块（ADR 0115 / 0263）', () => {
         const noWorld: Turn = { ...hit, facts: {} };
         module.assess!(noWorld);
         assert.equal(noWorld.facts.interruption, undefined);
+    });
+});
+
+describe('关系阶段模块（ADR 0113 / 0263）', () => {
+    const at = new Date('2026-11-25T12:00:00+08:00');
+    // 最近 20 天每天他说 3 条
+    const history = Array.from({ length: 20 }, (_, day) => [0, 1, 2].map(i => ({ role: 'user' as const, content: '在吗', time: new Date(at.getTime() - (day + 1) * 86_400_000 + i * 3600_000).toISOString() }))).flat();
+    const boyfriend: Turn = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history };
+    test('只有男朋友档；只想一想、危机、小别扭时不放；主动找他、他难过时照样放', () => {
+        assert.equal(closenessAllowed(boyfriend), true);
+        assert.equal(closenessAllowed({ ...boyfriend, initiate: { note: '', topic: '' } }), true);
+        assert.equal(closenessAllowed({ ...boyfriend, facts: { baseIntent: '[这一轮你想：先接住他此刻的情绪]' } }), true);
+        assert.equal(closenessAllowed({ ...boyfriend, contact: { ...boyfriend.contact, tier: 'classmate' } }), false);
+        assert.equal(closenessAllowed({ ...boyfriend, thinking: true }), false);
+        assert.equal(closenessAllowed({ ...boyfriend, facts: { crisis: { level: 'high' } as never } }), false);
+        assert.equal(closenessAllowed({ ...boyfriend, facts: { grievance: {} as never } }), false);
+    });
+    test('放进 closeness 槽并记日志；聊得少时不放', () => {
+        const logs: string[] = [];
+        const module = closenessModule(line => logs.push(line));
+        const pieces = module.contribute!(boyfriend) as Piece[];
+        assert.equal(pieces.length, 1);
+        assert.equal(pieces[0]!.slot, 'closeness');
+        assert.ok(pieces[0]!.text.includes('这个月已经聊了 20 天'));
+        assert.deepEqual(logs, ['[1] 关系：最近几乎天天在聊，她更放得开一点（提示词里多一行）']);
+        assert.deepEqual(module.contribute!({ ...boyfriend, history: history.slice(0, 30) }), []);
     });
 });

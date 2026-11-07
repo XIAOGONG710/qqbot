@@ -61,7 +61,6 @@ import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
-import { describeCloseness } from '.././language/relationship.ts';
 import { describeHumanState, describeHumanValues, type HumanValues } from '.././human-values.ts';
 import { describeTogether, togetherNow } from '.././language/together.ts';
 import { photoAllowance, photoIntent, photoWanted, stripPhotoArtifacts, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
@@ -238,8 +237,6 @@ export interface ContactPipelineOptions {
     herFeelings?: boolean;
     /** 陪玩状态（ADR 0111）：他答应了她的邀约（或她答应了他的）之后两三个小时，她正和他一起玩：回话短、聊局里的事；只对男朋友档 */
     together?: boolean;
-    /** 关系阶段（ADR 0113）：最近 30 天里有 14 天以上真聊过，她更放得开一点；只对男朋友档 */
-    relationship?: boolean;
     /** 吃醋，最轻的一档（ADR 0123）：他提到别的女生时嘴上不承认的别扭，不盘问、不要保证、不限制他；只对男朋友档 */
     jealousy?: boolean;
     /** 会追问（ADR 0126）：他说了件有细节的事，约六成回完反应后问一个关于这件事本身的问题；只对男朋友档 */
@@ -610,9 +607,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const togetherState = options.together && contact.tier === 'boyfriend' && !initiate && !crisisNow ? togetherNow(chat, time.getTime()) : undefined;
             const togetherLine = togetherState ? describeTogether(togetherState, time.getTime()) : undefined;
             if (togetherState) log(`陪玩：他们正一起${togetherState.activity === 'wzry' ? '打王者' : togetherState.activity === 'minecraft' ? '玩我的世界' : '玩游戏'}（从答应起 ${Math.round((time.getTime() - togetherState.since) / 60_000)} 分钟）`);
-            // 关系阶段（ADR 0113）：聊得多了更放得开；危机回合、小别扭、她在想事情（think）时不加
-            const closenessLine = options.relationship && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance ? describeCloseness(chat, time.getTime()) : undefined;
-            if (closenessLine) log('关系：最近几乎天天在聊，她更放得开一点（提示词里多一行）');
+            // 关系阶段（ADR 0113）是解释器的模块（modules/closeness.ts），经 turnModules 放进 closeness 槽
             // 这一轮交给解释器的模块（ADR 0263）：先在这里 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（被打断）；段落到最后再收
             const turn: Turn = {
                 contact, at: time, history: chat, thinking,
@@ -804,7 +799,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
                 ...when('partnerBack', partnerBack),
                 ...when('together', togetherLine),
-                ...when('closeness', closenessLine),
                 ...when('meme', memeNow),
                 ...when('watched', watchedNow),
                 ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),

@@ -20,6 +20,7 @@ import { createInterpreter } from '../interpreter/interpreter.ts';
 import { jokesModule } from '../modules/jokes.ts';
 import { idiomsModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
+import { closenessModule } from '../modules/closeness.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
 import { Identity, realGit } from '.././memory/identity.ts';
@@ -635,7 +636,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 recall: ({ event }) => legacy.receiveRecall(event),
                 friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
             },
-        }, ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
+        },
+        // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
+        ...(config.relationship ? [closenessModule(log)] : []),
+        ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
         // 被打断（ADR 0115）：只往提示词里放一行，不存状态
         ...(config.interruptions ? [interruptionsModule(log)] : [])],
         exec,
@@ -1090,7 +1094,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 心境（ADR 0102）：作者写下的事每次现取
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
             ...(config.together ? { together: true } : {}),
-            ...(config.relationship ? { relationship: true } : {}),
             ...(config.jealousy ? { jealousy: true } : {}),
             ...(config.curious ? { curious: true } : {}),
             // Author CLI can correct/delete between turns. Do not reuse a pre-edit RAM snapshot.

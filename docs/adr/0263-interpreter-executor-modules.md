@@ -224,3 +224,15 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 删掉的接线：`contact.ts` 的 `interruptions` 选项、`interruption` / `interruptLine` 的计算，App 和模拟器传的 `interruptions: true`。
 - 验证：基线逐字不变；变异检验三处都报出不一致——模块不放那一行（`interruptions`、`idioms` 两个场景）、旧逻辑不读 `facts.interruption`（同两个场景）、
   模块不用让路规则（`interruptions` 场景）；改回后全过。
+
+### 关系阶段（2026-11-07）
+
+- 先补基线：原来只在 `idioms` 场景里碰巧出现，只覆盖「放了」，没覆盖它的条件——而它的条件和小梗那几样的让路规则不一样
+  （主动找他、他难过时照样放；只有男朋友档，只想一想、危机、小别扭时不放），迁错了测不出来。新的 `closeness` 场景预先写入天天聊的记录
+  （男朋友 24 天前到 5 天前，之后四天没出现、她发了两次没人回；同学天天聊到昨天），跑一整天：她主动找他、只想一想、他消失后回来的小别扭、危机、同学。
+  在旧代码上逐条变异（加上「不是主动」、去掉只想一想 / 危机 / 小别扭 / 档位任一条、整行不放）都报不一致。单独提交，其他快照不变。
+- `src/modules/closeness.ts`：`closenessAllowed`（它自己的条件，不用 `playful.ts`）和 `closenessModule`（contribute 时按 `language/relationship.ts` 放进 `closeness` 槽）。
+  不存状态、不调模型，App 和模拟器都直接用它。注册在 turn 模块的最前面。
+- 删掉的接线：`contact.ts` 的 `relationship` 选项和 `closenessLine`，App 和模拟器传的 `relationship: true`。
+- 和小梗一样，「关系：最近几乎天天在聊……」这行日志挪到了拼段落的时候（日志不在基线里，内容不变）。
+- 验证：基线逐字不变；变异检验——模块不放（`closeness`、`idioms` 场景）、多加「不是主动」、去掉小别扭（`closeness` 场景）都报出不一致，改回后全过。
