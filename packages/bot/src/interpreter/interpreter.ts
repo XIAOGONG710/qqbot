@@ -13,11 +13,16 @@ import type { Contact } from '../platform/config.ts';
 import type { MessageEvent, PokeEvent, RecallEvent } from '../platform/onebot.ts';
 import type { ChatMessage } from '../language/prompt.ts';
 import type { ResponderDeps } from '../social/responder.ts';
+import type { CrisisHit } from '../emotion/crisis.ts';
+import type { Grievance } from '../emotion/grievance.ts';
+import type { Executor } from '../executor/executor.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
 export type BotEvent =
     | { kind: 'connected'; selfId: number }
+    /** 连上 NapCat、补完漏掉的消息之后（连上后要做一次的事从这里开始） */
+    | { kind: 'synced' }
     | { kind: 'message'; event: MessageEvent }
     | { kind: 'poke'; event: PokeEvent }
     | { kind: 'recall'; event: RecallEvent }
@@ -33,7 +38,14 @@ type BuildContext = Parameters<ResponderDeps['buildPrompt']>[1];
  * 这一轮回复在判断的事实。字段随模块迁出逐个加上（ADR 0263 第 5 步）：
  * 写的模块在 assess 里写，读的模块在 contribute / review 里读。
  */
-export interface TurnFacts {}
+export interface TurnFacts {
+    /** 危机信号（ADR 0068）；主动找他时不算 */
+    crisis?: CrisisHit;
+    /** 小别扭 / 和好的起因（ADR 0074）；只算男朋友档，危机、主动找他时没有 */
+    grievance?: Grievance;
+    /** 这一轮的意图行（照片 / 被打断改写之前的那一版）；只想一想时没有 */
+    baseIntent?: string;
+}
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */
 export interface Turn {
@@ -55,6 +67,12 @@ export interface Module {
     assess?(turn: Turn): Maybe<void>;
     contribute?(turn: Turn): Maybe<readonly Piece[]>;
     review?(draft: string, turn: Turn): Maybe<string>;
+    /** 定时要做的事：解释器在 startSchedules 时经执行器开计时器，stop 时关 */
+    schedules?: readonly { every: number; run: () => void }[];
+    /** 停下：拒绝新工作；返回等已派发的活收尾的 promise（没有就不返回） */
+    stop?(): Promise<void> | undefined;
+    /** 控制台状态页的补充（不含聊天内容） */
+    status?(): Record<string, unknown>;
 }
 
 const isThenable = (value: unknown): value is PromiseLike<unknown> =>
@@ -106,9 +124,17 @@ export interface Interpreter {
     dispatch(event: BotEvent): Maybe<void>;
     /** 实现了 assess / contribute / review 的模块（一轮回复时用） */
     readonly turnModules: readonly Module[];
+    /** 开各模块的定时任务（重复调用不重开） */
+    startSchedules(): void;
+    /** 停下：关定时任务，按注册顺序停各模块；返回各模块的收尾（没有的不在里面） */
+    stop(): Promise<void>[];
+    /** 各模块的状态补充，按注册顺序合在一起 */
+    status(): Record<string, unknown>;
+    /** 有没有模块给状态补充 */
+    readonly hasStatus: boolean;
 }
 
-export function createInterpreter(options: { modules: readonly Module[] }): Interpreter {
+export function createInterpreter(options: { modules: readonly Module[]; exec: Pick<Executor, 'every' | 'cancel'> }): Interpreter {
     const ids = new Set<string>();
     for (const module of options.modules) {
         if (ids.has(module.id)) throw new Error(`模块 id 重复：${module.id}`);
@@ -116,9 +142,36 @@ export function createInterpreter(options: { modules: readonly Module[] }): Inte
     }
     const modules = [...options.modules];
     const turnModules = modules.filter(module => module.assess || module.contribute || module.review);
+    const { exec } = options;
+    let timers: ReturnType<Executor['every']>[] | undefined;
     return {
         modules,
         turnModules,
+        hasStatus: modules.some(module => module.status),
+        startSchedules() {
+            if (timers) return;
+            timers = [];
+            for (const module of modules) {
+                for (const schedule of module.schedules ?? []) {
+                    const timer = exec.every(schedule.run, schedule.every);
+                    timer.unref?.();
+                    timers.push(timer);
+                }
+            }
+        },
+        stop() {
+            for (const timer of timers ?? []) exec.cancel(timer);
+            timers = timers ? [] : undefined;
+            const drains: Promise<void>[] = [];
+            for (const module of modules) {
+                const drain = module.stop?.();
+                if (drain) drains.push(drain);
+            }
+            return drains;
+        },
+        status() {
+            return Object.assign({}, ...modules.map(module => module.status?.() ?? {})) as Record<string, unknown>;
+        },
         dispatch(event) {
             const pending: PromiseLike<unknown>[] = [];
             for (const module of modules) {

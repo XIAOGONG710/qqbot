@@ -177,3 +177,17 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 没接的：`review` 阶段只定了接口、没有接进回复流程——模块的检查排在现有出口检查（`contact.ts` 的 review）之前还是之后，等第一个这类模块迁出时按它定；
   `turn.facts` 还没有字段，随模块迁出逐个加（旧逻辑在拼段落之前写进去，迁出的模块在自己的 contribute 里读）。定时触发的事（tick）仍由 `app.ts` 里的计时器直接调，迁模块时改成事件。
 - 验证：基线逐字不变；变异检验——槽位表里 `books`、`world` 对调后 2 个场景报出不一致，改回后全过。bot 测试失败的仍是原来那 7 项，插件 51 项全过，类型检查通过。
+
+## 第 5 步：逐个拆模块
+
+### 小梗（2026-11-07）
+
+- 先补基线：`jokes` 场景（以前十天的 60 条聊天里反复说一个词，经 harness 新加的 `seed` 用 `ChatHistory` 写入；假模型回抽取请求）。
+  覆盖连上后抽一次、存下的 `jokes/<QQ>.json`、之后几轮提示词里的那一行、跨过 6 小时的定时检查。单独提交，其他快照不变。
+- 解释器补了模块接口里第一次用到的几样：`synced` 事件（连上 NapCat、补完漏掉的消息之后）、`schedules`（解释器经执行器开计时器，`startSchedules` 只开一次、`stop` 时关）、
+  `stop`（返回收尾）、`status`（状态页补充，按注册顺序合并）；`TurnFacts` 有了第一批字段 `crisis`、`grievance`、`baseIntent`，由旧逻辑在拼段落前写入。
+- `src/modules/jokes.ts`：`jokesModule`（抽取、定时、停止、状态、往 `joke` 槽放一行）和只放提示词的 `jokesTurnModule`（模拟器直接给梗用）。抽取和挑梗的规则仍在 `language/jokes.ts`。
+- 删掉的接线：`app.ts` 里的 `jokeStore` / `jokeRefresher` / `refreshAllJokes` / `jokesTimer` / 状态页的小梗计数，`contact.ts` 里的 `jokes` 选项和 `jokeNow`，模拟器传给流水线的 `jokes`。
+  原来调 `refreshAllJokes()` 的地方改成分发 `synced`，原来开计时器的地方改成 `interpreter.startSchedules()`，停止时原来 `jokesDrain` 的位置换成各模块的收尾——都在原位，时序不变。
+- 唯一可见的差别：「小梗：这一轮提示词里放了……」这行日志从算意图之后挪到了拼段落的时候（同一轮之内，先后在别的日志之后）；日志不在基线里，内容不变。
+- 验证：基线逐字不变；变异检验——让小梗模块什么都不放，`jokes` 场景报出不一致，改回后全过。bot 测试失败的仍是原来那 7 项，插件 51 项全过，类型检查通过。

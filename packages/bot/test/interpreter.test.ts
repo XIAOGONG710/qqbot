@@ -3,6 +3,10 @@ import { describe, test } from 'node:test';
 import { createInterpreter, reviewTurn, runTurn, type Module, type Turn } from '../src/interpreter/interpreter.ts';
 import { AFTER_HISTORY_SLOTS, AFTER_MAIN_SLOTS, ALL_SLOTS, assemblePrompt, NOW_SLOTS, type Piece } from '../src/interpreter/slots.ts';
 import type { MessageEvent } from '../src/platform/onebot.ts';
+import { createExecutor } from '../src/executor/executor.ts';
+import { jokesAllowed, jokesTurnModule } from '../src/modules/jokes.ts';
+
+const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
 
 const turn: Turn = { contact: { qq: 1, name: '阿明', tier: 'classmate' }, at: new Date(0), history: [], thinking: false, facts: {} };
 const message = { post_type: 'message', message_type: 'private', sub_type: 'friend', self_id: 2, user_id: 1, message_id: 3, time: 0, message: '在吗', raw_message: '在吗', sender: { user_id: 1 } } as MessageEvent;
@@ -54,7 +58,7 @@ describe('解释器骨架（ADR 0263）', () => {
     test('分发：按注册顺序；只有一个返回 promise 时原样返回它；没有处理的事件返回 undefined', async () => {
         const seen: string[] = [];
         const pending = Promise.resolve();
-        const interpreter = createInterpreter({ modules: [
+        const interpreter = createInterpreter({ exec, modules: [
             { id: 'one', on: { message: () => { seen.push('one'); } } },
             { id: 'two', on: { message: () => { seen.push('two'); }, connected: () => pending } },
             { id: 'turn', contribute: () => [] },
@@ -67,8 +71,56 @@ describe('解释器骨架（ADR 0263）', () => {
     });
 
     test('处理函数同步抛错照样抛；模块 id 不能重复', () => {
-        const interpreter = createInterpreter({ modules: [{ id: 'bad', on: { message: () => { throw new Error('坏了'); } } }] });
+        const interpreter = createInterpreter({ exec, modules: [{ id: 'bad', on: { message: () => { throw new Error('坏了'); } } }] });
         assert.throws(() => interpreter.dispatch({ kind: 'message', event: message }), /坏了/);
-        assert.throws(() => createInterpreter({ modules: [{ id: 'a' }, { id: 'a' }] }), /重复/);
+        assert.throws(() => createInterpreter({ exec, modules: [{ id: 'a' }, { id: 'a' }] }), /重复/);
+    });
+
+    test('定时任务经执行器开、只开一次，stop 时关；stop 按注册顺序收各模块的收尾；状态按顺序合并', () => {
+        const opened: number[] = [];
+        let cancelled = 0;
+        const fake = { every: (_fn: () => void, ms?: number) => { opened.push(ms!); return { unref() { return this; } } as unknown as ReturnType<typeof setInterval>; }, cancel: () => { cancelled++; } };
+        const drain = Promise.resolve();
+        const stopped: string[] = [];
+        const interpreter = createInterpreter({ exec: fake, modules: [
+            { id: 'a', schedules: [{ every: 60_000, run: () => {} }], stop: () => { stopped.push('a'); return drain; }, status: () => ({ a: 1 }) },
+            { id: 'b', stop: () => { stopped.push('b'); return undefined; }, status: () => ({ b: 2 }) },
+            { id: 'c' },
+        ] });
+        interpreter.startSchedules();
+        interpreter.startSchedules();
+        assert.deepEqual(opened, [60_000]);
+        assert.equal(interpreter.hasStatus, true);
+        assert.deepEqual(interpreter.status(), { a: 1, b: 2 });
+        assert.deepEqual(interpreter.stop(), [drain]);
+        assert.deepEqual(stopped, ['a', 'b']);
+        assert.equal(cancelled, 1);
+        interpreter.startSchedules();
+        assert.deepEqual(opened, [60_000], '停下之后不再开');
+    });
+});
+
+describe('小梗模块（ADR 0114 / 0263）', () => {
+    const boyfriend = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' as const }, history: [{ role: 'user' as const, content: '小土豆在干嘛', time: '2026-11-20T11:00:00.000Z' }], at: new Date('2026-11-20T11:00:00.000Z') };
+    test('只有男朋友档；主动找他、只想一想、危机、小别扭、他难过的轮次让路', () => {
+        assert.equal(jokesAllowed(boyfriend), true);
+        assert.equal(jokesAllowed({ ...boyfriend, contact: { ...boyfriend.contact, tier: 'classmate' } }), false);
+        assert.equal(jokesAllowed({ ...boyfriend, thinking: true }), false);
+        assert.equal(jokesAllowed({ ...boyfriend, initiate: { note: '', topic: '' } }), false);
+        assert.equal(jokesAllowed({ ...boyfriend, facts: { crisis: { level: 'high' } as never } }), false);
+        assert.equal(jokesAllowed({ ...boyfriend, facts: { grievance: {} as never } }), false);
+        assert.equal(jokesAllowed({ ...boyfriend, facts: { baseIntent: '[这一轮你想：先接住他此刻的情绪]' } }), false);
+        assert.equal(jokesAllowed({ ...boyfriend, facts: { baseIntent: '[这一轮你想：回两句]' } }), true);
+    });
+    test('放进 joke 槽；让路的轮次不看梗', () => {
+        const logs: string[] = [];
+        let asked = 0;
+        const module = jokesTurnModule(() => { asked++; return [{ phrase: '小土豆', origin: '他老这么叫她' }]; }, line => logs.push(line));
+        const pieces = [0, 1, 2, 3, 4, 5, 6, 7].flatMap(i => module.contribute!({ ...boyfriend, history: [{ ...boyfriend.history[0]!, content: `小土豆在干嘛${i}` }] }) as never[]);
+        assert.ok(pieces.length > 0 && pieces.every((piece: { slot: string; text: string }) => piece.slot === 'joke' && piece.text.includes('小土豆')));
+        assert.ok(logs.every(line => line.startsWith('[1] 小梗：')) && logs.length === pieces.length);
+        asked = 0;
+        assert.deepEqual(module.contribute!({ ...boyfriend, thinking: true }), []);
+        assert.equal(asked, 0);
     });
 });

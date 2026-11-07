@@ -39,6 +39,7 @@
 - `language/curious.ts`
 - `language/llm.ts`
 - `language/model-guard.ts`
+- `modules/jokes.ts`
 - `st/`
 
 ## 开关

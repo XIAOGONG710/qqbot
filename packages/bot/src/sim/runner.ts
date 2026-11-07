@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { watchedFacts } from '../language/watching.ts';
 import type { BotConfig, Contact } from '../platform/config.ts';
 import { createContactResponder, replySkip, type ContactPipelineOptions, type TierCard } from '../platform/contact.ts';
+import { jokesTurnModule } from '../modules/jokes.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../platform/sensitive.ts';
 import { withFestivalActivities, withFestivals } from '../world/festivals.ts';
 import { photoAllowance, photoShelf } from '../vision/photos.ts';
@@ -520,7 +521,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             onFactCheck: (record: FactRecord) => { if (epoch === responderEpoch) (current.facts ??= []).push(record); },
         } : {}),
         ...(scenario.interruptions ? { interruptions: true } : {}),
-        ...(scenario.jokes?.length ? { jokes: () => scenario.jokes! } : {}),
+        // 小梗（ADR 0114）是解释器的模块；模拟器直接给场景里写好的梗，不抽
+        ...(scenario.jokes?.length ? { turnModules: [jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); })] } : {}),
         ...(scenario.idioms?.length ? { idioms: () => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), ...(scenario.idiomShare !== undefined ? { idiomShare: scenario.idiomShare } : {}) } : {}),
         ...(scenario.watched?.length ? { watched: () => { const d = new Date(clock.now()); const day = formatDate(d); return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),
         ...(scenario.memes?.length ? { memes: () => { const d = new Date(clock.now()); const day = formatDate(d); return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); } } : {}),

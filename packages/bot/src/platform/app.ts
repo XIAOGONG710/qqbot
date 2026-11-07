@@ -17,6 +17,7 @@ import { createAccount, friendRequestVerdict } from '.././social/account.ts';
 import { forExtraction } from '.././language/llm.ts';
 import { createExecutor, type ExecutorOptions } from '../executor/executor.ts';
 import { createInterpreter } from '../interpreter/interpreter.ts';
+import { jokesModule } from '../modules/jokes.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
 import { Identity, realGit } from '.././memory/identity.ts';
@@ -87,7 +88,6 @@ import { describeState, formatDate, herDay, stateAt, type Schedule } from '.././
 import { useRealWeather, weatherFetcher, type WeatherFetcherStatus } from '.././world/weather.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { idiomRefresher, idiomStore, IDIOMS_CHECK_MS, verifiedIdioms } from '.././language/idioms.ts';
-import { jokeRefresher, jokeStore, JOKES_CHECK_MS, verifiedJokes } from '.././language/jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes } from '.././language/memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from '.././language/watching.ts';
 import { feedFactEntry, feedOnce, feedPath, loadFeed } from '.././bilibili/feed-browsing.ts';
@@ -310,19 +310,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 碰外部的都经执行器（ADR 0263 第 3 步）：QQ 动作、调模型、时钟和计时器
     const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}) });
     const transport = exec.qq;
-    // 做判断的都经解释器（ADR 0263 第 4 步）：迁移前的整套逻辑先作为一个「旧逻辑」模块挂上；迁出去的模块逐个加在这里
-    const interpreter = createInterpreter({
-        modules: [{
-            id: 'app-legacy',
-            on: {
-                connected: ({ selfId }) => legacy.connected(selfId),
-                message: ({ event }) => legacy.receive(event),
-                poke: ({ event }) => legacy.receivePoke(event),
-                recall: ({ event }) => legacy.receiveRecall(event),
-                friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
-            },
-        }],
-    });
     let stopped = false;
     construction.onFailure(() => { stopped = true; });
     // Watching and feed are pure background reads. Own the complete local
@@ -619,10 +606,26 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const stickerMode = config.stickers ?? 'off';
     const collectingStickers = stickerMode !== 'off' ? stickers : undefined;
     const sendingStickers = stickerMode === 'send' && transport.sendPrivateImage ? collectingStickers : undefined;
-    // 小梗（ADR 0114）：派生数据，存 <数据目录>/jokes/<QQ>.json
-    const jokes = config.jokes ? jokeStore({ dir: join(config.dataDir, 'jokes'), log }) : undefined;
-    const jokesOwner = jokes ? jokeRefresher() : undefined;
-    construction.onFailure(() => jokesOwner?.stop());
+    // 小梗（ADR 0114）：解释器的模块（modules/jokes.ts）；派生数据存 <数据目录>/jokes/<QQ>.json
+    const jokes = config.jokes ? jokesModule({
+        exec, dataDir: config.dataDir, log, contacts: config.contacts, llm: config.llm,
+        charName: contact => cardFor(contact.tier).character.name, history: qq => history.load(qq),
+    }) : undefined;
+    construction.onFailure(() => jokes?.stop?.());
+    // 做判断的都经解释器（ADR 0263 第 4 步）：迁移前的整套逻辑先作为一个「旧逻辑」模块挂上；迁出去的模块逐个加在这里
+    const interpreter = createInterpreter({
+        modules: [{
+            id: 'app-legacy',
+            on: {
+                connected: ({ selfId }) => legacy.connected(selfId),
+                message: ({ event }) => legacy.receive(event),
+                poke: ({ event }) => legacy.receivePoke(event),
+                recall: ({ event }) => legacy.receiveRecall(event),
+                friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
+            },
+        }, ...(jokes ? [jokes] : [])],
+        exec,
+    });
     // 他的口头习惯（ADR 0138）：派生数据，存 <数据目录>/idioms/<QQ>.json
     const idioms = config.idioms ? idiomStore({ dir: join(config.dataDir, 'idioms'), log }) : undefined;
     const idiomsOwner = idioms ? idiomRefresher() : undefined;
@@ -1085,7 +1088,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.jealousy ? { jealousy: true } : {}),
             ...(config.curious ? { curious: true } : {}),
             ...(config.interruptions ? { interruptions: true } : {}),
-            ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => verifiedJokes(jokes.load(contact.qq), history.load(contact.qq)) } : {}),
             ...(idioms && contact.tier === 'boyfriend' ? { idioms: () => verifiedIdioms(idioms.load(contact.qq), history.load(contact.qq), idiomBlockedFor(contact)) } : {}),
             // Author CLI can correct/delete between turns. Do not reuse a pre-edit RAM snapshot.
             ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => stopped ? [] : loadMemes(memesFile, log).entries } : {}),
@@ -1585,7 +1587,7 @@ ${video.link}`);
     const statusExtras = (): NonNullable<AppStatus['extras']> => {
         const extras: NonNullable<AppStatus['extras']> = {};
         if (photos) { const s = photos.status(); extras.photos = { count: s.count, cat: s.byKind.cat, view: s.byKind.view, work: s.byKind.work, food: s.byKind.food }; }
-        if (jokes) extras.jokes = config.contacts.filter(c => c.tier === 'boyfriend').reduce((n, c) => n + verifiedJokes(jokes.load(c.qq), history.load(c.qq)).length, 0);
+        Object.assign(extras, interpreter.status());
         if (config.weeklyReport) {
             try {
                 const dir = join(config.dataDir, 'reports');
@@ -1595,25 +1597,11 @@ ${video.link}`);
         }
         return extras;
     };
-    // 小梗（ADR 0114）：隔一阵从最近的聊天里抽；出错只记日志
-    let jokesTimer: ReturnType<typeof setInterval> | undefined;
     let idiomsTimer: ReturnType<typeof setInterval> | undefined;
     let memesTimer: ReturnType<typeof setInterval> | undefined;
     let watchingTimer: ReturnType<typeof setInterval> | undefined;
     let watchingRunning = false;
     let memesRunning = false;
-    const refreshAllJokes = () => {
-        if (!jokes || stopped) return;
-        for (const contact of config.contacts.filter(c => c.tier === 'boyfriend')) {
-            const scoped: Log = message => { if (!stopped) log(message); };
-            void jokesOwner!.refresh({
-                qq: contact.qq, userName: contact.name, charName: cardFor(contact.tier).character.name, history: history.load(contact.qq), store: jokes,
-                freshHistory: () => history.load(contact.qq),
-                extract: messages => (exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages }, scoped)),
-                now: exec.now(), log: message => scoped(`[${contact.qq}] ${message}`),
-            }).catch(error => scoped(`[${contact.qq}] 小梗：抽取出错（${error instanceof Error ? error.message : String(error)}）`));
-        }
-    };
     // 他的口头习惯（ADR 0138）：隔一阵从他最近的话里学；出错只记日志。不收进去的词：联系人和角色的名字、卡上的禁用词
     const refreshAllIdioms = () => {
         if (!idioms || stopped) return;
@@ -2452,7 +2440,8 @@ ${body}
                     discoverFoodPhotos();
                     void refreshMemeJob();
                     if (!dormancy?.isDormant()) void watchJob();
-                    refreshAllJokes();
+                    // 补完漏掉的消息之后：各模块连上后要做一次的事（小梗抽一次……，ADR 0263）
+                    void interpreter.dispatch({ kind: 'synced' });
                     refreshAllIdioms();
                     checkWeeklyReport();
                     if (config.weeklyReport && !weeklyTimer) {
@@ -2472,10 +2461,8 @@ ${body}
                         memesTimer = exec.every(() => void refreshMemeJob(), 30 * 60_000);
                         memesTimer.unref();
                     }
-                    if (jokes && !jokesTimer) {
-                        jokesTimer = exec.every(refreshAllJokes, JOKES_CHECK_MS);
-                        jokesTimer.unref();
-                    }
+                    // 各模块的定时任务（小梗每 6 小时……）：只开一次
+                    interpreter.startSchedules();
                     if (idioms && !idiomsTimer) {
                         idiomsTimer = exec.every(refreshAllIdioms, IDIOMS_CHECK_MS);
                         idiomsTimer.unref();
@@ -2587,7 +2574,8 @@ ${body}
             const promisesDrain = promises?.stop();
             const memoryDrain = memory?.stop();
             const tastesDrain = tastes?.stop();
-            const jokesDrain = jokesOwner?.stop();
+            // 各模块停下（关定时任务、拒新工作），收尾排在原来小梗的位置
+            const moduleDrains = interpreter.stop();
             const idiomsDrain = idiomsOwner?.stop();
             const dshDrain = stopDshAsks();
             const mobileCompanionDrain = mobileCompanion?.stop();
@@ -2633,13 +2621,12 @@ ${body}
             if (feedTimer) exec.cancel(feedTimer);
             if (foodDiscoveryTimer) exec.cancel(foodDiscoveryTimer);
             exec.cancel(foodRetryTimer);
-            if (jokesTimer) exec.cancel(jokesTimer);
             if (idiomsTimer) exec.cancel(idiomsTimer);
             const deviceDrain = stopDevices();
             if (weeklyTimer) exec.cancel(weeklyTimer);
             exec.cancel(photoRetryTimer);
             useRealWeather(undefined);
-            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, dshDrain, mobileCompanionDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
+            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, ...moduleDrains, idiomsDrain, dshDrain, mobileCompanionDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
                     for (const result of results) if (result.status === 'rejected') {
@@ -2726,7 +2713,7 @@ ${body}
                     herDaysCard.herWorld && sharedWorld ? sharedWorld.at(herDaysCard.herWorld, herDaysCard.schedule!, now) : undefined) } : {}),
                 proactive: config.proactive,
                 features: featureStatuses(config),
-                ...(photos || jokes || config.weeklyReport ? { extras: statusExtras() } : {}),
+                ...(photos || interpreter.hasStatus || config.weeklyReport ? { extras: statusExtras() } : {}),
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
                 ...(weather ? { weather: weather.status() } : {}),
                 mobileCompanion: mobileCompanion ? { enabled: true, ...mobileCompanion.runtime.status() } : { enabled: false, connected: false, queued: 0, maxQueuedPerClient: 32 },
