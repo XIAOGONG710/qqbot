@@ -2,7 +2,7 @@
 //
 // 覆盖：私聊回复（7 个档位 + 名单外）、连发合并、生成中又来消息（丢掉重来）、发送中插话、作息里的等待和吵醒、危机回合、
 // 戳一戳与撤回、连上时补回漏掉的消息、停止时正在等 / 正在生成、主动消息过一整天、本地功能全开的两天聊天（提示词各槽位、深思换模型）、
-// 小梗（连上后抽一次、过 6 小时的定时检查、回复时按轮放进提示词）。
+// 小梗（连上后抽一次、过 6 小时的定时检查、回复时按轮放进提示词）、口头习惯（连上后学一次、定时检查、约一半的轮次放进提示词）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗与在看、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
@@ -258,6 +258,40 @@ export const SCENARIOS: readonly Scenario[] = [
                 d.say(boyfriend.qq, text);
             }
             await d.at('2026-11-21T02:00:00+08:00');
+        },
+    },
+    {
+        name: 'idioms',
+        about: '口头习惯（ADR 0138）：以前两周他发了 72 条、常说「笑死」「绝了」；连上后学一次，之后几轮回复里约一半放进提示词（她刚用过的不再给），跨过 6 小时的定时检查',
+        start: '2026-11-22T19:00:00+08:00',
+        contacts: [boyfriend],
+        config: { ...RICH, proactive: 'off' },
+        seed: (dataDir, start) => {
+            const chats = new ChatHistory(dataDir);
+            const his = ['今天上课好困', '食堂的饭一般', '刚打完球', '室友又在打游戏', '老师拖堂了', '晚上吃什么', '图书馆人好多', '作业写完了', '明天降温'];
+            for (let i = 0; i < 72; i++) {
+                const at = start - (14 * 24 - i * 4.5) * 3600_000;
+                const text = i % 3 === 0 ? `笑死 ${his[i % his.length]}` : i % 5 === 0 ? `${his[i % his.length]} 绝了` : his[i % his.length]!;
+                chats.append(boyfriend.qq, { time: new Date(at).toISOString(), role: 'user', content: text, messageId: 300 + i * 2 });
+                chats.append(boyfriend.qq, { time: new Date(at + 60_000).toISOString(), role: 'assistant', content: '嗯嗯', messageId: 301 + i * 2 });
+            }
+        },
+        reply: () => {
+            const chat = rotating([...CHAT_LINES, '笑死\n你也太逗了']);
+            return (call: LlmCall) => (/口头习惯/.test(call.messages.at(-1)?.content ?? '') && /JSON/.test(call.messages.at(-1)?.content ?? '')
+                ? '[{"说法":"笑死","类型":"口头禅"},{"说法":"绝了","类型":"网络说法"},{"说法":"阿明","类型":"口头禅"}]'
+                : chat(call));
+        },
+        script: async d => {
+            for (const [at, text] of [
+                ['2026-11-22T19:30:00+08:00', '笑死 今天又迟到了'], ['2026-11-22T20:10:00+08:00', '你吃饭了吗'], ['2026-11-22T20:40:00+08:00', '这个视频绝了'],
+                ['2026-11-22T21:20:00+08:00', '周末有空吗'], ['2026-11-22T22:00:00+08:00', '笑死 室友摔了一跤'], ['2026-11-22T22:30:00+08:00', '你在干嘛'],
+                ['2026-11-22T23:00:00+08:00', '明天早八吗'], ['2026-11-22T23:20:00+08:00', '晚安啦'],
+            ] as const) {
+                await d.at(at);
+                d.say(boyfriend.qq, text);
+            }
+            await d.at('2026-11-23T03:00:00+08:00');
         },
     },
 ];
