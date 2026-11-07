@@ -4,9 +4,10 @@
 // 戳一戳与撤回、连上时补回漏掉的消息、停止时正在等 / 正在生成、主动消息过一整天、本地功能全开的两天聊天（提示词各槽位、深思换模型）、
 // 小梗（连上后抽一次、过 6 小时的定时检查、回复时按轮放进提示词）、口头习惯（连上后学一次、定时检查、约一半的轮次放进提示词）、
 // 被打断（聊天正在进行时她那边的小事，含他难过时让路）、关系阶段（天天聊之后更放得开；主动、只想一想、小别扭、危机、别的档位）、
-// 陪玩（约了一起打游戏之后的两个多小时；危机、说下了、换个游戏、过了时限、别的档位）、热梗（库里预置的梗放进提示词；不连网学）。
+// 陪玩（约了一起打游戏之后的两个多小时；危机、说下了、换个游戏、过了时限、别的档位）、热梗（库里预置的梗放进提示词；不连网学）、
+// 她看视频（预置的看过的记录，他问起时放进提示词；不连网看）。
 //
-// 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、在看、
+// 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、她自己去看视频、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
 // 逐条事实检查（factCheck，它的审稿调用不经 pipeline.generate）、设定账本（identityLedger：写死读真实角色目录 characters/linmengyao 并调 git，
 // 基线不能碰真实资料，也不能随每次提交的 HEAD 变）。
@@ -455,6 +456,56 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.wait(10 * 60_000);
             d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
             await d.at('2026-11-30T01:00:00+08:00');
+        },
+    },
+    {
+        name: 'watched',
+        about: '她看视频（ADR 0130）：她在 B 站看过的记录预先写好（不连网看）；他问“最近看了什么 / B 站 / 视频”时放两条最近的（一条太旧的不放）；他消失几天回来的小别扭、他难过时照样放；不问、危机、同学问都不放',
+        start: '2026-12-01T06:30:00+08:00',
+        contacts: [boyfriend, classmate],
+        config: { ...RICH, watching: true },
+        seed: (dataDir, start) => {
+            const seen = (bvid: string, title: string, tname: string, excerpt: string, day: string) => ({ bvid, title, owner: '某个 UP 主', tname, excerpt, hot: ['笑死我了', '这个真的有用'], day });
+            mkdirSync(join(dataDir, 'watching'), { recursive: true });
+            writeFileSync(join(dataDir, 'watching', 'watched.json'), JSON.stringify({
+                version: 1,
+                entries: [
+                    seen('BV1base0001', '手机拍夜景的三个小技巧', '摄影', '夜景别开闪光灯，手撑稳一点，曝光往下拉一档，路灯就不会糊成一团', '2026-11-30'),
+                    seen('BV1base0002', '宿舍小锅煮面能有多好吃', '美食', '先煎个蛋再下面，最后放一勺老干妈，室友闻着都过来了', '2026-11-29'),
+                    seen('BV1base0003', '一只橘猫的一天', '动物圈', '早上六点准时踩人，吃完就睡，下午追自己的尾巴', '2026-11-20'),
+                ],
+            }));
+            // 男朋友：10 天前到 5 天前天天聊；之后他四天没出现、她发了两次没人回——他今天第一次回来那一轮是小别扭（ADR 0074）
+            const chats = new ChatHistory(dataDir);
+            for (let day = 10; day >= 5; day--) {
+                ['早', '晚安'].forEach((text, i) => {
+                    const at = start - day * 86_400_000 + (2 + i * 12) * 3600_000;
+                    const id = 700 + (10 - day) * 4 + i * 2;
+                    chats.append(boyfriend.qq, { time: new Date(at).toISOString(), role: 'user', content: text, messageId: id });
+                    chats.append(boyfriend.qq, { time: new Date(at + 60_000).toISOString(), role: 'assistant', content: '嗯嗯', messageId: id + 1 });
+                });
+            }
+            for (const [day, text] of [[3, '在吗'], [2, '你怎么都不理我']] as const) {
+                chats.append(boyfriend.qq, { time: new Date(start - day * 86_400_000 + 12 * 3600_000).toISOString(), role: 'assistant', content: text, messageId: 690 + day });
+            }
+        },
+        reply: () => rotating(CHAT_LINES),
+        script: async d => {
+            await d.at('2026-12-01T12:20:00+08:00');
+            d.say(boyfriend.qq, '你最近在看什么');
+            await d.at('2026-12-01T12:40:00+08:00');
+            d.say(boyfriend.qq, '好啦是我不好');
+            await d.at('2026-12-01T13:00:00+08:00');
+            d.say(boyfriend.qq, '吃饭了吗');
+            await d.at('2026-12-01T15:00:00+08:00');
+            d.say(classmate.qq, '你最近在看什么');
+            await d.at('2026-12-01T19:00:00+08:00');
+            d.say(boyfriend.qq, '我好难过，考砸了，刷了一晚上B站也没用');
+            await d.at('2026-12-01T21:30:00+08:00');
+            d.say(boyfriend.qq, '我不想活了，什么视频都看不进去');
+            await d.wait(10 * 60_000);
+            d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
+            await d.at('2026-12-02T01:00:00+08:00');
         },
     },
 ];
