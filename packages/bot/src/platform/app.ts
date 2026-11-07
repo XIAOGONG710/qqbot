@@ -14,7 +14,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { createAccount, friendRequestVerdict } from '.././social/account.ts';
-import { chatCompletion, forExtraction } from '.././language/llm.ts';
+import { forExtraction } from '.././language/llm.ts';
 import { createExecutor } from '../executor/executor.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
@@ -720,9 +720,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 小调用（摘录、分类、回头看）：不开思考，温度 0；测试里换成假的
     const { reasoning_effort: _effort, ...llmExtra } = config.llm.extraBody as Record<string, unknown>;
     const quietLlm = { ...forExtraction(config.llm), temperature: 0, extraBody: { ...llmExtra, thinking: { type: 'disabled' } } };
-    const askSmall = (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => (pipeline?.generate
-        ? pipeline.generate(messages, log)
-        : chatCompletion(quietLlm, messages, { log, purpose: 'background' }));
+    const askSmall = (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => (exec.llm({ purpose: 'background', config: quietLlm, messages }, log));
     const web = config.webLookup !== 'off'
         ? new WebLookup({
             mode: config.webLookup, dataDir: config.dataDir, ask: askSmall, now: clockNow,
@@ -741,9 +739,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ],
             ask: (system, user) => {
                 if (stopped) return Promise.resolve('[]');
-                return pipeline?.generate
-                    ? pipeline.generate([{ role: 'system', content: system }, { role: 'user', content: user }], tastesLog)
-                    : chatCompletion({ ...forExtraction(config.llm), temperature: 0 }, [{ role: 'system', content: system }, { role: 'user', content: user }], { log: tastesLog, purpose: 'background' });
+                return exec.llm({ purpose: 'background', config: { ...forExtraction(config.llm), temperature: 0 }, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }, tastesLog);
             },
             onChange: (taste, kind) => { if (!stopped) noteTimeline({ channel: 'tastes', kind, summary: `${kind === 'new' ? '发现自己' : '重新看了看自己'}${taste.stance === 'like' ? '喜欢' : '不太喜欢'}${taste.name}` }); },
         })
@@ -883,7 +879,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             history,
             names: contact => ({ user: contact.name, char: cardFor(contact.tier).character.name }),
             ...(diaryCard?.schedule ? { schedule: diaryCard.schedule } : {}),
-            extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
+            extract: messages => (exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages }, log)),
             dir: join(config.dataDir, 'promises'),
             log,
             ...(pipeline?.now ? { now: pipeline.now } : {}),
@@ -912,9 +908,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             history,
             memory,
             ...(promises ? { plans: promises.plansOn } : {}),
-            generate: messages => (pipeline?.generate
-                ? pipeline.generate(messages, log)
-                : chatCompletion({ ...config.llm, temperature: DIARY_TEMPERATURE }, messages, { log, purpose: 'background' })),
+            generate: messages => (exec.llm({ purpose: 'background', config: { ...config.llm, temperature: DIARY_TEMPERATURE }, messages }, log)),
             dir: join(config.dataDir, 'memory'),
             log,
         })
@@ -993,7 +987,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             names: { user: contact.name, char: cardFor(contact.tier).character.name },
             generate: messages => {
                 const scoped: Log = message => { if (!stopped) log(message); };
-                return pipeline?.generate ? pipeline.generate(messages, scoped) : chatCompletion(forExtraction(config.llm), messages, { log: scoped, purpose: 'background' });
+                return exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages }, scoped);
             },
             log: message => log(`[${contact.qq}] ${message}`),
             file: join(dir, `${contact.qq}.json`),
@@ -1166,6 +1160,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 writeFileSync(join(config.dataDir, 'last-prompt.json'), JSON.stringify({ qq: contact.qq, ...prompt }, null, 2));
             },
             ...pipeline,
+            // 回复和逐条事实检查的审稿也经执行器（ADR 0263 第 3 步）：配置、日志和原来 contact.ts 的默认调用一样；
+            // 换模型（深思）时测试替身收到换成的那份配置，同原来 generate 的第三个参数
+            generate: (messages, scopedLog, use) => exec.llm({ purpose: 'chat', config: use ?? config.llm, messages, ...(use ? { use } : {}) }, scopedLog),
+            factAudit: messages => exec.llm({ purpose: 'chat', config: { ...forExtraction(config.llm), temperature: 0 }, messages }, message => log(`[${contact.qq}] ${message}`)),
         });
         construction.onFailure(() => responder.stop());
         return responder;
@@ -1217,7 +1215,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         const qzone = config.qzone !== 'off' && lowest
             ? qzoneComposer({
                 character: { name: lowest.character.name, description: lowest.character.description, personality: lowest.character.personality, banned: lowest.character.banned },
-                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log, purpose: 'background' })),
+                generate: messages => (exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 1.1 }, messages }, log)),
                 ...(vision ? { vision } : {}),
                 photoDir: join(dir, 'photos'),
                 situation: now => [
@@ -1303,7 +1301,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.bilibiliCommentKeywords.length ? { keywords: config.bilibiliCommentKeywords } : {}),
             compose: commentComposer({
                 character: { name: lowest.character.name, description: lowest.character.description, personality: lowest.character.personality, banned: lowest.character.banned },
-                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log, purpose: 'background' })),
+                generate: messages => (exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 1.1 }, messages }, log)),
                 log,
             }),
         };
@@ -1421,7 +1419,7 @@ ${video.link}`);
                 generate: (messages, signal) => {
                     signal?.throwIfAborted();
                     const scoped: Log = message => { if (!stopped && !signal?.aborted) log(message); };
-                    return pipeline?.generate ? pipeline.generate(messages, scoped) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log: scoped, purpose: 'background', signal });
+                    return exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 1.1 }, messages, signal }, scoped);
                 },
                 log: message => { if (!stopped) log(message); },
             }),
@@ -1531,7 +1529,7 @@ ${video.link}`);
                     }),
                 } : {}),
                 // 待跟进的事：用同一个模型配置抽（测试替换的 generate 也用在这里）
-                extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
+                extract: messages => (exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages }, log)),
                 ...(pipeline?.now ? { now: pipeline.now } : {}),
                 ...(pipeline?.waitUntil ? { waitUntil: pipeline.waitUntil } : {}),
             }));
@@ -1594,7 +1592,7 @@ ${video.link}`);
             void jokesOwner!.refresh({
                 qq: contact.qq, userName: contact.name, charName: cardFor(contact.tier).character.name, history: history.load(contact.qq), store: jokes,
                 freshHistory: () => history.load(contact.qq),
-                extract: messages => (pipeline?.generate ? pipeline.generate(messages, scoped) : chatCompletion(forExtraction(config.llm), messages, { log: scoped, purpose: 'background' })),
+                extract: messages => (exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages }, scoped)),
                 now: exec.now(), log: message => scoped(`[${contact.qq}] ${message}`),
             }).catch(error => scoped(`[${contact.qq}] 小梗：抽取出错（${error instanceof Error ? error.message : String(error)}）`));
         }
@@ -1608,7 +1606,7 @@ ${video.link}`);
             void idiomsOwner!.refresh({
                 qq: contact.qq, userName: contact.name, charName: character.name, history: history.load(contact.qq), store: idioms,
                 freshHistory: () => history.load(contact.qq), blocked: idiomBlockedFor(contact),
-                extract: messages => (pipeline?.generate ? pipeline.generate(messages, scoped) : chatCompletion(forExtraction(config.llm), messages, { log: scoped, purpose: 'background' })),
+                extract: messages => (exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages }, scoped)),
                 now: exec.now(), log: message => scoped(`[${contact.qq}] ${message}`),
             }).catch(error => scoped(`[${contact.qq}] 口头习惯：学习出错（${error instanceof Error ? error.message : String(error)}）`));
         }
@@ -1709,7 +1707,7 @@ ${body}
             await refreshMemes({
                 path: memesFile, now: () => nowDate, log: scoped, signal,
                 fetchLists: () => fetchLists((url, init) => fetch(url, init) as never, scoped, signal),
-                ask: prompt => (pipeline?.generate ? pipeline.generate([{ role: 'user', content: prompt }], scoped) : chatCompletion(forExtraction(config.llm), [{ role: 'user', content: prompt }], { log: scoped, purpose: 'background' })),
+                ask: prompt => (exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages: [{ role: 'user', content: prompt }] }, scoped)),
                 gather: term => gatherEvidence(term, {
                     signal, search: keyword => account.search(keyword, undefined, signal), subtitle: video => account.subtitle(video, signal), hotComments: aid => fetchHotComments(biliFetch, aid, 3),
                     sleep: passiveSleep,
