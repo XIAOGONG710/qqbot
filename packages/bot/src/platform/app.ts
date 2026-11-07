@@ -22,6 +22,7 @@ import { idiomsModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
 import { togetherModule } from '../modules/together.ts';
+import { memesModule } from '../modules/memes.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
 import { Identity, realGit } from '.././memory/identity.ts';
@@ -626,6 +627,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         },
     }) : undefined;
     construction.onFailure(() => idioms?.stop?.());
+    // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；放进提示词的是下面的模块，刷新在后面（要她的 B 站号）
+    const memesFile = memesPath(config.dataDir);
     // 做判断的都经解释器（ADR 0263 第 4 步）：迁移前的整套逻辑先作为一个「旧逻辑」模块挂上；迁出去的模块逐个加在这里
     const interpreter = createInterpreter({
         modules: [{
@@ -644,11 +647,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 陪玩（ADR 0111）：assess 时判断、记日志，放一行，不存状态；排在被打断之前（日志的先后同原来）
         ...(config.together ? [togetherModule(log)] : []),
         // 被打断（ADR 0115）：只往提示词里放一行，不存状态
-        ...(config.interruptions ? [interruptionsModule(log)] : [])],
+        ...(config.interruptions ? [interruptionsModule(log)] : []),
+        // 网络热梗（ADR 0129）：每一轮从库里现读（作者可以在两轮之间改 / 删，别用改之前的快照），停下之后不再读；从热榜学新梗还在下面（要她的 B 站号）
+        ...(config.memes ? [memesModule(() => (stopped ? [] : loadMemes(memesFile, log).entries), log)] : [])],
         exec,
     });
-    // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
-    const memesFile = memesPath(config.dataDir);
     // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；“看”在下面（要她的 B 站号）
     const watchedFile = watchedPath(config.dataDir);
     let watchedEntries: readonly Watched[] = config.watching ? loadWatched(watchedFile, log).entries : [];
@@ -1098,8 +1101,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
             ...(config.jealousy ? { jealousy: true } : {}),
             ...(config.curious ? { curious: true } : {}),
-            // Author CLI can correct/delete between turns. Do not reuse a pre-edit RAM snapshot.
-            ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => stopped ? [] : loadMemes(memesFile, log).entries } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),

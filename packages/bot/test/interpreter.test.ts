@@ -10,6 +10,7 @@ import { interruptionsModule } from '../src/modules/interruptions.ts';
 import { closenessAllowed, closenessModule } from '../src/modules/closeness.ts';
 import { playfulAllowed } from '../src/modules/playful.ts';
 import { togetherAllowed, togetherModule } from '../src/modules/together.ts';
+import { memesModule } from '../src/modules/memes.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
 
@@ -265,5 +266,30 @@ describe('陪玩模块（ADR 0111 / 0263）', () => {
         module.assess!(crisis);
         assert.equal(crisis.facts.together, undefined);
         assert.equal(logs.length, 1);
+    });
+});
+
+describe('网络热梗模块（ADR 0129 / 0263）', () => {
+    const at = new Date('2026-11-29T13:00:00+08:00');
+    const entry = { term: '尊嘟假嘟', meaning: '“真的假的”的卖萌说法', example: '', confidence: 'high' as const, firstSeen: '2026-11-20', lastSeen: '2026-11-28', seen: 3 };
+    const boyfriend: Turn = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: [{ role: 'user', content: '尊嘟假嘟', time: at.toISOString() }] };
+    test('他用了库里的梗就放进 meme 槽并记日志；让路的轮次不看库', () => {
+        const logs: string[] = [];
+        let reads = 0;
+        const module = memesModule(() => { reads++; return [entry]; }, line => logs.push(line));
+        const pieces = module.contribute!(boyfriend) as Piece[];
+        assert.equal(pieces.length, 1);
+        assert.equal(pieces[0]!.slot, 'meme');
+        assert.ok(pieces[0]!.text.includes('「尊嘟假嘟」：“真的假的”的卖萌说法'));
+        assert.deepEqual(logs, ['[1] 网络热梗：这一轮提示词里放了梗的意思（日志不记内容）']);
+        assert.equal(reads, 1);
+        for (const yielding of [
+            { ...boyfriend, contact: { ...boyfriend.contact, tier: 'classmate' as const } },
+            { ...boyfriend, initiate: { note: '', topic: '' } },
+            { ...boyfriend, facts: { grievance: {} as never } },
+            { ...boyfriend, facts: { baseIntent: '[这一轮你想：先接住他此刻的情绪]' } },
+        ]) assert.deepEqual(module.contribute!(yielding), []);
+        assert.equal(reads, 1);
+        assert.deepEqual(memesModule(() => [], () => {}).contribute!(boyfriend), []);
     });
 });

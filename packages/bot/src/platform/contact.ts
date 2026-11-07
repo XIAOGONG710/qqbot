@@ -59,7 +59,6 @@ import { describePick, pickBest, PICKED_INTENTS, type PickRules } from '.././lan
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
 import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
-import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeHumanState, describeHumanValues, type HumanValues } from '.././human-values.ts';
 import { photoAllowance, photoIntent, photoWanted, stripPhotoArtifacts, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
@@ -240,8 +239,6 @@ export interface ContactPipelineOptions {
     curious?: boolean;
     /** 说话的质感（ADR 0131）：发出去之前在气泡上加真人常有的小黄脸 / 「～」 / 问号 / 叠字……；危机和他难过的回合不加 */
     texture?: boolean;
-    /** 网络热梗（ADR 0129）：他用到库里的梗给她意思，没用到约 20% 的轮次给她看最近的几个；只对男朋友档 */
-    memes?: () => readonly MemeEntry[];
     /** 她自己在 B 站看过的东西（ADR 0130，配置 watching）：他问到“最近看了什么”时给她真看过的两条；只对男朋友档 */
     watched?: () => readonly Watched[];
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
@@ -614,10 +611,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 被打断（ADR 0115）是解释器的模块（modules/interruptions.ts）：聊天正在进行时她那边恰好发生了一件小事，写进 turn.facts.interruption，放进 interrupt 槽
             const interruption = turn.facts.interruption;
             // 小梗（ADR 0114）、他的口头习惯（ADR 0138）是解释器的模块（modules/jokes.ts、modules/idioms.ts），经 turnModules 放进 joke、idiom 槽
-            // 网络热梗（ADR 0129）：让路同小梗；日志不记梗的内容
-            const memeNow = options.memes && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
-                ? memeLine(options.memes(), chat, time.getTime()) : undefined;
-            if (memeNow) log('网络热梗：这一轮提示词里放了梗的意思（日志不记内容）');
+            // 网络热梗（ADR 0129）是解释器的模块（modules/memes.ts），经 turnModules 放进 meme 槽
             // 她在 B 站看过的（ADR 0130）：他问到“最近看了什么 / 刷到什么”才放
             const watchedNow = options.watched && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? watchedLine(options.watched(), chat, time) : undefined;
             if (watchedNow) log('她看视频：这一轮提示词里放了她最近看过的（日志不记内容）');
@@ -792,7 +786,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('obstacle', obstacleLine),
                 // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
                 ...when('partnerBack', partnerBack),
-                ...when('meme', memeNow),
                 ...when('watched', watchedNow),
                 ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
                 // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给

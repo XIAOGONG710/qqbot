@@ -12,6 +12,7 @@ import { idiomsTurnModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
 import { togetherModule } from '../modules/together.ts';
+import { memesModule } from '../modules/memes.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../platform/sensitive.ts';
 import { withFestivalActivities, withFestivals } from '../world/festivals.ts';
 import { photoAllowance, photoShelf } from '../vision/photos.ts';
@@ -523,15 +524,16 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             onFactCheck: (record: FactRecord) => { if (epoch === responderEpoch) (current.facts ??= []).push(record); },
         } : {}),
         // 小梗（ADR 0114）是解释器的模块；模拟器直接给场景里写好的梗，不抽
-        ...(scenario.relationship || scenario.jokes?.length || scenario.idioms?.length || scenario.together || scenario.interruptions ? { turnModules: [
+        ...(scenario.relationship || scenario.jokes?.length || scenario.idioms?.length || scenario.together || scenario.interruptions || scenario.memes?.length ? { turnModules: [
             ...(scenario.relationship ? [closenessModule(message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.jokes?.length ? [jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.idioms?.length ? [idiomsTurnModule(() => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), message => { if (epoch === responderEpoch) log(message); }, scenario.idiomShare)] : []),
             ...(scenario.together ? [togetherModule(message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.interruptions ? [interruptionsModule(message => { if (epoch === responderEpoch) log(message); })] : []),
+            // 网络热梗（ADR 0129）：直接给场景里写好的梗，当作今天刚在榜上，不学
+            ...(scenario.memes?.length ? [memesModule(() => { const day = formatDate(new Date(clock.now())); return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); }, message => { if (epoch === responderEpoch) log(message); })] : []),
         ] } : {}),
         ...(scenario.watched?.length ? { watched: () => { const d = new Date(clock.now()); const day = formatDate(d); return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),
-        ...(scenario.memes?.length ? { memes: () => { const d = new Date(clock.now()); const day = formatDate(d); return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); } } : {}),
         ...(scenario.herNo ? { herNo: true } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),

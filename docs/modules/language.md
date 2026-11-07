@@ -44,6 +44,7 @@
 - `modules/interruptions.ts`
 - `modules/closeness.ts`
 - `modules/together.ts`
+- `modules/memes.ts`
 - `modules/playful.ts`
 - `st/`
 

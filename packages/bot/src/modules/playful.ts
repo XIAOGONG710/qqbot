@@ -1,4 +1,4 @@
-// 轻松的那几样（小梗 ADR 0114、口头习惯 ADR 0138……）什么时候让路：几个模块共用的一条规则，单独放在这里，模块之间不互相 import。
+// 轻松的那几样（小梗 ADR 0114、口头习惯 ADR 0138、网络热梗 ADR 0129……）什么时候让路：几个模块共用的一条规则，单独放在这里，模块之间不互相 import。
 
 import type { Turn } from '../interpreter/interpreter.ts';
 
