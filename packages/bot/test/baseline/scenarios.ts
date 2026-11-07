@@ -1,7 +1,8 @@
 // 行为基线的场景（ADR 0263 第 2 步）。每个场景一份快照：test/baseline/snapshots/<name>.txt。
 //
 // 覆盖：私聊回复（7 个档位 + 名单外）、连发合并、生成中又来消息（丢掉重来）、发送中插话、作息里的等待和吵醒、危机回合、
-// 戳一戳与撤回、连上时补回漏掉的消息、停止时正在等 / 正在生成、主动消息过一整天、本地功能全开的两天聊天（提示词各槽位、深思换模型）。
+// 戳一戳与撤回、连上时补回漏掉的消息、停止时正在等 / 正在生成、主动消息过一整天、本地功能全开的两天聊天（提示词各槽位、深思换模型）、
+// 小梗（连上后抽一次、过 6 小时的定时检查、回复时按轮放进提示词）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗与在看、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
@@ -11,6 +12,7 @@
 import type { Contact } from '../../src/platform/config.ts';
 import type { AppConfig } from '../../src/platform/config.ts';
 import type { HistoryMessage } from '../../src/memory/backfill.ts';
+import { ChatHistory } from '../../src/memory/history.ts';
 import { SELF, type LlmCall, type Replier, type Scenario } from './harness.ts';
 
 const boyfriend: Contact = { qq: 10001, name: '阿明', tier: 'boyfriend', persona: '她的男朋友，同校不同专业', knowsBot: true };
@@ -214,6 +216,48 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.at('2026-11-19T08:30:00+08:00');
             d.say(boyfriend.qq, '昨天睡得怎么样');
             await d.wait(2 * 3600_000);
+        },
+    },
+    {
+        name: 'jokes',
+        about: '小梗（ADR 0114）：以前十天聊了 60 条、反复说到同一个词；连上后抽一次梗，之后几轮回复里按轮放进提示词，跨过 6 小时的定时检查',
+        start: '2026-11-20T19:00:00+08:00',
+        contacts: [boyfriend],
+        config: { ...RICH, proactive: 'off' },
+        seed: (dataDir, start) => {
+            const chats = new ChatHistory(dataDir);
+            const lines: [string, string][] = [
+                ['你今天又像个小土豆', '我才不是小土豆'], ['晚饭吃啥', '食堂随便吃点'], ['小土豆在干嘛', '在写作业'], ['作业多吗', '还行吧'],
+                ['周末去看电影吗', '看情况'], ['你好可爱', '少来'], ['小土豆睡了吗', '还没'], ['明天几点的课', '八点'],
+                ['早点睡', '知道啦'], ['今天好冷', '我穿了两件'], ['小土豆今天开心吗', '还行'], ['我打完球了', '累不累'],
+                ['想你了', '哼'], ['你喂猫了吗', '喂了'], ['食堂人多吗', '多死了'], ['今天下雨了', '我没带伞'],
+                ['你们考试了吗', '下周'], ['加油', '嗯嗯'], ['小土豆晚安', '晚安'], ['早上好', '早'],
+                ['你吃早饭了吗', '吃了包子'], ['中午一起吃饭吗', '我有课'], ['那晚上呢', '可以'], ['好耶', '哈哈'],
+                ['今天累吗', '有点'], ['我给你点了奶茶', '谢谢'], ['不客气小土豆', '又来'], ['你在图书馆吗', '在'],
+                ['几点回去', '九点'], ['路上小心', '好'],
+            ];
+            lines.forEach(([his, hers], i) => {
+                const at = start - (10 * 24 - i * 8) * 3600_000;
+                chats.append(boyfriend.qq, { time: new Date(at).toISOString(), role: 'user', content: his, messageId: 100 + i * 2 });
+                chats.append(boyfriend.qq, { time: new Date(at + 60_000).toISOString(), role: 'assistant', content: hers, messageId: 101 + i * 2 });
+            });
+        },
+        reply: () => {
+            const chat = rotating(CHAT_LINES);
+            return (call: LlmCall) => (/小梗/.test(call.messages.at(-1)?.content ?? '') && /JSON/.test(call.messages.at(-1)?.content ?? '')
+                ? '[{"梗":"小土豆","来历":"他老说她像个小土豆"}]'
+                : chat(call));
+        },
+        script: async d => {
+            for (const [at, text] of [
+                ['2026-11-20T19:30:00+08:00', '在干嘛'], ['2026-11-20T20:10:00+08:00', '今天好累'], ['2026-11-20T20:40:00+08:00', '你吃晚饭了吗'],
+                ['2026-11-20T21:20:00+08:00', '周末有空吗'], ['2026-11-20T22:00:00+08:00', '我刚洗完澡'], ['2026-11-20T22:30:00+08:00', '你在看什么'],
+                ['2026-11-20T23:00:00+08:00', '明天早八吗'], ['2026-11-20T23:20:00+08:00', '晚安啦'],
+            ] as const) {
+                await d.at(at);
+                d.say(boyfriend.qq, text);
+            }
+            await d.at('2026-11-21T02:00:00+08:00');
         },
     },
 ];

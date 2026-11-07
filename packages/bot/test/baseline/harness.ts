@@ -35,6 +35,8 @@ export interface Scenario {
     config?: Partial<AppConfig>;
     /** NapCat 那边的私聊记录（连上时补回用） */
     history?: (start: number) => Record<number, HistoryMessage[]>;
+    /** 启动之前往数据目录里放东西（以前的聊天记录……）；用真实的写入接口，不手拼文件 */
+    seed?: (dataDir: string, start: number) => void;
     /** 每次跑新建一个假模型（里面有轮换的计数，不能跨次共用） */
     reply?: () => Replier;
     script: (driver: Driver) => Promise<void>;
@@ -163,6 +165,7 @@ export async function runScenario(scenario: Scenario): Promise<string> {
     }) as typeof fetch;
     try {
         const history = scenario.history?.(start) ?? {};
+        scenario.seed?.(dataDir, start);
         const transport: Transport = {
             sendPrivateText: async (userId, text, replyTo) => { call('sendPrivateText', replyTo === undefined ? [userId, text] : [userId, text, replyTo]); return sent(); },
             sendPrivateCard: async (userId, cardJson) => { call('sendPrivateCard', [userId, cardJson]); return sent(); },
