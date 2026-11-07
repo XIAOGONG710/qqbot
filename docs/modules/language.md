@@ -45,6 +45,7 @@
 - `modules/closeness.ts`
 - `modules/together.ts`
 - `modules/memes.ts`
+- `modules/watched.ts`
 - `modules/playful.ts`
 - `st/`
 

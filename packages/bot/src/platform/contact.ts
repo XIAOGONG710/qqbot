@@ -59,7 +59,6 @@ import { describePick, pickBest, PICKED_INTENTS, type PickRules } from '.././lan
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
 import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
-import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeHumanState, describeHumanValues, type HumanValues } from '.././human-values.ts';
 import { photoAllowance, photoIntent, photoWanted, stripPhotoArtifacts, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
@@ -239,8 +238,6 @@ export interface ContactPipelineOptions {
     curious?: boolean;
     /** 说话的质感（ADR 0131）：发出去之前在气泡上加真人常有的小黄脸 / 「～」 / 问号 / 叠字……；危机和他难过的回合不加 */
     texture?: boolean;
-    /** 她自己在 B 站看过的东西（ADR 0130，配置 watching）：他问到“最近看了什么”时给她真看过的两条；只对男朋友档 */
-    watched?: () => readonly Watched[];
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
     moments?: () => readonly Moment[];
     /** 她自己的追求（ADR 0104，配置 pursuits）：内置两条（别挂科、用新相机拍出满意的东西）加作者在 pursuits.json 里改的 / 加的；每次生成现取 */
@@ -612,9 +609,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const interruption = turn.facts.interruption;
             // 小梗（ADR 0114）、他的口头习惯（ADR 0138）是解释器的模块（modules/jokes.ts、modules/idioms.ts），经 turnModules 放进 joke、idiom 槽
             // 网络热梗（ADR 0129）是解释器的模块（modules/memes.ts），经 turnModules 放进 meme 槽
-            // 她在 B 站看过的（ADR 0130）：他问到“最近看了什么 / 刷到什么”才放
-            const watchedNow = options.watched && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? watchedLine(options.watched(), chat, time) : undefined;
-            if (watchedNow) log('她看视频：这一轮提示词里放了她最近看过的（日志不记内容）');
+            // 她看视频（ADR 0130）是解释器的模块（modules/watched.ts），经 turnModules 放进 watched 槽
             // 主动发的那条（喂完猫拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
             // 被打断的这一轮（ADR 0115）：不带“先直接回答他刚问的”这类意图、不套形状 / 长短提示——它们和“先接他的话、顺带说一声刚被什么岔了一下”冲突，模型会按更紧的那条来、把打断吞掉（模拟 5/5 没提）
             const intent = photoNow && !initiate ? photoIntent(photoNow) : interruption ? undefined : baseIntent;
@@ -786,7 +781,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('obstacle', obstacleLine),
                 // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
                 ...when('partnerBack', partnerBack),
-                ...when('watched', watchedNow),
                 ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
                 // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
                 ...(options.devices && !crisisNow && !thinking ? [{ slot: 'devices' as const, text: options.devices.menu() }] : []),

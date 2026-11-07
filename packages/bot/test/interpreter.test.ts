@@ -11,6 +11,7 @@ import { closenessAllowed, closenessModule } from '../src/modules/closeness.ts';
 import { playfulAllowed } from '../src/modules/playful.ts';
 import { togetherAllowed, togetherModule } from '../src/modules/together.ts';
 import { memesModule } from '../src/modules/memes.ts';
+import { watchedAllowed, watchedModule } from '../src/modules/watched.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
 
@@ -291,5 +292,35 @@ describe('网络热梗模块（ADR 0129 / 0263）', () => {
         ]) assert.deepEqual(module.contribute!(yielding), []);
         assert.equal(reads, 1);
         assert.deepEqual(memesModule(() => [], () => {}).contribute!(boyfriend), []);
+    });
+});
+
+describe('她看视频模块（ADR 0130 / 0263）', () => {
+    const at = new Date('2026-12-01T12:20:00+08:00');
+    const seen = { bvid: 'BV1test', title: '手机拍夜景的三个小技巧', owner: '某个 UP 主', tname: '摄影', excerpt: '夜景别开闪光灯', hot: ['笑死我了'], day: '2026-11-30' };
+    const boyfriend: Turn = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: [{ role: 'user', content: '你最近在看什么', time: at.toISOString() }] };
+    test('只有男朋友档；主动找他、只想一想、危机时不放；小别扭、他难过时照样放', () => {
+        assert.equal(watchedAllowed(boyfriend), true);
+        assert.equal(watchedAllowed({ ...boyfriend, facts: { grievance: {} as never } }), true);
+        assert.equal(watchedAllowed({ ...boyfriend, facts: { baseIntent: '[这一轮你想：先接住他此刻的情绪]' } }), true);
+        assert.equal(watchedAllowed({ ...boyfriend, contact: { ...boyfriend.contact, tier: 'classmate' } }), false);
+        assert.equal(watchedAllowed({ ...boyfriend, initiate: { note: '', topic: '' } }), false);
+        assert.equal(watchedAllowed({ ...boyfriend, thinking: true }), false);
+        assert.equal(watchedAllowed({ ...boyfriend, facts: { crisis: { level: 'high' } as never } }), false);
+    });
+    test('他问起时放进 watched 槽并记日志；没问、让路的轮次不放', () => {
+        const logs: string[] = [];
+        let reads = 0;
+        const module = watchedModule(() => { reads++; return [seen]; }, line => logs.push(line));
+        const pieces = module.contribute!(boyfriend) as Piece[];
+        assert.equal(pieces.length, 1);
+        assert.equal(pieces[0]!.slot, 'watched');
+        assert.ok(pieces[0]!.text.includes('手机拍夜景的三个小技巧'));
+        assert.deepEqual(logs, ['[1] 她看视频：这一轮提示词里放了她最近看过的（日志不记内容）']);
+        assert.deepEqual(module.contribute!({ ...boyfriend, history: [{ role: 'user', content: '吃饭了吗', time: at.toISOString() }] }), []);
+        assert.equal(reads, 2);
+        assert.deepEqual(module.contribute!({ ...boyfriend, initiate: { note: '', topic: '' } }), []);
+        assert.equal(reads, 2);
+        assert.equal(logs.length, 1);
     });
 });

@@ -23,6 +23,7 @@ import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
 import { togetherModule } from '../modules/together.ts';
 import { memesModule } from '../modules/memes.ts';
+import { watchedModule } from '../modules/watched.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
 import { Identity, realGit } from '.././memory/identity.ts';
@@ -629,6 +630,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     construction.onFailure(() => idioms?.stop?.());
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；放进提示词的是下面的模块，刷新在后面（要她的 B 站号）
     const memesFile = memesPath(config.dataDir);
+    // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；放进提示词的是下面的模块，“看”在后面（要她的 B 站号）
+    const watchedFile = watchedPath(config.dataDir);
+    let watchedEntries: readonly Watched[] = config.watching ? loadWatched(watchedFile, log).entries : [];
     // 做判断的都经解释器（ADR 0263 第 4 步）：迁移前的整套逻辑先作为一个「旧逻辑」模块挂上；迁出去的模块逐个加在这里
     const interpreter = createInterpreter({
         modules: [{
@@ -649,12 +653,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 被打断（ADR 0115）：只往提示词里放一行，不存状态
         ...(config.interruptions ? [interruptionsModule(log)] : []),
         // 网络热梗（ADR 0129）：每一轮从库里现读（作者可以在两轮之间改 / 删，别用改之前的快照），停下之后不再读；从热榜学新梗还在下面（要她的 B 站号）
-        ...(config.memes ? [memesModule(() => (stopped ? [] : loadMemes(memesFile, log).entries), log)] : [])],
+        ...(config.memes ? [memesModule(() => (stopped ? [] : loadMemes(memesFile, log).entries), log)] : []),
+        // 她看视频（ADR 0130）：他问起时放她真看过的两条；用的是内存里那份，她看完一个就换新的
+        ...(config.watching ? [watchedModule(() => watchedEntries, log)] : [])],
         exec,
     });
-    // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；“看”在下面（要她的 B 站号）
-    const watchedFile = watchedPath(config.dataDir);
-    let watchedEntries: readonly Watched[] = config.watching ? loadWatched(watchedFile, log).entries : [];
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
     const photoDiscovery = new AbortController();
     construction.onFailure(() => photoDiscovery.abort());
@@ -1101,7 +1104,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
             ...(config.jealousy ? { jealousy: true } : {}),
             ...(config.curious ? { curious: true } : {}),
-            ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
             ...(config.factCheck !== 'off' ? { factCheck: config.factCheck } : {}),
