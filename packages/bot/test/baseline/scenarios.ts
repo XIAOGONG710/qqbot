@@ -2,7 +2,8 @@
 //
 // 覆盖：私聊回复（7 个档位 + 名单外）、连发合并、生成中又来消息（丢掉重来）、发送中插话、作息里的等待和吵醒、危机回合、
 // 戳一戳与撤回、连上时补回漏掉的消息、停止时正在等 / 正在生成、主动消息过一整天、本地功能全开的两天聊天（提示词各槽位、深思换模型）、
-// 小梗（连上后抽一次、过 6 小时的定时检查、回复时按轮放进提示词）、口头习惯（连上后学一次、定时检查、约一半的轮次放进提示词）。
+// 小梗（连上后抽一次、过 6 小时的定时检查、回复时按轮放进提示词）、口头习惯（连上后学一次、定时检查、约一半的轮次放进提示词）、
+// 被打断（聊天正在进行时她那边的小事，含他难过时让路）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗与在看、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
@@ -12,6 +13,8 @@
 import type { Contact } from '../../src/platform/config.ts';
 import type { AppConfig } from '../../src/platform/config.ts';
 import type { HistoryMessage } from '../../src/memory/backfill.ts';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ChatHistory } from '../../src/memory/history.ts';
 import { SELF, type LlmCall, type Replier, type Scenario } from './harness.ts';
 
@@ -292,6 +295,30 @@ export const SCENARIOS: readonly Scenario[] = [
                 d.say(boyfriend.qq, text);
             }
             await d.at('2026-11-23T03:00:00+08:00');
+        },
+    },
+    {
+        name: 'interruptions',
+        about: '被打断（ADR 0115）：一个晚上他隔三分钟发一句、聊天一直在进行，她那边世界账里的几件小事发生在聊天中间；有一轮提示词里多一行，有一轮正碰上他难过、让路不加',
+        start: '2026-11-22T20:10:00+08:00',
+        contacts: [boyfriend],
+        config: { ...RICH, proactive: 'off' },
+        // 日常小事（ADR 0106）从第一次启动的第二天才有：当作已经开了一周
+        seed: dataDir => {
+            mkdirSync(join(dataDir, 'world'), { recursive: true });
+            writeFileSync(join(dataDir, 'world', 'everyday-from.json'), JSON.stringify({ version: 1, from: '2026-11-15' }));
+        },
+        reply: () => rotating(CHAT_LINES),
+        script: async d => {
+            const lines = ['在干嘛', '吃饭了吗', '今天上课累不累', '我刚到宿舍', '室友在打游戏', '你那边冷吗', '晚上有课吗', '我想喝奶茶',
+                '你猫呢', '今天老师拖堂了', '你在看什么', '周末去哪玩', '我去洗澡了', '洗完了', '好冷啊', '你作业写完了吗', '我好难过，考砸了',
+                '算了不想了', '还没呢', '你在干嘛呢', '我也想修图', '明天几点起', '早八', '好困', '你困吗', '我去刷牙', '回来了', '晚安'];
+            const begin = Date.parse('2026-11-22T20:21:40+08:00');
+            for (const [i, line] of lines.entries()) {
+                await d.at(new Date(begin + i * 3 * 60_000).toISOString());
+                d.say(boyfriend.qq, line);
+            }
+            await d.wait(30 * 60_000);
         },
     },
 ];
