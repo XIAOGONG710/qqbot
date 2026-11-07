@@ -6,28 +6,20 @@
 
 import { join } from 'node:path';
 import type { Executor } from '../executor/executor.ts';
-import type { Module, Turn } from '../interpreter/interpreter.ts';
+import type { Module } from '../interpreter/interpreter.ts';
 import { forExtraction, type LlmOptions } from '../language/llm.ts';
 import { jokeLine, jokeRefresher, jokeStore, JOKES_CHECK_MS, verifiedJokes, type Joke } from '../language/jokes.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { Contact } from '../platform/config.ts';
 import type { Log } from '../platform/log.ts';
-
-/** 他难过的轮次（意图行是「先接住他此刻的情绪」）小梗让路 */
-const COMFORTING = /先接住他此刻的情绪/;
-
-/** 这一轮能不能提小梗：只有男朋友档；主动找他、只想一想、危机、小别扭、他难过时都不提 */
-export function jokesAllowed(turn: Turn): boolean {
-    const { crisis, grievance, baseIntent } = turn.facts;
-    return turn.contact.tier === 'boyfriend' && !turn.initiate && !turn.thinking && !crisis && !grievance && !(baseIntent && COMFORTING.test(baseIntent));
-}
+import { playfulAllowed } from './playful.ts';
 
 /** 只往提示词里放小梗的那一半（模拟器直接给梗，不抽）；log 同联系人流水线的日志，前面加 [QQ] */
 export function jokesTurnModule(jokesOf: (contact: Contact) => readonly Joke[], log: Log): Module {
     return {
         id: 'jokes',
         contribute(turn) {
-            if (!jokesAllowed(turn)) return [];
+            if (!playfulAllowed(turn)) return [];
             const line = jokeLine(jokesOf(turn.contact), turn.history, turn.at.getTime());
             if (!line) return [];
             log(`[${turn.contact.qq}] 小梗：这一轮提示词里放了一个他们之间的梗（日志不记内容）`);

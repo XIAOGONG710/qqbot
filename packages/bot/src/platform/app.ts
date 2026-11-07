@@ -18,6 +18,7 @@ import { forExtraction } from '.././language/llm.ts';
 import { createExecutor, type ExecutorOptions } from '../executor/executor.ts';
 import { createInterpreter } from '../interpreter/interpreter.ts';
 import { jokesModule } from '../modules/jokes.ts';
+import { idiomsModule } from '../modules/idioms.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
 import { Identity, realGit } from '.././memory/identity.ts';
@@ -87,7 +88,6 @@ import { armIntimate, INTIMATE_REPLIES, takeIntimateLine } from '.././language/i
 import { describeState, formatDate, herDay, stateAt, type Schedule } from '.././life/schedule.ts';
 import { useRealWeather, weatherFetcher, type WeatherFetcherStatus } from '.././world/weather.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
-import { idiomRefresher, idiomStore, IDIOMS_CHECK_MS, verifiedIdioms } from '.././language/idioms.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes } from '.././language/memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from '.././language/watching.ts';
 import { feedFactEntry, feedOnce, feedPath, loadFeed } from '.././bilibili/feed-browsing.ts';
@@ -612,6 +612,17 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         charName: contact => cardFor(contact.tier).character.name, history: qq => history.load(qq),
     }) : undefined;
     construction.onFailure(() => jokes?.stop?.());
+    // 他的口头习惯（ADR 0138）：解释器的模块（modules/idioms.ts）；派生数据存 <数据目录>/idioms/<QQ>.json。
+    // 不收进去的词：联系人和角色的名字、卡上的禁用词
+    const idioms = config.idioms ? idiomsModule({
+        exec, dataDir: config.dataDir, log, contacts: config.contacts, llm: config.llm,
+        charName: contact => cardFor(contact.tier).character.name, history: qq => history.load(qq),
+        blocked: contact => {
+            const character = cardFor(contact.tier).character;
+            return [contact.name, character.name, ...config.contacts.map(person => person.name), ...character.banned];
+        },
+    }) : undefined;
+    construction.onFailure(() => idioms?.stop?.());
     // 做判断的都经解释器（ADR 0263 第 4 步）：迁移前的整套逻辑先作为一个「旧逻辑」模块挂上；迁出去的模块逐个加在这里
     const interpreter = createInterpreter({
         modules: [{
@@ -623,17 +634,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 recall: ({ event }) => legacy.receiveRecall(event),
                 friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
             },
-        }, ...(jokes ? [jokes] : [])],
+        }, ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : [])],
         exec,
     });
-    // 他的口头习惯（ADR 0138）：派生数据，存 <数据目录>/idioms/<QQ>.json
-    const idioms = config.idioms ? idiomStore({ dir: join(config.dataDir, 'idioms'), log }) : undefined;
-    const idiomsOwner = idioms ? idiomRefresher() : undefined;
-    construction.onFailure(() => idiomsOwner?.stop());
-    const idiomBlockedFor = (contact: Contact) => {
-        const character = cardFor(contact.tier).character;
-        return [contact.name, character.name, ...config.contacts.map(person => person.name), ...character.banned];
-    };
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
     const memesFile = memesPath(config.dataDir);
     // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；“看”在下面（要她的 B 站号）
@@ -1088,7 +1091,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.jealousy ? { jealousy: true } : {}),
             ...(config.curious ? { curious: true } : {}),
             ...(config.interruptions ? { interruptions: true } : {}),
-            ...(idioms && contact.tier === 'boyfriend' ? { idioms: () => verifiedIdioms(idioms.load(contact.qq), history.load(contact.qq), idiomBlockedFor(contact)) } : {}),
             // Author CLI can correct/delete between turns. Do not reuse a pre-edit RAM snapshot.
             ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => stopped ? [] : loadMemes(memesFile, log).entries } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
@@ -1597,25 +1599,10 @@ ${video.link}`);
         }
         return extras;
     };
-    let idiomsTimer: ReturnType<typeof setInterval> | undefined;
     let memesTimer: ReturnType<typeof setInterval> | undefined;
     let watchingTimer: ReturnType<typeof setInterval> | undefined;
     let watchingRunning = false;
     let memesRunning = false;
-    // 他的口头习惯（ADR 0138）：隔一阵从他最近的话里学；出错只记日志。不收进去的词：联系人和角色的名字、卡上的禁用词
-    const refreshAllIdioms = () => {
-        if (!idioms || stopped) return;
-        for (const contact of config.contacts.filter(c => c.tier === 'boyfriend')) {
-            const character = cardFor(contact.tier).character;
-            const scoped: Log = message => { if (!stopped) log(message); };
-            void idiomsOwner!.refresh({
-                qq: contact.qq, userName: contact.name, charName: character.name, history: history.load(contact.qq), store: idioms,
-                freshHistory: () => history.load(contact.qq), blocked: idiomBlockedFor(contact),
-                extract: messages => (exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages }, scoped)),
-                now: exec.now(), log: message => scoped(`[${contact.qq}] ${message}`),
-            }).catch(error => scoped(`[${contact.qq}] 口头习惯：学习出错（${error instanceof Error ? error.message : String(error)}）`));
-        }
-    };
     // 她自己看一个视频（ADR 0130）：每天一次，14 点以后；30 分钟看一眼该不该看；要她的 B 站号
     const watchJob = (): Promise<void> => {
         if (!config.watching || stopped || watchingRunning) return Promise.resolve();
@@ -2440,9 +2427,8 @@ ${body}
                     discoverFoodPhotos();
                     void refreshMemeJob();
                     if (!dormancy?.isDormant()) void watchJob();
-                    // 补完漏掉的消息之后：各模块连上后要做一次的事（小梗抽一次……，ADR 0263）
+                    // 补完漏掉的消息之后：各模块连上后要做一次的事（小梗抽一次、口头习惯学一次……，ADR 0263）
                     void interpreter.dispatch({ kind: 'synced' });
-                    refreshAllIdioms();
                     checkWeeklyReport();
                     if (config.weeklyReport && !weeklyTimer) {
                         weeklyTimer = exec.every(checkWeeklyReport, 60 * 60_000);
@@ -2461,12 +2447,8 @@ ${body}
                         memesTimer = exec.every(() => void refreshMemeJob(), 30 * 60_000);
                         memesTimer.unref();
                     }
-                    // 各模块的定时任务（小梗每 6 小时……）：只开一次
+                    // 各模块的定时任务（小梗、口头习惯每 6 小时……）：只开一次
                     interpreter.startSchedules();
-                    if (idioms && !idiomsTimer) {
-                        idiomsTimer = exec.every(refreshAllIdioms, IDIOMS_CHECK_MS);
-                        idiomsTimer.unref();
-                    }
                     if (photos && !photoDiscoveryTimer) {
                         photoDiscoveryTimer = exec.every(discoverPhotos, PHOTO_DISCOVERY_INTERVAL_MS);
                         photoDiscoveryTimer.unref();
@@ -2574,9 +2556,8 @@ ${body}
             const promisesDrain = promises?.stop();
             const memoryDrain = memory?.stop();
             const tastesDrain = tastes?.stop();
-            // 各模块停下（关定时任务、拒新工作），收尾排在原来小梗的位置
+            // 各模块停下（关定时任务、拒新工作），收尾排在原来小梗、口头习惯的位置
             const moduleDrains = interpreter.stop();
-            const idiomsDrain = idiomsOwner?.stop();
             const dshDrain = stopDshAsks();
             const mobileCompanionDrain = mobileCompanion?.stop();
             mobileCompanion = undefined;
@@ -2621,12 +2602,11 @@ ${body}
             if (feedTimer) exec.cancel(feedTimer);
             if (foodDiscoveryTimer) exec.cancel(foodDiscoveryTimer);
             exec.cancel(foodRetryTimer);
-            if (idiomsTimer) exec.cancel(idiomsTimer);
             const deviceDrain = stopDevices();
             if (weeklyTimer) exec.cancel(weeklyTimer);
             exec.cancel(photoRetryTimer);
             useRealWeather(undefined);
-            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, ...moduleDrains, idiomsDrain, dshDrain, mobileCompanionDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
+            const drains = [diaryDrain, promisesDrain, memoryDrain, tastesDrain, ...moduleDrains, dshDrain, mobileCompanionDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...contextDrains, ...responderDrains].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
                     for (const result of results) if (result.status === 'rejected') {

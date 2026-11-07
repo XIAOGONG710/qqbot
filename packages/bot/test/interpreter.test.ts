@@ -4,7 +4,9 @@ import { createInterpreter, reviewTurn, runTurn, type Module, type Turn } from '
 import { AFTER_HISTORY_SLOTS, AFTER_MAIN_SLOTS, ALL_SLOTS, assemblePrompt, NOW_SLOTS, type Piece } from '../src/interpreter/slots.ts';
 import type { MessageEvent } from '../src/platform/onebot.ts';
 import { createExecutor } from '../src/executor/executor.ts';
-import { jokesAllowed, jokesTurnModule } from '../src/modules/jokes.ts';
+import { jokesTurnModule } from '../src/modules/jokes.ts';
+import { idiomsTurnModule } from '../src/modules/idioms.ts';
+import { playfulAllowed } from '../src/modules/playful.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
 
@@ -103,14 +105,14 @@ describe('解释器骨架（ADR 0263）', () => {
 describe('小梗模块（ADR 0114 / 0263）', () => {
     const boyfriend = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' as const }, history: [{ role: 'user' as const, content: '小土豆在干嘛', time: '2026-11-20T11:00:00.000Z' }], at: new Date('2026-11-20T11:00:00.000Z') };
     test('只有男朋友档；主动找他、只想一想、危机、小别扭、他难过的轮次让路', () => {
-        assert.equal(jokesAllowed(boyfriend), true);
-        assert.equal(jokesAllowed({ ...boyfriend, contact: { ...boyfriend.contact, tier: 'classmate' } }), false);
-        assert.equal(jokesAllowed({ ...boyfriend, thinking: true }), false);
-        assert.equal(jokesAllowed({ ...boyfriend, initiate: { note: '', topic: '' } }), false);
-        assert.equal(jokesAllowed({ ...boyfriend, facts: { crisis: { level: 'high' } as never } }), false);
-        assert.equal(jokesAllowed({ ...boyfriend, facts: { grievance: {} as never } }), false);
-        assert.equal(jokesAllowed({ ...boyfriend, facts: { baseIntent: '[这一轮你想：先接住他此刻的情绪]' } }), false);
-        assert.equal(jokesAllowed({ ...boyfriend, facts: { baseIntent: '[这一轮你想：回两句]' } }), true);
+        assert.equal(playfulAllowed(boyfriend), true);
+        assert.equal(playfulAllowed({ ...boyfriend, contact: { ...boyfriend.contact, tier: 'classmate' } }), false);
+        assert.equal(playfulAllowed({ ...boyfriend, thinking: true }), false);
+        assert.equal(playfulAllowed({ ...boyfriend, initiate: { note: '', topic: '' } }), false);
+        assert.equal(playfulAllowed({ ...boyfriend, facts: { crisis: { level: 'high' } as never } }), false);
+        assert.equal(playfulAllowed({ ...boyfriend, facts: { grievance: {} as never } }), false);
+        assert.equal(playfulAllowed({ ...boyfriend, facts: { baseIntent: '[这一轮你想：先接住他此刻的情绪]' } }), false);
+        assert.equal(playfulAllowed({ ...boyfriend, facts: { baseIntent: '[这一轮你想：回两句]' } }), true);
     });
     test('放进 joke 槽；让路的轮次不看梗', () => {
         const logs: string[] = [];
@@ -121,6 +123,25 @@ describe('小梗模块（ADR 0114 / 0263）', () => {
         assert.ok(logs.every(line => line.startsWith('[1] 小梗：')) && logs.length === pieces.length);
         asked = 0;
         assert.deepEqual(module.contribute!({ ...boyfriend, thinking: true }), []);
+        assert.equal(asked, 0);
+    });
+});
+
+describe('口头习惯模块（ADR 0138 / 0263）', () => {
+    const boyfriend = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' as const }, history: [{ role: 'user' as const, content: '笑死 又迟到了', time: '2026-11-20T11:00:00.000Z' }], at: new Date('2026-11-20T11:00:00.000Z') };
+    test('放进 idiom 槽；share 为 0 时不放，让路的轮次不看词', () => {
+        const logs: string[] = [];
+        let asked = 0;
+        const idioms = () => { asked++; return [{ phrase: '笑死', kind: '口头禅', count: 9, days: 5 }]; };
+        const always = idiomsTurnModule(idioms, line => logs.push(line), 1);
+        const pieces = always.contribute!(boyfriend) as { slot: string; text: string }[];
+        assert.equal(pieces.length, 1);
+        assert.equal(pieces[0]!.slot, 'idiom');
+        assert.ok(pieces[0]!.text.includes('「笑死」'));
+        assert.deepEqual(logs, ['[1] 口头习惯：这一轮提示词里放了他爱说的词（日志不记内容）']);
+        assert.deepEqual(idiomsTurnModule(idioms, () => {}, 0).contribute!(boyfriend), []);
+        asked = 0;
+        assert.deepEqual(always.contribute!({ ...boyfriend, facts: { baseIntent: '[这一轮你想：先接住他此刻的情绪]' } }), []);
         assert.equal(asked, 0);
     });
 });

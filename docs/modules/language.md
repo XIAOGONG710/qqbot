@@ -40,6 +40,8 @@
 - `language/llm.ts`
 - `language/model-guard.ts`
 - `modules/jokes.ts`
+- `modules/idioms.ts`
+- `modules/playful.ts`
 - `st/`
 
 ## 开关
