@@ -18,6 +18,10 @@ import { syntheticCardPattern, useSyntheticTerms } from '../fixtures/card.ts';
 import { FakeClock } from './clock.ts';
 import type { LlmAction } from '../../src/executor/executor.ts';
 
+// 快照里的时刻、作息、「今天」都按本地时间算：进程时区固定在 Asia/Shanghai（同配置的 timeZone），不随跑测试的机器变。
+// 基线只在 baseline.test.ts 自己的测试进程里跑（node --test 每个文件一个进程），这里改了不影响别的测试文件。
+process.env.TZ = 'Asia/Shanghai';
+
 export const SELF = 20000;
 
 /** 发给模型的一次调用 */
@@ -84,7 +88,7 @@ const defaultReply: Replier = call => {
 };
 
 const pad = (n: number, width = 2) => String(n).padStart(width, '0');
-/** 本地时间（测试进程固定在 Asia/Shanghai） */
+/** 本地时间（进程时区在文件开头固定为 Asia/Shanghai） */
 function stamp(ms: number): string {
     const d = new Date(ms);
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
