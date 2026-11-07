@@ -30,7 +30,7 @@ import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from '.././social
 import { describeMood, moodAt, readingActivities, readingSection } from '.././life/her-days.ts';
 import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from '.././emotion/grievance.ts';
-import { describeIntent, needsCareText } from '.././language/intent.ts';
+import { needsCareText } from '.././language/intent.ts';
 import { describeObstacles, meetupDays } from '.././world/obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { describeQuote, planQuote, quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
@@ -49,7 +49,7 @@ import { withEveryday } from '.././life/everyday.ts';
 import { withMenu } from '.././life/menu.ts';
 import { describePursuits, pursuitViews, type Pursuit } from '.././life/pursuits.ts';
 import { appraisals, asksAfterHer, criedRecently, describeFeelings, FEELING_NAME, feelingsAt, feelsLow, voicedKinds, type Felt, type Moment } from '.././emotion/feelings.ts';
-import { describeRecentPhotography, projectActivity, recentPhotography } from '.././life/projects.ts';
+import { describeRecentPhotography, recentPhotography } from '.././life/projects.ts';
 import { describePast, pastCue } from '.././life/biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
 import { describeAppointment, mentionsMeetup, type PromiseKeeper } from '.././life/promises.ts';
@@ -232,10 +232,6 @@ export interface ContactPipelineOptions {
     intimacyLine?: () => string | undefined;
     /** 心境（ADR 0102，配置 herFeelings）：她那边的事、他的态度、作者写下的事，在她心里留下带来由的感受（开心 / 难过 / 担心……），会慢慢散；只给男朋友档，危机回合不放 */
     herFeelings?: boolean;
-    /** 吃醋，最轻的一档（ADR 0123）：他提到别的女生时嘴上不承认的别扭，不盘问、不要保证、不限制他；只对男朋友档 */
-    jealousy?: boolean;
-    /** 会追问（ADR 0126）：他说了件有细节的事，约六成回完反应后问一个关于这件事本身的问题；只对男朋友档 */
-    curious?: boolean;
     /** 说话的质感（ADR 0131）：发出去之前在气泡上加真人常有的小黄脸 / 「～」 / 问号 / 叠字……；危机和他难过的回合不加 */
     texture?: boolean;
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
@@ -246,8 +242,6 @@ export interface ContactPipelineOptions {
     everydayLife?: boolean;
     /** 回复延迟的长尾（ADR 0105，配置 lagTail）：醒着空着时有一部分消息她在做别的，过一会儿才看到；断网很久之后才回，时间块里写一句 */
     lagTail?: boolean;
-    /** 会拒绝（ADR 0103，配置 herNo）：她刚推了他、他在磨她时别被磨两句就答应；他在管着她（不许 / 听到没）时不顺着说“都听你的”。只给男朋友档 */
-    herNo?: boolean;
     /** 分成几条（配置 shapeSplit，要 shape 开着）：把形状里抽出的条数当目标写进提示词，不只是上限（ADR 0096） */
     shapeSplit?: boolean;
     /** 被问直接问题时答完再接着说（配置 shapeAsk，要 shape 开着，ADR 0149）：不加「应一声、附和」那一句，条数按真人被问问题时的分布抽 */
@@ -558,27 +552,28 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 小别扭 / 和好（ADR 0074）：从聊天记录的时间戳重算，不落盘；危机、主动找他、非男朋友档都不算
             // 起因有两种：隔了好几天才来（grievanceNow），或者她倾诉了几条、他隔了很久才回（ignoredNow，10-20）
             const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? (grievanceNow(chat) ?? ignoredNow(chat)) : undefined;
-            const baseIntent = thinking ? undefined : describeIntent({
-                history: chat,
-                state,
-                schedule: schedule ?? herSchedule,
-                now: time,
-                promised: Boolean(promised),
-                books: Boolean(books),
-                initiating: Boolean(initiate),
-                ...(options.herNo ? { refuse: true } : {}),
-                ...(options.jealousy ? { jealous: true } : {}),
-                ...(options.curious ? { curious: true } : {}),
-                ...(options.everydayLife && around?.events.length ? { dayThings: true } : {}),
-                ...(options.pursuits && state?.activity.kind === 'free' && projectActivity(state.activity.text) ? { pursuitDoing: projectActivity(state.activity.text)!.step } : {}),
-                waiting: loops?.waiting.map(l => l.what),
-                unanswered: loops?.unanswered.map(l => l.what),
-                intimate: contact.tier === 'boyfriend',
-                playful: contact.tier === 'boyfriend',
-                ...(crisisNow ? { crisis: crisisNow.level, ...(crisisNow.awaitingSafe ? { crisisAwaitingSafe: true } : {}) } : {}),
-                ...(grievance ? { grievance } : {}),
-                ...(untold.length ? { news: untold } : {}),
-            });
+            // 这一轮交给解释器的模块（ADR 0263）：先在这里 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
+            // 她此刻在干嘛、作息、她答应的事、挂着的事、她那边还没说过的事还是旧逻辑算的，写进 facts 给意图阶梯（modules/intent.ts）读
+            const herNow = schedule ?? herSchedule;
+            const turn: Turn = {
+                contact, at: time, history: chat, thinking,
+                facts: {
+                    ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(around ? { world: around } : {}),
+                    ...(state ? { state } : {}), ...(herNow ? { schedule: herNow } : {}), ...(promised ? { promised: true } : {}),
+                    ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what) } : {}),
+                    ...(untold.length ? { news: untold } : {}),
+                },
+                ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
+            };
+            const assessed = assessTurn(options.turnModules ?? [], turn);
+            // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
+            if (assessed instanceof Promise) await assessed;
+            // 意图阶梯（ADR 0019 起）是解释器的模块（modules/intent.ts）：assess 时写进 turn.facts.baseIntent（照片 / 被打断改写之前的那一版）
+            const baseIntent = turn.facts.baseIntent;
+            // 陪玩（ADR 0111）是解释器的模块（modules/together.ts）：assess 时判断、记日志，经 turnModules 放进 together 槽
+            // 关系阶段（ADR 0113）是解释器的模块（modules/closeness.ts），经 turnModules 放进 closeness 槽
+            // 被打断（ADR 0115）是解释器的模块（modules/interruptions.ts）：聊天正在进行时她那边恰好发生了一件小事，写进 turn.facts.interruption，放进 interrupt 槽
+            const interruption = turn.facts.interruption;
             // 照片（ADR 0109）：他明确要看猫 / 风景 / 她的片子，货架里有这一类，允许发（没连着发、今天没发够、不是危机 / 吵醒 / 小别扭 / 他难过），就发；
             // 没有明确对象（只说“发张照片”）取手上有的第一类；要的是她本人（自拍）不在货架里，照旧走“先不发”
             photoNow = undefined;
@@ -594,19 +589,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     else log(`照片货架：这一轮不发（${allowance.reason}）`);
                 }
             }
-            // 陪玩（ADR 0111）是解释器的模块（modules/together.ts）：assess 时判断、记日志，经 turnModules 放进 together 槽
-            // 关系阶段（ADR 0113）是解释器的模块（modules/closeness.ts），经 turnModules 放进 closeness 槽
-            // 这一轮交给解释器的模块（ADR 0263）：先在这里 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（被打断）；段落到最后再收
-            const turn: Turn = {
-                contact, at: time, history: chat, thinking,
-                facts: { ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(baseIntent ? { baseIntent } : {}), ...(around ? { world: around } : {}) },
-                ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
-            };
-            const assessed = assessTurn(options.turnModules ?? [], turn);
-            // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
-            if (assessed instanceof Promise) await assessed;
-            // 被打断（ADR 0115）是解释器的模块（modules/interruptions.ts）：聊天正在进行时她那边恰好发生了一件小事，写进 turn.facts.interruption，放进 interrupt 槽
-            const interruption = turn.facts.interruption;
             // 小梗（ADR 0114）、他的口头习惯（ADR 0138）是解释器的模块（modules/jokes.ts、modules/idioms.ts），经 turnModules 放进 joke、idiom 槽
             // 网络热梗（ADR 0129）是解释器的模块（modules/memes.ts），经 turnModules 放进 meme 槽
             // 她看视频（ADR 0130）是解释器的模块（modules/watched.ts），经 turnModules 放进 watched 槽

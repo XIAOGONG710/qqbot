@@ -12,6 +12,7 @@ import { playfulAllowed } from '../src/modules/playful.ts';
 import { togetherAllowed, togetherModule } from '../src/modules/together.ts';
 import { memesModule } from '../src/modules/memes.ts';
 import { watchedAllowed, watchedModule } from '../src/modules/watched.ts';
+import { intentModule, intentOf } from '../src/modules/intent.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
 
@@ -322,5 +323,58 @@ describe('她看视频模块（ADR 0130 / 0263）', () => {
         assert.deepEqual(module.contribute!({ ...boyfriend, initiate: { note: '', topic: '' } }), []);
         assert.equal(reads, 2);
         assert.equal(logs.length, 1);
+    });
+});
+
+describe('意图模块（意图阶梯，ADR 0263）', () => {
+    const at = new Date('2026-12-03T12:00:00+08:00');
+    const said = (content: string): Turn['history'] => [
+        { role: 'assistant', content: '嗯嗯', time: new Date(at.getTime() - 3_600_000).toISOString() },
+        { role: 'user', content, time: at.toISOString() },
+    ];
+    const boyfriend = (content: string, facts: Turn['facts'] = {}): Turn => ({ ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: said(content), facts });
+    const free = (text: string) => ({ activity: { kind: 'free', text }, where: '宿舍' }) as never;
+    test('assess 把意图写进 facts.baseIntent；只想一想、主动找他时没有；不放段落', () => {
+        const module = intentModule();
+        const live = boyfriend('你吃饭了吗');
+        module.assess!(live);
+        assert.match(live.facts.baseIntent!, /先直接回答他刚问的/);
+        assert.equal(module.contribute, undefined);
+        const thinking: Turn = { ...boyfriend('你吃饭了吗'), thinking: true };
+        module.assess!(thinking);
+        assert.equal(thinking.facts.baseIntent, undefined);
+        assert.equal(intentOf({ ...boyfriend('你吃饭了吗'), initiate: { note: '', topic: '' } }, {}), undefined);
+    });
+    test('开关是模块的选项：会拒绝、吃醋只在开了时有；亲密、玩梗只给男朋友档', () => {
+        const control = '不许你跟别的男生说话，听到没';
+        assert.match(intentOf(boyfriend(control), { refuse: true })!, /他在管着你/);
+        assert.doesNotMatch(intentOf(boyfriend(control), {}) ?? '', /他在管着你/);
+        assert.doesNotMatch(intentOf({ ...boyfriend(control), contact: { qq: 2, name: '小周', tier: 'classmate' } }, { refuse: true }) ?? '', /他在管着你/);
+        const hug = '抱抱我';
+        assert.match(intentOf(boyfriend(hug), {})!, /他在向你要亲近/);
+        assert.doesNotMatch(intentOf({ ...boyfriend(hug), contact: { qq: 2, name: '小周', tier: 'classmate' } }, {}) ?? '', /他在向你要亲近/);
+        const meme = 'xswl 你这也太离谱了';
+        assert.match(intentOf(boyfriend(meme), {})!, /他在玩网络梗/);
+        assert.doesNotMatch(intentOf({ ...boyfriend(meme), contact: { qq: 2, name: '小周', tier: 'classmate' } }, {}) ?? '', /他在玩网络梗/);
+    });
+    test('旧逻辑写进 facts 的输入：挂着的事、她答应的事、没说过的事、她此刻在干嘛、她的追求', () => {
+        assert.match(intentOf(boyfriend('在吗', { waiting: ['他去面试'] }), {})!, /知道「他去面试」后来怎么样了/);
+        assert.match(intentOf(boyfriend('在吗', { promised: true }), {})!, /先把上面你答应的那件事说了/);
+        assert.match(intentOf(boyfriend('在吗', { unanswered: ['他周末回不回家'] }), {})!, /上次问他「他周末回不回家」/);
+        assert.match(intentOf(boyfriend('我到宿舍了', { news: ['新相机到了'] }), {})!, /你今天新相机到了，还没跟他说过/);
+        assert.match(intentOf(boyfriend('在吗', { state: free('赶作业') }), {})!, /回两句就去忙/);
+        assert.equal(intentOf(boyfriend('在吗', { state: free('看剧') }), {}), undefined);
+        const drop = '先别修了，陪我聊会';
+        assert.match(intentOf(boyfriend(drop, { state: free('修片') }), { refuse: true, pursuits: true })!, /你正在修片/);
+        assert.doesNotMatch(intentOf(boyfriend(drop, { state: free('修片') }), { refuse: true }) ?? '', /你正在修片/);
+    });
+    test('这一轮已有的判断：危机（含身边有人还没说安全）、小别扭、今天的小事', () => {
+        assert.match(intentOf(boyfriend('嗯', { crisis: { level: 'high' } as never }), {})!, /这不是玩笑/);
+        assert.match(intentOf(boyfriend('嗯', { crisis: { level: 'high', awaitingSafe: true } as never }), {})!, /他提到身边有人了/);
+        assert.match(intentOf(boyfriend('我回来啦', { grievance: { stage: 'sulk', days: 5, round: 0 } }), {})!, /5 天没来找你/);
+        const day = '你今天干嘛了';
+        const world = { events: [{ id: 'e', text: '下楼喂了猫', at }] } as never;
+        assert.match(intentOf(boyfriend(day, { world }), { everydayLife: true })!, /他在问你今天过得怎么样/);
+        assert.doesNotMatch(intentOf(boyfriend(day, { world }), {}) ?? '', /他在问你今天过得怎么样/);
     });
 });

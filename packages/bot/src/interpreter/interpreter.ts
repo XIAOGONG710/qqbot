@@ -18,6 +18,7 @@ import type { Grievance } from '../emotion/grievance.ts';
 import type { Executor } from '../executor/executor.ts';
 import type { WorldNow } from '../world/world.ts';
 import type { Together } from '../language/together.ts';
+import type { Schedule, State } from '../life/schedule.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -45,10 +46,21 @@ export interface TurnFacts {
     crisis?: CrisisHit;
     /** 小别扭 / 和好的起因（ADR 0074）；只算男朋友档，危机、主动找他时没有 */
     grievance?: Grievance;
-    /** 这一轮的意图行（照片 / 被打断改写之前的那一版）；只想一想时没有 */
+    /** 这一轮的意图行（意图阶梯，modules/intent.ts 写；照片 / 被打断改写之前的那一版）；只想一想时没有 */
     baseIntent?: string;
     /** 她那边此刻（ADR 0021 世界账：猫、快递、钱、今天的小事……）；开了她自己的日子、卡上有世界才有 */
     world?: WorldNow;
+    /** 她此刻在干嘛（作息里的这一刻）；开了作息才有 */
+    state?: State;
+    /** 作息（快睡了“回两句就去忙”按它算）；开了作息或卡上有她的一天才有 */
+    schedule?: Schedule;
+    /** 时间块里已经有「她答应的事」（ADR 0018） */
+    promised?: boolean;
+    /** 挂着的事（ADR 0023）：在等他说结果的事、她问了他没答的；开了长期记忆才有 */
+    waiting?: readonly string[];
+    unanswered?: readonly string[];
+    /** 她那边今天了结了、还没跟他说过的事（ADR 0057）；只算男朋友档 */
+    news?: readonly string[];
     /** 被打断（ADR 0115，modules/interruptions.ts 写）：聊着的时候她那边刚发生的一件小事；旧逻辑读它决定这一轮不带意图 / 深思 / 形状 / 长短 */
     interruption?: { text: string; minutesAgo: number };
     /** 陪玩（ADR 0111，modules/together.ts 写）：此刻正和他一起玩什么、从哪一刻答应的 */

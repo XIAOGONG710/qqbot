@@ -22,6 +22,7 @@ import { idiomsModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
 import { togetherModule } from '../modules/together.ts';
+import { intentModule } from '../modules/intent.ts';
 import { memesModule } from '../modules/memes.ts';
 import { watchedModule } from '../modules/watched.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
@@ -645,6 +646,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
             },
         },
+        // 意图阶梯（ADR 0019 起）：assess 时写这一轮的意图，排在最前（后面的模块和旧逻辑都读它）；开关是它的选项
+        intentModule({
+            ...(config.herNo ? { refuse: true } : {}), ...(config.jealousy ? { jealous: true } : {}), ...(config.curious ? { curious: true } : {}),
+            ...(config.everydayLife ? { everydayLife: true } : {}), ...(config.pursuits ? { pursuits: true } : {}),
+        }),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
         ...(config.relationship ? [closenessModule(log)] : []),
         ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
@@ -1102,12 +1108,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
-            ...(config.jealousy ? { jealousy: true } : {}),
-            ...(config.curious ? { curious: true } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
             ...(config.factCheck !== 'off' ? { factCheck: config.factCheck } : {}),
-            ...(config.herNo ? { herNo: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
             ...(config.pursuits ? { pursuits: pursuitsReader(config.dataDir, log) } : {}),
