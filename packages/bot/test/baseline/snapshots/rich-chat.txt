@@ -8,7 +8,7 @@
 @ 2026-11-18 09:10:00.000 他 10001 发 #1000
 早上好，到教室了吗
 @ 2026-11-18 09:41:09.892 qq markRead [10001]
-@ 2026-11-18 09:41:09.892 llm #1 model=default
+@ 2026-11-18 09:41:09.892 llm #1 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
 
@@ -117,7 +117,7 @@
 @ 2026-11-18 12:05:00.000 他 10001 发 #1001
 中午吃啥
 @ 2026-11-18 12:05:46.641 qq markRead [10001]
-@ 2026-11-18 12:05:46.641 llm #2 model=default
+@ 2026-11-18 12:05:46.641 llm #2 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
 早上好，到教室了吗
@@ -159,7 +159,7 @@
 @ 2026-11-18 12:08:00.000 他 10001 发 #1002
 我想吃麻辣烫
 @ 2026-11-18 12:08:00.000 qq markRead [10001]
-@ 2026-11-18 12:08:04.000 llm #3 model=default
+@ 2026-11-18 12:08:04.000 llm #3 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
 早上好，到教室了吗
@@ -200,7 +200,7 @@
 @ 2026-11-18 12:08:04.000 llm #3 回复
 行吧
 那你早点睡
-@ 2026-11-18 12:08:04.000 llm #4 model=default
+@ 2026-11-18 12:08:04.000 llm #4 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
 早上好，到教室了吗
@@ -247,7 +247,7 @@
 @ 2026-11-18 20:30:00.000 他 10001 发 #1003
 认真问你，你觉得我要不要转专业？我最近真的很纠结
 @ 2026-11-18 20:30:20.915 qq markRead [10001]
-@ 2026-11-18 20:30:20.915 llm #5 model=deepseek-v4-pro
+@ 2026-11-18 20:30:20.915 llm #5 chat model=deepseek-v4-pro temperature=1 maxTokens=4000 extraBody={"thinking":{"type":"enabled"},"reasoning_effort":"high"} 换模型
 --- system（同 #1.1）
 --- user
 早上好，到教室了吗
@@ -294,7 +294,7 @@
 @ 2026-11-18 21:00:00.000 他 10002 发 #1005
 你周末去图书馆吗
 @ 2026-11-18 21:00:40.046 qq markRead [10002]
-@ 2026-11-18 21:00:40.046 llm #6 model=default
+@ 2026-11-18 21:00:40.046 llm #6 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和小周私聊。下面是你的设定。
 
@@ -364,7 +364,7 @@
 @ 2026-11-18 23:50:00.000 他 10001 发 #1006
 睡了吗
 @ 2026-11-18 23:50:47.609 qq markRead [10001]
-@ 2026-11-18 23:50:47.609 llm #7 model=default
+@ 2026-11-18 23:50:47.609 llm #7 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
 早上好，到教室了吗
@@ -409,7 +409,7 @@
 @ 2026-11-18 23:50:47.609 llm #7 回复
 好呀
 @ 2026-11-18 23:50:49.402 qq sendPrivateText [10001,"好呀～"]
-@ 2026-11-19 05:00:00.000 llm #8 model=default
+@ 2026-11-19 05:00:00.000 llm #8 background model=baseline-chat temperature=0 maxTokens=8192
 --- system
 你在帮一个大学生回头看自己最近两周真做过的事，找出「看得出来的偏好」。
 下面是带编号的经历清单。只指出有清单支持的偏好：一件事反复出现、或每次的结果都好 / 都不好。最多 2 条，宁可少，没有就输出 []。
@@ -432,7 +432,7 @@ life:2026-11-18T16:00:00.000Z:leisure | 今天 00:00 | 休闲 | 琢磨新胶片�
 @ 2026-11-19 08:30:00.000 他 10001 发 #1007
 昨天睡得怎么样
 @ 2026-11-19 09:43:16.804 qq markRead [10001]
-@ 2026-11-19 09:43:16.804 llm #9 model=default
+@ 2026-11-19 09:43:16.804 llm #9 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
 早上好，到教室了吗

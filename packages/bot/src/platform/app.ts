@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { createAccount, friendRequestVerdict } from '.././social/account.ts';
 import { forExtraction } from '.././language/llm.ts';
-import { createExecutor } from '../executor/executor.ts';
+import { createExecutor, type ExecutorOptions } from '../executor/executor.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
 import { Identity, realGit } from '.././memory/identity.ts';
@@ -253,6 +253,8 @@ export interface AppOptions {
     startDevices?: typeof startDeviceService;
     /** 敏感调试开关（ADR 0070 第 8 项）；不传按环境变量 QQBOT_SENSITIVE_LOGS（默认关） */
     sensitive?: SensitiveSwitch;
+    /** 测试 / 审计：执行器派发每个动作之前看一眼（ADR 0263；行为基线用它记下每次调模型的完整配置） */
+    observe?: ExecutorOptions['observe'];
 }
 
 /** 名单外的人在提示词里的称呼（{{user}}）：QQ 昵称，没有就叫「对方」 */
@@ -303,9 +305,9 @@ export function startApp(options: AppOptions): App {
     catch (error) { construction.rollback(); throw error; }
 }
 
-function createApp({ config, transport: rawTransport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, sensitive = sensitiveSwitch() }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
+function createApp({ config, transport: rawTransport, log, pipeline, media, vision, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, sensitive = sensitiveSwitch(), observe }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
     // 碰外部的都经执行器（ADR 0263 第 3 步）：QQ 动作、调模型、时钟和计时器
-    const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}) });
+    const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}) });
     const transport = exec.qq;
     let stopped = false;
     construction.onFailure(() => { stopped = true; });

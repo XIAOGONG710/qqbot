@@ -9,7 +9,7 @@
 老师说下节课小测
 @ 2026-11-09 10:20:00.000 他 10001 发 #1001
 中午吃什么
-@ 2026-11-09 10:29:28.051 llm #1 model=default
+@ 2026-11-09 10:29:28.051 llm #1 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
 

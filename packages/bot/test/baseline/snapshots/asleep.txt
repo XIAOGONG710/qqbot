@@ -13,7 +13,7 @@
 我睡不着
 @ 2026-11-11 03:02:00.000 他 10001 发 #1003
 有点难受
-@ 2026-11-11 03:02:00.000 llm #1 model=default
+@ 2026-11-11 03:02:00.000 llm #1 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
 
@@ -118,7 +118,7 @@
 嗯嗯
 刚在看书
 @ 2026-11-11 03:02:01.470 qq sendPrivateText [10001,"嗯嗯\n刚在看书"]
-@ 2026-11-11 08:07:47.754 llm #2 model=default
+@ 2026-11-11 08:07:47.754 llm #2 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和小周私聊。下面是你的设定。
 

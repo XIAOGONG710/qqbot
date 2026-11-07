@@ -10,7 +10,7 @@
 我刚打完球
 @ 2026-11-10 21:00:03.500 他 10001 发 #1002
 累死了
-@ 2026-11-10 21:00:53.542 llm #1 model=default
+@ 2026-11-10 21:00:53.542 llm #1 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
 
@@ -119,7 +119,7 @@
 那我等你
 你先去洗澡吧
 我也去吃个饭
-@ 2026-11-10 21:01:13.542 llm #2 model=default
+@ 2026-11-10 21:01:13.542 llm #2 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
 在干嘛
@@ -160,7 +160,7 @@
 @ 2026-11-10 21:01:38.642 qq sendPrivateText [10001,"我也去吃个饭"]
 @ 2026-11-10 21:10:00.000 他 10001 发 #1004
 晚上一起打游戏吗
-@ 2026-11-10 21:10:04.000 llm #3 model=default
+@ 2026-11-10 21:10:04.000 llm #3 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
 
@@ -285,7 +285,7 @@
 @ 2026-11-10 21:10:24.000 qq sendPrivateText [10001,"好呀"]
 @ 2026-11-10 21:10:24.500 他 10001 发 #1005
 算了我先去洗澡
-@ 2026-11-10 21:10:28.500 llm #4 model=default
+@ 2026-11-10 21:10:28.500 llm #4 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
 在干嘛

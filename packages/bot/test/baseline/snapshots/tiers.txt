@@ -23,7 +23,7 @@
 你今天都干嘛了
 @ 2026-11-10 20:30:00.000 他 10999 发 #1006
 你今天都干嘛了
-@ 2026-11-10 20:30:41.830 llm #1 model=default
+@ 2026-11-10 20:30:41.830 llm #1 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和认识的人私聊。下面是你的设定。
 
@@ -91,7 +91,7 @@
 刚在看书
 @ 2026-11-10 20:30:43.667 qq sendPrivateText [10104,"嗯嗯"]
 @ 2026-11-10 20:30:45.627 qq sendPrivateText [10104,"刚在看书"]
-@ 2026-11-10 20:30:53.542 llm #2 model=default
+@ 2026-11-10 20:30:53.542 llm #2 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和男朋友私聊。下面是你的设定。
 
@@ -191,7 +191,7 @@
 刚在看书
 @ 2026-11-10 20:30:54.461 qq sendPrivateText [10101,"嗯嗯"]
 @ 2026-11-10 20:30:55.441 qq sendPrivateText [10101,"刚在看书"]
-@ 2026-11-10 20:30:55.969 llm #3 model=default
+@ 2026-11-10 20:30:55.969 llm #3 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和闺蜜私聊。下面是你的设定。
 
@@ -279,7 +279,7 @@
 刚在看书
 @ 2026-11-10 20:30:57.071 qq sendPrivateText [10102,"嗯嗯"]
 @ 2026-11-10 20:30:58.247 qq sendPrivateText [10102,"刚在看书"]
-@ 2026-11-10 20:31:00.069 llm #4 model=default
+@ 2026-11-10 20:31:00.069 llm #4 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和陌生人私聊。下面是你的设定。
 
@@ -335,7 +335,7 @@
 刚在看书
 @ 2026-11-10 20:31:02.825 qq sendPrivateText [10106,"嗯嗯"]
 @ 2026-11-10 20:31:05.765 qq sendPrivateText [10106,"刚在看书"]
-@ 2026-11-10 20:31:09.725 llm #5 model=default
+@ 2026-11-10 20:31:09.725 llm #5 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和女生朋友私聊。下面是你的设定。
 
@@ -406,7 +406,7 @@
 刚在看书
 @ 2026-11-10 20:31:11.103 qq sendPrivateText [10103,"嗯嗯"]
 @ 2026-11-10 20:31:12.573 qq sendPrivateText [10103,"刚在看书"]
-@ 2026-11-10 20:31:55.446 llm #6 model=default
+@ 2026-11-10 20:31:55.446 llm #6 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和同学私聊。下面是你的设定。
 
@@ -470,7 +470,7 @@
 刚在看书
 @ 2026-11-10 20:31:57.283 qq sendPrivateText [10105,"嗯嗯"]
 @ 2026-11-10 20:31:59.243 qq sendPrivateText [10105,"刚在看书"]
-@ 2026-11-10 20:32:22.827 llm #7 model=default
+@ 2026-11-10 20:32:22.827 llm #7 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和路人甲私聊。下面是你的设定。
 

@@ -16,6 +16,7 @@ import type { OpenAIMessage } from '../../src/language/prompt.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../../src/st/world-info.ts';
 import { syntheticCardPattern, useSyntheticTerms } from '../fixtures/card.ts';
 import { FakeClock } from './clock.ts';
+import type { LlmAction } from '../../src/executor/executor.ts';
 
 export const SELF = 20000;
 
@@ -148,6 +149,7 @@ export async function runScenario(scenario: Scenario): Promise<string> {
     const sent = () => nextSent++;
     const call = (name: string, args: unknown[]) => record(`qq ${name} ${JSON.stringify(args)}`);
     let llmCalls = 0;
+    let observed: LlmAction | undefined;
     const replier = scenario.reply?.() ?? defaultReply;
     const seen = new Map<string, string>();
     clock.install();
@@ -185,6 +187,8 @@ export async function runScenario(scenario: Scenario): Promise<string> {
             transport,
             log: () => {},
             sensitive: { on: () => false, describe: () => '' },
+            // 执行器派发模型调用前先告诉这里完整的动作（用途、模型配置），紧接着才调假模型
+            observe: action => { if (action.kind === 'llm') observed = action; },
             pipeline: {
                 generate: async (messages, _log, use) => {
                     const index = ++llmCalls;
@@ -200,7 +204,12 @@ export async function runScenario(scenario: Scenario): Promise<string> {
                             lines.push(`--- ${message.role}`, content);
                         }
                     }
-                    record(`llm #${index} model=${use?.model ?? 'default'}`, lines.join('\n'));
+                    const action = observed;
+                    observed = undefined;
+                    if (!action) throw new Error('模型调用没有经过执行器');
+                    const { config } = action;
+                    const extra = Object.keys(config.extraBody).length ? ` extraBody=${JSON.stringify(config.extraBody)}` : '';
+                    record(`llm #${index} ${action.purpose} model=${config.model} temperature=${config.temperature} maxTokens=${config.maxTokens}${extra}${use ? ' 换模型' : ''}`, lines.join('\n'));
                     const reply = await replier({ index, at, model: use?.model, messages });
                     record(`llm #${index} 回复`, reply);
                     return reply;

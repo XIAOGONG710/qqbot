@@ -5,7 +5,7 @@
 @ 2026-11-14 13:00:00.000 连上 NapCat
 @ 2026-11-14 13:00:00.000 qq friendHistory [10001,20]
 @ 2026-11-14 13:00:00.000 qq friendHistory [10002,20]
-@ 2026-11-14 13:00:00.000 llm #1 model=default
+@ 2026-11-14 13:00:00.000 llm #1 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
 
@@ -109,7 +109,7 @@
 对方认真难过、生病或很累的时候，先别嘴硬开玩笑，直接关心。
 身材的雷区只针对拿体重、胖瘦、身高挑刺或说笑；聊吃的、关心你吃没吃饭不算，别因此冷下来。
 不算他几小时没回消息的账。
-@ 2026-11-14 13:00:00.000 llm #2 model=default
+@ 2026-11-14 13:00:00.000 llm #2 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和小周私聊。下面是你的设定。
 
