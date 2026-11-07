@@ -22,6 +22,7 @@ import { SELF, type LlmCall, type Replier, type Scenario } from './harness.ts';
 
 const boyfriend: Contact = { qq: 10001, name: '阿明', tier: 'boyfriend', persona: '她的男朋友，同校不同专业', knowsBot: true };
 const classmate: Contact = { qq: 10002, name: '小周', tier: 'classmate' };
+const girlFriend: Contact = { qq: 10004, name: '小林', tier: 'girl_friend' };
 
 /** 本地就能跑的功能全开（不连网的那些）；连网的仍按生产默认关着 */
 export const RICH: Partial<AppConfig> = {
@@ -506,6 +507,53 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.wait(10 * 60_000);
             d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
             await d.at('2026-12-02T01:00:00+08:00');
+        },
+    },
+    {
+        name: 'intents',
+        about: '意图阶梯的输入（ADR 0263 迁意图之前）：今天的小事、会拒绝（管着她 / 磨她）、吃醋和松下来、追问、危机里身边有人还没说安全、快睡了回两句就去忙；同一句话同学说一次（只有男朋友档）',
+        start: '2026-12-03T07:00:00+08:00',
+        contacts: [boyfriend, classmate, girlFriend],
+        config: { ...RICH, proactive: 'off' },
+        // 日常小事（ADR 0106）从第一次启动的第二天才有：当作已经开了一周
+        seed: dataDir => {
+            mkdirSync(join(dataDir, 'world'), { recursive: true });
+            writeFileSync(join(dataDir, 'world', 'everyday-from.json'), JSON.stringify({ version: 1, from: '2026-11-25' }));
+        },
+        // 没覆盖、由意图模块的单元测试兜的：挂着的事、她答应的事（要长期记忆服务才抽，app.ts 里 promises 跟着 memory）；
+        // 她那边还没跟他说过的事（默认只算相机到了，ADR 0057，基线里走不到）；她的追求里“他让她先放下手上的事”（要她那一刻正在做自己的项目）；
+        // 同学档发网络梗时不给玩梗意图（各场景里同学都没玩梗）；主动找他时不算意图（主动那几轮的意图行由 initiate.note 管，去掉这条判断快照不变）
+        reply: () => {
+            // 不带问句：她最近几条问过的话，追问（ADR 0126）不会出现
+            const chat = rotating(['嗯嗯\n刚在看书', '哈哈哈离谱', '行吧\n那你早点睡', '我刚下课\n饿死了', '好呀']);
+            return (call: LlmCall) => {
+                const last = call.messages.findLast(m => m.role === 'user');
+                // 他约她打游戏：她推掉，下一句他磨她
+                if (typeof last?.content === 'string' && last.content.includes('打两把')) return '不行\n今晚要赶作业';
+                return chat(call);
+            };
+        },
+        script: async d => {
+            const at = (time: string) => d.at(`2026-12-03T${time}:00+08:00`);
+            await at('12:10'); d.say(boyfriend.qq, '你今天干嘛了');
+            await at('12:30'); d.say(boyfriend.qq, '你今天都干嘛了呀');
+            await at('12:50'); d.say(boyfriend.qq, '不许你跟别的男生说话，听到没');
+            await at('13:00'); d.say(classmate.qq, '不许你跟别的男生说话，听到没');
+            await at('14:00'); d.say(boyfriend.qq, '今天和女同事一起吃饭了');
+            await at('14:05'); d.say(boyfriend.qq, '就是同事啦，你想多了');
+            // 追问按哈希约六成轮到：几句里总有轮到的
+            await at('15:30'); d.say(boyfriend.qq, '我今天下午去了趟市中心，跟室友逛了一下午');
+            await at('16:00'); d.say(boyfriend.qq, '刚才在路上碰到一个大爷在卖烤红薯，我们买了两个');
+            await at('16:30'); d.say(boyfriend.qq, '我昨天见了导师，他让我下周交开题报告');
+            await at('17:00'); d.say(boyfriend.qq, '晚上陪我打两把王者呗');
+            await at('17:30'); d.say(boyfriend.qq, '就一把嘛');
+            await at('18:30'); d.say(boyfriend.qq, '你今天干嘛了');
+            await at('20:30'); d.say(boyfriend.qq, '你今天有什么好玩的事吗');
+            await at('21:00'); d.say(boyfriend.qq, '我不想活了');
+            await at('21:05'); d.say(boyfriend.qq, '室友回来了，在旁边');
+            await at('21:15'); d.say(boyfriend.qq, '我现在安全了，室友一直陪着我');
+            await d.at('2026-12-04T00:40:00+08:00'); d.say(girlFriend.qq, '在吗');
+            await d.at('2026-12-04T01:30:00+08:00');
         },
     },
 ];
