@@ -102,9 +102,9 @@ export const MODULES: readonly ModuleDef[] = [
     },
     {
         id: 'platform', name: '接入、配置与运维',
-        scope: '执行器（ADR 0263：碰外部的唯一出口）、Koishi / NapCat 接入、配置、启动与锁、心跳、日志、网络兜底、设备控制（电脑 / 手机，ADR 0148）、功能总表、周报、一致性检查、模块总表、模拟器。',
+        scope: '执行器与解释器骨架（ADR 0263：碰外部的唯一出口、做判断的唯一入口与提示词槽位表）、Koishi / NapCat 接入、配置、启动与锁、心跳、日志、网络兜底、设备控制（电脑 / 手机，ADR 0148）、功能总表、周报、一致性检查、模块总表、模拟器。',
         files: ['platform/app.ts', 'platform/main.ts', 'platform/contact.ts', 'platform/config.ts', 'platform/features.ts', 'platform/modules.ts', 'platform/modules-doc.ts', 'platform/weekly-report.ts', 'platform/consistency.ts', 'platform/onebot.ts', 'platform/lock.ts', 'platform/log.ts', 'platform/heartbeat.ts', 'platform/runtime-info.ts', 'platform/dns-fallback.ts', 'platform/qr.ts', 'platform/device-actions.ts', 'platform/device-hub.ts', 'platform/device-phone.ts', 'platform/device-service.ts',
-            'platform/sensitive.ts', 'platform/time-zone.ts', 'platform/web.ts', 'executor/', 'dsh-link.ts', 'mobile-companion-dsh.ts', 'ops/', 'sim/', 'vendor/'],
+            'platform/sensitive.ts', 'platform/time-zone.ts', 'platform/web.ts', 'executor/', 'interpreter/', 'dsh-link.ts', 'mobile-companion-dsh.ts', 'ops/', 'sim/', 'vendor/'],
         groups: ['工具'],
         metrics: '控制台「状态」页（ADR 0120）；ops/golive-check-cli；ops/heartbeat-watch-cli',
         adrs: ['0002', '0008', '0118', '0119', '0120', '0160', '0246', '0248', '0249', '0254', '0257', '0258', '0259', '0263'],

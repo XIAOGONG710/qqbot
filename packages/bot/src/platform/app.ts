@@ -16,6 +16,7 @@ import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, UNLIS
 import { createAccount, friendRequestVerdict } from '.././social/account.ts';
 import { forExtraction } from '.././language/llm.ts';
 import { createExecutor, type ExecutorOptions } from '../executor/executor.ts';
+import { createInterpreter } from '../interpreter/interpreter.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
 import { Identity, realGit } from '.././memory/identity.ts';
@@ -309,6 +310,19 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 碰外部的都经执行器（ADR 0263 第 3 步）：QQ 动作、调模型、时钟和计时器
     const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}) });
     const transport = exec.qq;
+    // 做判断的都经解释器（ADR 0263 第 4 步）：迁移前的整套逻辑先作为一个「旧逻辑」模块挂上；迁出去的模块逐个加在这里
+    const interpreter = createInterpreter({
+        modules: [{
+            id: 'app-legacy',
+            on: {
+                connected: ({ selfId }) => legacy.connected(selfId),
+                message: ({ event }) => legacy.receive(event),
+                poke: ({ event }) => legacy.receivePoke(event),
+                recall: ({ event }) => legacy.receiveRecall(event),
+                friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
+            },
+        }],
+    });
     let stopped = false;
     construction.onFailure(() => { stopped = true; });
     // Watching and feed are pure background reads. Own the complete local
@@ -1161,6 +1175,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 if (!sensitive.on()) return;
                 writeFileSync(join(config.dataDir, 'last-prompt.json'), JSON.stringify({ qq: contact.qq, ...prompt }, null, 2));
             },
+            turnModules: interpreter.turnModules,
             ...pipeline,
             // 回复和逐条事实检查的审稿也经执行器（ADR 0263 第 3 步）：配置、日志和原来 contact.ts 的默认调用一样；
             // 换模型（深思）时测试替身收到换成的那份配置，同原来 generate 的第三个参数
@@ -2411,7 +2426,7 @@ ${body}
     if ((config.qqFriendGate ?? 'off') !== 'off' && accountMode !== 'on') log('好友申请：要 qqControl 设为 on 才处理，现在没生效');
     else if ((config.qqFriendGate ?? 'off') !== 'off') log(`好友申请：${config.qqFriendGate === 'all' ? '名单内同意、名单外驳回' : '只自动同意名单内的'}（名单 ${(config.qqAllowFriends ?? []).join('、') || '空'}）`);
 
-    return {
+    const legacy: App = {
         async connected(selfId) {
             if (stopped) return;
             connectedAt = new Date();
@@ -2720,6 +2735,17 @@ ${body}
             };
         },
         mobileCompanion: () => mobileCompanion,
+    };
+    // 对外的入口都经解释器分发（ADR 0263 第 4 步）；停止、状态、手机伴侣不是事件，照旧直接给
+    return {
+        connected: selfId => interpreter.dispatch({ kind: 'connected', selfId }) ?? Promise.resolve(),
+        receive: event => { void interpreter.dispatch({ kind: 'message', event }); },
+        receivePoke: event => { void interpreter.dispatch({ kind: 'poke', event }); },
+        receiveRecall: event => { void interpreter.dispatch({ kind: 'recall', event }); },
+        receiveFriendRequest: request => { void interpreter.dispatch({ kind: 'friendRequest', request }); },
+        stop: () => legacy.stop(),
+        status: () => legacy.status(),
+        mobileCompanion: () => legacy.mobileCompanion(),
     };
 }
 

@@ -6,6 +6,8 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
+import { runTurn, type Module, type Turn } from '../interpreter/interpreter.ts';
+import type { Piece, Slot } from '../interpreter/slots.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
@@ -296,6 +298,8 @@ export interface ContactPipelineOptions {
      * 不传是最近 80 条（ADR 0036 决策 3），线上不传
      */
     contextWindow?: TurnWindow & { summarize: Summarizer };
+    /** 解释器上注册的、要参与一轮回复的模块（ADR 0263）；拼提示词时排在迁移前的旧逻辑前面，各段按槽位表排 */
+    turnModules?: readonly Module[];
 }
 
 /** 问到过去的某一天时，几天以内她那边的事还记得清楚（ADR 0032，同 ADR 0018 的 7 天） */
@@ -776,72 +780,83 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 危机回合被问是不是真人 / 程序一律承认（ADR 0068 决策 7）：换用承认版的卡，不在运行时叠一条覆盖（ADR 0003 / 0067 的纪律）
             // 想一想的时候卡末尾那句“只输出你要发出去的消息：不写心理活动”正好和要求相反，这一次去掉（只有内心用）
             const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...character, postHistoryInstructions: '' }, worldInfo } : { character, worldInfo };
+            // 按槽位表拼（ADR 0263 第 4 步）：迁移前这里手写的那一串，现在是「旧逻辑」这个大模块的段落，顺序由 interpreter/slots.ts 定；
+            // 以后迁出去的模块经 options.turnModules 加进来。原来按真假判断的照旧按真假，原来无条件放的照旧无条件放
+            const when = (slot: Slot, text: string | undefined | false | null): Piece[] => (text ? [{ slot, text }] : []);
+            const legacyPieces: Piece[] = [
+                ...when('relationship', relationship),
+                ...when('summary', summary),
+                ...when('recalled', recalled),
+                // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3：放在前面时问「昨天都干嘛了」她照着报喂猫、取快递，想不起那天记得住的麻辣烫，1/3）
+                ...when('common', common),
+                ...(recap ? [{ slot: 'recap' as const, text: recap.text }] : []),
+                ...when('today', today),
+                ...when('past', past),
+                ...aboutNpcs.map(text => ({ slot: 'npcs' as const, text })),
+                ...peopleText.map(text => ({ slot: 'people' as const, text })),
+                ...(common || today || peopleText.length ? [{ slot: 'disclosure' as const, text: disclosureRules(contact) }] : []),
+                { slot: 'time', text: describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }) },
+                ...when('days', days),
+                ...(state ? [{ slot: 'state' as const, text: describeState(state, schedule!, { userName: contact.name, woken, partnerApart: true }) }] : []),
+                // 心里压着事 / 特别开心的时候，按日期抽的底色（爱笑、话痨……）会和心境打架：以心境为准（ADR 0102）
+                ...(mood && !(feelingLine !== undefined && (feelsLow(feltNow) || feltNow.some(item => item.kind === 'joy' && item.level === 'strong'))) ? [{ slot: 'mood' as const, text: describeMood(mood, contact.name) }] : []),
+                ...when('body', body),
+                ...when('humanState', humanStateLine),
+                ...when('unsettled', unsettled),
+                ...when('warm', warm),
+                ...when('feeling', feelingLine),
+                ...(books ? [{ slot: 'books' as const, text: books.text }] : []),
+                ...when('world', world),
+                ...when('practice', practice),
+                ...when('pursuit', pursuitLine),
+                ...when('selfNote', selfNote),
+                ...when('plans', plansLine),
+                ...when('promised', promised),
+                ...when('obstacle', obstacleLine),
+                // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
+                ...when('partnerBack', partnerBack),
+                ...when('together', togetherLine),
+                ...when('closeness', closenessLine),
+                ...when('joke', jokeNow),
+                ...when('idiom', idiomNow),
+                ...when('meme', memeNow),
+                ...when('watched', watchedNow),
+                ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
+                ...when('interrupt', interruptLine),
+                // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
+                ...(options.devices && !crisisNow && !thinking ? [{ slot: 'devices' as const, text: options.devices.menu() }] : []),
+                ...when('sticker', stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined),
+                ...when('photo', photoNow && options.photos?.prompt(photoNow, photoDishNow) ? options.photos.prompt(photoNow, photoDishNow)! : undefined),
+                ...when('intent', intentLine),
+                ...(deliberateNow ? [{ slot: 'deliberate' as const, text: DELIBERATE_NOTE }] : []),
+                ...(length ? [{ slot: 'length' as const, text: describeLength(length, options.shortReplies) }] : []),
+                ...(shapeNow ? [{ slot: 'shape' as const, text: describeShape(shapeNow) }] : []),
+                ...when('quote', quoteLine),
+                ...when('crutch', crutchLine),
+                ...when('told', toldLine),
+                ...when('opener', openerLine),
+                ...when('inner', innerNow),
+                ...when('intimate', intimateNow),
+                ...when('transcript', transcript),
+                ...(options.replyFrame === 'solve' && !initiate && !crisisNow ? [{ slot: 'solveFrame' as const, text: SOLVE_FRAME_NOTE }] : []),
+                ...(initiate ? [{ slot: 'initiateNote' as const, text: initiate.note }] : []),
+            ];
+            const turn: Turn = {
+                contact, at: time, history: chat, thinking, facts: {},
+                ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
+            };
+            const legacy: Module = { id: 'contact-legacy', contribute: () => legacyPieces };
+            const ran = runTurn([...(options.turnModules ?? []), legacy], turn);
+            // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
+            const { afterMain, afterHistory } = ran instanceof Promise ? await ran : ran;
             const prompt = buildPrompt({
                 character: turnCard.character,
                 worldInfo: turnCard.worldInfo,
                 history: shown.chat,
                 userName: contact.name,
                 userPersona: contact.persona,
-                afterMain: relationship ? [relationship] : [],
-                afterHistory: [
-                    ...(summary ? [summary] : []),
-                    ...(recalled ? [recalled] : []),
-                    // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3：放在前面时问「昨天都干嘛了」她照着报喂猫、取快递，想不起那天记得住的麻辣烫，1/3）
-                    ...(common ? [common] : []),
-                    ...(recap ? [recap.text] : []),
-                    ...(today ? [today] : []),
-                    ...(past ? [past] : []),
-                    ...aboutNpcs,
-                    ...peopleText,
-                    ...(common || today || peopleText.length ? [disclosureRules(contact)] : []),
-                    [
-                        describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }),
-                        ...(days ? [days] : []),
-                        ...(state ? [describeState(state, schedule!, { userName: contact.name, woken, partnerApart: true })] : []),
-                        // 心里压着事 / 特别开心的时候，按日期抽的底色（爱笑、话痨……）会和心境打架：以心境为准（ADR 0102）
-                        ...(mood && !(feelingLine !== undefined && (feelsLow(feltNow) || feltNow.some(item => item.kind === 'joy' && item.level === 'strong'))) ? [describeMood(mood, contact.name)] : []),
-                        ...(body ? [body] : []),
-                        ...(humanStateLine ? [humanStateLine] : []),
-                        ...(unsettled ? [unsettled] : []),
-                        ...(warm ? [warm] : []),
-                        ...(feelingLine ? [feelingLine] : []),
-                        ...(books ? [books.text] : []),
-                        ...(world ? [world] : []),
-                        ...(practice ? [practice] : []),
-                        ...(pursuitLine ? [pursuitLine] : []),
-                        ...(selfNote ? [selfNote] : []),
-                        ...(plansLine ? [plansLine] : []),
-                        ...(promised ? [promised] : []),
-                        ...(obstacleLine ? [obstacleLine] : []),
-                        // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
-                        ...(partnerBack ? [partnerBack] : []),
-                        ...(togetherLine ? [togetherLine] : []),
-                        ...(closenessLine ? [closenessLine] : []),
-                        ...(jokeNow ? [jokeNow] : []),
-                        ...(idiomNow ? [idiomNow] : []),
-                        ...(memeNow ? [memeNow] : []),
-                        ...(watchedNow ? [watchedNow] : []),
-                        ...continuityLines,
-                        ...(interruptLine ? [interruptLine] : []),
-                        // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
-                        ...(options.devices && !crisisNow && !thinking ? [options.devices.menu()] : []),
-                        ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
-                        ...(photoNow && options.photos?.prompt(photoNow, photoDishNow) ? [options.photos.prompt(photoNow, photoDishNow)!] : []),
-                        ...(intentLine ? [intentLine] : []),
-                        ...(deliberateNow ? [DELIBERATE_NOTE] : []),
-                        ...(length ? [describeLength(length, options.shortReplies)] : []),
-                        ...(shapeNow ? [describeShape(shapeNow)] : []),
-                        ...(quoteLine ? [quoteLine] : []),
-                        ...(crutchLine ? [crutchLine] : []),
-                        ...(toldLine ? [toldLine] : []),
-                        ...(openerLine ? [openerLine] : []),
-                        ...(innerNow ? [innerNow] : []),
-                        ...(intimateNow ? [intimateNow] : []),
-                        ...(transcript ? [transcript] : []),
-                        ...(options.replyFrame === 'solve' && !initiate && !crisisNow ? [SOLVE_FRAME_NOTE] : []),
-                        ...(initiate ? [initiate.note] : []),
-                    ].join('\n'),
-                ],
+                afterMain,
+                afterHistory,
                 now: time,
                 settings: {
                     maxContext: options.prompt.maxContext,

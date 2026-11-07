@@ -2,7 +2,7 @@
 
 > 由 `packages/bot/src/platform/modules.ts` 清单生成（`node packages/bot/src/ops/modules-doc.ts`），不要手改；改清单后重新生成。
 
-**管什么**：执行器（ADR 0263：碰外部的唯一出口）、Koishi / NapCat 接入、配置、启动与锁、心跳、日志、网络兜底、设备控制（电脑 / 手机，ADR 0148）、功能总表、周报、一致性检查、模块总表、模拟器。
+**管什么**：执行器与解释器骨架（ADR 0263：碰外部的唯一出口、做判断的唯一入口与提示词槽位表）、Koishi / NapCat 接入、配置、启动与锁、心跳、日志、网络兜底、设备控制（电脑 / 手机，ADR 0148）、功能总表、周报、一致性检查、模块总表、模拟器。
 
 ## 文件（`packages/bot/src/` 下）
 
@@ -30,6 +30,7 @@
 - `platform/time-zone.ts`
 - `platform/web.ts`
 - `executor/`
+- `interpreter/`
 - `dsh-link.ts`
 - `mobile-companion-dsh.ts`
 - `ops/`

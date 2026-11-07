@@ -162,3 +162,18 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - **时钟**：`app.ts` 里有 7 处直接 `Date.now()`，原来就不走测试时钟（手机伴侣配对码的有效期、休眠提示、恢复时间、健康探测……）；换成 `exec.now()` 会改变用虚拟时钟的测试，单独一个提交处理。
 - **模拟器**：`sim/runner.ts` 仍是自己的接线（第 6 步）。
 - **停止**：执行器的登记还没接进 `App.stop`；一次性计时器的统一停止和 ADR 0259 的收尾登记一起在第 4、6 步设计。
+
+## 第 4 步：解释器骨架（2026-11-07）
+
+- `packages/bot/src/interpreter/slots.ts`：提示词槽位表。两级——`afterMain` 的消息槽（关系概况）、`afterHistory` 的消息槽（要点、记忆、公共记忆……）、
+  「此刻」块的约 40 个行槽（时间、状态、心情……意图、形状……主动的说明），顺序照搬迁移前 `contact.ts` 手写的数组；`assemblePrompt` 按表排序、同槽按给出顺序、把「此刻」行拼成最后一条。
+- `packages/bot/src/interpreter/interpreter.ts`：`Module`（`id`、`on` 事件处理、`assess` / `contribute` / `review`）、`Turn`（谁、几点、聊天记录、主动 / 吵醒 / 只想一想、`facts`）、
+  `runTurn`（先全部 assess 再全部 contribute，按表拼）、`reviewTurn`、`createInterpreter`（id 不重复、`dispatch`、`turnModules`）。
+  都是同步钩子时整轮同步返回；分发只有一个处理函数返回 promise 时原样返回它——不多出微任务，事件顺序和原来一样。
+- 接上的地方：
+  - `contact.ts` 的提示词：原来手写的 `afterMain` / `afterHistory` 改成带槽位名的段落（「旧逻辑」大模块 `contact-legacy` 的 contribute），经 `runTurn` 拼；
+    原来按真假判断的照旧按真假、原来无条件放的照旧无条件放（设备菜单、主动的说明、连续性各行）；`turnModules` 由 App 的解释器传入，现在为空。
+  - `app.ts`：`connected` / `receive` / `receivePoke` / `receiveRecall` / `receiveFriendRequest` 经 `interpreter.dispatch` 交给「旧逻辑」模块 `app-legacy`；`stop` / `status` / `mobileCompanion` 不是事件，照旧直接给。
+- 没接的：`review` 阶段只定了接口、没有接进回复流程——模块的检查排在现有出口检查（`contact.ts` 的 review）之前还是之后，等第一个这类模块迁出时按它定；
+  `turn.facts` 还没有字段，随模块迁出逐个加（旧逻辑在拼段落之前写进去，迁出的模块在自己的 contribute 里读）。定时触发的事（tick）仍由 `app.ts` 里的计时器直接调，迁模块时改成事件。
+- 验证：基线逐字不变；变异检验——槽位表里 `books`、`world` 对调后 2 个场景报出不一致，改回后全过。bot 测试失败的仍是原来那 7 项，插件 51 项全过，类型检查通过。
