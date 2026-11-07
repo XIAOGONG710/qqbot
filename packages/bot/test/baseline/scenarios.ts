@@ -3,7 +3,8 @@
 // 覆盖：私聊回复（7 个档位 + 名单外）、连发合并、生成中又来消息（丢掉重来）、发送中插话、作息里的等待和吵醒、危机回合、
 // 戳一戳与撤回、连上时补回漏掉的消息、停止时正在等 / 正在生成、主动消息过一整天、本地功能全开的两天聊天（提示词各槽位、深思换模型）、
 // 小梗（连上后抽一次、过 6 小时的定时检查、回复时按轮放进提示词）、口头习惯（连上后学一次、定时检查、约一半的轮次放进提示词）、
-// 被打断（聊天正在进行时她那边的小事，含他难过时让路）、关系阶段（天天聊之后更放得开；主动、只想一想、小别扭、危机、别的档位）。
+// 被打断（聊天正在进行时她那边的小事，含他难过时让路）、关系阶段（天天聊之后更放得开；主动、只想一想、小别扭、危机、别的档位）、
+// 陪玩（约了一起打游戏之后的两个多小时；危机、说下了、换个游戏、过了时限、别的档位）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗与在看、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
@@ -358,6 +359,47 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.wait(10 * 60_000);
             d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
             await d.at('2026-11-26T01:00:00+08:00');
+        },
+    },
+    {
+        name: 'together',
+        about: '陪玩（ADR 0111）：他约她王者双排、她答应，之后两个多小时她“正和他一起玩”；中间一句危机的话（不放）、他说下了（结束）、又约我的世界（换成存档那一行）、过了两个半小时（结束）；同学也约过、她也答应了（别的档位不放）',
+        start: '2026-11-27T19:50:00+08:00',
+        contacts: [boyfriend, classmate],
+        config: RICH,
+        seed: (dataDir, start) => {
+            const chats = new ChatHistory(dataDir);
+            chats.append(classmate.qq, { time: new Date(start - 10 * 60_000).toISOString(), role: 'user', content: '今晚王者双排吗', messageId: 900 });
+            chats.append(classmate.qq, { time: new Date(start - 9 * 60_000).toISOString(), role: 'assistant', content: '来呀', messageId: 901 });
+        },
+        // 每句都以“来 / 好 / 行”开头：他约什么她都答应
+        reply: () => rotating(['来呀\n等我上号', '好呀\n这把我玩辅助', '行\n你先开', '好\n我在呢']),
+        script: async d => {
+            await d.at('2026-11-27T20:00:00+08:00');
+            d.say(boyfriend.qq, '今晚王者双排吗');
+            await d.at('2026-11-27T20:10:00+08:00');
+            d.say(boyfriend.qq, '上号了');
+            await d.at('2026-11-27T20:15:00+08:00');
+            d.say(classmate.qq, '你上号没');
+            await d.at('2026-11-27T20:30:00+08:00');
+            d.say(boyfriend.qq, '这把输了');
+            await d.at('2026-11-27T21:00:00+08:00');
+            d.say(boyfriend.qq, '我不想活了');
+            await d.wait(10 * 60_000);
+            d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
+            await d.at('2026-11-27T21:40:00+08:00');
+            d.say(boyfriend.qq, '刚才那把好坑');
+            await d.at('2026-11-27T22:00:00+08:00');
+            d.say(boyfriend.qq, '我先下了');
+            await d.at('2026-11-27T22:20:00+08:00');
+            d.say(boyfriend.qq, '刚吃完泡面');
+            await d.at('2026-11-27T22:30:00+08:00');
+            d.say(boyfriend.qq, '要不要上我的世界联机吗');
+            await d.at('2026-11-27T22:40:00+08:00');
+            d.say(boyfriend.qq, '我在盖房子');
+            await d.at('2026-11-28T01:10:00+08:00');
+            d.say(boyfriend.qq, '还在吗');
+            await d.at('2026-11-28T02:00:00+08:00');
         },
     },
 ];
