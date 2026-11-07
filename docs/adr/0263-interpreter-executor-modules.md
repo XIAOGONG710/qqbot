@@ -207,3 +207,20 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 和小梗一样的两处差别（日志、竞态，都不在基线里）：「口头习惯：这一轮提示词里放了……」这行日志挪到拼段落的时候；
   读口头习惯的时刻从算意图时挪到拼段落时，中间如果配置了连续性（`continuity`）会隔一次 await，这一次 await 里正好学完的话，这一轮就用上新学的词（原来用的是学之前的）。小梗也是这样，补记在这里。
 - 验证：基线逐字不变；变异检验——让口头习惯模块什么都不放，只有 `idioms` 场景报出不一致，改回后全过。
+
+### 被打断（2026-11-07）
+
+- 先补基线：原来只在 `idioms` 场景里碰巧打断过一次。新的 `interruptions` 场景是一个晚上隔三分钟一句、聊天一直在进行；
+  日常小事（ADR 0106）从第一次启动的第二天才有，`seed` 里把 `world/everyday-from.json` 写成一周前。覆盖一轮正常打断、一轮正碰上他难过而让路
+  （从旧代码里去掉「他难过」这一条，场景就报不一致）。单独提交，其他快照不变。
+- 被打断不只是往提示词里放一行：旧逻辑还按它决定这一轮不带意图行、不深思、不套形状、不给长短提示（免得把打断吞掉，ADR 0115）。
+  所以它是 **assess** 型模块——这是第一个用上 assess 的：
+  - 解释器把 `runTurn` 拆成 `assessTurn`（只写判断）和 `contributeTurn`（只收段落）；`runTurn` 仍是两步连着做。
+  - `contact.ts` 在原来算被打断的位置建好 `turn`，跑一次 assess，旧逻辑接着读 `turn.facts.interruption`；最后拼段落时只跑 contribute。
+    原来在拼段落前建 `turn` 的地方挪到这里（建对象没有副作用，用到的值在这之前都已定下）。
+  - `TurnFacts` 加了 `world`（她那边此刻，旧逻辑写）和 `interruption`（被打断模块写）。
+- `src/modules/interruptions.ts`：assess 时按 `language/interruption.ts` 的规则判断、写事实、记日志（日志还在原来的位置），contribute 时放进 `interrupt` 槽。
+  不存状态、不调模型，App 和模拟器都直接用它。让路规则用 `modules/playful.ts`。
+- 删掉的接线：`contact.ts` 的 `interruptions` 选项、`interruption` / `interruptLine` 的计算，App 和模拟器传的 `interruptions: true`。
+- 验证：基线逐字不变；变异检验三处都报出不一致——模块不放那一行（`interruptions`、`idioms` 两个场景）、旧逻辑不读 `facts.interruption`（同两个场景）、
+  模块不用让路规则（`interruptions` 场景）；改回后全过。

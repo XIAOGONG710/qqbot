@@ -41,6 +41,7 @@
 - `language/model-guard.ts`
 - `modules/jokes.ts`
 - `modules/idioms.ts`
+- `modules/interruptions.ts`
 - `modules/playful.ts`
 - `st/`
 

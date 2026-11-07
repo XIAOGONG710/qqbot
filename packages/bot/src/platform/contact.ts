@@ -6,7 +6,7 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
-import { runTurn, type Module, type Turn } from '../interpreter/interpreter.ts';
+import { assessTurn, contributeTurn, type Module, type Turn } from '../interpreter/interpreter.ts';
 import type { Piece, Slot } from '../interpreter/slots.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
@@ -59,7 +59,6 @@ import { describePick, pickBest, PICKED_INTENTS, type PickRules } from '.././lan
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
 import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
-import { describeInterruption, interruptionNow } from '.././language/interruption.ts';
 import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { watchedLine, type Watched } from '.././language/watching.ts';
 import { describeCloseness } from '.././language/relationship.ts';
@@ -245,8 +244,6 @@ export interface ContactPipelineOptions {
     jealousy?: boolean;
     /** 会追问（ADR 0126）：他说了件有细节的事，约六成回完反应后问一个关于这件事本身的问题；只对男朋友档 */
     curious?: boolean;
-    /** 被第三方打断（ADR 0115）：聊着聊着她那边发生了一件小事（世界账里有时刻的），当场岔一下；只对男朋友档 */
-    interruptions?: boolean;
     /** 说话的质感（ADR 0131）：发出去之前在气泡上加真人常有的小黄脸 / 「～」 / 问号 / 叠字……；危机和他难过的回合不加 */
     texture?: boolean;
     /** 网络热梗（ADR 0129）：他用到库里的梗给她意思，没用到约 20% 的轮次给她看最近的几个；只对男朋友档 */
@@ -616,11 +613,17 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 关系阶段（ADR 0113）：聊得多了更放得开；危机回合、小别扭、她在想事情（think）时不加
             const closenessLine = options.relationship && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance ? describeCloseness(chat, time.getTime()) : undefined;
             if (closenessLine) log('关系：最近几乎天天在聊，她更放得开一点（提示词里多一行）');
-            // 被打断（ADR 0115）：聊天正在进行时，世界账里她那边恰好发生了一件小事；他难过 / 危机 / 小别扭 / 主动找他 / 她在想事情时不加
-            const interruption = options.interruptions && around && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
-                ? interruptionNow(around.events, chat, time.getTime()) : undefined;
-            const interruptLine = interruption ? describeInterruption(interruption) : undefined;
-            if (interruptLine) log('被打断：聊着的时候她那边发生了一件小事（提示词里多一行；日志不记内容）');
+            // 这一轮交给解释器的模块（ADR 0263）：先在这里 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（被打断）；段落到最后再收
+            const turn: Turn = {
+                contact, at: time, history: chat, thinking,
+                facts: { ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(baseIntent ? { baseIntent } : {}), ...(around ? { world: around } : {}) },
+                ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
+            };
+            const assessed = assessTurn(options.turnModules ?? [], turn);
+            // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
+            if (assessed instanceof Promise) await assessed;
+            // 被打断（ADR 0115）是解释器的模块（modules/interruptions.ts）：聊天正在进行时她那边恰好发生了一件小事，写进 turn.facts.interruption，放进 interrupt 槽
+            const interruption = turn.facts.interruption;
             // 小梗（ADR 0114）、他的口头习惯（ADR 0138）是解释器的模块（modules/jokes.ts、modules/idioms.ts），经 turnModules 放进 joke、idiom 槽
             // 网络热梗（ADR 0129）：让路同小梗；日志不记梗的内容
             const memeNow = options.memes && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
@@ -631,7 +634,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (watchedNow) log('她看视频：这一轮提示词里放了她最近看过的（日志不记内容）');
             // 主动发的那条（喂完猫拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
             // 被打断的这一轮（ADR 0115）：不带“先直接回答他刚问的”这类意图、不套形状 / 长短提示——它们和“先接他的话、顺带说一声刚被什么岔了一下”冲突，模型会按更紧的那条来、把打断吞掉（模拟 5/5 没提）
-            const intent = photoNow && !initiate ? photoIntent(photoNow) : interruptLine ? undefined : baseIntent;
+            const intent = photoNow && !initiate ? photoIntent(photoNow) : interruption ? undefined : baseIntent;
             const grievanceActive = Boolean(grievance && intent === describeGrievance(grievance));
             sulkNow = grievanceActive && grievance!.stage === 'sulk';
             if (grievanceActive) log(grievance!.cause === 'ignored'
@@ -682,7 +685,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (stickerContext) log(stickerOnlyNow ? '图片表情：这一轮抽到只发表情、不写文字' : '图片表情：这一轮抽到要发一个');
             if (options.stickers && !thinking && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             // 深思（ADR 0151）：他是认真在问她的轮次，不套字数和条数、换更强的模型、提示词只留一句“先想清楚”；危机 / 小别扭 / 亲近等别的意图照旧让路
-            deliberateNow = Boolean(options.deliberate) && !initiate && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !grievanceActive
+            deliberateNow = Boolean(options.deliberate) && !initiate && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !grievanceActive
                 && deliberateTurn(intent, saidNow, asksToExplain(saidNow));
             if (deliberateNow) log(`深思：他在认真问她，这一轮不套字数和条数、用 ${options.deliberate!.llm.model}、提示词只留一句“先想清楚”`);
             // 深思时那条只管“怎么答”的意图行（先直接回答 / 很大很抽象的问题）由深思那一句代替；追着要答案、说她不像真人这类纠偏的意图行保留
@@ -712,7 +715,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !deliberateNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
+            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !deliberateNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
             // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
             const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
             const crutchLine = crutches.length
@@ -741,7 +744,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     recentTildes: faceContext(options.history.load(contact.qq), contact.tier).recent.slice(-TEXTURE_TILDE_WINDOW).filter(reply => /[～~]\s*$/m.test(reply)).length,
                 }
                 : undefined;
-            const length = crisisNow || shapeNow || stickerOnlyNow || photoNow || interruptLine || thinking || deliberateNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
+            const length = crisisNow || shapeNow || stickerOnlyNow || photoNow || interruption || thinking || deliberateNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.long ? '，长答' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
@@ -805,7 +808,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('meme', memeNow),
                 ...when('watched', watchedNow),
                 ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
-                ...when('interrupt', interruptLine),
                 // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
                 ...(options.devices && !crisisNow && !thinking ? [{ slot: 'devices' as const, text: options.devices.menu() }] : []),
                 ...when('sticker', stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined),
@@ -824,13 +826,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(options.replyFrame === 'solve' && !initiate && !crisisNow ? [{ slot: 'solveFrame' as const, text: SOLVE_FRAME_NOTE }] : []),
                 ...(initiate ? [{ slot: 'initiateNote' as const, text: initiate.note }] : []),
             ];
-            const turn: Turn = {
-                contact, at: time, history: chat, thinking,
-                facts: { ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(baseIntent ? { baseIntent } : {}) },
-                ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
-            };
             const legacy: Module = { id: 'contact-legacy', contribute: () => legacyPieces };
-            const ran = runTurn([...(options.turnModules ?? []), legacy], turn);
+            const ran = contributeTurn([...(options.turnModules ?? []), legacy], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             const { afterMain, afterHistory } = ran instanceof Promise ? await ran : ran;
             const prompt = buildPrompt({

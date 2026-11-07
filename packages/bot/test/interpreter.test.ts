@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { createInterpreter, reviewTurn, runTurn, type Module, type Turn } from '../src/interpreter/interpreter.ts';
+import { assessTurn, contributeTurn, createInterpreter, reviewTurn, runTurn, type Module, type Turn } from '../src/interpreter/interpreter.ts';
 import { AFTER_HISTORY_SLOTS, AFTER_MAIN_SLOTS, ALL_SLOTS, assemblePrompt, NOW_SLOTS, type Piece } from '../src/interpreter/slots.ts';
 import type { MessageEvent } from '../src/platform/onebot.ts';
 import { createExecutor } from '../src/executor/executor.ts';
 import { jokesTurnModule } from '../src/modules/jokes.ts';
 import { idiomsTurnModule } from '../src/modules/idioms.ts';
+import { interruptionsModule } from '../src/modules/interruptions.ts';
 import { playfulAllowed } from '../src/modules/playful.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
@@ -143,5 +144,59 @@ describe('口头习惯模块（ADR 0138 / 0263）', () => {
         asked = 0;
         assert.deepEqual(always.contribute!({ ...boyfriend, facts: { baseIntent: '[这一轮你想：先接住他此刻的情绪]' } }), []);
         assert.equal(asked, 0);
+    });
+});
+
+describe('分开的两个阶段（ADR 0263）', () => {
+    test('assessTurn 只写判断、不收段落；contributeTurn 只收段落、不再 assess；都同步时同步返回', () => {
+        const calls: string[] = [];
+        const module: Module = {
+            id: 'a',
+            assess: t => { calls.push('assess'); t.facts.baseIntent = '写下的'; },
+            contribute: t => { calls.push('contribute'); return [{ slot: 'intent', text: t.facts.baseIntent ?? '' }]; },
+        };
+        const t: Turn = { ...turn, facts: {} };
+        assert.equal(assessTurn([module], t), undefined);
+        assert.deepEqual(calls, ['assess']);
+        assert.deepEqual(contributeTurn([module], t), { afterMain: [], afterHistory: ['写下的'] });
+        assert.deepEqual(calls, ['assess', 'contribute']);
+    });
+    test('有异步的 assess 时返回 promise', async () => {
+        const t: Turn = { ...turn, facts: {} };
+        const result = assessTurn([{ id: 'a', assess: async x => { x.facts.baseIntent = '晚到'; } }], t);
+        assert.ok(result instanceof Promise);
+        await result;
+        assert.equal(t.facts.baseIntent, '晚到');
+    });
+});
+
+describe('被打断模块（ADR 0115 / 0263）', () => {
+    const at = new Date('2026-11-22T13:00:00.000Z');
+    const world = { events: [{ id: 'e1', text: '室友喊她去拿外卖', at: new Date('2026-11-22T12:58:00.000Z') }] } as never;
+    const history = [
+        { role: 'user' as const, content: '在干嘛', time: '2026-11-22T12:56:00.000Z' },
+        { role: 'assistant' as const, content: '刚吃完', time: '2026-11-22T12:56:30.000Z' },
+    ];
+    const live = (content: string): Turn => ({ ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: [...history, { role: 'user', content, time: '2026-11-22T12:59:50.000Z' }], facts: { world } });
+    test('assess 写进 facts.interruption 并记日志，contribute 放进 interrupt 槽；让路的轮次不写', () => {
+        const logs: string[] = [];
+        const module = interruptionsModule(line => logs.push(line));
+        // 按他最后一句取哈希，约六成的轮次才打断：挑几句里第一句会打断的
+        const hit = ['你呢', '然后呢', '好吧', '哈哈', '在吗', '嗯嗯', '真的吗', '我也是'].map(live).find(t => { module.assess!(t); return t.facts.interruption; });
+        assert.ok(hit, '几句里至少有一句会被打断');
+        assert.equal(hit.facts.interruption!.text, '室友喊她去拿外卖');
+        assert.equal(hit.facts.interruption!.minutesAgo, 2);
+        const pieces = module.contribute!(hit) as Piece[];
+        assert.equal(pieces.length, 1);
+        assert.equal(pieces[0]!.slot, 'interrupt');
+        assert.ok(pieces[0]!.text.includes('室友喊她去拿外卖'));
+        assert.deepEqual(logs, ['[1] 被打断：聊着的时候她那边发生了一件小事（提示词里多一行；日志不记内容）']);
+        const sad: Turn = { ...hit, facts: { world, baseIntent: '[这一轮你想：先接住他此刻的情绪]' } };
+        module.assess!(sad);
+        assert.equal(sad.facts.interruption, undefined);
+        assert.deepEqual(module.contribute!(sad), []);
+        const noWorld: Turn = { ...hit, facts: {} };
+        module.assess!(noWorld);
+        assert.equal(noWorld.facts.interruption, undefined);
     });
 });

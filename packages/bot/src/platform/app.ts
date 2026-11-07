@@ -19,6 +19,7 @@ import { createExecutor, type ExecutorOptions } from '../executor/executor.ts';
 import { createInterpreter } from '../interpreter/interpreter.ts';
 import { jokesModule } from '../modules/jokes.ts';
 import { idiomsModule } from '../modules/idioms.ts';
+import { interruptionsModule } from '../modules/interruptions.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
 import { Identity, realGit } from '.././memory/identity.ts';
@@ -634,7 +635,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 recall: ({ event }) => legacy.receiveRecall(event),
                 friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
             },
-        }, ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : [])],
+        }, ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
+        // 被打断（ADR 0115）：只往提示词里放一行，不存状态
+        ...(config.interruptions ? [interruptionsModule(log)] : [])],
         exec,
     });
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
@@ -1090,7 +1093,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.relationship ? { relationship: true } : {}),
             ...(config.jealousy ? { jealousy: true } : {}),
             ...(config.curious ? { curious: true } : {}),
-            ...(config.interruptions ? { interruptions: true } : {}),
             // Author CLI can correct/delete between turns. Do not reuse a pre-edit RAM snapshot.
             ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => stopped ? [] : loadMemes(memesFile, log).entries } : {}),
             ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),

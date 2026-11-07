@@ -16,6 +16,7 @@ import type { ResponderDeps } from '../social/responder.ts';
 import type { CrisisHit } from '../emotion/crisis.ts';
 import type { Grievance } from '../emotion/grievance.ts';
 import type { Executor } from '../executor/executor.ts';
+import type { WorldNow } from '../world/world.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -45,6 +46,10 @@ export interface TurnFacts {
     grievance?: Grievance;
     /** 这一轮的意图行（照片 / 被打断改写之前的那一版）；只想一想时没有 */
     baseIntent?: string;
+    /** 她那边此刻（ADR 0021 世界账：猫、快递、钱、今天的小事……）；开了她自己的日子、卡上有世界才有 */
+    world?: WorldNow;
+    /** 被打断（ADR 0115，modules/interruptions.ts 写）：聊着的时候她那边刚发生的一件小事；旧逻辑读它决定这一轮不带意图 / 深思 / 形状 / 长短 */
+    interruption?: { text: string; minutesAgo: number };
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */
@@ -95,22 +100,32 @@ function sequence<T, R>(items: readonly T[], step: (item: T, acc: R) => Maybe<R>
     return acc;
 }
 
-/** 一轮回复的前两个阶段：所有模块先 assess、再 contribute，按槽位表拼成 afterMain / afterHistory */
-export function runTurn(modules: readonly Module[], turn: Turn): Maybe<{ afterMain: string[]; afterHistory: string[] }> {
-    const assess = (module: Module): Maybe<null> => {
+type Assembled = { afterMain: string[]; afterHistory: string[] };
+
+/** 第一个阶段：按顺序让每个模块往 turn.facts 写判断（都同步时同步返回） */
+export function assessTurn(modules: readonly Module[], turn: Turn): Maybe<void> {
+    const assessed = sequence<Module, null>(modules, module => {
         const done = module.assess?.(turn);
         return isThenable(done) ? Promise.resolve(done).then(() => null) : null;
-    };
-    const assessed = sequence(modules, assess, null);
-    const contribute = () => {
-        const collected = sequence<Module, Piece[]>(modules, (module, pieces) => {
-            const mine = module.contribute?.(turn);
-            if (isThenable(mine)) return Promise.resolve(mine).then(list => [...pieces, ...list]);
-            return mine ? [...pieces, ...mine] : pieces;
-        }, []);
-        return isThenable(collected) ? Promise.resolve(collected).then(assemblePrompt) : assemblePrompt(collected);
-    };
-    return isThenable(assessed) ? Promise.resolve(assessed).then(contribute) : contribute();
+    }, null);
+    return isThenable(assessed) ? Promise.resolve(assessed).then(() => undefined) : undefined;
+}
+
+/** 第二个阶段：收各模块的段落，按槽位表拼成 afterMain / afterHistory（不再 assess） */
+export function contributeTurn(modules: readonly Module[], turn: Turn): Maybe<Assembled> {
+    const collected = sequence<Module, Piece[]>(modules, (module, pieces) => {
+        const mine = module.contribute?.(turn);
+        if (isThenable(mine)) return Promise.resolve(mine).then(list => [...pieces, ...list]);
+        return mine ? [...pieces, ...mine] : pieces;
+    }, []);
+    return isThenable(collected) ? Promise.resolve(collected).then(assemblePrompt) : assemblePrompt(collected);
+}
+
+/** 一轮回复的前两个阶段连着做：所有模块先 assess、再 contribute。
+ * 旧逻辑要在两个阶段之间读模块写下的判断时，分开调 assessTurn / contributeTurn（contact.ts） */
+export function runTurn(modules: readonly Module[], turn: Turn): Maybe<Assembled> {
+    const assessed = assessTurn(modules, turn);
+    return isThenable(assessed) ? Promise.resolve(assessed).then(() => contributeTurn(modules, turn)) : contributeTurn(modules, turn);
 }
 
 /** 第三个阶段：草稿按模块顺序逐个 review */
