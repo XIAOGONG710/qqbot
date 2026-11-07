@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { createExecutor, type Action } from '../src/executor/executor.ts';
 import type { Transport } from '../src/platform/app.ts';
-import type { LlmOptions } from '../src/language/llm.ts';
+import type { AppConfig } from '../src/platform/config.ts';
 
-const LLM: LlmOptions = { baseUrl: 'http://127.0.0.1:9', model: 'chat', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, extraBody: {} };
+const LLM: AppConfig['llm'] = { baseUrl: 'http://127.0.0.1:9', model: 'chat', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: '', extraBody: {} };
 
 function fakeTransport(calls: string[]): Transport {
     return {
@@ -58,7 +58,7 @@ describe('执行器（ADR 0263）', () => {
         const exec = createExecutor({ transport: fakeTransport([]), generate: async (...args) => { got.push(args); return '好'; } });
         assert.equal(await exec.llm({ purpose: 'background', config: LLM, messages: [{ role: 'user', content: 'a' }] }, log), '好');
         const deep = { ...LLM, model: 'deep' };
-        await exec.llm({ purpose: 'chat', config: deep, deliberate: true, messages: [{ role: 'user', content: 'b' }] }, log);
+        await exec.llm({ purpose: 'chat', config: deep, use: deep, messages: [{ role: 'user', content: 'b' }] }, log);
         assert.deepEqual(got, [[[{ role: 'user', content: 'a' }], log, undefined], [[{ role: 'user', content: 'b' }], log, deep]]);
 
         const real: unknown[][] = [];
@@ -68,17 +68,16 @@ describe('执行器（ADR 0263）', () => {
         assert.deepEqual(real, [[LLM, [], { log, purpose: 'background', signal }]]);
     });
 
-    test('计时器：after 触发后自动去掉，cancel 去掉；时钟可换', async () => {
+    test('计时器：after 原样交给 setTimeout，every 登记、cancel 去掉；时钟可换', async () => {
         const exec = createExecutor({ transport: fakeTransport([]), now: () => 42 });
         assert.equal(exec.now(), 42);
         let fired = 0;
-        exec.after(0, () => { fired++; });
-        const never = exec.after(60_000, () => { fired += 10; });
-        const every = exec.every(60_000, () => { fired += 100; });
-        assert.equal(exec.timers, 3);
+        exec.after(() => { fired++; }, 0);
+        const never = exec.after(() => { fired += 10; }, 60_000);
+        const every = exec.every(() => { fired += 100; }, 60_000);
+        assert.equal(exec.timers, 1);
         await new Promise(r => setTimeout(r, 5));
         assert.equal(fired, 1);
-        assert.equal(exec.timers, 2);
         exec.cancel(never);
         exec.cancel(every);
         exec.cancel(undefined);

@@ -5,13 +5,14 @@
 // - QQ 动作同步调用底层 Transport，原样返回同一个 promise（不多套一层 then，免得改变微任务顺序）；底层同步抛错也同步抛出。
 // - 模型调用：有测试替身（AppOptions.pipeline.generate）时按原来的参数调替身，否则调 chatCompletion。
 // - 计时器：调用时取全局的 setTimeout / setInterval（假时钟替换全局后同样生效），原样返回句柄。
-// 正在进行的动作和活着的计时器都登记在这里，供以后的统一停止（ADR 0263 第 4 节）使用；这一步还不改变 App 的停止流程。
+// 正在进行的动作和周期计时器都登记在这里，供以后的统一停止（ADR 0263 第 4 节）使用；这一步还不改变 App 的停止流程。
 
 import { chatCompletion, type LlmOptions } from '../language/llm.ts';
 import type { ModelPurpose } from '../language/model-guard.ts';
 import type { OpenAIMessage } from '../language/prompt.ts';
 import type { Log } from '../platform/log.ts';
 import type { Transport } from '../platform/app.ts';
+import type { AppConfig } from '../platform/config.ts';
 
 /** QQ（NapCat / OneBot）这一侧能做的事：Transport 上的方法名 */
 export type QqMethod = keyof Transport;
@@ -25,15 +26,15 @@ export interface LlmAction {
     purpose: ModelPurpose;
     config: LlmOptions;
     messages: OpenAIMessage[];
-    /** 这一轮换了模型（深思，ADR 0151）：测试替身会收到这份配置，和原来 generate 的第三个参数一致 */
-    deliberate?: boolean;
+    /** 这一轮换了模型（深思，ADR 0151）：换成的那份配置；测试替身收到它，和原来 generate 的第三个参数一致 */
+    use?: AppConfig['llm'];
     signal?: AbortSignal;
 }
 
 export type Action = QqAction | LlmAction;
 
 /** 测试替身：换掉真的模型调用（同 ContactPipelineOptions.generate 的签名） */
-export type Generate = (messages: OpenAIMessage[], log: Log, use?: LlmOptions) => Promise<string>;
+export type Generate = (messages: OpenAIMessage[], log: Log, use?: AppConfig['llm']) => Promise<string>;
 
 export interface ExecutorOptions {
     transport: Transport;
@@ -58,12 +59,13 @@ export interface Executor {
     /** 调模型 */
     llm(action: Omit<LlmAction, 'kind'>, log: Log): Promise<string>;
     now(): number;
-    after(ms: number, fn: () => void): Timer;
-    every(ms: number, fn: () => void): Timer;
+    /** 参数顺序同 setTimeout / setInterval，便于逐处替换 */
+    after(fn: () => void, ms?: number): Timer;
+    every(fn: () => void, ms?: number): Timer;
     cancel(timer: Timer | undefined): void;
     /** 正在进行的动作数 */
     readonly inFlight: number;
-    /** 活着的计时器数（每次触发的 after 会自动去掉） */
+    /** 活着的周期计时器数（every 登记、cancel 去掉；一次性的 after 不登记，统一停止见 ADR 0263 第 4 节） */
     readonly timers: number;
 }
 
@@ -112,7 +114,7 @@ export function createExecutor(options: ExecutorOptions): Executor {
     function runLlm(action: LlmAction, log: Log): Promise<string> {
         look(action);
         const result = generate
-            ? generate(action.messages, log, action.deliberate ? action.config : undefined)
+            ? generate(action.messages, log, action.use)
             : complete(action.config, action.messages, { log, purpose: action.purpose, ...(action.signal ? { signal: action.signal } : {}) });
         return track(result);
     }
@@ -136,20 +138,18 @@ export function createExecutor(options: ExecutorOptions): Executor {
         qq: qq as unknown as Transport,
         llm: (action, log) => runLlm({ kind: 'llm', ...action }, log),
         now: () => now(),
-        after(ms, fn) {
-            const timer: Timer = setTimeout(() => { live.delete(timer); fn(); }, ms);
-            live.add(timer);
-            return timer;
-        },
-        every(ms, fn) {
+        // 一次性计时器原样交给 setTimeout（不包一层：已有测试按回调认计时器；触发后这里也无从得知，登记了只会越积越多）
+        after: (fn, ms) => setTimeout(fn, ms),
+        every(fn, ms) {
             const timer: Timer = setInterval(fn, ms);
             live.add(timer);
             return timer;
         },
+        // 周期计时器用 clearInterval、其余用 clearTimeout：和原来逐处调用的一致（已有测试换掉全局的 clearInterval 核对）
         cancel(timer) {
             if (timer === undefined) return;
-            live.delete(timer);
-            clearTimeout(timer);
+            if (live.delete(timer)) clearInterval(timer);
+            else clearTimeout(timer);
         },
         get inFlight() { return inFlight; },
         get timers() { return live.size; },
