@@ -22,6 +22,7 @@ import { voiceAllowed, voiceModule } from '../src/modules/voice.ts';
 import { shellModule } from '../src/modules/shell.ts';
 import { learningQuestionModule } from '../src/modules/learning-question.ts';
 import { WORK_JUDGE_NOTE, WORK_MODE_NOTE, WORK_REQUEST_NOTE, workModeModule } from '../src/modules/work-mode.ts';
+import { SELF_MEMORY_NOTE, selfMemoryModule } from '../src/modules/self-memory.ts';
 import { SHELL_INTENT } from '../src/language/intent.ts';
 import { VOICE_HINT, voiceRoll, VOICE_HINT_RATE } from '../src/language/speaking.ts';
 import { UNSURE_LINE } from '../src/language/asks.ts';
@@ -637,5 +638,30 @@ describe('工作模式模块（DSH 10-29 / 10-30，ADR 0336）', () => {
         assert.deepEqual(module.contribute!(boyfriend), [{ slot: 'workJudge', text: WORK_JUDGE_NOTE }]);
         modes.set(1, 'work');
         assert.deepEqual(module.contribute!(turn), []);
+    });
+});
+
+describe('她自己决定记不记模块（DSH 10-30 / 10-31，ADR 0336）', () => {
+    const at = new Date('2026-11-29T13:00:00+08:00');
+    const boyfriend = (history: Turn['history'], extra: Partial<Turn> = {}): Turn => ({ ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history, ...extra });
+    const said = (content: string) => ({ role: 'user' as const, content, time: at.toISOString() });
+
+    test('记忆那一行各档位每一轮都放；理解偏过按他最后一句查、留痕现读，只给男朋友档、主动找他时不放', () => {
+        const asked: string[] = [];
+        const module = selfMemoryModule({ understanding: words => { asked.push(words); return words.includes('老板') ? '[理解偏过]' : undefined; }, traces: () => '[他最近的事]' });
+        const slots = (t: Turn) => (module.contribute!(t) as Piece[]).map(piece => piece.slot);
+        assert.deepEqual(module.contribute!(boyfriend([said('早的'), said('  那家公司老板  ')])), [
+            { slot: 'understanding', text: '[理解偏过]' }, { slot: 'traces', text: '[他最近的事]' }, { slot: 'selfMemory', text: SELF_MEMORY_NOTE },
+        ]);
+        assert.deepEqual(asked, ['那家公司老板']);
+        assert.deepEqual(slots(boyfriend([said('今天下雨')])), ['traces', 'selfMemory']);
+        assert.deepEqual(slots(boyfriend([said('那家公司老板')], { initiate: { note: '', topic: '' } })), ['selfMemory']);
+        assert.deepEqual(slots({ ...boyfriend([said('那家公司老板')]), contact: { qq: 2, name: '小周', tier: 'classmate' } }), ['selfMemory']);
+        // 他还没说过话：不查理解偏过
+        asked.length = 0;
+        assert.deepEqual(slots(boyfriend([])), ['traces', 'selfMemory']);
+        assert.deepEqual(asked, []);
+        // 危机、只想一想照样放
+        assert.deepEqual(slots(boyfriend([said('那家公司老板')], { thinking: true, facts: { crisis: { level: 'acute' } as never } })), ['understanding', 'traces', 'selfMemory']);
     });
 });

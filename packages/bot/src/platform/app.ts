@@ -28,6 +28,7 @@ import { voiceModule } from '../modules/voice.ts';
 import { shellModule } from '../modules/shell.ts';
 import { learningQuestionModule } from '../modules/learning-question.ts';
 import { workModeModule } from '../modules/work-mode.ts';
+import { selfMemoryModule } from '../modules/self-memory.ts';
 import { idiomsModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
@@ -942,6 +943,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 她可以在这台电脑上跑命令（DSH 10-30）：上一轮的命令结果（读了就清掉）和「可以跑命令」那一行；只给男朋友档
         // 她学的时候没想通的地方（DSH 10-31）：两天内存下的那个问题，想问就问他；只给男朋友档，危机、只想一想时不放
         // 工作模式的三行（DSH 10-29 / 10-30）：按他现在的状态放其中一行；只给男朋友档
+        // 她自己决定记不记（selfDirectedMemory，DSH 10-30 / 10-31）：「记忆由你自己决定」、理解偏过、他最近的事
+        ...(config.selfDirectedMemory ? [selfMemoryModule({ understanding: hisWords => understandingLine(config.dataDir, hisWords), traces: () => tracesLine(config.dataDir) })] : []),
         workModeModule(contact => readWorkMode(config.dataDir, contact.qq)),
         learningQuestionModule(() => questionLine(loadQuestion(config.dataDir), clockNow().getTime())),
         shellModule({
@@ -1975,7 +1978,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                     },
                 } : {}),
             } : {}),
-            ...(config.selfDirectedMemory ? { selfMemory: true } : {}),
             // 他的消息没有马上回的每一个原因逐条记账（ADR 0173）：只是旁观，记不进去也不影响回复
             ...(config.silenceNotice ? { onSilence: (info: SilenceInfo) => { try { recordSilence(config.dataDir, contact.qq, noteFromInfo(info, clockNow().getTime())); } catch (error) { log(`没回的原因记不进账（${error instanceof Error ? error.message : String(error)}）`); } } } : {}),
             llm: config.llm,
@@ -2037,9 +2039,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 她自己决定今天想做什么（ADR 0182）：和「在读的书」一起当额外的空闲活动，每次现取
             ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
             // 她理解人的话（10-30）：他这句话和以前被纠正过的事撞上时提醒她
-            ...(config.selfDirectedMemory && contact.tier === 'boyfriend' ? { understanding: (hisWords: string) => understandingLine(config.dataDir, hisWords) } : {}),
             // 他说过、做过、答应过的事（10-31 留痕）：最近的几条递给她
-            ...(config.selfDirectedMemory && contact.tier === 'boyfriend' ? { traces: () => tracesLine(config.dataDir) } : {}),
             // 他刚发过「/亲热」（ADR 0170）：接下来十条回复黏一点，每生成一条减一
             ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取

@@ -110,8 +110,6 @@ export function personaFacts(description: string | undefined): string {
     return parts.filter(part => PERSONA_FACT_SECTIONS.some(head => part.startsWith(`【${head}】`))).join('');
 }
 
-/** 她自己决定记不记：只在这条真的值得长期记住时，回复最后另起一行写标记；标记不会发出去 */
-const SELF_MEMORY_NOTE = '记忆由你自己决定：只有这条真的值得长期记住（约定、他的重要事、你自己想记住的），才在回复最后另起一行写 `<<记住：一句话>>`；想写今天的事就写 `<<日记：一段>>`；有不想让他知道的真实想法，写 `<<私密：…>>`（不会发出去，只记在私密日记）。不想答应的事可以拒绝；拒绝后把真实想法写进 `<<私密：…>>`。想不起某件事时，别硬编，写 `<<查：关键词>>`，系统会把你想起的东西给你再回。这些标记不会发出去。不重要就不写，别每条都记。';
 
 /** 召回整理出来的一段有几条（第一行是标题） */
 const countLines = (text: string) => text.split('\n').length - 1;
@@ -262,8 +260,6 @@ export interface ContactPipelineOptions {
     ask?: () => string | undefined;
     /** 首轮铺底（2026-10-29）：他走了很久回来，第一轮带上她自己写的那段日记；挂着 lifeInPrompt，不是新开关 */
     wakeNote?: () => string | undefined;
-    /** 记忆由她自己决定：提示词里教她写 <<记住：…>> / <<日记：…>> 标记 */
-    selfMemory?: boolean;
     /** 她想查才查（<<查：…>>）：拿到想起来的记忆，再让她重写一次 */
     pullRecall?: (query: string) => Promise<string | undefined>;
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
@@ -340,9 +336,6 @@ export interface ContactPipelineOptions {
      * 她理解人的话（10-30 用户：让她自己学习去理解人说的话）：他这句话和以前被纠正过的事撞上时，
      * 返回一行「上次你这么理解，他纠正过」；没有就不加
      */
-    understanding?: (hisWords: string) => string | undefined;
-    /** 他最近说过、做过、答应过的事（10-31 留痕）：聊天时递给她，提不提她自己定 */
-    traces?: () => string | undefined;
     /** 他刚发过「/亲热」（ADR 0170）：接下来几条回复黏一点；每取一次少一条，主动找他、危机回合不取 */
     intimacyLine?: () => string | undefined;
     /** 心境（ADR 0102，配置 herFeelings）：她那边的事、他的态度、作者写下的事，在她心里留下带来由的感受（开心 / 难过 / 担心……），会慢慢散；只给男朋友档，危机回合不放 */
@@ -1028,8 +1021,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 只留卡里那段「被问是不是 AI」的说明（承认是程序是底线，不能跟设定一起清掉）；open 卡本来没有这段
             const bare = INJECT_PERSONA ? character : { ...character, description: personaFacts(character.description), personality: '', scenario: '', mesExample: '' };
             const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...bare, postHistoryInstructions: '' }, worldInfo } : { character: bare, worldInfo };
-            // 他最后说的是哪句（那一行）是解释器的模块（modules/reply-basics.ts），经 turnModules 放进 lastUser 槽；这里的原文只给「理解偏过」那一行用
-            const lastUserText = [...chat].reverse().find(message => message.role === 'user')?.content?.trim();
             // 按槽位表拼（ADR 0336 第 4 步）：迁移前这里手写的那一串，现在是「旧逻辑」这个大模块的段落，顺序由 interpreter/slots.ts 定；
             // 以后迁出去的模块经 options.turnModules 加进来。原来按真假判断的照旧按真假，原来无条件放的照旧无条件放
             const when = (slot: Slot, text: string | undefined | false | null): Piece[] => (text ? [{ slot, text }] : []);
@@ -1087,12 +1078,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('sticker', stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined),
                 ...when('photo', photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)! : undefined),
                 ...when('intent', intentLine),
-                // 这件事她以前理解偏过（10-30）：他这句话和以前被纠正过的事撞上时提醒她
-                ...(!initiate && lastUserText && options.understanding?.(lastUserText) ? [{ slot: 'understanding' as const, text: options.understanding(lastUserText)! }] : []),
-                // 他说过、做过、答应过的事（10-31 留痕）：最近的几条，聊到相关的再说，不硬塞
-                ...(!initiate && options.traces?.() ? [{ slot: 'traces' as const, text: options.traces()! }] : []),
+                // 理解偏过、他最近的事（DSH 10-30 / 10-31）和「记忆由你自己决定」是解释器的模块（modules/self-memory.ts）
                 // 人称、正经问就先直接答、别琢磨怎么接（DSH 10-30 / 10-31）是解释器的模块（modules/reply-basics.ts），经 turnModules 放进 person、directAnswer、noOverthink 槽
-                ...(options.selfMemory ? [{ slot: 'selfMemory' as const, text: SELF_MEMORY_NOTE }] : []),
                 ...(options.refusalLine?.() ? [{ slot: 'refusal' as const, text: options.refusalLine()! }] : []),
                 ...(options.ratingLine?.() ? [{ slot: 'rating' as const, text: options.ratingLine()! }] : []),
                 ...(options.lifeLine?.() ? [{ slot: 'life' as const, text: `[你现在的生活] ${options.lifeLine()!}` }] : []),
