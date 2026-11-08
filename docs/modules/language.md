@@ -68,6 +68,7 @@
 - `modules/reading.ts`
 - `modules/register.ts`
 - `modules/scenes.ts`
+- `modules/voice.ts`
 - `modules/playful.ts`
 - `st/`
 

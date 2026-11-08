@@ -24,6 +24,7 @@ import { asksModule } from '../modules/asks.ts';
 import { readingModule } from '../modules/reading.ts';
 import { registerModule } from '../modules/register.ts';
 import { scenesModule } from '../modules/scenes.ts';
+import { voiceModule } from '../modules/voice.ts';
 import { idiomsModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
@@ -933,6 +934,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         registerModule(log),
         // 场景应答（DSH 10-31）：他这句命中哄睡 / 报错 / 自我怀疑 / 暗号时放一句；只给男朋友档，危机时不放
         scenesModule(log),
+        // 她可以说出来（DSH 11-01）：大约六轮一次告诉她可以发语音；只给男朋友档，危机、只想一想、主动找他时不给
+        voiceModule(log),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
         ...(config.relationship ? [closenessModule(log)] : []),
         ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),

@@ -65,7 +65,6 @@ import { turnCut, type Summarizer, type TurnWindow } from '.././language/context
 import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
-import { voiceHint, voiceRoll } from '.././language/speaking.ts';
 import { SHELL_INTENT } from '.././language/intent.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
@@ -836,9 +835,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 他这句到底在说什么（2026-10-30）是解释器的模块（modules/reading.ts），经 turnModules 放进 reading 槽
             // 场景应答（2026-10-31：哄睡 / 报错 / 自我怀疑 / 暗号）是解释器的模块（modules/scenes.ts），经 turnModules 放进 scene 槽
             // 多问一句、先表态、拿不准就直说（2026-10-31）是解释器的模块（modules/asks.ts），经 turnModules 放进 askHint、opinion、unsure 槽
-            // 她可以说出来（2026-11-01）：偶尔告诉她「想让他听见就用语音」
-            const voiceNow = contact.tier === 'boyfriend' && !crisisNow && !thinking && !initiate ? voiceHint(voiceRoll(chat)) : undefined;
-            if (voiceNow) log('说话：这一轮告诉她可以发语音');
+            // 她可以说出来（2026-11-01：偶尔告诉她「想让他听见就用语音」）是解释器的模块（modules/voice.ts），经 turnModules 放进 voice 槽
             const questionNow = contact.tier === 'boyfriend' && !crisisNow && !thinking ? options.learningQuestion?.() : undefined;
             const shellNow = contact.tier === 'boyfriend' && !crisisNow ? options.shellNote?.() : undefined;
             const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
@@ -1096,7 +1093,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('exemplar', exemplarNow),
                 ...when('selfThread', selfThreadNow),
                 ...when('shell', shellNow),
-                ...when('voice', voiceNow),
                 ...when('question', questionNow),
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
                 // 她独处想事情（think）那一轮不给：想事情不走发送，命令不会跑，只会被当成一个念头存下来（11-02 探针里有一个念头整句是 <<执行：Get-Date …>>）

@@ -18,6 +18,8 @@ import { asksAllowed, asksModule } from '../src/modules/asks.ts';
 import { readingAllowed, readingModule } from '../src/modules/reading.ts';
 import { registerAllowed, registerModule } from '../src/modules/register.ts';
 import { scenesAllowed, scenesModule } from '../src/modules/scenes.ts';
+import { voiceAllowed, voiceModule } from '../src/modules/voice.ts';
+import { VOICE_HINT, voiceRoll, VOICE_HINT_RATE } from '../src/language/speaking.ts';
 import { UNSURE_LINE } from '../src/language/asks.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
@@ -535,5 +537,40 @@ describe('场景应答模块（DSH 10-31，ADR 0336）', () => {
         assert.deepEqual(module.contribute!(boyfriend([said('zdjd'), said('今天好冷')])), []);
         assert.deepEqual(module.contribute!(boyfriend([said('ok')])), []);
         assert.deepEqual(module.contribute!(boyfriend([])), []);
+    });
+});
+
+describe('语音提示模块（DSH 11-01，ADR 0336）', () => {
+    const at = new Date('2026-11-29T13:00:00+08:00');
+    const boyfriend = (history: Turn['history'], extra: Partial<Turn> = {}): Turn => ({ ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history, ...extra });
+    /** 找一句掷出来给 / 不给的话（骰子按他最后一条的时间和内容定，同一句每次一样） */
+    const lineWhere = (give: boolean) => {
+        for (let i = 0; i < 500; i++) {
+            const history = [{ role: 'user' as const, content: `第${i}句`, time: at.toISOString() }];
+            if ((voiceRoll(history) < VOICE_HINT_RATE) === give) return history;
+        }
+        throw new Error('没找到');
+    };
+
+    test('只有男朋友档；危机、只想一想、主动找他时不给；小别扭照样给', () => {
+        const history = lineWhere(true);
+        assert.equal(voiceAllowed(boyfriend(history)), true);
+        assert.equal(voiceAllowed({ ...boyfriend(history), contact: { qq: 1, name: '阿明', tier: 'classmate' } }), false);
+        assert.equal(voiceAllowed(boyfriend(history, { facts: { crisis: { level: 'acute' } as never } })), false);
+        assert.equal(voiceAllowed(boyfriend(history, { thinking: true })), false);
+        assert.equal(voiceAllowed(boyfriend(history, { initiate: { note: '', topic: '' } })), false);
+        assert.equal(voiceAllowed(boyfriend(history, { facts: { grievance: {} as never } })), true);
+    });
+
+    test('骰子掷到才放进 voice 槽并记日志；同一句每次一样；他没说过话时不给', () => {
+        const logs: string[] = [];
+        const module = voiceModule(line => logs.push(line));
+        const give = lineWhere(true);
+        assert.deepEqual(module.contribute!(boyfriend(give)), [{ slot: 'voice', text: VOICE_HINT }]);
+        assert.deepEqual(module.contribute!(boyfriend(give)), [{ slot: 'voice', text: VOICE_HINT }]);
+        assert.deepEqual(logs, ['[1] 说话：这一轮告诉她可以发语音', '[1] 说话：这一轮告诉她可以发语音']);
+        assert.deepEqual(module.contribute!(boyfriend(lineWhere(false))), []);
+        assert.deepEqual(module.contribute!(boyfriend([])), []);
+        assert.deepEqual(module.contribute!(boyfriend(give, { initiate: { note: '', topic: '' } })), []);
     });
 });
