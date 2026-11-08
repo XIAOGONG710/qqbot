@@ -15,6 +15,7 @@ import { watchedAllowed, watchedModule } from '../src/modules/watched.ts';
 import { intentModule, intentOf } from '../src/modules/intent.ts';
 import { DIRECT_ANSWER_NOTE, lastUserLine, NO_OVERTHINK_NOTE, PERSON_NOTE, replyBasicsModule } from '../src/modules/reply-basics.ts';
 import { asksAllowed, asksModule } from '../src/modules/asks.ts';
+import { readingAllowed, readingModule } from '../src/modules/reading.ts';
 import { UNSURE_LINE } from '../src/language/asks.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
@@ -444,5 +445,33 @@ describe('她自己的问题和判断模块（DSH 10-31，ADR 0336）', () => {
         assert.deepEqual(module.contribute!({ ...boyfriend('嗯嗯'), contact: { qq: 1, name: '阿明', tier: 'classmate' } }), []);
         // 他还没说过话：只剩拿不准那一行
         assert.deepEqual(slots({ ...boyfriend(''), history: [] }), ['unsure']);
+    });
+});
+
+describe('先读懂他这一轮模块（DSH 10-30，ADR 0336）', () => {
+    const at = new Date('2026-11-29T13:00:00+08:00');
+    const boyfriend = (history: Turn['history'], extra: Partial<Turn> = {}): Turn => ({ ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history, ...extra });
+    const said = (content: string) => ({ role: 'user' as const, content, time: at.toISOString() });
+
+    test('只有男朋友档；只想一想、危机时不放；主动找他、小别扭照样放', () => {
+        assert.equal(readingAllowed(boyfriend([said('在吗')])), true);
+        assert.equal(readingAllowed({ ...boyfriend([said('在吗')]), contact: { qq: 1, name: '阿明', tier: 'classmate' } }), false);
+        assert.equal(readingAllowed(boyfriend([said('在吗')], { thinking: true })), false);
+        assert.equal(readingAllowed(boyfriend([said('在吗')], { facts: { crisis: { level: 'acute' } as never } })), false);
+        assert.equal(readingAllowed(boyfriend([said('在吗')], { initiate: { note: '', topic: '' }, facts: { grievance: {} as never } })), true);
+    });
+
+    test('放进 reading 槽并记日志；连着发的按一句；他没说过话时不放', () => {
+        const logs: string[] = [];
+        const module = readingModule(line => logs.push(line));
+        const pieces = module.contribute!(boyfriend([said('今天'), said('好累啊')])) as Piece[];
+        assert.equal(pieces.length, 1);
+        assert.equal(pieces[0]!.slot, 'reading');
+        assert.match(pieces[0]!.text, /^\[他这一轮说的是：「今天/);
+        assert.match(pieces[0]!.text, /他分 2 条发的/);
+        assert.deepEqual(logs, ['[1] 他这句：这一轮先把他的话读明白再回（日志不记内容）']);
+        assert.deepEqual(module.contribute!(boyfriend([])), []);
+        assert.deepEqual(module.contribute!(boyfriend([said('在吗')], { thinking: true })), []);
+        assert.equal(logs.length, 1);
     });
 });

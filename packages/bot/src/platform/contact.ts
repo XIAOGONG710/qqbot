@@ -66,7 +66,6 @@ import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
 import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
-import { readTurn, readingLine } from '.././language/reading.ts';
 import { readScene } from '.././language/scenes.ts';
 import { voiceHint, voiceRoll } from '.././language/speaking.ts';
 import { SHELL_INTENT } from '.././language/intent.ts';
@@ -837,9 +836,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 })() : undefined;
             if (exemplarNow) log('真人例子：这一轮放了几条真人的回法（日志不记内容）');
             // 他是在跟她说话，还是在使唤工具（2026-10-30）：只递观察，怎么回她自己定；情绪回合、危机不放
-            // 他这句到底在说什么（2026-10-30）：连着发的算一句、指代摆出来，先想清楚再回
-            const readingNow = contact.tier === 'boyfriend' && !thinking && !crisisNow ? readingLine(readTurn(chat)) : undefined;
-            if (readingNow) log('他这句：这一轮先把他的话读明白再回（日志不记内容）');
+            // 他这句到底在说什么（2026-10-30）是解释器的模块（modules/reading.ts），经 turnModules 放进 reading 槽
             // 场景应答（2026-10-31）：哄睡 / 报错 / 自我怀疑 / 暗号，命中才加一句
             const hisLast = chat.filter(message => message.role === 'user').slice(-1)[0]?.content ?? '';
             // 多问一句、先表态、拿不准就直说（2026-10-31）是解释器的模块（modules/asks.ts），经 turnModules 放进 askHint、opinion、unsure 槽
@@ -1121,7 +1118,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
                 // 她独处想事情（think）那一轮不给：想事情不走发送，命令不会跑，只会被当成一个念头存下来（11-02 探针里有一个念头整句是 <<执行：Get-Date …>>）
                 ...(contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievanceActive ? [{ slot: 'shellIntent' as const, text: SHELL_INTENT }] : []),
-                ...when('reading', readingNow),
                 ...when('speechNote', speechNoteNow),
                 ...when('review', reviewNow),
                 ...when('insight', insightNow),

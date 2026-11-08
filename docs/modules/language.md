@@ -65,6 +65,7 @@
 - `modules/watched.ts`
 - `modules/reply-basics.ts`
 - `modules/asks.ts`
+- `modules/reading.ts`
 - `modules/playful.ts`
 - `st/`
 

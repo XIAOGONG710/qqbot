@@ -21,6 +21,7 @@ import { createInterpreter } from '../interpreter/interpreter.ts';
 import { jokesModule } from '../modules/jokes.ts';
 import { replyBasicsModule } from '../modules/reply-basics.ts';
 import { asksModule } from '../modules/asks.ts';
+import { readingModule } from '../modules/reading.ts';
 import { idiomsModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
@@ -924,6 +925,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         replyBasicsModule(),
         // 多问一句、先表态、拿不准就直说（DSH 10-31）：只给男朋友档，危机时不放；不存状态
         asksModule(log),
+        // 先读懂他这一轮在说什么（DSH 10-30）：只给男朋友档，只想一想、危机时不放；不存状态
+        readingModule(log),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
         ...(config.relationship ? [closenessModule(log)] : []),
         ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
