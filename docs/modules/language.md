@@ -66,6 +66,7 @@
 - `modules/reply-basics.ts`
 - `modules/asks.ts`
 - `modules/reading.ts`
+- `modules/register.ts`
 - `modules/playful.ts`
 - `st/`
 

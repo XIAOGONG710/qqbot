@@ -65,7 +65,6 @@ import { turnCut, type Summarizer, type TurnWindow } from '.././language/context
 import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
-import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
 import { readScene } from '.././language/scenes.ts';
 import { voiceHint, voiceRoll } from '.././language/speaking.ts';
 import { SHELL_INTENT } from '.././language/intent.ts';
@@ -835,7 +834,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     return exemplarLine(pickExemplars(options.exemplars!, last.content, { k: 4 }));
                 })() : undefined;
             if (exemplarNow) log('真人例子：这一轮放了几条真人的回法（日志不记内容）');
-            // 他是在跟她说话，还是在使唤工具（2026-10-30）：只递观察，怎么回她自己定；情绪回合、危机不放
             // 他这句到底在说什么（2026-10-30）是解释器的模块（modules/reading.ts），经 turnModules 放进 reading 槽
             // 场景应答（2026-10-31）：哄睡 / 报错 / 自我怀疑 / 暗号，命中才加一句
             const hisLast = chat.filter(message => message.role === 'user').slice(-1)[0]?.content ?? '';
@@ -849,16 +847,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const shellNow = contact.tier === 'boyfriend' && !crisisNow ? options.shellNote?.() : undefined;
             const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
             const selfThreadNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? options.selfThread?.() : undefined;
-            const registerNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow
-                ? (() => {
-                    const read = readRegister(chat);
-                    if (read.cues.length) log(`他的口气：${read.kind}（${read.cues.join('；')}）`);
-                    // 连着被当工具使唤：给她一句「你没必要每次都陪着」，态度由她定
-                    const temper = temperLine(registerSummary(chat));
-                    if (temper) log('他的口气：最近使唤得比说话多');
-                    const lines = [registerLine(read), identityLine(read), ackGuardLine(chat), temper].filter(Boolean);
-                    return lines.length ? lines.join(String.fromCharCode(10)) : undefined;
-                })() : undefined;
+            // 他的口气（2026-10-30：说话还是使唤、当程序说话、很元的问题、使唤得比说话多）是解释器的模块（modules/register.ts），经 turnModules 放进 register 槽
             // 她自己总结的说话习惯（ADR 0193）：口气上的参考，危机 / 只想一想 / 小别扭的轮次不放；主动开口也放（习惯不看有没有他的上一句）
             const speechNoteNow = options.speechNotes && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
                 ? speechNotesLine(options.speechNotes(), chat.findLast(message => message.role === 'user')?.content) : undefined;
@@ -1109,7 +1098,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
                 ...when('partnerBack', partnerBack),
                 ...when('exemplar', exemplarNow),
-                ...when('register', registerNow),
                 ...when('selfThread', selfThreadNow),
                 ...when('shell', shellNow),
                 ...when('scene', sceneNow),

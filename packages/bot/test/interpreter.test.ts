@@ -16,6 +16,7 @@ import { intentModule, intentOf } from '../src/modules/intent.ts';
 import { DIRECT_ANSWER_NOTE, lastUserLine, NO_OVERTHINK_NOTE, PERSON_NOTE, replyBasicsModule } from '../src/modules/reply-basics.ts';
 import { asksAllowed, asksModule } from '../src/modules/asks.ts';
 import { readingAllowed, readingModule } from '../src/modules/reading.ts';
+import { registerAllowed, registerModule } from '../src/modules/register.ts';
 import { UNSURE_LINE } from '../src/language/asks.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
@@ -473,5 +474,38 @@ describe('先读懂他这一轮模块（DSH 10-30，ADR 0336）', () => {
         assert.deepEqual(module.contribute!(boyfriend([])), []);
         assert.deepEqual(module.contribute!(boyfriend([said('在吗')], { thinking: true })), []);
         assert.equal(logs.length, 1);
+    });
+});
+
+describe('他的口气模块（DSH 10-30，ADR 0336）', () => {
+    const at = new Date('2026-11-29T13:00:00+08:00');
+    const said = (content: string) => ({ role: 'user' as const, content, time: at.toISOString() });
+    const boyfriend = (history: Turn['history'], extra: Partial<Turn> = {}): Turn => ({ ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history, ...extra });
+
+    test('只有男朋友档；主动找他、只想一想、危机时不放；小别扭照样放', () => {
+        assert.equal(registerAllowed(boyfriend([said('想你了')])), true);
+        assert.equal(registerAllowed({ ...boyfriend([said('想你了')]), contact: { qq: 1, name: '阿明', tier: 'classmate' } }), false);
+        assert.equal(registerAllowed(boyfriend([said('想你了')], { initiate: { note: '', topic: '' } })), false);
+        assert.equal(registerAllowed(boyfriend([said('想你了')], { thinking: true })), false);
+        assert.equal(registerAllowed(boyfriend([said('想你了')], { facts: { crisis: { level: 'acute' } as never } })), false);
+        assert.equal(registerAllowed(boyfriend([said('想你了')], { facts: { grievance: {} as never } })), true);
+    });
+
+    test('几行拼成 register 槽的一段并记日志；读不出口气时不放', () => {
+        const logs: string[] = [];
+        const module = registerModule(line => logs.push(line));
+        const person = module.contribute!(boyfriend([said('想你了')])) as Piece[];
+        assert.deepEqual(person, [{ slot: 'register', text: '[这几句是在跟你说话，不是在派活。照你平时的样子接]' }]);
+        assert.deepEqual(logs, ['[1] 他的口气：person（像对人：想你）']);
+        const tool = module.contribute!(boyfriend([said('帮我查一下'), said('再给我写个'), said('翻译一下这句'), said('你是不是程序，上下文多长')])) as Piece[];
+        assert.equal(tool.length, 1);
+        const lines = tool[0]!.text.split('\n');
+        assert.match(lines[0]!, /像在使唤一个能干活的工具/);
+        assert.match(lines[1]!, /跟一个「程序」说话/);
+        assert.match(lines[2]!, /问的是很元的东西/);
+        assert.match(lines[3]!, /最近他 4 次是在使唤你、0 次是在跟你说话/);
+        assert.equal(logs.at(-1), '[1] 他的口气：最近使唤得比说话多');
+        assert.deepEqual(module.contribute!(boyfriend([said('今天天气不错')])), []);
+        assert.deepEqual(module.contribute!(boyfriend([said('想你了')], { thinking: true })), []);
     });
 });
