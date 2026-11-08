@@ -65,7 +65,6 @@ import { turnCut, type Summarizer, type TurnWindow } from '.././language/context
 import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
-import { SHELL_INTENT } from '.././language/intent.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
 import { insightsLine, type Insight } from '.././life/diary-insights.ts';
@@ -272,8 +271,6 @@ export interface ContactPipelineOptions {
     shapeAll?: boolean;
     /** 她自己最近过的日子（2026-10-30 她说「没有自己的下文」）：从她写的日记里摘一两句，用不用她定 */
     selfThread?: () => string | undefined;
-    /** 她上一轮在这台电脑上跑的命令和结果（2026-10-30 用户：把最高权限给她） */
-    shellNote?: () => string | undefined;
     /** 她学说话/翻日记时没想通的问题（2026-10-31）：递给她，让他来答 */
     learningQuestion?: () => string | undefined;
     /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
@@ -837,7 +834,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 多问一句、先表态、拿不准就直说（2026-10-31）是解释器的模块（modules/asks.ts），经 turnModules 放进 askHint、opinion、unsure 槽
             // 她可以说出来（2026-11-01：偶尔告诉她「想让他听见就用语音」）是解释器的模块（modules/voice.ts），经 turnModules 放进 voice 槽
             const questionNow = contact.tier === 'boyfriend' && !crisisNow && !thinking ? options.learningQuestion?.() : undefined;
-            const shellNow = contact.tier === 'boyfriend' && !crisisNow ? options.shellNote?.() : undefined;
+            // 命令结果和「可以跑命令」那一行（2026-10-30）是解释器的模块（modules/shell.ts），经 turnModules 放进 shell、shellIntent 槽
             const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
             const selfThreadNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? options.selfThread?.() : undefined;
             // 他的口气（2026-10-30：说话还是使唤、当程序说话、很元的问题、使唤得比说话多）是解释器的模块（modules/register.ts），经 turnModules 放进 register 槽
@@ -885,6 +882,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     ? '[这一轮你想：他明确要看现在的照片，但现在没有一张已经审核且与此刻匹配的；如实说这会儿发不了，别拿以前的图冒充“现在”，也别承诺马上补发]'
                     : interruption ? undefined : baseIntent;
             const grievanceActive = Boolean(grievance && intent === describeGrievance(grievance));
+            // 这一轮小别扭真的生效（意图就是小别扭那一句）：可以跑命令那一行（modules/shell.ts）读它
+            if (grievanceActive) turn.facts.grievanceActive = true;
             sulkNow = grievanceActive && grievance!.stage === 'sulk';
             if (grievanceActive) log(grievance!.cause === 'ignored'
                 ? '小别扭：她倾诉了几条他隔了很久才回（他回来后第一轮；日志不记内容）'
@@ -1092,11 +1091,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('partnerBack', partnerBack),
                 ...when('exemplar', exemplarNow),
                 ...when('selfThread', selfThreadNow),
-                ...when('shell', shellNow),
                 ...when('question', questionNow),
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
-                // 她独处想事情（think）那一轮不给：想事情不走发送，命令不会跑，只会被当成一个念头存下来（11-02 探针里有一个念头整句是 <<执行：Get-Date …>>）
-                ...(contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievanceActive ? [{ slot: 'shellIntent' as const, text: SHELL_INTENT }] : []),
                 ...when('speechNote', speechNoteNow),
                 ...when('review', reviewNow),
                 ...when('insight', insightNow),

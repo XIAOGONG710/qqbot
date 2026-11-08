@@ -19,6 +19,8 @@ import { readingAllowed, readingModule } from '../src/modules/reading.ts';
 import { registerAllowed, registerModule } from '../src/modules/register.ts';
 import { scenesAllowed, scenesModule } from '../src/modules/scenes.ts';
 import { voiceAllowed, voiceModule } from '../src/modules/voice.ts';
+import { shellModule } from '../src/modules/shell.ts';
+import { SHELL_INTENT } from '../src/language/intent.ts';
 import { VOICE_HINT, voiceRoll, VOICE_HINT_RATE } from '../src/language/speaking.ts';
 import { UNSURE_LINE } from '../src/language/asks.ts';
 
@@ -572,5 +574,34 @@ describe('语音提示模块（DSH 11-01，ADR 0336）', () => {
         assert.deepEqual(module.contribute!(boyfriend(lineWhere(false))), []);
         assert.deepEqual(module.contribute!(boyfriend([])), []);
         assert.deepEqual(module.contribute!(boyfriend(give, { initiate: { note: '', topic: '' } })), []);
+    });
+});
+
+describe('她可以跑命令模块（DSH 10-30，ADR 0336）', () => {
+    const at = new Date('2026-11-29T13:00:00+08:00');
+    const boyfriend = (extra: Partial<Turn> = {}): Turn => ({ ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: [], ...extra });
+
+    test('命令结果给她看一眼就清掉；「可以跑命令」那一行在只想一想、小别扭生效时不给', () => {
+        const notes = new Map([[1, '[你刚跑了 whoami：pc-user]']]);
+        const module = shellModule({ noteOf: contact => { const note = notes.get(contact.qq); notes.delete(contact.qq); return note; } });
+        assert.deepEqual(module.contribute!(boyfriend()), [{ slot: 'shell', text: '[你刚跑了 whoami：pc-user]' }, { slot: 'shellIntent', text: SHELL_INTENT }]);
+        assert.deepEqual(module.contribute!(boyfriend()), [{ slot: 'shellIntent', text: SHELL_INTENT }]);
+        notes.set(1, '[结果]');
+        assert.deepEqual(module.contribute!(boyfriend({ thinking: true })), [{ slot: 'shell', text: '[结果]' }]);
+        // 有小别扭但没生效（意图被照片等换掉了）照样给；生效时不给
+        assert.deepEqual(module.contribute!(boyfriend({ facts: { grievance: {} as never } })), [{ slot: 'shellIntent', text: SHELL_INTENT }]);
+        assert.deepEqual(module.contribute!(boyfriend({ facts: { grievance: {} as never, grievanceActive: true } })), []);
+        // 主动找他照样给
+        assert.deepEqual(module.contribute!(boyfriend({ initiate: { note: '', topic: '' } })), [{ slot: 'shellIntent', text: SHELL_INTENT }]);
+    });
+
+    test('只有男朋友档，危机时都不放（也不读命令结果，留到下一轮）', () => {
+        const notes = new Map([[1, '[结果]']]);
+        let reads = 0;
+        const module = shellModule({ noteOf: contact => { reads++; const note = notes.get(contact.qq); notes.delete(contact.qq); return note; } });
+        assert.deepEqual(module.contribute!({ ...boyfriend(), contact: { qq: 1, name: '阿明', tier: 'classmate' } }), []);
+        assert.deepEqual(module.contribute!(boyfriend({ facts: { crisis: { level: 'acute' } as never } })), []);
+        assert.equal(reads, 0);
+        assert.deepEqual(shellModule().contribute!(boyfriend()), [{ slot: 'shellIntent', text: SHELL_INTENT }]);
     });
 });

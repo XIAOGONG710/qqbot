@@ -69,6 +69,8 @@ export interface TurnFacts {
     together?: Together;
     /** 网络热梗（ADR 0129，modules/memes.ts 在 contribute 时写）：这一轮放进提示词的那一行；梗百科（旧逻辑）读它，不重复给同一个词 */
     meme?: string;
+    /** 这一轮小别扭真的生效（意图就是小别扭那一句；旧逻辑在照片 / 被打断改写意图之后写）：可以跑命令那一行（modules/shell.ts）读它 */
+    grievanceActive?: boolean;
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */

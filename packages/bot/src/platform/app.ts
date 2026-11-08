@@ -25,6 +25,7 @@ import { readingModule } from '../modules/reading.ts';
 import { registerModule } from '../modules/register.ts';
 import { scenesModule } from '../modules/scenes.ts';
 import { voiceModule } from '../modules/voice.ts';
+import { shellModule } from '../modules/shell.ts';
 import { idiomsModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
@@ -936,6 +937,14 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         scenesModule(log),
         // 她可以说出来（DSH 11-01）：大约六轮一次告诉她可以发语音；只给男朋友档，危机、只想一想、主动找他时不给
         voiceModule(log),
+        // 她可以在这台电脑上跑命令（DSH 10-30）：上一轮的命令结果（读了就清掉）和「可以跑命令」那一行；只给男朋友档
+        shellModule({
+            noteOf: contact => {
+                const note = shellNotes.get(contact.qq);
+                if (note) shellNotes.delete(contact.qq);
+                return note;
+            },
+        }),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
         ...(config.relationship ? [closenessModule(log)] : []),
         ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
@@ -1911,11 +1920,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 // 她有「自己的下文」吗（2026-10-30 她自己的诊断）：日记最后一段 + 她自己在做的事，用不用她定
                 dreams: () => ({ appraisals: dreamAppraisals(config.dataDir, clockNow().getTime()), line: dreamNoteLine(latestDream(config.dataDir, clockNow().getTime())) }),
                 learningQuestion: () => questionLine(loadQuestion(config.dataDir), clockNow().getTime()),
-                shellNote: (): string | undefined => {
-                    const note = shellNotes.get(contact.qq);
-                    if (note) shellNotes.delete(contact.qq);
-                    return note;
-                },
                 // 他问到过去的某一天时，她那天自己写的日记（ADR 0217，配置 diaryLookback）：JOURNAL.md 那天的段落 + 她在聊天里写的 <<日记>>
                 ...(config.diaryLookback && contact.tier === 'boyfriend' ? {
                     diaryOn: (date: string): string | undefined => {

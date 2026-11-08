@@ -18,6 +18,7 @@ import { readingModule } from '../modules/reading.ts';
 import { registerModule } from '../modules/register.ts';
 import { scenesModule } from '../modules/scenes.ts';
 import { voiceModule } from '../modules/voice.ts';
+import { shellModule } from '../modules/shell.ts';
 import { intentModule } from '../modules/intent.ts';
 import { memesModule } from '../modules/memes.ts';
 import { watchedModule } from '../modules/watched.ts';
@@ -552,6 +553,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             registerModule(message => { if (epoch === responderEpoch) log(message); }),
             scenesModule(message => { if (epoch === responderEpoch) log(message); }),
             voiceModule(message => { if (epoch === responderEpoch) log(message); }),
+            // 模拟器不跑命令，没有命令结果；「可以跑命令」那一行照 App
+            shellModule(),
             ...(scenario.relationship ? [closenessModule(message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.jokes?.length ? [jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.idioms?.length ? [idiomsTurnModule(() => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), message => { if (epoch === responderEpoch) log(message); }, scenario.idiomShare)] : []),

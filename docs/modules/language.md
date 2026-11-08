@@ -69,6 +69,7 @@
 - `modules/register.ts`
 - `modules/scenes.ts`
 - `modules/voice.ts`
+- `modules/shell.ts`
 - `modules/playful.ts`
 - `st/`
 
