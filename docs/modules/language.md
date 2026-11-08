@@ -70,6 +70,7 @@
 - `modules/scenes.ts`
 - `modules/voice.ts`
 - `modules/shell.ts`
+- `modules/learning-question.ts`
 - `modules/playful.ts`
 - `st/`
 

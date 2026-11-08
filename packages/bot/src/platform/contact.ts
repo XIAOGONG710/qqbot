@@ -271,8 +271,6 @@ export interface ContactPipelineOptions {
     shapeAll?: boolean;
     /** 她自己最近过的日子（2026-10-30 她说「没有自己的下文」）：从她写的日记里摘一两句，用不用她定 */
     selfThread?: () => string | undefined;
-    /** 她学说话/翻日记时没想通的问题（2026-10-31）：递给她，让他来答 */
-    learningQuestion?: () => string | undefined;
     /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
     dreams?: () => { appraisals: Appraisal[]; line?: string };
     /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
@@ -833,7 +831,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 场景应答（2026-10-31：哄睡 / 报错 / 自我怀疑 / 暗号）是解释器的模块（modules/scenes.ts），经 turnModules 放进 scene 槽
             // 多问一句、先表态、拿不准就直说（2026-10-31）是解释器的模块（modules/asks.ts），经 turnModules 放进 askHint、opinion、unsure 槽
             // 她可以说出来（2026-11-01：偶尔告诉她「想让他听见就用语音」）是解释器的模块（modules/voice.ts），经 turnModules 放进 voice 槽
-            const questionNow = contact.tier === 'boyfriend' && !crisisNow && !thinking ? options.learningQuestion?.() : undefined;
+            // 她学的时候没想通的地方（2026-10-31）是解释器的模块（modules/learning-question.ts），经 turnModules 放进 question 槽
             // 命令结果和「可以跑命令」那一行（2026-10-30）是解释器的模块（modules/shell.ts），经 turnModules 放进 shell、shellIntent 槽
             const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
             const selfThreadNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? options.selfThread?.() : undefined;
@@ -1091,7 +1089,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('partnerBack', partnerBack),
                 ...when('exemplar', exemplarNow),
                 ...when('selfThread', selfThreadNow),
-                ...when('question', questionNow),
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
                 ...when('speechNote', speechNoteNow),
                 ...when('review', reviewNow),

@@ -20,6 +20,7 @@ import { registerAllowed, registerModule } from '../src/modules/register.ts';
 import { scenesAllowed, scenesModule } from '../src/modules/scenes.ts';
 import { voiceAllowed, voiceModule } from '../src/modules/voice.ts';
 import { shellModule } from '../src/modules/shell.ts';
+import { learningQuestionModule } from '../src/modules/learning-question.ts';
 import { SHELL_INTENT } from '../src/language/intent.ts';
 import { VOICE_HINT, voiceRoll, VOICE_HINT_RATE } from '../src/language/speaking.ts';
 import { UNSURE_LINE } from '../src/language/asks.ts';
@@ -603,5 +604,21 @@ describe('她可以跑命令模块（DSH 10-30，ADR 0336）', () => {
         assert.deepEqual(module.contribute!(boyfriend({ facts: { crisis: { level: 'acute' } as never } })), []);
         assert.equal(reads, 0);
         assert.deepEqual(shellModule().contribute!(boyfriend()), [{ slot: 'shellIntent', text: SHELL_INTENT }]);
+    });
+});
+
+describe('她学的时候没想通的地方模块（DSH 10-31，ADR 0336）', () => {
+    test('有问题时放进 question 槽；别的档位、危机、只想一想时不放，也不去读', () => {
+        let reads = 0;
+        const module = learningQuestionModule(() => { reads++; return '[你有一个没想通的地方：…]'; });
+        const boyfriend: Turn = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' } };
+        assert.deepEqual(module.contribute!(boyfriend), [{ slot: 'question', text: '[你有一个没想通的地方：…]' }]);
+        assert.deepEqual(module.contribute!({ ...boyfriend, initiate: { note: '', topic: '' }, facts: { grievance: {} as never } }), [{ slot: 'question', text: '[你有一个没想通的地方：…]' }]);
+        assert.equal(reads, 2);
+        assert.deepEqual(module.contribute!(turn), []);
+        assert.deepEqual(module.contribute!({ ...boyfriend, facts: { crisis: { level: 'acute' } as never } }), []);
+        assert.deepEqual(module.contribute!({ ...boyfriend, thinking: true }), []);
+        assert.equal(reads, 2);
+        assert.deepEqual(learningQuestionModule(() => undefined).contribute!(boyfriend), []);
     });
 });
