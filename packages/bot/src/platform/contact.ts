@@ -98,7 +98,6 @@ const DAY_MS = 86_400_000;
  * 他最后一条消息在这个时间内，才算“他刚说的”。主动找他时他常常几小时没说话（ADR 0100「没回也继续」），
  * 那不是刚说的：10-29 13:24 她拿两小时前的「好好好，都给你～」接了一句「哈哈行，卤蛋记账上了」。
  */
-const LAST_USER_LINE_MS = 30 * 60_000;
 
 /**
  * 作者写的角色设定要不要进提示词（10-30 用户：把我给她加的设定都去掉）。
@@ -1075,21 +1074,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 只留卡里那段「被问是不是 AI」的说明（承认是程序是底线，不能跟设定一起清掉）；open 卡本来没有这段
             const bare = INJECT_PERSONA ? character : { ...character, description: personaFacts(character.description), personality: '', scenario: '', mesExample: '' };
             const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...bare, postHistoryInstructions: '' }, worldInfo } : { character: bare, worldInfo };
-            // 他最后说的是哪句：防止她把更早的“嘿嘿”“嗯”和刚说的话混在一起回。
-            // 只认最近 30 分钟内的；更早的（主动找他时他半天没回）不说是“他刚说的”，改成一句时间提醒。
-            const lastUser = [...chat].reverse().find(message => message.role === 'user');
-            const lastUserText = lastUser?.content?.trim();
-            const agoMs = lastUser?.time ? time.getTime() - Date.parse(lastUser.time) : Number.POSITIVE_INFINITY;
-            let lastUserLine: string | undefined;
-            if (lastUserText) {
-                if (agoMs > LAST_USER_LINE_MS) {
-                    const hoursAgo = Math.round(agoMs / 3_600_000);
-                    const when = Number.isFinite(hoursAgo) && hoursAgo >= 1 ? `${hoursAgo} 小时前` : '好几条消息以前';
-                    if (initiate) lastUserLine = `他上一次说话是 ${when}，那不是刚说的：别接着说那句旧话，说你这一轮要说的事。`;
-                } else {
-                    lastUserLine = `他最后说的是：「${lastUserText.slice(0, 120)}」。先接这一句，别接更早的话。`;
-                }
-            }
+            // 他最后说的是哪句（那一行）是解释器的模块（modules/reply-basics.ts），经 turnModules 放进 lastUser 槽；这里的原文只给「理解偏过」那一行用
+            const lastUserText = [...chat].reverse().find(message => message.role === 'user')?.content?.trim();
             // 按槽位表拼（ADR 0336 第 4 步）：迁移前这里手写的那一串，现在是「旧逻辑」这个大模块的段落，顺序由 interpreter/slots.ts 定；
             // 以后迁出去的模块经 options.turnModules 加进来。原来按真假判断的照旧按真假，原来无条件放的照旧无条件放
             const when = (slot: Slot, text: string | undefined | false | null): Piece[] => (text ? [{ slot, text }] : []);
@@ -1158,19 +1144,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('sticker', stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined),
                 ...when('photo', photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)! : undefined),
                 ...when('intent', intentLine),
-                ...when('lastUser', lastUserLine),
                 // 这件事她以前理解偏过（10-30）：他这句话和以前被纠正过的事撞上时提醒她
                 ...(!initiate && lastUserText && options.understanding?.(lastUserText) ? [{ slot: 'understanding' as const, text: options.understanding(lastUserText)! }] : []),
                 // 他说过、做过、答应过的事（10-31 留痕）：最近的几条，聊到相关的再说，不硬塞
                 ...(!initiate && options.traces?.() ? [{ slot: 'traces' as const, text: options.traces()! }] : []),
-                // 人称（10-30：他问「我是谁？」，她回「我是谁这还用问」——把「我」当成了自己）
-                ...(!initiate ? [{ slot: 'person' as const, text: '[人称：他说「我」是他自己、说「你」是叫你；你说「我」是你自己。他问「我是谁」「我算你什么」问的是你们俩是什么关系，别答成你问你自己。]' }] : []),
-                // 她自己在 10-31 同意加的（问了她「要不要加」：「该加。我确实老这样，你一认真我就先问『你今天怎么了』。
-                // 行，以后正经问我就正经答。不过聊闲天我还贫啊。」）
-                ...(!initiate ? [{ slot: 'directAnswer' as const, text: '[他正经问你一件事、问你怎么想的时候：先直接答，别一上来就反问「你今天怎么了」「你问这个干嘛」；答完可以就停。聊闲天、开玩笑照旧贫。]' }] : []),
-                // 她自己 10-31 提的：「我老想着接你的话，接得好看点，一使劲反而怪。少想点，别一开口就先想『这句该怎么说』。」
-                // 追问时她把界限说清了：「小事我张口就来，正经的我会先想一下——但也不会想半天，想太久我就烦了。」
-                ...(!initiate ? [{ slot: 'noOverthink' as const, text: '[平时聊天别琢磨怎么接才好看——一句话在脑子里过好几遍才发出去，反而怪。想到什么说什么，说岔了也认。他正经问你事的时候可以想一下，但别想半天。]' }] : []),
+                // 人称、正经问就先直接答、别琢磨怎么接（DSH 10-30 / 10-31）是解释器的模块（modules/reply-basics.ts），经 turnModules 放进 person、directAnswer、noOverthink 槽
                 ...(options.selfMemory ? [{ slot: 'selfMemory' as const, text: SELF_MEMORY_NOTE }] : []),
                 ...(options.refusalLine?.() ? [{ slot: 'refusal' as const, text: options.refusalLine()! }] : []),
                 ...(options.ratingLine?.() ? [{ slot: 'rating' as const, text: options.ratingLine()! }] : []),

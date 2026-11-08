@@ -13,6 +13,7 @@ import { togetherAllowed, togetherModule } from '../src/modules/together.ts';
 import { memesModule } from '../src/modules/memes.ts';
 import { watchedAllowed, watchedModule } from '../src/modules/watched.ts';
 import { intentModule, intentOf } from '../src/modules/intent.ts';
+import { DIRECT_ANSWER_NOTE, lastUserLine, NO_OVERTHINK_NOTE, PERSON_NOTE, replyBasicsModule } from '../src/modules/reply-basics.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
 
@@ -376,5 +377,40 @@ describe('意图模块（意图阶梯，ADR 0336）', () => {
         const world = { events: [{ id: 'e', text: '下楼喂了猫', at }] } as never;
         assert.match(intentOf(boyfriend(day, { world }), { everydayLife: true })!, /他在问你今天过得怎么样/);
         assert.doesNotMatch(intentOf(boyfriend(day, { world }), {}) ?? '', /他在问你今天过得怎么样/);
+    });
+});
+
+describe('接话的基本规矩模块（DSH 10-30 / 10-31，ADR 0336）', () => {
+    const at = new Date('2026-11-29T13:00:00+08:00');
+    const said = (minutesAgo: number, content = '你在干嘛') => ({ role: 'user' as const, content, time: new Date(at.getTime() - minutesAgo * 60_000).toISOString() });
+    const chatTurn = (history: Turn['history'], extra: Partial<Turn> = {}): Turn => ({ ...turn, at, history, ...extra });
+    const initiating = { initiate: { note: '[主动]', topic: '' } };
+
+    test('30 分钟内他说的那句原样给（最多 120 字）；他没说过话时没有', () => {
+        assert.equal(lastUserLine(chatTurn([said(5, '  你在干嘛  ')])), '他最后说的是：「你在干嘛」。先接这一句，别接更早的话。');
+        assert.equal(lastUserLine(chatTurn([said(30)])), '他最后说的是：「你在干嘛」。先接这一句，别接更早的话。');
+        assert.ok(lastUserLine(chatTurn([said(1, '长'.repeat(200))]))!.includes(`「${'长'.repeat(120)}」`));
+        assert.equal(lastUserLine(chatTurn([])), undefined);
+        assert.equal(lastUserLine(chatTurn([{ role: 'assistant', content: '我在', time: at.toISOString() }])), undefined);
+        // 只认他最后一句，不认更早的
+        assert.match(lastUserLine(chatTurn([said(10, '早的'), { role: 'assistant', content: '嗯', time: at.toISOString() }, said(2, '晚的')]))!, /「晚的」/);
+    });
+
+    test('超过 30 分钟：主动找他时提醒「那不是刚说的」，别的轮次不放；没有时间的说「好几条消息以前」', () => {
+        assert.equal(lastUserLine(chatTurn([said(31)])), undefined);
+        assert.equal(lastUserLine(chatTurn([said(150)], initiating)), '他上一次说话是 3 小时前，那不是刚说的：别接着说那句旧话，说你这一轮要说的事。');
+        assert.equal(lastUserLine(chatTurn([said(31)], initiating)), '他上一次说话是 1 小时前，那不是刚说的：别接着说那句旧话，说你这一轮要说的事。');
+        assert.equal(lastUserLine(chatTurn([{ role: 'user', content: '你在干嘛' }], initiating)), '他上一次说话是 好几条消息以前，那不是刚说的：别接着说那句旧话，说你这一轮要说的事。');
+        assert.equal(lastUserLine(chatTurn([{ role: 'user', content: '你在干嘛' }])), undefined);
+    });
+
+    test('人称、先直接答、别琢磨三行：主动找他时不放；各档位、危机、只想一想照样放', () => {
+        const module = replyBasicsModule();
+        const slots = (t: Turn) => (module.contribute!(t) as Piece[]).map(piece => piece.slot);
+        assert.deepEqual(slots(chatTurn([said(1)])), ['lastUser', 'person', 'directAnswer', 'noOverthink']);
+        assert.deepEqual((module.contribute!(chatTurn([said(1)])) as Piece[]).slice(1).map(piece => piece.text), [PERSON_NOTE, DIRECT_ANSWER_NOTE, NO_OVERTHINK_NOTE]);
+        assert.deepEqual(slots(chatTurn([said(150)], initiating)), ['lastUser']);
+        assert.deepEqual(slots(chatTurn([], initiating)), []);
+        assert.deepEqual(slots(chatTurn([said(1)], { contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, thinking: true, facts: { crisis: { level: 'acute' } as never } })), ['lastUser', 'person', 'directAnswer', 'noOverthink']);
     });
 });

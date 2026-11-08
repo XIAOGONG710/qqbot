@@ -19,6 +19,7 @@ import { chatCompletion, forExtraction } from '.././language/llm.ts';
 import { createExecutor, type ExecutorOptions } from '../executor/executor.ts';
 import { createInterpreter } from '../interpreter/interpreter.ts';
 import { jokesModule } from '../modules/jokes.ts';
+import { replyBasicsModule } from '../modules/reply-basics.ts';
 import { idiomsModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
@@ -918,6 +919,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.herNo ? { refuse: true } : {}), ...(config.afterNo ? { afterNo: true } : {}), ...(config.jealousy ? { jealous: true } : {}), ...(config.curious ? { curious: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}), ...(config.pursuits ? { pursuits: true } : {}),
         }),
+        // 接话的基本规矩（DSH 10-30 / 10-31）：他最后说的是哪句、人称、正经问就先直接答、别琢磨怎么接；每一轮都放，不存状态
+        replyBasicsModule(),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
         ...(config.relationship ? [closenessModule(log)] : []),
         ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),

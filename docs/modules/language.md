@@ -63,6 +63,7 @@
 - `modules/intent.ts`
 - `modules/memes.ts`
 - `modules/watched.ts`
+- `modules/reply-basics.ts`
 - `modules/playful.ts`
 - `st/`
 

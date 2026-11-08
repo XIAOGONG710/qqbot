@@ -12,6 +12,7 @@ import { idiomsTurnModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
 import { togetherModule } from '../modules/together.ts';
+import { replyBasicsModule } from '../modules/reply-basics.ts';
 import { intentModule } from '../modules/intent.ts';
 import { memesModule } from '../modules/memes.ts';
 import { watchedModule } from '../modules/watched.ts';
@@ -539,6 +540,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
                 ...(scenario.herNo ? { refuse: true } : {}), ...(scenario.afterNo ? { afterNo: true } : {}), ...(scenario.jealousy ? { jealous: true } : {}), ...(scenario.curious ? { curious: true } : {}),
                 ...(scenario.everydayLife ? { everydayLife: true } : {}), ...(scenario.pursuits ? { pursuits: true } : {}),
             }),
+            // 接话的基本规矩（DSH 10-30 / 10-31）：每一轮都放，同 App
+            replyBasicsModule(),
             ...(scenario.relationship ? [closenessModule(message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.jokes?.length ? [jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.idioms?.length ? [idiomsTurnModule(() => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), message => { if (epoch === responderEpoch) log(message); }, scenario.idiomShare)] : []),
