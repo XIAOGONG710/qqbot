@@ -21,6 +21,7 @@ import { scenesAllowed, scenesModule } from '../src/modules/scenes.ts';
 import { voiceAllowed, voiceModule } from '../src/modules/voice.ts';
 import { shellModule } from '../src/modules/shell.ts';
 import { learningQuestionModule } from '../src/modules/learning-question.ts';
+import { WORK_JUDGE_NOTE, WORK_MODE_NOTE, WORK_REQUEST_NOTE, workModeModule } from '../src/modules/work-mode.ts';
 import { SHELL_INTENT } from '../src/language/intent.ts';
 import { VOICE_HINT, voiceRoll, VOICE_HINT_RATE } from '../src/language/speaking.ts';
 import { UNSURE_LINE } from '../src/language/asks.ts';
@@ -620,5 +621,21 @@ describe('她学的时候没想通的地方模块（DSH 10-31，ADR 0336）', ()
         assert.deepEqual(module.contribute!({ ...boyfriend, thinking: true }), []);
         assert.equal(reads, 2);
         assert.deepEqual(learningQuestionModule(() => undefined).contribute!(boyfriend), []);
+    });
+});
+
+describe('工作模式模块（DSH 10-29 / 10-30，ADR 0336）', () => {
+    test('按状态放其中一行；只有男朋友档；危机、主动找他、只想一想照样放', () => {
+        const modes = new Map<number, 'chat' | 'work' | 'pending'>([[1, 'pending']]);
+        const module = workModeModule(contact => modes.get(contact.qq) ?? 'chat');
+        const boyfriend: Turn = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' } };
+        assert.deepEqual(module.contribute!(boyfriend), [{ slot: 'workRequest', text: WORK_REQUEST_NOTE }]);
+        modes.set(1, 'work');
+        assert.deepEqual(module.contribute!(boyfriend), [{ slot: 'workMode', text: WORK_MODE_NOTE }]);
+        assert.deepEqual(module.contribute!({ ...boyfriend, facts: { crisis: { level: 'acute' } as never }, initiate: { note: '', topic: '' }, thinking: true }), [{ slot: 'workMode', text: WORK_MODE_NOTE }]);
+        modes.set(1, 'chat');
+        assert.deepEqual(module.contribute!(boyfriend), [{ slot: 'workJudge', text: WORK_JUDGE_NOTE }]);
+        modes.set(1, 'work');
+        assert.deepEqual(module.contribute!(turn), []);
     });
 });

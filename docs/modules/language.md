@@ -71,6 +71,7 @@
 - `modules/voice.ts`
 - `modules/shell.ts`
 - `modules/learning-question.ts`
+- `modules/work-mode.ts`
 - `modules/playful.ts`
 - `st/`
 

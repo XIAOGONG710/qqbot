@@ -27,6 +27,7 @@ import { scenesModule } from '../modules/scenes.ts';
 import { voiceModule } from '../modules/voice.ts';
 import { shellModule } from '../modules/shell.ts';
 import { learningQuestionModule } from '../modules/learning-question.ts';
+import { workModeModule } from '../modules/work-mode.ts';
 import { idiomsModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
@@ -940,6 +941,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         voiceModule(log),
         // 她可以在这台电脑上跑命令（DSH 10-30）：上一轮的命令结果（读了就清掉）和「可以跑命令」那一行；只给男朋友档
         // 她学的时候没想通的地方（DSH 10-31）：两天内存下的那个问题，想问就问他；只给男朋友档，危机、只想一想时不放
+        // 工作模式的三行（DSH 10-29 / 10-30）：按他现在的状态放其中一行；只给男朋友档
+        workModeModule(contact => readWorkMode(config.dataDir, contact.qq)),
         learningQuestionModule(() => questionLine(loadQuestion(config.dataDir), clockNow().getTime())),
         shellModule({
             noteOf: contact => {
@@ -1942,14 +1945,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                         return [journal, doing].filter(Boolean).join(String.fromCharCode(10)) || undefined;
                     } catch { return undefined; }
                 },
-                workMode: () => readWorkMode(config.dataDir, contact.qq) === 'work',
-                workJudge: () => readWorkMode(config.dataDir, contact.qq) === 'chat',
                 ask: (): string | undefined => {
                     const pending = pendingAsk.get(contact.qq);
                     if (!pending || askExpired(pending.at, Date.now())) return undefined;
                     return askLine(pending.label, Math.floor((Date.now() - pending.at) / 60_000));
                 },
-                workRequest: () => readWorkMode(config.dataDir, contact.qq) === 'pending',
                 refusalLine: () => recentRefusals(),
                 ratingLine: () => ratingSummary(),
                 // 「你现在的生活」（NOW.md）的「最近」一行带着他说过的话的原句（前 40 字）和关系状态（「还在生他的气……」）：

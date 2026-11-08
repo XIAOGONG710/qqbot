@@ -110,17 +110,8 @@ export function personaFacts(description: string | undefined): string {
     return parts.filter(part => PERSONA_FACT_SECTIONS.some(head => part.startsWith(`【${head}】`))).join('');
 }
 
-/** 他在 QQ 里切到工作模式（/dsh）时加的一行：干活，但说话还是她 */
-const WORK_MODE_NOTE = '他刚把你切到工作模式：这会儿他让你帮忙干活。先说结果，用你平时的口气，别分点汇报、别写“好的/已完成/总结”，过程他追问再说。';
-
 /** 她自己决定记不记：只在这条真的值得长期记住时，回复最后另起一行写标记；标记不会发出去 */
 const SELF_MEMORY_NOTE = '记忆由你自己决定：只有这条真的值得长期记住（约定、他的重要事、你自己想记住的），才在回复最后另起一行写 `<<记住：一句话>>`；想写今天的事就写 `<<日记：一段>>`；有不想让他知道的真实想法，写 `<<私密：…>>`（不会发出去，只记在私密日记）。不想答应的事可以拒绝；拒绝后把真实想法写进 `<<私密：…>>`。想不起某件事时，别硬编，写 `<<查：关键词>>`，系统会把你想起的东西给你再回。这些标记不会发出去。不重要就不写，别每条都记。';
-
-/** 他在求她切工作：答不答应由她，可以提条件 */
-const WORK_REQUEST_NOTE = '他在求你切到工作模式。你可以答应、可以拒绝、也可以提条件（比如先陪你聊十分钟）。答应就在回复最后写 `<<同意工作>>`；拒绝就写 `<<拒绝工作：原因>>`。两个都不写就算没答应，他还在聊天模式。';
-
-/** 她自己决定要不要动电脑：不用他先发 /dsh，也不用事后 /QQ 切回来 */
-const WORK_JUDGE_NOTE = '他这条要是得真动电脑才办得到（跑命令、改代码、看文件、装东西、上网查东西、替他操作软件），就在回复最后另起一行写 `<<用电脑>>`，系统会把这条交给你去做，做完你照结果回他；只是聊天、聊打算、开玩笑、问你觉得——都别写。这个标记不会发出去。';
 
 /** 召回整理出来的一段有几条（第一行是标题） */
 const countLines = (text: string) => text.split('\n').length - 1;
@@ -233,12 +224,6 @@ export interface ContactPipelineOptions {
     photos?: PhotoShelf;
     /** AI 生活照（ADR 0240）：只解析“现在/刚刚”的明确请求；新图只建待审核草稿，返回 approved 才能发匹配编号。 */
     currentAiPhoto?: (request: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => CurrentAiPhotoResult;
-    /** 他刚在 QQ 里切到工作模式（/dsh）：这轮按「帮他干活」说话，语气不变 */
-    workMode?: () => boolean;
-    /** 她在聊天模式里，由她自己判断这条要不要动电脑（不用他先发 /dsh） */
-    workJudge?: () => boolean;
-    /** 他在求她切工作模式：她可以答应/拒绝/提条件 */
-    workRequest?: () => boolean;
     /** 她最近拒绝过的事：让她记得自己的拒绝 */
     refusalLine?: () => string | undefined;
     /** 他最近给她的评分：影响说话分寸 */
@@ -1113,9 +1098,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(options.lifeLine?.() ? [{ slot: 'life' as const, text: `[你现在的生活] ${options.lifeLine()!}` }] : []),
                 ...(options.wakeNote?.() ? [{ slot: 'wake' as const, text: options.wakeNote()! }] : []),
                 ...(options.ask?.() ? [{ slot: 'herAsk' as const, text: options.ask()! }] : []),
-                ...(options.workRequest?.() ? [{ slot: 'workRequest' as const, text: WORK_REQUEST_NOTE }] : []),
-                ...(options.workJudge?.() ? [{ slot: 'workJudge' as const, text: WORK_JUDGE_NOTE }] : []),
-                ...(options.workMode?.() ? [{ slot: 'workMode' as const, text: WORK_MODE_NOTE }] : []),
+                // 工作模式的三行（他在求她切工作 / 判断要不要动电脑 / 切到了工作）是解释器的模块（modules/work-mode.ts）
                 ...(deliberateNow ? [{ slot: 'deliberate' as const, text: options.deliberate?.note ?? DELIBERATE_NOTE }] : []),
                 ...when('routedHint', routedHint),
                 ...(length ? [{ slot: 'length' as const, text: describeLength(length, options.shortReplies) }] : []),
