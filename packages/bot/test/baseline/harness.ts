@@ -118,7 +118,9 @@ function normalizer(dataDir: string): (text: string) => string {
     return text => {
         let out = text;
         for (const [from, to] of replacements) out = out.split(from).join(to);
-        out = out.replace(/("pid":\s*)\d+/g, '$1<pid>').replace(new RegExp(`(?<!\\d)${process.pid}(?!\\d)`, 'g'), '<pid>');
+        // 进程号只在明确是进程号的地方换（JSON 的 pid 字段、临时文件名 tmp-<pid>、提示里的 PID <pid>）：
+        // 11-09 撞过一次——那次跑的进程号是 2804，正好等于提示词里「手上还有 2804 元」，见到这个数就换会把钱数也换掉
+        out = out.replace(/("pid":\s*)\d+/g, '$1<pid>').replace(new RegExp(`(tmp-|PID )${process.pid}(?!\\d)`, 'g'), '$1<pid>');
         return out.replace(UUID, id => {
             const key = id.toLowerCase();
             if (!uuids.has(key)) uuids.set(key, `<uuid-${uuids.size + 1}>`);
