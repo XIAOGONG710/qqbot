@@ -17,6 +17,7 @@ import { DIRECT_ANSWER_NOTE, lastUserLine, NO_OVERTHINK_NOTE, PERSON_NOTE, reply
 import { asksAllowed, asksModule } from '../src/modules/asks.ts';
 import { readingAllowed, readingModule } from '../src/modules/reading.ts';
 import { registerAllowed, registerModule } from '../src/modules/register.ts';
+import { scenesAllowed, scenesModule } from '../src/modules/scenes.ts';
 import { UNSURE_LINE } from '../src/language/asks.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
@@ -507,5 +508,32 @@ describe('他的口气模块（DSH 10-30，ADR 0336）', () => {
         assert.equal(logs.at(-1), '[1] 他的口气：最近使唤得比说话多');
         assert.deepEqual(module.contribute!(boyfriend([said('今天天气不错')])), []);
         assert.deepEqual(module.contribute!(boyfriend([said('想你了')], { thinking: true })), []);
+    });
+});
+
+describe('场景应答模块（DSH 10-31，ADR 0336）', () => {
+    const at = new Date('2026-11-29T13:00:00+08:00');
+    const said = (content: string) => ({ role: 'user' as const, content, time: at.toISOString() });
+    const boyfriend = (history: Turn['history'], extra: Partial<Turn> = {}): Turn => ({ ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history, ...extra });
+
+    test('只有男朋友档，危机时不放；主动找他、只想一想、小别扭照样放', () => {
+        assert.equal(scenesAllowed(boyfriend([said('zdjd')])), true);
+        assert.equal(scenesAllowed({ ...boyfriend([said('zdjd')]), contact: { qq: 1, name: '阿明', tier: 'classmate' } }), false);
+        assert.equal(scenesAllowed(boyfriend([said('zdjd')], { facts: { crisis: { level: 'acute' } as never } })), false);
+        assert.equal(scenesAllowed(boyfriend([said('zdjd')], { initiate: { note: '', topic: '' }, thinking: true, facts: { grievance: {} as never } })), true);
+    });
+
+    test('只看他最后一句：命中才放进 scene 槽并记日志', () => {
+        const logs: string[] = [];
+        const module = scenesModule(line => logs.push(line));
+        const pieces = module.contribute!(boyfriend([said('哄我睡觉呗')])) as Piece[];
+        assert.equal(pieces.length, 1);
+        assert.equal(pieces[0]!.slot, 'scene');
+        assert.match(pieces[0]!.text, /他说的是「哄我睡」/);
+        assert.deepEqual(logs, ['[1] 场景：他这句要特殊接（哄睡 / 报错 / 自我怀疑 / 暗号）']);
+        assert.match((module.contribute!(boyfriend([said('哄我睡觉呗'), said('zdjd')])) as Piece[])[0]!.text, /看不懂的缩写/);
+        assert.deepEqual(module.contribute!(boyfriend([said('zdjd'), said('今天好冷')])), []);
+        assert.deepEqual(module.contribute!(boyfriend([said('ok')])), []);
+        assert.deepEqual(module.contribute!(boyfriend([])), []);
     });
 });

@@ -65,7 +65,6 @@ import { turnCut, type Summarizer, type TurnWindow } from '.././language/context
 import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
-import { readScene } from '.././language/scenes.ts';
 import { voiceHint, voiceRoll } from '.././language/speaking.ts';
 import { SHELL_INTENT } from '.././language/intent.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
@@ -835,11 +834,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 })() : undefined;
             if (exemplarNow) log('真人例子：这一轮放了几条真人的回法（日志不记内容）');
             // 他这句到底在说什么（2026-10-30）是解释器的模块（modules/reading.ts），经 turnModules 放进 reading 槽
-            // 场景应答（2026-10-31）：哄睡 / 报错 / 自我怀疑 / 暗号，命中才加一句
-            const hisLast = chat.filter(message => message.role === 'user').slice(-1)[0]?.content ?? '';
+            // 场景应答（2026-10-31：哄睡 / 报错 / 自我怀疑 / 暗号）是解释器的模块（modules/scenes.ts），经 turnModules 放进 scene 槽
             // 多问一句、先表态、拿不准就直说（2026-10-31）是解释器的模块（modules/asks.ts），经 turnModules 放进 askHint、opinion、unsure 槽
-            const sceneNow = contact.tier === 'boyfriend' && !crisisNow ? readScene(hisLast)?.line : undefined;
-            if (sceneNow) log('场景：他这句要特殊接（哄睡 / 报错 / 自我怀疑 / 暗号）');
             // 她可以说出来（2026-11-01）：偶尔告诉她「想让他听见就用语音」
             const voiceNow = contact.tier === 'boyfriend' && !crisisNow && !thinking && !initiate ? voiceHint(voiceRoll(chat)) : undefined;
             if (voiceNow) log('说话：这一轮告诉她可以发语音');
@@ -1100,7 +1096,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('exemplar', exemplarNow),
                 ...when('selfThread', selfThreadNow),
                 ...when('shell', shellNow),
-                ...when('scene', sceneNow),
                 ...when('voice', voiceNow),
                 ...when('question', questionNow),
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),

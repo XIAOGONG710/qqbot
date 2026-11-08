@@ -67,6 +67,7 @@
 - `modules/asks.ts`
 - `modules/reading.ts`
 - `modules/register.ts`
+- `modules/scenes.ts`
 - `modules/playful.ts`
 - `st/`
 
