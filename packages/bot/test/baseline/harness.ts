@@ -4,7 +4,7 @@
 // 只用合成角色（ADR 0260），不连网：长期记忆、真实天气、B 站、网页、DSH、设备都关着（见 scenarios.ts 开头的覆盖说明）。
 
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
@@ -41,6 +41,8 @@ export interface Scenario {
     history?: (start: number) => Record<number, HistoryMessage[]>;
     /** 启动之前往数据目录里放东西（以前的聊天记录……）；用真实的写入接口，不手拼文件 */
     seed?: (dataDir: string, start: number) => void;
+    /** 她在本机的灵魂目录（QQBOT_SOUL_DIR）里预先放的东西（合成的日记、生活、拒绝过的、评价……）；不给就和没装过 DSH 的机器一样，目录不存在 */
+    soul?: (soulDir: string, start: number) => void;
     /** 每次跑新建一个假模型（里面有轮换的计数，不能跨次共用） */
     reply?: () => Replier;
     script: (driver: Driver) => Promise<void>;
@@ -178,6 +180,10 @@ export async function runScenario(scenario: Scenario): Promise<string> {
     try {
         const history = scenario.history?.(start) ?? {};
         scenario.seed?.(dataDir, start);
+        if (scenario.soul) {
+            mkdirSync(process.env.QQBOT_SOUL_DIR!, { recursive: true });
+            scenario.soul(process.env.QQBOT_SOUL_DIR!, start);
+        }
         const transport: Transport = {
             sendPrivateText: async (userId, text, replyTo) => { call('sendPrivateText', replyTo === undefined ? [userId, text] : [userId, text, replyTo]); return sent(); },
             sendPrivateCard: async (userId, cardJson) => { call('sendPrivateCard', [userId, cardJson]); return sent(); },

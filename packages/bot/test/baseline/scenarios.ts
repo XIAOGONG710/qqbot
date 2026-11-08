@@ -5,7 +5,7 @@
 // 小梗（连上后抽一次、过 6 小时的定时检查、回复时按轮放进提示词）、口头习惯（连上后学一次、定时检查、约一半的轮次放进提示词）、
 // 被打断（聊天正在进行时她那边的小事，含他难过时让路）、关系阶段（天天聊之后更放得开；主动、只想一想、小别扭、危机、别的档位）、
 // 陪玩（约了一起打游戏之后的两个多小时；危机、说下了、换个游戏、过了时限、别的档位）、热梗（库里预置的梗放进提示词；不连网学）、
-// 她看视频（预置的看过的记录，他问起时放进提示词；不连网看）、他的口气（连着使唤她、使唤得比说话多、当程序说话、问很元的问题；危机、别的档位）、场景应答（报错、自我怀疑、缩写、哄睡；危机、别的档位、主动找他）、工作模式（挂起、答应后切到工作；危机、主动找他、别的档位）、她自己决定记不记（留痕、理解偏过；主动找他、别的档位）。
+// 她看视频（预置的看过的记录，他问起时放进提示词；不连网看）、他的口气（连着使唤她、使唤得比说话多、当程序说话、问很元的问题；危机、别的档位）、场景应答（报错、自我怀疑、缩写、哄睡；危机、别的档位、主动找他）、工作模式（挂起、答应后切到工作；危机、主动找他、别的档位）、她自己决定记不记（留痕、理解偏过；主动找他、别的档位）、她在本机的那一份（合成的灵魂目录：心里的线头、拒绝过的、评价、首轮铺底；危机、主动找他、别的档位）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、她自己去看视频、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
@@ -658,6 +658,37 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.at('2026-12-09T21:10:00+08:00');
             d.say(boyfriend.qq, '那家面试的公司老板今天又找我了');
             await d.at('2026-12-10T12:00:00+08:00');
+        },
+    },
+    {
+        name: 'soul',
+        about: '她在本机的那一份（DSH 的灵魂目录，合成的）：日记、这两天自己在做的、拒绝过的、他最近的评价；他走了八个多小时回来（首轮铺底带上她写的日记、心里的线头），同学说话（别的档位不放），之后她主动找他（线头不放），第二天中午一句危机的话（线头不放，拒绝过的、评价照样放）',
+        start: '2026-12-11T19:50:00+08:00',
+        contacts: [boyfriend, classmate],
+        config: RICH,
+        seed: (dataDir, start) => {
+            const chats = new ChatHistory(dataDir);
+            chats.append(boyfriend.qq, { time: new Date(start - 8 * 3600_000).toISOString(), role: 'user', content: '我先去上班了', messageId: 900 });
+            chats.append(boyfriend.qq, { time: new Date(start - 8 * 3600_000 + 60_000).toISOString(), role: 'assistant', content: '去吧', messageId: 901 });
+        },
+        soul: (dir, start) => {
+            writeFileSync(join(dir, 'JOURNAL.md'), '# 日记\n\n## 2026-12-10\n今天在图书馆把那本小说看完了。结尾有点难过。晚上去食堂吃了面。\n\n## 2026-12-11\n下午拍了几张楼下的树。光线很好，就是手有点冷。回来路上买了杯热奶茶。\n');
+            writeFileSync(join(dir, 'LIFE.json'), JSON.stringify({ events: [{ text: '我在整理这周拍的照片' }, { text: '我在看一本新借的小说' }] }));
+            writeFileSync(join(dir, 'REFUSALS.json'), JSON.stringify({ items: [{ at: start - 86_400_000, text: '他让我通宵陪他打游戏' }] }));
+            writeFileSync(join(dir, 'RATINGS.json'), JSON.stringify({ samples: [{ score: 1, at: start - 3 * 3600_000 }, { score: 1, at: start - 2 * 3600_000 }, { score: 0.5, at: start - 3600_000 }] }));
+            writeFileSync(join(dir, 'NOW.md'), '在宿舍看书');
+        },
+        reply: () => rotating(['回来啦', '嗯嗯', '我在呢', '好']),
+        script: async d => {
+            await d.at('2026-12-11T20:00:00+08:00');
+            d.say(boyfriend.qq, '我回来了');
+            await d.at('2026-12-11T20:20:00+08:00');
+            d.say(classmate.qq, '在吗');
+            await d.at('2026-12-12T12:00:00+08:00');
+            d.say(boyfriend.qq, '我不想活了');
+            await d.wait(10 * 60_000);
+            d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
+            await d.at('2026-12-12T13:00:00+08:00');
         },
     },
 ];
