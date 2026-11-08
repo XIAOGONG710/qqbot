@@ -149,6 +149,12 @@ export async function runScenario(scenario: Scenario): Promise<string> {
     const start = Date.parse(scenario.start);
     if (!Number.isFinite(start)) throw new Error(`场景 ${scenario.name} 的开始时刻写错了`);
     const dataDir = mkdtempSync(join(tmpdir(), 'qqbot-baseline-'));
+    // 她在本机的目录（灵魂目录 ~/.dsh/linmengyao、常驻目录 ~/.dsh/her）不能用真的：在 DSH 那台机器上那里是她真实的日记、生活和心境导出，
+    // 基线会读到真资料、快照跟着那台机器变，心境导出还会写进去。指到临时目录里还不存在的路径——和没装过 DSH 的机器一样
+    const home = mkdtempSync(join(tmpdir(), 'qqbot-baseline-home-'));
+    const envBefore = { soul: process.env.QQBOT_SOUL_DIR, her: process.env.HER_DIR };
+    process.env.QQBOT_SOUL_DIR = join(home, 'soul');
+    process.env.HER_DIR = join(home, 'her');
     const clock = new FakeClock(start);
     const entries: Entry[] = [];
     clock.activity = () => entries.length;
@@ -273,5 +279,8 @@ export async function runScenario(scenario: Scenario): Promise<string> {
         globalThis.fetch = realFetch;
         clock.uninstall();
         rmSync(dataDir, { recursive: true, force: true });
+        if (envBefore.soul === undefined) delete process.env.QQBOT_SOUL_DIR; else process.env.QQBOT_SOUL_DIR = envBefore.soul;
+        if (envBefore.her === undefined) delete process.env.HER_DIR; else process.env.HER_DIR = envBefore.her;
+        rmSync(home, { recursive: true, force: true });
     }
 }
