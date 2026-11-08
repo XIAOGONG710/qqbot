@@ -1,4 +1,4 @@
-// 解释器（ADR 0263）：唯一做判断的地方。这里只有骨架——事件分发、一轮回复的三个阶段、提示词槽位的排序与拼接、模块注册；
+// 解释器（ADR 0336）：唯一做判断的地方。这里只有骨架——事件分发、一轮回复的三个阶段、提示词槽位的排序与拼接、模块注册；
 // 具体功能一律写成模块（Module），不写在骨架里。碰外部的事交给执行器（executor/executor.ts）。
 //
 // 一轮回复的三个阶段（每个模块都可以只实现其中几个）：
@@ -6,7 +6,7 @@
 // 2. contribute：往提示词的具名槽位里放段落（slots.ts）；先后由槽位表定，模块不管。
 // 3. review：拿到草稿之后改一改（出口检查、事实检查、句尾封顶……）。
 //
-// 迁移期（ADR 0263 第 4 步）：每个钩子都同步时整轮也同步返回、不多等一个微任务；分发只有一个处理函数返回 promise 时原样返回它。
+// 迁移期（ADR 0336 第 4 步）：每个钩子都同步时整轮也同步返回、不多等一个微任务；分发只有一个处理函数返回 promise 时原样返回它。
 // 这样经解释器走和原来直接调用逐字等价（行为基线核对）。
 
 import type { Contact } from '../platform/config.ts';
@@ -40,7 +40,7 @@ export type EventHandlers = { [K in EventKind]?: (event: Extract<BotEvent, { kin
 type BuildContext = Parameters<ResponderDeps['buildPrompt']>[1];
 
 /**
- * 这一轮回复在判断的事实。字段随模块迁出逐个加上（ADR 0263 第 5 步）：
+ * 这一轮回复在判断的事实。字段随模块迁出逐个加上（ADR 0336 第 5 步）：
  * 写的模块在 assess 里写，读的模块在 contribute / review 里读。
  */
 export interface TurnFacts {

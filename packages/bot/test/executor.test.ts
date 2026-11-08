@@ -14,7 +14,7 @@ function fakeTransport(calls: string[]): Transport {
     };
 }
 
-describe('执行器（ADR 0263）', () => {
+describe('执行器（ADR 0336）', () => {
     test('QQ 外观和 Transport 同形状：有的方法都在，底层没有的可选方法也没有', () => {
         const exec = createExecutor({ transport: fakeTransport([]) });
         assert.equal(typeof exec.qq.sendPrivateText, 'function');

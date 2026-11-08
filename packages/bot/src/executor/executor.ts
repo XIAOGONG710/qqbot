@@ -1,11 +1,11 @@
-// 执行器（ADR 0263）：唯一碰外部的地方。解释器和模块要做的事写成动作（Action），经 run 交给这里执行；
+// 执行器（ADR 0336）：唯一碰外部的地方。解释器和模块要做的事写成动作（Action），经 run 交给这里执行；
 // 这里不做任何“她要不要 / 怎么做”的判断，只负责真的去做、记下正在做什么、给测试和模拟器一个统一的替换口。
 //
-// 迁移期（ADR 0263 第 3 步）的约束：经执行器做事必须和原来直接调用逐字等价——
+// 迁移期（ADR 0336 第 3 步）的约束：经执行器做事必须和原来直接调用逐字等价——
 // - QQ 动作同步调用底层 Transport，原样返回同一个 promise（不多套一层 then，免得改变微任务顺序）；底层同步抛错也同步抛出。
 // - 模型调用：有测试替身（AppOptions.pipeline.generate）时按原来的参数调替身，否则调 chatCompletion。
 // - 计时器：调用时取全局的 setTimeout / setInterval（假时钟替换全局后同样生效），原样返回句柄。
-// 正在进行的动作和周期计时器都登记在这里，供以后的统一停止（ADR 0263 第 4 节）使用；这一步还不改变 App 的停止流程。
+// 正在进行的动作和周期计时器都登记在这里，供以后的统一停止（ADR 0336 第 4 节）使用；这一步还不改变 App 的停止流程。
 
 import { chatCompletion, type LlmOptions } from '../language/llm.ts';
 import type { ModelPurpose } from '../language/model-guard.ts';
@@ -65,7 +65,7 @@ export interface Executor {
     cancel(timer: Timer | undefined): void;
     /** 正在进行的动作数 */
     readonly inFlight: number;
-    /** 活着的周期计时器数（every 登记、cancel 去掉；一次性的 after 不登记，统一停止见 ADR 0263 第 4 节） */
+    /** 活着的周期计时器数（every 登记、cancel 去掉；一次性的 after 不登记，统一停止见 ADR 0336 第 4 节） */
     readonly timers: number;
 }
 

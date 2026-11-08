@@ -533,7 +533,7 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             },
             onFactCheck: (record: FactRecord) => { if (epoch === responderEpoch) (current.facts ??= []).push(record); },
         } : {}),
-        // 做判断的模块（ADR 0263），顺序同 App：意图阶梯总在最前；小梗（ADR 0114）直接给场景里写好的梗，不抽
+        // 做判断的模块（ADR 0336），顺序同 App：意图阶梯总在最前；小梗（ADR 0114）直接给场景里写好的梗，不抽
         turnModules: [
             intentModule({
                 ...(scenario.herNo ? { refuse: true } : {}), ...(scenario.afterNo ? { afterNo: true } : {}), ...(scenario.jealousy ? { jealous: true } : {}), ...(scenario.curious ? { curious: true } : {}),

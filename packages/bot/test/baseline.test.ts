@@ -1,4 +1,4 @@
-// 行为基线（ADR 0263 第 2 步）：架构迁移的每一步都必须让这些快照逐字不变。
+// 行为基线（ADR 0336 第 2 步）：架构迁移的每一步都必须让这些快照逐字不变。
 // 有意改变行为时才更新快照：UPDATE_BASELINE=1 npm test -w @qqbot/bot（或只跑这个文件），并在提交说明里写清为什么变。
 // 对不上时，实际结果写到系统临时目录，断言信息里给出路径和第一处不同。
 
@@ -22,7 +22,7 @@ function firstDifference(expected: string, actual: string): string {
     return '（逐行相同，差在结尾）';
 }
 
-describe('行为基线（ADR 0263）', () => {
+describe('行为基线（ADR 0336）', () => {
     test('场景名不重复', () => {
         assert.equal(new Set(SCENARIOS.map(s => s.name)).size, SCENARIOS.length);
     });

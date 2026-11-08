@@ -1,4 +1,4 @@
-// 行为基线（ADR 0263 第 2 步）用的假时钟：Date 冻在虚拟时间上（node:test 的 mock.timers 只接管 Date），
+// 行为基线（ADR 0336 第 2 步）用的假时钟：Date 冻在虚拟时间上（node:test 的 mock.timers 只接管 Date），
 // setTimeout / setInterval 换成自己的队列，只有 advanceTo 拨到点才触发；Math.random 换成固定种子。
 // 拨时间之前先等进程“静下来”：没有进行中的文件读写、连续几轮 setImmediate 里什么都没变。
 // 这样同一份代码每次跑出来的提示词、QQ 动作和状态文件逐字一样。

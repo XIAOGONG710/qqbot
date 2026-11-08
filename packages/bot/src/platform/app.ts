@@ -360,7 +360,7 @@ export interface AppOptions {
     workRunner?: typeof runWorkTask;
     /** 敏感调试开关（ADR 0070 第 8 项）；不传按环境变量 QQBOT_SENSITIVE_LOGS（默认关） */
     sensitive?: SensitiveSwitch;
-    /** 测试 / 审计：执行器派发每个动作之前看一眼（ADR 0263；行为基线用它记下每次调模型的完整配置） */
+    /** 测试 / 审计：执行器派发每个动作之前看一眼（ADR 0336；行为基线用它记下每次调模型的完整配置） */
     observe?: ExecutorOptions['observe'];
 }
 
@@ -413,7 +413,7 @@ export function startApp(options: AppOptions): App {
 }
 
 function createApp({ config, transport: rawTransport, log, pipeline, media, vision, stickerReader, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
-    // 碰外部的都经执行器（ADR 0263 第 3 步）：QQ 动作、调模型、时钟和计时器
+    // 碰外部的都经执行器（ADR 0336 第 3 步）：QQ 动作、调模型、时钟和计时器
     const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}) });
     const transport = exec.qq;
     let stopped = false;
@@ -900,7 +900,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；放进提示词的是下面的模块，“看”在后面（要她的 B 站号）
     const watchedFile = watchedPath(config.dataDir);
     let watchedEntries: readonly Watched[] = config.watching ? loadWatched(watchedFile, log).entries : [];
-    // 做判断的都经解释器（ADR 0263 第 4 步）：迁移前的整套逻辑先作为一个「旧逻辑」模块挂上；迁出去的模块逐个加在这里
+    // 做判断的都经解释器（ADR 0336 第 4 步）：迁移前的整套逻辑先作为一个「旧逻辑」模块挂上；迁出去的模块逐个加在这里
     const interpreter = createInterpreter({
         modules: [{
             id: 'app-legacy',
@@ -2127,7 +2127,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             },
             turnModules: interpreter.turnModules,
             ...pipeline,
-            // 回复和逐条事实检查的审稿也经执行器（ADR 0263 第 3 步）：配置、日志和原来 contact.ts 的默认调用一样；
+            // 回复和逐条事实检查的审稿也经执行器（ADR 0336 第 3 步）：配置、日志和原来 contact.ts 的默认调用一样；
             // 换模型（深思）时测试替身收到换成的那份配置，同原来 generate 的第三个参数
             generate: (messages, scopedLog, use) => exec.llm({ purpose: 'chat', config: use ?? config.llm, messages, ...(use ? { use } : {}) }, scopedLog),
             factAudit: messages => exec.llm({ purpose: 'chat', config: { ...forExtraction(config.llm), temperature: 0 }, messages }, message => log(`[${contact.qq}] ${message}`)),
@@ -3958,7 +3958,7 @@ ${body}
                     discoverFoodPhotos();
                     void refreshMemeJob();
                     if (!dormancy?.isDormant()) void watchJob();
-                    // 补完漏掉的消息之后：各模块连上后要做一次的事（小梗抽一次、口头习惯学一次……，ADR 0263）
+                    // 补完漏掉的消息之后：各模块连上后要做一次的事（小梗抽一次、口头习惯学一次……，ADR 0336）
                     void interpreter.dispatch({ kind: 'synced' });
                     checkWeeklyReport();
                     if (config.weeklyReport && !weeklyTimer) {
@@ -4277,7 +4277,7 @@ ${body}
             };
         },
     };
-    // 对外的入口都经解释器分发（ADR 0263 第 4 步）；停止、状态、手机伴侣、外部草稿不是事件，照旧直接给
+    // 对外的入口都经解释器分发（ADR 0336 第 4 步）；停止、状态、手机伴侣、外部草稿不是事件，照旧直接给
     return {
         connected: selfId => interpreter.dispatch({ kind: 'connected', selfId }) ?? Promise.resolve(),
         receive: event => { void interpreter.dispatch({ kind: 'message', event }); },

@@ -19,7 +19,7 @@ const exec = createExecutor({ transport: { sendPrivateText: async () => 1, frien
 const turn: Turn = { contact: { qq: 1, name: '阿明', tier: 'classmate' }, at: new Date(0), history: [], thinking: false, facts: {} };
 const message = { post_type: 'message', message_type: 'private', sub_type: 'friend', self_id: 2, user_id: 1, message_id: 3, time: 0, message: '在吗', raw_message: '在吗', sender: { user_id: 1 } } as MessageEvent;
 
-describe('提示词槽位表（ADR 0263）', () => {
+describe('提示词槽位表（ADR 0336）', () => {
     test('每个槽名只出现一次', () => {
         assert.equal(new Set(ALL_SLOTS).size, ALL_SLOTS.length);
         assert.equal(ALL_SLOTS.length, AFTER_MAIN_SLOTS.length + AFTER_HISTORY_SLOTS.length + NOW_SLOTS.length);
@@ -36,7 +36,7 @@ describe('提示词槽位表（ADR 0263）', () => {
     });
 });
 
-describe('解释器骨架（ADR 0263）', () => {
+describe('解释器骨架（ADR 0336）', () => {
     test('一轮回复：先全部 assess 再全部 contribute；都同步时同步返回', () => {
         const order: string[] = [];
         const a: Module = { id: 'a', assess: () => { order.push('a.assess'); }, contribute: () => { order.push('a.contribute'); return [{ slot: 'intent', text: 'A' }]; } };
@@ -108,7 +108,7 @@ describe('解释器骨架（ADR 0263）', () => {
     });
 });
 
-describe('小梗模块（ADR 0114 / 0263）', () => {
+describe('小梗模块（ADR 0114 / 0336）', () => {
     const boyfriend = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' as const }, history: [{ role: 'user' as const, content: '小土豆在干嘛', time: '2026-11-20T11:00:00.000Z' }], at: new Date('2026-11-20T11:00:00.000Z') };
     test('只有男朋友档；主动找他、只想一想、危机、小别扭、他难过的轮次让路', () => {
         assert.equal(playfulAllowed(boyfriend), true);
@@ -133,7 +133,7 @@ describe('小梗模块（ADR 0114 / 0263）', () => {
     });
 });
 
-describe('口头习惯模块（ADR 0138 / 0263）', () => {
+describe('口头习惯模块（ADR 0138 / 0336）', () => {
     const boyfriend = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' as const }, history: [{ role: 'user' as const, content: '笑死 又迟到了', time: '2026-11-20T11:00:00.000Z' }], at: new Date('2026-11-20T11:00:00.000Z') };
     test('放进 idiom 槽；share 为 0 时不放，让路的轮次不看词', () => {
         const logs: string[] = [];
@@ -152,7 +152,7 @@ describe('口头习惯模块（ADR 0138 / 0263）', () => {
     });
 });
 
-describe('分开的两个阶段（ADR 0263）', () => {
+describe('分开的两个阶段（ADR 0336）', () => {
     test('assessTurn 只写判断、不收段落；contributeTurn 只收段落、不再 assess；都同步时同步返回', () => {
         const calls: string[] = [];
         const module: Module = {
@@ -175,7 +175,7 @@ describe('分开的两个阶段（ADR 0263）', () => {
     });
 });
 
-describe('被打断模块（ADR 0115 / 0263）', () => {
+describe('被打断模块（ADR 0115 / 0336）', () => {
     const at = new Date('2026-11-22T13:00:00.000Z');
     const world = { events: [{ id: 'e1', text: '室友喊她去拿外卖', at: new Date('2026-11-22T12:58:00.000Z') }] } as never;
     const history = [
@@ -206,7 +206,7 @@ describe('被打断模块（ADR 0115 / 0263）', () => {
     });
 });
 
-describe('关系阶段模块（ADR 0113 / 0263）', () => {
+describe('关系阶段模块（ADR 0113 / 0336）', () => {
     const at = new Date('2026-11-25T12:00:00+08:00');
     // 最近 20 天每天他说 3 条
     const history = Array.from({ length: 20 }, (_, day) => [0, 1, 2].map(i => ({ role: 'user' as const, content: '在吗', time: new Date(at.getTime() - (day + 1) * 86_400_000 + i * 3600_000).toISOString() }))).flat();
@@ -232,7 +232,7 @@ describe('关系阶段模块（ADR 0113 / 0263）', () => {
     });
 });
 
-describe('陪玩模块（ADR 0111 / 0263）', () => {
+describe('陪玩模块（ADR 0111 / 0336）', () => {
     const at = new Date('2026-11-27T20:30:00+08:00');
     const history = [
         { role: 'user' as const, content: '今晚王者双排吗', time: new Date('2026-11-27T20:00:00+08:00').toISOString() },
@@ -271,7 +271,7 @@ describe('陪玩模块（ADR 0111 / 0263）', () => {
     });
 });
 
-describe('网络热梗模块（ADR 0129 / 0263）', () => {
+describe('网络热梗模块（ADR 0129 / 0336）', () => {
     const at = new Date('2026-11-29T13:00:00+08:00');
     const entry = { term: '尊嘟假嘟', meaning: '“真的假的”的卖萌说法', example: '', confidence: 'high' as const, firstSeen: '2026-11-20', lastSeen: '2026-11-28', seen: 3 };
     const boyfriend: Turn = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: [{ role: 'user', content: '尊嘟假嘟', time: at.toISOString() }] };
@@ -296,7 +296,7 @@ describe('网络热梗模块（ADR 0129 / 0263）', () => {
     });
 });
 
-describe('她看视频模块（ADR 0130 / 0263）', () => {
+describe('她看视频模块（ADR 0130 / 0336）', () => {
     const at = new Date('2026-12-01T12:20:00+08:00');
     const seen = { bvid: 'BV1test', title: '手机拍夜景的三个小技巧', owner: '某个 UP 主', tname: '摄影', excerpt: '夜景别开闪光灯', hot: ['笑死我了'], day: '2026-11-30' };
     const boyfriend: Turn = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: [{ role: 'user', content: '你最近在看什么', time: at.toISOString() }] };
@@ -326,7 +326,7 @@ describe('她看视频模块（ADR 0130 / 0263）', () => {
     });
 });
 
-describe('意图模块（意图阶梯，ADR 0263）', () => {
+describe('意图模块（意图阶梯，ADR 0336）', () => {
     const at = new Date('2026-12-03T12:00:00+08:00');
     const said = (content: string): Turn['history'] => [
         { role: 'assistant', content: '嗯嗯', time: new Date(at.getTime() - 3_600_000).toISOString() },

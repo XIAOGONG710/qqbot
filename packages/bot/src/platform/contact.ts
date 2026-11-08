@@ -419,7 +419,7 @@ export interface ContactPipelineOptions {
      * 不传是最近 80 条（ADR 0036 决策 3），线上不传
      */
     contextWindow?: TurnWindow & { summarize: Summarizer };
-    /** 解释器上注册的、要参与一轮回复的模块（ADR 0263）；拼提示词时排在迁移前的旧逻辑前面，各段按槽位表排 */
+    /** 解释器上注册的、要参与一轮回复的模块（ADR 0336）；拼提示词时排在迁移前的旧逻辑前面，各段按槽位表排 */
     turnModules?: readonly Module[];
 }
 
@@ -767,7 +767,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 小别扭 / 和好（ADR 0074）：从聊天记录的时间戳重算，不落盘；危机、主动找他、非男朋友档都不算
             // 起因有两种：隔了好几天才来（grievanceNow），或者她倾诉了几条、他隔了很久才回（ignoredNow，10-20）
             const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? (grievanceNow(chat) ?? ignoredNow(chat)) : undefined;
-            // 这一轮交给解释器的模块（ADR 0263）：先在这里 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
+            // 这一轮交给解释器的模块（ADR 0336）：先在这里 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
             // 她此刻在干嘛、作息、她答应的事、挂着的事、她那边还没说过的事还是旧逻辑算的，写进 facts 给意图阶梯（modules/intent.ts）读
             const herNow = schedule ?? herSchedule;
             const turn: Turn = {
@@ -1090,7 +1090,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     lastUserLine = `他最后说的是：「${lastUserText.slice(0, 120)}」。先接这一句，别接更早的话。`;
                 }
             }
-            // 按槽位表拼（ADR 0263 第 4 步）：迁移前这里手写的那一串，现在是「旧逻辑」这个大模块的段落，顺序由 interpreter/slots.ts 定；
+            // 按槽位表拼（ADR 0336 第 4 步）：迁移前这里手写的那一串，现在是「旧逻辑」这个大模块的段落，顺序由 interpreter/slots.ts 定；
             // 以后迁出去的模块经 options.turnModules 加进来。原来按真假判断的照旧按真假，原来无条件放的照旧无条件放
             const when = (slot: Slot, text: string | undefined | false | null): Piece[] => (text ? [{ slot, text }] : []);
             const legacyPieces: Piece[] = [

@@ -39,7 +39,7 @@ function contact(overrides: Partial<ContactPipelineOptions> = {}) {
         prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
         history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
         now: () => NOW, log: quiet, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
-        // 意图阶梯是解释器的模块（ADR 0263），App 总是挂着它；深思按意图判断
+        // 意图阶梯是解释器的模块（ADR 0336），App 总是挂着它；深思按意图判断
         turnModules: [intentModule()],
         send: async (_qq, text) => { sent.push(text); return sent.length + 100; },
         generate: async () => '好呀',
