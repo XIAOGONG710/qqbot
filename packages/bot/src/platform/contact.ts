@@ -68,8 +68,6 @@ import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exempl
 import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
 import { readTurn, readingLine } from '.././language/reading.ts';
 import { readScene } from '.././language/scenes.ts';
-import { thinkHint, UNSURE_LINE } from '.././language/asks.ts';
-import { opinionHint } from '.././language/opinion.ts';
 import { voiceHint, voiceRoll } from '.././language/speaking.ts';
 import { SHELL_INTENT } from '.././language/intent.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
@@ -844,14 +842,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (readingNow) log('他这句：这一轮先把他的话读明白再回（日志不记内容）');
             // 场景应答（2026-10-31）：哄睡 / 报错 / 自我怀疑 / 暗号，命中才加一句
             const hisLast = chat.filter(message => message.role === 'user').slice(-1)[0]?.content ?? '';
-            // 多问她真的想知道的事（2026-10-31 用户：「我希望她能有更多的问题来问我」）
-            const askNow = contact.tier === 'boyfriend' && !crisisNow && !thinking ? thinkHint(hisLast) : undefined;
-            if (askNow) log(`问一句：他这句${askNow.why}，给她一个问的方向`);
+            // 多问一句、先表态、拿不准就直说（2026-10-31）是解释器的模块（modules/asks.ts），经 turnModules 放进 askHint、opinion、unsure 槽
             const sceneNow = contact.tier === 'boyfriend' && !crisisNow ? readScene(hisLast)?.line : undefined;
             if (sceneNow) log('场景：他这句要特殊接（哄睡 / 报错 / 自我怀疑 / 暗号）');
-            // 要有自己的判断（2026-10-31：实测最近 200 条她没有一条带「我觉得」）
-            const opinionNow = contact.tier === 'boyfriend' && !crisisNow ? opinionHint(hisLast) : undefined;
-            if (opinionNow) log(`表态：他${opinionNow.why}，给一句先表态的方向`);
             // 她可以说出来（2026-11-01）：偶尔告诉她「想让他听见就用语音」
             const voiceNow = contact.tier === 'boyfriend' && !crisisNow && !thinking && !initiate ? voiceHint(voiceRoll(chat)) : undefined;
             if (voiceNow) log('说话：这一轮告诉她可以发语音');
@@ -1123,11 +1116,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('selfThread', selfThreadNow),
                 ...when('shell', shellNow),
                 ...when('scene', sceneNow),
-                ...(askNow ? [{ slot: 'askHint' as const, text: askNow.line }] : []),
                 ...when('voice', voiceNow),
                 ...when('question', questionNow),
-                ...(opinionNow ? [{ slot: 'opinion' as const, text: opinionNow.line }] : []),
-                ...(contact.tier === 'boyfriend' && !crisisNow ? [{ slot: 'unsure' as const, text: UNSURE_LINE }] : []),
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
                 // 她独处想事情（think）那一轮不给：想事情不走发送，命令不会跑，只会被当成一个念头存下来（11-02 探针里有一个念头整句是 <<执行：Get-Date …>>）
                 ...(contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievanceActive ? [{ slot: 'shellIntent' as const, text: SHELL_INTENT }] : []),

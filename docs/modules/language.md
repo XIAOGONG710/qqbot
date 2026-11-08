@@ -64,6 +64,7 @@
 - `modules/memes.ts`
 - `modules/watched.ts`
 - `modules/reply-basics.ts`
+- `modules/asks.ts`
 - `modules/playful.ts`
 - `st/`
 

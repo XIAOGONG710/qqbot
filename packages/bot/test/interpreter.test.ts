@@ -14,6 +14,8 @@ import { memesModule } from '../src/modules/memes.ts';
 import { watchedAllowed, watchedModule } from '../src/modules/watched.ts';
 import { intentModule, intentOf } from '../src/modules/intent.ts';
 import { DIRECT_ANSWER_NOTE, lastUserLine, NO_OVERTHINK_NOTE, PERSON_NOTE, replyBasicsModule } from '../src/modules/reply-basics.ts';
+import { asksAllowed, asksModule } from '../src/modules/asks.ts';
+import { UNSURE_LINE } from '../src/language/asks.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
 
@@ -412,5 +414,35 @@ describe('接话的基本规矩模块（DSH 10-30 / 10-31，ADR 0336）', () => 
         assert.deepEqual(slots(chatTurn([said(150)], initiating)), ['lastUser']);
         assert.deepEqual(slots(chatTurn([], initiating)), []);
         assert.deepEqual(slots(chatTurn([said(1)], { contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, thinking: true, facts: { crisis: { level: 'acute' } as never } })), ['lastUser', 'person', 'directAnswer', 'noOverthink']);
+    });
+});
+
+describe('她自己的问题和判断模块（DSH 10-31，ADR 0336）', () => {
+    const at = new Date('2026-11-29T13:00:00+08:00');
+    const boyfriend = (said: string, extra: Partial<Turn> = {}): Turn => ({
+        ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: [{ role: 'user', content: said, time: at.toISOString() }], ...extra,
+    });
+
+    test('只有男朋友档；危机时不放；小别扭、主动找他、只想一想照样放', () => {
+        assert.equal(asksAllowed(boyfriend('嗯嗯')), true);
+        assert.equal(asksAllowed({ ...boyfriend('嗯嗯'), contact: { qq: 1, name: '阿明', tier: 'classmate' } }), false);
+        assert.equal(asksAllowed(boyfriend('嗯嗯', { facts: { crisis: { level: 'acute' } as never } })), false);
+        assert.equal(asksAllowed(boyfriend('嗯嗯', { facts: { grievance: {} as never }, initiate: { note: '', topic: '' }, thinking: true })), true);
+    });
+
+    test('问的方向、先表态、拿不准各放一个槽并记日志；只想一想时不给问的方向', () => {
+        const logs: string[] = [];
+        const module = asksModule(line => logs.push(line));
+        const slots = (t: Turn) => (module.contribute!(t) as Piece[]).map(piece => piece.slot);
+        assert.deepEqual(slots(boyfriend('嗯嗯')), ['askHint', 'unsure']);
+        assert.deepEqual(logs, ['[1] 问一句：他这句轮到了，给她一个问的方向']);
+        assert.deepEqual(slots(boyfriend('你觉得这件外套好看吗？')), ['opinion', 'unsure']);
+        assert.equal(logs.at(-1), '[1] 表态：他他在问看法，给一句先表态的方向');
+        assert.deepEqual(slots(boyfriend('嗯嗯', { thinking: true })), ['unsure']);
+        assert.deepEqual(slots(boyfriend('你觉得这件外套好看吗？', { thinking: true })), ['opinion', 'unsure']);
+        assert.deepEqual((module.contribute!(boyfriend('今天下午去图书馆还书，顺便借了两本')) as Piece[]), [{ slot: 'unsure', text: UNSURE_LINE }]);
+        assert.deepEqual(module.contribute!({ ...boyfriend('嗯嗯'), contact: { qq: 1, name: '阿明', tier: 'classmate' } }), []);
+        // 他还没说过话：只剩拿不准那一行
+        assert.deepEqual(slots({ ...boyfriend(''), history: [] }), ['unsure']);
     });
 });
