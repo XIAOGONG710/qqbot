@@ -7,6 +7,14 @@ import { join } from 'node:path';
 import { watchedFacts } from '../language/watching.ts';
 import type { BotConfig, Contact } from '../platform/config.ts';
 import { createContactResponder, replySkip, type ContactPipelineOptions, type TierCard } from '../platform/contact.ts';
+import { jokesTurnModule } from '../modules/jokes.ts';
+import { idiomsTurnModule } from '../modules/idioms.ts';
+import { interruptionsModule } from '../modules/interruptions.ts';
+import { closenessModule } from '../modules/closeness.ts';
+import { togetherModule } from '../modules/together.ts';
+import { intentModule } from '../modules/intent.ts';
+import { memesModule } from '../modules/memes.ts';
+import { watchedModule } from '../modules/watched.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../platform/sensitive.ts';
 import { withFestivalActivities, withFestivals } from '../world/festivals.ts';
 import { photoAllowance, photoShelf } from '../vision/photos.ts';
@@ -512,10 +520,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ...(scenario.innerLife ? { innerLine: () => planner?.innerLine() } : {}),
         // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
         ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
-        ...(scenario.together ? { together: true } : {}),
-        ...(scenario.relationship ? { relationship: true } : {}),
-        ...(scenario.jealousy ? { jealousy: true } : {}),
-        ...(scenario.curious ? { curious: true } : {}),
         ...(scenario.texture ? { texture: true } : {}),
         ...(scenario.quoteReply ? { quoteReply: true, ...(scenario.quoteShare !== undefined ? { quoteShare: scenario.quoteShare } : {}) } : {}),
         // 逐条事实检查（ADR 0137）：审稿的调用走场景自己的模型（假模型也行）；每次的记录进这一步，报告里看得到
@@ -529,13 +533,22 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             },
             onFactCheck: (record: FactRecord) => { if (epoch === responderEpoch) (current.facts ??= []).push(record); },
         } : {}),
-        ...(scenario.interruptions ? { interruptions: true } : {}),
-        ...(scenario.jokes?.length ? { jokes: () => scenario.jokes! } : {}),
-        ...(scenario.idioms?.length ? { idioms: () => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), ...(scenario.idiomShare !== undefined ? { idiomShare: scenario.idiomShare } : {}) } : {}),
-        ...(scenario.watched?.length ? { watched: () => { const d = new Date(clock.now()); const day = formatDate(d); return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),
-        ...(scenario.memes?.length ? { memes: () => { const d = new Date(clock.now()); const day = formatDate(d); return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); } } : {}),
-        ...(scenario.herNo ? { herNo: true } : {}),
-        ...(scenario.afterNo ? { afterNo: true } : {}),
+        // 做判断的模块（ADR 0263），顺序同 App：意图阶梯总在最前；小梗（ADR 0114）直接给场景里写好的梗，不抽
+        turnModules: [
+            intentModule({
+                ...(scenario.herNo ? { refuse: true } : {}), ...(scenario.afterNo ? { afterNo: true } : {}), ...(scenario.jealousy ? { jealous: true } : {}), ...(scenario.curious ? { curious: true } : {}),
+                ...(scenario.everydayLife ? { everydayLife: true } : {}), ...(scenario.pursuits ? { pursuits: true } : {}),
+            }),
+            ...(scenario.relationship ? [closenessModule(message => { if (epoch === responderEpoch) log(message); })] : []),
+            ...(scenario.jokes?.length ? [jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); })] : []),
+            ...(scenario.idioms?.length ? [idiomsTurnModule(() => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), message => { if (epoch === responderEpoch) log(message); }, scenario.idiomShare)] : []),
+            ...(scenario.together ? [togetherModule(message => { if (epoch === responderEpoch) log(message); })] : []),
+            ...(scenario.interruptions ? [interruptionsModule(message => { if (epoch === responderEpoch) log(message); })] : []),
+            // 网络热梗（ADR 0129）：直接给场景里写好的梗，当作今天刚在榜上，不学
+            ...(scenario.memes?.length ? [memesModule(() => { const day = formatDate(new Date(clock.now())); return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); }, message => { if (epoch === responderEpoch) log(message); })] : []),
+            // 她看视频（ADR 0130）：直接给场景里写好的，当作今天刚看过，不去看
+            ...(scenario.watched?.length ? [watchedModule(() => { const day = formatDate(new Date(clock.now())); return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); }, message => { if (epoch === responderEpoch) log(message); })] : []),
+        ],
         ...(scenario.memoryFeelings && scenario.herFeelings ? { memoryFeelings: true } : {}),
         ...(scenario.shapeAll ? { shapeAll: true } : {}),
         // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取

@@ -55,6 +55,15 @@
 - `language/curious.ts`
 - `language/llm.ts`
 - `language/model-guard.ts`
+- `modules/jokes.ts`
+- `modules/idioms.ts`
+- `modules/interruptions.ts`
+- `modules/closeness.ts`
+- `modules/together.ts`
+- `modules/intent.ts`
+- `modules/memes.ts`
+- `modules/watched.ts`
+- `modules/playful.ts`
 - `st/`
 
 ## 开关

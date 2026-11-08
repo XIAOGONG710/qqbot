@@ -6,6 +6,8 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
+import { assessTurn, contributeTurn, type Module, type Turn } from '../interpreter/interpreter.ts';
+import type { Piece, Slot } from '../interpreter/slots.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
@@ -29,7 +31,7 @@ import type { SilenceInfo } from '.././social/silence.ts';
 import { describeMood, moodAt, readingActivities, readingSection } from '.././life/her-days.ts';
 import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from '.././emotion/grievance.ts';
-import { describeIntent, needsCareText } from '.././language/intent.ts';
+import { needsCareText } from '.././language/intent.ts';
 import { describeObstacles, meetupDays } from '.././world/obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { describeQuote, planQuote, quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
@@ -52,7 +54,7 @@ import { withMenu } from '.././life/menu.ts';
 import { describePursuits, pursuitViews, type Pursuit } from '.././life/pursuits.ts';
 import type { FeelingsReport } from '../emotion/feeling-export.ts';
 import { appraisals, asksAfterHer, criedRecently, describeFeelings, FEELING_NAME, feelingsAt, feelsLow, voicedKinds, type Appraisal, type Felt, type Moment } from '.././emotion/feelings.ts';
-import { describeRecentPhotography, projectActivity, recentPhotography } from '.././life/projects.ts';
+import { describeRecentPhotography, recentPhotography } from '.././life/projects.ts';
 import { describePast, pastCue } from '.././life/biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
 import { describeAppointment, mentionsMeetup, type PromiseKeeper } from '.././life/promises.ts';
@@ -62,10 +64,6 @@ import { describePick, pickBest, PICKED_INTENTS, type PickRules } from '.././lan
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
 import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
-import { describeInterruption, interruptionNow } from '.././language/interruption.ts';
-import { idiomLine, type Idiom } from '.././language/idioms.ts';
-import { jokeLine, type Joke } from '.././language/jokes.ts';
-import { memeLine, type MemeEntry } from '.././language/memes.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
 import { ackGuardLine, identityLine, readRegister, registerLine, registerSummary, temperLine } from '.././language/register.ts';
 import { readTurn, readingLine } from '.././language/reading.ts';
@@ -83,11 +81,8 @@ import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts'
 import { lastNight, withLastNight } from '.././life/nights.ts';
 import { reviewLine, type ReviewNote } from '.././language/chat-review.ts';
 import { guessesLine, type Guess } from '.././life/her-guesses.ts';
-import { watchedLine, type Watched } from '.././language/watching.ts';
-import { describeCloseness } from '.././language/relationship.ts';
 import { describeHumanState, describeHumanValues, type HumanValues } from '.././human-values.ts';
 import { auditDevelopment, describeDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
-import { describeTogether, togetherNow } from '.././language/together.ts';
 import { photoAllowance, photoIntent, photoWanted, stripPhotoArtifacts, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
 
@@ -383,28 +378,8 @@ export interface ContactPipelineOptions {
     onFeelings?: (report: FeelingsReport) => void;
     /** 她夜里回想、指出了依据的感受（ADR 0197，配置 feelingReview）：作为「别处算好的评估」进心境；要 herFeelings 开着 */
     feelingReview?: () => readonly Appraisal[];
-    /** 陪玩状态（ADR 0111）：他答应了她的邀约（或她答应了他的）之后两三个小时，她正和他一起玩：回话短、聊局里的事；只对男朋友档 */
-    together?: boolean;
-    /** 关系阶段（ADR 0113）：最近 30 天里有 14 天以上真聊过，她更放得开一点；只对男朋友档 */
-    relationship?: boolean;
-    /** 吃醋，最轻的一档（ADR 0123）：他提到别的女生时嘴上不承认的别扭，不盘问、不要保证、不限制他；只对男朋友档 */
-    jealousy?: boolean;
-    /** 会追问（ADR 0126）：他说了件有细节的事，约六成回完反应后问一个关于这件事本身的问题；只对男朋友档 */
-    curious?: boolean;
-    /** 被第三方打断（ADR 0115）：聊着聊着她那边发生了一件小事（世界账里有时刻的），当场岔一下；只对男朋友档 */
-    interruptions?: boolean;
-    /** 小梗（ADR 0114）：他们之间聊天里反复出现的玩笑；约 1/4 的轮次给她看一个，话赶话接得上就顺口提；只对男朋友档 */
-    jokes?: () => readonly Joke[];
-    /** 他的口头习惯（ADR 0138，配置 idioms）：约一半的轮次给她看他爱说的一两个词，这一轮正好用得上就顺口用一个；只对男朋友档 */
-    idioms?: () => readonly Idiom[];
-    /** 给她看口头习惯的概率（默认 IDIOM_TURN_SHARE；模拟器场景可以调来测）*/
-    idiomShare?: number;
     /** 说话的质感（ADR 0131）：发出去之前在气泡上加真人常有的小黄脸 / 「～」 / 问号 / 叠字……；危机和他难过的回合不加 */
     texture?: boolean;
-    /** 网络热梗（ADR 0129）：他用到库里的梗给她意思，没用到约 20% 的轮次给她看最近的几个；只对男朋友档 */
-    memes?: () => readonly MemeEntry[];
-    /** 她自己在 B 站看过的东西（ADR 0130，配置 watching）：他问到“最近看了什么”时给她真看过的两条；只对男朋友档 */
-    watched?: () => readonly Watched[];
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
     moments?: () => readonly Moment[];
     /** 她自己的追求（ADR 0104，配置 pursuits）：内置两条（别挂科、用新相机拍出满意的东西）加作者在 pursuits.json 里改的 / 加的；每次生成现取 */
@@ -413,10 +388,6 @@ export interface ContactPipelineOptions {
     everydayLife?: boolean;
     /** 回复延迟的长尾（ADR 0105，配置 lagTail）：醒着空着时有一部分消息她在做别的，过一会儿才看到；断网很久之后才回，时间块里写一句 */
     lagTail?: boolean;
-    /** 会拒绝（ADR 0103，配置 herNo）：她刚推了他、他在磨她时别被磨两句就答应；他在管着她（不许 / 听到没）时不顺着说“都听你的”。只给男朋友档 */
-    herNo?: boolean;
-    /** 拒绝之后（ADR 0214，默认关）：他又提同一类请求时，记得上次她推了他只回「行吧」、或者她被磨着勉强答应了；只给男朋友档 */
-    afterNo?: boolean;
     /** 分成几条（配置 shapeSplit，要 shape 开着）：把形状里抽出的条数当目标写进提示词，不只是上限（ADR 0096） */
     shapeSplit?: boolean;
     /** 被问直接问题时答完再接着说（配置 shapeAsk，要 shape 开着，ADR 0149）：不加「应一声、附和」那一句，条数按真人被问问题时的分布抽 */
@@ -448,6 +419,8 @@ export interface ContactPipelineOptions {
      * 不传是最近 80 条（ADR 0036 决策 3），线上不传
      */
     contextWindow?: TurnWindow & { summarize: Summarizer };
+    /** 解释器上注册的、要参与一轮回复的模块（ADR 0263）；拼提示词时排在迁移前的旧逻辑前面，各段按槽位表排 */
+    turnModules?: readonly Module[];
 }
 
 /** 问到过去的某一天时，几天以内她那边的事还记得清楚（ADR 0032，同 ADR 0018 的 7 天） */
@@ -794,28 +767,28 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 小别扭 / 和好（ADR 0074）：从聊天记录的时间戳重算，不落盘；危机、主动找他、非男朋友档都不算
             // 起因有两种：隔了好几天才来（grievanceNow），或者她倾诉了几条、他隔了很久才回（ignoredNow，10-20）
             const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? (grievanceNow(chat) ?? ignoredNow(chat)) : undefined;
-            const baseIntent = thinking ? undefined : describeIntent({
-                history: chat,
-                state,
-                schedule: schedule ?? herSchedule,
-                now: time,
-                promised: Boolean(promised),
-                books: Boolean(books),
-                initiating: Boolean(initiate),
-                ...(options.herNo ? { refuse: true } : {}),
-                ...(options.afterNo ? { afterNo: true } : {}),
-                ...(options.jealousy ? { jealous: true } : {}),
-                ...(options.curious ? { curious: true } : {}),
-                ...(options.everydayLife && around?.events.length ? { dayThings: true } : {}),
-                ...(options.pursuits && state?.activity.kind === 'free' && projectActivity(state.activity.text) ? { pursuitDoing: projectActivity(state.activity.text)!.step } : {}),
-                waiting: loops?.waiting.map(l => l.what),
-                unanswered: loops?.unanswered.map(l => l.what),
-                intimate: contact.tier === 'boyfriend',
-                playful: contact.tier === 'boyfriend',
-                ...(crisisNow ? { crisis: crisisNow.level, ...(crisisNow.awaitingSafe ? { crisisAwaitingSafe: true } : {}) } : {}),
-                ...(grievance ? { grievance } : {}),
-                ...(untold.length ? { news: untold } : {}),
-            });
+            // 这一轮交给解释器的模块（ADR 0263）：先在这里 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
+            // 她此刻在干嘛、作息、她答应的事、挂着的事、她那边还没说过的事还是旧逻辑算的，写进 facts 给意图阶梯（modules/intent.ts）读
+            const herNow = schedule ?? herSchedule;
+            const turn: Turn = {
+                contact, at: time, history: chat, thinking,
+                facts: {
+                    ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(around ? { world: around } : {}),
+                    ...(state ? { state } : {}), ...(herNow ? { schedule: herNow } : {}), ...(promised ? { promised: true } : {}),
+                    ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what) } : {}),
+                    ...(untold.length ? { news: untold } : {}),
+                },
+                ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
+            };
+            const assessed = assessTurn(options.turnModules ?? [], turn);
+            // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
+            if (assessed instanceof Promise) await assessed;
+            // 意图阶梯（ADR 0019 起）是解释器的模块（modules/intent.ts）：assess 时写进 turn.facts.baseIntent（照片 / 被打断改写之前的那一版）
+            const baseIntent = turn.facts.baseIntent;
+            // 陪玩（ADR 0111）是解释器的模块（modules/together.ts）：assess 时判断、记日志，经 turnModules 放进 together 槽
+            // 关系阶段（ADR 0113）是解释器的模块（modules/closeness.ts），经 turnModules 放进 closeness 槽
+            // 被打断（ADR 0115）是解释器的模块（modules/interruptions.ts）：聊天正在进行时她那边恰好发生了一件小事，写进 turn.facts.interruption，放进 interrupt 槽
+            const interruption = turn.facts.interruption;
             // 照片（ADR 0109）：他明确要看猫 / 风景 / 她的片子，货架里有这一类，允许发（没连着发、今天没发够、不是危机 / 吵醒 / 小别扭 / 他难过），就发；
             // 没有明确对象（只说“发张照片”）取手上有的第一类；要的是她本人（自拍）不在货架里，照旧走“先不发”
             photoNow = undefined;
@@ -854,30 +827,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     else log(`照片货架：这一轮不发（${allowance.reason}）`);
                 }
             }
-            // 陪玩（ADR 0111）：从聊天记录往回推，答应邀约之后的两三个小时；危机回合、主动找他的那条不算
-            const togetherState = options.together && contact.tier === 'boyfriend' && !initiate && !crisisNow ? togetherNow(chat, time.getTime()) : undefined;
-            const togetherLine = togetherState ? describeTogether(togetherState, time.getTime()) : undefined;
-            if (togetherState) log(`陪玩：他们正一起${togetherState.activity === 'wzry' ? '打王者' : togetherState.activity === 'minecraft' ? '玩我的世界' : '玩游戏'}（从答应起 ${Math.round((time.getTime() - togetherState.since) / 60_000)} 分钟）`);
-            // 关系阶段（ADR 0113）：聊得多了更放得开；危机回合、小别扭、她在想事情（think）时不加
-            const closenessLine = options.relationship && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance ? describeCloseness(chat, time.getTime()) : undefined;
-            if (closenessLine) log('关系：最近几乎天天在聊，她更放得开一点（提示词里多一行）');
-            // 被打断（ADR 0115）：聊天正在进行时，世界账里她那边恰好发生了一件小事；他难过 / 危机 / 小别扭 / 主动找他 / 她在想事情时不加
-            const interruption = options.interruptions && around && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
-                ? interruptionNow(around.events, chat, time.getTime()) : undefined;
-            const interruptLine = interruption ? describeInterruption(interruption) : undefined;
-            if (interruptLine) log('被打断：聊着的时候她那边发生了一件小事（提示词里多一行；日志不记内容）');
-            // 小梗（ADR 0114）：他难过 / 危机 / 小别扭 / 主动找他 / 她在想事情时不给；日志不记梗的内容
-            const jokeNow = options.jokes && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
-                ? jokeLine(options.jokes(), chat, time.getTime()) : undefined;
-            if (jokeNow) log('小梗：这一轮提示词里放了一个他们之间的梗（日志不记内容）');
-            // 他的口头习惯（ADR 0138）：让路同小梗；日志不记内容
-            const idiomNow = options.idioms && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
-                ? idiomLine(options.idioms(), chat, time.getTime(), options.idiomShare) : undefined;
-            if (idiomNow) log('口头习惯：这一轮提示词里放了他爱说的词（日志不记内容）');
-            // 网络热梗（ADR 0129）：让路同小梗；日志不记梗的内容
-            const memeNow = options.memes && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
-                ? memeLine(options.memes(), chat, time.getTime()) : undefined;
-            if (memeNow) log('网络热梗：这一轮提示词里放了梗的意思（日志不记内容）');
+            // 陪玩（ADR 0111）、关系阶段（ADR 0113）、被打断（ADR 0115）是解释器的模块（见上面 assess 那里）
+            // 小梗（ADR 0114）、他的口头习惯（ADR 0138）是解释器的模块（modules/jokes.ts、modules/idioms.ts），经 turnModules 放进 joke、idiom 槽
+            // 网络热梗（ADR 0129）是解释器的模块（modules/memes.ts），经 turnModules 放进 meme 槽
+            // 她看视频（ADR 0130）是解释器的模块（modules/watched.ts），经 turnModules 放进 watched 槽
             // 真人例子（ADR 0190）：只给她看「真人怎么回」，不给她定字数
             const exemplarNow = options.exemplars?.length && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance
                 ? (() => {
@@ -942,8 +895,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ? guessesLine(options.herGuesses(), chat.findLast(message => message.role === 'user')?.content, now()) : undefined;
             if (guessesNow) log('她猜的事：这一轮放了她自己记的（日志不记内容）');
             // 梗百科词库（2026-10-29）：她自己的库太小；他提到的词只要词库里有，就把「怎么用/出处/标签」给她。
-            // 让路条件和热梗一样；已经在 memeNow 里的不重复给。
-            const dictNow = options.memeDict && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance
+            // 让路条件和热梗一样；已经在热梗那一行里的不重复给。热梗那一行由热梗模块（modules/memes.ts）在 contribute 时写进 turn.facts.meme，
+            // 所以这一行到拼段落时（下面「旧逻辑」模块的 contribute）才算，日志也在那时记
+            const dictLine = (memeNow: string | undefined) => options.memeDict && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance
                 && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
                 ? (() => {
                     const last = chat.findLast(message => message.role === 'user');
@@ -952,17 +906,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     if (!hit || memeNow?.includes(hit.term)) return undefined;
                     return `[他这句里提到一个网络词「${hit.term}」：怎么用——${hit.meaning}${hit.origin ? `；出处——${hit.origin}` : ''}${hit.tags ? `；标签——${hit.tags}` : ''}。你大概知道这个梗：顺着他的意思接，别科普、别解释梗、别拆穿]`;
                 })() : undefined;
-            if (dictNow) log('梗百科：这一轮查到了他提的词（日志不记内容）');
-            // 她在 B 站看过的（ADR 0130）：他问到“最近看了什么 / 刷到什么”才放
-            const watchedNow = options.watched && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? watchedLine(options.watched(), chat, time) : undefined;
-            if (watchedNow) log('她看视频：这一轮提示词里放了她最近看过的（日志不记内容）');
             // 主动发的那条（喂完猫拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
             // 被打断的这一轮（ADR 0115）：不带“先直接回答他刚问的”这类意图、不套形状 / 长短提示——它们和“先接他的话、顺带说一声刚被什么岔了一下”冲突，模型会按更紧的那条来、把打断吞掉（模拟 5/5 没提）
             const intent = photoNow && !initiate
                 ? (photoPromptNow ? '[这一轮你想：他明确要看现在的照片，你有一张与此刻匹配、已经审核过的：自然带一句后发这一张；别换成别的照片]' : photoIntent(photoNow))
                 : currentPhotoUnavailableNow
                     ? '[这一轮你想：他明确要看现在的照片，但现在没有一张已经审核且与此刻匹配的；如实说这会儿发不了，别拿以前的图冒充“现在”，也别承诺马上补发]'
-                    : interruptLine ? undefined : baseIntent;
+                    : interruption ? undefined : baseIntent;
             const grievanceActive = Boolean(grievance && intent === describeGrievance(grievance));
             sulkNow = grievanceActive && grievance!.stage === 'sulk';
             if (grievanceActive) log(grievance!.cause === 'ignored'
@@ -1024,7 +974,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (stickerContext) log(stickerOnlyNow ? '图片表情：这一轮抽到只发表情、不写文字' : '图片表情：这一轮抽到要发一个');
             if (options.stickers && !thinking && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
             // 深思（ADR 0151）：他是认真在问她的轮次，不套字数和条数、换更强的模型、提示词只留一句“先想清楚”；危机 / 小别扭 / 亲近等别的意图照旧让路
-            const deliberateEligible = Boolean(options.deliberate) && !initiate && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !grievanceActive;
+            const deliberateEligible = Boolean(options.deliberate) && !initiate && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !grievanceActive;
             const lexicalDeep = deliberateEligible && deliberateTurn(intent, saidNow, asksToExplain(saidNow));
             // 语义路由（ADR 0202）：关键词没认出来的轮次问一次小模型；只在「关键词说不是、分类说值得认真」时多放行一轮，关键词认出来的照旧
             const routed = deliberateEligible && !lexicalDeep && options.turnWeight && saidNow.trim()
@@ -1066,7 +1016,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             ];
             // 语言松绑（DSH 10-28 27facc0）：只有“接情绪/好事/亲近/撒娇/认真”或问过去时给形状；普通闲聊不圈条数字数。
             // shapeAll（ADR 0220，默认关）：所有轮次都给形状（回到 ADR 0091 的样子），用来量松绑前后的差别
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruptLine && !thinking && !deliberateNow && (Boolean(options.shapeAll) || Boolean(cue) || Boolean(intent && ENGAGED_INTENT.test(intent))) ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
+            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !deliberateNow && (Boolean(options.shapeAll) || Boolean(cue) || Boolean(intent && ENGAGED_INTENT.test(intent))) ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
             // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
             const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
             const crutchLine = crutches.length
@@ -1096,7 +1046,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     recentTildes: faceContext(options.history.load(contact.qq), contact.tier).recent.slice(-TEXTURE_TILDE_WINDOW).filter(reply => /[～~]\s*$/m.test(reply)).length,
                 }
                 : undefined;
-            const length = crisisNow || shapeNow || cue || stickerOnlyNow || photoNow || interruptLine || thinking || deliberateNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
+            const length = crisisNow || shapeNow || cue || stickerOnlyNow || photoNow || interruption || thinking || deliberateNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.long ? '，长答' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
@@ -1140,123 +1090,130 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     lastUserLine = `他最后说的是：「${lastUserText.slice(0, 120)}」。先接这一句，别接更早的话。`;
                 }
             }
+            // 按槽位表拼（ADR 0263 第 4 步）：迁移前这里手写的那一串，现在是「旧逻辑」这个大模块的段落，顺序由 interpreter/slots.ts 定；
+            // 以后迁出去的模块经 options.turnModules 加进来。原来按真假判断的照旧按真假，原来无条件放的照旧无条件放
+            const when = (slot: Slot, text: string | undefined | false | null): Piece[] => (text ? [{ slot, text }] : []);
+            const legacyPieces: Piece[] = [
+                ...when('relationship', relationship),
+                ...when('summary', summary),
+                ...when('recalled', recalled),
+                ...when('work', work),
+                ...when('desktop', desktop),
+                // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3：放在前面时问「昨天都干嘛了」她照着报喂猫、取快递，想不起那天记得住的麻辣烫，1/3）
+                ...when('common', common),
+                ...(recap ? [{ slot: 'recap' as const, text: recap.text }] : []),
+                ...when('today', today),
+                ...when('past', past),
+                ...aboutNpcs.map(text => ({ slot: 'npcs' as const, text })),
+                ...peopleText.map(text => ({ slot: 'people' as const, text })),
+                ...(common || today || peopleText.length ? [{ slot: 'disclosure' as const, text: disclosureRules(contact) }] : []),
+                { slot: 'time', text: describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }) },
+                ...when('days', days),
+                ...(state ? [{ slot: 'state' as const, text: describeState(state, schedule!, { userName: contact.name, woken, partnerApart: true, ...(options.realNights && contact.tier === 'boyfriend' ? { grumpy: true } : {}) }) }] : []),
+                // 2026-10-30 线上：她凭空来了一句「今天有点累，就更不想说话了」，他看着莫名其妙——
+                // 「你现在」那几行是底子不是话题，没人问就别拿它开头。
+                ...(state || body ? [{ slot: 'groundNote' as const, text: '（上面「你现在」和身体那几行是你的底子，不是话题：没人问就别主动说你累了、心情怎样，也别把它当成一句话发出去）' }] : []),
+                // 今天的心情（按日期抽的「爱笑」「安静」）不再注入（10-30 用户：这种替她表态的都清掉）：
+                // 心情由真实发生的事推出来的 feelingLine 表达。
+                ...when('body', body),
+                ...when('humanState', humanStateLine),
+                ...when('development', developmentLine),
+                ...when('unsettled', unsettled),
+                ...when('warm', warm),
+                ...when('feeling', feelingLine),
+                ...when('pace', paceLine),
+                ...(books ? [{ slot: 'books' as const, text: books.text }] : []),
+                ...when('world', world),
+                ...when('practice', practice),
+                // 追求（「别挂科」「用新相机拍出满意的东西」）也不再注入（10-30 同一条）：她想追什么，自己说。
+                ...when('selfNote', selfNote),
+                ...when('plans', plansLine),
+                ...when('promised', promised),
+                ...when('obstacle', obstacleLine),
+                // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
+                ...when('partnerBack', partnerBack),
+                ...when('exemplar', exemplarNow),
+                ...when('register', registerNow),
+                ...when('selfThread', selfThreadNow),
+                ...when('shell', shellNow),
+                ...when('scene', sceneNow),
+                ...(askNow ? [{ slot: 'askHint' as const, text: askNow.line }] : []),
+                ...when('voice', voiceNow),
+                ...when('question', questionNow),
+                ...(opinionNow ? [{ slot: 'opinion' as const, text: opinionNow.line }] : []),
+                ...(contact.tier === 'boyfriend' && !crisisNow ? [{ slot: 'unsure' as const, text: UNSURE_LINE }] : []),
+                ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
+                // 她独处想事情（think）那一轮不给：想事情不走发送，命令不会跑，只会被当成一个念头存下来（11-02 探针里有一个念头整句是 <<执行：Get-Date …>>）
+                ...(contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievanceActive ? [{ slot: 'shellIntent' as const, text: SHELL_INTENT }] : []),
+                ...when('reading', readingNow),
+                ...when('speechNote', speechNoteNow),
+                ...when('review', reviewNow),
+                ...when('insight', insightNow),
+                ...when('takes', takesNow),
+                ...when('thoughts', thoughtsNow),
+                ...when('guesses', guessesNow),
+                ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
+                // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
+                ...(options.devices && !crisisNow && !thinking ? [{ slot: 'devices' as const, text: options.devices.menu() }] : []),
+                ...when('sticker', stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined),
+                ...when('photo', photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)! : undefined),
+                ...when('intent', intentLine),
+                ...when('lastUser', lastUserLine),
+                // 这件事她以前理解偏过（10-30）：他这句话和以前被纠正过的事撞上时提醒她
+                ...(!initiate && lastUserText && options.understanding?.(lastUserText) ? [{ slot: 'understanding' as const, text: options.understanding(lastUserText)! }] : []),
+                // 他说过、做过、答应过的事（10-31 留痕）：最近的几条，聊到相关的再说，不硬塞
+                ...(!initiate && options.traces?.() ? [{ slot: 'traces' as const, text: options.traces()! }] : []),
+                // 人称（10-30：他问「我是谁？」，她回「我是谁这还用问」——把「我」当成了自己）
+                ...(!initiate ? [{ slot: 'person' as const, text: '[人称：他说「我」是他自己、说「你」是叫你；你说「我」是你自己。他问「我是谁」「我算你什么」问的是你们俩是什么关系，别答成你问你自己。]' }] : []),
+                // 她自己在 10-31 同意加的（问了她「要不要加」：「该加。我确实老这样，你一认真我就先问『你今天怎么了』。
+                // 行，以后正经问我就正经答。不过聊闲天我还贫啊。」）
+                ...(!initiate ? [{ slot: 'directAnswer' as const, text: '[他正经问你一件事、问你怎么想的时候：先直接答，别一上来就反问「你今天怎么了」「你问这个干嘛」；答完可以就停。聊闲天、开玩笑照旧贫。]' }] : []),
+                // 她自己 10-31 提的：「我老想着接你的话，接得好看点，一使劲反而怪。少想点，别一开口就先想『这句该怎么说』。」
+                // 追问时她把界限说清了：「小事我张口就来，正经的我会先想一下——但也不会想半天，想太久我就烦了。」
+                ...(!initiate ? [{ slot: 'noOverthink' as const, text: '[平时聊天别琢磨怎么接才好看——一句话在脑子里过好几遍才发出去，反而怪。想到什么说什么，说岔了也认。他正经问你事的时候可以想一下，但别想半天。]' }] : []),
+                ...(options.selfMemory ? [{ slot: 'selfMemory' as const, text: SELF_MEMORY_NOTE }] : []),
+                ...(options.refusalLine?.() ? [{ slot: 'refusal' as const, text: options.refusalLine()! }] : []),
+                ...(options.ratingLine?.() ? [{ slot: 'rating' as const, text: options.ratingLine()! }] : []),
+                ...(options.lifeLine?.() ? [{ slot: 'life' as const, text: `[你现在的生活] ${options.lifeLine()!}` }] : []),
+                ...(options.wakeNote?.() ? [{ slot: 'wake' as const, text: options.wakeNote()! }] : []),
+                ...(options.ask?.() ? [{ slot: 'herAsk' as const, text: options.ask()! }] : []),
+                ...(options.workRequest?.() ? [{ slot: 'workRequest' as const, text: WORK_REQUEST_NOTE }] : []),
+                ...(options.workJudge?.() ? [{ slot: 'workJudge' as const, text: WORK_JUDGE_NOTE }] : []),
+                ...(options.workMode?.() ? [{ slot: 'workMode' as const, text: WORK_MODE_NOTE }] : []),
+                ...(deliberateNow ? [{ slot: 'deliberate' as const, text: options.deliberate?.note ?? DELIBERATE_NOTE }] : []),
+                ...when('routedHint', routedHint),
+                ...(length ? [{ slot: 'length' as const, text: describeLength(length, options.shortReplies) }] : []),
+                ...(shapeNow ? [{ slot: 'shape' as const, text: describeShape(shapeNow) }] : []),
+                ...when('quote', quoteLine),
+                ...when('crutch', crutchLine),
+                ...when('told', toldLine),
+                ...when('opener', openerLine),
+                ...when('inner', innerNow),
+                ...when('intimate', intimateNow),
+                ...when('transcript', transcript),
+                ...(options.replyFrame === 'solve' && !initiate && !crisisNow ? [{ slot: 'solveFrame' as const, text: SOLVE_FRAME_NOTE }] : []),
+                ...(initiate ? [{ slot: 'initiateNote' as const, text: initiate.note }] : []),
+            ];
+            const legacy: Module = {
+                id: 'contact-legacy',
+                // 梗百科那一行要看热梗模块这一轮放了什么（turn.facts.meme），所以在这里、热梗模块之后再算
+                contribute: () => {
+                    const dictNow = dictLine(turn.facts.meme);
+                    if (dictNow) log('梗百科：这一轮查到了他提的词（日志不记内容）');
+                    return [...legacyPieces, ...when('memeDict', dictNow)];
+                },
+            };
+            const ran = contributeTurn([...(options.turnModules ?? []), legacy], turn);
+            // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
+            const { afterMain, afterHistory } = ran instanceof Promise ? await ran : ran;
             const prompt = buildPrompt({
                 character: turnCard.character,
                 worldInfo: turnCard.worldInfo,
                 history: shown.chat,
                 userName: contact.name,
                 userPersona: contact.persona,
-                afterMain: relationship ? [relationship] : [],
-                afterHistory: [
-                    ...(summary ? [summary] : []),
-                    ...(recalled ? [recalled] : []),
-                    ...(work ? [work] : []),
-                    ...(desktop ? [desktop] : []),
-                    // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3：放在前面时问「昨天都干嘛了」她照着报喂猫、取快递，想不起那天记得住的麻辣烫，1/3）
-                    ...(common ? [common] : []),
-                    ...(recap ? [recap.text] : []),
-                    ...(today ? [today] : []),
-                    ...(past ? [past] : []),
-                    ...aboutNpcs,
-                    ...peopleText,
-                    ...(common || today || peopleText.length ? [disclosureRules(contact)] : []),
-                    [
-                        describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }),
-                        ...(days ? [days] : []),
-                        ...(state ? [describeState(state, schedule!, { userName: contact.name, woken, partnerApart: true, ...(options.realNights && contact.tier === 'boyfriend' ? { grumpy: true } : {}) })] : []),
-                        // 2026-10-30 线上：她凭空来了一句「今天有点累，就更不想说话了」，他看着莫名其妙——
-                        // 「你现在」那几行是底子不是话题，没人问就别拿它开头。
-                        ...(state || body ? ['（上面「你现在」和身体那几行是你的底子，不是话题：没人问就别主动说你累了、心情怎样，也别把它当成一句话发出去）'] : []),
-                        // 今天的心情（按日期抽的「爱笑」「安静」）不再注入（10-30 用户：这种替她表态的都清掉）：
-                        // 心情由真实发生的事推出来的 feelingLine 表达。
-                        ...(body ? [body] : []),
-                        ...(humanStateLine ? [humanStateLine] : []),
-                        ...(developmentLine ? [developmentLine] : []),
-                        ...(unsettled ? [unsettled] : []),
-                        ...(warm ? [warm] : []),
-                        ...(feelingLine ? [feelingLine] : []),
-                        ...(paceLine ? [paceLine] : []),
-                        ...(books ? [books.text] : []),
-                        ...(world ? [world] : []),
-                        ...(practice ? [practice] : []),
-                        // 追求（「别挂科」「用新相机拍出满意的东西」）也不再注入（10-30 同一条）：她想追什么，自己说。
-                        ...(selfNote ? [selfNote] : []),
-                        ...(plansLine ? [plansLine] : []),
-                        ...(promised ? [promised] : []),
-                        ...(obstacleLine ? [obstacleLine] : []),
-                        // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
-                        ...(partnerBack ? [partnerBack] : []),
-                        ...(togetherLine ? [togetherLine] : []),
-                        ...(closenessLine ? [closenessLine] : []),
-                        ...(jokeNow ? [jokeNow] : []),
-                        ...(idiomNow ? [idiomNow] : []),
-                        ...(memeNow ? [memeNow] : []),
-                        ...(dictNow ? [dictNow] : []),
-                        ...(exemplarNow ? [exemplarNow] : []),
-                        ...(registerNow ? [registerNow] : []),
-                        ...(selfThreadNow ? [selfThreadNow] : []),
-                        ...(shellNow ? [shellNow] : []),
-                        ...(sceneNow ? [sceneNow] : []),
-                        ...(askNow ? [askNow.line] : []),
-                        ...(voiceNow ? [voiceNow] : []),
-                        ...(questionNow ? [questionNow] : []),
-                        ...(opinionNow ? [opinionNow.line] : []),
-                        ...(contact.tier === 'boyfriend' && !crisisNow ? [UNSURE_LINE] : []),
-                        ...(dreamsNow?.line ? [dreamsNow.line] : []),
-                        // 她独处想事情（think）那一轮不给：想事情不走发送，命令不会跑，只会被当成一个念头存下来（11-02 探针里有一个念头整句是 <<执行：Get-Date …>>）
-                        ...(contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievanceActive ? [SHELL_INTENT] : []),
-                        ...(readingNow ? [readingNow] : []),
-                        ...(speechNoteNow ? [speechNoteNow] : []),
-                        ...(reviewNow ? [reviewNow] : []),
-                        ...(insightNow ? [insightNow] : []),
-                        ...(takesNow ? [takesNow] : []),
-                        ...(thoughtsNow ? [thoughtsNow] : []),
-                        ...(guessesNow ? [guessesNow] : []),
-                        ...(watchedNow ? [watchedNow] : []),
-                        ...continuityLines,
-                        ...(interruptLine ? [interruptLine] : []),
-                        // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
-                        ...(options.devices && !crisisNow && !thinking ? [options.devices.menu()] : []),
-                        ...(stickerContext && options.stickers?.prompt(stickerContext) ? [options.stickers.prompt(stickerContext)!] : []),
-                        ...(photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? [photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)!] : []),
-                        ...(intentLine ? [intentLine] : []),
-                        ...(lastUserLine ? [lastUserLine] : []),
-                        // 这件事她以前理解偏过（10-30）：他这句话和以前被纠正过的事撞上时提醒她
-                        ...(!initiate && lastUserText && options.understanding?.(lastUserText) ? [options.understanding(lastUserText)!] : []),
-                        // 他说过、做过、答应过的事（10-31 留痕）：最近的几条，聊到相关的再说，不硬塞
-                        ...(!initiate && options.traces?.() ? [options.traces()!] : []),
-                        // 人称（10-30：他问「我是谁？」，她回「我是谁这还用问」——把「我」当成了自己）
-                        ...(!initiate ? ['[人称：他说「我」是他自己、说「你」是叫你；你说「我」是你自己。他问「我是谁」「我算你什么」问的是你们俩是什么关系，别答成你问你自己。]'] : []),
-                        // 她自己在 10-31 同意加的（问了她「要不要加」：「该加。我确实老这样，你一认真我就先问『你今天怎么了』。
-                        // 行，以后正经问我就正经答。不过聊闲天我还贫啊。」）
-                        ...(!initiate ? ['[他正经问你一件事、问你怎么想的时候：先直接答，别一上来就反问「你今天怎么了」「你问这个干嘛」；答完可以就停。聊闲天、开玩笑照旧贫。]'] : []),
-                        // 她自己 10-31 提的：「我老想着接你的话，接得好看点，一使劲反而怪。少想点，别一开口就先想『这句该怎么说』。」
-                        // 追问时她把界限说清了：「小事我张口就来，正经的我会先想一下——但也不会想半天，想太久我就烦了。」
-                        ...(!initiate ? ['[平时聊天别琢磨怎么接才好看——一句话在脑子里过好几遍才发出去，反而怪。想到什么说什么，说岔了也认。他正经问你事的时候可以想一下，但别想半天。]'] : []),
-                        ...(options.selfMemory ? [SELF_MEMORY_NOTE] : []),
-                        ...(options.refusalLine?.() ? [options.refusalLine()!] : []),
-                        ...(options.ratingLine?.() ? [options.ratingLine()!] : []),
-                        ...(options.lifeLine?.() ? [`[你现在的生活] ${options.lifeLine()!}`] : []),
-                        ...(options.wakeNote?.() ? [options.wakeNote()!] : []),
-                        ...(options.ask?.() ? [options.ask()!] : []),
-                        ...(options.workRequest?.() ? [WORK_REQUEST_NOTE] : []),
-                        ...(options.workJudge?.() ? [WORK_JUDGE_NOTE] : []),
-                        ...(options.workMode?.() ? [WORK_MODE_NOTE] : []),
-                        ...(deliberateNow ? [options.deliberate?.note ?? DELIBERATE_NOTE] : []),
-                        ...(routedHint ? [routedHint] : []),
-                        ...(length ? [describeLength(length, options.shortReplies)] : []),
-                        ...(shapeNow ? [describeShape(shapeNow)] : []),
-                        ...(quoteLine ? [quoteLine] : []),
-                        ...(crutchLine ? [crutchLine] : []),
-                        ...(toldLine ? [toldLine] : []),
-                        ...(openerLine ? [openerLine] : []),
-                        ...(innerNow ? [innerNow] : []),
-                        ...(intimateNow ? [intimateNow] : []),
-                        ...(transcript ? [transcript] : []),
-                        ...(options.replyFrame === 'solve' && !initiate && !crisisNow ? [SOLVE_FRAME_NOTE] : []),
-                        ...(initiate ? [initiate.note] : []),
-                    ].join('\n'),
-                ],
+                afterMain,
+                afterHistory,
                 now: time,
                 settings: {
                     maxContext: options.prompt.maxContext,

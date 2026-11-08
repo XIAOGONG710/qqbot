@@ -599,3 +599,33 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
         }
     });
 });
+
+describe('模拟器把意图阶梯的开关交给意图模块（ADR 0263）', () => {
+    // 行为基线走的是 App，模拟器这一路的接线由这里兜：开关没传到，意图行就没有
+    test('会拒绝、追问：场景开着才有对应的意图行', async () => {
+        const said = ['不许你跟别的男生说话，听到没', '我昨天见了导师，他让我下周交开题报告'];
+        const run = async (on: boolean) => {
+            const dir = mkdtempSync(join(tmpdir(), 'qqbot-intent-sim-'));
+            const prompts: string[] = [];
+            try {
+                await runScenario(parseScenario({
+                    name: 'intent switches', tier: 'boyfriend', start: '2026-10-25T20:00:00+08:00', memory: false, schedule: false,
+                    ...(on ? { herNo: true, curious: true } : {}),
+                    steps: said.flatMap(text => [{ say: text }, { advance: '10m' }]),
+                }), {
+                    runId: 'intent-switches', dataDir: dir, card, llm, prompt, settle: { quietMs: 10, maxMs: 50 },
+                    generate: async messages => { prompts.push(messages.map(m => String(m.content)).join('\n')); return '嗯嗯'; },
+                });
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+            }
+            return prompts;
+        };
+        const on = await run(true);
+        assert.match(on[0]!, /他在管着你/);
+        assert.match(on[1]!, /问一个你真想知道的问题/);
+        const off = await run(false);
+        assert.doesNotMatch(off[0]!, /他在管着你/);
+        assert.doesNotMatch(off[1]!, /问一个你真想知道的问题/);
+    });
+});

@@ -16,6 +16,16 @@ import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, UNLIS
 import { loadOthers } from '.././social/others.ts';
 import { createAccount, friendRequestVerdict } from '.././social/account.ts';
 import { chatCompletion, forExtraction } from '.././language/llm.ts';
+import { createExecutor, type ExecutorOptions } from '../executor/executor.ts';
+import { createInterpreter } from '../interpreter/interpreter.ts';
+import { jokesModule } from '../modules/jokes.ts';
+import { idiomsModule } from '../modules/idioms.ts';
+import { interruptionsModule } from '../modules/interruptions.ts';
+import { closenessModule } from '../modules/closeness.ts';
+import { togetherModule } from '../modules/together.ts';
+import { intentModule } from '../modules/intent.ts';
+import { memesModule } from '../modules/memes.ts';
+import { watchedModule } from '../modules/watched.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
 import { Identity, realGit } from '.././memory/identity.ts';
@@ -121,8 +131,6 @@ import { daylightFetcher, useRealDaylight, type DaylightFetcherStatus } from '..
 import { calendarFetcher, useRealCalendar, type CalendarStatus } from '.././world/calendar.ts';
 import { transportFetcher, useRealTransport, type TransportFetcherStatus } from '.././world/transport.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
-import { idiomRefresher, idiomStore, IDIOMS_CHECK_MS, verifiedIdioms } from '.././language/idioms.ts';
-import { jokeRefresher, jokeStore, JOKES_CHECK_MS, verifiedJokes } from '.././language/jokes.ts';
 import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes } from '.././language/memes.ts';
 import { loadWatched, watchedFacts, watchedPath, watchOne, type Watched } from '.././language/watching.ts';
 import { feedFactEntry, feedOnce, feedPath, loadFeed } from '.././bilibili/feed-browsing.ts';
@@ -352,6 +360,8 @@ export interface AppOptions {
     workRunner?: typeof runWorkTask;
     /** 敏感调试开关（ADR 0070 第 8 项）；不传按环境变量 QQBOT_SENSITIVE_LOGS（默认关） */
     sensitive?: SensitiveSwitch;
+    /** 测试 / 审计：执行器派发每个动作之前看一眼（ADR 0263；行为基线用它记下每次调模型的完整配置） */
+    observe?: ExecutorOptions['observe'];
 }
 
 /** 名单外的人在提示词里的称呼（{{user}}）：QQ 昵称，没有就叫「对方」 */
@@ -402,7 +412,10 @@ export function startApp(options: AppOptions): App {
     catch (error) { construction.rollback(); throw error; }
 }
 
-function createApp({ config, transport, log, pipeline, media, vision, stickerReader, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch() }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
+function createApp({ config, transport: rawTransport, log, pipeline, media, vision, stickerReader, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
+    // 碰外部的都经执行器（ADR 0263 第 3 步）：QQ 动作、调模型、时钟和计时器
+    const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}) });
+    const transport = exec.qq;
     let stopped = false;
     construction.onFailure(() => { stopped = true; });
     // Watching and feed are pure background reads. Own the complete local
@@ -425,8 +438,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     };
     const passiveSleep = (ms: number) => new Promise<void>((resolve, reject) => {
         const signal = passiveLifetime.signal; if (signal.aborted) { reject(signal.reason); return; }
-        const abort = () => { clearTimeout(timer); reject(signal.reason); };
-        const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, ms);
+        const abort = () => { exec.cancel(timer); reject(signal.reason); };
+        const timer = exec.after(() => { signal.removeEventListener('abort', abort); resolve(); }, ms);
         signal.addEventListener('abort', abort, { once: true });
     });
     const ownPassiveRead = (work: () => Promise<void>, done: () => void): Promise<void> => {
@@ -638,8 +651,8 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             if (failures.length) throw new AggregateError(failures.map(result => result.reason), '天气刷新停止收尾未确认');
         }) : undefined;
     });
-    const weatherTimer = weather ? setInterval(() => void refreshWeather(), WEATHER_REFRESH_MS) : undefined;
-    construction.onFailure(() => { if (weatherTimer) clearInterval(weatherTimer); });
+    const weatherTimer = weather ? exec.every(() => void refreshWeather(), WEATHER_REFRESH_MS) : undefined;
+    construction.onFailure(() => exec.cancel(weatherTimer));
     weatherTimer?.unref();
     if (worldCard) log(`真实天气：${weather ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；取不到照旧按日期生成）`
         : !config.realWeather ? '关（配置 realWeather: false），按日期生成' : '关（卡上没写 weather.places），按日期生成'}`);
@@ -818,12 +831,12 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     if (config.projectChoice) log(`项目选择：${lifeRunner ? '开（ADR 0056：三天内作业可接管空闲安排，状态行与行动账共用）' : '配置开了，但生活执行器没开，不生效'}`);
     // 没人找她的时候也每 ${LIFE_TICK_MS / 60_000} 分钟推一次，过完的时段尽快落账
     scanAiPhotoWorld?.();
-    const lifeTimer = lifeRunner || observeAiPhotoWorld ? setInterval(() => {
+    const lifeTimer = lifeRunner || observeAiPhotoWorld ? exec.every(() => {
         sharedWorld?.events();
         scanAiPhotoWorld?.();
     }, LIFE_TICK_MS) : undefined;
     lifeTimer?.unref();
-    construction.onFailure(() => { if (lifeTimer) clearInterval(lifeTimer); });
+    construction.onFailure(() => exec.cancel(lifeTimer));
     const noteMoodAndBooks = herDaysCard ? herDayLogger(
         herDaysCard.schedule!, herDaysCard.moods, herDaysCard.books, log, undefined,
         now => ({
@@ -858,19 +871,24 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     const stickerMode = config.stickers ?? 'off';
     const collectingStickers = stickerMode !== 'off' ? stickers : undefined;
     const sendingStickers = stickerMode === 'send' && transport.sendPrivateImage ? collectingStickers : undefined;
-    // 小梗（ADR 0114）：派生数据，存 <数据目录>/jokes/<QQ>.json
-    const jokes = config.jokes ? jokeStore({ dir: join(config.dataDir, 'jokes'), log }) : undefined;
-    const jokesOwner = jokes ? jokeRefresher() : undefined;
-    construction.onFailure(() => jokesOwner?.stop());
-    // 他的口头习惯（ADR 0138）：派生数据，存 <数据目录>/idioms/<QQ>.json
-    const idioms = config.idioms ? idiomStore({ dir: join(config.dataDir, 'idioms'), log }) : undefined;
-    const idiomsOwner = idioms ? idiomRefresher() : undefined;
-    construction.onFailure(() => idiomsOwner?.stop());
-    const idiomBlockedFor = (contact: Contact) => {
-        const character = cardFor(contact.tier).character;
-        return [contact.name, character.name, ...config.contacts.map(person => person.name), ...character.banned];
-    };
-    // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；刷新在下面（要她的 B 站号）
+    // 小梗（ADR 0114）：解释器的模块（modules/jokes.ts）；派生数据存 <数据目录>/jokes/<QQ>.json
+    const jokes = config.jokes ? jokesModule({
+        exec, dataDir: config.dataDir, log, contacts: config.contacts, llm: config.llm,
+        charName: contact => cardFor(contact.tier).character.name, history: qq => history.load(qq),
+    }) : undefined;
+    construction.onFailure(() => jokes?.stop?.());
+    // 他的口头习惯（ADR 0138）：解释器的模块（modules/idioms.ts）；派生数据存 <数据目录>/idioms/<QQ>.json。
+    // 不收进去的词：联系人和角色的名字、卡上的禁用词
+    const idioms = config.idioms ? idiomsModule({
+        exec, dataDir: config.dataDir, log, contacts: config.contacts, llm: config.llm,
+        charName: contact => cardFor(contact.tier).character.name, history: qq => history.load(qq),
+        blocked: contact => {
+            const character = cardFor(contact.tier).character;
+            return [contact.name, character.name, ...config.contacts.map(person => person.name), ...character.banned];
+        },
+    }) : undefined;
+    construction.onFailure(() => idioms?.stop?.());
+    // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；放进提示词的是下面的模块，刷新在后面（要她的 B 站号）
     const memesFile = memesPath(config.dataDir);
     // 梗百科词库（2026-10-29）：6668 条，只读；文件不在就是没有，不影响自己学的那些
     const memeDict = config.memes ? openMemeDict(join(config.dataDir, 'memes', 'dict.json'), log) : undefined;
@@ -879,9 +897,40 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     const exemplars = config.exemplars ? loadExemplars(exemplarCorpus, log) : [];
     log(`真人例子：${config.exemplars ? `开（${exemplars.length} 条）` : '关'}${config.exemplars && !exemplars.length ? `——语料没读到（${exemplarCorpus}）` : ''}`);
     if (memeDict) log(`梗百科：词库 ${memeDict.count()} 条（他提到的词查这里，不写进她自己学的库）`);
-    // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；“看”在下面（要她的 B 站号）
+    // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；放进提示词的是下面的模块，“看”在后面（要她的 B 站号）
     const watchedFile = watchedPath(config.dataDir);
     let watchedEntries: readonly Watched[] = config.watching ? loadWatched(watchedFile, log).entries : [];
+    // 做判断的都经解释器（ADR 0263 第 4 步）：迁移前的整套逻辑先作为一个「旧逻辑」模块挂上；迁出去的模块逐个加在这里
+    const interpreter = createInterpreter({
+        modules: [{
+            id: 'app-legacy',
+            on: {
+                connected: ({ selfId }) => legacy.connected(selfId),
+                message: ({ event }) => legacy.receive(event),
+                group: ({ event }) => legacy.receiveGroup(event),
+                poke: ({ event }) => legacy.receivePoke(event),
+                recall: ({ event }) => legacy.receiveRecall(event),
+                friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
+            },
+        },
+        // 意图阶梯（ADR 0019 起）：assess 时写这一轮的意图，排在最前（后面的模块和旧逻辑都读它）；开关是它的选项
+        intentModule({
+            ...(config.herNo ? { refuse: true } : {}), ...(config.afterNo ? { afterNo: true } : {}), ...(config.jealousy ? { jealous: true } : {}), ...(config.curious ? { curious: true } : {}),
+            ...(config.everydayLife ? { everydayLife: true } : {}), ...(config.pursuits ? { pursuits: true } : {}),
+        }),
+        // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
+        ...(config.relationship ? [closenessModule(log)] : []),
+        ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
+        // 陪玩（ADR 0111）：assess 时判断、记日志，放一行，不存状态；排在被打断之前（日志的先后同原来）
+        ...(config.together ? [togetherModule(log)] : []),
+        // 被打断（ADR 0115）：只往提示词里放一行，不存状态
+        ...(config.interruptions ? [interruptionsModule(log)] : []),
+        // 网络热梗（ADR 0129）：每一轮从库里现读（作者可以在两轮之间改 / 删，别用改之前的快照），停下之后不再读；从热榜学新梗还在下面（要她的 B 站号）
+        ...(config.memes ? [memesModule(() => (stopped ? [] : loadMemes(memesFile, log).entries), log)] : []),
+        // 她看视频（ADR 0130）：他问起时放她真看过的两条；用的是内存里那份，她看完一个就换新的
+        ...(config.watching ? [watchedModule(() => watchedEntries, log)] : [])],
+        exec,
+    });
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
     const photoDiscovery = new AbortController();
     construction.onFailure(() => photoDiscovery.abort());
@@ -956,7 +1005,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     // 都是默认关的开关；账本和时间线只写数据目录里的小文件。出错一律只记日志，不影响聊天
     // 这个文件在 packages/bot/src/platform/：往上四层才是仓库根（模块目录重构前在 src/ 下，三层）
     const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
-    const clockNow = () => new Date(pipeline?.now ? pipeline.now() : Date.now());
+    const clockNow = () => new Date(exec.now());
     /** 连上之后发给用户的运维提示（设定账本验不过、有没登记原因的改动……）：以「（」开头的纯文字，不进她的聊天记录 */
     const ownerNotices: string[] = [];
     const timeline = config.timeline ? new Timeline(join(config.dataDir, 'timeline.jsonl'), clockNow) : undefined;
@@ -1015,15 +1064,11 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     // 小调用（摘录、分类、回头看）：不开思考，温度 0；测试里换成假的
     const { reasoning_effort: _effort, ...llmExtra } = config.llm.extraBody as Record<string, unknown>;
     const quietLlm = { ...forExtraction(config.llm), temperature: 0, extraBody: { ...llmExtra, thinking: { type: 'disabled' } } };
-    const askSmall = (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => (pipeline?.generate
-        ? pipeline.generate(messages, log)
-        : chatCompletion(quietLlm, messages, { log, purpose: 'background' }));
+    const askSmall = (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => (exec.llm({ purpose: 'background', config: quietLlm, messages }, log));
     // 语义路由（ADR 0202）：深思开着、而且配置了 depthRouting 才建；小调用不开思考、温度 0、几十个 token，超时由 createTurnWeigher 管
     const turnWeigher = config.depthRouting && config.deliberate
         ? createTurnWeigher({
-            ask: messages => (pipeline?.generate
-                ? pipeline.generate(messages, log)
-                : chatCompletion({ ...config.llm, temperature: 0, maxTokens: 80, timeoutMs: WEIGH_TIMEOUT_MS, extraBody: { ...llmExtra, thinking: { type: 'disabled' } } }, messages, { log })),
+            ask: messages => exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: 0, maxTokens: 80, timeoutMs: WEIGH_TIMEOUT_MS, extraBody: { ...llmExtra, thinking: { type: 'disabled' } } }, messages }, log),
             log, now: () => clockNow().getTime(),
         })
         : undefined;
@@ -1046,9 +1091,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             ],
             ask: (system, user) => {
                 if (stopped) return Promise.resolve('[]');
-                return pipeline?.generate
-                    ? pipeline.generate([{ role: 'system', content: system }, { role: 'user', content: user }], tastesLog)
-                    : chatCompletion({ ...forExtraction(config.llm), temperature: 0 }, [{ role: 'system', content: system }, { role: 'user', content: user }], { log: tastesLog, purpose: 'background' });
+                return exec.llm({ purpose: 'background', config: { ...forExtraction(config.llm), temperature: 0 }, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }, tastesLog);
             },
             onChange: (taste, kind) => { if (!stopped) noteTimeline({ channel: 'tastes', kind, summary: `${kind === 'new' ? '发现自己' : '重新看了看自己'}${taste.stance === 'like' ? '喜欢' : '不太喜欢'}${taste.name}` }); },
         })
@@ -1056,11 +1099,11 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     construction.onFailure(() => tastes?.stop());
     const reflectTastes = () => { if (!stopped) void tastes?.reflect().catch(error => tastesLog(`口味：出错（${error instanceof Error ? error.message : String(error)}）`)); };
     // 回头看一天最多一次（tastes.ts 里有间隔）：每小时来看一眼要不要看，启动两分钟后先看一次
-    const tastesTimer = tastes ? setInterval(reflectTastes, 3_600_000) : undefined;
-    construction.onFailure(() => clearInterval(tastesTimer));
+    const tastesTimer = tastes ? exec.every(reflectTastes, 3_600_000) : undefined;
+    construction.onFailure(() => exec.cancel(tastesTimer));
     tastesTimer?.unref();
-    const tastesFirst = tastes ? setTimeout(reflectTastes, 120_000) : undefined;
-    construction.onFailure(() => clearTimeout(tastesFirst));
+    const tastesFirst = tastes ? exec.after(reflectTastes, 120_000) : undefined;
+    construction.onFailure(() => exec.cancel(tastesFirst));
     tastesFirst?.unref();
     const acquaintances = config.acquaintances ? new Acquaintances({ dataDir: config.dataDir, now: clockNow, log }) : undefined;
     const dormancy = config.dormancy && deviceOwner ? new Dormancy({ dataDir: config.dataDir, repoRoot, now: clockNow, gitHead: () => realGit(repoRoot).head(), log }) : undefined;
@@ -1073,9 +1116,9 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         return acquaintances ? acquaintancesAccount(recorded, acquaintances) : recorded;
     });
     const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T | undefined> => new Promise(resolveTimeout => {
-        const timer = setTimeout(() => resolveTimeout(undefined), ms);
+        const timer = exec.after(() => resolveTimeout(undefined), ms);
         timer.unref?.();
-        promise.then(value => { clearTimeout(timer); resolveTimeout(value); }, () => { clearTimeout(timer); resolveTimeout(undefined); });
+        promise.then(value => { exec.cancel(timer); resolveTimeout(value); }, () => { exec.cancel(timer); resolveTimeout(undefined); });
     });
     const untilCancelled = <T,>(promise: Promise<T>, signal: AbortSignal): Promise<T | undefined> => new Promise(resolve => {
         if (signal.aborted) { resolve(undefined); return; }
@@ -1102,11 +1145,11 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
                 // 25 秒只限制这一轮 continuity；超时产生的孤儿任务也必须拿到取消信号，
                 // 否则它会在替代实例接管目录后继续摘录、写时间线和缓存。
                 const deadline = new AbortController();
-                const timer = setTimeout(() => deadline.abort(), 25_000);
+                const timer = exec.after(() => deadline.abort(), 25_000);
                 timer.unref?.();
                 const signal = AbortSignal.any([passiveLifetime.signal, deadline.signal]);
                 try { looked = await untilCancelled(web.line(said, signal), signal); }
-                finally { clearTimeout(timer); }
+                finally { exec.cancel(timer); }
                 // deadline 只是不放 Web 资料，仍照常回复；App stop 则终止整次提示词构建，
                 // 避免孤儿 continuity 在目录租约释放后继续写日志或派模型。
                 if (passiveLifetime.signal.aborted) throw new DOMException('App 已停止', 'AbortError');
@@ -1198,7 +1241,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             history,
             names: contact => ({ user: contact.name, char: cardFor(contact.tier).character.name }),
             ...(diaryCard?.schedule ? { schedule: diaryCard.schedule } : {}),
-            extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
+            extract: messages => (exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages }, log)),
             dir: join(config.dataDir, 'promises'),
             log,
             ...(pipeline?.now ? { now: pipeline.now } : {}),
@@ -1209,7 +1252,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     loadAppointments = promises?.appointmentsBetween;
     appointmentsAvailable = () => promises?.available() ?? true;
     // 约定来源已经接上以后再第一次推进生活；否则启动瞬间会把赴约时段排成普通休闲。
-    noteHerDay?.(new Date(pipeline?.now?.() ?? Date.now()));
+    noteHerDay?.(new Date(exec.now()));
     if (promises) log('她答应的事：名单里的人每段聊天结束后抽一次，到了日子在时间块里提醒');
     const diaries = !config.selfDirectedMemory && memory && diaryCard
         ? diaryWriter({
@@ -1227,9 +1270,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             history,
             memory,
             ...(promises ? { plans: promises.plansOn } : {}),
-            generate: messages => (pipeline?.generate
-                ? pipeline.generate(messages, log)
-                : chatCompletion({ ...config.llm, temperature: DIARY_TEMPERATURE }, messages, { log, purpose: 'background' })),
+            generate: messages => (exec.llm({ purpose: 'background', config: { ...config.llm, temperature: DIARY_TEMPERATURE }, messages }, log)),
             dir: join(config.dataDir, 'memory'),
             log,
         })
@@ -1239,7 +1280,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         : diaries ? `她的日记：她的每一天结束后写一篇存进公共记忆（没聊天的日子也写，停过的补最近 ${DIARY_BACKFILL_DAYS} 天）` : '她的日记：不写（用到的档位卡上都没有作息）');
     construction.onFailure(() => diaries?.stop());
     if (memory) {
-        memory.setWrittenSourceVerifier(diaries ? intents => diaries.verifySources(new Date(pipeline?.now?.() ?? Date.now()), intents) : null);
+        memory.setWrittenSourceVerifier(diaries ? intents => diaries.verifySources(new Date(exec.now()), intents) : null);
         // Recover completed authored-source invalidation before any responder can read public models.
         memory.derivedAvailable();
     }
@@ -1288,11 +1329,11 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         try { if (dormancy?.isDormant()) return; }
         catch (error) { incomingFailure(error); return; }
         for (const contact of config.contacts) syncContactMemory(contact);
-        if (!config.selfDirectedMemory) void diaries?.catchUp(new Date(pipeline?.now?.() ?? Date.now())).catch(incomingFailure);
+        if (!config.selfDirectedMemory) void diaries?.catchUp(new Date(exec.now())).catch(incomingFailure);
         void promises?.sync().catch(incomingFailure);
     }
-    const memoryTimer = memory ? setInterval(syncMemory, MEMORY_SYNC_MS) : undefined;
-    construction.onFailure(() => clearInterval(memoryTimer));
+    const memoryTimer = memory ? exec.every(syncMemory, MEMORY_SYNC_MS) : undefined;
+    construction.onFailure(() => exec.cancel(memoryTimer));
     memoryTimer?.unref();
 
     // 「她现在在干嘛」只写一份（任务书 §2）：QQ 这边按自己的作息 + 世界 + 心境渲染 NOW.md，
@@ -1402,7 +1443,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             void reflectIfDue({
                 dataDir: config.dataDir,
                 now: () => clockNow().getTime(),
-                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.9 }, messages, { log, purpose: 'background' })),
+                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages }, log),
                 base: authorPursuits,
                 chat: () => history.load(owner.qq).slice(-16).map(message => ({ role: message.role, content: message.content })),
                 persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
@@ -1426,7 +1467,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             void reflectSpeechNotes({
                 dataDir: config.dataDir,
                 now: () => clockNow().getTime(),
-                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.9 }, messages, { log, purpose: 'background' })),
+                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages }, log),
                 history: () => history.load(owner.qq),
                 corpus: () => loadExemplars(join(config.dataDir, 'exemplars', 'corpus.jsonl')),
                 persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
@@ -1452,7 +1493,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             void reviewChatIfDue({
                 dataDir: config.dataDir,
                 now: () => clockNow().getTime(),
-                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.8 }, messages, { log, purpose: 'background' })),
+                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.8 }, messages }, log),
                 history: () => history.load(owner.qq),
                 dayStart: at => (character.schedule ? herDay(character.schedule, new Date(at)).getTime() : new Date(new Date(at).setHours(0, 0, 0, 0)).getTime()),
                 persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
@@ -1483,7 +1524,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
                 dataDir: config.dataDir,
                 soulDir: soulDir(),
                 now: () => clockNow().getTime(),
-                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.9 }, messages, { log, purpose: 'background' })),
+                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages }, log),
                 history: () => history.load(owner.qq),
                 persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
                 names: { char: character.name, user: owner.name },
@@ -1511,7 +1552,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
                 dataDir: config.dataDir,
                 soulDir: soulDir(),
                 now: () => clockNow().getTime(),
-                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.9 }, messages, { log, purpose: 'background' })),
+                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages }, log),
                 history: () => history.load(owner.qq),
                 persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
                 names: { char: character.name, user: owner.name },
@@ -1536,7 +1577,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             void reflectTakes({
                 dataDir: config.dataDir,
                 now: () => clockNow().getTime(),
-                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.9 }, messages, { log, purpose: 'background' })),
+                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages }, log),
                 items: () => {
                     const now = clockNow();
                     return [
@@ -1593,7 +1634,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             void reviewGuessesIfDue({
                 dataDir: config.dataDir,
                 now: () => clockNow().getTime(),
-                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 0.7 }, messages, { log, purpose: 'background' })),
+                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.7 }, messages }, log),
                 history: () => history.load(owner.qq),
                 world: (from, to) => worldFactsBetween(time => sharedWorld.at(world.herWorld!, world.schedule!, time), from, to),
                 pending: at => pendingWorld(sharedWorld.at(world.herWorld!, world.schedule!, new Date(at))),
@@ -1630,7 +1671,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             names: { user: contact.name, char: cardFor(contact.tier).character.name },
             generate: messages => {
                 const scoped: Log = message => { if (!stopped) log(message); };
-                return pipeline?.generate ? pipeline.generate(messages, scoped) : chatCompletion(forExtraction(config.llm), messages, { log: scoped, purpose: 'background' });
+                return exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages }, scoped);
             },
             log: message => log(`[${contact.qq}] ${message}`),
             file: join(dir, `${contact.qq}.json`),
@@ -1982,15 +2023,6 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
             ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => { lastFeelings = report; writeFeelingsExport(soulDir(), report); } } : {}),
             ...(feelingReviewNow && contact.tier === 'boyfriend' ? { feelingReview: feelingReviewNow } : {}),
-            ...(config.together ? { together: true } : {}),
-            ...(config.relationship ? { relationship: true } : {}),
-            ...(config.jealousy ? { jealousy: true } : {}),
-            ...(config.curious ? { curious: true } : {}),
-            ...(config.interruptions ? { interruptions: true } : {}),
-            ...(jokes && contact.tier === 'boyfriend' ? { jokes: () => verifiedJokes(jokes.load(contact.qq), history.load(contact.qq)) } : {}),
-            ...(idioms && contact.tier === 'boyfriend' ? { idioms: () => verifiedIdioms(idioms.load(contact.qq), history.load(contact.qq), idiomBlockedFor(contact)) } : {}),
-            // Author CLI can correct/delete between turns. Do not reuse a pre-edit RAM snapshot.
-            ...(config.memes && contact.tier === 'boyfriend' ? { memes: () => stopped ? [] : loadMemes(memesFile, log).entries } : {}),
             ...(exemplars.length && contact.tier === 'boyfriend' ? { exemplars } : {}),
             ...(speechNotesNow && contact.tier === 'boyfriend' ? { speechNotes: speechNotesNow } : {}),
             ...(diaryInsightsNow && contact.tier === 'boyfriend' ? { diaryInsights: diaryInsightsNow } : {}),
@@ -1998,12 +2030,9 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             ...(openQuestionsNow && contact.tier === 'boyfriend' ? { openQuestions: openQuestionsNow } : {}),
             ...(herGuessesNow && contact.tier === 'boyfriend' ? { herGuesses: herGuessesNow } : {}),
             ...(memeDict && contact.tier === 'boyfriend' ? { memeDict } : {}),
-            ...(config.watching && contact.tier === 'boyfriend' ? { watched: () => watchedEntries } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
             ...(config.factCheck !== 'off' ? { factCheck: config.factCheck, ...(config.factHim ? { factAboutHim: true } : {}) } : {}),
-            ...(config.herNo ? { herNo: true } : {}),
-            ...(config.afterNo ? { afterNo: true } : {}),
             ...(config.memoryFeelings && config.herFeelings ? { memoryFeelings: true } : {}),
             ...(config.realNights ? { realNights: true } : {}),
             ...(config.chatReview && contact.tier === 'boyfriend' ? { chatReview: chatReviewReader(config.dataDir) } : {}),
@@ -2096,7 +2125,12 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
                 if (!sensitive.on()) return;
                 writeFileSync(join(config.dataDir, 'last-prompt.json'), JSON.stringify({ qq: contact.qq, ...prompt }, null, 2));
             },
+            turnModules: interpreter.turnModules,
             ...pipeline,
+            // 回复和逐条事实检查的审稿也经执行器（ADR 0263 第 3 步）：配置、日志和原来 contact.ts 的默认调用一样；
+            // 换模型（深思）时测试替身收到换成的那份配置，同原来 generate 的第三个参数
+            generate: (messages, scopedLog, use) => exec.llm({ purpose: 'chat', config: use ?? config.llm, messages, ...(use ? { use } : {}) }, scopedLog),
+            factAudit: messages => exec.llm({ purpose: 'chat', config: { ...forExtraction(config.llm), temperature: 0 }, messages }, message => log(`[${contact.qq}] ${message}`)),
         });
         construction.onFailure(() => responder.stop());
         return responder;
@@ -2126,9 +2160,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             try { journal = readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8').slice(-800); } catch { /* 没日记 */ }
             const books = cardFor(deviceOwner.tier).character.books?.map(book => book.title).join('、') ?? '';
             const prompt = questionPrompt({ notes, journal, books, name: cardFor(deviceOwner.tier).character.name });
-            const raw = pipeline?.generate
-                ? await pipeline.generate([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], log)
-                : await chatCompletion({ ...forExtraction(config.llm), temperature: 0.8 }, [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { log, purpose: 'background' });
+            const raw = await exec.llm({ purpose: 'background', config: { ...forExtraction(config.llm), temperature: 0.8 }, messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }] }, log);
             const text = String(raw ?? '').trim();
             if (!text || /^SKIP$/i.test(text)) { log('学习问题：这次没想出来'); return; }
             const firstLine = text.split(String.fromCharCode(10)).map(part => part.trim()).filter(Boolean)[0] ?? text;
@@ -2158,9 +2190,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
                 .filter(text => text && !text.includes('跟我说')).slice(-5);
             const fell = lastFeelings ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => `${item.cause}（${item.kind}）`) : [];
             const prompt = napPrompt({ events: own, feelings: fell, name: cardFor(deviceOwner.tier).character.name });
-            const raw = pipeline?.generate
-                ? await pipeline.generate([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], log)
-                : await chatCompletion({ ...forExtraction(config.llm), temperature: 0.95 }, [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { log, purpose: 'background' });
+            const raw = await exec.llm({ purpose: 'background', config: { ...forExtraction(config.llm), temperature: 0.95 }, messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }] }, log);
             const dream = String(raw ?? '').trim();
             if (!dream) return;
             appendDream(config.dataDir, { date: `${date}-nap`, dream: dream.slice(0, 300), at: at.getTime(), fragment: true, nap: true });
@@ -2179,9 +2209,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         if (dreams.length < 5) return;
         try {
             const prompt = monthlyInsightPrompt(dreams, cardFor(deviceOwner.tier).character.name);
-            const raw = pipeline?.generate
-                ? await pipeline.generate([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], log)
-                : await chatCompletion({ ...forExtraction(config.llm), temperature: 0.8 }, [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { log, purpose: 'background' });
+            const raw = await exec.llm({ purpose: 'background', config: { ...forExtraction(config.llm), temperature: 0.8 }, messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }] }, log);
             const text = String(raw ?? '').trim();
             if (!text) return;
             saveInsight(config.dataDir, text.slice(0, 400), now);
@@ -2210,9 +2238,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             const fell = lastFeelings ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => `${item.cause}（${item.kind}）`) : [];
             const previous = recentDreams(config.dataDir, 3).map(item => item.dream);
             const prompt = dreamPrompt({ events: [...own, ...events], feelings: fell, journal, name: cardFor(deviceOwner.tier).character.name, previous });
-            const raw = pipeline?.generate
-                ? await pipeline.generate([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], log)
-                : await chatCompletion({ ...forExtraction(config.llm), temperature: 0.95 }, [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { log, purpose: 'background' });
+            const raw = await exec.llm({ purpose: 'background', config: { ...forExtraction(config.llm), temperature: 0.95 }, messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }] }, log);
             const text = String(raw ?? '');
             const match = text.match(/\{[\s\S]*\}/);
             const parsed = match ? JSON.parse(match[0]) as { dream?: string; feel?: { kind?: string; strength?: number; why?: string } } : { dream: text.trim() };
@@ -2257,9 +2283,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         let line = '';
         try {
             const prompt = announcePrompt(span!, owner.name);
-            const generated = pipeline?.generate
-                ? await pipeline.generate([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], log)
-                : await chatCompletion({ ...config.llm, temperature: 0.9 }, [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { log, purpose: 'background' });
+            const generated = await exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }] }, log);
             const rawLine = String(generated ?? '');
             line = rawLine.split(/\r?\n/).map(part => part.trim()).filter(Boolean)[0] ?? '';
         } catch (error) {
@@ -2279,7 +2303,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
     let crisisSaveDelay = 1000;
     function retryCrisisSave(): void {
         if (stopped || crisisSaveTimer) return;
-        crisisSaveTimer = setTimeout(() => {
+        crisisSaveTimer = exec.after(() => {
             crisisSaveTimer = undefined;
             if (stopped) return;
             try { crisisState.flush(); crisisSaveDelay = 1000; }
@@ -2291,7 +2315,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         if (stopped) return;
         try {
             crisisState.mark(qq, at, level);
-            clearTimeout(crisisSaveTimer); crisisSaveTimer = undefined; crisisSaveDelay = 1000;
+            exec.cancel(crisisSaveTimer); crisisSaveTimer = undefined; crisisSaveDelay = 1000;
         } catch {
             if (!crisisSaveTimer) log('危机状态暂未保存；已观察信号仍暂停普通主动消息，后台重试（不记原文）');
             retryCrisisSave();
@@ -2319,7 +2343,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
         const qzone = config.qzone !== 'off' && lowest
             ? qzoneComposer({
                 character: { name: lowest.character.name, description: lowest.character.description, personality: lowest.character.personality, banned: lowest.character.banned },
-                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log, purpose: 'background' })),
+                generate: messages => (exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 1.1 }, messages }, log)),
                 ...(vision ? { vision } : {}),
                 photoDir: join(dir, 'photos'),
                 situation: now => [
@@ -2406,7 +2430,7 @@ function createApp({ config, transport, log, pipeline, media, vision, stickerRea
             ...(config.bilibiliCommentKeywords.length ? { keywords: config.bilibiliCommentKeywords } : {}),
             compose: commentComposer({
                 character: { name: lowest.character.name, description: lowest.character.description, personality: lowest.character.personality, banned: lowest.character.banned },
-                generate: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log, purpose: 'background' })),
+                generate: messages => (exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 1.1 }, messages }, log)),
                 log,
             }),
         };
@@ -2524,7 +2548,7 @@ ${video.link}`);
                 generate: (messages, signal) => {
                     signal?.throwIfAborted();
                     const scoped: Log = message => { if (!stopped && !signal?.aborted) log(message); };
-                    return pipeline?.generate ? pipeline.generate(messages, scoped) : chatCompletion({ ...config.llm, temperature: 1.1 }, messages, { log: scoped, purpose: 'background', signal });
+                    return exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 1.1 }, messages, signal }, scoped);
                 },
                 log: message => { if (!stopped) log(message); },
             }),
@@ -2599,7 +2623,7 @@ ${video.link}`);
                 // 最近在 B 站看过 / 今天刷到过（ADR 0130 / 0168）：内心想事情时多一个真事可讲；看过的优先
                 ...(config.innerLife && contact.tier === 'boyfriend' && (config.watching || (config.biliFeed ?? 'off') !== 'off') ? {
                     watchedFacts: () => {
-                        const when = new Date(pipeline?.now ? pipeline.now() : Date.now());
+                        const when = new Date(exec.now());
                         const watched = config.watching ? watchedFacts(watchedEntries, when) : undefined;
                         if (watched) return watched;
                         return (config.biliFeed ?? 'off') !== 'off' ? feedFactEntry(loadFeed(feedPath(config.dataDir), log), when) : undefined;
@@ -2646,13 +2670,13 @@ ${video.link}`);
                     }),
                 } : {}),
                 // 待跟进的事：用同一个模型配置抽（测试替换的 generate 也用在这里）
-                extract: messages => (pipeline?.generate ? pipeline.generate(messages, log) : chatCompletion(forExtraction(config.llm), messages, { log, purpose: 'background' })),
+                extract: messages => (exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages }, log)),
                 ...(pipeline?.now ? { now: pipeline.now } : {}),
                 ...(pipeline?.waitUntil ? { waitUntil: pipeline.waitUntil } : {}),
             }));
         }
         if (planners.size) {
-            followUpTimer = setInterval(syncFollowUps, MEMORY_SYNC_MS);
+            followUpTimer = exec.every(syncFollowUps, MEMORY_SYNC_MS);
             followUpTimer.unref();
         }
     }
@@ -2672,7 +2696,7 @@ ${video.link}`);
     const checkWeeklyReport = () => {
         if (!config.weeklyReport || stopped) return;
         const reportsDir = join(config.dataDir, 'reports');
-        const nowDate = new Date(pipeline?.now ? pipeline.now() : Date.now());
+        const nowDate = new Date(exec.now());
         if (!weeklyReportDue(nowDate, reportsDir)) return;
         for (const contact of config.contacts.filter(c => c.tier === 'boyfriend')) {
             try {
@@ -2687,7 +2711,7 @@ ${video.link}`);
         if (photos) { const s = photos.status(); extras.photos = { count: s.count, cat: s.byKind.cat, view: s.byKind.view, work: s.byKind.work, food: s.byKind.food }; }
         const aiDraftStatus = aiPhotoDrafts.status();
         if (aiDraftStatus.total) extras.aiPhotoDrafts = aiDraftStatus;
-        if (jokes) extras.jokes = config.contacts.filter(c => c.tier === 'boyfriend').reduce((n, c) => n + verifiedJokes(jokes.load(c.qq), history.load(c.qq)).length, 0);
+        Object.assign(extras, interpreter.status());
         if (config.weeklyReport) {
             try {
                 const dir = join(config.dataDir, 'reports');
@@ -2697,45 +2721,16 @@ ${video.link}`);
         }
         return extras;
     };
-    // 小梗（ADR 0114）：隔一阵从最近的聊天里抽；出错只记日志
-    let jokesTimer: ReturnType<typeof setInterval> | undefined;
-    let idiomsTimer: ReturnType<typeof setInterval> | undefined;
     let memesTimer: ReturnType<typeof setInterval> | undefined;
     let watchingTimer: ReturnType<typeof setInterval> | undefined;
     let watchingRunning = false;
     let memesRunning = false;
-    const refreshAllJokes = () => {
-        if (!jokes || stopped) return;
-        for (const contact of config.contacts.filter(c => c.tier === 'boyfriend')) {
-            const scoped: Log = message => { if (!stopped) log(message); };
-            void jokesOwner!.refresh({
-                qq: contact.qq, userName: contact.name, charName: cardFor(contact.tier).character.name, history: history.load(contact.qq), store: jokes,
-                freshHistory: () => history.load(contact.qq),
-                extract: messages => (pipeline?.generate ? pipeline.generate(messages, scoped) : chatCompletion(forExtraction(config.llm), messages, { log: scoped, purpose: 'background' })),
-                now: pipeline?.now ? pipeline.now() : Date.now(), log: message => scoped(`[${contact.qq}] ${message}`),
-            }).catch(error => scoped(`[${contact.qq}] 小梗：抽取出错（${error instanceof Error ? error.message : String(error)}）`));
-        }
-    };
-    // 他的口头习惯（ADR 0138）：隔一阵从他最近的话里学；出错只记日志。不收进去的词：联系人和角色的名字、卡上的禁用词
-    const refreshAllIdioms = () => {
-        if (!idioms || stopped) return;
-        for (const contact of config.contacts.filter(c => c.tier === 'boyfriend')) {
-            const character = cardFor(contact.tier).character;
-            const scoped: Log = message => { if (!stopped) log(message); };
-            void idiomsOwner!.refresh({
-                qq: contact.qq, userName: contact.name, charName: character.name, history: history.load(contact.qq), store: idioms,
-                freshHistory: () => history.load(contact.qq), blocked: idiomBlockedFor(contact),
-                extract: messages => (pipeline?.generate ? pipeline.generate(messages, scoped) : chatCompletion(forExtraction(config.llm), messages, { log: scoped, purpose: 'background' })),
-                now: pipeline?.now ? pipeline.now() : Date.now(), log: message => scoped(`[${contact.qq}] ${message}`),
-            }).catch(error => scoped(`[${contact.qq}] 口头习惯：学习出错（${error instanceof Error ? error.message : String(error)}）`));
-        }
-    };
     // 她自己看一个视频（ADR 0130）：每天一次，14 点以后；30 分钟看一眼该不该看；要她的 B 站号
     const watchJob = (): Promise<void> => {
         if (!config.watching || stopped || watchingRunning) return Promise.resolve();
         const source = bilibiliAccountSource();
         if (!source) return Promise.resolve();
-        const nowDate = new Date(pipeline?.now ? pipeline.now() : Date.now());
+        const nowDate = new Date(exec.now());
         if (nowDate.getHours() < 14) return Promise.resolve();
         watchingRunning = true;
         return ownPassiveRead(async () => {
@@ -2773,7 +2768,7 @@ ${video.link}`);
         // feed 模块的 fetch 形状不强制 signal（只读、单次请求），这里补一个
         const biliFetch = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal }) =>
             rawFetch(url, { headers: init.headers, signal: init.signal ?? new AbortController().signal });
-        const nowDate = new Date(pipeline?.now ? pipeline.now() : Date.now());
+        const nowDate = new Date(exec.now());
         const schedule = worldCard?.schedule;
         const extraFree = config.herDays && worldCard ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [];
         feedRunning = true;
@@ -2809,7 +2804,7 @@ ${body}
         if (!config.memes || stopped || memesRunning) return Promise.resolve();
         const source = bilibiliAccountSource();
         if (!source) return Promise.resolve();
-        const nowDate = new Date(pipeline?.now ? pipeline.now() : Date.now());
+        const nowDate = new Date(exec.now());
         try {
             if (stopped || !refreshDue(loadMemes(memesFile, log), nowDate)) return Promise.resolve();
         } catch (error) {
@@ -2826,7 +2821,7 @@ ${body}
             await refreshMemes({
                 path: memesFile, now: () => nowDate, log: scoped, signal,
                 fetchLists: () => fetchLists((url, init) => fetch(url, init) as never, scoped, signal),
-                ask: prompt => (pipeline?.generate ? pipeline.generate([{ role: 'user', content: prompt }], scoped) : chatCompletion(forExtraction(config.llm), [{ role: 'user', content: prompt }], { log: scoped, purpose: 'background' })),
+                ask: prompt => (exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages: [{ role: 'user', content: prompt }] }, scoped)),
                 gather: term => gatherEvidence(term, {
                     signal, search: keyword => account.search(keyword, undefined, signal), subtitle: video => account.subtitle(video, signal), hotComments: aid => fetchHotComments(biliFetch, aid, 3),
                     sleep: passiveSleep,
@@ -2846,8 +2841,8 @@ ${body}
             if (result === 'done') { photoRetries = 0; return; }
             if (photoRetries >= PHOTO_RETRY_MAX || stopped) return;
             photoRetries++;
-            clearTimeout(photoRetryTimer);
-            photoRetryTimer = setTimeout(discoverPhotos, photoRetryMs ?? PHOTO_RETRY_MS);
+            exec.cancel(photoRetryTimer);
+            photoRetryTimer = exec.after(discoverPhotos, photoRetryMs ?? PHOTO_RETRY_MS);
             photoRetryTimer.unref();
         }).catch(error => log(`照片货架：找照片出错（${error instanceof Error ? error.message : String(error)}）`));
     };
@@ -2860,8 +2855,8 @@ ${body}
             if (result === 'done') { foodRetries = 0; return; }
             if (foodRetries >= PHOTO_RETRY_MAX || stopped) return;
             foodRetries++;
-            clearTimeout(foodRetryTimer);
-            foodRetryTimer = setTimeout(discoverFoodPhotos, photoRetryMs ?? PHOTO_RETRY_MS);
+            exec.cancel(foodRetryTimer);
+            foodRetryTimer = exec.after(discoverFoodPhotos, photoRetryMs ?? PHOTO_RETRY_MS);
             foodRetryTimer.unref();
         }).catch(error => log(`照片货架：找吃的照片出错（${error instanceof Error ? error.message : String(error)}）`));
     };
@@ -2953,7 +2948,7 @@ ${body}
     }
     function scheduleIncomingRetry(): void {
         if (stopped || incomingRetryTimer) return;
-        incomingRetryTimer = setTimeout(() => {
+        incomingRetryTimer = exec.after(() => {
             incomingRetryTimer = undefined;
             if (stopped || syncing || incomingRetryRunning) { if (!stopped) scheduleIncomingRetry(); return; }
             incomingRetryRunning = true;
@@ -3385,9 +3380,7 @@ ${body}
         const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, bf)).join('\n');
         const note = groupNote({ groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason });
         const messages = [{ role: 'system' as const, content: system }, { role: 'user' as const, content: `${transcript}\n\n${note}` }];
-        const raw = pipeline?.generate
-            ? await pipeline.generate(messages, log)
-            : await chatCompletion({ ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages, { log });
+        const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);
         // 这一档的禁用词（群里叫不出「宝宝」这类黏的叫法）：带了的那条不发
         const parts = groupReply(raw).filter(part => !inspectReply(part, card.character.banned).some(issue => issue.kind === 'banned'));
         if (!parts.length) { log(`[群 ${group.id}] 看了一眼，没说话（${reason}）`); return; }
@@ -3932,7 +3925,7 @@ ${body}
     if ((config.qqFriendGate ?? 'off') !== 'off' && accountMode !== 'on') log('好友申请：要 qqControl 设为 on 才处理，现在没生效');
     else if ((config.qqFriendGate ?? 'off') !== 'off') log(`好友申请：${config.qqFriendGate === 'all' ? '名单内同意、名单外驳回' : '只自动同意名单内的'}（名单 ${(config.qqAllowFriends ?? []).join('、') || '空'}）`);
 
-    return {
+    const legacy: App = {
         async connected(selfId) {
             if (stopped) return;
             // Koishi / NapCat 可能在同一次重连期间重复发出 ready。共用正在进行的补回，
@@ -3965,44 +3958,38 @@ ${body}
                     discoverFoodPhotos();
                     void refreshMemeJob();
                     if (!dormancy?.isDormant()) void watchJob();
-                    refreshAllJokes();
-                    refreshAllIdioms();
+                    // 补完漏掉的消息之后：各模块连上后要做一次的事（小梗抽一次、口头习惯学一次……，ADR 0263）
+                    void interpreter.dispatch({ kind: 'synced' });
                     checkWeeklyReport();
                     if (config.weeklyReport && !weeklyTimer) {
-                        weeklyTimer = setInterval(checkWeeklyReport, 60 * 60_000);
+                        weeklyTimer = exec.every(checkWeeklyReport, 60 * 60_000);
                         weeklyTimer.unref();
                     }
                     if (config.watching && !watchingTimer) {
-                        watchingTimer = setInterval(() => void watchJob(), 30 * 60_000);
+                        watchingTimer = exec.every(() => void watchJob(), 30 * 60_000);
                         watchingTimer.unref();
                     }
                     if (config.biliFeed && config.biliFeed !== 'off' && !feedTimer) {
                         void feedJob();
-                        feedTimer = setInterval(() => void feedJob(), 30 * 60_000);
+                        feedTimer = exec.every(() => void feedJob(), 30 * 60_000);
                         feedTimer.unref();
                     }
                     if (config.memes && !memesTimer) {
-                        memesTimer = setInterval(() => void refreshMemeJob(), 30 * 60_000);
+                        memesTimer = exec.every(() => void refreshMemeJob(), 30 * 60_000);
                         memesTimer.unref();
                     }
-                    if (jokes && !jokesTimer) {
-                        jokesTimer = setInterval(refreshAllJokes, JOKES_CHECK_MS);
-                        jokesTimer.unref();
-                    }
-                    if (idioms && !idiomsTimer) {
-                        idiomsTimer = setInterval(refreshAllIdioms, IDIOMS_CHECK_MS);
-                        idiomsTimer.unref();
-                    }
+                    // 各模块的定时任务（小梗、口头习惯每 6 小时……）：只开一次
+                    interpreter.startSchedules();
                     if (photos && !photoDiscoveryTimer) {
-                        photoDiscoveryTimer = setInterval(discoverPhotos, PHOTO_DISCOVERY_INTERVAL_MS);
+                        photoDiscoveryTimer = exec.every(discoverPhotos, PHOTO_DISCOVERY_INTERVAL_MS);
                         photoDiscoveryTimer.unref();
                     }
                     if (photos && foodSource && config.foodPhotos && !foodDiscoveryTimer) {
-                        foodDiscoveryTimer = setInterval(discoverFoodPhotos, FOOD_DISCOVERY_INTERVAL_MS);
+                        foodDiscoveryTimer = exec.every(discoverFoodPhotos, FOOD_DISCOVERY_INTERVAL_MS);
                         foodDiscoveryTimer.unref();
                     }
                     if (collectingStickers && !stickerDiscoveryTimer) {
-                        stickerDiscoveryTimer = setInterval(discoverStickers, STICKER_DISCOVERY_INTERVAL_MS);
+                        stickerDiscoveryTimer = exec.every(discoverStickers, STICKER_DISCOVERY_INTERVAL_MS);
                         stickerDiscoveryTimer.unref();
                     }
                 }
@@ -4048,7 +4035,7 @@ ${body}
             const lastBack = lastPokeBack.get(contact.qq);
             if (back && (lastBack === undefined || now - lastBack >= POKE_BACK_COOLDOWN_MS)) {
                 lastPokeBack.set(contact.qq, now);
-                const timer = setTimeout(() => {
+                const timer = exec.after(() => {
                     pokeTimers.delete(timer);
                     if (stopped) return;
                     sendOwnedNotice(() => transport.pokeFriend!(contact.qq),
@@ -4106,8 +4093,8 @@ ${body}
             const promisesDrain = promises?.stop();
             const memoryDrain = memory?.stop();
             const tastesDrain = tastes?.stop();
-            const jokesDrain = jokesOwner?.stop();
-            const idiomsDrain = idiomsOwner?.stop();
+            // 各模块停下（关定时任务、拒新工作），收尾排在原来小梗、口头习惯的位置
+            const moduleDrains = interpreter.stop();
             const dshDrain = stopDshAsks();
             const mobileCompanionDrain = mobileCompanion?.stop();
             mobileCompanion = undefined;
@@ -4122,45 +4109,45 @@ ${body}
             const calendarDrains = [...calendarRefreshes];
             const transportDrains = [...transportRefreshes];
             const contextDrains = [...contextSummaries].map(summarize => summarize.stop());
-            clearTimeout(incomingRetryTimer);
+            exec.cancel(incomingRetryTimer);
             try { chatHistory.flushIncoming(); } catch (error) { log(`停止时入站状态仍未确认持久（${describeError(error)}）`); }
             photoDiscovery.abort();
-            clearTimeout(crisisSaveTimer);
+            exec.cancel(crisisSaveTimer);
             // A safety observation can be newer than crisis.json when the
             // background retry timer has not fired yet.  Normal shutdown is
             // the last in-process chance to publish that already-observed
             // fact before releasing the directory lease.
             try { crisisState.flush(); }
             catch { try { log('停止时危机状态仍未确认持久；保留原文件和失败关闭边界，未记录原文'); } catch { /* diagnostics cannot change shutdown */ } }
-            for (const timer of pokeTimers) clearTimeout(timer);
+            for (const timer of pokeTimers) exec.cancel(timer);
             pokeTimers.clear();
             heartbeat.stop();
             reading?.stop();
             if (readingUnlisted !== reading) readingUnlisted?.stop();
             for (const planner of planners.values()) planner.stop();
             const responderDrains = [...responders.values()].map(responder => responder.stop());
-            if (memoryTimer) clearInterval(memoryTimer);
-            if (tastesTimer) clearInterval(tastesTimer);
-            if (tastesFirst) clearTimeout(tastesFirst);
-            if (followUpTimer) clearInterval(followUpTimer);
+            if (memoryTimer) exec.cancel(memoryTimer);
+            if (tastesTimer) exec.cancel(tastesTimer);
+            if (tastesFirst) exec.cancel(tastesFirst);
+            if (followUpTimer) exec.cancel(followUpTimer);
             const presenceDrain = presence?.stop();
             const browsingDrain = browsing?.stop();
             const repliesDrain = replies?.stop();
             const riskDrain = risk?.stop();
-            if (lifeTimer) clearInterval(lifeTimer);
+            if (lifeTimer) exec.cancel(lifeTimer);
             if (dreamTimer) clearInterval(dreamTimer);
-            if (weatherTimer) clearInterval(weatherTimer);
+            if (weatherTimer) exec.cancel(weatherTimer);
             if (airQualityTimer) clearInterval(airQualityTimer);
             if (daylightTimer) clearInterval(daylightTimer);
             if (calendarTimer) clearInterval(calendarTimer);
             if (transportTimer) clearInterval(transportTimer);
             if (dshInboxTimer) clearInterval(dshInboxTimer);
             if (dshStateTimer) clearInterval(dshStateTimer);
-            if (stickerDiscoveryTimer) clearInterval(stickerDiscoveryTimer);
-            if (photoDiscoveryTimer) clearInterval(photoDiscoveryTimer);
-            if (memesTimer) clearInterval(memesTimer);
-            if (watchingTimer) clearInterval(watchingTimer);
-            if (feedTimer) clearInterval(feedTimer);
+            if (stickerDiscoveryTimer) exec.cancel(stickerDiscoveryTimer);
+            if (photoDiscoveryTimer) exec.cancel(photoDiscoveryTimer);
+            if (memesTimer) exec.cancel(memesTimer);
+            if (watchingTimer) exec.cancel(watchingTimer);
+            if (feedTimer) exec.cancel(feedTimer);
             if (silenceTimer) clearInterval(silenceTimer);
             if (selfPursuitTimer) clearInterval(selfPursuitTimer);
             if (speechNotesTimer) clearInterval(speechNotesTimer);
@@ -4171,13 +4158,11 @@ ${body}
             if (herGuessesTimer) clearInterval(herGuessesTimer);
             if (feelingReviewTimer) clearInterval(feelingReviewTimer);
             clearInterval(outboxTimer);
-            if (foodDiscoveryTimer) clearInterval(foodDiscoveryTimer);
-            clearTimeout(foodRetryTimer);
-            if (jokesTimer) clearInterval(jokesTimer);
-            if (idiomsTimer) clearInterval(idiomsTimer);
+            if (foodDiscoveryTimer) exec.cancel(foodDiscoveryTimer);
+            exec.cancel(foodRetryTimer);
             const deviceDrain = stopDevices();
-            if (weeklyTimer) clearInterval(weeklyTimer);
-            clearTimeout(photoRetryTimer);
+            if (weeklyTimer) exec.cancel(weeklyTimer);
+            exec.cancel(photoRetryTimer);
             useRealWeather(undefined);
             useRealAirQuality(undefined);
             useRealDaylight(undefined);
@@ -4185,7 +4170,7 @@ ${body}
             useRealTransport(undefined);
             useWorldNeeds(undefined);
             const drains = [
-                diaryDrain, promisesDrain, memoryDrain, tastesDrain, jokesDrain, idiomsDrain, dshDrain, mobileCompanionDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains, ...contextDrains, ...responderDrains,
+                diaryDrain, promisesDrain, memoryDrain, tastesDrain, ...moduleDrains, dshDrain, mobileCompanionDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains, ...contextDrains, ...responderDrains,
             ].filter((task): task is Promise<void> => task !== undefined);
             if (drains.length) {
                 stopDrain = Promise.allSettled(drains).then(results => {
@@ -4291,6 +4276,19 @@ ${body}
                 ...(currentHumanState ? { humanValues: currentHumanState.values, humanTrends: currentHumanState.trends, development: currentHumanState.development } : {}),
             };
         },
+    };
+    // 对外的入口都经解释器分发（ADR 0263 第 4 步）；停止、状态、手机伴侣、外部草稿不是事件，照旧直接给
+    return {
+        connected: selfId => interpreter.dispatch({ kind: 'connected', selfId }) ?? Promise.resolve(),
+        receive: event => { void interpreter.dispatch({ kind: 'message', event }); },
+        receivePoke: event => { void interpreter.dispatch({ kind: 'poke', event }); },
+        receiveRecall: event => { void interpreter.dispatch({ kind: 'recall', event }); },
+        receiveFriendRequest: request => { void interpreter.dispatch({ kind: 'friendRequest', request }); },
+        receiveGroup: event => { void interpreter.dispatch({ kind: 'group', event }); },
+        stop: () => legacy.stop(),
+        status: () => legacy.status(),
+        mobileCompanion: () => legacy.mobileCompanion(),
+        externalDrafts: () => legacy.externalDrafts(),
     };
 }
 

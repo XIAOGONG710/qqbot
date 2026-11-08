@@ -16,6 +16,7 @@ import { togetherNow } from '../src/language/together.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 import { deliberateLlm } from '../src/platform/config.ts';
 import { createContactResponder, type ContactPipelineOptions } from '../src/platform/contact.ts';
+import { intentModule } from '../src/modules/intent.ts';
 import { parseDeviceTokens, type DeviceProposal } from '../src/platform/device-actions.ts';
 import { parseCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
@@ -38,6 +39,8 @@ function contact(overrides: Partial<ContactPipelineOptions> = {}) {
         prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
         history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
         now: () => NOW, log: quiet, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
+        // 意图阶梯是解释器的模块（ADR 0263），App 总是挂着它；深思按意图判断
+        turnModules: [intentModule()],
         send: async (_qq, text) => { sent.push(text); return sent.length + 100; },
         generate: async () => '好呀',
         devices: {
