@@ -13,6 +13,7 @@ import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
 import { togetherModule } from '../modules/together.ts';
 import { intentModule } from '../modules/intent.ts';
+import { herNowModule } from '../modules/her-now.ts';
 import { repetitionModule } from '../modules/repetition.ts';
 import { memesModule } from '../modules/memes.ts';
 import { watchedModule } from '../modules/watched.ts';
@@ -526,6 +527,13 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         } : {}),
         // 做判断的模块（ADR 0263），顺序同 App：意图阶梯总在最前；小梗（ADR 0114）直接给场景里写好的梗，不抽
         turnModules: [
+            // 她此刻（她那边、身体、状态行）：开关同上面给流水线的；世界账、答应的事、聊天记录重启后会换新的，用到时再取
+            herNowModule({
+                schedule: scenario.schedule, herDays: options.herDays ?? false, ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}),
+                worldState: () => sharedWorld ?? undefined, appointmentsAt: at => promises?.appointmentsAt?.(at),
+                contacts: () => [contact, ...others], history: qq => history.load(qq),
+                log: message => { if (epoch === responderEpoch) log(message); },
+            }),
             intentModule({
                 ...(scenario.herNo ? { refuse: true } : {}), ...(scenario.jealousy ? { jealous: true } : {}), ...(scenario.curious ? { curious: true } : {}),
                 ...(scenario.everydayLife ? { everydayLife: true } : {}), ...(scenario.pursuits ? { pursuits: true } : {}),

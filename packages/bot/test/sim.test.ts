@@ -652,3 +652,25 @@ describe('模拟器挂着别重复自己的模块（ADR 0263）', () => {
         assert.match(prompts.at(-1)!, /这些事你已经主动跟他说过了：相机/);
     });
 });
+
+describe('模拟器挂着她此刻的模块（ADR 0263）', () => {
+    // 行为基线走的是 App，模拟器这一路的接线由这里兜：没挂模块，此刻、她那边这两行就没有
+    test('开了作息和她自己的日子：提示词里有此刻在干嘛、她那边', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-her-now-sim-'));
+        const prompts: string[] = [];
+        try {
+            await runScenario(parseScenario({
+                name: 'her now', tier: 'boyfriend', start: '2026-10-25T20:00:00+08:00', memory: false, schedule: true,
+                steps: [{ say: '在干嘛' }, { advance: '10m' }],
+            }), {
+                runId: 'her-now', dataDir: dir, card, llm, prompt, herDays: true, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages.map(m => String(m.content)).join('\n')); return '嗯嗯'; },
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+        assert.ok(prompts.length);
+        assert.match(prompts[0]!, /\[你现在：/);
+        assert.match(prompts[0]!, /\[你那边（/);
+    });
+});

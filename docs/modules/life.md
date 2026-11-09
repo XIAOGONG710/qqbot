@@ -29,6 +29,7 @@
 - `human-values.ts`
 - `local-date.ts`
 - `character-terms.ts`
+- `modules/her-now.ts`
 
 ## 开关
 

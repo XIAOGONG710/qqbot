@@ -40,10 +40,9 @@ import { finishReply } from '.././language/unfinished.ts';
 import { describeUnsettled } from '.././life/open-loops.ts';
 import { describeWorld, lastMealDish, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldState } from '.././world/world.ts';
 import { npcMentioned } from '.././world/npc.ts';
-import { dayPlan, describePlans, describeSlot } from '.././life/day-plan.ts';
+import { dayPlan, describeSlot } from '.././life/day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from '.././life/body.ts';
-import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
-import { herStatus } from '.././language/status-line.ts';
+import { saidAsleepAt } from '.././life/bedtime.ts';
 import { describeWarmAffect, warmAffect } from '.././emotion/affect.ts';
 import { withEveryday } from '.././life/everyday.ts';
 import { withMenu } from '.././life/menu.ts';
@@ -52,8 +51,8 @@ import { appraisals, asksAfterHer, criedRecently, describeFeelings, FEELING_NAME
 import { describeRecentPhotography, recentPhotography } from '.././life/projects.ts';
 import { describePast, pastCue } from '.././life/biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
-import { describeAppointment, mentionsMeetup, type PromiseKeeper } from '.././life/promises.ts';
-import { describeState, formatDate, herDay, partnerBackLine } from '.././life/schedule.ts';
+import { mentionsMeetup, type PromiseKeeper } from '.././life/promises.ts';
+import { formatDate, herDay } from '.././life/schedule.ts';
 import { speechContext, TAIL_CAPS, type BookProgressContext } from '.././language/speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from '.././language/candidates.ts';
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
@@ -313,9 +312,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const herSchedule = options.herDays ? character.schedule : undefined;
     // 她说过「睡了」（ADR 0042）：对名单里谁说的都算，从说完那一刻起在睡——各个联系人看到的是同一个她（状态行、什么时候看到消息）
     const everyone = [contact.qq, ...(options.contacts ?? []).map(other => other.qq).filter(qq => qq !== contact.qq)];
-    const asleepAt = (time: Date) => (schedule
-        ? asleepSince(schedule, saidBedtimes(everyone.map(qq => options.history.load(qq)), schedule, time.getTime() - DAY_MS), time)
-        : undefined);
+    const asleepAt = (time: Date) => (schedule ? saidAsleepAt(schedule, everyone.map(qq => options.history.load(qq)), time) : undefined);
     const extraFree = herSchedule ? readingActivities(character.books) : [];
     // 这一轮放了「在读的书」时，出口检查拿它核对进度数字。同一个回复器一次只生成一条，review 紧跟着这一轮的 buildPrompt
     let reading: BookProgressContext | undefined;
@@ -457,45 +454,15 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const perceived = perceiveTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             if (perceived instanceof Promise) await perceived;
-            // 她那边（ADR 0021）：跟着「她自己的日子」开，卡上有世界才有
-            const around = herSchedule && character.herWorld
-                ? options.worldState?.at(character.herWorld, herSchedule, time) ?? worldAt(character.herWorld, herSchedule, time)
-                : undefined;
-            // 别人给的钱（买相机，ADR 0053 调整）：正在聊的人给的写他的称呼（写「对方」她照抄成「对方给的2000」），男朋友给的跟别人说是「男朋友」
-            const giver = (qq: number) => {
-                if (qq === contact.qq) return contact.name;
-                const other = (options.contacts ?? []).find(c => c.qq === qq);
-                return other ? (other.tier === 'boyfriend' ? '男朋友' : other.name) : undefined;
-            };
-            const world = around ? describeWorld(around, time, giver) : undefined;
+            // 她此刻（她那边 ADR 0021、身体 ADR 0025、状态行 ADR 0042 等）是解释器的模块（modules/her-now.ts）：perceive 时写进 turn.facts，
+            // 经 turnModules 放进 state、world、body、plans、partnerBack 槽；下面的旧逻辑读 facts
+            const { world: around, body: bodyNow, state } = turn.facts;
             const practiced = options.lifeInPrompt && character.herWorld?.cameraFund && options.worldState?.events ? recentPhotography(options.worldState.events(), time, 3, herSchedule) : undefined;
             const practice = practiced ? describeRecentPhotography(practiced, time, herSchedule) : undefined;
             const selfNote = options.selfNote?.(time.getTime());
             // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
             const recap = day && !day.period ? recapOf(day.start, time) : undefined;
             if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
-            // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
-            const bodyNow = herSchedule && character.herWorld?.body ? bodyAt(character.herWorld.body, herSchedule, time) : undefined;
-            // 状态行（status-line.ts，模拟器的状态行影子比对用同一个函数，ADR 0042）：作息 → 说过「睡了」就在睡 →
-            // 空闲时世界里有时长的事（ADR 0030）→ 一天的打算改了的写「本来打算 X，Y，Z」（ADR 0034）
-            const asleep = schedule ? asleepAt(time) : undefined;
-            // 约好的见面（ADR 0047）：和这个人约的优先；和别人约的只说在外面、约了人
-            const meetings = contact.tier !== UNLISTED_TIER ? options.promises?.appointmentsAt?.(time) ?? [] : [];
-            const meeting = meetings.find(m => m.contact.qq === contact.qq) ?? meetings[0];
-            const appointment = meeting ? describeAppointment(meeting, contact, time) : undefined;
-            const status = schedule ? herStatus(schedule, time, {
-                extraFree, ...(around ? { world: around } : {}), ...(asleep ? { asleep } : {}), ...(appointment ? { appointment } : {}),
-                ...(herSchedule ? { plans: { plans: character.herWorld?.plans, ...(bodyNow ? { body: bodyNow } : {}) } } : {}),
-                ...(options.projectChoice && options.worldState?.events
-                    ? { projectChoice: { events: options.worldState.events(), books: character.books } }
-                    : {}),
-            }) : undefined;
-            if (status?.saidAsleep) log(`她 ${status.saidAsleep.since.toTimeString().slice(0, 5)} 说过睡了：状态行按在睡觉`);
-            if (status?.busy) log(`此刻在做：${status.busy}`);
-            if (status?.revised) log(`改了打算：${status.revised}`);
-            const state = status?.state;
-            const partnerBack = state ? partnerBackLine(state, contact.name) : undefined;
-            const plansLine = herSchedule ? describePlans(herSchedule, status?.slots ?? [], time) : undefined;
             const books = herSchedule
                 ? readingSection(herSchedule, character.books, time, {
                     history: chat, userName: contact.name,
@@ -563,10 +530,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? (grievanceNow(chat) ?? ignoredNow(chat)) : undefined;
             // 接着 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
             // 她此刻在干嘛、作息、她答应的事、挂着的事、她那边还没说过的事还是旧逻辑算的，写进 facts 给意图阶梯（modules/intent.ts）读
-            const herNow = schedule ?? herSchedule;
             Object.assign(turn.facts, {
-                ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(around ? { world: around } : {}),
-                ...(state ? { state } : {}), ...(herNow ? { schedule: herNow } : {}), ...(promised ? { promised: true } : {}),
+                ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(promised ? { promised: true } : {}),
                 ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what) } : {}),
                 ...(untold.length ? { news: untold } : {}),
             } satisfies TurnFacts);
@@ -675,6 +640,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 说过了的事由别重复自己的模块（modules/repetition.ts）assess 时写进 turn.facts.told（危机回合不算）
             const told = turn.facts.told ?? [];
             const TOLD_LABEL: Record<string, RegExp> = { 相机: /相机/, 猫: new RegExp(`${catAlternative()}猫`), 作业: /作业/, 快递: /快递/ };
+            // 世界那一行的标签（天气、猫、作业……）：行本身由她此刻的模块放；标签和“钱是谁给的”无关，这里不带称呼
+            const world = around ? describeWorld(around, time) : undefined;
             const worldLabels = world ? world.replace(/^\[你那边（[^）]*）：/, '').replace(/\]$/, '').split('｜').map(item => item.split('：')[0]!.trim()).filter(Boolean) : [];
             const agendaTopics = [
                 ...worldLabels.filter(label => !told.some(name => TOLD_LABEL[name]?.test(label))),
@@ -739,24 +706,18 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(common || today || peopleText.length ? [{ slot: 'disclosure' as const, text: disclosureRules(contact) }] : []),
                 { slot: 'time', text: describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }) },
                 ...when('days', days),
-                ...(state ? [{ slot: 'state' as const, text: describeState(state, schedule!, { userName: contact.name, woken, partnerApart: true }) }] : []),
                 // 心里压着事 / 特别开心的时候，按日期抽的底色（爱笑、话痨……）会和心境打架：以心境为准（ADR 0102）
                 ...(mood && !(feelingLine !== undefined && (feelsLow(feltNow) || feltNow.some(item => item.kind === 'joy' && item.level === 'strong'))) ? [{ slot: 'mood' as const, text: describeMood(mood, contact.name) }] : []),
-                ...when('body', body),
                 ...when('humanState', humanStateLine),
                 ...when('unsettled', unsettled),
                 ...when('warm', warm),
                 ...when('feeling', feelingLine),
                 ...(books ? [{ slot: 'books' as const, text: books.text }] : []),
-                ...when('world', world),
                 ...when('practice', practice),
                 ...when('pursuit', pursuitLine),
                 ...when('selfNote', selfNote),
-                ...when('plans', plansLine),
                 ...when('promised', promised),
                 ...when('obstacle', obstacleLine),
-                // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
-                ...when('partnerBack', partnerBack),
                 ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
                 // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
                 ...(options.devices && !crisisNow && !thinking ? [{ slot: 'devices' as const, text: options.devices.menu() }] : []),

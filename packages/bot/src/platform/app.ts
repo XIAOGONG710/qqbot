@@ -23,6 +23,7 @@ import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
 import { togetherModule } from '../modules/together.ts';
 import { intentModule } from '../modules/intent.ts';
+import { herNowModule } from '../modules/her-now.ts';
 import { repetitionModule } from '../modules/repetition.ts';
 import { memesModule } from '../modules/memes.ts';
 import { watchedModule } from '../modules/watched.ts';
@@ -647,6 +648,13 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
             },
         },
+        // 她此刻（她那边、身体、状态行）：perceive 时看清她此刻、写进 facts（意图和旧逻辑都读），放五行。
+        // 聊天记录、答应的事在后面才建，用到时再取
+        herNowModule({
+            schedule: config.schedule, herDays: config.herDays, ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
+            worldState: () => sharedWorld ?? undefined, appointmentsAt: at => promises?.appointmentsAt?.(at),
+            contacts: () => config.contacts, history: qq => history.load(qq), log,
+        }),
         // 意图阶梯（ADR 0019 起）：assess 时写这一轮的意图，排在最前（后面的模块和旧逻辑都读它）；开关是它的选项
         intentModule({
             ...(config.herNo ? { refuse: true } : {}), ...(config.jealousy ? { jealous: true } : {}), ...(config.curious ? { curious: true } : {}),

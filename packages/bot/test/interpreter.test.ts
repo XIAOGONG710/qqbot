@@ -14,6 +14,13 @@ import { memesModule } from '../src/modules/memes.ts';
 import { watchedAllowed, watchedModule } from '../src/modules/watched.ts';
 import { intentModule, intentOf } from '../src/modules/intent.ts';
 import { repetitionModule, repetitionPieces } from '../src/modules/repetition.ts';
+import { herNowModule } from '../src/modules/her-now.ts';
+import { loadTierCard } from '../src/platform/contact.ts';
+import type { Contact } from '../src/platform/config.ts';
+import type { StoredMessage } from '../src/memory/history.ts';
+import type { Schedule } from '../src/life/schedule.ts';
+import { worldAt, type WorldAction } from '../src/world/world.ts';
+import { syntheticCardPattern } from './fixtures/card.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
 
@@ -453,5 +460,66 @@ describe('别重复自己模块（ADR 0098 / 0135 / 0263）', () => {
         const { facts, pieces } = run(boyfriend({ history: history.slice(-2) }));
         assert.deepEqual(facts.told, []);
         assert.deepEqual(pieces, []);
+    });
+});
+
+describe('她此刻模块（ADR 0021 / 0025 / 0042 / 0047 / 0263）', () => {
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend').character;
+    const at = new Date('2026-10-08T23:30:00+08:00');
+    const amin: Contact = { qq: 1, name: '阿明', tier: 'boyfriend' };
+    const zhou: Contact = { qq: 2, name: '小周', tier: 'classmate' };
+    const base = { schedule: true, herDays: true, history: () => [], log: () => {} };
+    const turnOf = (contact: Contact, patch: Partial<Turn> = {}): Turn => ({ contact, at, history: [], thinking: false, card, facts: {}, ...patch });
+    const run = (module: Module, t: Turn) => { module.perceive!(t); return { facts: t.facts, pieces: module.contribute!(t) as Piece[] }; };
+    const text = (pieces: readonly Piece[], slot: Piece['slot']) => pieces.find(piece => piece.slot === slot)?.text;
+    test('perceive 写她那边、身体、状态行、作息；contribute 放此刻、她那边、身体、打算，他刚回学校', () => {
+        const { facts, pieces } = run(herNowModule(base), turnOf(amin));
+        assert.ok(facts.world && facts.status && facts.state && facts.schedule);
+        assert.equal(facts.state, facts.status.state);
+        assert.deepEqual(pieces.map(piece => piece.slot), ['state', 'world', ...(facts.body ? ['body'] : []), 'plans', 'partnerBack']);
+        assert.match(text(pieces, 'state')!, /^\[你现在：/);
+        assert.equal(text(pieces, 'partnerBack'), '[阿明国庆放完回学校了，已经在学校里了]');
+    });
+    test('没有卡、两个开关都关：什么都不算、不放；只开作息：只有此刻那一行', () => {
+        const none = turnOf(amin, { card: undefined });
+        assert.deepEqual(run(herNowModule(base), none), { facts: {}, pieces: [] });
+        assert.deepEqual(run(herNowModule({ ...base, schedule: false, herDays: false }), turnOf(amin)), { facts: {}, pieces: [] });
+        const only = run(herNowModule({ ...base, herDays: false }), turnOf(amin));
+        assert.equal(only.facts.world, undefined);
+        assert.deepEqual(only.pieces.map(piece => piece.slot), ['state', 'partnerBack']);
+    });
+    test('说过「睡了」：对谁说的都算（同学来问也是在睡）；吵醒那一轮写被吵醒', () => {
+        const said: Record<number, StoredMessage[]> = { 1: [{ time: '2026-10-08T15:20:00.000Z', role: 'assistant', content: '我先睡了，晚安' }] };
+        const module = herNowModule({ ...base, contacts: () => [amin, zhou], history: qq => said[qq] ?? [] });
+        const later = new Date('2026-10-09T00:30:00+08:00');
+        const classmate = run(module, turnOf(zhou, { at: later }));
+        assert.equal(classmate.facts.state?.activity.kind, 'sleep');
+        assert.ok(classmate.facts.status?.saidAsleep);
+        assert.match(text(run(module, turnOf(amin, { at: later, woken: true })).pieces, 'state')!, /被消息震醒了/);
+        // 不看别人的聊天记录：同学这边她还醒着（作息 02:00 才睡）
+        assert.notEqual(run(herNowModule({ ...base, history: qq => said[qq] ?? [] }), turnOf(zhou, { at: later })).facts.state?.activity.kind, 'sleep');
+    });
+    test('约好的见面：和这个人约的写在赴约，别人来问只说在外面、约了人；名单外不看', () => {
+        const meeting = {
+            contact: amin, start: new Date('2026-10-08T23:00:00+08:00'), end: new Date('2026-10-09T00:00:00+08:00'),
+            promise: { id: 'p', what: '和他去东门吃夜宵', said: '2026-10-08', episode: 'e', meet: { time: '23:00', where: '东门口' } },
+        } as never;
+        const module = herNowModule({ ...base, appointmentsAt: () => [meeting] });
+        assert.match(text(run(module, turnOf(amin)).pieces, 'state')!, /约好的：和他去东门吃夜宵（23:00，东门口），正在赴约/);
+        assert.match(text(run(module, turnOf(zhou)).pieces, 'state')!, /在外面，约了人（23:00 起）/);
+        assert.doesNotMatch(text(run(module, turnOf({ qq: 9, name: '路人', tier: 'unlisted' })).pieces, 'state') ?? '', /约了人/);
+    });
+    test('她那边的钱是谁给的（买了相机之后那一行写）：正在聊的人写他的称呼，别人看男朋友给的写「男朋友」', () => {
+        const evening = new Date('2026-10-11T20:00:00+08:00');
+        const gift = { id: '1:ep:1:receive_money', kind: 'receive_money', day: '2026-10-08', at: '2026-10-08T15:41', contact: 1, episode: 'ep', amount: 2000, target: 'camera_fund' } as WorldAction;
+        const worldState = { at: (world: NonNullable<typeof card.herWorld>, schedule: Schedule, when: Date) => worldAt(world, schedule, when, [gift]) };
+        const module = herNowModule({ ...base, worldState: () => worldState, contacts: () => [amin, zhou] });
+        const mine = text(run(module, turnOf(amin, { at: evening })).pieces, 'world')!;
+        const theirs = text(run(module, turnOf(zhou, { at: evening })).pieces, 'world')!;
+        assert.match(mine, /相机：.*阿明/);
+        assert.match(theirs, /相机：.*男朋友/);
+        assert.doesNotMatch(theirs, /阿明/);
+        // 名单里没有给钱的人：写「别人」
+        assert.match(text(run(herNowModule({ ...base, worldState: () => worldState }), turnOf(zhou, { at: evening })).pieces, 'world')!, /相机：.*别人/);
     });
 });
