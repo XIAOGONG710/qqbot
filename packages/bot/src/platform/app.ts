@@ -30,6 +30,7 @@ import { learningQuestionModule } from '../modules/learning-question.ts';
 import { workModeModule } from '../modules/work-mode.ts';
 import { selfMemoryModule } from '../modules/self-memory.ts';
 import { soulModule } from '../modules/soul.ts';
+import { herNotesModule } from '../modules/her-notes.ts';
 import { idiomsModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
@@ -912,6 +913,14 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const watchedFile = watchedPath(config.dataDir);
     let watchedEntries: readonly Watched[] = config.watching ? loadWatched(watchedFile, log).entries : [];
     // 做判断的都经解释器（ADR 0336 第 4 步）：迁移前的整套逻辑先作为一个「旧逻辑」模块挂上；迁出去的模块逐个加在这里
+    // 她自己记下的东西（说话习惯 ADR 0193、日记里发现的自己 0194、读完看完的想法 0204、没想完的问题 0207、她猜的事 0213）的读取：
+    // 要在建解释器之前定义（「她自己记下的东西」模块用得到；夜里的反思、想事情的计划器也用同一份）
+    const speechNotesNow = config.speechNotes ? speechNotesReader(config.dataDir) : undefined;
+    const diaryInsightsNow = config.diaryInsights ? insightsReader(config.dataDir) : undefined;
+    const readingTakesNow = config.readingTakes ? takesReader(config.dataDir) : undefined;
+    const openQuestionsNow = config.openQuestions ? thoughtsReader(config.dataDir) : undefined;
+    // 她猜的事（ADR 0213）：要她那边的世界（世界账）才对得上结果
+    const herGuessesNow = config.herGuesses ? guessesReader(config.dataDir) : undefined;
     const interpreter = createInterpreter({
         modules: [{
             id: 'app-legacy',
@@ -948,6 +957,17 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ...(config.selfDirectedMemory ? [selfMemoryModule({ understanding: hisWords => understandingLine(config.dataDir, hisWords), traces: () => tracesLine(config.dataDir) })] : []),
         workModeModule(contact => readWorkMode(config.dataDir, contact.qq)),
         // 她在本机的那一份（DSH 的灵魂目录）：心里的线头、拒绝过的、评价、「你现在的生活」、首轮铺底；只给男朋友档，每一轮现读
+        // 她自己记下的东西（DSH：说话习惯、聊天回顾、日记里发现的自己、读完看完的想法、没想完的问题、她猜的事）：各自的开关开着才给读取；只给男朋友档
+        herNotesModule({
+            ...(speechNotesNow ? { speechNotes: speechNotesNow } : {}),
+            ...(config.chatReview ? { chatReview: chatReviewReader(config.dataDir) } : {}),
+            ...(diaryInsightsNow ? { diaryInsights: diaryInsightsNow } : {}),
+            ...(readingTakesNow ? { readingTakes: readingTakesNow } : {}),
+            ...(openQuestionsNow ? { openQuestions: openQuestionsNow } : {}),
+            ...(herGuessesNow ? { herGuesses: herGuessesNow } : {}),
+            now: () => exec.now(),
+            log,
+        }),
         soulModule({
             selfThread: (): string | undefined => {
                 try {
@@ -1481,14 +1501,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 追求（ADR 0104）：作者的文件 + 内置；开了 selfPursuits（ADR 0178）再套上她自己的决定、接上她自己加的
     const authorPursuits = pursuitsReader(config.dataDir, log);
     const pursuitsNow = config.selfPursuits ? selfAwareReader(config.dataDir, authorPursuits) : authorPursuits;
-    // 她自己总结的说话习惯（ADR 0193）：要在创建回复器之前定义（createContactResponder 里用得到）
-    const speechNotesNow = config.speechNotes ? speechNotesReader(config.dataDir) : undefined;
-    // 她翻日记时发现的自己（ADR 0194）：同理，要在创建回复器之前定义
-    const diaryInsightsNow = config.diaryInsights ? insightsReader(config.dataDir) : undefined;
-    const readingTakesNow = config.readingTakes ? takesReader(config.dataDir) : undefined;
-    const openQuestionsNow = config.openQuestions ? thoughtsReader(config.dataDir) : undefined;
-    // 她猜的事（ADR 0213）：要她那边的世界（世界账）才对得上结果
-    const herGuessesNow = config.herGuesses ? guessesReader(config.dataDir) : undefined;
     // 最近一次给他算的心境（ADR 0197）：写给桌面上的她，/心境 也看它；同样要在创建回复器之前定义
     let lastFeelings: FeelingsReport | undefined;
     // 她夜里回想、指出了依据的感受（ADR 0197）：作为「别处算好的评估」进心境；要 herFeelings 开着
@@ -2052,18 +2064,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => { lastFeelings = report; writeFeelingsExport(soulDir(), report); } } : {}),
             ...(feelingReviewNow && contact.tier === 'boyfriend' ? { feelingReview: feelingReviewNow } : {}),
             ...(exemplars.length && contact.tier === 'boyfriend' ? { exemplars } : {}),
-            ...(speechNotesNow && contact.tier === 'boyfriend' ? { speechNotes: speechNotesNow } : {}),
-            ...(diaryInsightsNow && contact.tier === 'boyfriend' ? { diaryInsights: diaryInsightsNow } : {}),
-            ...(readingTakesNow && contact.tier === 'boyfriend' ? { readingTakes: readingTakesNow } : {}),
-            ...(openQuestionsNow && contact.tier === 'boyfriend' ? { openQuestions: openQuestionsNow } : {}),
-            ...(herGuessesNow && contact.tier === 'boyfriend' ? { herGuesses: herGuessesNow } : {}),
             ...(memeDict && contact.tier === 'boyfriend' ? { memeDict } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
             ...(config.factCheck !== 'off' ? { factCheck: config.factCheck, ...(config.factHim ? { factAboutHim: true } : {}) } : {}),
             ...(config.memoryFeelings && config.herFeelings ? { memoryFeelings: true } : {}),
             ...(config.realNights ? { realNights: true } : {}),
-            ...(config.chatReview && contact.tier === 'boyfriend' ? { chatReview: chatReviewReader(config.dataDir) } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
             ...(config.pursuits ? { pursuits: pursuitsNow } : {}),

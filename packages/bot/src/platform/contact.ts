@@ -66,14 +66,8 @@ import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
-import { speechNotesLine, type SpeechNote } from '.././language/speech-notes.ts';
-import { insightsLine, type Insight } from '.././life/diary-insights.ts';
-import { takesLine, type Take } from '.././life/reading-takes.ts';
-import { thoughtsLine, type Thought } from '.././life/open-questions.ts';
 import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts';
 import { lastNight, withLastNight } from '.././life/nights.ts';
-import { reviewLine, type ReviewNote } from '.././language/chat-review.ts';
-import { guessesLine, type Guess } from '.././life/her-guesses.ts';
 import { describeHumanState, describeHumanValues, type HumanValues } from '.././human-values.ts';
 import { auditDevelopment, describeDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
 import { photoAllowance, photoIntent, photoWanted, stripPhotoArtifacts, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
@@ -224,16 +218,6 @@ export interface ContactPipelineOptions {
     currentAiPhoto?: (request: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => CurrentAiPhotoResult;
     /** 真人例子（ADR 0190，默认关）：他说完这种话，真人是怎么回的 */
     exemplars?: readonly Exemplar[];
-    /** 她自己总结的说话习惯（ADR 0193，默认关）：挑最相关的几条放进提示词；她自己的观察，不是规定 */
-    speechNotes?: () => readonly SpeechNote[];
-    /** 她翻自己日记时发现的自己（ADR 0194，默认关）：挑最相关的几条放进提示词；她自己的观察，不是设定 */
-    diaryInsights?: () => readonly Insight[];
-    /** 她读完 / 看完之后自己想的（ADR 0204，默认关）：他聊到那本书 / 视频或问“最近看了什么”才放最多两条；她自己的看法，不是设定 */
-    readingTakes?: () => readonly Take[];
-    /** 她没想完的问题想出来的（ADR 0207，默认关）：他再问到同一件事才放最多两条；是她自己后来想的，提示词不说该不该用、该选哪边 */
-    openQuestions?: () => readonly Thought[];
-    /** 她猜的事和后来的结果（ADR 0213，默认关）：他这句提到同一类事（小测 / 快递 / 天气 / 作业）才放最多两条；她自己记的，别背、别较真 */
-    herGuesses?: () => readonly Guess[];
     /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
     memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
     /** 他问到过去的某一天时，她那天自己写的日记（ADR 0217，默认关）：date 是她的那一天 YYYY-MM-DD */
@@ -242,8 +226,6 @@ export interface ContactPipelineOptions {
     memoryFeelings?: boolean;
     /** 昨晚真的怎么睡的（ADR 0219，默认关）：早上困不困从她说「睡了」、半夜被吵醒、睡前跟他聊推，不按课表；被吵醒有起床气 */
     realNights?: boolean;
-    /** 她每天回顾聊天时记下的（ADR 0221，默认关）：最多两条，新的在前；危机 / 想事情 / 小别扭 / 他难过的轮次不放 */
-    chatReview?: () => readonly ReviewNote[];
     /** 形状对所有轮次都生效（ADR 0220，默认关）：关着时照 DSH 10-28 的松绑，普通闲聊不给形状 */
     shapeAll?: boolean;
     /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
@@ -804,30 +786,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
             // 她自己最近的日子（心里的线头）、拒绝过的、评价、「你现在的生活」、首轮铺底是解释器的模块（modules/soul.ts）
             // 他的口气（2026-10-30：说话还是使唤、当程序说话、很元的问题、使唤得比说话多）是解释器的模块（modules/register.ts），经 turnModules 放进 register 槽
-            // 她自己总结的说话习惯（ADR 0193）：口气上的参考，危机 / 只想一想 / 小别扭的轮次不放；主动开口也放（习惯不看有没有他的上一句）
-            const speechNoteNow = options.speechNotes && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
-                ? speechNotesLine(options.speechNotes(), chat.findLast(message => message.role === 'user')?.content) : undefined;
-            if (speechNoteNow) log('说话习惯：这一轮放了几条她自己总结的（日志不记内容）');
-            // 她回顾聊天时记下的（ADR 0221）：他在难受时不放（那一轮先接住他，别想着自己的毛病）
-            const reviewNow = options.chatReview && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance && !needsCareText(chat.findLast(message => message.role === 'user')?.content ?? '')
-                ? reviewLine(options.chatReview()) : undefined;
-            if (reviewNow) log('聊天回顾：这一轮放了她自己记下的（日志不记内容）');
-            // 她翻自己日记时发现的自己（ADR 0194）：她对自己的认识，不是设定；放的轮次同说话习惯
-            const insightNow = options.diaryInsights && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
-                ? insightsLine(options.diaryInsights(), chat.findLast(message => message.role === 'user')?.content) : undefined;
-            if (insightNow) log('自我认识：这一轮放了几条她翻日记时发现的自己（日志不记内容）');
-            // 她读完 / 看完之后自己想的（ADR 0204）：聊到那本书 / 视频、或问最近看了什么才放；放的轮次同自我认识
-            const takesNow = options.readingTakes && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
-                ? takesLine(options.readingTakes(), chat.findLast(message => message.role === 'user')?.content) : undefined;
-            if (takesNow) log('读完看完的想法：这一轮放了她自己想的（日志不记内容）');
-            // 她没想完的问题想出来的（ADR 0207）：他再问到同一件事才放；放的轮次同自我认识
-            const thoughtsNow = options.openQuestions && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
-                ? thoughtsLine(options.openQuestions(), chat.findLast(message => message.role === 'user')?.content) : undefined;
-            if (thoughtsNow) log('没想完的问题：这一轮放了她自己后来想的（日志不记内容）');
-            // 她猜的事（ADR 0213）：他这句提到同一类事才放；放的轮次同上
-            const guessesNow = options.herGuesses && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
-                ? guessesLine(options.herGuesses(), chat.findLast(message => message.role === 'user')?.content, now()) : undefined;
-            if (guessesNow) log('她猜的事：这一轮放了她自己记的（日志不记内容）');
+            // 她自己记下的东西（说话习惯、聊天回顾、日记里发现的自己、读完看完的想法、没想完的问题、她猜的事）是解释器的模块（modules/her-notes.ts）
             // 梗百科词库（2026-10-29）：她自己的库太小；他提到的词只要词库里有，就把「怎么用/出处/标签」给她。
             // 让路条件和热梗一样；已经在热梗那一行里的不重复给。热梗那一行由热梗模块（modules/memes.ts）在 contribute 时写进 turn.facts.meme，
             // 所以这一行到拼段落时（下面「旧逻辑」模块的 contribute）才算，日志也在那时记
@@ -1055,12 +1014,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('partnerBack', partnerBack),
                 ...when('exemplar', exemplarNow),
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
-                ...when('speechNote', speechNoteNow),
-                ...when('review', reviewNow),
-                ...when('insight', insightNow),
-                ...when('takes', takesNow),
-                ...when('thoughts', thoughtsNow),
-                ...when('guesses', guessesNow),
                 ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
                 // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
                 ...(options.devices && !crisisNow && !thinking ? [{ slot: 'devices' as const, text: options.devices.menu() }] : []),

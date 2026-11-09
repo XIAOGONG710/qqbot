@@ -24,6 +24,7 @@ import { learningQuestionModule } from '../src/modules/learning-question.ts';
 import { WORK_JUDGE_NOTE, WORK_MODE_NOTE, WORK_REQUEST_NOTE, workModeModule } from '../src/modules/work-mode.ts';
 import { SELF_MEMORY_NOTE, selfMemoryModule } from '../src/modules/self-memory.ts';
 import { soulModule } from '../src/modules/soul.ts';
+import { herNotesModule } from '../src/modules/her-notes.ts';
 import { SHELL_INTENT } from '../src/language/intent.ts';
 import { VOICE_HINT, voiceRoll, VOICE_HINT_RATE } from '../src/language/speaking.ts';
 import { UNSURE_LINE } from '../src/language/asks.ts';
@@ -691,5 +692,40 @@ describe('她在本机的那一份模块（DSH 灵魂目录，ADR 0336）', () =
         const { wake: _wake, ...noWake } = all;
         assert.deepEqual(slots(soulModule(noWake), boyfriend), ['selfThread', 'refusal', 'rating', 'life']);
         assert.deepEqual(slots(soulModule({ ...all, refusals: () => undefined, life: () => undefined }), boyfriend), ['selfThread', 'rating', 'wake']);
+    });
+});
+
+describe('她自己记下的东西模块（DSH，ADR 0336）', () => {
+    const at = Date.parse('2026-11-29T13:00:00+08:00');
+    const said = (content: string) => ({ role: 'user' as const, content, time: new Date(at).toISOString() });
+    const boyfriend = (history: Turn['history'], extra: Partial<Turn> = {}): Turn => ({ ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at: new Date(at), history, ...extra });
+    const all = {
+        speechNotes: () => [{ id: 'a', text: '他问正经事的时候我先直接说结论', at }],
+        chatReview: () => [{ id: 'b', text: '别连着问他好几个问题', at }],
+        diaryInsights: () => [{ id: 'c', text: '我一紧张就会话多', at, dates: [] }],
+        readingTakes: () => [{ id: 'd', key: 'book:x', kind: 'book' as const, title: '小王子', names: ['小王子'], text: '狐狸那段', at, progress: 1 }],
+        openQuestions: () => [{ id: 'e', q: '熬夜到底伤不伤身体', text: '伤的是第二天的心情和身体', at }],
+        herGuesses: () => [{ id: 'f', at, said: 'x', text: '我猜他这次考试要挂', kind: 'quiz' as const, status: 'open' as const }],
+        now: () => at,
+    };
+    const slots = (options: Parameters<typeof herNotesModule>[0], t: Turn) => (herNotesModule(options).contribute!(t) as Piece[]).map(piece => piece.slot);
+
+    test('按他这句话挑相关的放，各一个槽；说话习惯和聊天回顾总是放', () => {
+        const logs: string[] = [];
+        assert.deepEqual(slots({ ...all, log: line => logs.push(line) }, boyfriend([said('你今天话多吗，熬夜伤不伤身体，考试出分了，小王子看完没')])), ['speechNote', 'review', 'insight', 'takes', 'thoughts', 'guesses']);
+        assert.equal(logs.length, 6);
+        assert.ok(logs.every(line => line.startsWith('[1] ')));
+        assert.deepEqual(slots({ ...all, log: () => {} }, boyfriend([said('今天天气不错')])), ['speechNote', 'review']);
+    });
+
+    test('他难过时不放聊天回顾；只想一想、危机、小别扭、别的档位都不放；没开的那样没有', () => {
+        const quiet = { ...all, log: () => {} };
+        assert.deepEqual(slots(quiet, boyfriend([said('我今天好难过')])), ['speechNote']);
+        for (const t of [boyfriend([said('考试')], { thinking: true }), boyfriend([said('考试')], { facts: { crisis: { level: 'acute' } as never } }), boyfriend([said('考试')], { facts: { grievance: {} as never } }), { ...boyfriend([said('考试')]), contact: { qq: 2, name: '小周', tier: 'classmate' as const } }]) {
+            assert.deepEqual(slots(quiet, t), []);
+        }
+        assert.deepEqual(slots({ now: () => at, log: () => {} }, boyfriend([said('考试')])), []);
+        // 主动找他（他还没说话）：说话习惯和聊天回顾照样放
+        assert.deepEqual(slots(quiet, boyfriend([], { initiate: { note: '', topic: '' } })), ['speechNote', 'review']);
     });
 });

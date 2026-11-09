@@ -74,6 +74,7 @@
 - `modules/work-mode.ts`
 - `modules/self-memory.ts`
 - `modules/soul.ts`
+- `modules/her-notes.ts`
 - `modules/playful.ts`
 - `st/`
 

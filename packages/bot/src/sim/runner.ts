@@ -19,6 +19,7 @@ import { registerModule } from '../modules/register.ts';
 import { scenesModule } from '../modules/scenes.ts';
 import { voiceModule } from '../modules/voice.ts';
 import { shellModule } from '../modules/shell.ts';
+import { herNotesModule } from '../modules/her-notes.ts';
 import { intentModule } from '../modules/intent.ts';
 import { memesModule } from '../modules/memes.ts';
 import { watchedModule } from '../modules/watched.ts';
@@ -555,6 +556,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             voiceModule(message => { if (epoch === responderEpoch) log(message); }),
             // 模拟器不跑命令，没有命令结果；「可以跑命令」那一行照 App
             shellModule(),
+            // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取（模拟器只有这一样）
+            herNotesModule({ ...(scenario.openQuestions ? { openQuestions: thoughtsReader(dataDir) } : {}), now: () => clock.now(), log: message => { if (epoch === responderEpoch) log(message); } }),
             ...(scenario.relationship ? [closenessModule(message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.jokes?.length ? [jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.idioms?.length ? [idiomsTurnModule(() => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), message => { if (epoch === responderEpoch) log(message); }, scenario.idiomShare)] : []),
@@ -567,8 +570,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ],
         ...(scenario.memoryFeelings && scenario.herFeelings ? { memoryFeelings: true } : {}),
         ...(scenario.shapeAll ? { shapeAll: true } : {}),
-        // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取
-        ...(scenario.openQuestions && scenario.tier === 'boyfriend' ? { openQuestions: thoughtsReader(dataDir) } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),
         ...(scenario.shapeShares ? { shapeShares: scenario.shapeShares } : {}),
