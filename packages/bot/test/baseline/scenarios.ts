@@ -5,7 +5,7 @@
 // 小梗（连上后抽一次、过 6 小时的定时检查、回复时按轮放进提示词）、口头习惯（连上后学一次、定时检查、约一半的轮次放进提示词）、
 // 被打断（聊天正在进行时她那边的小事，含他难过时让路）、关系阶段（天天聊之后更放得开；主动、只想一想、小别扭、危机、别的档位）、
 // 陪玩（约了一起打游戏之后的两个多小时；危机、说下了、换个游戏、过了时限、别的档位）、热梗（库里预置的梗放进提示词；不连网学）、
-// 她看视频（预置的看过的记录，他问起时放进提示词；不连网看）、他的口气（连着使唤她、使唤得比说话多、当程序说话、问很元的问题；危机、别的档位）、场景应答（报错、自我怀疑、缩写、哄睡；危机、别的档位、主动找他）、工作模式（挂起、答应后切到工作；危机、主动找他、别的档位）、她自己决定记不记（留痕、理解偏过；主动找他、别的档位）、她在本机的那一份（合成的灵魂目录：心里的线头、拒绝过的、评价、首轮铺底；危机、主动找他、别的档位）。
+// 她看视频（预置的看过的记录，他问起时放进提示词；不连网看）、他的口气（连着使唤她、使唤得比说话多、当程序说话、问很元的问题；危机、别的档位）、场景应答（报错、自我怀疑、缩写、哄睡；危机、别的档位、主动找他）、工作模式（挂起、答应后切到工作；危机、主动找他、别的档位）、她自己决定记不记（留痕、理解偏过；主动找他、别的档位）、她在本机的那一份（合成的灵魂目录：心里的线头、拒绝过的、评价、首轮铺底；危机、主动找他、别的档位）、她自己记下的东西（说话习惯、聊天回顾、日记里的自己、读完的想法、没想完的问题、她猜的事；他难过、危机、别的档位）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、她自己去看视频、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
@@ -18,6 +18,12 @@ import type { HistoryMessage } from '../../src/memory/backfill.ts';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ChatHistory } from '../../src/memory/history.ts';
+import { emptyNotesState, saveNotesState } from '../../src/language/speech-notes.ts';
+import { emptyReviewState, saveReviewState } from '../../src/language/chat-review.ts';
+import { emptyInsightsState, saveInsightsState } from '../../src/life/diary-insights.ts';
+import { emptyTakesState, saveTakesState } from '../../src/life/reading-takes.ts';
+import { emptyQuestionsState, saveQuestionsState } from '../../src/life/open-questions.ts';
+import { emptyGuessesState, saveGuessesState } from '../../src/life/her-guesses.ts';
 import { SELF, type LlmCall, type Replier, type Scenario } from './harness.ts';
 
 const boyfriend: Contact = { qq: 10001, name: '阿明', tier: 'boyfriend', persona: '她的男朋友，同校不同专业', knowsBot: true };
@@ -689,6 +695,46 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.wait(10 * 60_000);
             d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
             await d.at('2026-12-12T13:00:00+08:00');
+        },
+    },
+    {
+        name: 'her-notes',
+        about: '她自己记下的东西（DSH：说话习惯 ADR 0193、聊天回顾 0221、日记里发现的自己 0194、读完看完的想法 0204、没想完的问题 0207、她猜的事 0213；都是预置的合成数据）：他问最近看什么书、说出分了、问熬夜那件事想明白没、说她话多是不是紧张（各自相关的才放）；他说难过（聊天回顾不放）；一句危机的话（都不放）；同学也问看什么书（别的档位不放）。都在 22 点之前，夜里的反思不跑',
+        start: '2026-12-13T19:50:00+08:00',
+        contacts: [boyfriend, classmate],
+        config: { ...RICH, proactive: 'off', speechNotes: true, chatReview: true, diaryInsights: true, readingTakes: true, openQuestions: true, herGuesses: true },
+        seed: (dataDir, start) => {
+            const day = 86_400_000;
+            saveNotesState(dataDir, { ...emptyNotesState(), notes: [{ id: 'sn-1', text: '他问正经事的时候我先直接说结论', at: start - day }] });
+            saveReviewState(dataDir, { ...emptyReviewState(), notes: [{ id: 'rv-1', text: '别连着问他好几个问题', at: start - day }] });
+            saveInsightsState(dataDir, { ...emptyInsightsState(), notes: [{ id: 'in-1', text: '我一紧张就会话多', at: start - day, dates: ['2026-12-12'] }] });
+            saveTakesState(dataDir, { ...emptyTakesState(), takes: [{ id: 'tk-1', key: 'book:小王子', kind: 'book', title: '小王子', names: ['小王子'], text: '狐狸那段我看了好几遍，驯服原来是要花时间的', at: start - day, progress: 1 }] });
+            saveQuestionsState(dataDir, { ...emptyQuestionsState(), thoughts: [{ id: 'th-1', q: '熬夜到底伤不伤身体', text: '我觉得熬夜伤的是第二天的心情和身体', at: start - day }] });
+            saveGuessesState(dataDir, { ...emptyGuessesState(), guesses: [{ id: 'gs-1', at: start - 2 * day, said: '你这次考试肯定挂', text: '我猜他这次考试要挂', kind: 'quiz', status: 'open' }] });
+        },
+        reply: () => rotating(['嗯嗯', '真的呀', '我想想', '好']),
+        script: async d => {
+            await d.at('2026-12-13T20:00:00+08:00');
+            d.say(boyfriend.qq, '最近在看什么书');
+            await d.at('2026-12-13T20:15:00+08:00');
+            d.say(boyfriend.qq, '考试出分了');
+            await d.at('2026-12-13T20:30:00+08:00');
+            d.say(boyfriend.qq, '熬夜伤不伤身体你想明白了吗');
+            await d.at('2026-12-13T20:45:00+08:00');
+            d.say(boyfriend.qq, '你今天话这么多，是不是紧张');
+            await d.at('2026-12-13T20:50:00+08:00');
+            d.say(classmate.qq, '最近在看什么书');
+            await d.at('2026-12-13T21:00:00+08:00');
+            d.say(boyfriend.qq, '我今天好难过');
+            await d.at('2026-12-13T21:10:00+08:00');
+            // 先是一句不带别的话题的（聊天回顾只在危机这一条上让路，他难过那条另有一轮）
+            d.say(boyfriend.qq, '我不想活了');
+            await d.wait(10 * 60_000);
+            // 危机这一句故意聊到那几样的话题（紧张、熬夜伤身体、考试、小王子）：危机时一样都不放
+            d.say(boyfriend.qq, '我紧张得一直熬夜伤身体，考试也挂了，连小王子都看不下去，我不想活了');
+            await d.wait(10 * 60_000);
+            d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
+            await d.at('2026-12-13T21:40:00+08:00');
         },
     },
 ];
