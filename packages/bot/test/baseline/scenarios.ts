@@ -5,7 +5,8 @@
 // 小梗（连上后抽一次、过 6 小时的定时检查、回复时按轮放进提示词）、口头习惯（连上后学一次、定时检查、约一半的轮次放进提示词）、
 // 被打断（聊天正在进行时她那边的小事，含他难过时让路）、关系阶段（天天聊之后更放得开；主动、只想一想、小别扭、危机、别的档位）、
 // 陪玩（约了一起打游戏之后的两个多小时；危机、说下了、换个游戏、过了时限、别的档位）、热梗（库里预置的梗放进提示词；不连网学）、
-// 她看视频（预置的看过的记录，他问起时放进提示词；不连网看）、意图阶梯的各个输入、别重复自己（反复说的字词、主动找他的开头、说过了的事）。
+// 她看视频（预置的看过的记录，他问起时放进提示词；不连网看）、意图阶梯的各个输入、别重复自己（反复说的字词、主动找他的开头、说过了的事）、
+// 她此刻（放完假他刚回学校、她说过睡了之后被吵醒、别人的消息醒了才看到）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、她自己去看视频、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
@@ -572,6 +573,32 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.at('2026-12-05T19:30:00+08:00'); d.say(boyfriend.qq, '我现在安全了，室友一直陪着我');
             await d.at('2026-12-05T21:00:00+08:00'); d.say(boyfriend.qq, '你今天怎么样');
             await d.at('2026-12-06T01:00:00+08:00');
+        },
+    },
+    {
+        name: 'her-now',
+        about: '她此刻（ADR 0263 迁出之前）：国庆刚放完他回学校的那几天；23:30 她跟男朋友说先睡了（作息 02:00 才睡），之后同学来消息等她醒了才看到，男朋友半夜连发把她吵醒，第二天白天照常',
+        start: '2026-10-08T19:30:00+08:00',
+        contacts: [boyfriend, classmate],
+        config: { ...RICH, proactive: 'off' },
+        reply: () => {
+            const chat = rotating(CHAT_LINES);
+            return (call: LlmCall) => {
+                const last = call.messages.findLast(m => m.role === 'user');
+                if (typeof last?.content === 'string' && last.content.includes('困了吗')) return '困死了\n我先睡了，晚安';
+                return chat(call);
+            };
+        },
+        script: async d => {
+            await d.at('2026-10-08T20:00:00+08:00'); d.say(boyfriend.qq, '我到宿舍了，回来的火车好挤');
+            await d.at('2026-10-08T21:00:00+08:00'); d.say(boyfriend.qq, '你今天干嘛了');
+            await d.at('2026-10-08T23:30:00+08:00'); d.say(boyfriend.qq, '困了吗');
+            await d.at('2026-10-08T23:50:00+08:00'); d.say(classmate.qq, '在吗，明天的作业是哪几题');
+            await d.at('2026-10-09T00:30:00+08:00'); d.say(boyfriend.qq, '睡了吗');
+            await d.wait(20_000); d.say(boyfriend.qq, '醒醒');
+            await d.wait(20_000); d.say(boyfriend.qq, '我睡不着');
+            await d.at('2026-10-09T12:10:00+08:00'); d.say(boyfriend.qq, '中午吃啥');
+            await d.at('2026-10-09T15:00:00+08:00');
         },
     },
 ];
