@@ -73,6 +73,7 @@
 - `modules/learning-question.ts`
 - `modules/work-mode.ts`
 - `modules/self-memory.ts`
+- `modules/soul.ts`
 - `modules/playful.ts`
 - `st/`
 

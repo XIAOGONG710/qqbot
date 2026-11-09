@@ -23,6 +23,7 @@ import { shellModule } from '../src/modules/shell.ts';
 import { learningQuestionModule } from '../src/modules/learning-question.ts';
 import { WORK_JUDGE_NOTE, WORK_MODE_NOTE, WORK_REQUEST_NOTE, workModeModule } from '../src/modules/work-mode.ts';
 import { SELF_MEMORY_NOTE, selfMemoryModule } from '../src/modules/self-memory.ts';
+import { soulModule } from '../src/modules/soul.ts';
 import { SHELL_INTENT } from '../src/language/intent.ts';
 import { VOICE_HINT, voiceRoll, VOICE_HINT_RATE } from '../src/language/speaking.ts';
 import { UNSURE_LINE } from '../src/language/asks.ts';
@@ -663,5 +664,32 @@ describe('她自己决定记不记模块（DSH 10-30 / 10-31，ADR 0336）', () 
         assert.deepEqual(asked, []);
         // 危机、只想一想照样放
         assert.deepEqual(slots(boyfriend([said('那家公司老板')], { thinking: true, facts: { crisis: { level: 'acute' } as never } })), ['understanding', 'traces', 'selfMemory']);
+    });
+});
+
+describe('她在本机的那一份模块（DSH 灵魂目录，ADR 0336）', () => {
+    const boyfriend: Turn = { ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' } };
+    const all = { selfThread: () => '[线头]', refusals: () => '你最近拒绝过：x。', rating: () => '他最近挺买你的账。', life: () => '在宿舍看书', wake: () => '（他走了 8 小时。）' };
+    const slots = (module: ReturnType<typeof soulModule>, t: Turn) => (module.contribute!(t) as Piece[]).map(piece => piece.slot);
+
+    test('五行各放一个槽；「你现在的生活」前面加标题；只给男朋友档', () => {
+        const module = soulModule(all);
+        assert.deepEqual(module.contribute!(boyfriend), [
+            { slot: 'selfThread', text: '[线头]' }, { slot: 'refusal', text: '你最近拒绝过：x。' }, { slot: 'rating', text: '他最近挺买你的账。' },
+            { slot: 'life', text: '[你现在的生活] 在宿舍看书' }, { slot: 'wake', text: '（他走了 8 小时。）' },
+        ]);
+        assert.deepEqual(module.contribute!(turn), []);
+    });
+
+    test('线头在主动找他、只想一想、危机时不放（也不去读）；别的几行照样放；没给首轮铺底就没有', () => {
+        let threads = 0;
+        const module = soulModule({ ...all, selfThread: () => { threads++; return '[线头]'; } });
+        for (const t of [{ ...boyfriend, initiate: { note: '', topic: '' } }, { ...boyfriend, thinking: true }, { ...boyfriend, facts: { crisis: { level: 'acute' } as never } }]) {
+            assert.deepEqual(slots(module, t), ['refusal', 'rating', 'life', 'wake']);
+        }
+        assert.equal(threads, 0);
+        const { wake: _wake, ...noWake } = all;
+        assert.deepEqual(slots(soulModule(noWake), boyfriend), ['selfThread', 'refusal', 'rating', 'life']);
+        assert.deepEqual(slots(soulModule({ ...all, refusals: () => undefined, life: () => undefined }), boyfriend), ['selfThread', 'rating', 'wake']);
     });
 });

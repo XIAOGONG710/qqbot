@@ -222,12 +222,6 @@ export interface ContactPipelineOptions {
     photos?: PhotoShelf;
     /** AI 生活照（ADR 0240）：只解析“现在/刚刚”的明确请求；新图只建待审核草稿，返回 approved 才能发匹配编号。 */
     currentAiPhoto?: (request: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => CurrentAiPhotoResult;
-    /** 她最近拒绝过的事：让她记得自己的拒绝 */
-    refusalLine?: () => string | undefined;
-    /** 他最近给她的评分：影响说话分寸 */
-    ratingLine?: () => string | undefined;
-    /** 她现在的连续生活（NOW.md）：此刻在干嘛、身体、心情、关系 */
-    lifeLine?: () => string | undefined;
     /** 真人例子（ADR 0190，默认关）：他说完这种话，真人是怎么回的 */
     exemplars?: readonly Exemplar[];
     /** 她自己总结的说话习惯（ADR 0193，默认关）：挑最相关的几条放进提示词；她自己的观察，不是规定 */
@@ -252,14 +246,10 @@ export interface ContactPipelineOptions {
     chatReview?: () => readonly ReviewNote[];
     /** 形状对所有轮次都生效（ADR 0220，默认关）：关着时照 DSH 10-28 的松绑，普通闲聊不给形状 */
     shapeAll?: boolean;
-    /** 她自己最近过的日子（2026-10-30 她说「没有自己的下文」）：从她写的日记里摘一两句，用不用她定 */
-    selfThread?: () => string | undefined;
     /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
     dreams?: () => { appraisals: Appraisal[]; line?: string };
     /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
     ask?: () => string | undefined;
-    /** 首轮铺底（2026-10-29）：他走了很久回来，第一轮带上她自己写的那段日记；挂着 lifeInPrompt，不是新开关 */
-    wakeNote?: () => string | undefined;
     /** 她想查才查（<<查：…>>）：拿到想起来的记忆，再让她重写一次 */
     pullRecall?: (query: string) => Promise<string | undefined>;
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
@@ -812,7 +802,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她学的时候没想通的地方（2026-10-31）是解释器的模块（modules/learning-question.ts），经 turnModules 放进 question 槽
             // 命令结果和「可以跑命令」那一行（2026-10-30）是解释器的模块（modules/shell.ts），经 turnModules 放进 shell、shellIntent 槽
             const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
-            const selfThreadNow = contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow ? options.selfThread?.() : undefined;
+            // 她自己最近的日子（心里的线头）、拒绝过的、评价、「你现在的生活」、首轮铺底是解释器的模块（modules/soul.ts）
             // 他的口气（2026-10-30：说话还是使唤、当程序说话、很元的问题、使唤得比说话多）是解释器的模块（modules/register.ts），经 turnModules 放进 register 槽
             // 她自己总结的说话习惯（ADR 0193）：口气上的参考，危机 / 只想一想 / 小别扭的轮次不放；主动开口也放（习惯不看有没有他的上一句）
             const speechNoteNow = options.speechNotes && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance
@@ -1064,7 +1054,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
                 ...when('partnerBack', partnerBack),
                 ...when('exemplar', exemplarNow),
-                ...when('selfThread', selfThreadNow),
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
                 ...when('speechNote', speechNoteNow),
                 ...when('review', reviewNow),
@@ -1080,10 +1069,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('intent', intentLine),
                 // 理解偏过、他最近的事（DSH 10-30 / 10-31）和「记忆由你自己决定」是解释器的模块（modules/self-memory.ts）
                 // 人称、正经问就先直接答、别琢磨怎么接（DSH 10-30 / 10-31）是解释器的模块（modules/reply-basics.ts），经 turnModules 放进 person、directAnswer、noOverthink 槽
-                ...(options.refusalLine?.() ? [{ slot: 'refusal' as const, text: options.refusalLine()! }] : []),
-                ...(options.ratingLine?.() ? [{ slot: 'rating' as const, text: options.ratingLine()! }] : []),
-                ...(options.lifeLine?.() ? [{ slot: 'life' as const, text: `[你现在的生活] ${options.lifeLine()!}` }] : []),
-                ...(options.wakeNote?.() ? [{ slot: 'wake' as const, text: options.wakeNote()! }] : []),
                 ...(options.ask?.() ? [{ slot: 'herAsk' as const, text: options.ask()! }] : []),
                 // 工作模式的三行（他在求她切工作 / 判断要不要动电脑 / 切到了工作）是解释器的模块（modules/work-mode.ts）
                 ...(deliberateNow ? [{ slot: 'deliberate' as const, text: options.deliberate?.note ?? DELIBERATE_NOTE }] : []),

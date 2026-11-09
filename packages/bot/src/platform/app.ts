@@ -29,6 +29,7 @@ import { shellModule } from '../modules/shell.ts';
 import { learningQuestionModule } from '../modules/learning-question.ts';
 import { workModeModule } from '../modules/work-mode.ts';
 import { selfMemoryModule } from '../modules/self-memory.ts';
+import { soulModule } from '../modules/soul.ts';
 import { idiomsModule } from '../modules/idioms.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
@@ -946,6 +947,45 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 她自己决定记不记（selfDirectedMemory，DSH 10-30 / 10-31）：「记忆由你自己决定」、理解偏过、他最近的事
         ...(config.selfDirectedMemory ? [selfMemoryModule({ understanding: hisWords => understandingLine(config.dataDir, hisWords), traces: () => tracesLine(config.dataDir) })] : []),
         workModeModule(contact => readWorkMode(config.dataDir, contact.qq)),
+        // 她在本机的那一份（DSH 的灵魂目录）：心里的线头、拒绝过的、评价、「你现在的生活」、首轮铺底；只给男朋友档，每一轮现读
+        soulModule({
+            selfThread: (): string | undefined => {
+                try {
+                    const journal = selfThreadLine(selfThread(readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8')));
+                    let doing: string | undefined;
+                    try {
+                        const life = JSON.parse(readFileSync(join(soulDir(), 'LIFE.json'), 'utf8')) as { events?: { text?: string }[] };
+                        const own = (life.events ?? []).map(e => String(e.text ?? '')).filter(t => t && !t.includes('跟我说') && !t.startsWith('新的一天')).slice(-2);
+                        if (own.length) doing = `[你这两天自己在做的：${own.map(t => t.replace(/^我在/, '')).join('；').slice(0, 80)}]`;
+                    } catch { /* 没有 LIFE.json 就只有日记那一段 */ }
+                    return [journal, doing].filter(Boolean).join(String.fromCharCode(10)) || undefined;
+                } catch { return undefined; }
+            },
+            refusals: () => recentRefusals(),
+            rating: () => ratingSummary(),
+            // 「你现在的生活」（NOW.md）的「最近」一行带着他说过的话的原句（前 40 字）和关系状态（「还在生他的气……」）：
+            // 只给男朋友档，别的联系人的提示词里不能有他的话（ADR 0020 披露分级；10-29 复核）
+            // NOW.md 现在由 QQ 自己渲染（exportNow），内容就是时间块里的那一句：
+            // 再注入一次就是重复，所以带 generated-at 的版本不再往回读（任务书 §2）。
+            life: () => {
+                try {
+                    const text = readFileSync(join(soulDir(), 'NOW.md'), 'utf8').trim();
+                    return text.includes('generated-at:') ? undefined : text;
+                } catch { return undefined; }
+            },
+            // 首轮铺底：他走了 ≥6 小时回来，第一轮带上她自己写的日记；挂着 lifeInPrompt，不新增开关
+            ...(config.lifeInPrompt ? {
+                wake: (contact: Contact): string | undefined => {
+                    try {
+                        // 刚收的这条已经进聊天记录了，算间隔要拿它之前的那条（5 分钟内的都当成本轮）
+                        const cutoff = Date.now() - 5 * 60_000;
+                        const older = history.load(contact.qq).filter(message => Date.parse(message.time) < cutoff);
+                        const journal = readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8');
+                        return wakeBackfill({ lastAt: older.at(-1)?.time, now: Date.now(), journal, log });
+                    } catch { return undefined; }
+                },
+            } : {}),
+        }),
         learningQuestionModule(() => questionLine(loadQuestion(config.dataDir), clockNow().getTime())),
         shellModule({
             noteOf: contact => {
@@ -1936,47 +1976,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                         return journalOn(journal, loadSelfDiary(config.dataDir), date);
                     },
                 } : {}),
-                selfThread: (): string | undefined => {
-                    try {
-                        const journal = selfThreadLine(selfThread(readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8')));
-                        let doing: string | undefined;
-                        try {
-                            const life = JSON.parse(readFileSync(join(soulDir(), 'LIFE.json'), 'utf8')) as { events?: { text?: string }[] };
-                            const own = (life.events ?? []).map(e => String(e.text ?? '')).filter(t => t && !t.includes('跟我说') && !t.startsWith('新的一天')).slice(-2);
-                            if (own.length) doing = `[你这两天自己在做的：${own.map(t => t.replace(/^我在/, '')).join('；').slice(0, 80)}]`;
-                        } catch { /* 没有 LIFE.json 就只有日记那一段 */ }
-                        return [journal, doing].filter(Boolean).join(String.fromCharCode(10)) || undefined;
-                    } catch { return undefined; }
-                },
                 ask: (): string | undefined => {
                     const pending = pendingAsk.get(contact.qq);
                     if (!pending || askExpired(pending.at, Date.now())) return undefined;
                     return askLine(pending.label, Math.floor((Date.now() - pending.at) / 60_000));
                 },
-                refusalLine: () => recentRefusals(),
-                ratingLine: () => ratingSummary(),
-                // 「你现在的生活」（NOW.md）的「最近」一行带着他说过的话的原句（前 40 字）和关系状态（「还在生他的气……」）：
-                // 只给男朋友档，别的联系人的提示词里不能有他的话（ADR 0020 披露分级；10-29 复核）
-                // NOW.md 现在由 QQ 自己渲染（上面 exportNow），内容就是时间块里的那一句：
-                // 再注入一次就是重复，所以带 generated-at 的版本不再往回读（任务书 §2）。
-                lifeLine: () => {
-                    try {
-                        const text = readFileSync(join(soulDir(), 'NOW.md'), 'utf8').trim();
-                        return text.includes('generated-at:') ? undefined : text;
-                    } catch { return undefined; }
-                },
-                // 首轮铺底：他走了 ≥6 小时回来，第一轮带上她自己写的日记；挂着 lifeInPrompt，不新增开关
-                ...(config.lifeInPrompt ? {
-                    wakeNote: (): string | undefined => {
-                        try {
-                            // 刚收的这条已经进聊天记录了，算间隔要拿它之前的那条（5 分钟内的都当成本轮）
-                            const cutoff = Date.now() - 5 * 60_000;
-                            const older = history.load(contact.qq).filter(message => Date.parse(message.time) < cutoff);
-                            const journal = readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8');
-                            return wakeBackfill({ lastAt: older.at(-1)?.time, now: Date.now(), journal, log });
-                        } catch { return undefined; }
-                    },
-                } : {}),
             } : {}),
             // 他的消息没有马上回的每一个原因逐条记账（ADR 0173）：只是旁观，记不进去也不影响回复
             ...(config.silenceNotice ? { onSilence: (info: SilenceInfo) => { try { recordSilence(config.dataDir, contact.qq, noteFromInfo(info, clockNow().getTime())); } catch (error) { log(`没回的原因记不进账（${error instanceof Error ? error.message : String(error)}）`); } } } : {}),
