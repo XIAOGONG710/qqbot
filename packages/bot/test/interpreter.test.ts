@@ -13,6 +13,7 @@ import { togetherAllowed, togetherModule } from '../src/modules/together.ts';
 import { memesModule } from '../src/modules/memes.ts';
 import { watchedAllowed, watchedModule } from '../src/modules/watched.ts';
 import { intentModule, intentOf } from '../src/modules/intent.ts';
+import { repetitionModule, repetitionPieces } from '../src/modules/repetition.ts';
 
 const exec = createExecutor({ transport: { sendPrivateText: async () => 1, friendHistory: async () => [] } });
 
@@ -376,5 +377,53 @@ describe('意图模块（意图阶梯，ADR 0263）', () => {
         const world = { events: [{ id: 'e', text: '下楼喂了猫', at }] } as never;
         assert.match(intentOf(boyfriend(day, { world }), { everydayLife: true })!, /他在问你今天过得怎么样/);
         assert.doesNotMatch(intentOf(boyfriend(day, { world }), {}) ?? '', /他在问你今天过得怎么样/);
+    });
+});
+
+describe('别重复自己模块（ADR 0098 / 0135 / 0263）', () => {
+    const at = new Date('2026-12-05T20:00:00+08:00');
+    const ago = (minutes: number) => new Date(at.getTime() - minutes * 60_000).toISOString();
+    // 她最近 5 次话头里 4 次「刚」起头、5 条气泡都带「困死」；第二次是她自己说起相机（他前面的话里没提）
+    const history: Turn['history'] = [
+        { role: 'assistant', content: '刚起床 困死了', time: ago(300) },
+        { role: 'user', content: '早', time: ago(290) },
+        { role: 'assistant', content: '刚到 我相机到了 困死', time: ago(280) },
+        { role: 'user', content: '好', time: ago(200) },
+        { role: 'assistant', content: '对了 困死了', time: ago(190) },
+        { role: 'user', content: '嗯', time: ago(100) },
+        { role: 'assistant', content: '刚下课 困死', time: ago(90) },
+        { role: 'user', content: '在干嘛', time: ago(60) },
+        { role: 'assistant', content: '刚吃完 困死', time: ago(50) },
+        { role: 'user', content: '晚上吃啥', time: ago(1) },
+    ];
+    const boyfriend = (patch: Partial<Turn> = {}): Turn => ({ ...turn, contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history, facts: {}, ...patch });
+    const run = (t: Turn) => { const module = repetitionModule(() => {}); module.assess!(t); return { facts: t.facts, pieces: module.contribute!(t) as Piece[] }; };
+    const slots = (pieces: readonly Piece[]) => pieces.map(piece => piece.slot);
+    test('他发来的一轮：反复说的字词、说过了的事；assess 把说过了的写进 facts.told', () => {
+        const { facts, pieces } = run(boyfriend());
+        assert.deepEqual(facts.told, ['相机']);
+        assert.deepEqual(slots(pieces), ['crutch', 'told']);
+        assert.match(pieces[0]!.text, /反复在说「困死」/);
+        assert.equal(pieces[1]!.text, '[这些事你已经主动跟他说过了：相机。他不问，就别再自己提]');
+    });
+    test('主动找他：换个开头，不提醒反复说的字词；只想一想时都不放', () => {
+        const initiate = { note: '', topic: '' } as Turn['initiate'];
+        const { pieces } = run(boyfriend({ initiate }));
+        assert.deepEqual(slots(pieces), ['opener', 'told']);
+        assert.equal(pieces[0]!.text, '[你最近几次开头都是「刚」：这次换一种开头，别用「刚」起头]');
+        assert.deepEqual(slots(run(boyfriend({ initiate, thinking: true })).pieces), []);
+    });
+    test('危机回合：不算说过了的事，三行都不放（主动找他时本来不算危机，开头这条是冗余的保险）', () => {
+        const crisis = { level: 'high' } as never;
+        const live = boyfriend({ facts: { crisis } });
+        const { facts, pieces } = run(live);
+        assert.equal(facts.told, undefined);
+        assert.deepEqual(slots(pieces), []);
+        assert.deepEqual(slots(repetitionPieces({ ...boyfriend({ initiate: { note: '', topic: '' } as Turn['initiate'] }), facts: { crisis, told: ['相机'] } })), ['told']);
+    });
+    test('聊得不多、没有重复：什么都不放；说过了的是空的', () => {
+        const { facts, pieces } = run(boyfriend({ history: history.slice(-2) }));
+        assert.deepEqual(facts.told, []);
+        assert.deepEqual(pieces, []);
     });
 });

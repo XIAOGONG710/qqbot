@@ -629,3 +629,26 @@ describe('模拟器把意图阶梯的开关交给意图模块（ADR 0263）', ()
         assert.doesNotMatch(off[1]!, /问一个你真想知道的问题/);
     });
 });
+
+describe('模拟器挂着别重复自己的模块（ADR 0263）', () => {
+    // 行为基线走的是 App，模拟器这一路的接线由这里兜：没挂模块，这两行就没有
+    test('她反复说同几个字、自己提过相机：后面几轮提示词里有反复说的字词和说过了的事', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-repetition-sim-'));
+        const prompts: string[] = [];
+        const replies = ['困死了 刚下课', '我相机到了 困死', '困死 想睡觉', '困死了 不想动'];
+        try {
+            await runScenario(parseScenario({
+                name: 'repetition', tier: 'boyfriend', start: '2026-10-25T20:00:00+08:00', memory: false, schedule: false,
+                steps: ['在吗', '干嘛呢', '吃了吗', '好吧', '晚上干嘛'].flatMap(text => [{ say: text }, { advance: '10m' }]),
+            }), {
+                runId: 'repetition', dataDir: dir, card, llm, prompt, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages.map(m => String(m.content)).join('\n')); return replies[(prompts.length - 1) % replies.length]!; },
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+        assert.doesNotMatch(prompts[0]!, /反复在说|已经主动跟他说过了/);
+        assert.match(prompts.at(-1)!, /反复在说「困死」/);
+        assert.match(prompts.at(-1)!, /这些事你已经主动跟他说过了：相机/);
+    });
+});

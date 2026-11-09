@@ -65,6 +65,8 @@ export interface TurnFacts {
     interruption?: { text: string; minutesAgo: number };
     /** 陪玩（ADR 0111，modules/together.ts 写）：此刻正和他一起玩什么、从哪一刻答应的 */
     together?: Together;
+    /** 她这一天半里已经主动跟他说过的事（ADR 0098，modules/repetition.ts 写）；危机回合不算。旧逻辑的形状读它：带自己的事时跳过说过了的 */
+    told?: readonly string[];
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */

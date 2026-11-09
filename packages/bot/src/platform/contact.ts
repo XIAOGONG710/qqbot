@@ -34,7 +34,7 @@ import { needsCareText } from '.././language/intent.ts';
 import { describeObstacles, meetupDays } from '.././world/obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { describeQuote, planQuote, quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
-import { alreadyTold, asksToExplain, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from '.././language/expression.ts';
+import { asksToExplain, describeLength, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, STILTED_WORDS } from '.././language/expression.ts';
 import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from '.././language/shape.ts';
 import { finishReply } from '.././language/unfinished.ts';
 import { describeUnsettled } from '.././life/open-loops.ts';
@@ -667,7 +667,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 || Boolean(humanValues && (humanValues.energy <= 30 || humanValues.hunger >= 82 || humanValues.stress >= 78 || humanValues.mood <= 30));
             // 形状控制开着：用具体的字数和条数代替「回短一点」的软提示；不适用的轮次（他明着让她讲、主动找他、收尾）照旧走 lengthHint
             // 她这一天半里已经主动说过的事（ADR 0098）；带自己的事的轮次从她还没说过的事里挑一件说
-            const told = !crisisNow ? alreadyTold(chat, time.getTime()) : [];
+            // 说过了的事由别重复自己的模块（modules/repetition.ts）assess 时写进 turn.facts.told（危机回合不算）
+            const told = turn.facts.told ?? [];
             const TOLD_LABEL: Record<string, RegExp> = { 相机: /相机/, 猫: new RegExp(`${catAlternative()}猫`), 作业: /作业/, 快递: /快递/ };
             const worldLabels = world ? world.replace(/^\[你那边（[^）]*）：/, '').replace(/\]$/, '').split('｜').map(item => item.split('：')[0]!.trim()).filter(Boolean) : [];
             const agendaTopics = [
@@ -676,19 +677,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(mood ? ['心情'] : []),
             ];
             shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !deliberateNow ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
-            // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
-            const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
-            const crutchLine = crutches.length
-                ? `[你这几条里反复在说「${crutches.join('」「')}」：这一轮别再用这几个字，换个反应——直接答、逗他、反问、认怂、生气都行]`
-                : undefined;
-            if (crutchLine) log(`最近反复说的字词：${crutches.join('、')}（提示词里让她换个反应）`);
-            // 主动找他时，最近几次开头用了同一个起头词（「刚」「人呢」……）就换一种（ADR 0135）
-            const opener = initiate && !crisisNow && !thinking ? repeatedOpener(chat) : undefined;
-            const openerLine = opener ? `[你最近几次开头都是「${opener}」：这次换一种开头，别用「${opener}」起头]` : undefined;
-            if (openerLine) log(`最近几次开头都是「${opener}」（提示词里让她这次换个开头）`);
-            // 说过了就不再自己提（ADR 0098）：事实还在时间块里，他问起来照常答
-            const toldLine = told.length && !thinking ? `[这些事你已经主动跟他说过了：${told.join('、')}。他不问，就别再自己提]` : undefined;
-            if (toldLine) log(`已经主动说过：${told.join('、')}（提示词里让她不再自己提）`);
+            // 别重复自己（反复说的字词、主动找他的开头、说过了的事，ADR 0098 / 0135）是解释器的模块（modules/repetition.ts），经 turnModules 放进 crutch、opener、told 槽
             // 她最近心里在想的（ADR 0101）：前后是同一个在想事情的人
             const innerNow = !initiate && !crisisNow ? options.innerLine?.() : undefined;
             if (innerNow) log('内心：这一轮提示词里放了她最近的念头');
@@ -773,9 +762,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(length ? [{ slot: 'length' as const, text: describeLength(length, options.shortReplies) }] : []),
                 ...(shapeNow ? [{ slot: 'shape' as const, text: describeShape(shapeNow) }] : []),
                 ...when('quote', quoteLine),
-                ...when('crutch', crutchLine),
-                ...when('told', toldLine),
-                ...when('opener', openerLine),
                 ...when('inner', innerNow),
                 ...when('intimate', intimateNow),
                 ...when('transcript', transcript),
