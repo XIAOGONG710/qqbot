@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { assessTurn, contributeTurn, createInterpreter, reviewTurn, runTurn, type Module, type Turn } from '../src/interpreter/interpreter.ts';
+import { assessTurn, contributeTurn, createInterpreter, perceiveTurn, reviewTurn, runTurn, type Module, type Turn } from '../src/interpreter/interpreter.ts';
 import { AFTER_HISTORY_SLOTS, AFTER_MAIN_SLOTS, ALL_SLOTS, assemblePrompt, NOW_SLOTS, type Piece } from '../src/interpreter/slots.ts';
 import type { MessageEvent } from '../src/platform/onebot.ts';
 import { createExecutor } from '../src/executor/executor.ts';
@@ -166,6 +166,34 @@ describe('分开的两个阶段（ADR 0263）', () => {
         assert.deepEqual(calls, ['assess']);
         assert.deepEqual(contributeTurn([module], t), { afterMain: [], afterHistory: ['写下的'] });
         assert.deepEqual(calls, ['assess', 'contribute']);
+    });
+    test('perceiveTurn 只看清她此刻：全部 perceive 在任何 assess 之前，后面的 assess 读得到', () => {
+        const calls: string[] = [];
+        const sees: Module = { id: 'sees', perceive: t => { calls.push('sees.perceive'); t.facts.schedule = { sleep: '02:00' } as never; } };
+        const judges: Module = { id: 'judges', assess: t => { calls.push(`judges.assess:${t.facts.schedule ? '有作息' : '没有'}`); } };
+        const t: Turn = { ...turn, facts: {} };
+        assert.equal(perceiveTurn([judges, sees], t), undefined);
+        assert.deepEqual(calls, ['sees.perceive']);
+        // runTurn 也是：注册在后面的模块的 perceive 照样排在前面的 assess 之前
+        const u: Turn = { ...turn, facts: {} };
+        calls.length = 0;
+        assert.deepEqual(runTurn([judges, sees], u), { afterMain: [], afterHistory: [] });
+        assert.deepEqual(calls, ['sees.perceive', 'judges.assess:有作息']);
+    });
+    test('有异步的 perceive 时返回 promise；runTurn 等它之后才 assess', async () => {
+        const calls: string[] = [];
+        const t: Turn = { ...turn, facts: {} };
+        const result = runTurn([
+            { id: 'a', perceive: async () => { await null; calls.push('a.perceive'); } },
+            { id: 'b', assess: () => { calls.push('b.assess'); }, contribute: () => [{ slot: 'time', text: 'T' }] },
+        ], t);
+        assert.ok(result instanceof Promise);
+        assert.deepEqual(await result, { afterMain: [], afterHistory: ['T'] });
+        assert.deepEqual(calls, ['a.perceive', 'b.assess']);
+    });
+    test('只实现 perceive 的模块也算一轮回复的模块', () => {
+        const interpreter = createInterpreter({ exec, modules: [{ id: 'p', perceive: () => {} }, { id: 'events', on: { connected: () => {} } }] });
+        assert.deepEqual(interpreter.turnModules.map(m => m.id), ['p']);
     });
     test('有异步的 assess 时返回 promise', async () => {
         const t: Turn = { ...turn, facts: {} };

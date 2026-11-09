@@ -6,7 +6,7 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
-import { assessTurn, contributeTurn, type Module, type Turn } from '../interpreter/interpreter.ts';
+import { assessTurn, contributeTurn, perceiveTurn, type Module, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
 import type { Piece, Slot } from '../interpreter/slots.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
@@ -448,6 +448,15 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (today) log(`今天和别人聊过的 ${countLines(today)} 条（新一段对话，有由头可以含糊提一件）`);
             const days = describeDays(character.dates, time);
             if (herSchedule) options.onHerDay?.(time);
+            // 这一轮交给解释器的模块（ADR 0263）：在这里建 turn、先 perceive——看清她此刻（她那边、身体、在干嘛），写进 turn.facts；
+            // 下面的旧逻辑和后面的 assess 都读。旧逻辑算的判断在 assess 之前写进同一个 turn
+            const turn: Turn = {
+                contact, at: time, history: chat, thinking, card: character, facts: {},
+                ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
+            };
+            const perceived = perceiveTurn(options.turnModules ?? [], turn);
+            // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
+            if (perceived instanceof Promise) await perceived;
             // 她那边（ADR 0021）：跟着「她自己的日子」开，卡上有世界才有
             const around = herSchedule && character.herWorld
                 ? options.worldState?.at(character.herWorld, herSchedule, time) ?? worldAt(character.herWorld, herSchedule, time)
@@ -552,19 +561,15 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 小别扭 / 和好（ADR 0074）：从聊天记录的时间戳重算，不落盘；危机、主动找他、非男朋友档都不算
             // 起因有两种：隔了好几天才来（grievanceNow），或者她倾诉了几条、他隔了很久才回（ignoredNow，10-20）
             const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? (grievanceNow(chat) ?? ignoredNow(chat)) : undefined;
-            // 这一轮交给解释器的模块（ADR 0263）：先在这里 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
+            // 接着 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
             // 她此刻在干嘛、作息、她答应的事、挂着的事、她那边还没说过的事还是旧逻辑算的，写进 facts 给意图阶梯（modules/intent.ts）读
             const herNow = schedule ?? herSchedule;
-            const turn: Turn = {
-                contact, at: time, history: chat, thinking,
-                facts: {
-                    ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(around ? { world: around } : {}),
-                    ...(state ? { state } : {}), ...(herNow ? { schedule: herNow } : {}), ...(promised ? { promised: true } : {}),
-                    ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what) } : {}),
-                    ...(untold.length ? { news: untold } : {}),
-                },
-                ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
-            };
+            Object.assign(turn.facts, {
+                ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(around ? { world: around } : {}),
+                ...(state ? { state } : {}), ...(herNow ? { schedule: herNow } : {}), ...(promised ? { promised: true } : {}),
+                ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what) } : {}),
+                ...(untold.length ? { news: untold } : {}),
+            } satisfies TurnFacts);
             const assessed = assessTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             if (assessed instanceof Promise) await assessed;

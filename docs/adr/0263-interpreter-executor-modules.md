@@ -384,3 +384,12 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 2. 解释器加 `perceive` 和 `Turn.card`（单独提交；没有模块用它时行为不变，基线核对）。
 3. `src/modules/her-now.ts`；删掉 `contact.ts` 里对应的计算、日志和段落，App 和模拟器挂上模块（排在最前，在意图之前——perceive 本来就在 assess 之前）。
 4. 变异检验、单元测试、ADR、全量检查、提交。
+
+### 她此刻：解释器加 perceive（2026-11-10）
+
+- `Module.perceive`、`perceiveTurn`：一轮回复变成 perceive → assess → contribute → review；`runTurn` 先让所有模块 perceive，再 assess（注册在后面的模块的 perceive 也排在前面模块的 assess 之前）；
+  只实现 perceive 的模块也算一轮回复的模块。都同步时整轮仍同步返回。
+- `Turn.card`：这一轮用的卡（联系人流水线的原卡；危机回合换的承认版卡只用来说话）。
+- `contact.ts`：turn 改在原来读世界的位置（`onHerDay` 之后、召回记忆之后）建，在那里跑 perceive；旧逻辑算的危机、小别扭、她此刻、答应的事……照旧在原来 assess 的位置写进同一个 turn 的 facts。
+  这一步还没有模块实现 perceive。
+- 验证：基线 21 个场景逐字不变；骨架单元测试（perceive 全在 assess 之前、异步 perceive、只有 perceive 的模块）；类型检查通过，bot 测试失败的仍是原来那些。
