@@ -42,6 +42,8 @@
 - `life/development.ts`
 - `human-values.ts`
 - `character-terms.ts`
+- `modules/her-now.ts`
+- `modules/books.ts`
 
 ## 开关
 

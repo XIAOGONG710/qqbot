@@ -36,6 +36,9 @@ import { interruptionsModule } from '../modules/interruptions.ts';
 import { closenessModule } from '../modules/closeness.ts';
 import { togetherModule } from '../modules/together.ts';
 import { intentModule } from '../modules/intent.ts';
+import { herNowModule } from '../modules/her-now.ts';
+import { booksModule } from '../modules/books.ts';
+import { repetitionModule } from '../modules/repetition.ts';
 import { memesModule } from '../modules/memes.ts';
 import { watchedModule } from '../modules/watched.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
@@ -933,6 +936,14 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
             },
         },
+        // 她此刻（她那边、身体、状态行）：perceive 时看清她此刻、写进 facts（意图和旧逻辑都读），放五行。
+        // 聊天记录、答应的事在后面才建，用到时再取
+        herNowModule({
+            schedule: config.schedule, herDays: config.herDays, ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
+            ...(config.realNights ? { realNights: true } : {}), ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
+            worldState: () => sharedWorld ?? undefined, appointmentsAt: at => promises?.appointmentsAt?.(at),
+            contacts: () => config.contacts, history: qq => history.load(qq), log,
+        }),
         // 意图阶梯（ADR 0019 起）：assess 时写这一轮的意图，排在最前（后面的模块和旧逻辑都读它）；开关是它的选项
         intentModule({
             ...(config.herNo ? { refuse: true } : {}), ...(config.afterNo ? { afterNo: true } : {}), ...(config.jealousy ? { jealous: true } : {}), ...(config.curious ? { curious: true } : {}),
@@ -1014,6 +1025,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 return note;
             },
         }),
+        // 别重复自己（反复说的字词、主动找他的开头、说过了的事）：没有开关；assess 时写说过了的事（旧逻辑的形状读它）
+        repetitionModule(log),
+        // 在读的书（ADR 0015）：跟着她自己的日子；放了书，出口检查拿进度核对
+        booksModule({ herDays: config.herDays }),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
         ...(config.relationship ? [closenessModule(log)] : []),
         ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),

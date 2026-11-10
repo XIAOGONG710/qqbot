@@ -21,6 +21,9 @@ import { voiceModule } from '../modules/voice.ts';
 import { shellModule } from '../modules/shell.ts';
 import { herNotesModule } from '../modules/her-notes.ts';
 import { intentModule } from '../modules/intent.ts';
+import { herNowModule } from '../modules/her-now.ts';
+import { booksModule } from '../modules/books.ts';
+import { repetitionModule } from '../modules/repetition.ts';
 import { memesModule } from '../modules/memes.ts';
 import { watchedModule } from '../modules/watched.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../platform/sensitive.ts';
@@ -543,6 +546,13 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         } : {}),
         // 做判断的模块（ADR 0336），顺序同 App：意图阶梯总在最前；小梗（ADR 0114）直接给场景里写好的梗，不抽
         turnModules: [
+            // 她此刻（她那边、身体、状态行）：开关同上面给流水线的；世界账、答应的事、聊天记录重启后会换新的，用到时再取
+            herNowModule({
+                schedule: scenario.schedule, herDays: options.herDays ?? false, ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}),
+                worldState: () => sharedWorld ?? undefined, appointmentsAt: at => promises?.appointmentsAt?.(at),
+                contacts: () => [contact, ...others], history: qq => history.load(qq),
+                log: message => { if (epoch === responderEpoch) log(message); },
+            }),
             intentModule({
                 ...(scenario.herNo ? { refuse: true } : {}), ...(scenario.afterNo ? { afterNo: true } : {}), ...(scenario.jealousy ? { jealous: true } : {}), ...(scenario.curious ? { curious: true } : {}),
                 ...(scenario.everydayLife ? { everydayLife: true } : {}), ...(scenario.pursuits ? { pursuits: true } : {}),
@@ -558,6 +568,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             shellModule(),
             // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取（模拟器只有这一样）
             herNotesModule({ ...(scenario.openQuestions ? { openQuestions: thoughtsReader(dataDir) } : {}), now: () => clock.now(), log: message => { if (epoch === responderEpoch) log(message); } }),
+            repetitionModule(message => { if (epoch === responderEpoch) log(message); }),
+            booksModule({ herDays: options.herDays ?? false }),
             ...(scenario.relationship ? [closenessModule(message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.jokes?.length ? [jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.idioms?.length ? [idiomsTurnModule(() => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), message => { if (epoch === responderEpoch) log(message); }, scenario.idiomShare)] : []),

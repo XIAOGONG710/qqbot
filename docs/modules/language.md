@@ -61,6 +61,7 @@
 - `modules/closeness.ts`
 - `modules/together.ts`
 - `modules/intent.ts`
+- `modules/repetition.ts`
 - `modules/memes.ts`
 - `modules/watched.ts`
 - `modules/reply-basics.ts`

@@ -1,10 +1,11 @@
-// 解释器（ADR 0336）：唯一做判断的地方。这里只有骨架——事件分发、一轮回复的三个阶段、提示词槽位的排序与拼接、模块注册；
+// 解释器（ADR 0336）：唯一做判断的地方。这里只有骨架——事件分发、一轮回复的四个阶段、提示词槽位的排序与拼接、模块注册；
 // 具体功能一律写成模块（Module），不写在骨架里。碰外部的事交给执行器（executor/executor.ts）。
 //
-// 一轮回复的三个阶段（每个模块都可以只实现其中几个）：
-// 1. assess：往这一轮写判断（turn.facts）——是不是危机、意图、形状……；后面的模块读前面写下的，模块之间不互相 import 内部函数。
-// 2. contribute：往提示词的具名槽位里放段落（slots.ts）；先后由槽位表定，模块不管。
-// 3. review：拿到草稿之后改一改（出口检查、事实检查、句尾封顶……）。
+// 一轮回复的四个阶段（每个模块都可以只实现其中几个）：
+// 1. perceive：先看清她此刻——她那边、身体、在干嘛，写进 turn.facts；判断这一轮怎么接的都要读它们。
+// 2. assess：往这一轮写判断（turn.facts）——是不是危机、意图、形状……；后面的模块读前面写下的，模块之间不互相 import 内部函数。
+// 3. contribute：往提示词的具名槽位里放段落（slots.ts）；先后由槽位表定，模块不管。
+// 4. review：拿到草稿之后改一改（出口检查、事实检查、句尾封顶……）。
 //
 // 迁移期（ADR 0336 第 4 步）：每个钩子都同步时整轮也同步返回、不多等一个微任务；分发只有一个处理函数返回 promise 时原样返回它。
 // 这样经解释器走和原来直接调用逐字等价（行为基线核对）。
@@ -19,6 +20,10 @@ import type { Executor } from '../executor/executor.ts';
 import type { WorldNow } from '../world/world.ts';
 import type { Together } from '../language/together.ts';
 import type { Schedule, State } from '../life/schedule.ts';
+import type { Character } from '../st/card.ts';
+import type { BodyNow } from '../life/body.ts';
+import type { HerStatus } from '../language/status-line.ts';
+import type { DescribedBooks } from '../life/her-days.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -41,7 +46,7 @@ type BuildContext = Parameters<ResponderDeps['buildPrompt']>[1];
 
 /**
  * 这一轮回复在判断的事实。字段随模块迁出逐个加上（ADR 0336 第 5 步）：
- * 写的模块在 assess 里写，读的模块在 contribute / review 里读。
+ * 写的模块在 perceive / assess 里写，读的模块在后面的阶段读。
  */
 export interface TurnFacts {
     /** 危机信号（ADR 0068）；主动找他时不算 */
@@ -50,11 +55,15 @@ export interface TurnFacts {
     grievance?: Grievance;
     /** 这一轮的意图行（意图阶梯，modules/intent.ts 写；照片 / 被打断改写之前的那一版）；只想一想时没有 */
     baseIntent?: string;
-    /** 她那边此刻（ADR 0021 世界账：猫、快递、钱、今天的小事……）；开了她自己的日子、卡上有世界才有 */
+    /** 她那边此刻（ADR 0021 世界账：猫、快递、钱、今天的小事……，modules/her-now.ts 写）；开了她自己的日子、卡上有世界才有 */
     world?: WorldNow;
-    /** 她此刻在干嘛（作息里的这一刻）；开了作息才有 */
+    /** 她的身体此刻（ADR 0025，modules/her-now.ts 写）；开了她自己的日子、卡上有身体才有 */
+    body?: BodyNow;
+    /** 状态行（作息、说过睡了、见面、世界里的事、一天的打算、项目，modules/her-now.ts 写）；开了作息才有 */
+    status?: HerStatus;
+    /** 她此刻在干嘛（status.state）；开了作息才有 */
     state?: State;
-    /** 作息（快睡了“回两句就去忙”按它算）；开了作息或卡上有她的一天才有 */
+    /** 作息（快睡了“回两句就去忙”按它算）；开了作息或她自己的日子才有 */
     schedule?: Schedule;
     /** 时间块里已经有「她答应的事」（ADR 0018） */
     promised?: boolean;
@@ -71,6 +80,10 @@ export interface TurnFacts {
     meme?: string;
     /** 这一轮小别扭真的生效（意图就是小别扭那一句；旧逻辑在照片 / 被打断改写意图之后写）：可以跑命令那一行（modules/shell.ts）读它 */
     grievanceActive?: boolean;
+    /** 这一轮放的在读的书和进度（ADR 0015，modules/books.ts 写）；旧逻辑的出口检查拿进度核对她说的第几章。他没提、她也没在看书时没有 */
+    books?: DescribedBooks;
+    /** 她这一天半里已经主动跟他说过的事（ADR 0098，modules/repetition.ts 写）；危机回合不算。旧逻辑的形状读它：带自己的事时跳过说过了的 */
+    told?: readonly string[];
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */
@@ -83,6 +96,8 @@ export interface Turn {
     readonly offlineSince?: number;
     /** 只想一想（ADR 0101 内心）：不是在聊天 */
     readonly thinking: boolean;
+    /** 这一轮用的卡（分档位：她那边、身体、作息按这一档的卡算）；危机回合换的承认版卡只换说话的部分，这里仍是原卡。不经联系人流水线建的轮次（测试）可以没有 */
+    readonly card?: Character;
     readonly facts: TurnFacts;
 }
 
@@ -90,6 +105,8 @@ export interface Module {
     id: string;
     /** 处理事件（收到消息、戳、撤回、好友申请、连上 NapCat） */
     on?: EventHandlers;
+    /** 先看清她此刻（她那边、身体、在干嘛），写进 turn.facts；在所有 assess 之前 */
+    perceive?(turn: Turn): Maybe<void>;
     assess?(turn: Turn): Maybe<void>;
     contribute?(turn: Turn): Maybe<readonly Piece[]>;
     review?(draft: string, turn: Turn): Maybe<string>;
@@ -123,16 +140,26 @@ function sequence<T, R>(items: readonly T[], step: (item: T, acc: R) => Maybe<R>
 
 type Assembled = { afterMain: string[]; afterHistory: string[] };
 
-/** 第一个阶段：按顺序让每个模块往 turn.facts 写判断（都同步时同步返回） */
-export function assessTurn(modules: readonly Module[], turn: Turn): Maybe<void> {
-    const assessed = sequence<Module, null>(modules, module => {
-        const done = module.assess?.(turn);
-        return isThenable(done) ? Promise.resolve(done).then(() => null) : null;
+/** 按顺序对每个模块调 hook（都同步时同步返回） */
+function eachModule(modules: readonly Module[], hook: (module: Module) => Maybe<void> | undefined): Maybe<void> {
+    const done = sequence<Module, null>(modules, module => {
+        const result = hook(module);
+        return isThenable(result) ? Promise.resolve(result).then(() => null) : null;
     }, null);
-    return isThenable(assessed) ? Promise.resolve(assessed).then(() => undefined) : undefined;
+    return isThenable(done) ? Promise.resolve(done).then(() => undefined) : undefined;
 }
 
-/** 第二个阶段：收各模块的段落，按槽位表拼成 afterMain / afterHistory（不再 assess） */
+/** 第一个阶段：按顺序让每个模块看清她此刻、写进 turn.facts（都同步时同步返回） */
+export function perceiveTurn(modules: readonly Module[], turn: Turn): Maybe<void> {
+    return eachModule(modules, module => module.perceive?.(turn));
+}
+
+/** 第二个阶段：按顺序让每个模块往 turn.facts 写判断（都同步时同步返回） */
+export function assessTurn(modules: readonly Module[], turn: Turn): Maybe<void> {
+    return eachModule(modules, module => module.assess?.(turn));
+}
+
+/** 第三个阶段：收各模块的段落，按槽位表拼成 afterMain / afterHistory（不再 assess） */
 export function contributeTurn(modules: readonly Module[], turn: Turn): Maybe<Assembled> {
     const collected = sequence<Module, Piece[]>(modules, (module, pieces) => {
         const mine = module.contribute?.(turn);
@@ -142,14 +169,20 @@ export function contributeTurn(modules: readonly Module[], turn: Turn): Maybe<As
     return isThenable(collected) ? Promise.resolve(collected).then(assemblePrompt) : assemblePrompt(collected);
 }
 
-/** 一轮回复的前两个阶段连着做：所有模块先 assess、再 contribute。
- * 旧逻辑要在两个阶段之间读模块写下的判断时，分开调 assessTurn / contributeTurn（contact.ts） */
+/** 一轮回复的前三个阶段连着做：所有模块先 perceive、再 assess、再 contribute。
+ * 旧逻辑要在阶段之间读模块写下的事实时，分开调 perceiveTurn / assessTurn / contributeTurn（contact.ts） */
 export function runTurn(modules: readonly Module[], turn: Turn): Maybe<Assembled> {
+    const perceived = perceiveTurn(modules, turn);
+    if (isThenable(perceived)) return Promise.resolve(perceived).then(() => runAfterPerceive(modules, turn));
+    return runAfterPerceive(modules, turn);
+}
+
+function runAfterPerceive(modules: readonly Module[], turn: Turn): Maybe<Assembled> {
     const assessed = assessTurn(modules, turn);
     return isThenable(assessed) ? Promise.resolve(assessed).then(() => contributeTurn(modules, turn)) : contributeTurn(modules, turn);
 }
 
-/** 第三个阶段：草稿按模块顺序逐个 review */
+/** 第四个阶段：草稿按模块顺序逐个 review */
 export function reviewTurn(modules: readonly Module[], draft: string, turn: Turn): Maybe<string> {
     return sequence(modules, (module, text) => module.review ? module.review(text, turn) : text, draft);
 }
@@ -158,7 +191,7 @@ export interface Interpreter {
     readonly modules: readonly Module[];
     /** 把事件交给每个有对应处理的模块（按注册顺序）；只有一个返回 promise 时原样返回它，几个时等全部 */
     dispatch(event: BotEvent): Maybe<void>;
-    /** 实现了 assess / contribute / review 的模块（一轮回复时用） */
+    /** 实现了 perceive / assess / contribute / review 的模块（一轮回复时用） */
     readonly turnModules: readonly Module[];
     /** 开各模块的定时任务（重复调用不重开） */
     startSchedules(): void;
@@ -177,7 +210,7 @@ export function createInterpreter(options: { modules: readonly Module[]; exec: P
         ids.add(module.id);
     }
     const modules = [...options.modules];
-    const turnModules = modules.filter(module => module.assess || module.contribute || module.review);
+    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review);
     const { exec } = options;
     let timers: ReturnType<Executor['every']>[] | undefined;
     return {

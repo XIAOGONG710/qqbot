@@ -72,3 +72,8 @@ export function asleepSince(schedule: Schedule, bedtimes: readonly number[], at:
     const said = bedtimes.find(time => time >= night.from.getTime() && time <= at.getTime());
     return said === undefined ? undefined : { since: new Date(said), until: night.until };
 }
+
+/** at 这一刻她是不是说过睡了、还在睡：这些人的聊天记录里（对谁说的都算）前一天以来她说的「睡了」 */
+export function saidAsleepAt(schedule: Schedule, histories: Iterable<readonly StoredMessage[]>, at: Date): { since: Date; until: Date } | undefined {
+    return asleepSince(schedule, saidBedtimes(histories, schedule, at.getTime() - 86_400_000), at);
+}

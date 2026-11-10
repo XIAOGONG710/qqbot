@@ -6,7 +6,7 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
-import { assessTurn, contributeTurn, type Module, type Turn } from '../interpreter/interpreter.ts';
+import { assessTurn, contributeTurn, perceiveTurn, type Module, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
 import type { Piece, Slot } from '../interpreter/slots.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
@@ -28,14 +28,14 @@ import { postProcessPrompt } from '.././st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from '.././st/world-info.ts';
 import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from '.././social/reply-timing.ts';
 import type { SilenceInfo } from '.././social/silence.ts';
-import { describeMood, moodAt, readingActivities, readingSection } from '.././life/her-days.ts';
+import { describeMood, moodAt, readingActivities } from '.././life/her-days.ts';
 import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from '.././emotion/grievance.ts';
 import { needsCareText } from '.././language/intent.ts';
 import { describeObstacles, meetupDays } from '.././world/obstacles.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { describeQuote, planQuote, quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
-import { alreadyTold, asksToExplain, describeLength, ENGAGED_INTENT, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, recentCrutches, repeatedOpener, STILTED_WORDS } from '.././language/expression.ts';
+import { asksToExplain, describeLength, ENGAGED_INTENT, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, STILTED_WORDS } from '.././language/expression.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
 import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from '.././language/shape.ts';
 import { finishReply } from '.././language/unfinished.ts';
@@ -43,10 +43,9 @@ import { describeUnsettled } from '.././life/open-loops.ts';
 import { describeWorld, lastMealDish, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
 import { isExplicitCurrentPhotoRequest, type CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { npcMentioned } from '.././world/npc.ts';
-import { dayPlan, describePlans, describeSlot } from '.././life/day-plan.ts';
+import { dayPlan, describeSlot } from '.././life/day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from '.././life/body.ts';
-import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
-import { herStatus } from '.././language/status-line.ts';
+import { saidAsleepAt } from '.././life/bedtime.ts';
 import { describeWarmAffect, warmAffect } from '.././emotion/affect.ts';
 import { moodPaceLine, moodShape, tunedMaxBubbles } from '.././emotion/express.ts';
 import { withEveryday } from '.././life/everyday.ts';
@@ -57,8 +56,8 @@ import { appraisals, asksAfterHer, criedRecently, describeFeelings, FEELING_NAME
 import { describeRecentPhotography, recentPhotography } from '.././life/projects.ts';
 import { describePast, pastCue } from '.././life/biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
-import { describeAppointment, mentionsMeetup, type PromiseKeeper } from '.././life/promises.ts';
-import { describeState, formatDate, herDay, partnerBackLine, type ExtraFreeActivity } from '.././life/schedule.ts';
+import { mentionsMeetup, type PromiseKeeper } from '.././life/promises.ts';
+import { formatDate, herDay, type ExtraFreeActivity } from '.././life/schedule.ts';
 import { speechContext, TAIL_CAPS, type BookProgressContext } from '.././language/speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from '.././language/candidates.ts';
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
@@ -405,9 +404,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const herSchedule = options.herDays ? character.schedule : undefined;
     // 她说过「睡了」（ADR 0042）：对名单里谁说的都算，从说完那一刻起在睡——各个联系人看到的是同一个她（状态行、什么时候看到消息）
     const everyone = [contact.qq, ...(options.contacts ?? []).map(other => other.qq).filter(qq => qq !== contact.qq)];
-    const asleepAt = (time: Date) => (schedule
-        ? asleepSince(schedule, saidBedtimes(everyone.map(qq => options.history.load(qq)), schedule, time.getTime() - DAY_MS), time)
-        : undefined);
+    const asleepAt = (time: Date) => (schedule ? saidAsleepAt(schedule, everyone.map(qq => options.history.load(qq)), time) : undefined);
     const extraFree = herSchedule ? readingActivities(character.books) : [];
     // 这一轮放了「在读的书」时，出口检查拿它核对进度数字。同一个回复器一次只生成一条，review 紧跟着这一轮的 buildPrompt
     let reading: BookProgressContext | undefined;
@@ -598,55 +595,24 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (today) log(`今天和别人聊过的 ${countLines(today)} 条（新一段对话，有由头可以含糊提一件）`);
             const days = describeDays(character.dates, time);
             if (herSchedule) options.onHerDay?.(time);
-            // 她那边（ADR 0021）：跟着「她自己的日子」开，卡上有世界才有
-            const around = herSchedule && character.herWorld
-                ? options.worldState?.at(character.herWorld, herSchedule, time) ?? worldAt(character.herWorld, herSchedule, time)
-                : undefined;
-            // 别人给的钱（买相机，ADR 0053 调整）：正在聊的人给的写他的称呼（写「对方」她照抄成「对方给的2000」），男朋友给的跟别人说是「男朋友」
-            const giver = (qq: number) => {
-                if (qq === contact.qq) return contact.name;
-                const other = (options.contacts ?? []).find(c => c.qq === qq);
-                return other ? (other.tier === 'boyfriend' ? '男朋友' : other.name) : undefined;
+            // 这一轮交给解释器的模块（ADR 0336）：在这里建 turn、先 perceive——看清她此刻（她那边、身体、在干嘛），写进 turn.facts；
+            // 下面的旧逻辑和后面的 assess 都读。旧逻辑算的判断在 assess 之前写进同一个 turn
+            const turn: Turn = {
+                contact, at: time, history: chat, thinking, card: character, facts: {},
+                ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
             };
-            const world = around ? describeWorld(around, time, giver) : undefined;
+            const perceived = perceiveTurn(options.turnModules ?? [], turn);
+            // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
+            if (perceived instanceof Promise) await perceived;
+            // 她此刻（她那边 ADR 0021、身体 ADR 0025、状态行 ADR 0042 等）是解释器的模块（modules/her-now.ts）：perceive 时写进 turn.facts，
+            // 经 turnModules 放进 state、world、body、plans、partnerBack 槽；下面的旧逻辑读 facts
+            const { world: around, body: bodyNow, state } = turn.facts;
             const practiced = options.lifeInPrompt && character.herWorld?.cameraFund && options.worldState?.events ? recentPhotography(options.worldState.events(), time, 3, herSchedule) : undefined;
             const practice = practiced ? describeRecentPhotography(practiced, time, herSchedule) : undefined;
             const selfNote = options.selfNote?.(time.getTime());
             // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
             const recap = day && !day.period ? recapOf(day.start, time) : undefined;
             if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
-            // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
-            // 昨晚真的怎么睡的（ADR 0219，realNights）：早上困不困、为什么困，从她说「睡了」、半夜被吵醒、睡前跟他聊到几点推
-            const nightNow = options.realNights && contact.tier === 'boyfriend' && herSchedule
-                ? lastNight(everyone.map(qq => ({ qq, messages: options.history.load(qq) })), contact.qq, herSchedule, time) : undefined;
-            const bodyNow = herSchedule && character.herWorld?.body ? withLastNight(bodyAt(character.herWorld.body, herSchedule, time), nightNow, time, herDay(herSchedule, time)) : undefined;
-            // 状态行（status-line.ts，模拟器的状态行影子比对用同一个函数，ADR 0042）：作息 → 说过「睡了」就在睡 →
-            // 空闲时世界里有时长的事（ADR 0030）→ 一天的打算改了的写「本来打算 X，Y，Z」（ADR 0034）
-            const asleep = schedule ? asleepAt(time) : undefined;
-            // 约好的见面（ADR 0047）：和这个人约的优先；和别人约的只说在外面、约了人
-            const meetings = contact.tier !== UNLISTED_TIER ? options.promises?.appointmentsAt?.(time) ?? [] : [];
-            const meeting = meetings.find(m => m.contact.qq === contact.qq) ?? meetings[0];
-            const appointment = meeting ? describeAppointment(meeting, contact, time) : undefined;
-            const status = schedule ? herStatus(schedule, time, {
-                extraFree: [...extraFree, ...(options.herPlan?.(time) ?? [])], ...(around ? { world: around } : {}), ...(asleep ? { asleep } : {}), ...(appointment ? { appointment } : {}),
-                ...(herSchedule ? { plans: { plans: character.herWorld?.plans, ...(bodyNow ? { body: bodyNow } : {}) } } : {}),
-                ...(options.projectChoice && options.worldState?.events
-                    ? { projectChoice: { events: options.worldState.events(), books: character.books } }
-                    : {}),
-            }) : undefined;
-            if (status?.saidAsleep) log(`她 ${status.saidAsleep.since.toTimeString().slice(0, 5)} 说过睡了：状态行按在睡觉`);
-            if (status?.busy) log(`此刻在做：${status.busy}`);
-            if (status?.revised) log(`改了打算：${status.revised}`);
-            const state = status?.state;
-            const partnerBack = state ? partnerBackLine(state, contact.name) : undefined;
-            const plansLine = herSchedule ? describePlans(herSchedule, status?.slots ?? [], time) : undefined;
-            const books = herSchedule
-                ? readingSection(herSchedule, character.books, time, {
-                    history: chat, userName: contact.name,
-                    ...(state?.activity.kind === 'free' ? { activity: state.activity.text } : {}),
-                })
-                : undefined;
-            reading = books?.context;
             const body = bodyNow ? describeBody(bodyNow) : undefined;
             const mood = herSchedule ? moodAt(herSchedule, character.moods, time, options.mood, { body: bodyNow, world: around }) : undefined;
             // 她的过去（ADR 0022）：他说到卡上某块的线索才想起；主动找他时不想
@@ -705,24 +671,20 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 小别扭 / 和好（ADR 0074）：从聊天记录的时间戳重算，不落盘；危机、主动找他、非男朋友档都不算
             // 起因有两种：隔了好几天才来（grievanceNow），或者她倾诉了几条、他隔了很久才回（ignoredNow，10-20）
             const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? (grievanceNow(chat) ?? ignoredNow(chat)) : undefined;
-            // 这一轮交给解释器的模块（ADR 0336）：先在这里 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
+            // 接着 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
             // 她此刻在干嘛、作息、她答应的事、挂着的事、她那边还没说过的事还是旧逻辑算的，写进 facts 给意图阶梯（modules/intent.ts）读
-            const herNow = schedule ?? herSchedule;
-            const turn: Turn = {
-                contact, at: time, history: chat, thinking,
-                facts: {
-                    ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(around ? { world: around } : {}),
-                    ...(state ? { state } : {}), ...(herNow ? { schedule: herNow } : {}), ...(promised ? { promised: true } : {}),
-                    ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what) } : {}),
-                    ...(untold.length ? { news: untold } : {}),
-                },
-                ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
-            };
+            Object.assign(turn.facts, {
+                ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(promised ? { promised: true } : {}),
+                ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what) } : {}),
+                ...(untold.length ? { news: untold } : {}),
+            } satisfies TurnFacts);
             const assessed = assessTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             if (assessed instanceof Promise) await assessed;
             // 意图阶梯（ADR 0019 起）是解释器的模块（modules/intent.ts）：assess 时写进 turn.facts.baseIntent（照片 / 被打断改写之前的那一版）
             const baseIntent = turn.facts.baseIntent;
+            // 在读的书（ADR 0015）是解释器的模块（modules/books.ts）：assess 时写进 turn.facts.books、放进 books 槽；这一轮放了书，出口检查拿进度核对
+            reading = turn.facts.books?.context;
             // 陪玩（ADR 0111）是解释器的模块（modules/together.ts）：assess 时判断、记日志，经 turnModules 放进 together 槽
             // 关系阶段（ADR 0113）是解释器的模块（modules/closeness.ts），经 turnModules 放进 closeness 槽
             // 被打断（ADR 0115）是解释器的模块（modules/interruptions.ts）：聊天正在进行时她那边恰好发生了一件小事，写进 turn.facts.interruption，放进 interrupt 槽
@@ -901,8 +863,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 || Boolean(humanValues && (humanValues.energy <= 30 || humanValues.hunger >= 82 || humanValues.stress >= 78 || humanValues.mood <= 30));
             // 形状控制开着：用具体的字数和条数代替「回短一点」的软提示；不适用的轮次（他明着让她讲、主动找他、收尾）照旧走 lengthHint
             // 她这一天半里已经主动说过的事（ADR 0098）；带自己的事的轮次从她还没说过的事里挑一件说
-            const told = !crisisNow ? alreadyTold(chat, time.getTime()) : [];
+            // 说过了的事由别重复自己的模块（modules/repetition.ts）assess 时写进 turn.facts.told（危机回合不算）
+            const told = turn.facts.told ?? [];
             const TOLD_LABEL: Record<string, RegExp> = { 相机: /相机/, 猫: new RegExp(`${catAlternative()}猫`), 作业: /作业/, 快递: /快递/ };
+            // 世界那一行的标签（天气、猫、作业……）：行本身由她此刻的模块放；标签和“钱是谁给的”无关，这里不带称呼
+            const world = around ? describeWorld(around, time) : undefined;
             const worldLabels = world ? world.replace(/^\[你那边（[^）]*）：/, '').replace(/\]$/, '').split('｜').map(item => item.split('：')[0]!.trim()).filter(Boolean) : [];
             const agendaTopics = [
                 ...worldLabels.filter(label => !told.some(name => TOLD_LABEL[name]?.test(label))),
@@ -912,19 +877,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 语言松绑（DSH 10-28 27facc0）：只有“接情绪/好事/亲近/撒娇/认真”或问过去时给形状；普通闲聊不圈条数字数。
             // shapeAll（ADR 0220，默认关）：所有轮次都给形状（回到 ADR 0091 的样子），用来量松绑前后的差别
             shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !deliberateNow && (Boolean(options.shapeAll) || Boolean(cue) || Boolean(intent && ENGAGED_INTENT.test(intent))) ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
-            // 她最近几条里反复在说的字词（10-22 深夜测试：被追问时原地打转、同一件事说三个晚上）：这一轮提醒她换个反应；主动找他、危机回合不用
-            const crutches = !initiate && !crisisNow ? recentCrutches(chat) : [];
-            const crutchLine = crutches.length
-                ? `[你这几条里反复在说「${crutches.join('」「')}」：这一轮别再用这几个字，换个反应——直接答、逗他、反问、认怂、生气都行]`
-                : undefined;
-            if (crutchLine) log(`最近反复说的字词：${crutches.join('、')}（提示词里让她换个反应）`);
-            // 主动找他时，最近几次开头用了同一个起头词（「刚」「人呢」……）就换一种（ADR 0135）
-            const opener = initiate && !crisisNow && !thinking ? repeatedOpener(chat) : undefined;
-            const openerLine = opener ? `[你最近几次开头都是「${opener}」：这次换一种开头，别用「${opener}」起头]` : undefined;
-            if (openerLine) log(`最近几次开头都是「${opener}」（提示词里让她这次换个开头）`);
-            // 说过了就不再自己提（ADR 0098）：事实还在时间块里，他问起来照常答
-            const toldLine = told.length && !thinking ? `[这些事你已经主动跟他说过了：${told.join('、')}。他不问，就别再自己提]` : undefined;
-            if (toldLine) log(`已经主动说过：${told.join('、')}（提示词里让她不再自己提）`);
+            // 别重复自己（反复说的字词、主动找他的开头、说过了的事，ADR 0098 / 0135）是解释器的模块（modules/repetition.ts），经 turnModules 放进 crutch、opener、told 槽
             // 她最近心里在想的（ADR 0101）：前后是同一个在想事情的人；主动找他时也带上（她主动说的常常就是这些念头，
             // 还有她自己上网查到的，ADR 0180）
             const innerNow = !crisisNow ? options.innerLine?.() : undefined;
@@ -989,29 +942,22 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(common || today || peopleText.length ? [{ slot: 'disclosure' as const, text: disclosureRules(contact) }] : []),
                 { slot: 'time', text: describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }) },
                 ...when('days', days),
-                ...(state ? [{ slot: 'state' as const, text: describeState(state, schedule!, { userName: contact.name, woken, partnerApart: true, ...(options.realNights && contact.tier === 'boyfriend' ? { grumpy: true } : {}) }) }] : []),
                 // 2026-10-30 线上：她凭空来了一句「今天有点累，就更不想说话了」，他看着莫名其妙——
                 // 「你现在」那几行是底子不是话题，没人问就别拿它开头。
                 ...(state || body ? [{ slot: 'groundNote' as const, text: '（上面「你现在」和身体那几行是你的底子，不是话题：没人问就别主动说你累了、心情怎样，也别把它当成一句话发出去）' }] : []),
                 // 今天的心情（按日期抽的「爱笑」「安静」）不再注入（10-30 用户：这种替她表态的都清掉）：
                 // 心情由真实发生的事推出来的 feelingLine 表达。
-                ...when('body', body),
                 ...when('humanState', humanStateLine),
                 ...when('development', developmentLine),
                 ...when('unsettled', unsettled),
                 ...when('warm', warm),
                 ...when('feeling', feelingLine),
                 ...when('pace', paceLine),
-                ...(books ? [{ slot: 'books' as const, text: books.text }] : []),
-                ...when('world', world),
                 ...when('practice', practice),
                 // 追求（「别挂科」「用新相机拍出满意的东西」）也不再注入（10-30 同一条）：她想追什么，自己说。
                 ...when('selfNote', selfNote),
-                ...when('plans', plansLine),
                 ...when('promised', promised),
                 ...when('obstacle', obstacleLine),
-                // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
-                ...when('partnerBack', partnerBack),
                 ...when('exemplar', exemplarNow),
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
                 ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
@@ -1029,9 +975,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(length ? [{ slot: 'length' as const, text: describeLength(length, options.shortReplies) }] : []),
                 ...(shapeNow ? [{ slot: 'shape' as const, text: describeShape(shapeNow) }] : []),
                 ...when('quote', quoteLine),
-                ...when('crutch', crutchLine),
-                ...when('told', toldLine),
-                ...when('opener', openerLine),
                 ...when('inner', innerNow),
                 ...when('intimate', intimateNow),
                 ...when('transcript', transcript),

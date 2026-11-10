@@ -629,3 +629,68 @@ describe('模拟器把意图阶梯的开关交给意图模块（ADR 0336）', ()
         assert.doesNotMatch(off[1]!, /问一个你真想知道的问题/);
     });
 });
+
+describe('模拟器挂着别重复自己的模块（ADR 0336）', () => {
+    // 行为基线走的是 App，模拟器这一路的接线由这里兜：没挂模块，这两行就没有
+    test('她反复说同几个字、自己提过相机：后面几轮提示词里有反复说的字词和说过了的事', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-repetition-sim-'));
+        const prompts: string[] = [];
+        const replies = ['困死了 刚下课', '我相机到了 困死', '困死 想睡觉', '困死了 不想动'];
+        try {
+            await runScenario(parseScenario({
+                name: 'repetition', tier: 'boyfriend', start: '2026-10-25T20:00:00+08:00', memory: false, schedule: false,
+                steps: ['在吗', '干嘛呢', '吃了吗', '好吧', '晚上干嘛'].flatMap(text => [{ say: text }, { advance: '10m' }]),
+            }), {
+                runId: 'repetition', dataDir: dir, card, llm, prompt, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages.map(m => String(m.content)).join('\n')); return replies[(prompts.length - 1) % replies.length]!; },
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+        assert.doesNotMatch(prompts[0]!, /反复在说|已经主动跟他说过了/);
+        assert.match(prompts.at(-1)!, /反复在说「困死」/);
+        assert.match(prompts.at(-1)!, /这些事你已经主动跟他说过了：相机/);
+    });
+});
+
+describe('模拟器挂着她此刻的模块（ADR 0336）', () => {
+    // 行为基线走的是 App，模拟器这一路的接线由这里兜：没挂模块，此刻、她那边这两行就没有
+    test('开了作息和她自己的日子：提示词里有此刻在干嘛、她那边', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-her-now-sim-'));
+        const prompts: string[] = [];
+        try {
+            await runScenario(parseScenario({
+                name: 'her now', tier: 'boyfriend', start: '2026-10-25T20:00:00+08:00', memory: false, schedule: true,
+                steps: [{ say: '在干嘛' }, { advance: '10m' }],
+            }), {
+                runId: 'her-now', dataDir: dir, card, llm, prompt, herDays: true, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages.map(m => String(m.content)).join('\n')); return '嗯嗯'; },
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+        assert.ok(prompts.length);
+        assert.match(prompts[0]!, /\[你现在：/);
+        assert.match(prompts[0]!, /\[你那边（/);
+    });
+});
+
+describe('模拟器挂着在读的书的模块（ADR 0336）', () => {
+    // 行为基线走的是 App，模拟器这一路的接线由这里兜
+    test('开了她自己的日子、他问起在读的书：提示词里有那一行', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-books-sim-'));
+        const prompts: string[] = [];
+        try {
+            await runScenario(parseScenario({
+                name: 'books', tier: 'boyfriend', start: '2026-10-25T20:00:00+08:00', memory: false, schedule: true,
+                steps: [{ say: '雾港旧事你看到第几章了' }, { advance: '10m' }],
+            }), {
+                runId: 'books', dataDir: dir, card, llm, prompt, herDays: true, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages.map(m => String(m.content)).join('\n')); return '嗯嗯'; },
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+        assert.match(prompts[0]!, /\[在读的书：/);
+    });
+});
