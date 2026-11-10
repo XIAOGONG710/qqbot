@@ -674,3 +674,23 @@ describe('模拟器挂着她此刻的模块（ADR 0263）', () => {
         assert.match(prompts[0]!, /\[你那边（/);
     });
 });
+
+describe('模拟器挂着在读的书的模块（ADR 0263）', () => {
+    // 行为基线走的是 App，模拟器这一路的接线由这里兜
+    test('开了她自己的日子、他问起在读的书：提示词里有那一行', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-books-sim-'));
+        const prompts: string[] = [];
+        try {
+            await runScenario(parseScenario({
+                name: 'books', tier: 'boyfriend', start: '2026-10-25T20:00:00+08:00', memory: false, schedule: true,
+                steps: [{ say: '雾港旧事你看到第几章了' }, { advance: '10m' }],
+            }), {
+                runId: 'books', dataDir: dir, card, llm, prompt, herDays: true, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages.map(m => String(m.content)).join('\n')); return '嗯嗯'; },
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+        assert.match(prompts[0]!, /\[在读的书：/);
+    });
+});

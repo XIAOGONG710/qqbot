@@ -15,6 +15,7 @@ import { watchedAllowed, watchedModule } from '../src/modules/watched.ts';
 import { intentModule, intentOf } from '../src/modules/intent.ts';
 import { repetitionModule, repetitionPieces } from '../src/modules/repetition.ts';
 import { herNowModule } from '../src/modules/her-now.ts';
+import { booksModule } from '../src/modules/books.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
 import type { Contact } from '../src/platform/config.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -521,5 +522,31 @@ describe('她此刻模块（ADR 0021 / 0025 / 0042 / 0047 / 0263）', () => {
         assert.doesNotMatch(theirs, /阿明/);
         // 名单里没有给钱的人：写「别人」
         assert.match(text(run(herNowModule({ ...base, worldState: () => worldState }), turnOf(zhou, { at: evening })).pieces, 'world')!, /相机：.*别人/);
+    });
+});
+
+describe('在读的书模块（ADR 0015 / 0263）', () => {
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend').character;
+    const at = new Date('2026-11-12T19:30:00+08:00');
+    const asked: Turn['history'] = [{ role: 'user', content: '雾港旧事你看到第几章了', time: at.toISOString() }];
+    const turnOf = (patch: Partial<Turn> = {}): Turn => ({ contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: asked, thinking: false, card, facts: {}, ...patch });
+    const run = (module: Module, t: Turn) => { module.assess!(t); return { facts: t.facts, pieces: module.contribute!(t) as Piece[] }; };
+    test('他问起在读的书：facts.books 带出口检查用的进度，books 槽放那一行', () => {
+        const { facts, pieces } = run(booksModule({ herDays: true }), turnOf());
+        assert.ok(facts.books?.context.books.length);
+        assert.deepEqual(pieces, [{ slot: 'books', text: facts.books!.text }]);
+        assert.match(pieces[0]!.text, /^\[在读的书：/);
+    });
+    test('她此刻正在看书（facts.state 的空闲活动）：没提也放', () => {
+        const state = { activity: { kind: 'free', text: '睡前看几章《雾港旧事》' } } as never;
+        assert.equal(run(booksModule({ herDays: true }), turnOf({ history: [], facts: {} })).pieces.length, 0);
+        assert.equal(run(booksModule({ herDays: true }), turnOf({ history: [], facts: { state } })).pieces[0]?.slot, 'books');
+    });
+    test('没开她自己的日子、没有卡：不放，出口检查也不核对', () => {
+        for (const [module, t] of [[booksModule(), turnOf()], [booksModule({ herDays: true }), turnOf({ card: undefined })]] as const) {
+            const { facts, pieces } = run(module, t);
+            assert.equal(facts.books, undefined);
+            assert.deepEqual(pieces, []);
+        }
     });
 });

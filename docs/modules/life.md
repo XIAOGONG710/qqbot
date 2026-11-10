@@ -30,6 +30,7 @@
 - `local-date.ts`
 - `character-terms.ts`
 - `modules/her-now.ts`
+- `modules/books.ts`
 
 ## 开关
 

@@ -27,7 +27,7 @@ import { loadCharacterCard, type Character } from '.././st/card.ts';
 import { postProcessPrompt } from '.././st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from '.././st/world-info.ts';
 import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from '.././social/reply-timing.ts';
-import { describeMood, moodAt, readingActivities, readingSection } from '.././life/her-days.ts';
+import { describeMood, moodAt, readingActivities } from '.././life/her-days.ts';
 import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from '.././emotion/grievance.ts';
 import { needsCareText } from '.././language/intent.ts';
@@ -463,13 +463,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
             const recap = day && !day.period ? recapOf(day.start, time) : undefined;
             if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
-            const books = herSchedule
-                ? readingSection(herSchedule, character.books, time, {
-                    history: chat, userName: contact.name,
-                    ...(state?.activity.kind === 'free' ? { activity: state.activity.text } : {}),
-                })
-                : undefined;
-            reading = books?.context;
             const body = bodyNow ? describeBody(bodyNow) : undefined;
             const mood = herSchedule ? moodAt(herSchedule, character.moods, time, options.mood, { body: bodyNow, world: around }) : undefined;
             // 她的过去（ADR 0022）：他说到卡上某块的线索才想起；主动找他时不想
@@ -540,6 +533,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (assessed instanceof Promise) await assessed;
             // 意图阶梯（ADR 0019 起）是解释器的模块（modules/intent.ts）：assess 时写进 turn.facts.baseIntent（照片 / 被打断改写之前的那一版）
             const baseIntent = turn.facts.baseIntent;
+            // 在读的书（ADR 0015）是解释器的模块（modules/books.ts）：assess 时写进 turn.facts.books、放进 books 槽；这一轮放了书，出口检查拿进度核对
+            reading = turn.facts.books?.context;
             // 陪玩（ADR 0111）是解释器的模块（modules/together.ts）：assess 时判断、记日志，经 turnModules 放进 together 槽
             // 关系阶段（ADR 0113）是解释器的模块（modules/closeness.ts），经 turnModules 放进 closeness 槽
             // 被打断（ADR 0115）是解释器的模块（modules/interruptions.ts）：聊天正在进行时她那边恰好发生了一件小事，写进 turn.facts.interruption，放进 interrupt 槽
@@ -712,7 +707,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('unsettled', unsettled),
                 ...when('warm', warm),
                 ...when('feeling', feelingLine),
-                ...(books ? [{ slot: 'books' as const, text: books.text }] : []),
                 ...when('practice', practice),
                 ...when('pursuit', pursuitLine),
                 ...when('selfNote', selfNote),

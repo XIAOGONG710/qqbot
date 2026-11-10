@@ -23,6 +23,7 @@ import type { Schedule, State } from '../life/schedule.ts';
 import type { Character } from '../st/card.ts';
 import type { BodyNow } from '../life/body.ts';
 import type { HerStatus } from '../language/status-line.ts';
+import type { DescribedBooks } from '../life/her-days.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -73,6 +74,8 @@ export interface TurnFacts {
     interruption?: { text: string; minutesAgo: number };
     /** 陪玩（ADR 0111，modules/together.ts 写）：此刻正和他一起玩什么、从哪一刻答应的 */
     together?: Together;
+    /** 这一轮放的在读的书和进度（ADR 0015，modules/books.ts 写）；旧逻辑的出口检查拿进度核对她说的第几章。他没提、她也没在看书时没有 */
+    books?: DescribedBooks;
     /** 她这一天半里已经主动跟他说过的事（ADR 0098，modules/repetition.ts 写）；危机回合不算。旧逻辑的形状读它：带自己的事时跳过说过了的 */
     told?: readonly string[];
 }

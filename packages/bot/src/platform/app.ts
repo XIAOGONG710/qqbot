@@ -24,6 +24,7 @@ import { closenessModule } from '../modules/closeness.ts';
 import { togetherModule } from '../modules/together.ts';
 import { intentModule } from '../modules/intent.ts';
 import { herNowModule } from '../modules/her-now.ts';
+import { booksModule } from '../modules/books.ts';
 import { repetitionModule } from '../modules/repetition.ts';
 import { memesModule } from '../modules/memes.ts';
 import { watchedModule } from '../modules/watched.ts';
@@ -662,6 +663,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         }),
         // 别重复自己（反复说的字词、主动找他的开头、说过了的事）：没有开关；assess 时写说过了的事（旧逻辑的形状读它）
         repetitionModule(log),
+        // 在读的书（ADR 0015）：跟着她自己的日子；放了书，出口检查拿进度核对
+        booksModule({ herDays: config.herDays }),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
         ...(config.relationship ? [closenessModule(log)] : []),
         ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
