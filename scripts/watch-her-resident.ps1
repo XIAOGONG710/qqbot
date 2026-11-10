@@ -1,6 +1,6 @@
 # 常驻的她（7777）看门狗：端口没在听就把她拉起来。
 $ErrorActionPreference = 'Stop'
-$repo = 'C:\Users\22601\Desktop\qqbot-dsh-control'
+$repo = Split-Path -Parent $PSScriptRoot
 $log = Join-Path $env:LOCALAPPDATA 'qqbot\resident-watchdog.log'
 New-Item -ItemType Directory -Force -Path (Split-Path $log) | Out-Null
 

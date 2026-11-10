@@ -1,12 +1,13 @@
 # 把 E:\RVC模型 里的模型拆出来，用她的那句话逐个转（2026-11-01 用户找来的模型）
 $ErrorActionPreference = 'Continue'
 $src = 'E:\RVC模型'
-$work = 'C:\Users\22601\Desktop\qqbot-dsh-control\runtime\voice\user-models'
-$out = 'C:\Users\22601\Desktop\qqbot-dsh-control\runtime\voice\user-models-out'
+$repo = Split-Path -Parent $PSScriptRoot
+$work = Join-Path $repo 'runtime\voice\user-models'
+$out = Join-Path $repo 'runtime\voice\user-models-out'
  = $raw
 $seven = 'C:\Program Files\7-Zip\7z.exe'
-$rvc = 'C:\Users\22601\Desktop\qqbot-dsh-control\runtime\voice\RVC'
-$py = 'C:\Users\22601\Desktop\qqbot-dsh-control\runtime\voice\venv312\Scripts\python.exe'
+$rvc = Join-Path $repo 'runtime\voice\RVC'
+$py = Join-Path $repo 'runtime\voice\venv312\Scripts\python.exe'
 New-Item -ItemType Directory -Force $work, $out | Out-Null
 
 # 1) 拆 7z

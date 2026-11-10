@@ -9,7 +9,7 @@
 # Order: kill lock owner -> kill listener on 5140 -> drop lock -> start once -> verify the new
 # process actually owns the lock and is not the one that logs "插件没有启动".
 $ErrorActionPreference = 'Stop'
-$repo = 'C:\Users\22601\Desktop\qqbot-dsh-control'
+$repo = Split-Path -Parent $PSScriptRoot
 $lock = Join-Path $repo 'runtime\bot-shadow\bot.lock'
 $instance = Join-Path $repo 'runtime\koishi'
 $botLog = Join-Path $repo 'runtime\bot-shadow\logs\{0}.log' -f (Get-Date -Format 'yyyy-MM-dd')

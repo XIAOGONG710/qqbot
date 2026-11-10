@@ -1,7 +1,7 @@
 # 语气起伏 A/B：同一句、同一个参考（RMmiao），IndexTTS vs GPT-SoVITS
 # 2026-11-01 用户：「16-RMmiao 差不多，就只缺少真人语气的起伏」
 $ErrorActionPreference = 'Continue'
-$root = 'C:\Users\22601\Desktop\qqbot-dsh-control\runtime'
+$root = Join-Path (Split-Path -Parent $PSScriptRoot) 'runtime'
 $out = Join-Path $root 'voice\prosody-test'
 New-Item -ItemType Directory -Force $out | Out-Null
 $ref = 'C:\Users\22601\Desktop\她的声音\女声试听\16-RMmiao-256Hz.mp3'
