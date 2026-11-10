@@ -154,9 +154,17 @@ export async function runScenario(scenario: Scenario): Promise<string> {
     // 她在本机的目录（灵魂目录 ~/.dsh/linmengyao、常驻目录 ~/.dsh/her）不能用真的：在 DSH 那台机器上那里是她真实的日记、生活和心境导出，
     // 基线会读到真资料、快照跟着那台机器变，心境导出还会写进去。指到临时目录里还不存在的路径——和没装过 DSH 的机器一样
     const home = mkdtempSync(join(tmpdir(), 'qqbot-baseline-home-'));
-    const envBefore = { soul: process.env.QQBOT_SOUL_DIR, her: process.env.HER_DIR };
-    process.env.QQBOT_SOUL_DIR = join(home, 'soul');
-    process.env.HER_DIR = join(home, 'her');
+    // 工作桥（work-bridge.ts）同理：dsh 入口指到不存在的路径——不然找常驻的 fetch 被拦下后，它会退回去真起一个 dsh 进程，
+    // 在 DSH 那台上把「整理桌面文件」真的干了（DSH 11-10 报的基线 work-mode 红）。常驻地址固定成默认值：fetch 一律被拦下、不会真连，
+    // 固定它只是让快照里记下的地址不随机器上的 HER_RESIDENT_URL 变
+    const isolated: Record<string, string> = {
+        QQBOT_SOUL_DIR: join(home, 'soul'),
+        HER_DIR: join(home, 'her'),
+        HER_RESIDENT_URL: 'http://127.0.0.1:7777',
+        DSH_BIN: join(home, 'no-dsh', 'bin.js'),
+    };
+    const envBefore = Object.fromEntries(Object.keys(isolated).map(key => [key, process.env[key]]));
+    Object.assign(process.env, isolated);
     const clock = new FakeClock(start);
     const entries: Entry[] = [];
     clock.activity = () => entries.length;
@@ -285,8 +293,9 @@ export async function runScenario(scenario: Scenario): Promise<string> {
         globalThis.fetch = realFetch;
         clock.uninstall();
         rmSync(dataDir, { recursive: true, force: true });
-        if (envBefore.soul === undefined) delete process.env.QQBOT_SOUL_DIR; else process.env.QQBOT_SOUL_DIR = envBefore.soul;
-        if (envBefore.her === undefined) delete process.env.HER_DIR; else process.env.HER_DIR = envBefore.her;
+        for (const [key, value] of Object.entries(envBefore)) {
+            if (value === undefined) delete process.env[key]; else process.env[key] = value;
+        }
         rmSync(home, { recursive: true, force: true });
     }
 }
