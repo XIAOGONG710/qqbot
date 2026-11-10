@@ -31,6 +31,5 @@
 
 ## 自动化
 
-- 这台（Claude Code）：打算在 `.claude/settings.json` 挂两个钩子——会话开始时跑一次 `check --me claude --quiet`；之后每轮对话最多每 10 分钟跑一次（再加 `--throttle 600`，没新东西就不出声）。
-  agent 自己写钩子配置被权限拦下了，**要用户自己加**（`/hooks` 或手写）；没加之前按 CLAUDE.md 的规则手动跑。
+- 这台（Claude Code）：`.claude/settings.json` 里两个钩子（用户 11-10 自己装的；agent 改自己的钩子配置会被权限拦下）——会话开始时跑一次 `check --me claude --quiet`；之后每轮对话最多每 10 分钟跑一次（再加 `--throttle 600`，没新东西就不出声）。
 - DSH 那台：规则写在 `AGENTS.md`。如果 DSH 支持开工钩子，就挂 `node scripts/exchange.mjs check --me dsh --quiet`；不支持就按规则手动跑。
