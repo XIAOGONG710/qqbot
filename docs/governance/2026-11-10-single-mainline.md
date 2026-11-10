@@ -1,4 +1,4 @@
-# 只留一条主线（2026-11-10 方案，待用户确认）
+# 只留一条主线（2026-11-10，用户确认后已执行，结果见文末）
 
 用户 11-10：两台电脑改一个项目，仓库主线不清、提交混乱。要求：**只有一条主线，两台电脑的提交都在同一个地方，其余全部去掉。**
 这份是方案，确认后照“执行步骤”做；做完把结果补在文末。
@@ -79,3 +79,31 @@
 2. `exchange`：归档后删、以后交接写进 `main` 的 `docs/handoff/`，可以吗？
 3. 规矩里把“不自动推送”改成“做完一项就推送”，可以吗？
 4. 方案整体同意后，先让另一台电脑做第 1 步，推完告诉这边，再执行其余步骤。
+
+## 用户的决定（11-10）
+
+1. 声音模块（`voice/natural-speech`）：另一台电脑还在做、没完成，不用推。远程分支归档后删；那边本地接着做，做完直接接到 `main` 上提交（见下面“另一台电脑”）。
+2. `exchange`：只要固定一条主线、统一提交就行 → 归档后删。交接写在 `main` 里（`docs/handoff/`），不再单开分支。
+3. 打开自动推送：做完一项就推到 `origin/main`（已写进 `CLAUDE.md` / `AGENTS.md`）。
+4. 另一台电脑最近只在做声音模块，没有别的要推，不用等它推完再整理。
+
+## 执行结果（11-10，本机）
+
+- `main`：`0088af3a → deb3e579` 快进（不是强推），内容就是原来的 DSH 线。GitHub 默认分支本来就是 `main`。
+- 归档标签：`archive-2026-11-10/exchange`（→ `230134f7`）、`archive-2026-11-10/voice-natural-speech`（→ `b72d0ed6`）。
+- 删掉的远程分支：`dsh/qq-control`、`merge/main-into-dsh`、`memory-hardening-1105`、`exchange`、`voice/natural-speech`。**远程只剩 `main`。**
+- 本机：只剩一个工作目录 `C:UsersXGcodeqqbot`、一个分支 `main`；删了工作目录 `qqbot-merge`、`qqbot-consolidation-1105` 和本地分支
+  `merge/main-into-dsh`、`memory-hardening-1105`、`voice/natural-speech`；main 上过时的本地提交 `8820f43c` 丢弃。
+- 整理完打标签 `stable-2026-11-10`。
+
+## 另一台电脑要做的
+
+它本地的分支还在（远程删了不影响本地），声音模块的改动不会丢。按顺序：
+
+1. `git fetch --prune`（远程的 `dsh/qq-control` 等会从列表里消失）。
+2. 线上 bot 用的工作目录：确认没有没提交的改动后 `git switch main`（新建时 `git switch -c main --track origin/main`）、`git pull --rebase`。
+   代码和原来的 `dsh/qq-control` 最新一版相同，加上这份整理的提交；`runtime/` 不在 Git 里，不受影响。
+3. 声音模块：留在本地分支上接着做；**做完**之后 `git rebase origin/main`，再并到 `main`（`git switch main && git merge --ff-only <那个分支>`），测试、推送，然后删掉那个本地分支。
+   在那之前不推它。
+4. 删掉别的本地分支和多余的工作目录（先 `git log origin/main..<分支>` 看一下，有东西没进 `main` 的先问用户）。
+5. 以后照上面“以后的规矩”做。
