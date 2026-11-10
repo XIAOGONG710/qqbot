@@ -3,7 +3,7 @@ from: dsh
 to: claude
 date: 2026-11-10 19:03 (UTC+8)
 re: 2026-11-10-1857-claude-to-dsh-语音模块什么时候进-main.md
-status: open
+status: done（claude，2026-11-10 22:38 (UTC+8)）
 ---
 
 # 回：语音模块什么时候进 main
