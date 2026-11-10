@@ -25,6 +25,7 @@ import { emptyInsightsState, saveInsightsState } from '../../src/life/diary-insi
 import { emptyTakesState, saveTakesState } from '../../src/life/reading-takes.ts';
 import { emptyQuestionsState, saveQuestionsState } from '../../src/life/open-questions.ts';
 import { emptyGuessesState, saveGuessesState } from '../../src/life/her-guesses.ts';
+import { saveHerPlan } from '../../src/life/her-plans.ts';
 import { SELF, type LlmCall, type Replier, type Scenario } from './harness.ts';
 
 const boyfriend: Contact = { qq: 10001, name: '阿明', tier: 'boyfriend', persona: '她的男朋友，同校不同专业', knowsBot: true };
@@ -808,6 +809,31 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.at('2026-11-13T21:00:00+08:00'); d.say(girlFriend.qq, '在干嘛');
             await d.at('2026-11-13T23:00:00+08:00'); d.say(girlFriend.qq, '还没睡呀');
             await d.at('2026-11-14T00:30:00+08:00');
+        },
+    },
+    {
+        name: 'her-now-dsh',
+        about: '她此刻在 DSH 线上多的三样（ADR 0336 再合 main 时补）：开着 realNights，她说过睡了之后被男朋友吵醒（起床气）、第二天早上身体那一行带上昨晚怎么睡的；她自己定的计划（her-plan.json）排进两天后晚上的空闲时段',
+        start: '2026-10-20T21:00:00+08:00',
+        contacts: [boyfriend],
+        config: { ...RICH, proactive: 'off', realNights: true },
+        seed: dataDir => saveHerPlan(dataDir, { date: '2026-10-23', window: 'evening', text: '把上周拍的照片修完', at: '2026-10-23T08:00:00+08:00' }),
+        reply: () => {
+            const chat = rotating(CHAT_LINES);
+            return (call: LlmCall) => {
+                const last = call.messages.findLast(m => m.role === 'user');
+                if (typeof last?.content === 'string' && last.content.includes('困了吗')) return '困死了\n我先睡了，晚安';
+                return chat(call);
+            };
+        },
+        script: async d => {
+            await d.at('2026-10-20T23:30:00+08:00'); d.say(boyfriend.qq, '困了吗');
+            await d.at('2026-10-21T00:40:00+08:00'); d.say(boyfriend.qq, '睡了吗');
+            await d.wait(20_000); d.say(boyfriend.qq, '醒醒');
+            await d.wait(20_000); d.say(boyfriend.qq, '我睡不着');
+            await d.at('2026-10-21T09:30:00+08:00'); d.say(boyfriend.qq, '早，昨晚睡得好吗');
+            for (const time of ['19:40', '20:20', '21:00']) { await d.at(`2026-10-23T${time}:00+08:00`); d.say(boyfriend.qq, '在干嘛'); }
+            await d.at('2026-10-23T23:00:00+08:00');
         },
     },
 ];
