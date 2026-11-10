@@ -6,7 +6,7 @@
 // 被打断（聊天正在进行时她那边的小事，含他难过时让路）、关系阶段（天天聊之后更放得开；主动、只想一想、小别扭、危机、别的档位）、
 // 陪玩（约了一起打游戏之后的两个多小时；危机、说下了、换个游戏、过了时限、别的档位）、热梗（库里预置的梗放进提示词；不连网学）、
 // 她看视频（预置的看过的记录，他问起时放进提示词；不连网看）、意图阶梯的各个输入、别重复自己（反复说的字词、主动找他的开头、说过了的事）、
-// 她此刻（放完假他刚回学校、她说过睡了之后被吵醒、别人的消息醒了才看到）。
+// 她此刻（放完假他刚回学校、她说过睡了之后被吵醒、别人的消息醒了才看到）、在读的书（问起时放进提示词、说错进度被出口检查重写、睡前看书的时段）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、她自己去看视频、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
@@ -599,6 +599,34 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.wait(20_000); d.say(boyfriend.qq, '我睡不着');
             await d.at('2026-10-09T12:10:00+08:00'); d.say(boyfriend.qq, '中午吃啥');
             await d.at('2026-10-09T15:00:00+08:00');
+        },
+    },
+    {
+        name: 'books',
+        about: '在读的书（ADR 0015，ADR 0263 迁出之前）：他问起在读的书（提示词里放书和进度），她说错了看到第几章、一共几章（出口检查让她重写一次）；同学问起也放；没提过书的女生朋友在她睡前看书的时段问在干嘛',
+        start: '2026-11-12T19:00:00+08:00',
+        contacts: [boyfriend, classmate, girlFriend],
+        config: { ...RICH, proactive: 'off' },
+        reply: () => {
+            const chat = rotating(CHAT_LINES);
+            return (call: LlmCall) => {
+                const last = call.messages.at(-1)?.content ?? '';
+                // 出口检查的重写：改成不带数字的说法
+                if (typeof last === 'string' && /和你的进度对不上/.test(last)) return '记不清看到哪了\n反正还没看完';
+                const his = call.messages.findLast(m => m.role === 'user');
+                if (typeof his?.content === 'string' && his.content.includes('看到第几章')) return '看到第99章了\n一共999章呢';
+                return chat(call);
+            };
+        },
+        script: async d => {
+            await d.at('2026-11-12T19:30:00+08:00'); d.say(boyfriend.qq, '雾港旧事你看到第几章了');
+            await d.at('2026-11-12T20:00:00+08:00'); d.say(boyfriend.qq, '那本书好看吗');
+            await d.at('2026-11-12T23:10:00+08:00'); d.say(boyfriend.qq, '在干嘛呢');
+            await d.at('2026-11-12T23:20:00+08:00'); d.say(classmate.qq, '你最近在看雾港吗');
+            // 第二天晚上她睡前在看书（作息按卡算出来的这两个时刻）
+            await d.at('2026-11-13T21:00:00+08:00'); d.say(girlFriend.qq, '在干嘛');
+            await d.at('2026-11-13T23:00:00+08:00'); d.say(girlFriend.qq, '还没睡呀');
+            await d.at('2026-11-14T00:30:00+08:00');
         },
     },
 ];
