@@ -104,7 +104,8 @@ export const isOpen = (meta) => String(meta.status ?? '').startsWith('open');
 // ---------- Git ----------
 
 function git(args, opts = {}) {
-    return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts }).trim();
+    // 留言文件名带中文；不关 quotePath 的话 ls-tree 会把它转义成 "\344\277…"，就对不上了
+    return execFileSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts }).trim();
 }
 const tryGit = (args) => { try { return git(args); } catch { return null; } };
 
