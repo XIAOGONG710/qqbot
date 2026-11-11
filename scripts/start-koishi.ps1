@@ -85,7 +85,16 @@ Push-Location $instance
 try {
     # With 'Stop', PowerShell 5.1 turns node's stderr output into a terminating error.
     $ErrorActionPreference = 'Continue'
-    node $koishi start koishi.yml
+    # Node 25+ refuses to strip TypeScript types from files under node_modules, and
+    # koishi-plugin-qqbot's main is src/index.ts (see its package.json). Load tsx so the
+    # plugin (and the .ts it imports from packages/) still runs. Without tsx installed,
+    # fall back to plain node: Koishi still starts, the qqbot plugin just fails to load.
+    $tsxLoader = Join-Path $repoRoot 'node_modules\tsx\dist\loader.mjs'
+    if (Test-Path $tsxLoader) {
+        node --import ([uri]$tsxLoader).AbsoluteUri $koishi start koishi.yml
+    } else {
+        node $koishi start koishi.yml
+    }
     $exitCode = $LASTEXITCODE
 } finally {
     Pop-Location
