@@ -9,9 +9,9 @@ describe('B 站私信读取 + 分享卡片（ADR 0168）', () => {
     test('私信：区分她/他、解析 JSON 正文、图片占位、按时间排序', () => {
         const messages = parseDmMessages({
             messages: [
-                { msg_key: 2, sender_uid: 1820254296, content: '{"content":"看了吗"}', timestamp: 1760000200 },
+                { msg_key: 2, sender_uid: 400000004, content: '{"content":"看了吗"}', timestamp: 1760000200 },
                 { msg_key: 1, sender_uid: 3747573363903633, content: '{"content":"给你发个视频"}', timestamp: 1760000100 },
-                { msg_key: 3, sender_uid: 1820254296, content: '{"type":2}', timestamp: 1760000300 },
+                { msg_key: 3, sender_uid: 400000004, content: '{"type":2}', timestamp: 1760000300 },
             ],
         }, 3747573363903633);
         assert.equal(messages.length, 3);

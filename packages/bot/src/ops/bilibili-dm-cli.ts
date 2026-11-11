@@ -19,7 +19,7 @@ const fail = (code: string, message: string, hint: string, exit: number): never 
     process.exit(exit);
 };
 
-if (!Number.isSafeInteger(uid) || uid <= 0) fail('invalid_argument', '缺少对方的 uid', '例如：--uid 1820254296', 2);
+if (!Number.isSafeInteger(uid) || uid <= 0) fail('invalid_argument', '缺少对方的 uid', '例如：--uid 400000004', 2);
 const credential = loadCredential(credentialPath(dataDir)) ?? fail('not_logged_in', `没有登录凭证：${credentialPath(dataDir)}`, '先跑 bilibili-login-cli', 3);
 const account = (await openAccount(realRequest, credential)) ?? fail('auth_expired', 'B 站说这个凭证不能用了', '重新扫码登录', 3);
 const fetchDms = account.fetchDms ?? fail('not_supported', '这个账号实现没有读私信的能力', '检查代码版本', 1);

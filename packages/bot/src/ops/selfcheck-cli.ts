@@ -1,6 +1,7 @@
 // node src/ops/selfcheck-cli.ts [--chat <聊天 jsonl>]... [--limit 10] [--max-chars 25] [--card <角色卡 json>] [--prompt]
 // 人格自检（ADR 0167）：最近十条回复对照设定卡，只出线索，不改任何东西、不发群。
-//   --chat    聊天记录（可多次；默认 <数据目录>/chats/2260168937.jsonl，数据目录默认 runtime/bot）
+//   --chat    聊天记录（可多次；默认 <数据目录>/chats/<QQBOT_OWNER_QQ>.jsonl，数据目录默认 runtime/bot；
+//             没设环境变量 QQBOT_OWNER_QQ 时必须给 --chat）
 //   --card    哪一档的卡（默认 characters/linmengyao/st/linmengyao-{tier}.json；--tier 选档，默认 boyfriend）
 //   --prompt  额外打印交给模型逐条判断的提示词（需要模型时自己贴给任意模型；本工具不调模型、不花 token）
 // 例子只截短、只取她的话；他的话一个字都不出现。
@@ -19,7 +20,12 @@ const abs = (path: string) => resolve(process.env.INIT_CWD ?? process.cwd(), pat
 const tier = one('--tier') ?? 'boyfriend';
 const dir = resolve(repoRoot, one('--dir') ?? 'runtime/bot');
 const chats = all('--chat').map(abs);
-const paths = chats.length ? chats : [resolve(dir, `chats/2260168937.jsonl`)];
+const ownerQq = process.env.QQBOT_OWNER_QQ?.trim();
+if (!chats.length && !/^\d+$/.test(ownerQq ?? '')) {
+    console.error('没有指定聊天记录：用 --chat <聊天 jsonl>，或设环境变量 QQBOT_OWNER_QQ（他的 QQ 号）');
+    process.exit(2);
+}
+const paths = chats.length ? chats : [resolve(dir, `chats/${ownerQq}.jsonl`)];
 const cardPath = abs(one('--card') ?? resolve(repoRoot, `characters/linmengyao/st/linmengyao-${tier}.json`));
 const limit = Number(one('--limit') ?? 10);
 const maxChars = Number(one('--max-chars') ?? 25);

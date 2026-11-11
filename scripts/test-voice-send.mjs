@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs';
 import WebSocket from 'ws';
 
 const wav = process.argv[2];
-const qq = Number(process.argv[3] ?? 2260168937);
-if (!wav) {
-    console.error('用法：node scripts/test-voice-send.mjs <wav> [QQ号]');
+const qq = Number(process.argv[3] ?? process.env.QQBOT_OWNER_QQ);
+if (!wav || !Number.isSafeInteger(qq) || qq <= 0) {
+    console.error('用法：node scripts/test-voice-send.mjs <wav> [QQ号]（不给 QQ 号时读环境变量 QQBOT_OWNER_QQ）');
     process.exit(2);
 }
 const token = process.env.QQBOT_ONEBOT_TOKEN

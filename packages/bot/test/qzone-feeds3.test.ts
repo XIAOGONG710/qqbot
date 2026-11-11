@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { friendsFeedUrl, htmlToText, parseFriendsFeed, parseJsLiteral, postTextFromHtml, readFriendsFeed } from '../src/social/qzone-feeds3.ts';
 
-const SELF = 2561299676;
-const BOYFRIEND = 2260168937;
+const SELF = 200000002;
+const BOYFRIEND = 100000001;
 
 /** Qzone 把 html 放进单引号字符串时的转义方式：< → \x3C，" → \x22，/ → \/，' → \x27 */
 const esc = (html: string): string => html.replace(/</g, '\\x3C').replace(/"/g, '\\x22').replace(/\//g, '\\/').replace(/'/g, '\\x27');
@@ -99,7 +99,7 @@ describe('好友动态流（ADR 0145）', () => {
     });
 
     test('读一页：正常返回；非 200 / 网络错误 / 结构变了都是 undefined；请求带 cookie', async () => {
-        const session = { cookie: 'uin=o2561299676; p_skey=abc', gtk: 1, uin: SELF };
+        const session = { cookie: 'uin=o200000002; p_skey=abc', gtk: 1, uin: SELF };
         let seen = '';
         const ok = await readFriendsFeed({ session, fetch: async (_url, init) => { seen = init.headers.cookie ?? ''; return { ok: true, status: 200, text: async () => feed([ownPost, friendPost, adItem]) }; } });
         assert.equal(ok?.length, 1);

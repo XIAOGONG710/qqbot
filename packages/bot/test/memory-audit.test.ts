@@ -67,12 +67,12 @@ describe('记忆账本', () => {
 
     test('忘掉联系人记 forget（只记 id 数量、联系人只留哈希）；演练另记；手写说明记 note；摘要里按种类数', () => {
         const { ledger } = setup();
-        recordForget(ledger, 2260168937, { applied: true, deleted: { banks: ['b1'], documents: ['d1', 'd2'], mentalModels: ['m1'] }, trash: 'runtime/privacy-trash/x', failures: [] });
-        recordForget(ledger, 2260168937, { applied: false, plan: { hindsight: { banks: ['b1'], documents: ['d1'], mentalModels: [] } } });
+        recordForget(ledger, 100000001, { applied: true, deleted: { banks: ['b1'], documents: ['d1', 'd2'], mentalModels: ['m1'] }, trash: 'runtime/privacy-trash/x', failures: [] });
+        recordForget(ledger, 100000001, { applied: false, plan: { hindsight: { banks: ['b1'], documents: ['d1'], mentalModels: [] } } });
         recordNote(ledger, '10-25 把“笔记本明天到”那条错的记忆标为作废', 'user');
         const kinds = ledger.read().map(e => e.kind);
         assert.deepEqual(kinds, ['forget', 'forget-dry-run', 'note']);
-        assert.ok(!JSON.stringify(ledger.read()[0]).includes('2260168937'), '联系人 QQ 号不明文记');
+        assert.ok(!JSON.stringify(ledger.read()[0]).includes('100000001'), '联系人 QQ 号不明文记');
         assert.deepEqual([ledger.read()[0]!.data.documents, ledger.read()[0]!.data.mentalModels], [2, 1]);
         const text = summarize(ledger);
         assert.match(text, /验过了/);

@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { cookieHeader, gTk, jsonpBody, parseUserFeed, readUserQzone, sessionFromCookies, userFeedUrl } from '../src/social/qzone-remote.ts';
 
 const cookies = [
-    { name: 'uin', value: 'o2561299676', domain: 'qzone.qq.com' },
+    { name: 'uin', value: 'o200000002', domain: 'qzone.qq.com' },
     { name: 'p_skey', value: 'abc', domain: 'qzone.qq.com' },
     { name: 'skey', value: 's', domain: 'qzone.qq.com' },
 ];
@@ -11,21 +11,21 @@ const cookies = [
 describe('看别人的空间（ADR 0143）', () => {
     test('cookie 头：要有 p_skey 或 skey；uin 的 o 前缀去掉', () => {
         const header = cookieHeader(cookies);
-        assert.match(header ?? '', /uin=o2561299676/);
+        assert.match(header ?? '', /uin=o200000002/);
         assert.match(header ?? '', /p_skey=abc/);
         assert.equal(cookieHeader([{ name: 'uin', value: 'o1' }]), undefined);
         const session = sessionFromCookies(cookies);
         assert.equal(session?.gtk, gTk('abc'));
-        assert.equal(session?.uin, 2561299676);
+        assert.equal(session?.uin, 200000002);
         assert.equal(sessionFromCookies([{ name: 'skey', value: 'x' }])?.gtk, gTk('x'), '没有 p_skey 时退回 skey');
     });
 
     test('NapCat get_cookies 的真实形状（cookies 是一整串，另给 bkn）也能取到登录态', () => {
-        const real = { cookies: 'uin=o2561299676; skey=@s; p_skey=abc', bkn: '123' };
+        const real = { cookies: 'uin=o200000002; skey=@s; p_skey=abc', bkn: '123' };
         assert.match(cookieHeader(real) ?? '', /p_skey=abc/);
         const session = sessionFromCookies(real);
         assert.equal(session?.gtk, gTk('abc'));
-        assert.equal(session?.uin, 2561299676);
+        assert.equal(session?.uin, 200000002);
         assert.equal(sessionFromCookies('uin=o1; p_skey=abc')?.gtk, gTk('abc'), '裸字符串也认');
         assert.equal(sessionFromCookies({ cookies: 'uin=o1', bkn: '' }), undefined, '没有 p_skey / skey 就是没有登录态');
         assert.equal(sessionFromCookies({ cookies: '', bkn: '' }), undefined);

@@ -4,7 +4,11 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const qq = process.argv[2] || '2260168937'
+const qq = process.argv[2] || process.env.QQBOT_OWNER_QQ
+if (!qq || !/^\d+$/.test(qq)) {
+    console.error('用法：node scripts/watch-messages.mjs <QQ号> [启动时回看几条]（不给 QQ 号时读环境变量 QQBOT_OWNER_QQ）')
+    process.exit(2)
+}
 const back = Number(process.argv[3] ?? 30)
 const root = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 const file = join(root, 'runtime', 'bot-shadow', 'chats', `${qq}.jsonl`)

@@ -1,3 +1,4 @@
+# 2026-11-12 脱敏：QQ 号、B 站 uid 已换成占位数字（200000002 她 / 100000001 他 / 300000003 另一位联系人 / 400000004 B 站），不是真实号码。
 plugins:
   server:5sf31h:
     host: 127.0.0.1
@@ -17,14 +18,14 @@ plugins:
   adapter-onebot:pozroc:
     protocol: ws
     endpoint: ws://127.0.0.1:3001
-    selfId: '2561299676'
+    selfId: '200000002'
     token: <已脱敏>
   qqbot:hkuy2a:
     contacts:
-      - qq: 2260168937
+      - qq: 100000001
         name: 宝宝
         tier: boyfriend
-      - qq: 2306669773
+      - qq: 300000003
         name: 鸽鸽
         tier: known
         persona: 比我们大一点，已经工作，现在在国外；说话比我们稳，别用同学口气。
@@ -53,7 +54,7 @@ plugins:
     bilibiliDm: 'on'
     bilibiliComment: 'on'
     bilibiliReplies: 'on'
-    bilibiliAtUid: 1820254296
+    bilibiliAtUid: 400000004
     bilibiliAtName: 穹P
     watching: true
     biliFeed: 'on'

@@ -8,7 +8,7 @@ function fakeCall(record: string[] = [], fail: ReadonlySet<string> = new Set()) 
     return async (action: string, params: Record<string, unknown>): Promise<unknown> => {
         record.push(`${action}:${JSON.stringify(params)}`);
         if (fail.has(action)) throw new Error('napcat 没有这个动作');
-        if (action === 'get_login_info') return { user_id: 2561299676, nickname: '梦瑶' };
+        if (action === 'get_login_info') return { user_id: 200000002, nickname: '梦瑶' };
         if (action === 'get_friend_list') return [{ user_id: 1 }, { user_id: 2 }];
         if (action === 'get_group_list') return [{ group_id: 1 }];
         return { ok: true };
@@ -90,7 +90,7 @@ describe('账号控制面的闸（ADR 0142）', () => {
         assert.equal(inventory.friends, 2);
         assert.equal(inventory.groups, 0);
         assert.deepEqual(inventory.unsupported, ['get_group_list']);
-        assert.equal(inventory.login?.uin, 2561299676);
+        assert.equal(inventory.login?.uin, 200000002);
     });
 });
 

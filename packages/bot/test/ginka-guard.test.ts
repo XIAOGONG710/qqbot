@@ -10,8 +10,8 @@ const repoRoot = resolve(import.meta.dirname, '../../..');
 describe('免费网关（第三方）不该看到的东西（用户 10-31：「不想让他们读」聊天记录）', () => {
     test('聊天记录、语料、样本（.jsonl）、runtime 数据、密钥：拒绝；Windows 路径和绝对路径也拦', () => {
         for (const path of [
-            'runtime/bot-shadow/chats/2260168937.jsonl',
-            'C:\\Users\\XG\\Desktop\\qqbot-dsh-control\\runtime\\bot-shadow\\chats\\2260168937.jsonl',
+            'runtime/bot-shadow/chats/100000001.jsonl',
+            'C:\\Users\\XG\\Desktop\\qqbot-dsh-control\\runtime\\bot-shadow\\chats\\100000001.jsonl',
             'runtime/bot-shadow/exemplars/corpus.jsonl',
             'exchange/research/2026-10-real-chat/v2/samples.jsonl',
             'exchange/migration/vm-20261027/chats.txt',
@@ -46,7 +46,7 @@ describe('免费网关（第三方）不该看到的东西（用户 10-31：「�
             tasks: [
                 { id: '代码审阅|packages\\bot\\src\\language\\reply.ts|1', name: '代码审阅', status: 'pending' },
                 { id: 'ADR 摘要|docs\\adr\\0207-open-questions.md|1', name: 'ADR 摘要', status: 'pending' },
-                { id: '语料诊断|runtime\\bot-shadow\\chats\\2260168937.jsonl|7', name: '语料诊断', status: 'pending', prompt: '宝宝：……（聊天原文）' },
+                { id: '语料诊断|runtime\\bot-shadow\\chats\\100000001.jsonl|7', name: '语料诊断', status: 'pending', prompt: '宝宝：……（聊天原文）' },
                 { id: '语料诊断|runtime\\bot-shadow\\exemplars\\corpus.jsonl|2', name: '语料诊断', status: 'done' },
                 { id: '别的名字|runtime/bot-shadow/chats/x.jsonl|1', name: '别的名字', status: 'pending' },
             ],
@@ -69,7 +69,7 @@ describe('免费网关（第三方）不该看到的东西（用户 10-31：「�
             for (const task of tasks) for (const file of task.files ?? []) assert.equal(privateReason(file), undefined, `${name} / ${task.name} / ${file}`);
         }
         const worker = readFileSync(resolve(repoRoot, 'scripts/ginka-worker.mjs'), 'utf8');
-        assert.ok(!/chats[\\/'",]|2260168937|corpus\.jsonl/.test(worker.replace(/\/\/.*$/gm, '')), '补活里没有聊天记录 / 语料的路径');
+        assert.ok(!/chats[\\/'",]|100000001|corpus\.jsonl/.test(worker.replace(/\/\/.*$/gm, '')), '补活里没有聊天记录 / 语料的路径');
         assert.ok(worker.includes('scrubQueue') && worker.includes('privateReason'), '工人开工前会清队列、补活会过守卫');
         const batch = readFileSync(resolve(repoRoot, 'scripts/ginka-batch.mjs'), 'utf8');
         assert.ok(batch.includes('privateReason(file)'), '批量驱动读文件前会过守卫');

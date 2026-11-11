@@ -12,21 +12,21 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 describe('/亲热：十条临时黏一点（ADR 0170）', () => {
     test('默认十条，取到 0 就没了；状态落盘，重启不丢', () => {
         const dir = tmp();
-        armIntimate(dir, 2260168937);
-        assert.equal(intimateRemaining(dir, 2260168937), INTIMATE_REPLIES);
+        armIntimate(dir, 100000001);
+        assert.equal(intimateRemaining(dir, 100000001), INTIMATE_REPLIES);
         for (let index = 0; index < INTIMATE_REPLIES; index += 1) {
-            const line = takeIntimateLine(dir, 2260168937);
+            const line = takeIntimateLine(dir, 100000001);
             assert.ok(line && line.includes('亲热'), `第 ${index + 1} 条应有提示`);
         }
-        assert.equal(takeIntimateLine(dir, 2260168937), undefined);
-        assert.equal(intimateRemaining(dir, 2260168937), 0);
+        assert.equal(takeIntimateLine(dir, 100000001), undefined);
+        assert.equal(intimateRemaining(dir, 100000001), 0);
     });
 
     test('只认那个 QQ；别人没有', () => {
         const dir = tmp();
-        armIntimate(dir, 2260168937, 3);
-        assert.equal(takeIntimateLine(dir, 2306669773), undefined);
-        assert.equal(intimateRemaining(dir, 2260168937), 3);
+        armIntimate(dir, 100000001, 3);
+        assert.equal(takeIntimateLine(dir, 300000003), undefined);
+        assert.equal(intimateRemaining(dir, 100000001), 3);
     });
 
     test('再发一次重置为十条', () => {
