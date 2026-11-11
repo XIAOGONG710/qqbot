@@ -1,0 +1,17 @@
+{
+  "name": "@qqbot/chat-bridge",
+  "version": "0.0.0",
+  "private": true,
+  "description": "她自己的聊天软件的服务端：OneBot 11 中继（Koishi ↔ 中继 ↔ NapCat / 手机 App），ADR 0337",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "start": "node src/main.ts",
+    "pair": "node src/cli.ts pair",
+    "devices": "node src/cli.ts devices"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

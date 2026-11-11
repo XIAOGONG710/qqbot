@@ -1,0 +1,11 @@
+{
+  "name": "@qqbot/chat-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "她自己的聊天软件的手机端（零依赖 PWA），由 @qqbot/chat-bridge 同源托管，ADR 0337",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "node --test \"test/**/*.test.ts\""
+  }
+}
