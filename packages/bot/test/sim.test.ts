@@ -694,3 +694,24 @@ describe('模拟器挂着在读的书的模块（ADR 0336）', () => {
         assert.match(prompts[0]!, /\[在读的书：/);
     });
 });
+
+describe('模拟器挂着她的过去的模块（ADR 0336）', () => {
+    // 行为基线走的是 App，模拟器这一路的接线由这里兜：没挂模块，这一段就没有
+    test('他说到卡上自传的线索：提示词里有想起的从前', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-past-sim-'));
+        const prompts: string[] = [];
+        try {
+            await runScenario(parseScenario({
+                name: 'past', tier: 'boyfriend', start: '2026-10-25T20:00:00+08:00', memory: false, schedule: false,
+                steps: [{ say: '在干嘛' }, { advance: '20m' }, { say: '你小时候养过猫吗' }, { advance: '10m' }],
+            }), {
+                runId: 'past', dataDir: dir, card, llm, prompt, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages.map(m => String(m.content)).join('\n')); return '嗯嗯'; },
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+        assert.doesNotMatch(prompts[0]!, /\[你想起的从前/);
+        assert.match(prompts.at(-1)!, /\[你想起的从前[\s\S]*- 小时候养过猫：/);
+    });
+});

@@ -54,7 +54,6 @@ import { describePursuits, pursuitViews, type Pursuit } from '.././life/pursuits
 import type { FeelingsReport } from '../emotion/feeling-export.ts';
 import { appraisals, asksAfterHer, criedRecently, describeFeelings, FEELING_NAME, feelingsAt, feelsLow, voicedKinds, type Appraisal, type Felt, type Moment } from '.././emotion/feelings.ts';
 import { describeRecentPhotography, recentPhotography } from '.././life/projects.ts';
-import { describePast, pastCue } from '.././life/biography.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
 import { mentionsMeetup, type PromiseKeeper } from '.././life/promises.ts';
 import { formatDate, herDay, type ExtraFreeActivity } from '.././life/schedule.ts';
@@ -428,7 +427,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let quoteNow: QuotePlan | undefined;
     /** 这一轮拼出来的提示词（ST 后处理之前，system 还是 system）：事实检查拿它当“她能依据的事实”（ADR 0137） */
     let promptSource: OpenAIMessage[] | undefined;
-    // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
+    // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022，modules/past.ts）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
     // 那天她心里有依据的感觉（ADR 0218，memoryFeelings）：那天晚上的世界、前一天留下的、作者写下的、她聊完回想记下的；
@@ -615,16 +614,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
             const body = bodyNow ? describeBody(bodyNow) : undefined;
             const mood = herSchedule ? moodAt(herSchedule, character.moods, time, options.mood, { body: bodyNow, world: around }) : undefined;
-            // 她的过去（ADR 0022）：他说到卡上某块的线索才想起；主动找他时不想
-            const biography = character.biography;
-            let pastChunks = biography && !initiate ? pastCue(chat, biography) : [];
-            if (pastChunks.length) {
-                log(`想起从前：${pastChunks.map(chunk => chunk.title).join('、')}`);
-            } else if (biography && !initiate) {
-                pastChunks = lingering(chat, time.getTime(), upTo => nonEmpty(pastCue(upTo, biography)))?.found ?? [];
-                if (pastChunks.length) log(`从前沿用刚才想起的：${pastChunks.map(chunk => chunk.title).join('、')}`);
-            }
-            const past = biography ? describePast(pastChunks, biography) : undefined;
+            // 她的过去（ADR 0022）是解释器的模块（modules/past.ts），经 turnModules 放进 past 槽
             // 他说起她身边的人（ADR 0033）：那人最近两周怎么样，她知道的；主动找他时不想
             const herPeople = character.herWorld && herSchedule && !initiate ? character.herWorld.people : undefined;
             let npcs = herPeople ? npcMentioned(chat, herPeople) : [];
@@ -936,7 +926,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('common', common),
                 ...(recap ? [{ slot: 'recap' as const, text: recap.text }] : []),
                 ...when('today', today),
-                ...when('past', past),
                 ...aboutNpcs.map(text => ({ slot: 'npcs' as const, text })),
                 ...peopleText.map(text => ({ slot: 'people' as const, text })),
                 ...(common || today || peopleText.length ? [{ slot: 'disclosure' as const, text: disclosureRules(contact) }] : []),

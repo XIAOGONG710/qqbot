@@ -31,6 +31,7 @@ import { UNSURE_LINE } from '../src/language/asks.ts';
 import { repetitionModule, repetitionPieces } from '../src/modules/repetition.ts';
 import { herNowModule } from '../src/modules/her-now.ts';
 import { booksModule } from '../src/modules/books.ts';
+import { pastModule } from '../src/modules/past.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
 import type { Contact } from '../src/platform/config.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -899,5 +900,43 @@ describe('在读的书模块（ADR 0015 / 0336）', () => {
             assert.equal(facts.books, undefined);
             assert.deepEqual(pieces, []);
         }
+    });
+});
+
+describe('她的过去模块（ADR 0022 / 0336）', () => {
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend').character;
+    const classmateCard = loadTierCard(syntheticCardPattern, 'classmate').character;
+    const at = new Date('2026-11-18T19:30:00+08:00');
+    const iso = (minutes: number) => new Date(at.getTime() + minutes * 60_000).toISOString();
+    const asked: Turn['history'] = [{ role: 'user', content: '你小时候养过猫吗', time: iso(0) }];
+    const followUp: Turn['history'] = [...asked, { role: 'assistant', content: '养过呀', time: iso(1) }, { role: 'user', content: '那后来呢', time: iso(3) }];
+    const turnOf = (patch: Partial<Turn> = {}): Turn => ({ contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: asked, thinking: false, card, facts: {}, ...patch });
+    const run = (t: Turn) => { const logs: string[] = []; return { pieces: pastModule(line => logs.push(line)).contribute!(t) as Piece[], logs }; };
+    test('他说到线索：想起的那一块和这一档的年表放进 past 槽并记日志；没有线索不放', () => {
+        const { pieces, logs } = run(turnOf());
+        assert.equal(pieces.length, 1);
+        assert.equal(pieces[0]!.slot, 'past');
+        assert.match(pieces[0]!.text, /^\[你想起的从前（[\s\S]*- 小时候养过猫：[\s\S]*你的年表：.*大一：认识了阿测$/);
+        assert.deepEqual(logs, ['[1] 想起从前：小时候养过猫']);
+        assert.deepEqual(run(turnOf({ history: [{ role: 'user', content: '在干嘛', time: iso(0) }] })), { pieces: [], logs: [] });
+    });
+    test('追问没有线索：十分钟以内沿用刚才想起的，过了就不放', () => {
+        const still = run(turnOf({ history: followUp, at: new Date(at.getTime() + 3 * 60_000) }));
+        assert.match(still.pieces[0]!.text, /小时候养过猫/);
+        assert.deepEqual(still.logs, ['[1] 从前沿用刚才想起的：小时候养过猫']);
+        assert.deepEqual(run(turnOf({ history: followUp, at: new Date(at.getTime() + 12 * 60_000) })).pieces, []);
+    });
+    test('主动找他时不想（他的话还没回、刚想起过都不算）；危机、别的档位照样放，按这一轮的卡', () => {
+        const initiate = { note: '[主动]' } as NonNullable<Turn['initiate']>;
+        assert.deepEqual(run(turnOf({ initiate })), { pieces: [], logs: [] });
+        assert.deepEqual(run(turnOf({ initiate, history: followUp.slice(0, 2), at: new Date(at.getTime() + 3 * 60_000) })), { pieces: [], logs: [] });
+        assert.equal(run(turnOf({ facts: { crisis: { level: 'high' } as never } })).pieces.length, 1);
+        const classmate = run(turnOf({ contact: { qq: 2, name: '小周', tier: 'classmate' }, card: classmateCard }));
+        assert.match(classmate.pieces[0]!.text, /你的年表：小学：在郊区的小学读书$/);
+        assert.deepEqual(run(turnOf({ card: classmateCard, history: [{ role: 'user', content: '你高考考得怎么样', time: iso(0) }] })).pieces, []);
+    });
+    test('没有卡、卡上没有自传：不放', () => {
+        assert.deepEqual(run(turnOf({ card: undefined })).pieces, []);
+        assert.deepEqual(run(turnOf({ card: { ...card, biography: undefined } })).pieces, []);
     });
 });
