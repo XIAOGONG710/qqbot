@@ -14,9 +14,9 @@ for (const batch of readdirSync(SIM)) for (const scen of readdirSync(join(SIM, b
     }
 const C = '[^，。！？、,.!?\s]';
 const NOQ = '(?![^，,。！？!?]*(?:吗|呢|么|[?？]))';
-const F1 = new RegExp(`你倒是(?:回(?:家|去|青岛|老家)|玩|在家|舒服|潇洒|爽|开心|过得|自在)`);
+const F1 = new RegExp(`你倒是(?:回(?:家|去|老家|老家)|玩|在家|舒服|潇洒|爽|开心|过得|自在)`);
 const REVERSE = new RegExp(`你${NOQ}${C}{0,8}(?:舒服|舒坦|爽|潇洒|逍遥|滋润|快活)`);
-const HIS = new RegExp(`你${NOQ}${C}{0,8}(?:回家|在家|家里|回青岛|那边|那头|那儿|玩|爬山|海边|吃香的|大餐|开心|乐呵|舒服|舒坦|爽|潇洒)`);
+const HIS = new RegExp(`你${NOQ}${C}{0,8}(?:回家|在家|家里|回老家|那边|那头|那儿|玩|爬山|海边|吃香的|大餐|开心|乐呵|舒服|舒坦|爽|潇洒)`);
 const STRONG = new RegExp(`留我一个人|就剩我一个|就我一个人?|我一个人(?:在|蹲|守|留|待)|留守|啃食堂|发霉|苦哈哈`);
 const WEAK = new RegExp(`我(?:在)?(?:这边|这头|这儿|这里)`);
 const ALONE = new RegExp(`没(?:带|算|给|留)我(?:的)?(?:份儿?|一份)|(?:啃|吃)(?:食堂)?剩(?:菜|饭)|喝西北风|咱俩${C}{0,8}(?:不一样|天差地别)`);

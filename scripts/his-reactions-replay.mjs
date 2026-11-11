@@ -1,7 +1,7 @@
 // ADR 0212「看他的反应」用真实记录回放（只读，不写任何东西、不调模型、不发 QQ）。
 // 只打印话题和次数、以及她那一刻会看到的那一行（那一行本身不带任何原话）；不打印聊天内容。
 // 用法：node scripts/his-reactions-replay.mjs <数据目录> <他的 QQ> [档位=boyfriend] [人名,人名]
-//   例：node scripts/his-reactions-replay.mjs runtime/bot-shadow <他的QQ号> boyfriend 陈佳宁,苏雨桐
+//   例：node scripts/his-reactions-replay.mjs runtime/bot-shadow <他的QQ号> boyfriend 高中闺蜜,大学闺蜜
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { hisReactions, reactionsLine, reactionsLog, reactionTo } from '../packages/bot/src/proactive/his-reactions.ts';
