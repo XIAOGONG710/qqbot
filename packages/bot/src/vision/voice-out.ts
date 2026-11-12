@@ -98,7 +98,9 @@ export async function speakViaHttp(text: string, options: VoiceHttpOptions): Pro
         top_k: 15,
         top_p: 0.9,
         temperature: options.temperature ?? 0.85,
-        text_split_method: 'cut5',
+        // cut5 会按标点把一句话切成多段、只返回第一段（2026-11-12 实测：整句 4.1s 只出 2.6s）。
+        // 语音条本来就是一句 60 字以内，直接 cut0。
+        text_split_method: 'cut0',
         batch_size: 1,
         speed_factor: 1.0,
         seed: -1,
