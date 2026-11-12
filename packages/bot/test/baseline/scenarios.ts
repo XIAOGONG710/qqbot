@@ -872,4 +872,44 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.at('2026-11-18T22:10:00+08:00');
         },
     },
+    {
+        name: 'people',
+        about: '她身边的人（ADR 0033，ADR 0336 迁出之前）：他说起卡上的室友 / 高中闺蜜（全名或名字后两个字）才放那人最近两周；追问没有名字，她回过两次、十分钟以内沿用，之后不再放；一句话说起两个人放两段；只说「你室友」不算；她说了等下之后自己回来的那一轮（主动找他）不想；女生朋友的卡里室友有名字（放）、闺蜜没有名字（不放）；同学的卡里没有人（不放）；危机的话里带着名字（照样放）。说起她身边的人的那一轮不加「回很短」、形状按认真接话算',
+        start: '2026-09-29T18:00:00+08:00',
+        contacts: [boyfriend, classmate, girlFriend],
+        config: { ...RICH, shortReplies: true },
+        reply: () => {
+            const chat = rotating(['嗯嗯', '是呀', '怎么啦', '好']);
+            let away = false;
+            return (call: LlmCall) => {
+                const his = call.messages.findLast(m => m.role === 'user');
+                // 她说了等下（只说这一次）：过几分钟自己回来说一声（ADR 0112），那一轮是她主动找他
+                if (!away && typeof his?.content === 'string' && his.content.includes('再说说小禾')) { away = true; return '等下\n我去拿个快递'; }
+                return chat(call);
+            };
+        },
+        script: async d => {
+            await d.at('2026-09-29T18:30:00+08:00'); d.say(boyfriend.qq, '小禾最近怎么样');
+            await d.at('2026-09-29T18:33:00+08:00'); d.say(boyfriend.qq, '那她现在呢');
+            await d.at('2026-09-29T18:36:00+08:00'); d.say(boyfriend.qq, '严重吗');
+            await d.at('2026-09-29T18:39:00+08:00'); d.say(boyfriend.qq, '好吧');
+            await d.at('2026-09-29T18:50:00+08:00'); d.say(boyfriend.qq, '再说说小禾呗');
+            await d.at('2026-09-29T19:20:00+08:00'); d.say(boyfriend.qq, '林小满和许小禾你更喜欢跟谁玩');
+            await d.at('2026-09-29T19:35:00+08:00'); d.say(boyfriend.qq, '那后来呢');
+            await d.at('2026-09-29T19:45:00+08:00'); d.say(boyfriend.qq, '你室友呢');
+            await d.at('2026-09-29T19:55:00+08:00'); d.say(boyfriend.qq, '小满最近忙吗');
+            await d.at('2026-09-29T20:05:00+08:00'); d.say(boyfriend.qq, '小禾感冒好了没');
+            await d.at('2026-09-29T20:15:00+08:00'); d.say(boyfriend.qq, '许小禾今天跟你一起吃饭了吗');
+            await d.at('2026-09-29T20:25:00+08:00'); d.say(boyfriend.qq, '小满这周回家了吗');
+            await d.at('2026-09-29T20:35:00+08:00'); d.say(boyfriend.qq, '哦');
+            await d.at('2026-09-29T20:45:00+08:00'); d.say(boyfriend.qq, '小禾');
+            await d.at('2026-09-29T20:55:00+08:00'); d.say(girlFriend.qq, '许小禾是谁呀');
+            await d.at('2026-09-29T21:00:00+08:00'); d.say(girlFriend.qq, '那林小满呢');
+            await d.at('2026-09-29T21:05:00+08:00'); d.say(classmate.qq, '许小禾最近怎么样');
+            await d.at('2026-09-29T21:15:00+08:00'); d.say(boyfriend.qq, '我不想活了，小禾她们都不理我');
+            await d.wait(10 * 60_000);
+            d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
+            await d.at('2026-09-29T21:50:00+08:00');
+        },
+    },
 ];
