@@ -96,8 +96,9 @@ export function loadReviewState(dataDir: string): ReviewState {
     return { notes, days: days as ReviewState['days'], rejected, lastReflectionAt: num(raw.lastReflectionAt), lastAttemptAt: num(raw.lastAttemptAt), attempts };
 }
 
-export function saveReviewState(dataDir: string, state: ReviewState): void {
-    const keepFrom = dayKey(Date.now() - KEEP_DAYS * DAY);
+/** now：按谁的钟清旧个数（回顾用的是 deps.now，测试和模拟器里不是真实时间） */
+export function saveReviewState(dataDir: string, state: ReviewState, now = Date.now()): void {
+    const keepFrom = dayKey(now - KEEP_DAYS * DAY);
     const days = Object.fromEntries(Object.entries(state.days).filter(([day]) => day >= keepFrom));
     writeJsonAtomic(reviewPath(dataDir), { ...state, days });
 }
@@ -278,7 +279,7 @@ export async function reviewChatIfDue(deps: ReviewDeps): Promise<ReviewResult> {
     state.days[dayKey(now)] = { ...counts, replies };
     state.lastAttemptAt = now;
     state.attempts = state.attempts.day === dayKey(now) ? { day: state.attempts.day, n: state.attempts.n + 1 } : { day: dayKey(now), n: 1 };
-    saveReviewState(deps.dataDir, state);
+    saveReviewState(deps.dataDir, state, now);
     try {
         const reply = await deps.generate(reviewMessages({ char: deps.names.char, user: deps.names.user, persona: deps.persona(), now, flags, counts, replies, notes: state.notes, days: state.days }));
         const decision = parseReviewDecision(reply);
@@ -290,7 +291,7 @@ export async function reviewChatIfDue(deps: ReviewDeps): Promise<ReviewResult> {
         const his = messages.filter(m => m.role === 'user' && Date.parse(m.time) >= now - 7 * DAY).map(m => m.content);
         const applied = applyReviewDecision(fresh, decision, his, now);
         fresh.lastReflectionAt = now;
-        saveReviewState(deps.dataDir, fresh);
+        saveReviewState(deps.dataDir, fresh, now);
         deps.log(`聊天回顾：晚上看了一次（回了 ${replies} 次；${FLAG_KINDS.map(kind => `${FLAG_NAME[kind].slice(0, 6)} ${counts[kind]}`).join('，')}）——记下 ${applied.added} 条、放下 ${applied.retired} 条${applied.rejected ? `、没收 ${applied.rejected} 条` : ''}`);
         return { ran: true, applied };
     } catch (error) {
