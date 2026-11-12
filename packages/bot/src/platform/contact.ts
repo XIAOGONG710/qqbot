@@ -60,7 +60,6 @@ import { describePick, pickBest, PICKED_INTENTS, type PickRules } from '.././lan
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
 import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
-import { exemplarLine, pickExemplars, type Exemplar } from '.././language/exemplars.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts';
 import { lastNight, withLastNight } from '.././life/nights.ts';
@@ -209,8 +208,6 @@ export interface ContactPipelineOptions {
     photos?: PhotoShelf;
     /** AI 生活照（ADR 0240）：只解析“现在/刚刚”的明确请求；新图只建待审核草稿，返回 approved 才能发匹配编号。 */
     currentAiPhoto?: (request: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => CurrentAiPhotoResult;
-    /** 真人例子（ADR 0190，默认关）：他说完这种话，真人是怎么回的 */
-    exemplars?: readonly Exemplar[];
     /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
     memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
     /** 他问到过去的某一天时，她那天自己写的日记（ADR 0217，默认关）：date 是她的那一天 YYYY-MM-DD */
@@ -697,14 +694,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 小梗（ADR 0114）、他的口头习惯（ADR 0138）是解释器的模块（modules/jokes.ts、modules/idioms.ts），经 turnModules 放进 joke、idiom 槽
             // 网络热梗（ADR 0129）是解释器的模块（modules/memes.ts），经 turnModules 放进 meme 槽
             // 她看视频（ADR 0130）是解释器的模块（modules/watched.ts），经 turnModules 放进 watched 槽
-            // 真人例子（ADR 0190）：只给她看「真人怎么回」，不给她定字数
-            const exemplarNow = options.exemplars?.length && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance
-                ? (() => {
-                    const last = chat.findLast(message => message.role === 'user');
-                    if (!last) return undefined;
-                    return exemplarLine(pickExemplars(options.exemplars!, last.content, { k: 4 }));
-                })() : undefined;
-            if (exemplarNow) log('真人例子：这一轮放了几条真人的回法（日志不记内容）');
+            // 真人例子（ADR 0190）是解释器的模块（modules/exemplars.ts），经 turnModules 放进 exemplar 槽
             // 他这句到底在说什么（2026-10-30）是解释器的模块（modules/reading.ts），经 turnModules 放进 reading 槽
             // 场景应答（2026-10-31：哄睡 / 报错 / 自我怀疑 / 暗号）是解释器的模块（modules/scenes.ts），经 turnModules 放进 scene 槽
             // 多问一句、先表态、拿不准就直说（2026-10-31）是解释器的模块（modules/asks.ts），经 turnModules 放进 askHint、opinion、unsure 槽
@@ -921,7 +911,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 // 追求（「别挂科」「用新相机拍出满意的东西」）也不再注入（10-30 同一条）：她想追什么，自己说。
                 ...when('selfNote', selfNote),
                 ...when('promised', promised),
-                ...when('exemplar', exemplarNow),
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
                 ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
                 // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给

@@ -77,6 +77,7 @@
 - `modules/soul.ts`
 - `modules/her-notes.ts`
 - `modules/playful.ts`
+- `modules/exemplars.ts`
 - `st/`
 
 ## 开关

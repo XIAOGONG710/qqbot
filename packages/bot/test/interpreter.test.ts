@@ -34,6 +34,8 @@ import { booksModule } from '../src/modules/books.ts';
 import { pastModule } from '../src/modules/past.ts';
 import { peopleAroundModule } from '../src/modules/people-around.ts';
 import { MEETUP_SOURCE_UNAVAILABLE, meetupModule, type MeetupModuleOptions } from '../src/modules/meetup.ts';
+import { exemplarsModule } from '../src/modules/exemplars.ts';
+import type { Exemplar } from '../src/language/exemplars.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
 import type { Contact } from '../src/platform/config.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -1035,5 +1037,39 @@ describe('他提到见面模块（ADR 0066 / 0336）', () => {
         const withHim = run(turnOf(), { promises: () => ({ available: () => true, appointmentsBetween: () => [appointment(1)] as never }) });
         assert.notEqual(withOther.pieces[0]!.text, withHim.pieces[0]!.text);
         assert.equal(withHim.pieces[0]!.text, run(turnOf()).pieces[0]!.text);
+    });
+});
+
+describe('真人例子模块（ADR 0190 / 0336）', () => {
+    const at = new Date('2026-12-01T19:40:00+08:00');
+    const row = (id: string, said: string, replied: string[]): Exemplar => ({ id, source: `synthetic|${id}`, license: 'synthetic', said, replied });
+    const corpus = [row('e1', '今天好累啊', ['累就早点歇着']), row('e2', '吃饭了吗', ['刚吃完']), row('e3', '今天好冷', ['多穿点']), row('e4', '今天上课好累', ['辛苦啦']), row('e5', '今天下雨了', ['带伞'])];
+    const said = (content: string): Turn['history'] => [{ role: 'user', content: '在吗', time: at.toISOString() }, { role: 'assistant', content: '在', time: at.toISOString() }, { role: 'user', content, time: at.toISOString() }];
+    const turnOf = (patch: Partial<Turn> = {}): Turn => ({ contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: said('今天好冷'), thinking: false, facts: {}, ...patch });
+    const run = (t: Turn, exemplars: readonly Exemplar[] = corpus) => {
+        const logs: string[] = [];
+        return { pieces: exemplarsModule({ exemplars, log: line => logs.push(line) }).contribute!(t) as Piece[], logs };
+    };
+    test('他最后一句和语料像：最像的最多四条放进 exemplar 槽并记日志（不记内容）', () => {
+        const { pieces, logs } = run(turnOf());
+        assert.equal(pieces.length, 1);
+        assert.equal(pieces[0]!.slot, 'exemplar');
+        assert.match(pieces[0]!.text, /^\[几个真人在类似的话后面是这么回的/);
+        assert.match(pieces[0]!.text, /例 1：他说「今天好冷」/);
+        assert.equal(pieces[0]!.text.split('\n').filter(line => line.startsWith('例 ')).length, 4);
+        assert.deepEqual(logs, ['[1] 真人例子：这一轮放了几条真人的回法（日志不记内容）']);
+    });
+    test('只看他最后一句；一条都不像、没有他的话、语料是空的：不放', () => {
+        assert.match(run(turnOf({ history: [...said('今天好冷'), { role: 'assistant', content: '嗯', time: at.toISOString() }, { role: 'user', content: '吃饭了吗', time: at.toISOString() }] })).pieces[0]!.text, /例 1：他说「吃饭了吗」/);
+        assert.deepEqual(run(turnOf({ history: said('ok') })), { pieces: [], logs: [] });
+        assert.deepEqual(run(turnOf({ history: [{ role: 'assistant', content: '今天好冷', time: at.toISOString() }] })), { pieces: [], logs: [] });
+        assert.deepEqual(run(turnOf(), []), { pieces: [], logs: [] });
+    });
+    test('别的档位、主动找他、只想一想、危机、小别扭：不放', () => {
+        assert.deepEqual(run(turnOf({ contact: { qq: 2, name: '小周', tier: 'classmate' } })).pieces, []);
+        assert.deepEqual(run(turnOf({ initiate: { note: '[主动]' } as NonNullable<Turn['initiate']> })).pieces, []);
+        assert.deepEqual(run(turnOf({ thinking: true })).pieces, []);
+        assert.deepEqual(run(turnOf({ facts: { crisis: { level: 'high' } as never } })).pieces, []);
+        assert.deepEqual(run(turnOf({ facts: { grievance: { stage: 'sulk' } as never } })).pieces, []);
     });
 });

@@ -39,6 +39,7 @@ import { intentModule } from '../modules/intent.ts';
 import { herNowModule } from '../modules/her-now.ts';
 import { booksModule } from '../modules/books.ts';
 import { meetupModule } from '../modules/meetup.ts';
+import { exemplarsModule } from '../modules/exemplars.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
 import { repetitionModule } from '../modules/repetition.ts';
@@ -1038,6 +1039,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         peopleAroundModule({ herDays: config.herDays, log }),
         // 他提到见面（ADR 0066）：男朋友说到见面又带着时间，放她那几天不方便的时段；跟着她自己的日子，不存状态
         meetupModule({ herDays: config.herDays, worldState: () => sharedWorld ?? undefined, promises: () => promises ?? undefined, log }),
+        // 真人例子（ADR 0190，配置 exemplars）：男朋友的话和语料里哪几条像，就放真人在那几句后面怎么回的；语料上面启动时读过一次
+        ...(exemplars.length ? [exemplarsModule({ exemplars, log })] : []),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
         ...(config.relationship ? [closenessModule(log)] : []),
         ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
@@ -2121,7 +2124,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
             ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => { lastFeelings = report; writeFeelingsExport(soulDir(), report); } } : {}),
             ...(feelingReviewNow && contact.tier === 'boyfriend' ? { feelingReview: feelingReviewNow } : {}),
-            ...(exemplars.length && contact.tier === 'boyfriend' ? { exemplars } : {}),
             ...(memeDict && contact.tier === 'boyfriend' ? { memeDict } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
