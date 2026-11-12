@@ -40,6 +40,7 @@ import { herNowModule } from '../modules/her-now.ts';
 import { booksModule } from '../modules/books.ts';
 import { meetupModule } from '../modules/meetup.ts';
 import { exemplarsModule } from '../modules/exemplars.ts';
+import { practiceModule } from '../modules/practice.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
 import { repetitionModule } from '../modules/repetition.ts';
@@ -1041,6 +1042,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         meetupModule({ herDays: config.herDays, worldState: () => sharedWorld ?? undefined, promises: () => promises ?? undefined, log }),
         // 真人例子（ADR 0190，配置 exemplars）：男朋友的话和语料里哪几条像，就放真人在那几句后面怎么回的；语料上面启动时读过一次
         ...(exemplars.length ? [exemplarsModule({ exemplars, log })] : []),
+        // 她这几天拍照修图（配置 lifeInPrompt，要有生活执行器）：卡上有相机基金的档位才放；不存状态
+        practiceModule({ lifeInPrompt: Boolean(config.lifeInPrompt && lifeRunner), herDays: config.herDays, worldState: () => sharedWorld ?? undefined }),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
         ...(config.relationship ? [closenessModule(log)] : []),
         ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
@@ -2103,7 +2106,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(promises ? { promises } : {}),
             ...(sharedWorld ? { worldState: sharedWorld } : {}),
             ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
-            ...(config.lifeInPrompt && lifeRunner ? { lifeInPrompt: true } : {}),
             ...(config.grievance ? { grievance: true } : {}),
             ...(config.rhythm ? { rhythm: true } : {}),
             ...(config.shortReplies ? { shortReplies: true } : {}),

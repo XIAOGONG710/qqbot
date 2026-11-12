@@ -36,6 +36,8 @@ import { peopleAroundModule } from '../src/modules/people-around.ts';
 import { MEETUP_SOURCE_UNAVAILABLE, meetupModule, type MeetupModuleOptions } from '../src/modules/meetup.ts';
 import { exemplarsModule } from '../src/modules/exemplars.ts';
 import type { Exemplar } from '../src/language/exemplars.ts';
+import { practiceModule, type PracticeModuleOptions } from '../src/modules/practice.ts';
+import type { LifeEvent } from '../src/world/life-events.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
 import type { Contact } from '../src/platform/config.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -1071,5 +1073,41 @@ describe('真人例子模块（ADR 0190 / 0336）', () => {
         assert.deepEqual(run(turnOf({ thinking: true })).pieces, []);
         assert.deepEqual(run(turnOf({ facts: { crisis: { level: 'high' } as never } })).pieces, []);
         assert.deepEqual(run(turnOf({ facts: { grievance: { stage: 'sulk' } as never } })).pieces, []);
+    });
+});
+
+describe('她这几天拍照修图模块（lifeInPrompt / ADR 0336）', () => {
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend').character;
+    const classmateCard = loadTierCard(syntheticCardPattern, 'classmate').character;
+    const work = (start: string, minutes: number, subject = '修昨天拍的片子'): LifeEvent => {
+        const s = new Date(`${start}+08:00`);
+        return {
+            id: `life:${s.toISOString()}:work_on_project`, actor: 'linmengyao', kind: 'work_on_project', day: start.slice(0, 10),
+            startedAt: s.toISOString(), endedAt: new Date(s.getTime() + minutes * 60_000).toISOString(), source: 'simulation', result: 'succeeded',
+            subject, target: 'photography_growth',
+        };
+    };
+    const events = [work('2026-10-14T20:30:00', 100)];
+    const turnOf = (at: string, patch: Partial<Turn> = {}): Turn => ({ contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at: new Date(`${at}+08:00`), history: [], thinking: false, card, facts: {}, ...patch });
+    const run = (t: Turn, options: Partial<PracticeModuleOptions> = {}) =>
+        practiceModule({ lifeInPrompt: true, herDays: true, worldState: () => ({ events: () => events }), ...options }).contribute!(t) as Piece[];
+    test('卡上有相机基金、账上三天内弄过：放进 practice 槽；危机、主动找他照样放', () => {
+        const pieces = run(turnOf('2026-10-14T23:00:00'));
+        assert.deepEqual(pieces.map(p => p.slot), ['practice']);
+        assert.match(pieces[0]!.text, /^\[你这几天拍照修图（[^]*3 天里有 1 天在弄（修昨天拍的片子）；上一回是今天晚上\]$/);
+        assert.equal(run(turnOf('2026-10-14T23:00:00', { facts: { crisis: { level: 'high' } as never }, initiate: { note: '[主动]' } as NonNullable<Turn['initiate']> })).length, 1);
+    });
+    test('开了她自己的日子才按作息日换天：零点后还没睡，头天晚上弄的是「今天晚上」', () => {
+        assert.match(run(turnOf('2026-10-15T00:10:00'))[0]!.text, /上一回是今天晚上\]$/);
+        assert.match(run(turnOf('2026-10-15T00:10:00'), { herDays: false })[0]!.text, /上一回是昨天晚上\]$/);
+    });
+    test('没开、卡上没有相机基金、没有世界账、账上没弄过：不放', () => {
+        const at = '2026-10-14T23:00:00';
+        assert.deepEqual(run(turnOf(at), { lifeInPrompt: false }), []);
+        assert.deepEqual(run(turnOf(at, { card: classmateCard })), []);
+        assert.deepEqual(run(turnOf(at, { card: undefined })), []);
+        assert.deepEqual(run(turnOf(at), { worldState: () => undefined }), []);
+        assert.deepEqual(run(turnOf(at), { worldState: () => ({}) }), []);
+        assert.deepEqual(run(turnOf(at), { worldState: () => ({ events: () => [] }) }), []);
     });
 });

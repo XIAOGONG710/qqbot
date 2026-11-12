@@ -51,7 +51,6 @@ import { withMenu } from '.././life/menu.ts';
 import { describePursuits, pursuitViews, type Pursuit } from '.././life/pursuits.ts';
 import type { FeelingsReport } from '../emotion/feeling-export.ts';
 import { appraisals, asksAfterHer, criedRecently, describeFeelings, FEELING_NAME, feelingsAt, feelsLow, voicedKinds, type Appraisal, type Felt, type Moment } from '.././emotion/feelings.ts';
-import { describeRecentPhotography, recentPhotography } from '.././life/projects.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
 import { type PromiseKeeper } from '.././life/promises.ts';
 import { formatDate, herDay, type ExtraFreeActivity } from '.././life/schedule.ts';
@@ -274,8 +273,6 @@ export interface ContactPipelineOptions {
     worldState?: Pick<WorldState, 'at'> & Partial<Pick<WorldState, 'events'>>;
     /** ADR 0056：三天内课程作业可以接管空闲安排；执行器与状态行共用。 */
     projectChoice?: boolean;
-    /** 生活账接进提示词的第一步（配置 lifeInPrompt）：她这几天练拍照修图，只给看得到她爱好的档位（卡上有相机基金的） */
-    lifeInPrompt?: boolean;
     /** 回复节奏（ADR 0075，配置 rhythm）：打字时间按字数、回之前有「看 + 想」；不开就是上线前的老样子（0.8 秒 + 每字 0.1 秒） */
     rhythm?: boolean;
     /** 更短的回复（ADR 0024 的 10-19 调整，配置 shortReplies）：回很短的概率 0.5、认真接话的轮次让路、新措辞；不开就是上线前的老样子（0.35、老措辞） */
@@ -598,8 +595,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她此刻（她那边 ADR 0021、身体 ADR 0025、状态行 ADR 0042 等）是解释器的模块（modules/her-now.ts）：perceive 时写进 turn.facts，
             // 经 turnModules 放进 state、world、body、plans、partnerBack 槽；下面的旧逻辑读 facts
             const { world: around, body: bodyNow, state } = turn.facts;
-            const practiced = options.lifeInPrompt && character.herWorld?.cameraFund && options.worldState?.events ? recentPhotography(options.worldState.events(), time, 3, herSchedule) : undefined;
-            const practice = practiced ? describeRecentPhotography(practiced, time, herSchedule) : undefined;
+            // 她这几天拍照修图（配置 lifeInPrompt）是解释器的模块（modules/practice.ts），经 turnModules 放进 practice 槽
             const selfNote = options.selfNote?.(time.getTime());
             // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
             const recap = day && !day.period ? recapOf(day.start, time) : undefined;
@@ -907,7 +903,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('warm', warm),
                 ...when('feeling', feelingLine),
                 ...when('pace', paceLine),
-                ...when('practice', practice),
                 // 追求（「别挂科」「用新相机拍出满意的东西」）也不再注入（10-30 同一条）：她想追什么，自己说。
                 ...when('selfNote', selfNote),
                 ...when('promised', promised),

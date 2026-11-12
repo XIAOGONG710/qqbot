@@ -653,3 +653,15 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   App 启动时读一次语料，读到了才挂这个模块；原来「只给男朋友档」在 App 和 `contact.ts` 各判一次，现在只在模块里判。挑哪几条、怎么写（`language/exemplars.ts`）一个字没改。
 - 删掉的接线：`contact.ts` 里那一段计算、日志、`exemplar` 段落、`exemplars` 选项和 import；App 不再往联系人流水线传语料。模拟器从来没传过语料，不用挂。
 - 验证：`exemplars` 基线逐字不变；变异检验——App 不挂模块、不看档位（同学那一轮）、主动找他也放、小别扭也放、危机也放，都让 `exemplars` 报不一致。单元测试 3 条。类型检查通过。
+
+### 她这几天拍照修图（2026-11-12）
+
+- 是什么：生活账接进提示词的第一步（配置 `lifeInPrompt`，要有生活执行器）——三天内生活账里有拍照修图的事，就把「几天里有几天在弄、弄了什么、上一回是哪天」放进 `practice` 槽。
+  只给卡上有相机基金的档位；档位之外不看别的，主动找他、危机回合照样放。按天说时跟着她的作息日换天（开了 `herDays` 才按作息）。
+- 没补基线：`books`、`intents`、`repetition`、`her-now-dsh` 四个场景已经有 38 轮带这一段（同学档的轮次不带）。基线管不到的两处由别的测试管：
+  `lifeInPrompt` 关着时不放（`app.test.ts` 那条「默认关」）、模拟器那一路（`sim.test.ts` 新加一条，用 `life` 步骤注入一段修片）。
+- `src/modules/practice.ts`：`practiceModule({ lifeInPrompt, herDays, worldState })`，只有 contribute，生活事件账现取。算哪几段、怎么写（`life/projects.ts` 的 `recentPhotography` / `describeRecentPhotography`）一个字没改。
+  原来在 perceive 之后、assess 之前读事件账，现在在 contribute 时读；中间没有写事件账的步骤，基线逐字不变。
+- 删掉的接线：`contact.ts` 里那两行计算、`practice` 段落、`lifeInPrompt` 选项（只给这一处用）和 import；App 和模拟器不再往联系人流水线传 `lifeInPrompt`，改成挂模块。
+- 验证：四个场景去掉语音那句之后逐字不变（三个本来就因 `8565918f` 红着）；变异检验——App 不挂模块、不看相机基金、从不按作息日换天，基线都报不一致；
+  不看 `lifeInPrompt` 由 `app.test.ts` 报错；模拟器不挂模块，新的模拟器测试报错。单元测试 3 条。类型检查通过。

@@ -24,6 +24,7 @@ import { intentModule } from '../modules/intent.ts';
 import { herNowModule } from '../modules/her-now.ts';
 import { booksModule } from '../modules/books.ts';
 import { meetupModule } from '../modules/meetup.ts';
+import { practiceModule } from '../modules/practice.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
 import { repetitionModule } from '../modules/repetition.ts';
@@ -522,7 +523,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ...(promises ? { promises } : {}),
         ...(sharedWorld ? { worldState: sharedWorld } : {}),
         ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}),
-        ...(scenario.lifeInPrompt && scenario.autonomous ? { lifeInPrompt: true } : {}),
         ...(scenario.grievance ? { grievance: true } : {}),
         ...(scenario.rhythm ? { rhythm: true } : {}),
         ...(scenario.shortReplies ? { shortReplies: true } : {}),
@@ -576,6 +576,7 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             pastModule(message => { if (epoch === responderEpoch) log(message); }),
             peopleAroundModule({ herDays: options.herDays ?? false, log: message => { if (epoch === responderEpoch) log(message); } }),
             meetupModule({ herDays: options.herDays ?? false, worldState: () => sharedWorld ?? undefined, promises: () => promises ?? undefined, log: message => { if (epoch === responderEpoch) log(message); } }),
+            practiceModule({ lifeInPrompt: Boolean(scenario.lifeInPrompt && scenario.autonomous), herDays: options.herDays ?? false, worldState: () => sharedWorld ?? undefined }),
             ...(scenario.relationship ? [closenessModule(message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.jokes?.length ? [jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.idioms?.length ? [idiomsTurnModule(() => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), message => { if (epoch === responderEpoch) log(message); }, scenario.idiomShare)] : []),

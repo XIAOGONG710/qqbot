@@ -47,6 +47,7 @@
 - `modules/past.ts`
 - `modules/people-around.ts`
 - `modules/meetup.ts`
+- `modules/practice.ts`
 
 ## 开关
 

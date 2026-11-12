@@ -757,3 +757,24 @@ describe('模拟器挂着他提到见面的模块（ADR 0336）', () => {
         assert.match(prompts.at(-1)!, /\[你那天不方便的时段/);
     });
 });
+
+describe('模拟器挂着她这几天拍照修图的模块（ADR 0336）', () => {
+    // 行为基线走的是 App，模拟器这一路的接线由这里兜：没挂模块，这一段就没有
+    test('生活账里有一段修片：开着 lifeInPrompt 时提示词里有「你这几天拍照修图」', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-practice-sim-'));
+        const prompts: string[] = [];
+        try {
+            await runScenario(parseScenario({
+                name: 'practice', tier: 'boyfriend', start: '2026-11-10T14:00:00+08:00', memory: false, schedule: true, autonomous: true, lifeInPrompt: true,
+                steps: [{ say: '在干嘛' }, { advance: '10m' }, { life: { id: 'edit-photos', kind: 'work_on_project', target: 'photography_growth', subject: '修昨天拍的片子' } }, { advance: '20m' }, { say: '下午干嘛了' }, { advance: '10m' }],
+            }), {
+                runId: 'practice', dataDir: dir, card, llm, prompt, herDays: true, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages.map(m => String(m.content)).join('\n')); return '嗯嗯'; },
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+        assert.doesNotMatch(prompts[0]!, /你这几天拍照修图/);
+        assert.match(prompts.at(-1)!, /\[你这几天拍照修图（[^\]]*修昨天拍的片子/);
+    });
+});
