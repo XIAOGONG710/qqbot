@@ -948,4 +948,60 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.at('2026-11-10T21:20:00+08:00');
         },
     },
+    {
+        name: 'exemplars',
+        about: '真人例子（ADR 0190，ADR 0336 迁出之前）：语料里预置几条合成的「他说 / 她回」，男朋友的话和哪条像就放最像的几条（最多 4 条）；一条都不像不放；他消失几天回来的头两轮（小别扭还没散）、她说了等下之后自己回来的那一轮（主动找他）、危机的话（这几轮不放）；同学说了一样的话（不放）',
+        start: '2026-12-01T06:30:00+08:00',
+        contacts: [boyfriend, classmate],
+        config: { ...RICH, exemplars: true },
+        seed: (dataDir, start) => {
+            const row = (id: string, said: string, replied: string[]) => JSON.stringify({ id, source: `synthetic.jsonl|${id}`, license: 'synthetic', said, replied });
+            mkdirSync(join(dataDir, 'exemplars'), { recursive: true });
+            writeFileSync(join(dataDir, 'exemplars', 'corpus.jsonl'), [
+                row('e1', '今天好累啊', ['累就早点歇着', '别硬撑']),
+                row('e2', '今天上课好累', ['辛苦啦']),
+                row('e3', '吃饭了吗', ['刚吃完', '你呢']),
+                row('e4', '晚上吃什么好', ['想吃火锅']),
+                row('e5', '周末去看电影吗', ['好呀', '看什么']),
+                row('e6', '今天好冷', ['多穿点']),
+                row('e7', '我好累不想动', ['那就躺会儿']),
+            ].join('\n') + '\n');
+            // 男朋友：10 天前到 5 天前天天聊；之后他四天没出现、她发了两次没人回——他今天第一次回来那一轮是小别扭（ADR 0074）
+            const chats = new ChatHistory(dataDir);
+            for (let day = 10; day >= 5; day--) {
+                ['早', '晚安'].forEach((text, i) => {
+                    const at = start - day * 86_400_000 + (2 + i * 12) * 3600_000;
+                    const id = 700 + (10 - day) * 4 + i * 2;
+                    chats.append(boyfriend.qq, { time: new Date(at).toISOString(), role: 'user', content: text, messageId: id });
+                    chats.append(boyfriend.qq, { time: new Date(at + 60_000).toISOString(), role: 'assistant', content: '嗯嗯', messageId: id + 1 });
+                });
+            }
+            for (const [day, text] of [[3, '在吗'], [2, '你怎么都不理我']] as const) {
+                chats.append(boyfriend.qq, { time: new Date(start - day * 86_400_000 + 12 * 3600_000).toISOString(), role: 'assistant', content: text, messageId: 690 + day });
+            }
+        },
+        reply: () => {
+            const chat = rotating(['嗯嗯', '是呀', '怎么啦', '好']);
+            let away = false;
+            return (call: LlmCall) => {
+                const his = call.messages.findLast(m => m.role === 'user');
+                // 她说了等下（只说这一次）：过几分钟自己回来说一声（ADR 0112），那一轮是她主动找他
+                if (!away && typeof his?.content === 'string' && his.content.includes('周末去看电影')) { away = true; return '等下\n我去拿个快递'; }
+                return chat(call);
+            };
+        },
+        script: async d => {
+            await d.at('2026-12-01T12:20:00+08:00'); d.say(boyfriend.qq, '吃饭了吗');
+            await d.at('2026-12-01T12:40:00+08:00'); d.say(boyfriend.qq, '今天好累啊');
+            await d.at('2026-12-01T12:50:00+08:00'); d.say(boyfriend.qq, 'ok');
+            await d.at('2026-12-01T15:00:00+08:00'); d.say(classmate.qq, '今天好累啊');
+            await d.at('2026-12-01T18:30:00+08:00'); d.say(boyfriend.qq, '晚上吃什么好');
+            await d.at('2026-12-01T19:00:00+08:00'); d.say(boyfriend.qq, '那这周末去看电影吗');
+            await d.at('2026-12-01T19:40:00+08:00'); d.say(boyfriend.qq, '今天好冷');
+            await d.at('2026-12-01T20:40:00+08:00'); d.say(boyfriend.qq, '我不想活了，好累');
+            await d.wait(10 * 60_000);
+            d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
+            await d.at('2026-12-01T21:20:00+08:00');
+        },
+    },
 ];
