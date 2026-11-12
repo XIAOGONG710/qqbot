@@ -32,6 +32,7 @@ import { repetitionModule, repetitionPieces } from '../src/modules/repetition.ts
 import { herNowModule } from '../src/modules/her-now.ts';
 import { booksModule } from '../src/modules/books.ts';
 import { pastModule } from '../src/modules/past.ts';
+import { peopleAroundModule } from '../src/modules/people-around.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
 import type { Contact } from '../src/platform/config.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -938,5 +939,57 @@ describe('她的过去模块（ADR 0022 / 0336）', () => {
     test('没有卡、卡上没有自传：不放', () => {
         assert.deepEqual(run(turnOf({ card: undefined })).pieces, []);
         assert.deepEqual(run(turnOf({ card: { ...card, biography: undefined } })).pieces, []);
+    });
+});
+
+describe('她身边的人模块（ADR 0033 / 0336）', () => {
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend').character;
+    const girlFriendCard = loadTierCard(syntheticCardPattern, 'girl_friend').character;
+    const classmateCard = loadTierCard(syntheticCardPattern, 'classmate').character;
+    const at = new Date('2026-09-29T18:30:00+08:00');
+    const iso = (minutes: number) => new Date(at.getTime() + minutes * 60_000).toISOString();
+    const asked: Turn['history'] = [{ role: 'user', content: '小禾最近怎么样', time: iso(0) }];
+    const followUp: Turn['history'] = [...asked, { role: 'assistant', content: '感冒了', time: iso(1) }, { role: 'user', content: '那她现在呢', time: iso(3) }];
+    const turnOf = (patch: Partial<Turn> = {}): Turn => ({ contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: asked, thinking: false, card, facts: {}, ...patch });
+    const run = (t: Turn, herDays = true) => {
+        const logs: string[] = [];
+        const module = peopleAroundModule({ herDays, log: line => logs.push(line) });
+        void module.assess!(t);
+        return { pieces: module.contribute!(t) as Piece[], about: t.facts.aboutPeople, logs };
+    };
+    test('他说起名字的后两个字：那人最近两周放进 npcs 槽、写进 facts 并记日志；没说起不放', () => {
+        const { pieces, about, logs } = run(turnOf());
+        assert.equal(pieces.length, 1);
+        assert.equal(pieces[0]!.slot, 'npcs');
+        assert.match(pieces[0]!.text, /^\[许小禾最近两周（室友；你知道的事，他问到了照实说，没写到的别编）：9月26日–9月28日感冒/);
+        assert.deepEqual(about, { names: ['许小禾'], lines: [pieces[0]!.text] });
+        assert.deepEqual(logs, ['[1] 想起许小禾最近的事']);
+        assert.deepEqual(run(turnOf({ history: [{ role: 'user', content: '你室友呢', time: iso(0) }] })), { pieces: [], about: undefined, logs: [] });
+    });
+    test('一句话说起两个人：两段，按卡上的顺序', () => {
+        const { pieces, about } = run(turnOf({ history: [{ role: 'user', content: '林小满和许小禾你更喜欢跟谁玩', time: iso(0) }] }));
+        assert.deepEqual(about?.names, ['许小禾', '林小满']);
+        assert.equal(pieces.length, 2);
+        assert.match(pieces[1]!.text, /^\[林小满最近两周（高中同学，最好的朋友；/);
+    });
+    test('追问没有名字：十分钟以内沿用刚才说起的，过了就不放', () => {
+        const still = run(turnOf({ history: followUp, at: new Date(at.getTime() + 3 * 60_000) }));
+        assert.deepEqual(still.about?.names, ['许小禾']);
+        assert.equal(still.pieces.length, 1);
+        assert.equal(run(turnOf({ history: followUp, at: new Date(at.getTime() + 12 * 60_000) })).about, undefined);
+    });
+    test('主动找他时不想；没开她自己的日子、没有卡、卡上没有她的世界：不放', () => {
+        const initiate = { note: '[主动]' } as NonNullable<Turn['initiate']>;
+        assert.deepEqual(run(turnOf({ initiate })), { pieces: [], about: undefined, logs: [] });
+        assert.deepEqual(run(turnOf(), false), { pieces: [], about: undefined, logs: [] });
+        assert.equal(run(turnOf({ card: undefined })).about, undefined);
+        assert.equal(run(turnOf({ card: { ...card, herWorld: undefined } })).about, undefined);
+    });
+    test('危机照样放；别的档位按这一轮的卡：女生朋友的卡里室友有名字、闺蜜没有名字，同学的卡里没有人', () => {
+        assert.equal(run(turnOf({ facts: { crisis: { level: 'high' } as never } })).pieces.length, 1);
+        const full: Turn['history'] = [{ role: 'user', content: '许小禾是谁呀', time: iso(0) }];
+        assert.equal(run(turnOf({ card: girlFriendCard, history: full })).pieces.length, 1);
+        assert.equal(run(turnOf({ card: girlFriendCard, history: [{ role: 'user', content: '那林小满呢', time: iso(0) }] })).about, undefined);
+        assert.equal(run(turnOf({ card: classmateCard, history: full })).about, undefined);
     });
 });

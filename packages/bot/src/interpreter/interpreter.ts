@@ -84,6 +84,9 @@ export interface TurnFacts {
     books?: DescribedBooks;
     /** 她这一天半里已经主动跟他说过的事（ADR 0098，modules/repetition.ts 写）；危机回合不算。旧逻辑的形状读它：带自己的事时跳过说过了的 */
     told?: readonly string[];
+    /** 他这一轮说起的她身边的人（ADR 0033，modules/people-around.ts 写）：names 是谁，lines 是放进提示词的那几段（这一档看不到的人没有段）。
+     *  旧逻辑的形状和长短读它：说起她身边的人的那一轮按认真接话算、不加「回很短」。没说起、主动找他时没有 */
+    aboutPeople?: { names: readonly string[]; lines: readonly string[] };
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */

@@ -40,9 +40,8 @@ import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././lang
 import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from '.././language/shape.ts';
 import { finishReply } from '.././language/unfinished.ts';
 import { describeUnsettled } from '.././life/open-loops.ts';
-import { describeWorld, lastMealDish, recapDay, recentWith, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
+import { describeWorld, lastMealDish, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
 import { isExplicitCurrentPhotoRequest, type CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
-import { npcMentioned } from '.././world/npc.ts';
 import { dayPlan, describeSlot } from '.././life/day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from '.././life/body.ts';
 import { saidAsleepAt } from '.././life/bedtime.ts';
@@ -111,9 +110,6 @@ const fadeParts = (stats: FadeStats | undefined) => (stats
     ? ([['记个大概', stats.vague], ['一提想起', stats.recognized], ['想不起来', stats.forgotten], ['同一件事多的', stats.repeated ?? 0]] as const).filter(([, n]) => n).map(([label, n]) => `${label} ${n}`)
     : []);
 const fadeNote = (stats: FadeStats | undefined) => (fadeParts(stats).length ? `（${fadeParts(stats).join('，')}）` : '');
-
-/** 线索认出来的是空列表时算没有（lingering 接着往前找） */
-const nonEmpty = <T>(list: T[]) => (list.length ? list : undefined);
 
 export interface TierCard {
     character: Character;
@@ -615,15 +611,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const body = bodyNow ? describeBody(bodyNow) : undefined;
             const mood = herSchedule ? moodAt(herSchedule, character.moods, time, options.mood, { body: bodyNow, world: around }) : undefined;
             // 她的过去（ADR 0022）是解释器的模块（modules/past.ts），经 turnModules 放进 past 槽
-            // 他说起她身边的人（ADR 0033）：那人最近两周怎么样，她知道的；主动找他时不想
-            const herPeople = character.herWorld && herSchedule && !initiate ? character.herWorld.people : undefined;
-            let npcs = herPeople ? npcMentioned(chat, herPeople) : [];
-            if (!npcs.length && herPeople) npcs = lingering(chat, time.getTime(), upTo => nonEmpty(npcMentioned(upTo, herPeople)))?.found ?? [];
-            const aboutNpcs = npcs.flatMap(person => {
-                const lines = recentWith(character.herWorld!, herSchedule!, time, person.id);
-                return lines ? [`[${person.name}最近两周（${person.relation}；你知道的事，他问到了照实说，没写到的别编）：${lines.length ? lines.join('；') : '没病没忙，照常'}]`] : [];
-            });
-            if (aboutNpcs.length) log(`想起${npcs.map(person => person.name).join('、')}最近的事`);
             const promised = contact.tier !== UNLISTED_TIER ? options.promises?.describe(contact, chat, time) : undefined;
             if (promised) log('时间块里提醒了她答应的事');
             // 他提到见面（ADR 0066 决策 2）：她那几天不方便的时段（有课、赶作业、身体不舒服、已经约了别的），只给事实，是否推、怎么说由她定；先只给男朋友档
@@ -671,6 +658,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const assessed = assessTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             if (assessed instanceof Promise) await assessed;
+            // 他说起她身边的人（ADR 0033）是解释器的模块（modules/people-around.ts）：assess 时写进 turn.facts.aboutPeople，经 turnModules 放进 npcs 槽；下面的形状和长短读它
+            const aboutPerson = Boolean(turn.facts.aboutPeople);
             // 意图阶梯（ADR 0019 起）是解释器的模块（modules/intent.ts）：assess 时写进 turn.facts.baseIntent（照片 / 被打断改写之前的那一版）
             const baseIntent = turn.facts.baseIntent;
             // 在读的书（ADR 0015）是解释器的模块（modules/books.ts）：assess 时写进 turn.facts.books、放进 books 槽；这一轮放了书，出口检查拿进度核对
@@ -866,7 +855,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             ];
             // 语言松绑（DSH 10-28 27facc0）：只有“接情绪/好事/亲近/撒娇/认真”或问过去时给形状；普通闲聊不圈条数字数。
             // shapeAll（ADR 0220，默认关）：所有轮次都给形状（回到 ADR 0091 的样子），用来量松绑前后的差别
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !deliberateNow && (Boolean(options.shapeAll) || Boolean(cue) || Boolean(intent && ENGAGED_INTENT.test(intent))) ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
+            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !deliberateNow && (Boolean(options.shapeAll) || Boolean(cue) || Boolean(intent && ENGAGED_INTENT.test(intent))) ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
             // 别重复自己（反复说的字词、主动找他的开头、说过了的事，ADR 0098 / 0135）是解释器的模块（modules/repetition.ts），经 turnModules 放进 crutch、opener、told 槽
             // 她最近心里在想的（ADR 0101）：前后是同一个在想事情的人；主动找他时也带上（她主动说的常常就是这些念头，
             // 还有她自己上网查到的，ADR 0180）
@@ -884,7 +873,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     recentTildes: faceContext(options.history.load(contact.qq), contact.tier).recent.slice(-TEXTURE_TILDE_WINDOW).filter(reply => /[～~]\s*$/m.test(reply)).length,
                 }
                 : undefined;
-            const length = crisisNow || shapeNow || cue || stickerOnlyNow || photoNow || interruption || thinking || deliberateNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson: npcs.length > 0, shortReplies: options.shortReplies });
+            const length = crisisNow || shapeNow || cue || stickerOnlyNow || photoNow || interruption || thinking || deliberateNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson, shortReplies: options.shortReplies });
             if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
             if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.long ? '，长答' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
@@ -926,7 +915,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('common', common),
                 ...(recap ? [{ slot: 'recap' as const, text: recap.text }] : []),
                 ...when('today', today),
-                ...aboutNpcs.map(text => ({ slot: 'npcs' as const, text })),
                 ...peopleText.map(text => ({ slot: 'people' as const, text })),
                 ...(common || today || peopleText.length ? [{ slot: 'disclosure' as const, text: disclosureRules(contact) }] : []),
                 { slot: 'time', text: describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }) },

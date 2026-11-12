@@ -715,3 +715,24 @@ describe('模拟器挂着她的过去的模块（ADR 0336）', () => {
         assert.match(prompts.at(-1)!, /\[你想起的从前[\s\S]*- 小时候养过猫：/);
     });
 });
+
+describe('模拟器挂着她身边的人的模块（ADR 0336）', () => {
+    // 行为基线走的是 App，模拟器这一路的接线由这里兜：没挂模块，这一段就没有
+    test('他说起她的室友：提示词里有那人最近两周', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-people-sim-'));
+        const prompts: string[] = [];
+        try {
+            await runScenario(parseScenario({
+                name: 'people', tier: 'boyfriend', start: '2026-09-29T18:00:00+08:00', memory: false, schedule: false,
+                steps: [{ say: '在干嘛' }, { advance: '20m' }, { say: '小禾最近怎么样' }, { advance: '10m' }],
+            }), {
+                runId: 'people', dataDir: dir, card, llm, prompt, herDays: true, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages.map(m => String(m.content)).join('\n')); return '嗯嗯'; },
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+        assert.doesNotMatch(prompts[0]!, /最近两周（室友/);
+        assert.match(prompts.at(-1)!, /\[许小禾最近两周（室友；/);
+    });
+});

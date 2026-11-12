@@ -24,6 +24,7 @@ import { intentModule } from '../modules/intent.ts';
 import { herNowModule } from '../modules/her-now.ts';
 import { booksModule } from '../modules/books.ts';
 import { pastModule } from '../modules/past.ts';
+import { peopleAroundModule } from '../modules/people-around.ts';
 import { repetitionModule } from '../modules/repetition.ts';
 import { memesModule } from '../modules/memes.ts';
 import { watchedModule } from '../modules/watched.ts';
@@ -572,6 +573,7 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             repetitionModule(message => { if (epoch === responderEpoch) log(message); }),
             booksModule({ herDays: options.herDays ?? false }),
             pastModule(message => { if (epoch === responderEpoch) log(message); }),
+            peopleAroundModule({ herDays: options.herDays ?? false, log: message => { if (epoch === responderEpoch) log(message); } }),
             ...(scenario.relationship ? [closenessModule(message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.jokes?.length ? [jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.idioms?.length ? [idiomsTurnModule(() => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), message => { if (epoch === responderEpoch) log(message); }, scenario.idiomShare)] : []),

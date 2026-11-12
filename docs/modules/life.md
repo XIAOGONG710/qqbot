@@ -45,6 +45,7 @@
 - `modules/her-now.ts`
 - `modules/books.ts`
 - `modules/past.ts`
+- `modules/people-around.ts`
 
 ## 开关
 
