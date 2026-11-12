@@ -73,3 +73,54 @@ export function startVoiceWorker(dir: string): void {
     });
     child.unref();
 }
+
+export interface VoiceHttpOptions {
+    /** GPT-SoVITS api_v2 地址，默认 http://127.0.0.1:9880 */
+    baseUrl?: string;
+    /** 参考音频和它的文本（按情绪换，语气跟着参考走） */
+    refAudio: string;
+    refText: string;
+    /** 采样温度：越高起伏越大，0.7 偏平、0.9 有情绪 */
+    temperature?: number;
+    /** 结果写到哪个目录 */
+    outDir: string;
+}
+
+/** 直接调 GPT-SoVITS 的 /tts 接口（her11 模型），按参考音频决定情绪；失败返回 undefined */
+export async function speakViaHttp(text: string, options: VoiceHttpOptions): Promise<string | undefined> {
+    const base = options.baseUrl ?? 'http://127.0.0.1:9880';
+    const body = {
+        text,
+        text_lang: 'zh',
+        ref_audio_path: options.refAudio,
+        prompt_text: options.refText,
+        prompt_lang: 'zh',
+        top_k: 15,
+        top_p: 0.9,
+        temperature: options.temperature ?? 0.85,
+        text_split_method: 'cut5',
+        batch_size: 1,
+        speed_factor: 1.0,
+        seed: -1,
+        parallel_infer: true,
+        repetition_penalty: 1.3,
+        media_type: 'wav',
+    };
+    try {
+        mkdirSync(options.outDir, { recursive: true });
+        const res = await fetch(`${base}/tts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(VOICE_TIMEOUT),
+        });
+        if (!res.ok) return undefined;
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length < 1000) return undefined;
+        const dst = join(options.outDir, `voice-${Date.now()}.wav`);
+        writeFileSync(dst, buf);
+        return dst;
+    } catch {
+        return undefined;
+    }
+}

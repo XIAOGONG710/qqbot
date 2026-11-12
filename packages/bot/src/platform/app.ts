@@ -63,7 +63,7 @@ import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toS
 import { quotedIds, renderForward, segmentsToText, type ForwardLookup, type GroupMessageEvent, type MessageEvent, type PokeEvent, type QuotedMessage, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
 import { createHearing } from '.././vision/hearing.ts';
-import { speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
+import { speakViaHttp, speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
 import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
@@ -1825,6 +1825,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 发出去的气泡走 send 时先过这里；整条只有标记的气泡不发，也要过这里（responder 的 absorb），不然写在单独一行的标记就丢了。
         // 她的声音（2026-11-01）：她写 `<<语音：…>>` 就念出来、发语音条。worker 常驻，一句话 10–15 秒
         const voiceDir = process.env.QQBOT_TTS_DIR ?? join(process.cwd(), 'runtime', 'indextts');
+        // 情绪参考（calm/happy/sad/angry/shy）和生成的临时文件；api_v2（her11）在 9880
+        const voiceRefsDir = process.env.QQBOT_VOICE_REFS ?? join(process.cwd(), 'runtime', 'voice-refs');
+        const voiceOutDir = join(process.cwd(), 'runtime', 'voice-out');
         const voiceOn = contact.tier === 'boyfriend' && Boolean(transport.sendPrivateVoice) && process.env.QQBOT_TTS !== 'off';
         const lastVoiceAt = new Map<number, number>();
         // 11-02「检查类似的问题」：原来语音那一行从回复里摘掉以后，聊天记录里就没有了（historyText 把 <<语音：…>> 当内部标记剥掉），
@@ -1837,12 +1840,43 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 .then(id => chatHistory.append(userId, { time: new Date(worldNow()).toISOString(), role: 'assistant', content: line, messageId: id }))
                 .catch(error => log(`[${userId}] 那句话用文字也没发出去：${error instanceof Error ? error.message : String(error)}`));
         };
-        const speakVoice = (userId: number, line: string): void => {
+        // 情绪写在语音标记里：`<<语音：开心|你回来啦>>`。她 2026-11-12 定：情绪由文本标明、用户审核，
+        // 不从心情自动推断（分错了更烦）。没写就不加情绪，用平静参考。
+        const emoBucket = (word: string | undefined): 'calm' | 'happy' | 'sad' | 'angry' | 'shy' => {
+            const w = (word ?? '').trim().toLowerCase();
+            if (/开心|高兴|兴奋|愉快|雀跃|happy/.test(w)) return 'happy';
+            if (/委屈|难过|伤心|低落|想哭|sad/.test(w)) return 'sad';
+            if (/生气|烦|恼|怒|angry/.test(w)) return 'angry';
+            if (/害羞|撒娇|甜|黏|心动|shy/.test(w)) return 'shy';
+            return 'calm';
+        };
+        const splitVoiceTag = (line: string): { emo: ReturnType<typeof emoBucket>; body: string } => {
+            const m = /^\s*([^|｜]{1,6})\s*[|｜]\s*(.+)$/.exec(line);
+            if (m && /开心|高兴|委屈|难过|生气|害羞|撒娇|平静|happy|sad|angry|shy|calm/i.test(m[1]!)) {
+                const bucket = emoBucket(m[1]);
+                return { emo: bucket, body: m[2]!.trim() };
+            }
+            return { emo: 'calm', body: line };
+        };
+        const emoRef = (emo: ReturnType<typeof emoBucket>): { refAudio: string; refText: string } | undefined => {
+            if (!voiceRefsDir || !existsSync(voiceRefsDir)) return undefined;
+            const wav = join(voiceRefsDir, `${emo}.wav`);
+            const txt = join(voiceRefsDir, `${emo}.txt`);
+            if (!existsSync(wav) || !existsSync(txt)) return undefined;
+            return { refAudio: wav, refText: readFileSync(txt, 'utf8').trim() };
+        };
+        const speakVoice = (userId: number, rawLine: string): void => {
+            const { emo, body: line } = splitVoiceTag(rawLine);
             if (!voiceOn) { speakAsText(userId, line, '关着'); return; }
             const last = lastVoiceAt.get(userId) ?? 0;
             if (Date.now() - last < 3 * 60_000) { speakAsText(userId, line, '三分钟内已经发过'); return; }
             lastVoiceAt.set(userId, Date.now());
-            void speakViaWorker(line, { dir: voiceDir })
+            const ref = emoRef(emo);
+            const spoken = ref
+                ? speakViaHttp(line, { refAudio: ref.refAudio, refText: ref.refText, temperature: emo === 'calm' ? 0.8 : 0.9, outDir: voiceOutDir })
+                : Promise.resolve(undefined);
+            void spoken
+                .then(wav => wav ?? speakViaWorker(line, { dir: voiceDir }))
                 .then(async wav => {
                     if (!wav) { speakAsText(userId, line, '没生成出来'); return; }
                     let id: number;
@@ -1853,7 +1887,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                         return;
                     }
                     chatHistory.append(userId, { time: new Date(worldNow()).toISOString(), role: 'assistant', content: spokenLine(line), messageId: id });
-                    log(`[${userId}] 发了一条语音（${line.slice(0, 20)}…，消息 ${id}）`);
+                    log(`[${userId}] 发了一条语音（${line.slice(0, 20)}…，情绪 ${emo}，消息 ${id}）`);
                 })
                 .catch(error => speakAsText(userId, line, `出错了（${error instanceof Error ? error.message : String(error)}）`));
         };
