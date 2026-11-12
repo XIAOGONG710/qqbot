@@ -912,4 +912,40 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.at('2026-09-29T21:50:00+08:00');
         },
     },
+    {
+        name: 'meetup',
+        about: '他提到见面（ADR 0066 决策 2，ADR 0336 迁出之前）：男朋友说到见面又带着时间，提示词里列她那几天不方便的时段（明天一天 / 周末两天 / 没说哪天看今天到后天）；没提见面不放；提过之后八条以内接着放；她说了等下之后自己回来的那一轮（主动找他）不放；同学约吃饭不放（只给男朋友档）；危机的话里带着见面（照样放）。没有长期记忆服务，约定那两样（来源不可确认、已经约了别的）走不到',
+        start: '2026-11-10T18:00:00+08:00',
+        contacts: [boyfriend, classmate],
+        config: RICH,
+        reply: () => {
+            const chat = rotating(['嗯嗯', '是呀', '怎么啦', '好']);
+            let away = false;
+            return (call: LlmCall) => {
+                const his = call.messages.findLast(m => m.role === 'user');
+                // 她说了等下（只说这一次）：过几分钟自己回来说一声（ADR 0112），那一轮是她主动找他
+                if (!away && typeof his?.content === 'string' && his.content.includes('周末去看电影')) { away = true; return '等下\n我去拿个快递'; }
+                return chat(call);
+            };
+        },
+        script: async d => {
+            await d.at('2026-11-10T18:30:00+08:00'); d.say(boyfriend.qq, '在干嘛');
+            await d.at('2026-11-10T18:40:00+08:00'); d.say(boyfriend.qq, '明天一起吃个饭吧');
+            await d.at('2026-11-10T18:45:00+08:00'); d.say(boyfriend.qq, '好吧');
+            await d.at('2026-11-10T19:00:00+08:00'); d.say(boyfriend.qq, '那这周末去看电影吗');
+            await d.at('2026-11-10T19:30:00+08:00'); d.say(classmate.qq, '明天中午一起吃个饭吗');
+            await d.at('2026-11-10T19:40:00+08:00'); d.say(boyfriend.qq, '哈哈');
+            await d.at('2026-11-10T19:45:00+08:00'); d.say(boyfriend.qq, '今天作业多吗');
+            await d.at('2026-11-10T19:50:00+08:00'); d.say(boyfriend.qq, '我刚打完球');
+            await d.at('2026-11-10T19:55:00+08:00'); d.say(boyfriend.qq, '累死了');
+            await d.at('2026-11-10T20:00:00+08:00'); d.say(boyfriend.qq, '你吃了吗');
+            await d.at('2026-11-10T20:05:00+08:00'); d.say(boyfriend.qq, '哦');
+            await d.at('2026-11-10T20:10:00+08:00'); d.say(boyfriend.qq, '好');
+            await d.at('2026-11-10T20:20:00+08:00'); d.say(boyfriend.qq, '想见见你，3点行吗');
+            await d.at('2026-11-10T20:40:00+08:00'); d.say(boyfriend.qq, '我不想活了，明天见面也没意思');
+            await d.wait(10 * 60_000);
+            d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
+            await d.at('2026-11-10T21:20:00+08:00');
+        },
+    },
 ];
