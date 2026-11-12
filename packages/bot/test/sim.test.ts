@@ -736,3 +736,24 @@ describe('模拟器挂着她身边的人的模块（ADR 0336）', () => {
         assert.match(prompts.at(-1)!, /\[许小禾最近两周（室友；/);
     });
 });
+
+describe('模拟器挂着他提到见面的模块（ADR 0336）', () => {
+    // 行为基线走的是 App，模拟器这一路的接线由这里兜：没挂模块，这一段就没有
+    test('他约明天吃饭：提示词里有她那天不方便的时段', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-meetup-sim-'));
+        const prompts: string[] = [];
+        try {
+            await runScenario(parseScenario({
+                name: 'meetup', tier: 'boyfriend', start: '2026-11-10T18:00:00+08:00', memory: false, schedule: false,
+                steps: [{ say: '在干嘛' }, { advance: '20m' }, { say: '明天一起吃个饭吧' }, { advance: '10m' }],
+            }), {
+                runId: 'meetup', dataDir: dir, card, llm, prompt, herDays: true, settle: { quietMs: 10, maxMs: 50 },
+                generate: async messages => { prompts.push(messages.map(m => String(m.content)).join('\n')); return '嗯嗯'; },
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+        assert.doesNotMatch(prompts[0]!, /不方便的时段/);
+        assert.match(prompts.at(-1)!, /\[你那天不方便的时段/);
+    });
+});

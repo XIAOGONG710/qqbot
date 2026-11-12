@@ -46,6 +46,7 @@
 - `modules/books.ts`
 - `modules/past.ts`
 - `modules/people-around.ts`
+- `modules/meetup.ts`
 
 ## 开关
 

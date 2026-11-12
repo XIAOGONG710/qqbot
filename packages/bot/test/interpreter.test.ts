@@ -33,6 +33,7 @@ import { herNowModule } from '../src/modules/her-now.ts';
 import { booksModule } from '../src/modules/books.ts';
 import { pastModule } from '../src/modules/past.ts';
 import { peopleAroundModule } from '../src/modules/people-around.ts';
+import { MEETUP_SOURCE_UNAVAILABLE, meetupModule, type MeetupModuleOptions } from '../src/modules/meetup.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
 import type { Contact } from '../src/platform/config.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -991,5 +992,48 @@ describe('她身边的人模块（ADR 0033 / 0336）', () => {
         assert.equal(run(turnOf({ card: girlFriendCard, history: full })).pieces.length, 1);
         assert.equal(run(turnOf({ card: girlFriendCard, history: [{ role: 'user', content: '那林小满呢', time: iso(0) }] })).about, undefined);
         assert.equal(run(turnOf({ card: classmateCard, history: full })).about, undefined);
+    });
+});
+
+describe('他提到见面模块（ADR 0066 / 0336）', () => {
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend').character;
+    const at = new Date('2026-11-10T18:40:00+08:00');
+    const iso = (minutes: number) => new Date(at.getTime() + minutes * 60_000).toISOString();
+    const asked: Turn['history'] = [{ role: 'user', content: '明天一起吃个饭吧', time: iso(0) }];
+    const turnOf = (patch: Partial<Turn> = {}): Turn => ({ contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at, history: asked, thinking: false, card, facts: {}, ...patch });
+    const run = (t: Turn, options: Partial<MeetupModuleOptions> = {}) => {
+        const logs: string[] = [];
+        return { pieces: meetupModule({ herDays: true, log: line => logs.push(line), ...options }).contribute!(t) as Piece[], logs };
+    };
+    test('男朋友说到见面又带着时间：那天不方便的时段放进 obstacle 槽并记日志；没提见面不放', () => {
+        const { pieces, logs } = run(turnOf());
+        assert.equal(pieces.length, 1);
+        assert.equal(pieces[0]!.slot, 'obstacle');
+        assert.match(pieces[0]!.text, /^\[你那天不方便的时段（事实；[\s\S]*明天 08:20–09:40 有课/);
+        assert.deepEqual(logs, ['[1] 他提到见面：时间块里列了她这几天不方便的时段']);
+        assert.deepEqual(run(turnOf({ history: [{ role: 'user', content: '在干嘛', time: iso(0) }] })), { pieces: [], logs: [] });
+    });
+    test('没说哪天：看今天到后天，写成「这几天」', () => {
+        const { pieces } = run(turnOf({ history: [{ role: 'user', content: '想见见你，3点行吗', time: iso(0) }] }));
+        assert.match(pieces[0]!.text, /^\[你这几天不方便的时段/);
+    });
+    test('主动找他、别的档位、没开她自己的日子、没有卡：不放；危机照样放', () => {
+        const initiate = { note: '[主动]' } as NonNullable<Turn['initiate']>;
+        assert.deepEqual(run(turnOf({ initiate })), { pieces: [], logs: [] });
+        assert.deepEqual(run(turnOf({ contact: { qq: 2, name: '小周', tier: 'classmate' } })).pieces, []);
+        assert.deepEqual(run(turnOf(), { herDays: false }).pieces, []);
+        assert.deepEqual(run(turnOf({ card: undefined })).pieces, []);
+        assert.equal(run(turnOf({ facts: { crisis: { level: 'high' } as never } })).pieces.length, 1);
+    });
+    test('约定来源不可确认：只放「先确认」那一句，不去算已经约了的', () => {
+        const { pieces } = run(turnOf(), { promises: () => ({ available: () => false, appointmentsBetween: () => { throw new Error('不该读'); } }) });
+        assert.deepEqual(pieces, [{ slot: 'obstacle', text: MEETUP_SOURCE_UNAVAILABLE }]);
+    });
+    test('已经约了别的：别人的约算不方便，和他自己的约不算', () => {
+        const appointment = (qq: number) => ({ contact: { qq, name: '某人', tier: 'known' }, promise: { id: 'p-1' }, start: new Date('2026-11-11T12:00:00+08:00'), end: new Date('2026-11-11T13:30:00+08:00') });
+        const withOther = run(turnOf(), { promises: () => ({ available: () => true, appointmentsBetween: () => [appointment(9)] as never }) });
+        const withHim = run(turnOf(), { promises: () => ({ available: () => true, appointmentsBetween: () => [appointment(1)] as never }) });
+        assert.notEqual(withOther.pieces[0]!.text, withHim.pieces[0]!.text);
+        assert.equal(withHim.pieces[0]!.text, run(turnOf()).pieces[0]!.text);
     });
 });

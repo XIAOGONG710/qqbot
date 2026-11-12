@@ -38,6 +38,7 @@ import { togetherModule } from '../modules/together.ts';
 import { intentModule } from '../modules/intent.ts';
 import { herNowModule } from '../modules/her-now.ts';
 import { booksModule } from '../modules/books.ts';
+import { meetupModule } from '../modules/meetup.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
 import { repetitionModule } from '../modules/repetition.ts';
@@ -1035,6 +1036,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         pastModule(log),
         // 她身边的人（ADR 0033）：他说起卡上的室友、闺蜜才放那人最近两周，追问时沿用一会儿；跟着她自己的日子，不存状态。assess 时写说起了谁（旧逻辑的形状和长短读它）
         peopleAroundModule({ herDays: config.herDays, log }),
+        // 他提到见面（ADR 0066）：男朋友说到见面又带着时间，放她那几天不方便的时段；跟着她自己的日子，不存状态
+        meetupModule({ herDays: config.herDays, worldState: () => sharedWorld ?? undefined, promises: () => promises ?? undefined, log }),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
         ...(config.relationship ? [closenessModule(log)] : []),
         ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
