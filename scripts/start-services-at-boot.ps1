@@ -108,8 +108,8 @@ if (Test-Port 3001) {
     if (Wait-Until { Test-Port 3001 } 120) { Say 'NapCat: port 3001 is listening' } else { Say 'NapCat: port 3001 not listening after 120 s - continuing, the watchdog will retry (a QR login may be needed: check runtime\napcat\workdir\cache)' }
 }
 
-# 4. Hindsight (long-term memory): /health on 8888.
-if (Test-Url 'http://127.0.0.1:8888/health') {
+# 4. Hindsight (long-term memory): /health on 8899 (8888 is Anaconda Jupyter on this machine, docs/hindsight.md).
+if (Test-Url 'http://127.0.0.1:8899/health') {
     Say 'Hindsight: /health is already ok - leaving it'
 } elseif ($DryRun) {
     Say ("Hindsight: would start scripts\start-hindsight.ps1 (skip LLM startup check = {0}) and wait up to 300 s for /health" -f $SkipHindsightLlmCheck)
@@ -118,7 +118,7 @@ if (Test-Url 'http://127.0.0.1:8888/health') {
     # process-scope only, and removed again right after the child has inherited it
     if ($SkipHindsightLlmCheck) { $env:HINDSIGHT_API_SKIP_LLM_VERIFICATION = 'true' }
     try { Start-Hidden 'start-hindsight.ps1' 'hindsight' } finally { Remove-Item Env:\HINDSIGHT_API_SKIP_LLM_VERIFICATION -ErrorAction SilentlyContinue }
-    if (Wait-Until { Test-Url 'http://127.0.0.1:8888/health' } 300) { Say 'Hindsight: /health ok' } else { Say 'Hindsight: /health not ok after 300 s - continuing without waiting, the watchdog will retry' }
+    if (Wait-Until { Test-Url 'http://127.0.0.1:8899/health' } 300) { Say 'Hindsight: /health ok' } else { Say 'Hindsight: /health not ok after 300 s - continuing without waiting, the watchdog will retry' }
 }
 
 # 5. Koishi (the bot itself).
@@ -133,11 +133,12 @@ if ($koishi.Count -gt 0) {
     if (Wait-Until { @(Find-Processes 'node.exe' 'koishi[\\/]+bin\.js').Count -gt 0 } 60) { Say 'Koishi: process is up' } else { Say 'Koishi: no process after 60 s - see runtime\koishi\start-koishi.log and the koishi-*.err file in runtime\boot' }
 }
 
-# 5b. Observers (read-only, cheap): the heartbeat watcher (writes runtime\bot\ALERT.txt when the bot goes quiet) and the network probe
+# 5b. Observers (read-only, cheap): the heartbeat watcher (writes runtime\bot-shadow\ALERT.txt when the bot goes quiet) and the network probe
 #     (one line per 30 s in %TEMP%\qqbot-net-probe\probe.log; on 2026-10-16 it is what showed a 20 h outage was not DNS). They died with the
 #     reset on 2026-10-17 and nothing brought them back. Start them only once Koishi's heartbeat is fresh, otherwise the watcher would
 #     see the hours-old heartbeat from before the reboot and raise a false alert.
-$heartbeatFile = Join-Path $repoRoot 'runtime\bot\heartbeat.json'
+#     The data dir is runtime\bot-shadow (koishi.yml dataDir); the old runtime\bot path has no heartbeat since 11-12.
+$heartbeatFile = Join-Path $repoRoot 'runtime\bot-shadow\heartbeat.json'
 $heartbeatFresh = { (Test-Path $heartbeatFile) -and (((Get-Date) - (Get-Item $heartbeatFile).LastWriteTime).TotalMinutes -lt 3) }
 if ($DryRun) {
     Say ("observers: heartbeat is fresh = {0}" -f [bool](& $heartbeatFresh))
@@ -147,8 +148,8 @@ if ($DryRun) {
     Say 'observers: heartbeat not fresh after 150 s - starting the observers anyway (the watcher may alert until Koishi writes it)'
 }
 foreach ($observer in @(
-        @{ Label = 'heartbeat watcher'; Pattern = 'heartbeat-watch-cli\.ts'; Script = 'packages\bot\src\ops\heartbeat-watch-cli.ts' },
-        @{ Label = 'network probe'; Pattern = 'net-probe\.ts'; Script = 'scripts\net-probe.ts' })) {
+        @{ Label = 'heartbeat watcher'; Pattern = 'heartbeat-watch-cli\.ts'; Script = 'packages\bot\src\ops\heartbeat-watch-cli.ts'; Args = @('--dir', 'runtime\bot-shadow') },
+        @{ Label = 'network probe'; Pattern = 'net-probe\.ts'; Script = 'scripts\net-probe.ts'; Args = @() })) {
     $running = @(Find-Processes 'node.exe' $observer.Pattern)
     if ($running.Count -gt 0) {
         Say ("{0}: already running (pid {1}) - leaving it" -f $observer.Label, (($running | ForEach-Object { $_.ProcessId }) -join ','))
@@ -157,7 +158,8 @@ foreach ($observer in @(
     } elseif ($DryRun) {
         Say ("{0}: would start node {1} hidden" -f $observer.Label, $observer.Script)
     } else {
-        Start-Process -FilePath 'node' -ArgumentList @(('"{0}"' -f (Join-Path $repoRoot $observer.Script))) -WorkingDirectory $repoRoot -WindowStyle Hidden | Out-Null
+        $argList = @(('"{0}"' -f (Join-Path $repoRoot $observer.Script))) + @($observer.Args | ForEach-Object { '"{0}"' -f $_ })
+        Start-Process -FilePath 'node' -ArgumentList $argList -WorkingDirectory $repoRoot -WindowStyle Hidden | Out-Null
         Say ("{0}: started" -f $observer.Label)
     }
 }
