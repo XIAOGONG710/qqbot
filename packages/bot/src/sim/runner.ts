@@ -29,6 +29,7 @@ import { pastModule } from '../modules/past.ts';
 import { solveFrameModule } from '../modules/solve-frame.ts';
 import { innerModule } from '../modules/inner.ts';
 import { devicesModule } from '../modules/devices.ts';
+import { initiateNoteModule } from '../modules/initiate-note.ts';
 import type { DeviceControl } from '../platform/device-actions.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
@@ -583,6 +584,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             // 她最近心里在想什么（ADR 0101）：计划器在后面才建，每次现取
             ...(scenario.innerLife ? [innerModule({ innerLine: () => planner?.innerLine(), log: message => { if (epoch === responderEpoch) log(message); } })] : []),
             ...(options.devices ? [devicesModule({ menu: () => options.devices!.menu(), allowed: () => true })] : []),
+            // 主动找他时计划器写的说明，同 App
+            initiateNoteModule(),
             // 只想一想的轮次：聊天原文换成一段回想，同 App
             transcriptModule(),
             // 「做题式」写法（ADR 0146 实验）：只有 --frame solve 时挂

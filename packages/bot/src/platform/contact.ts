@@ -894,7 +894,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('quote', quoteLine),
                 ...when('intimate', intimateNow),
                 // 「做题式」写法（ADR 0146 实验，只有模拟器用）是解释器的模块（modules/solve-frame.ts），经 turnModules 放进 solveFrame 槽
-                ...(initiate ? [{ slot: 'initiateNote' as const, text: initiate.note }] : []),
+                // 主动找他时的说明是解释器的模块（modules/initiate-note.ts），经 turnModules 放进 initiateNote 槽
             ];
             const legacy: Module = {
                 id: 'contact-legacy',

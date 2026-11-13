@@ -44,6 +44,7 @@ import { practiceModule } from '../modules/practice.ts';
 import { innerModule } from '../modules/inner.ts';
 import { devicesModule } from '../modules/devices.ts';
 import { consentModule } from '../modules/consent.ts';
+import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
@@ -1063,6 +1064,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 return askLine(pending.label, Math.floor((Date.now() - pending.at) / 60_000));
             },
         }),
+        // 主动找他时计划器写的说明（initiate.note）；没有开关，不存状态
+        initiateNoteModule(),
         // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态
         transcriptModule(),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）

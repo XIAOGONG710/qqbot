@@ -725,3 +725,11 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   原来条件里和取值时各调一次 `ask()`，现在一次（只读，中间没有 await）。记请求、摘标记、去做都还在 App 里。
 - 删掉的接线：`contact.ts` 里那一段和 `ask` 选项；App 不再往联系人流水线传 `ask`。
 - 验证：基线逐字不变；变异检验——模块什么都不放、不判断过期，`consent` 都报不一致。`consent`、`app`、设备、`sim`、模块总表 206 项通过；类型检查通过。
+
+### 主动找他时的说明（2026-11-14）
+
+- 是什么：主动消息的计划器定下这次为什么找他、拿什么起头，写在 `initiate.note` 里；她主动找他的那一轮原样放进 `initiateNote` 槽（「此刻」块的最后）。note 是空串也照样放一段（迁移前就是这样）。没有开关。
+- 没补基线：主动消息的轮次很多场景都有（`proactive-day`、`exemplars`、`devices`……）。
+- `src/modules/initiate-note.ts`：`initiateNoteModule()`，只有 contribute，读 `turn.initiate`（就是原来的 `initiate`，构造 turn 时放进去的同一个对象）。App 和模拟器都总是挂。
+- 删掉的接线：`contact.ts` 里那一段。
+- 验证：基线 35/35 逐字不变；变异检验——模块什么都不放，16 个场景报不一致。`app`、`sim`、主动消息、回复器、模块总表 332 项通过；类型检查通过。

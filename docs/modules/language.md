@@ -83,6 +83,7 @@
 - `modules/transcript.ts`
 - `modules/devices.ts`
 - `modules/consent.ts`
+- `modules/initiate-note.ts`
 - `st/`
 
 ## 开关
