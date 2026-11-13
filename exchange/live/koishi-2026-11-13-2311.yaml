@@ -1,0 +1,152 @@
+# 线上 Koishi 开关快照（由 scripts/read-switches.mjs 生成，密钥已打码；文件头别手改）
+# 源：runtime/koishi/koishi.yml · 导出时间：2026-11-13T15:11:04.566Z
+
+plugins:
+  server:5sf31h:
+    host: 127.0.0.1
+    port: 5140
+  http:hk7wn5: {}
+  proxy-agent:aeu0jj: {}
+  database-sqlite:wgaz1b:
+    path: data/koishi.db
+  console:uum06n:
+    open: false
+  config:5y91q4: {}
+  logger:jpop0q: {}
+  auth:747vqf: <REDACTED>
+  adapter-onebot:pozroc:
+    protocol: ws
+    endpoint: ws://127.0.0.1:3001
+    selfId: 'BOT_QQ'
+    token: <REDACTED>
+  qqbot:hkuy2a:
+    contacts:
+      - qq: OWNER_QQ
+        name: 宝宝
+        tier: boyfriend
+      - qq: CONTACT_QQ
+        name: 鸽鸽
+        tier: known
+        persona: 比我们大一点，已经工作，现在在国外；说话比我们稳，别用同学口气。
+    unlistedFriends: false
+    schedule: true
+    selfDirectedMemory: true
+    openQuestions: true
+    dataDir: runtime/bot-shadow
+    llm:
+      baseUrl: https://api.deepseek.com
+      model: deepseek-flash
+      temperature: 1.3
+      promptPostProcessing: semi
+      thinking: 'off'
+    prompt:
+      maxContext: 16384
+      pinExamples: true
+    memory:
+      enabled: true
+      baseUrl: http://127.0.0.1:8899
+      timeoutMs: 30000
+      recallTimeoutMs: 3000
+      bankPrefix: linmengyao
+    bilibiliAccount: true
+    bilibili: 'on'
+    bilibiliDm: 'on'
+    bilibiliComment: 'on'
+    bilibiliReplies: 'on'
+    bilibiliAtUid: BILI_UID
+    bilibiliAtName: 穹P
+    watching: true
+    biliFeed: 'on'
+    memes: true
+    biliStickers: true
+    vision:
+      provider: deepseek
+      model: deepseek-flash
+      enabled: true
+    proactive: 'on'
+    autonomousLife: true
+    projectChoice: true
+    lifeInPrompt: true
+    grievance: true
+    feedbackCommands: true
+    stickers: send
+    npcAsks: true
+    festivals: greet
+    rhythm: true
+    shortReplies: false
+    typingStatus: true
+    pokes: true
+    pokeBack: true
+    recalls: true
+    selfRecall: true
+    pokeOut: true
+    readReceipts: true
+    onlineStatus: true
+    profileLikes: true
+    signature: 'on'
+    qzone: 'on'
+    qzoneVisibility: friends
+    shape: true
+    shapeAgenda: true
+    shapeFiller: true
+    shapeFeel: true
+    shapeSplit: true
+    shapeAsk: true
+    shapeLong: true
+    proactiveReach: true
+    innerLife: true
+    herFeelings: true
+    herNo: true
+    exemplars: true
+    speechNotes: true
+    proactiveInvite: true
+    photos: true
+    deviceControl: 'on'
+    proactiveRoom: true
+    weeklyReport: true
+    menu: true
+    curious: true
+    smallNews: true
+    texture: true
+    quoteReply: true
+    factCheck: fix
+    idioms: true
+    lagTail: true
+    everydayLife: true
+    worldDrama: true
+    memoryFeelings: true
+    memoryReconcile: true
+    worldThreads: true
+    diaryLookback: true
+    hisReactions: true
+    herGuesses: true
+    afterNo: true
+    pursuits: true
+    deliberate: true
+    feelingReview: true
+    selfPursuits: true
+    depthRouting: true
+    readStickers: true
+    readingTakes: true
+    factHim: true
+    tailCap: false
+    identityLedger: true
+    memoryAudit: true
+    timeline: true
+    diaryInsights: true
+    webLookup: auto
+    comeBack: true
+    interruptions: true
+    jokes: true
+    proactiveAsk: true
+    together: true
+    relationship: true
+    reactions: false
+    foodPhotos: false
+    chatReview: true
+    realNights: true
+    tastes: true
+    acquaintances: true
+    dormancy: true
+
+# 开着的开关：acquaintances, afterNo, autonomousLife, biliStickers, bilibiliAccount, chatReview, comeBack, curious, deliberate, depthRouting, diaryInsights, diaryLookback, dormancy, everydayLife, exemplars, factHim, feedbackCommands, feelingReview, grievance, herFeelings, herGuesses, herNo, hisReactions, identityLedger, idioms, innerLife, interruptions, jokes, lagTail, lifeInPrompt, memes, memoryAudit, memoryFeelings, memoryReconcile, menu, npcAsks, onlineStatus, openQuestions, photos, pokeBack, pokeOut, pokes, proactiveAsk, proactiveInvite, proactiveReach, proactiveRoom, profileLikes, projectChoice, pursuits, quoteReply, readReceipts, readStickers, readingTakes, realNights, recalls, relationship, rhythm, schedule, selfDirectedMemory, selfPursuits, selfRecall, shape, shapeAgenda, shapeAsk, shapeFeel, shapeFiller, shapeLong, shapeSplit, smallNews, speechNotes, tastes, texture, timeline, together, typingStatus, watching, weeklyReport, worldDrama, worldThreads
