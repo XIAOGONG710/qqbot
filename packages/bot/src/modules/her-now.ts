@@ -2,7 +2,8 @@
 // - perceive：按这一轮用的卡（分档位）算她那边（ADR 0021）、她的身体（ADR 0025，男朋友档开了 realNights 时带上昨晚真的怎么睡的，ADR 0219）、状态行（作息 → 说过「睡了」就在睡 ADR 0042 →
 //   约好的见面 ADR 0047 → 空闲时世界里有时长的事 ADR 0030 → 一天的打算 ADR 0034 → 项目选择 ADR 0056；空闲时可以排她自己定的计划 herPlan），写进 turn.facts
 //   （world、body、status、state、schedule）。意图、被打断、心情、在读的书、照片、她的追求、长短、形状都读它们。
-// - contribute：往「此刻」块放五行——你现在（state）、你那边（world）、你的身体（body）、你今天的打算（plans）、他刚回学校（partnerBack）。
+// - contribute：往「此刻」块放五行——你现在（state）、你那边（world）、你的身体（body）、你今天的打算（plans）、他刚回学校（partnerBack）；
+//   外加一句「这几行是底子不是话题」（groundNote，有状态或身体那一行时）。
 // 读世界（worldState.at）会先把到期的行动结算落账：perceive 跑在原来读世界的位置（召回记忆之后），时刻不变。
 // 留在旧逻辑、读 facts 的：心情、在读的书、拍照练习、问到过去某天、见面不方便的时段、她那边还没说过的事。
 // 规则都在各自的文件里（world/world.ts、life/body.ts、language/status-line.ts、life/day-plan.ts、life/schedule.ts），这里只是接线；
@@ -22,6 +23,9 @@ import type { StoredMessage } from '../memory/history.ts';
 import { UNLISTED_TIER, type Contact } from '../platform/config.ts';
 import type { Log } from '../platform/log.ts';
 import { describeWorld, worldAt, type WorldState } from '../world/world.ts';
+
+/** 「你现在」和身体那几行是底子不是话题 */
+export const GROUND_NOTE = '（上面「你现在」和身体那几行是你的底子，不是话题：没人问就别主动说你累了、心情怎样，也别把它当成一句话发出去）';
 
 export interface HerNowOptions {
     /** 作息（配置 schedule）：状态行跟着它 */
@@ -109,10 +113,14 @@ export function herNowModule(options: HerNowOptions): Module {
                 return other ? (other.tier === 'boyfriend' ? '男朋友' : other.name) : undefined;
             };
             const when = (slot: Piece['slot'], text: string | undefined): Piece[] => (text ? [{ slot, text }] : []);
+            const bodyLine = body ? describeBody(body) : undefined;
             return [
                 ...(state && schedule ? [{ slot: 'state' as const, text: describeState(state, schedule, { userName: contact.name, woken: turn.woken, partnerApart: true, ...(options.realNights && contact.tier === 'boyfriend' ? { grumpy: true } : {}) }) }] : []),
                 ...when('world', around ? describeWorld(around, time, giver) : undefined),
-                ...when('body', body ? describeBody(body) : undefined),
+                // 2026-10-30 线上：她凭空来了一句「今天有点累，就更不想说话了」，他看着莫名其妙——
+                // 「你现在」那几行是底子不是话题，没人问就别拿它开头（DSH 10-30）。条件同迁移前：有此刻的状态，或身体那一行有字
+                ...(state || bodyLine ? [{ slot: 'groundNote' as const, text: GROUND_NOTE }] : []),
+                ...when('body', bodyLine),
                 ...when('plans', herSchedule ? describePlans(herSchedule, status?.slots ?? [], time) : undefined),
                 // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」
                 ...when('partnerBack', state ? partnerBackLine(state, contact.name) : undefined),

@@ -693,3 +693,12 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 删掉的接线：`contact.ts` 里那一行计算、`transcript` 段落和函数本身。
 - 验证：去掉语音那句（`8565918f`）之后基线逐字不变；变异检验——App 不挂模块，除语音那 16 个之外又有 8 个场景报不一致（`proactive-day`、`watched`、`scenes`、`work-mode`、`self-memory`、`soul`、`meetup`、`exemplars`）。
   `app.test.ts`、`inner.test.ts`、`sim.test.ts`、`sim-bare.test.ts`、模块总表 184 项通过；类型检查通过。
+
+### 「你现在」那几行是底子（2026-11-13）
+
+- 是什么：DSH 10-30 加的一句——「你现在」和身体那几行是底子不是话题，没人问就别主动说累了、心情怎样。有此刻的状态、或身体那一行有字时放，进 `groundNote` 槽。
+- 没有新模块：这句说的就是她此刻的模块放的那几行，条件只看 `turn.facts.state` 和 `describeBody(turn.facts.body)`，并进 `herNowModule` 的 contribute（常量 `GROUND_NOTE`）。
+  条件和迁移前逐字一样：状态行本身还要有作息才放，这一句只要有状态就放，没照着状态行的条件改。
+- 没补基线：32 个场景的快照都有这一句。
+- 删掉的接线：`contact.ts` 里那一段，和从 `turn.facts` 里解构出来、只给这一句用的 `state`。
+- 验证：去掉语音那句（`8565918f`）之后基线逐字不变；变异检验——这一句一律不放，32 个场景报不一致。`app.test.ts`、`sim.test.ts`、她此刻、模块总表 156 项通过；类型检查通过。
