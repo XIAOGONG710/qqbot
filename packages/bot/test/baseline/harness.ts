@@ -1,7 +1,7 @@
 // 行为基线（ADR 0336 第 2 步）：在合成角色上用假模型、假 QQ、假时钟跑真实的 App（startApp），
 // 把每一次对外调用记下来——发给模型的完整提示词（和用的哪个模型）、每个 QQ 动作和它的时刻、最后留在数据目录里的每个文件——写成一份纯文本快照。
 // 架构迁移的每一步都必须让快照逐字不变；有意改变行为的提交才改快照，并写明原因。
-// 只用合成角色（ADR 0260），不连网：长期记忆、真实天气、B 站、网页、DSH、设备都关着（见 scenarios.ts 开头的覆盖说明）。
+// 只用合成角色（ADR 0260），不连网：长期记忆、真实天气、B 站、网页、DSH 都关着；设备只在 devices 场景里换上假的服务（见 scenarios.ts 开头的覆盖说明）。
 
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
@@ -17,6 +17,8 @@ import { DEFAULT_WORLD_INFO_SETTINGS } from '../../src/st/world-info.ts';
 import { syntheticCardPattern, useSyntheticTerms } from '../fixtures/card.ts';
 import { FakeClock } from './clock.ts';
 import type { LlmAction } from '../../src/executor/executor.ts';
+import { createDeviceControl } from '../../src/platform/device-actions.ts';
+import { DEVICE_MAX_VOLUME, linksOf, type startDeviceService } from '../../src/platform/device-service.ts';
 
 // 快照里的时刻、作息、「今天」都按本地时间算：进程时区固定在 Asia/Shanghai（同配置的 timeZone），不随跑测试的机器变。
 // 基线只在 baseline.test.ts 自己的测试进程里跑（node --test 每个文件一个进程），这里改了不影响别的测试文件。
@@ -45,6 +47,11 @@ export interface Scenario {
     soul?: (soulDir: string, start: number) => void;
     /** 每次跑新建一个假模型（里面有轮换的计数，不能跨次共用） */
     reply?: () => Replier;
+    /**
+     * 设备控制（ADR 0148）：给了就换上假的设备服务——真的控制器（菜单、令牌、限额、待批准都是真的），只是电脑在线、派发记下来不执行、不监听端口。
+     * readyAfterMs：服务过多久才起来（起来之前她的菜单是空的，和线上一样）。配置里还要开 deviceControl
+     */
+    devices?: { readyAfterMs: number };
     script: (driver: Driver) => Promise<void>;
 }
 
@@ -80,6 +87,37 @@ export function baselineConfig(dataDir: string, contacts: Contact[], overrides: 
         timeZone: 'Asia/Shanghai',
         ...overrides,
     } as AppConfig;
+}
+
+/**
+ * 假的设备服务：控制器是真的（createDeviceControl），电脑一直在线，派发只记一笔、当作做成了；不起取件中心、不监听端口、不写审计文件。
+ * 服务在 readyAfterMs 之后才「起来」（虚拟时间），之前 App 拿不到它，和线上异步起服务一样。看屏幕 / 摄像头只回「看图没开」。
+ */
+function fakeDevices(readyAfterMs: number, record: (head: string, body?: string) => void): typeof startDeviceService {
+    return async options => {
+        await new Promise(resolve => setTimeout(resolve, readyAfterMs));
+        const control = createDeviceControl({
+            mode: options.mode,
+            context: { links: linksOf(options.links), apps: options.apps, maxVolume: DEVICE_MAX_VOLUME },
+            dispatch: async job => { record(`设备 派发 ${JSON.stringify(job)}`); return { ok: true }; },
+            available: () => ['computer'],
+            say: options.say,
+            log: () => {},
+        });
+        record('设备 服务起来了');
+        return {
+            control,
+            hub: undefined as never,
+            isOwnerCommand: text => control.isOwnerCommand(text),
+            owner(text) {
+                const action = control.ownerSays(text);
+                if (action.kind === 'none') return { kind: 'none' };
+                if (action.kind === 'reply') return { kind: 'reply', text: action.text };
+                return { kind: 'capture', run: async () => ({ kind: 'reply', text: '（截到了，但看图没开，她看不了——图我也没留）' }) };
+            },
+            stop: async () => { record('设备 服务停了'); },
+        };
+    };
 }
 
 const defaultReply: Replier = call => {
@@ -218,6 +256,7 @@ export async function runScenario(scenario: Scenario): Promise<string> {
             sensitive: { on: () => false, describe: () => '' },
             // 执行器派发模型调用前先告诉这里完整的动作（用途、模型配置），紧接着才调假模型
             observe: action => { if (action.kind === 'llm') observed = action; },
+            ...(scenario.devices ? { startDevices: fakeDevices(scenario.devices.readyAfterMs, record) } : {}),
             pipeline: {
                 generate: async (messages, _log, use) => {
                     const index = ++llmCalls;

@@ -7,10 +7,11 @@
 // 陪玩（约了一起打游戏之后的两个多小时；危机、说下了、换个游戏、过了时限、别的档位）、热梗（库里预置的梗放进提示词；不连网学）、
 // 她看视频（预置的看过的记录，他问起时放进提示词；不连网看）、他的口气（连着使唤她、使唤得比说话多、当程序说话、问很元的问题；危机、别的档位）、场景应答（报错、自我怀疑、缩写、哄睡；危机、别的档位、主动找他）、工作模式（挂起、答应后切到工作；危机、主动找他、别的档位）、她自己决定记不记（留痕、理解偏过；主动找他、别的档位）、她在本机的那一份（合成的灵魂目录：心里的线头、拒绝过的、评价、首轮铺底；危机、主动找他、别的档位）、她自己记下的东西（说话习惯、聊天回顾、日记里的自己、读完的想法、没想完的问题、她猜的事；他难过、危机、别的档位）、
 // 别重复自己（反复说的字词、主动找他的开头、说过了的事）、她此刻（放完假他刚回学校、她说过睡了之后被吵醒、别人的消息醒了才看到）、在读的书（问起时放进提示词、说错进度被出口检查重写、睡前看书的时段）、
-// 她的过去（他说到卡上自传的线索才想起、追问时沿用、留白三种、一轮最多两块；别的档位的卡、危机、她说了等下之后自己回来）。
+// 她的过去（他说到卡上自传的线索才想起、追问时沿用、留白三种、一轮最多两块；别的档位的卡、危机、她说了等下之后自己回来）、
+// 设备控制（假的设备服务、真的控制器：服务起来之前菜单是空的、自动做的、要他批准的；危机、别的档位）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、她自己去看视频、
-// 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、设备控制、QQ 账号控制面与好友申请、说说与空间、
+// 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、真的设备（取件中心、手机推送）、QQ 账号控制面与好友申请、说说与空间、
 // 逐条事实检查（factCheck，它的审稿调用不经 pipeline.generate）、设定账本（identityLedger：写死读真实角色目录 characters/linmengyao 并调 git，
 // 基线不能碰真实资料，也不能随每次提交的 HEAD 变）。
 
@@ -1002,6 +1003,48 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.wait(10 * 60_000);
             d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
             await d.at('2026-12-01T21:20:00+08:00');
+        },
+    },
+    {
+        name: 'devices',
+        about: '设备控制（ADR 0148，ADR 0336 迁出之前）：假的设备服务、真的控制器，12:30 才起来——之前男朋友那几轮菜单是空的（照样放一段空的），之后放菜单；她回复里写的指令行摘掉，打开登记过的应用直接做，锁屏要他回「/批准」才做；同学说同样的话（不放菜单，指令行照样摘掉）；危机的话（不放）；一天里有她主动找他、只想一想的轮次',
+        start: '2026-12-03T06:30:00+08:00',
+        contacts: [boyfriend, classmate],
+        config: { ...RICH, deviceControl: 'on', deviceApps: ['网易云音乐'] },
+        devices: { readyAfterMs: 6 * 3600_000 },
+        seed: (dataDir, start) => {
+            // 男朋友：前几天天天聊，一天里她会主动找他、只想一想
+            const chats = new ChatHistory(dataDir);
+            for (let day = 6; day >= 1; day--) {
+                ['早', '晚安'].forEach((text, i) => {
+                    const at = start - day * 86_400_000 + (2 + i * 12) * 3600_000;
+                    const id = 800 + (6 - day) * 4 + i * 2;
+                    chats.append(boyfriend.qq, { time: new Date(at).toISOString(), role: 'user', content: text, messageId: id });
+                    chats.append(boyfriend.qq, { time: new Date(at + 60_000).toISOString(), role: 'assistant', content: '嗯嗯', messageId: id + 1 });
+                });
+            }
+        },
+        reply: () => {
+            const chat = rotating(['嗯嗯', '是呀', '怎么啦', '好']);
+            return (call: LlmCall) => {
+                const his = call.messages.findLast(m => m.role === 'user');
+                const said = typeof his?.content === 'string' ? his.content : '';
+                if (said.includes('放首歌')) return '好\n<device:open_app|网易云音乐>';
+                if (said.includes('锁一下')) return '要锁吗\n<device:lock>';
+                return chat(call);
+            };
+        },
+        script: async d => {
+            await d.at('2026-12-03T12:20:00+08:00'); d.say(boyfriend.qq, '吃饭了吗');
+            await d.at('2026-12-03T12:50:00+08:00'); d.say(boyfriend.qq, '帮我放首歌吧');
+            await d.at('2026-12-03T15:00:00+08:00'); d.say(classmate.qq, '帮我放首歌吧');
+            await d.at('2026-12-03T18:30:00+08:00'); d.say(boyfriend.qq, '电脑帮我锁一下');
+            await d.wait(5 * 60_000);
+            d.say(boyfriend.qq, '/批准');
+            await d.at('2026-12-03T20:40:00+08:00'); d.say(boyfriend.qq, '我不想活了，好累');
+            await d.wait(10 * 60_000);
+            d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
+            await d.at('2026-12-03T21:20:00+08:00');
         },
     },
 ];
