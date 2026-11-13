@@ -81,6 +81,7 @@
 - `modules/solve-frame.ts`
 - `modules/inner.ts`
 - `modules/transcript.ts`
+- `modules/devices.ts`
 - `st/`
 
 ## 开关

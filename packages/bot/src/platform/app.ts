@@ -42,6 +42,7 @@ import { meetupModule } from '../modules/meetup.ts';
 import { exemplarsModule } from '../modules/exemplars.ts';
 import { practiceModule } from '../modules/practice.ts';
 import { innerModule } from '../modules/inner.ts';
+import { devicesModule } from '../modules/devices.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
@@ -1048,6 +1049,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         practiceModule({ lifeInPrompt: Boolean(config.lifeInPrompt && lifeRunner), herDays: config.herDays, worldState: () => sharedWorld ?? undefined }),
         // 她最近心里在想什么（ADR 0101，配置 innerLife）：念头是主动消息的计划器想的，计划器在后面才建，每次现取
         ...(config.innerLife ? [innerModule({ innerLine: contact => planners.get(contact.qq)?.innerLine(), log })] : []),
+        // 她能替他操作的设备的菜单（ADR 0148，配置 deviceControl）：名单里有男朋友档才有设备控制（同下面的 deviceOwner）；服务是异步起的，起来之前菜单是空串，每轮现取
+        ...(config.deviceControl !== 'off' && config.contacts.some(c => c.tier === 'boyfriend')
+            ? [devicesModule({ menu: () => deviceService?.control.menu() ?? '', allowed: contact => contact.tier === 'boyfriend' })]
+            : []),
         // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态
         transcriptModule(),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
@@ -1293,7 +1298,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         : undefined;
     const deviceHooks: NonNullable<ContactPipelineOptions['devices']> | undefined = config.deviceControl !== 'off' && deviceOwner
         ? {
-            menu: () => deviceService?.control.menu() ?? '',
             parse: reply => deviceService?.control.parse(reply) ?? { reply: stripDeviceTokens(reply), proposals: [], rejected: [] },
             commit: parsed => deviceService?.control.commit(parsed),
         }

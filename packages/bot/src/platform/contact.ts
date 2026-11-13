@@ -300,8 +300,8 @@ export interface ContactPipelineOptions {
     shapeAsk?: boolean;
     /** 被认真问想法 / 原因时说长一点（配置 shapeLong，要 shape 开着，ADR 0150） */
     shapeLong?: boolean;
-    /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；菜单进提示词，回复里的 <device:…> 令牌在发送前登记并按档处理 */
-    devices?: Pick<DeviceControl, 'menu' | 'parse' | 'commit'>;
+    /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；回复里的 <device:…> 令牌在发送前登记并按档处理。菜单是解释器的模块（modules/devices.ts） */
+    devices?: Pick<DeviceControl, 'parse' | 'commit'>;
     /** 他刚才在 DSH 桌面上和她的对话（ADR 0177，配置 crossRecent）：只给男朋友档；返回一段放进提示词的话，没有就不放 */
     desktopRecent?: (now: Date) => string | undefined;
     /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
@@ -881,8 +881,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('promised', promised),
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
                 ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
-                // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
-                ...(options.devices && !crisisNow && !thinking ? [{ slot: 'devices' as const, text: options.devices.menu() }] : []),
+                // 她能替他操作的设备（ADR 0148）的菜单是解释器的模块（modules/devices.ts），经 turnModules 放进 devices 槽
                 ...when('sticker', stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined),
                 ...when('photo', photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)! : undefined),
                 ...when('intent', intentLine),
