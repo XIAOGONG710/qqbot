@@ -69,7 +69,7 @@ import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toS
 import { quotedIds, renderForward, segmentsToText, type ForwardLookup, type GroupMessageEvent, type MessageEvent, type PokeEvent, type QuotedMessage, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
 import { createHearing } from '.././vision/hearing.ts';
-import { speakViaHttp, speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
+import { speakViaGateway, speakViaHttp, speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
 import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
@@ -1890,9 +1890,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             if (Date.now() - last < 3 * 60_000) { speakAsText(userId, line, '三分钟内已经发过'); return; }
             lastVoiceAt.set(userId, Date.now());
             const ref = emoRef(emo);
-            const spoken = ref
-                ? speakViaHttp(line, { refAudio: ref.refAudio, refText: ref.refText, temperature: emo === 'calm' ? 0.8 : 0.9, outDir: voiceOutDir })
-                : Promise.resolve(undefined);
+            // 首选语音网关（多 seed 择优 + 提亮）；网关不在就直连 api_v2；再不行回落到 worker / 文字
+            const gateway = process.env.QQBOT_VOICE_GATEWAY ?? 'http://127.0.0.1:9890';
+            const spoken = speakViaGateway(line, { baseUrl: gateway, emotion: emo, outDir: voiceOutDir })
+                .then(wav => wav ?? (ref
+                    ? speakViaHttp(line, { refAudio: ref.refAudio, refText: ref.refText, temperature: emo === 'calm' ? 0.8 : 0.9, outDir: voiceOutDir })
+                    : Promise.resolve(undefined)));
             void spoken
                 .then(wav => wav ?? speakViaWorker(line, { dir: voiceDir }))
                 .then(async wav => {

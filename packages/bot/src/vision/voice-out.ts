@@ -126,3 +126,36 @@ export async function speakViaHttp(text: string, options: VoiceHttpOptions): Pro
         return undefined;
     }
 }
+
+export interface VoiceGatewayOptions {
+    /** 语音网关地址，默认 http://127.0.0.1:9890 */
+    baseUrl?: string;
+    /** calm / happy / sad / angry / shy */
+    emotion: string;
+    /** 结果写到哪个目录 */
+    outDir: string;
+    /** 整个请求最多等多久（网关自己会排队 + 多 seed 择优，比直连 api_v2 慢） */
+    timeoutMs?: number;
+}
+
+/** 走语音网关：多 seed 择优 + 提亮后处理都在网关里做；失败返回 undefined（调用方回落到直连/worker/文字） */
+export async function speakViaGateway(text: string, options: VoiceGatewayOptions): Promise<string | undefined> {
+    const base = options.baseUrl ?? 'http://127.0.0.1:9890';
+    try {
+        mkdirSync(options.outDir, { recursive: true });
+        const res = await fetch(`${base}/speak`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, emotion: options.emotion }),
+            signal: AbortSignal.timeout(options.timeoutMs ?? 50_000),
+        });
+        if (!res.ok) return undefined;
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length < 1000) return undefined;
+        const dst = join(options.outDir, `voice-${Date.now()}.wav`);
+        writeFileSync(dst, buf);
+        return dst;
+    } catch {
+        return undefined;
+    }
+}
