@@ -683,3 +683,13 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 删掉的接线：`contact.ts` 里那一段、日志、`inner` 段落和 `innerLine` 选项；App 和模拟器不再往联系人流水线传 `innerLine`，改成挂模块（开关同原来）。
 - 和别的模块一样，「内心：这一轮提示词里放了她最近的念头」这行日志挪到了拼段落的时候（同一轮之内，内容不变；日志不在基线里）。
 - 验证：去掉语音那句（`8565918f`）之后基线逐字不变；变异检验——App 不挂模块，`proactive-day`、`watched` 报不一致（另外 16 个是语音那句本来就红的）。`app.test.ts`、`inner.test.ts`、`sim.test.ts` 等 206 项通过；类型检查通过。
+
+### 只想一想时的回想（2026-11-13）
+
+- 是什么：只想一想（内心）的轮次，聊天原文不留成对话回合，换成最近 14 条的一段回想放进 `transcript` 槽。没有开关，App 和模拟器都总是挂。
+- 没补基线：`closeness`、`exemplars`、`meetup`、`memes`、`past`、`people`、`proactive-day`、`repetition` 等场景都有只想一想的轮次。
+- `src/modules/transcript.ts`：`transcriptModule()`，只有 contribute，读 `turn.thinking`、`turn.history`（就是原来的 `chat` 参数，中间没有重新赋值）、`turn.contact.name`。
+  `thinkingTranscript` 原样从 `contact.ts` 搬过来，`inner.test.ts` 改从模块引用。原文清空（`shown = { chat: [] }`）还留在旧逻辑，它管的是聊天记录那一段，不是提示词槽。
+- 删掉的接线：`contact.ts` 里那一行计算、`transcript` 段落和函数本身。
+- 验证：去掉语音那句（`8565918f`）之后基线逐字不变；变异检验——App 不挂模块，除语音那 16 个之外又有 8 个场景报不一致（`proactive-day`、`watched`、`scenes`、`work-mode`、`self-memory`、`soul`、`meetup`、`exemplars`）。
+  `app.test.ts`、`inner.test.ts`、`sim.test.ts`、`sim-bare.test.ts`、模块总表 184 项通过；类型检查通过。

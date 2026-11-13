@@ -80,6 +80,7 @@
 - `modules/exemplars.ts`
 - `modules/solve-frame.ts`
 - `modules/inner.ts`
+- `modules/transcript.ts`
 - `st/`
 
 ## 开关

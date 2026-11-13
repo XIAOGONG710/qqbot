@@ -42,6 +42,7 @@ import { meetupModule } from '../modules/meetup.ts';
 import { exemplarsModule } from '../modules/exemplars.ts';
 import { practiceModule } from '../modules/practice.ts';
 import { innerModule } from '../modules/inner.ts';
+import { transcriptModule } from '../modules/transcript.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
 import { repetitionModule } from '../modules/repetition.ts';
@@ -1047,6 +1048,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         practiceModule({ lifeInPrompt: Boolean(config.lifeInPrompt && lifeRunner), herDays: config.herDays, worldState: () => sharedWorld ?? undefined }),
         // 她最近心里在想什么（ADR 0101，配置 innerLife）：念头是主动消息的计划器想的，计划器在后面才建，每次现取
         ...(config.innerLife ? [innerModule({ innerLine: contact => planners.get(contact.qq)?.innerLine(), log })] : []),
+        // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态
+        transcriptModule(),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
         ...(config.relationship ? [closenessModule(log)] : []),
         ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),

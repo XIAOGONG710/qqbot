@@ -14,7 +14,7 @@ import type { InitiateOutcome, InitiateRequest } from '../src/social/responder.t
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
-import { thinkingTranscript } from '../src/platform/contact.ts';
+import { thinkingTranscript } from '../src/modules/transcript.ts';
 import { syntheticCardPath } from './fixtures/card.ts';
 
 useSensitiveSwitch(SENSITIVE_ON);

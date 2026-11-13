@@ -133,17 +133,6 @@ export function loadTierCard(pattern: string, tier: string, options: { everydayL
     return { character, worldInfo };
 }
 
-/** 想一想时的“回想”：最近 14 条聊天，旧→新，带时刻；不是要接着回的对话 */
-export function thinkingTranscript(chat: readonly ChatMessage[], userName: string): string | undefined {
-    const recent = chat.slice(-14);
-    if (!recent.length) return undefined;
-    const stamp = (time?: string) => {
-        const at = time ? new Date(time) : undefined;
-        return at && !Number.isNaN(at.getTime()) ? `${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')} ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')} ` : '';
-    };
-    return `[回想一下你和${userName}最近的聊天（旧到新，这只是让你想起发生过什么，不是要你接着回）：\n${recent.map(m => `${stamp(m.time)}${m.role === 'user' ? '他' : '你'}：${m.content.replace(/\s+/g, ' ')}`).join('\n')}]`;
-}
-
 /**
  * 没回的这一串不回的原因（按作息时）：她已经收尾、对方只回了附和（ADR 0007 决策 7）；看心情不回（ADR 0013 决策 4）。要回就是 undefined。
  * 回复器和主动消息的计划器用同一个（看心情没回的那串不算「有没回的消息」）。chance 只给模拟器用
@@ -838,8 +827,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.long ? '，长答' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
-            // 想一想：最近的聊天换成一段“回想”放在说明里（不留成对话回合，免得模型把它当成要接着回的话）
-            const transcript = thinking ? thinkingTranscript(chat, contact.name) : undefined;
+            // 想一想：最近的聊天换成一段“回想”放在说明里，是解释器的模块（modules/transcript.ts），经 turnModules 放进 transcript 槽；这里只把原文清空
             // ADR 0043（配置 contextTurns，默认关）：最近几轮原文 + 更早的要点，代替最近 80 条
             let summary: string | undefined;
             if (remembers && options.contextWindow) {
@@ -910,7 +898,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(shapeNow ? [{ slot: 'shape' as const, text: describeShape(shapeNow) }] : []),
                 ...when('quote', quoteLine),
                 ...when('intimate', intimateNow),
-                ...when('transcript', transcript),
                 // 「做题式」写法（ADR 0146 实验，只有模拟器用）是解释器的模块（modules/solve-frame.ts），经 turnModules 放进 solveFrame 槽
                 ...(initiate ? [{ slot: 'initiateNote' as const, text: initiate.note }] : []),
             ];

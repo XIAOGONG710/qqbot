@@ -28,6 +28,7 @@ import { practiceModule } from '../modules/practice.ts';
 import { pastModule } from '../modules/past.ts';
 import { solveFrameModule } from '../modules/solve-frame.ts';
 import { innerModule } from '../modules/inner.ts';
+import { transcriptModule } from '../modules/transcript.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
 import { repetitionModule } from '../modules/repetition.ts';
 import { memesModule } from '../modules/memes.ts';
@@ -579,6 +580,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             practiceModule({ lifeInPrompt: Boolean(scenario.lifeInPrompt && scenario.autonomous), herDays: options.herDays ?? false, worldState: () => sharedWorld ?? undefined }),
             // 她最近心里在想什么（ADR 0101）：计划器在后面才建，每次现取
             ...(scenario.innerLife ? [innerModule({ innerLine: () => planner?.innerLine(), log: message => { if (epoch === responderEpoch) log(message); } })] : []),
+            // 只想一想的轮次：聊天原文换成一段回想，同 App
+            transcriptModule(),
             // 「做题式」写法（ADR 0146 实验）：只有 --frame solve 时挂
             ...(options.replyFrame === 'solve' ? [solveFrameModule()] : []),
             ...(scenario.relationship ? [closenessModule(message => { if (epoch === responderEpoch) log(message); })] : []),
