@@ -43,6 +43,7 @@ import { exemplarsModule } from '../modules/exemplars.ts';
 import { practiceModule } from '../modules/practice.ts';
 import { innerModule } from '../modules/inner.ts';
 import { devicesModule } from '../modules/devices.ts';
+import { consentModule } from '../modules/consent.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
@@ -1053,6 +1054,15 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ...(config.deviceControl !== 'off' && config.contacts.some(c => c.tier === 'boyfriend')
             ? [devicesModule({ menu: () => deviceService?.control.menu() ?? '', allowed: contact => contact.tier === 'boyfriend' })]
             : []),
+        // 他的请求等她点头（2026-10-30）：他发「/看屏幕」「/摄像头」时下面的 pendingAsk 先记下来，她写 <<同意>> 才做；只给男朋友档、过期的不算，每轮现取
+        consentModule({
+            ask: contact => {
+                if (contact.tier !== 'boyfriend') return undefined;
+                const pending = pendingAsk.get(contact.qq);
+                if (!pending || askExpired(pending.at, Date.now())) return undefined;
+                return askLine(pending.label, Math.floor((Date.now() - pending.at) / 60_000));
+            },
+        }),
         // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态
         transcriptModule(),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
@@ -2065,11 +2075,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                         return journalOn(journal, loadSelfDiary(config.dataDir), date);
                     },
                 } : {}),
-                ask: (): string | undefined => {
-                    const pending = pendingAsk.get(contact.qq);
-                    if (!pending || askExpired(pending.at, Date.now())) return undefined;
-                    return askLine(pending.label, Math.floor((Date.now() - pending.at) / 60_000));
-                },
             } : {}),
             // 他的消息没有马上回的每一个原因逐条记账（ADR 0173）：只是旁观，记不进去也不影响回复
             ...(config.silenceNotice ? { onSilence: (info: SilenceInfo) => { try { recordSilence(config.dataDir, contact.qq, noteFromInfo(info, clockNow().getTime())); } catch (error) { log(`没回的原因记不进账（${error instanceof Error ? error.message : String(error)}）`); } } } : {}),

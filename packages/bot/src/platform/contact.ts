@@ -202,8 +202,6 @@ export interface ContactPipelineOptions {
     shapeAll?: boolean;
     /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
     dreams?: () => { appraisals: Appraisal[]; line?: string };
-    /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
-    ask?: () => string | undefined;
     /** 她想查才查（<<查：…>>）：拿到想起来的记忆，再让她重写一次 */
     pullRecall?: (query: string) => Promise<string | undefined>;
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
@@ -887,7 +885,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('intent', intentLine),
                 // 理解偏过、他最近的事（DSH 10-30 / 10-31）和「记忆由你自己决定」是解释器的模块（modules/self-memory.ts）
                 // 人称、正经问就先直接答、别琢磨怎么接（DSH 10-30 / 10-31）是解释器的模块（modules/reply-basics.ts），经 turnModules 放进 person、directAnswer、noOverthink 槽
-                ...(options.ask?.() ? [{ slot: 'herAsk' as const, text: options.ask()! }] : []),
+                // 他的请求等她点头（2026-10-30）是解释器的模块（modules/consent.ts），经 turnModules 放进 herAsk 槽
                 // 工作模式的三行（他在求她切工作 / 判断要不要动电脑 / 切到了工作）是解释器的模块（modules/work-mode.ts）
                 ...(deliberateNow ? [{ slot: 'deliberate' as const, text: options.deliberate?.note ?? DELIBERATE_NOTE }] : []),
                 ...when('routedHint', routedHint),

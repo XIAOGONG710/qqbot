@@ -82,6 +82,7 @@
 - `modules/inner.ts`
 - `modules/transcript.ts`
 - `modules/devices.ts`
+- `modules/consent.ts`
 - `st/`
 
 ## 开关
