@@ -665,3 +665,11 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 删掉的接线：`contact.ts` 里那两行计算、`practice` 段落、`lifeInPrompt` 选项（只给这一处用）和 import；App 和模拟器不再往联系人流水线传 `lifeInPrompt`，改成挂模块。
 - 验证：四个场景去掉语音那句之后逐字不变（三个本来就因 `8565918f` 红着）；变异检验——App 不挂模块、不看相机基金、从不按作息日换天，基线都报不一致；
   不看 `lifeInPrompt` 由 `app.test.ts` 报错；模拟器不挂模块，新的模拟器测试报错。单元测试 3 条。类型检查通过。
+
+### 「做题式」写法（2026-11-13）
+
+- 是什么：ADR 0146 的实验——不让她演自己，让她推断这个情境里最可能发出的那几条。只有模拟器的 `--frame solve` 用，线上没有开关、App 从来不传，主动找他、危机的轮次不放。
+- 没补基线：App 走不到这一段，基线改不改都一样。模拟器那一路以前一条测试都没有，`sim.test.ts` 新加一条（给 `--frame solve` 有那一句，不给就没有）。
+- `src/modules/solve-frame.ts`：`solveFrameModule()`，只有 contribute，读 `turn.initiate`、`turn.facts.crisis`；`SOLVE_FRAME_NOTE` 原样从 `contact.ts` 搬过来。模拟器在 `replyFrame === 'solve'` 时挂。
+- 删掉的接线：`contact.ts` 里的 `replyFrame` 选项、那一段和常量；模拟器不再往联系人流水线传 `replyFrame`。
+- 验证：变异检验——模拟器不挂模块，新的模拟器测试报错；类型检查通过，模块总表测试通过。

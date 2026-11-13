@@ -26,6 +26,7 @@ import { booksModule } from '../modules/books.ts';
 import { meetupModule } from '../modules/meetup.ts';
 import { practiceModule } from '../modules/practice.ts';
 import { pastModule } from '../modules/past.ts';
+import { solveFrameModule } from '../modules/solve-frame.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
 import { repetitionModule } from '../modules/repetition.ts';
 import { memesModule } from '../modules/memes.ts';
@@ -577,6 +578,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             peopleAroundModule({ herDays: options.herDays ?? false, log: message => { if (epoch === responderEpoch) log(message); } }),
             meetupModule({ herDays: options.herDays ?? false, worldState: () => sharedWorld ?? undefined, promises: () => promises ?? undefined, log: message => { if (epoch === responderEpoch) log(message); } }),
             practiceModule({ lifeInPrompt: Boolean(scenario.lifeInPrompt && scenario.autonomous), herDays: options.herDays ?? false, worldState: () => sharedWorld ?? undefined }),
+            // 「做题式」写法（ADR 0146 实验）：只有 --frame solve 时挂
+            ...(options.replyFrame === 'solve' ? [solveFrameModule()] : []),
             ...(scenario.relationship ? [closenessModule(message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.jokes?.length ? [jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); })] : []),
             ...(scenario.idioms?.length ? [idiomsTurnModule(() => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), message => { if (epoch === responderEpoch) log(message); }, scenario.idiomShare)] : []),
@@ -603,7 +606,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
                 log: line => log(line),
             }),
         } : {}),
-        ...(options.replyFrame ? { replyFrame: options.replyFrame } : {}),
         ...(options.devices ? { devices: options.devices } : {}),
         ...(stickers ? { stickers } : {}),
         ...(photos && scenario.tier === 'boyfriend' ? { photos } : {}),

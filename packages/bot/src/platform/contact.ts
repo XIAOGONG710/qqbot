@@ -67,12 +67,6 @@ import { auditDevelopment, describeDevelopment, developmentSnapshot, development
 import { photoAllowance, photoIntent, photoWanted, stripPhotoArtifacts, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
 
-/**
- * 「做题式」写法（ADR 0146 实验）：不是让她演自己，而是让她推断这个情境里最可能真的发出去的那几条。
- * 只有模拟器的 --frame solve 用，线上没有这个开关；写法里不引任何她不该说的句子（提示词里引了模型会照抄）。
- */
-export const SOLVE_FRAME_NOTE = '这一轮不要去想怎么显得像真人，也不要演。只做一件事：根据上面的一切（你是谁、此刻的状态、聊天记录、他刚说的话），推断在这个情境里你最可能真的发出去的那几条消息——最普通、最不费力、最贴着语境的那一版，不是最精彩、最周全的那一版。只输出这几条消息，每条一行';
-
 const DAY_MS = 86_400_000;
 
 /**
@@ -319,8 +313,6 @@ export interface ContactPipelineOptions {
     shapeAsk?: boolean;
     /** 被认真问想法 / 原因时说长一点（配置 shapeLong，要 shape 开着，ADR 0150） */
     shapeLong?: boolean;
-    /** 「做题式」写法（ADR 0146 实验，只有模拟器的 --frame solve 用，线上没有这个开关）：不让她演自己，让她推断这个情境里最可能发出的那几条 */
-    replyFrame?: 'solve';
     /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；菜单进提示词，回复里的 <device:…> 令牌在发送前登记并按档处理 */
     devices?: Pick<DeviceControl, 'menu' | 'parse' | 'commit'>;
     /** 他刚才在 DSH 桌面上和她的对话（ADR 0177，配置 crossRecent）：只给男朋友档；返回一段放进提示词的话，没有就不放 */
@@ -925,7 +917,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('inner', innerNow),
                 ...when('intimate', intimateNow),
                 ...when('transcript', transcript),
-                ...(options.replyFrame === 'solve' && !initiate && !crisisNow ? [{ slot: 'solveFrame' as const, text: SOLVE_FRAME_NOTE }] : []),
+                // 「做题式」写法（ADR 0146 实验，只有模拟器用）是解释器的模块（modules/solve-frame.ts），经 turnModules 放进 solveFrame 槽
                 ...(initiate ? [{ slot: 'initiateNote' as const, text: initiate.note }] : []),
             ];
             const legacy: Module = {

@@ -778,3 +778,27 @@ describe('模拟器挂着她这几天拍照修图的模块（ADR 0336）', () =>
         assert.match(prompts.at(-1)!, /\[你这几天拍照修图（[^\]]*修昨天拍的片子/);
     });
 });
+
+describe('模拟器挂着「做题式」写法的模块（ADR 0336）', () => {
+    // 只有模拟器的 --frame solve 用（ADR 0146 实验），行为基线碰不到；没挂模块，这一句就没有
+    const run = async (replyFrame?: 'solve') => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-solve-sim-'));
+        const prompts: string[] = [];
+        try {
+            await runScenario(parseScenario({
+                name: 'solve', tier: 'boyfriend', start: '2026-11-10T20:00:00+08:00', memory: false, schedule: false,
+                steps: [{ say: '在干嘛' }, { advance: '10m' }],
+            }), {
+                runId: 'solve', dataDir: dir, card, llm, prompt, settle: { quietMs: 10, maxMs: 50 }, ...(replyFrame ? { replyFrame } : {}),
+                generate: async messages => { prompts.push(messages.map(m => String(m.content)).join('\n')); return '嗯嗯'; },
+            });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+        return prompts;
+    };
+    test('--frame solve：提示词里有那一句；不给就没有', async () => {
+        assert.match((await run('solve'))[0]!, /推断在这个情境里你最可能真的发出去的那几条消息/);
+        assert.doesNotMatch((await run())[0]!, /推断在这个情境里/);
+    });
+});

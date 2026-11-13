@@ -78,6 +78,7 @@
 - `modules/her-notes.ts`
 - `modules/playful.ts`
 - `modules/exemplars.ts`
+- `modules/solve-frame.ts`
 - `st/`
 
 ## 开关
