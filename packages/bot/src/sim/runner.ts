@@ -27,6 +27,7 @@ import { meetupModule } from '../modules/meetup.ts';
 import { practiceModule } from '../modules/practice.ts';
 import { pastModule } from '../modules/past.ts';
 import { solveFrameModule } from '../modules/solve-frame.ts';
+import { innerModule } from '../modules/inner.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
 import { repetitionModule } from '../modules/repetition.ts';
 import { memesModule } from '../modules/memes.ts';
@@ -531,8 +532,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ...(scenario.shapeAgenda || options.shapeAgenda ? { shapeAgenda: true } : {}),
         ...(scenario.shapeFiller || options.shapeFiller ? { shapeFiller: true } : {}),
         ...(scenario.shapeFeel || options.shapeFeel ? { shapeFeel: true } : {}),
-        // 她最近心里在想什么（ADR 0101）：计划器在后面才建，每次现取
-        ...(scenario.innerLife ? { innerLine: () => planner?.innerLine() } : {}),
         // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
         ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
         ...(scenario.texture ? { texture: true } : {}),
@@ -578,6 +577,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             peopleAroundModule({ herDays: options.herDays ?? false, log: message => { if (epoch === responderEpoch) log(message); } }),
             meetupModule({ herDays: options.herDays ?? false, worldState: () => sharedWorld ?? undefined, promises: () => promises ?? undefined, log: message => { if (epoch === responderEpoch) log(message); } }),
             practiceModule({ lifeInPrompt: Boolean(scenario.lifeInPrompt && scenario.autonomous), herDays: options.herDays ?? false, worldState: () => sharedWorld ?? undefined }),
+            // 她最近心里在想什么（ADR 0101）：计划器在后面才建，每次现取
+            ...(scenario.innerLife ? [innerModule({ innerLine: () => planner?.innerLine(), log: message => { if (epoch === responderEpoch) log(message); } })] : []),
             // 「做题式」写法（ADR 0146 实验）：只有 --frame solve 时挂
             ...(options.replyFrame === 'solve' ? [solveFrameModule()] : []),
             ...(scenario.relationship ? [closenessModule(message => { if (epoch === responderEpoch) log(message); })] : []),

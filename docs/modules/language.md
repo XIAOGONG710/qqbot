@@ -79,6 +79,7 @@
 - `modules/playful.ts`
 - `modules/exemplars.ts`
 - `modules/solve-frame.ts`
+- `modules/inner.ts`
 - `st/`
 
 ## 开关

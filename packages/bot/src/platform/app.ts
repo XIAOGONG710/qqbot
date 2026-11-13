@@ -41,6 +41,7 @@ import { booksModule } from '../modules/books.ts';
 import { meetupModule } from '../modules/meetup.ts';
 import { exemplarsModule } from '../modules/exemplars.ts';
 import { practiceModule } from '../modules/practice.ts';
+import { innerModule } from '../modules/inner.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
 import { repetitionModule } from '../modules/repetition.ts';
@@ -1044,6 +1045,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ...(exemplars.length ? [exemplarsModule({ exemplars, log })] : []),
         // 她这几天拍照修图（配置 lifeInPrompt，要有生活执行器）：卡上有相机基金的档位才放；不存状态
         practiceModule({ lifeInPrompt: Boolean(config.lifeInPrompt && lifeRunner), herDays: config.herDays, worldState: () => sharedWorld ?? undefined }),
+        // 她最近心里在想什么（ADR 0101，配置 innerLife）：念头是主动消息的计划器想的，计划器在后面才建，每次现取
+        ...(config.innerLife ? [innerModule({ innerLine: contact => planners.get(contact.qq)?.innerLine(), log })] : []),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
         ...(config.relationship ? [closenessModule(log)] : []),
         ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
@@ -2113,8 +2116,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.shape && config.shapeAgenda ? { shapeAgenda: true } : {}),
             ...(config.shape && config.shapeFiller ? { shapeFiller: true } : {}),
             ...(config.shape && config.shapeFeel ? { shapeFeel: true } : {}),
-            // 她最近心里在想什么（ADR 0101）：计划器建好之后才有，所以每次现取
-            ...(config.innerLife ? { innerLine: () => planners.get(contact.qq)?.innerLine() } : {}),
             // 她自己决定今天想做什么（ADR 0182）：和「在读的书」一起当额外的空闲活动，每次现取
             ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
             // 她理解人的话（10-30）：他这句话和以前被纠正过的事撞上时提醒她

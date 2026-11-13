@@ -673,3 +673,13 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - `src/modules/solve-frame.ts`：`solveFrameModule()`，只有 contribute，读 `turn.initiate`、`turn.facts.crisis`；`SOLVE_FRAME_NOTE` 原样从 `contact.ts` 搬过来。模拟器在 `replyFrame === 'solve'` 时挂。
 - 删掉的接线：`contact.ts` 里的 `replyFrame` 选项、那一段和常量；模拟器不再往联系人流水线传 `replyFrame`。
 - 验证：变异检验——模拟器不挂模块，新的模拟器测试报错；类型检查通过，模块总表测试通过。
+
+### 她最近心里在想的（2026-11-13）
+
+- 是什么：ADR 0101（配置 `innerLife`）——主动消息的计划器想出来、存下的念头，拼提示词时现取一行放进 `inner` 槽。主动找他时也带上（ADR 0180），危机回合不放。
+- 没补基线：`memes`、`proactive-day`、`watched` 三个场景已经带这一行。
+- `src/modules/inner.ts`：`innerModule({ innerLine, log })`，只有 contribute。计划器在 App / 模拟器里后建，`innerLine` 每次按联系人现取。念头怎么想、怎么写（`proactive/inner.ts`）一个字没改。
+  原来在算深思、引用、形状之前读，现在在 contribute 时读；中间没有 await，读到的是同一份。
+- 删掉的接线：`contact.ts` 里那一段、日志、`inner` 段落和 `innerLine` 选项；App 和模拟器不再往联系人流水线传 `innerLine`，改成挂模块（开关同原来）。
+- 和别的模块一样，「内心：这一轮提示词里放了她最近的念头」这行日志挪到了拼段落的时候（同一轮之内，内容不变；日志不在基线里）。
+- 验证：去掉语音那句（`8565918f`）之后基线逐字不变；变异检验——App 不挂模块，`proactive-day`、`watched` 报不一致（另外 16 个是语音那句本来就红的）。`app.test.ts`、`inner.test.ts`、`sim.test.ts` 等 206 项通过；类型检查通过。

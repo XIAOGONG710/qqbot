@@ -281,8 +281,6 @@ export interface ContactPipelineOptions {
     shapeFiller?: boolean;
     /** 情绪轮（配置 shapeFeel，要 shape 开着）：适用的轮次里约 18% 先说自己对他的小情绪，不把他的话处理完整（ADR 0099） */
     shapeFeel?: boolean;
-    /** 她最近心里在想什么（ADR 0101，配置 innerLife）：放进提示词的一行；没有就没有。主动找他、危机回合不放 */
-    innerLine?: () => string | undefined;
     /** 她自己决定今天想做的事（ADR 0182）：和「在读的书」一起当额外的空闲活动，状态行和「你今天的打算」都带上 */
     herPlan?: (at: Date) => ExtraFreeActivity[];
     /**
@@ -822,10 +820,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // shapeAll（ADR 0220，默认关）：所有轮次都给形状（回到 ADR 0091 的样子），用来量松绑前后的差别
             shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !deliberateNow && (Boolean(options.shapeAll) || Boolean(cue) || Boolean(intent && ENGAGED_INTENT.test(intent))) ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
             // 别重复自己（反复说的字词、主动找他的开头、说过了的事，ADR 0098 / 0135）是解释器的模块（modules/repetition.ts），经 turnModules 放进 crutch、opener、told 槽
-            // 她最近心里在想的（ADR 0101）：前后是同一个在想事情的人；主动找他时也带上（她主动说的常常就是这些念头，
-            // 还有她自己上网查到的，ADR 0180）
-            const innerNow = !crisisNow ? options.innerLine?.() : undefined;
-            if (innerNow) log('内心：这一轮提示词里放了她最近的念头');
+            // 她最近心里在想的（ADR 0101）是解释器的模块（modules/inner.ts），经 turnModules 放进 inner 槽
             // 「/亲热」（ADR 0170）：他刚让她黏一点，接下来几条回复里放一行；每生成一条取一次
             const intimateNow = !initiate && !crisisNow ? options.intimacyLine?.() : undefined;
             if (intimateNow) log('亲热：他刚发过 /亲热，这一轮提示词里让她黏一点');
@@ -914,7 +909,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(length ? [{ slot: 'length' as const, text: describeLength(length, options.shortReplies) }] : []),
                 ...(shapeNow ? [{ slot: 'shape' as const, text: describeShape(shapeNow) }] : []),
                 ...when('quote', quoteLine),
-                ...when('inner', innerNow),
                 ...when('intimate', intimateNow),
                 ...when('transcript', transcript),
                 // 「做题式」写法（ADR 0146 实验，只有模拟器用）是解释器的模块（modules/solve-frame.ts），经 turnModules 放进 solveFrame 槽
