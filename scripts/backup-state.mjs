@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { isAbsolute, join, relative, sep } from 'node:path';
 
 export const COMPLETE_MARKER = '.complete.json';
 export const FAILURE_MARKER = '.last-failure.json';
@@ -48,15 +49,33 @@ export function isReusableBackupArtifact(target, component, artifactName, expect
         && matchesArtifact(join(target, artifactName), status, true);
 }
 
-export function discoverStateBackup(root) {
-    for (const source of ['runtime/bot', 'runtime/bot-shadow']) {
+/**
+ * 线上 Koishi 配置里 qqbot 插件的 dataDir（相对仓库根，正斜杠）；读不到配置或没写就是 undefined。
+ * 11-10 到 11-13：旧的 runtime/bot 只剩 secrets / alert / config，却排在 runtime/bot-shadow 前面被认成数据目录，
+ * her-state.zip 连着几天只有 190 字节。以配置为准，不再按目录名猜。
+ */
+export function configuredDataDir(root) {
+    let text;
+    try { text = readFileSync(join(root, 'runtime', 'koishi', 'koishi.yml'), 'utf8'); } catch { return undefined; }
+    let config;
+    try { config = createRequire(import.meta.url)('js-yaml').load(text); } catch { return undefined; }
+    const plugin = Object.values(config?.plugins ?? {}).find(p => p && typeof p === 'object' && 'contacts' in p);
+    const dir = typeof plugin?.dataDir === 'string' ? plugin.dataDir.trim() : '';
+    if (!dir) return undefined;
+    const relativeDir = isAbsolute(dir) ? relative(root, dir) : dir;
+    return relativeDir.split(sep).join('/').replace(/^\.\//, '');
+}
+
+/** configured：配置里写明的数据目录。给了就只认它，目录不在算失败（不是「没有数据目录、只备数据库」）；没给才按旧顺序找 */
+export function discoverStateBackup(root, configured) {
+    for (const source of configured ? [configured] : ['runtime/bot', 'runtime/bot-shadow']) {
         const directory = join(root, source);
         let entries;
         try {
             if (!statSync(directory).isDirectory()) return { source, items: [], invalid: true };
             entries = readdirSync(directory, { withFileTypes: true });
         } catch (error) {
-            if (error && typeof error === 'object' && error.code === 'ENOENT') continue;
+            if (!configured && error && typeof error === 'object' && error.code === 'ENOENT') continue;
             return { source, items: [], invalid: true };
         }
         const items = entries

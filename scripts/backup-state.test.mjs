@@ -8,6 +8,7 @@ import {
     FAILURE_MARKER,
     RETRY_DELAY_MS,
     backupDirectoriesToPrune,
+    configuredDataDir,
     discoverStateBackup,
     isCompleteBackup,
     isReusableBackupArtifact,
@@ -278,5 +279,52 @@ describe('backup completion policy', () => {
         rmSync(artifact, { recursive: true });
         writeFileSync(artifact, 'backup', 'utf8');
         assert.equal(nonEmptyFile(artifact), true);
+    });
+});
+
+describe('state backup follows the configured data directory', () => {
+    const koishi = (root, dataDir) => {
+        mkdirSync(join(root, 'runtime', 'koishi'), { recursive: true });
+        writeFileSync(join(root, 'runtime', 'koishi', 'koishi.yml'), [
+            'plugins:',
+            '  adapter-onebot:',
+            '    endpoint: ws://127.0.0.1:3001',
+            '  qqbot:abc123:',
+            '    contacts: []',
+            ...(dataDir ? [`    dataDir: ${dataDir}`] : []),
+            '',
+        ].join('\n'), 'utf8');
+    };
+
+    test('11-10..11-13: a stale runtime/bot with leftovers no longer shadows the configured runtime/bot-shadow', () => {
+        const root = fresh();
+        const stale = join(root, 'runtime', 'bot');
+        mkdirSync(join(stale, 'secrets'), { recursive: true });
+        writeFileSync(join(stale, 'ALERT.txt'), 'old', 'utf8');
+        const shadow = join(root, 'runtime', 'bot-shadow');
+        mkdirSync(join(shadow, 'chats'), { recursive: true });
+        koishi(root, 'runtime/bot-shadow');
+
+        assert.equal(configuredDataDir(root), 'runtime/bot-shadow');
+        assert.deepEqual(discoverStateBackup(root, configuredDataDir(root)), { source: 'runtime/bot-shadow', items: [join(shadow, 'chats')] });
+        // 不看配置时就是当时那个错：认成了旧目录
+        assert.equal(discoverStateBackup(root).source, 'runtime/bot');
+    });
+
+    test('a configured directory that does not exist fails closed instead of a database-only success', () => {
+        const root = fresh();
+        koishi(root, 'runtime/bot-shadow');
+        const plan = discoverStateBackup(root, configuredDataDir(root));
+        assert.deepEqual(plan, { source: 'runtime/bot-shadow', items: [], invalid: true });
+        assert.equal(stateBackupDisposition(plan), 'invalid');
+    });
+
+    test('no koishi.yml, no dataDir, or an absolute path inside the repo', () => {
+        const root = fresh();
+        assert.equal(configuredDataDir(root), undefined);
+        koishi(root);
+        assert.equal(configuredDataDir(root), undefined);
+        koishi(root, JSON.stringify(join(root, 'runtime', 'bot-shadow')));
+        assert.equal(configuredDataDir(root), 'runtime/bot-shadow');
     });
 });
