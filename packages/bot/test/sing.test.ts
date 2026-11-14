@@ -13,10 +13,16 @@ describe('唱歌触发（2026-11-14）', () => {
         assert.equal(matchSingRequest('https://www.bilibili.com/video/BV1hW4y1Y7dG/?x=1'), 'BV1hW4y1Y7dG');
     });
 
+    test('歌名：书名号或「唱 」开头', () => {
+        assert.equal(matchSingRequest('唱 稻香'), '稻香');
+        assert.equal(matchSingRequest('给我唱一首 稻香'), '稻香');
+        assert.equal(matchSingRequest('唱《晴天》'), '晴天');
+    });
+
     test('普通聊天不误触', () => {
         assert.equal(matchSingRequest('今天好累'), undefined);
         assert.equal(matchSingRequest('唱歌好听'), undefined);
-        assert.equal(matchSingRequest('BV1hW4y1Y7dG'), undefined);
         assert.equal(matchSingRequest('唱吧'), undefined);
+        assert.equal(matchSingRequest('唱歌'), undefined);
     });
 });
