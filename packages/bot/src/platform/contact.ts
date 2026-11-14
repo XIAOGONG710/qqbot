@@ -33,7 +33,7 @@ import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from '.././emotion/grievance.ts';
 import { needsCareText } from '.././language/intent.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
-import { describeQuote, planQuote, quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
+import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import { asksToExplain, ENGAGED_INTENT, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, STILTED_WORDS } from '.././language/expression.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
 import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, shapeReply, type ShapePlan } from '.././language/shape.ts';
@@ -173,8 +173,6 @@ export interface ContactPipelineOptions {
     factAudit?: (messages: OpenAIMessage[]) => Promise<string>;
     /** 每次事实检查的记录（模拟器的报告用） */
     onFactCheck?: (record: FactRecord) => void;
-    /** 引用的概率（默认 QUOTE_SHARE；模拟器场景可以调来测）*/
-    quoteShare?: number;
     /** 她打字的这段时间让对方那边显示「正在输入…」（ADR 0077，配置 typingStatus）；不给就不显示 */
     typing?: (userId: number) => void;
     /** 撤回自己发出去的一条（配置 selfRecall，ADR 0086）：打错字改口的，一部分改成撤回重发；不给就一律补一条「*对的词」 */
@@ -757,12 +755,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             }
             // 深思时那条只管“怎么答”的意图行（先直接回答 / 很大很抽象的问题）由深思那一句代替；追着要答案、说她不像真人这类纠偏的意图行保留
             const intentLine = deliberateNow && intent && /先直接回答他刚问的|他在问一个很大、很抽象的问题/.test(intent) ? undefined : intent;
-            // 引用回复（ADR 0136）：他连发里有个不是最后一条的问题，按概率引用它；危机、他难过、主动找他、只发表情 / 照片的回合不引用
-            quoteNow = options.quoteReply && !initiate && !thinking && !crisisNow && !stickerOnlyNow && !photoNow && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
-                ? planQuote(options.history.load(contact.qq), contact.qq, options.quoteShare)
-                : undefined;
-            const quoteLine = quoteNow ? describeQuote(quoteNow) : undefined;
-            if (quoteLine) log('引用回复：这一轮第一条引用他连发里的一个问题（日志不记内容）');
+            // 引用回复（ADR 0136）是解释器的模块（modules/quote.ts）：contribute 时算、写回 turn.facts.quote，放进 quote 槽；拼完段落之后取回来，发送时引用那条。这里先清掉上一轮的
+            quoteNow = undefined;
             pick = picked ? {
                 kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS],
                 // 她自己生活里的东西：猫、相机、在读的书、手上的爱好（DSH 诊断 1.2、ADR 0036 的四类）
@@ -873,7 +867,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 // 工作模式的三行（他在求她切工作 / 判断要不要动电脑 / 切到了工作）是解释器的模块（modules/work-mode.ts）
                 ...(deliberateNow ? [{ slot: 'deliberate' as const, text: options.deliberate?.note ?? DELIBERATE_NOTE }] : []),
                 ...when('routedHint', routedHint),
-                ...when('quote', quoteLine),
                 ...when('intimate', intimateNow),
                 // 「做题式」写法（ADR 0146 实验，只有模拟器用）是解释器的模块（modules/solve-frame.ts），经 turnModules 放进 solveFrame 槽
                 // 主动找他时的说明是解释器的模块（modules/initiate-note.ts），经 turnModules 放进 initiateNote 槽
@@ -891,6 +884,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             const { afterMain, afterHistory } = ran instanceof Promise ? await ran : ran;
             shapeNow = turn.facts.shape;
+            quoteNow = turn.facts.quote;
             const prompt = buildPrompt({
                 character: turnCard.character,
                 worldInfo: turnCard.worldInfo,

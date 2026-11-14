@@ -86,6 +86,7 @@
 - `modules/initiate-note.ts`
 - `modules/length.ts`
 - `modules/shape.ts`
+- `modules/quote.ts`
 - `st/`
 
 ## 开关

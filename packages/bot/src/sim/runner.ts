@@ -32,6 +32,7 @@ import { devicesModule } from '../modules/devices.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { lengthModule } from '../modules/length.ts';
 import { shapeModule } from '../modules/shape.ts';
+import { quoteModule } from '../modules/quote.ts';
 import type { DeviceControl } from '../platform/device-actions.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
@@ -537,7 +538,7 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
         ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
         ...(scenario.texture ? { texture: true } : {}),
-        ...(scenario.quoteReply ? { quoteReply: true, ...(scenario.quoteShare !== undefined ? { quoteShare: scenario.quoteShare } : {}) } : {}),
+        ...(scenario.quoteReply ? { quoteReply: true } : {}),
         // 逐条事实检查（ADR 0137）：审稿的调用走场景自己的模型（假模型也行）；每次的记录进这一步，报告里看得到
         ...((options.factCheck ?? scenario.factCheck) !== 'off' ? {
             factCheck: options.factCheck ?? scenario.factCheck,
@@ -595,6 +596,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
                 ...(options.shapeLong ? { shapeLong: true } : {}),
                 log: message => { if (epoch === responderEpoch) log(message); },
             }),
+            // 引用回复（ADR 0136），同 App；比例按场景
+            ...(scenario.quoteReply ? [quoteModule({ history: qq => history.load(qq), ...(scenario.quoteShare !== undefined ? { share: scenario.quoteShare } : {}), log: message => { if (epoch === responderEpoch) log(message); } })] : []),
             // 长短不一（ADR 0024），同 App
             lengthModule({ ...(scenario.shortReplies ? { shortReplies: true } : {}), log: message => { if (epoch === responderEpoch) log(message); } }),
             // 主动找他时计划器写的说明，同 App

@@ -47,6 +47,7 @@ import { consentModule } from '../modules/consent.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { lengthModule } from '../modules/length.ts';
 import { shapeModule } from '../modules/shape.ts';
+import { quoteModule } from '../modules/quote.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
@@ -1086,6 +1087,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             shapeSplit: config.shape && config.shapeSplit, shapeAsk: config.shape && config.shapeAsk, shapeLong: config.shape && config.shapeLong, log,
         }),
         lengthModule({ shortReplies: config.shortReplies, log }),
+        // 引用回复（ADR 0136，配置 quoteReply）：contribute 时挑出要引用的那条、写回 turn.facts.quote，旧逻辑发送时引用它
+        ...(config.quoteReply ? [quoteModule({ history: qq => history.load(qq), log })] : []),
         // 主动找他时计划器写的说明（initiate.note）；没有开关，不存状态
         initiateNoteModule(),
         // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态

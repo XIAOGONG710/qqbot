@@ -26,6 +26,7 @@ import type { HerStatus } from '../language/status-line.ts';
 import type { DescribedBooks } from '../life/her-days.ts';
 import type { ShapePlan } from '../language/shape.ts';
 import type { PhotoKind } from '../vision/photos.ts';
+import type { QuotePlan } from '../social/quote-reply.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -103,6 +104,8 @@ export interface TurnFacts {
     deliberate?: boolean;
     /** 这一轮的形状（ADR 0091）：每条多长、几条。形状的模块（modules/shape.ts）在 contribute 时写，长短的模块和旧逻辑（生成、发出去之前裁）读 */
     shape?: ShapePlan;
+    /** 引用回复（ADR 0136，modules/quote.ts 在 contribute 时写）：这一轮第一条引用他哪一条；旧逻辑发送时读 */
+    quote?: QuotePlan;
     /** 带自己的事时能挑的话题（她那边还没说过的、身体、心情）；形状的模块读 */
     agendaTopics?: readonly string[];
     /** 她这会儿低落（心情安静、身体不舒服、心境偏低、真人数值低）：不加「话多」 */
