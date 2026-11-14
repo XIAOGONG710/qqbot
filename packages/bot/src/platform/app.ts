@@ -90,6 +90,8 @@ import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, personaFacts, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
 import { GROUP_CONTEXT, groupLine, groupLog, groupNote, groupReply, nameAts, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
+import { groupPeople } from '.././social/group-people.ts';
+import { moodStateLine } from '.././emotion/express.ts';
 import { currentTierHistory, TierRecord } from '.././memory/tier-record.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
 import { arrivedWhileAsleep } from '.././social/reply-timing.ts';
@@ -3495,6 +3497,8 @@ ${body}
     // ───────── 群聊（ADR 0210） ─────────
     const groupsOn = (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0;
     const groupLogs = groupsOn ? groupLog(config.dataDir) : undefined;
+    /** 群里认识的人（2026-11-14）：聊过就记住，下次再见不能当陌生人 */
+    const groupPeopleBook = groupsOn ? groupPeople(config.dataDir) : undefined;
     const groupBusy = new Set<number>();
     /** 攒一攒再处理（用户 2026-11-14「多人同时找她要读记录、有选择地回答，不然很混乱」）：安静这么久就处理这一批 */
     const GROUP_BATCH = { quietMs: 1500, maxMs: 6000, maxMessages: 12, maxReads: 3 } as const;
@@ -3597,7 +3601,10 @@ ${body}
             // 整段进记录：她说的话要从这里读得到上下文
             for (const item of batch) {
                 const name = (item.event.sender.card || item.event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16);
-                groupLogs.append(groupId, { time: new Date(item.event.time * 1000).toISOString(), from: item.event.user_id, name, content: item.text, messageId: item.event.message_id });
+                const at = new Date(item.event.time * 1000).toISOString();
+                groupLogs.append(groupId, { time: at, from: item.event.user_id, name, content: item.text, messageId: item.event.message_id });
+                // 谁在这个群说过什么：下次再见她不能当陌生人
+                groupPeopleBook?.note(groupId, { qq: item.event.user_id, name, content: item.text, at });
             }
             if (!reason) return;
             const entries = groupLogs.load(groupId);
@@ -3635,7 +3642,13 @@ ${body}
         const boyfriendHere = Boolean(bf && entries.some(e => e.from === bf.qq));
         const system = `你是${card.character.name}，在 QQ 群里和大家聊天。下面是你的设定。\n${personaFacts(card.character.description)}`;
         const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, bf)).join('\n');
-        const note = groupNote({ groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason, ...extra });
+        // 这个群里她认识谁（聊过就认得，改名也认得）；心情只说「这会儿怎么样」，不说来由（都在私聊里）
+        const memory = groupPeopleBook?.render(group.id, { ...(bf ? { exclude: bf.qq } : {}), now: worldNow() });
+        const mood = config.herFeelings && lastFeelings ? moodStateLine(lastFeelings.felt) : undefined;
+        const note = groupNote({
+            groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason, ...extra,
+            ...(memory ? { memory } : {}), ...(mood ? { mood } : {}),
+        });
         const messages = [{ role: 'system' as const, content: system }, { role: 'user' as const, content: `${transcript}\n\n${note}` }];
         const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);
         // 这一档的禁用词（群里叫不出「宝宝」这类黏的叫法）：带了的那条不发

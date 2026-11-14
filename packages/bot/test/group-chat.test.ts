@@ -7,6 +7,7 @@ import { startApp } from '../src/platform/app.ts';
 import { parseGroups, type AppConfig } from '../src/platform/config.ts';
 import { isGroupMessage, type GroupMessageEvent } from '../src/platform/onebot.ts';
 import { GROUP_LIMITS, groupLine, groupLog, groupNote, groupReply, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
+import { moodStateLine } from '../src/emotion/express.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import { syntheticCardPattern } from './fixtures/card.ts';
 
@@ -74,6 +75,19 @@ describe('群聊：给她看的样子', () => {
         for (const part of ['QQ 群「宿舍群」', '不在群里说你和他之间的私事', '别喊得黏', '替他说两句', '不想说就只写「不说」']) assert.ok(note.includes(part), part);
         assert.ok(!groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned' }).includes('男朋友）也在'));
         assert.ok(groupNote({ groupName: 'x', boyfriendHere: false, reason: 'crisis' }).includes('12356'));
+        // 认识的人和心境都进说明（2026-11-14）
+        const withMemory = groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', memory: '[认识的人：老王]', mood: '[你这会儿有点累]' });
+        assert.ok(withMemory.includes('[认识的人：老王]') && withMemory.includes('[你这会儿有点累]'));
+    });
+
+    test('心境只说怎么样，不把私聊的来由带进群', () => {
+        const line = moodStateLine([
+            { kind: 'sad', level: 'strong' }, { kind: 'tired', level: 'clear' }, { kind: 'joy', level: 'faint' },
+        ])!;
+        assert.ok(line.includes('有点低落') && line.includes('有点累'), line);
+        assert.ok(!line.includes('faint') && !line.includes('joy'), line);
+        assert.ok(line.includes('话少一点'), '提不起劲时让她少说');
+        assert.equal(moodStateLine([{ kind: 'joy', level: 'faint' }]), undefined, '几乎察觉不到就不写');
     });
 
     test('她写的整理成一两条：去掉名字前缀和内部标记；「不说」就不发', () => {
@@ -164,6 +178,7 @@ describe('群聊：进应用', () => {
         // 群名片里的字母 s 不能被当成空白吃掉（2026-11-14 修：/s+/ 少了反斜杠，「Lisa」会变成「Li a」）
         assert.ok(prompt.includes('Lisa：我也去'), prompt.slice(-400));
         assert.ok(prompt.includes('别喊得黏'), '他在群里');
+        assert.ok(prompt.includes('你在这个群认识的人') && prompt.includes('老王'), '群里认识谁要写进去（不能再见就不认识）');
         assert.match(prompt, /不要否认，用你自己的口气大方承认/, '没标「都知道」的群用承认版');
         const log = readFileSync(join(dataDir, 'groups', '555.jsonl'), 'utf8');
         assert.ok(log.includes('"mine":true') && log.includes('来了来了'));

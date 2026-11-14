@@ -3,7 +3,7 @@
 //   · 这一轮最多几条气泡
 //   · 提示词里一句「这会儿话多/话少」的方向
 // 不做的事：不改她说的内容（那是她的），不加新的状态字段（心境本来就是现算的）。
-import type { Felt } from './feelings.ts';
+import type { FeelingKind, Felt } from './feelings.ts';
 
 /** 一条心境事实在提示词里的分量：faint 只算 0，clear/strong 才有用 */
 const weight = (level: Felt['level']): number => (level === 'strong' ? 2 : level === 'clear' ? 1 : 0);
@@ -44,4 +44,18 @@ export function moodPaceLine(mood: MoodShape): string | undefined {
     if (low >= 2 && low > mood.joy) return '（你这会儿提不起劲：话少一点，别硬开玩笑，也别写长句；不想接就只回一句）';
     if (mood.joy >= 2 && low === 0) return '（你这会儿心情好：话可以多一点，可以主动带一句自己的事，但不用刻意热闹）';
     return undefined;
+}
+
+const MOOD_NAME: Record<FeelingKind, string> = { joy: '心情不错', relief: '松了口气', worry: '有点担心', sad: '有点低落', annoyed: '有点烦', tired: '有点累' };
+
+/**
+ * 群聊里的一句心境（用户 2026-11-14「把情绪系统接上」）：只说「这会儿怎么样」，**不说来由**——
+ * 来由都是她和男朋友之间的事，写进群里那段的提示词就有被带进群里的风险（ADR 0210：不在群里说私事）。
+ */
+export function moodStateLine(felt: readonly Pick<Felt, 'kind' | 'level'>[]): string | undefined {
+    const clear = felt.filter(item => item.level !== 'faint').slice(0, 2);
+    if (!clear.length) return undefined;
+    const labels = clear.map(item => MOOD_NAME[item.kind]);
+    const pace = moodPaceLine(moodShape(felt))?.replace(/^（|）$/g, '');
+    return `[你这会儿${labels.join('、')}${pace ? `：${pace}` : ''}。]`;
 }
