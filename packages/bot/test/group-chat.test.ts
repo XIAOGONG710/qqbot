@@ -36,6 +36,10 @@ describe('群聊：什么时候开口', () => {
 
     test('有人说想不开：一定开口（不看间隔）', () => {
         assert.equal(speakReason([text('真的不想活了')], '真的不想活了', 30001, 9, ctx()), 'crisis');
+        // 夸张、想念、说别人的都不算——和私聊同一套判定（原来群聊自己那行正则把「想死你了」也当危机，当众甩热线）
+        for (const joking of ['想死你了', '笑死我了，想死哈哈哈哈', '作业撑不下去了', '我室友说他想死', '我不想死']) {
+            assert.notEqual(speakReason([text(joking)], joking, 30001, 10, ctx()), 'crisis', joking);
+        }
     });
 
     test('聊到她熟的：只是有时候插一句，一天最多几次', () => {

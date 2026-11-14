@@ -6,6 +6,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { catAlternative } from '../character-terms.ts';
+import { detectCrisis } from '../emotion/crisis.ts';
 import { join } from 'node:path';
 import { pick } from './reply-timing.ts';
 import type { Segment } from '../platform/onebot.ts';
@@ -32,8 +33,8 @@ export const HER_NAMES = ['林梦瑶', '梦瑶', '瑶瑶', '瑶姐'] as const;
 const herTopics = () => new RegExp(`吃什么|吃啥|饭|外卖|奶茶|火锅|烧烤|零食|追剧|这剧|电视剧|番剧|新番|电影|猫|${catAlternative()}相机|拍照|摄影|修图|照片`);
 /** 损人的话（有人这样说他） */
 const TEASING = /菜|笨|傻|蠢|丑|怂|废物|拉胯|垃圾|太弱|弱鸡|不行啊|就这|笑死|好惨|活该|单身狗/;
-/** 想伤害自己、绝望（群里有人这么说，她认真接，不当玩笑） */
-const DESPAIR = /不想活|想死|自杀|轻生|活着没意思|活着没意义|跳楼|割腕|结束自己|撑不下去了/;
+/** 想伤害自己、绝望（群里有人这么说，她认真接，不当玩笑）：用私聊那套判定，夸张、否认、说别人的都不算 */
+const despair = (text: string) => detectCrisis(text) !== undefined;
 
 export type SpeakReason = 'mentioned' | 'crisis' | 'defend' | 'topic';
 
@@ -54,7 +55,7 @@ export function speakReason(message: Segment[] | string, text: string, from: num
     const segments = typeof message === 'string' ? [] : message;
     const atHer = segments.some(s => s.type === 'at' && Number(s.data?.qq) === ctx.selfId);
     const repliesHer = segments.some(s => s.type === 'reply' && ctx.herMessageIds.has(Number(s.data?.id)));
-    if (DESPAIR.test(text)) return 'crisis';
+    if (despair(text)) return 'crisis';
     if (atHer || repliesHer || HER_NAMES.some(name => text.includes(name))) return 'mentioned';
     if (ctx.boyfriend && from !== ctx.boyfriend.qq) {
         const atHim = segments.some(s => s.type === 'at' && Number(s.data?.qq) === ctx.boyfriend!.qq);
