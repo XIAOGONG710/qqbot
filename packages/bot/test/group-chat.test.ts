@@ -103,7 +103,7 @@ describe('群聊：给她看的样子', () => {
 });
 
 describe('群聊：进应用', () => {
-    function app(groupChat: 'dryRun' | 'on', knowsBot = false) {
+    function app(groupChat: 'dryRun' | 'on', knowsBot = false, extra: { vision?: { describe: (image: { url: string }) => Promise<string> }; stickerReader?: { describe: (image: { url: string }) => Promise<string> } } = {}) {
         const dataDir = tmp();
         const cfg = {
             llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
@@ -111,7 +111,7 @@ describe('群聊：进应用', () => {
             characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '宝宝', tier: 'boyfriend', knowsBot: true }],
             unlistedFriends: false, schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false,
-            lifeInPrompt: false, grievance: false, feedbackCommands: false, realWeather: false, media: true,
+            lifeInPrompt: false, grievance: false, feedbackCommands: false, realWeather: false, media: true, readStickers: Boolean(extra.stickerReader),
             candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir,
             groupChat, groups: [{ id: 555, name: '宿舍群', ...(knowsBot ? { knowsBot: true } : {}) }],
         } as unknown as AppConfig;
@@ -124,6 +124,8 @@ describe('群聊：进应用', () => {
                 sendGroupText: async (groupId, value) => { sentGroup.push(`${groupId}:${value}`); return 8000 + sentGroup.length; },
             },
             pipeline: { generate: async messages => { prompts.push(messages.map(m => m.content).join('\n')); return '来了来了'; }, settle: { quietMs: 0, maxMs: 0 } },
+            ...(extra.vision ? { vision: extra.vision } : {}),
+            ...(extra.stickerReader ? { stickerReader: extra.stickerReader } : {}),
         });
         return { app: started, sentGroup, prompts, dataDir };
     }
@@ -157,6 +159,36 @@ describe('群聊：进应用', () => {
         assert.match(prompt, /不要否认，用你自己的口气大方承认/, '没标「都知道」的群用承认版');
         const log = readFileSync(join(dataDir, 'groups', '555.jsonl'), 'utf8');
         assert.ok(log.includes('"mine":true') && log.includes('来了来了'));
+    });
+
+    test('群里的图：没人叫她就不读；叫到她了才读，读出来的进提示词', async () => {
+        let looked = 0;
+        const vision = { describe: async () => { looked++; return '一张火锅照片'; } };
+        const { app: a, sentGroup, prompts, dataDir } = app('on', false, { vision });
+        await a.connected(SELF);
+        // 没叫到她：不读图，记录里留着占位
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'image', data: { url: 'http://x/1.jpg' } }, text('今晚吃这个')]));
+        await new Promise(r => setTimeout(r, 100));
+        assert.equal(looked, 0, '没触发就不该调看图接口');
+        assert.ok(readFileSync(join(dataDir, 'groups', '555.jsonl'), 'utf8').includes('[图片]'));
+        // @ 她 + 一张图：读图，提示词里是她看出来的内容
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'image', data: { url: 'http://x/2.jpg' } }, { type: 'at', data: { qq: String(SELF) } }, text(' 这啥')]));
+        await until(() => sentGroup.length > 0);
+        a.stop();
+        assert.equal(looked, 1);
+        assert.ok(prompts.at(-1)!.includes('[图片：一张火锅照片]'), prompts.at(-1)!.slice(-400));
+    });
+
+    test('群里的表情包：用表情包那条提示词先抄字，读一次就进记录', async () => {
+        let read = 0;
+        const stickerReader = { describe: async () => { read++; return '文字：好耶｜画面：一只举手的猫'; } };
+        const { app: a, prompts, sentGroup } = app('on', false, { stickerReader });
+        await a.connected(SELF);
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'image', data: { file: 'c15a5b9e3b6e.png', summary: '[动画表情]', url: 'http://x/s.png' } }, { type: 'at', data: { qq: String(SELF) } }, text(' 看这个')]));
+        await until(() => sentGroup.length > 0);
+        a.stop();
+        assert.equal(read, 1);
+        assert.ok(prompts.at(-1)!.includes('[动画表情：上面写着「好耶」；一只举手的猫]'), prompts.at(-1)!.slice(-400));
     });
 
     test('标了「都知道」的群用原卡（被问时由她定）', async () => {

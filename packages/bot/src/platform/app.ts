@@ -2215,9 +2215,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 }
                 const sticker = contact.tier === 'boyfriend' ? sendingStickers?.resolve(text) : undefined;
                 if (sticker) {
-                    // sticker.file 只是文件名（c15a5b9e3b6e.png）：直接丢给 NapCat 会找不到文件，
-                    // QQ 里就变成一条 [c15a5b9e3b6e] 的纯文本（2026-11-14 实测）。这里补上绝对路径。
-                    const id = await transport.sendPrivateImage!(userId, join(config.dataDir, 'stickers', sticker.file), `[${sticker.description}]`);
+                    const id = await transport.sendPrivateImage!(userId, sticker.file, `[${sticker.description}]`);
                     sendingStickers!.used(sticker.id);
                     return id;
                 }
@@ -3498,6 +3496,8 @@ ${body}
     const groupsOn = (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0;
     const groupLogs = groupsOn ? groupLog(config.dataDir) : undefined;
     const groupBusy = new Set<number>();
+    /** 正在读图的那几条消息 id：读的时候还没进记录，同一条补回两次不能各读一遍（2026-11-14） */
+    const groupReading = new Set<number>();
     /** 每个群今天顺着话题插了几次 */
     const groupTopics = new Map<number, { day: string; count: number }>();
     const groupDay = () => new Date(worldNow()).toDateString();
@@ -3505,7 +3505,7 @@ ${body}
         if (stopped || !groupLogs || !selfIdKnown) return;
         const group = (config.groups ?? []).find(g => g.id === event.group_id);
         if (!group) return; // 不在名单的群：不看、不记、不写日志
-        if (groupLogs.has(group.id, event.message_id) || dormancy?.isDormant()) return;
+        if (groupLogs.has(group.id, event.message_id) || groupReading.has(event.message_id) || dormancy?.isDormant()) return;
         const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
         const entries = groupLogs.load(group.id);
         // 群里他叫什么就写什么（他的群名片）：提示词里写「宝宝（你男朋友）」时她会当众喊「宝宝」（真模型 2/2），群里收着点
@@ -3522,21 +3522,34 @@ ${body}
         };
         const text = nameAts(segmentsToText(event.message, quoted).trim(), selfIdKnown, names, bf);
         if (!text) return;
-        groupLogs.append(group.id, { time: new Date(event.time * 1000).toISOString(), from: event.user_id, name: senderName, content: text, messageId: event.message_id });
+        const record = (content: string) => groupLogs!.append(group.id, { time: new Date(event.time * 1000).toISOString(), from: event.user_id, name: senderName, content, messageId: event.message_id });
         const topics = groupTopics.get(group.id);
         const topicToday = topics && topics.day === groupDay() ? topics.count : 0;
         const bfNames = bf ? [...new Set(entries.filter(e => e.from === bf.qq).map(e => e.name))] : [];
         const reason = speakReason(event.message, text, event.user_id, event.message_id,
             { selfId: selfIdKnown, ...(bf ? { boyfriend: bf } : {}), boyfriendNames: bfNames, herMessageIds: herIds, topicToday });
-        if (!reason) return;
+        if (!reason) { record(text); return; }
         const budget = withinBudget(entries.filter(e => e.mine), worldNow(), reason);
-        if (!budget.ok) { log(`[群 ${group.id}] 想开口但${budget.why}`); return; }
-        if (groupBusy.has(group.id)) return;
+        if (!budget.ok) { record(text); log(`[群 ${group.id}] 想开口但${budget.why}`); return; }
+        if (groupBusy.has(group.id)) { record(text); return; }
         if (reason === 'topic') groupTopics.set(group.id, { day: groupDay(), count: topicToday + 1 });
         groupBusy.add(group.id);
-        void speakInGroup(group, reason, bf)
+        groupReading.add(event.message_id);
+        void (async () => {
+            // 只有要开口时才读图/表情/语音：群里刷图太凶，全量读会把看图接口的并发闸门堵死（vision 超时 8 秒）
+            let content = text;
+            if (reading) {
+                const message = await reading.read(event.message, event.message_id, notice => log(`[群 ${group.id}] ${notice}`),
+                    { role: 'user', time: new Date(event.time * 1000).toISOString(), messageId: event.message_id, peer: group.id })
+                    .catch(() => event.message);
+                content = nameAts(segmentsToText(message, quoted).trim(), selfIdKnown, names, bf) || text;
+            }
+            // 读过的这条进记录，记录本身就是缓存：同一条不再读第二遍
+            record(content);
+            await speakInGroup(group, reason, bf);
+        })()
             .catch(error => log(`[群 ${group.id}] 说话出错：${error instanceof Error ? error.message : String(error)}`))
-            .finally(() => groupBusy.delete(group.id));
+            .finally(() => { groupBusy.delete(group.id); groupReading.delete(event.message_id); });
     }
     async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean }, reason: SpeakReason, bf: { qq: number; name: string } | undefined): Promise<void> {
         // 群里的人都知道她是 AI（用户标过）：原卡，被问时由她定；没标：承认版卡，认真问到就承认；有人说想不开：一律承认版（ADR 0067 / 0068 / 0208）
