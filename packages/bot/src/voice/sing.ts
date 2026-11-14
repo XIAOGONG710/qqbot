@@ -73,8 +73,9 @@ export async function singSong(song: string, options: SingOptions): Promise<Sing
     while (Date.now() < deadline) {
         if (existsSync(resultPath)) {
             try {
-                const parsed = JSON.parse(readFileSync(resultPath, 'utf8')) as { mp3?: string; busy?: boolean };
+                const parsed = JSON.parse(readFileSync(resultPath, 'utf8')) as { mp3?: string; busy?: boolean; error?: string };
                 if (parsed.busy) return { error: 'busy' };
+                if (parsed.error) return { error: parsed.error };
                 if (parsed.mp3 && existsSync(parsed.mp3)) { mp3 = parsed.mp3; break; }
             } catch { /* 还没写完，下一轮再读 */ }
         }

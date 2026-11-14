@@ -3253,7 +3253,7 @@ ${body}
                     log,
                 }).then(async result => {
                     if (result.error || !result.mp3) {
-                        tellOwner(result.error === 'busy' ? '上一首还在唱，等它唱完再说。' : `没唱成：${result.error ?? '没出结果'}`);
+                        tellOwner(result.error === 'busy' ? '上一首还在唱，等它唱完再说。' : `没唱成——${result.error ?? '没出结果'}`);
                         log(`[${event.user_id}] 唱歌：失败 ${singBv}（${result.error ?? 'no result'}）`);
                         return;
                     }

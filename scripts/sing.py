@@ -36,6 +36,20 @@ MIXIN = [46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5,
 
 # 女声的合理音高范围（人声中位 F0）；低于 190 基本是男声源
 FEMALE_LO, FEMALE_HI = 190, 420
+# 搜到的候选先按标题筛一遍：串烧/合集/纯伴奏/男声都不合适（2026-11-14 用户要求）
+BAD_TITLE = re.compile(r"合集|串烧|混剪|纯音乐|伴奏|instrumental|medley|remix|dj版|鬼畜|加速版|慢速版|片段|剪辑版|男声|男生", re.I)
+
+
+def title_ok(title: str, song: str) -> bool:
+    """标题得真的在唱这首歌：含歌名、不含别的歌名、不是合集/伴奏那类"""
+    flat = title.replace(" ", "")
+    if song.replace(" ", "").lower() not in flat.lower():
+        return False
+    if BAD_TITLE.search(title):
+        return False
+    # 「晴天+龙卷风」这种串烧：标题里出现了别的《歌名》就不要
+    others = [q for q in re.findall(r"《([^》]{1,20})》", title) if song not in q and q not in song]
+    return not others
 MAX_CANDIDATES = 3
 
 
@@ -91,7 +105,7 @@ def _mixin_key() -> str:
     return "".join(raw[i] for i in MIXIN)[:32]
 
 
-def search_covers(keyword: str, limit: int = 8):
+def search_covers(keyword: str, song: str = "", limit: int = 8):
     """按关键词搜视频，返回 [{bv,title,play,author,duration}]，播放高的在前"""
     key = _mixin_key()
     params = {"search_type": "video", "keyword": keyword, "page": 1, "page_size": 20}
@@ -108,7 +122,9 @@ def search_covers(keyword: str, limit: int = 8):
         if re.fullmatch(r"\d+:\d+", dur or ""):
             m, s = dur.split(":")
             secs = int(m) * 60 + int(s)
-        if secs < 90:
+        if not 150 <= secs <= 360:      # 2.5–6 分钟：太短是片段，太长是合集
+            continue
+        if song and not title_ok(title, song):
             continue
         out.append({"bv": r["bvid"], "title": title, "play": r.get("play", 0), "author": r.get("author", ""), "duration": secs})
     out.sort(key=lambda x: x["play"], reverse=True)
@@ -140,8 +156,8 @@ def pick_source(song: str, work_root: str):
     if m:
         return m.group(1), "直接指定"
 
-    originals = search_group([f"{song} 原唱", song], skip_male_marker=False)[:2]
-    covers = search_group([f"{song} 女声 翻唱", f"{song} 女声版", f"{song} 翻唱"], skip_male_marker=True)
+    originals = search_group([f"{song} 原唱", song], song, skip_male_marker=False)[:2]
+    covers = search_group([f"{song} 女声 翻唱", f"{song} 女声版", f"{song} 翻唱"], song, skip_male_marker=True)
 
     seen, candidates = set(), []
     for item, kind in [(c, "原唱") for c in originals] + [(c, "翻唱") for c in covers]:
@@ -176,12 +192,12 @@ def pick_source(song: str, work_root: str):
     raise SystemExit("前几个候选都不是女声源")
 
 
-def search_group(queries, skip_male_marker: bool):
+def search_group(queries, song: str, skip_male_marker: bool):
     """按一组关键词搜，合并去重，播放高的在前"""
     seen, out = set(), []
     for q in queries:
         try:
-            for item in search_covers(q):
+            for item in search_covers(q, song):
                 if item["bv"] in seen:
                     continue
                 if skip_male_marker and re.search(r"男声|男生", item["title"]):
@@ -349,5 +365,29 @@ def finish(args, mp3, inst_gain_db=None):
             json.dump(payload, fh, ensure_ascii=False)
 
 
+def fail(result_path: str, message: str) -> None:
+    """把失败原因写给 bot，别只让它干等"""
+    print(f"FAIL {message}", flush=True)
+    if result_path:
+        try:
+            with open(result_path, "w", encoding="utf8") as fh:
+                json.dump({"error": message}, fh, ensure_ascii=False)
+        except OSError:
+            pass
+
+
 if __name__ == "__main__":
-    main()
+    # 失败也要落一份结果文件：bot 靠它把「为什么没唱成」说给他听
+    target = ""
+    for i, a in enumerate(sys.argv):
+        if a == "--result" and i + 1 < len(sys.argv):
+            target = sys.argv[i + 1]
+    try:
+        main()
+    except SystemExit as exit_error:
+        if exit_error.code not in (0, None) and exit_error.code != 3:
+            fail(target, str(exit_error.code))
+        raise
+    except Exception as error:
+        fail(target, f"{type(error).__name__}: {error}")
+        raise
