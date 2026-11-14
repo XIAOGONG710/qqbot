@@ -70,6 +70,7 @@ import { quotedIds, renderForward, segmentsToText, type ForwardLookup, type Grou
 import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
 import { createHearing } from '.././vision/hearing.ts';
 import { speakViaGateway, speakViaHttp, speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
+import { matchSingRequest, singSong } from '../voice/sing.ts';
 import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
@@ -3239,6 +3240,38 @@ ${body}
             if (config.diaryInsights && plain === '/自我认识') { tellOwner(describeInsightsForOwner(loadInsightsState(config.dataDir), clockNow().getTime())); return; }
             if (dormancy && plain && /^\/休眠(?:\s|$)/.test(plain)) { void handleDormancyCommand(plain.replace(/^\/休眠\s*/, '')); return; }
             if (dormancy && plain === '/唤醒') { void wakeUp(); return; }
+            // 「唱 BVxxxx」（2026-11-14）：他要她唱一首。后台跑 scripts/sing.py（约 5 分钟），
+            // 出结果发 60 秒片段 + 整首路径；不占她这一轮的回复，也不进提示词。
+            const singBv = plain ? matchSingRequest(plain) : undefined;
+            if (singBv) {
+                tellOwner('那我唱一首，得几分钟，唱完发你。');
+                log(`[${event.user_id}] 唱歌：开始 ${singBv}`);
+                void singSong(singBv, {
+                    root: repoRoot,
+                    python: join(repoRoot, 'runtime', 'gpt-sovits', '.venv', 'Scripts', 'python.exe'),
+                    ffmpeg: process.env.QQBOT_FFMPEG ?? 'ffmpeg',
+                    log,
+                }).then(async result => {
+                    if (result.error || !result.mp3) {
+                        tellOwner(`没唱成：${result.error ?? '没出结果'}`);
+                        log(`[${event.user_id}] 唱歌：失败 ${singBv}（${result.error ?? 'no result'}）`);
+                        return;
+                    }
+                    if (result.clip) {
+                        try {
+                            await transport.sendPrivateVoice!(event.user_id, result.clip);
+                        } catch (error) {
+                            log(`[${event.user_id}] 唱歌：片段没发出去（${error instanceof Error ? error.message : String(error)}）`);
+                        }
+                    }
+                    tellOwner(`唱完了，整首在 ${result.mp3}`);
+                    log(`[${event.user_id}] 唱歌：完成 ${singBv}`);
+                }).catch(error => {
+                    tellOwner('唱到一半出错了。');
+                    log(`[${event.user_id}] 唱歌：出错（${error instanceof Error ? error.message : String(error)}）`);
+                });
+                return;
+            }
         }
         if (dormancy?.isDormant()) {
             if (deviceOwner && event.user_id === deviceOwner.qq && Date.now() - lastDormantHint > 30 * 60_000) {

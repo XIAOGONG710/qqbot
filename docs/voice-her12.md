@@ -38,3 +38,19 @@ Copy-Item GPT_SoVITS\configs\tts_infer.yaml.bak-her11 GPT_SoVITS\configs\tts_inf
 - 音高起伏仍低于原素材（生成 5–10 个半音 vs 素材 12 个）
 - 训练环境：这台机器上 GPT-SoVITS 的依赖装在 `runtime/gpt-sovits/.venv`（py3.10），
   pip 环境里的 Store python 也装了一份，跑推理请优先用 `.venv`
+
+## 唱歌（2026-11-14）
+
+他说「**唱 BVxxxxxxxxxx**」（或直接贴 bilibili 链接），bot 就后台跑一首：
+
+```
+scripts/sing.py --song <BV>
+  下载 → BS-Roformer 分离 → 60 秒分块 RVC（her12rvc.pth）→ 拼回 → 混伴奏 → mp3
+```
+
+- 产物：`out/sing/<BV>-她唱的.mp3`，片段 `out/sing/<BV>-片段.wav`（60 秒，第 45 秒起）
+- bot 发一条 60 秒语音 + 一句整首路径；QQ 语音条装不下整首
+- 一首约 5 分钟；**必须分块**——整曲一次跑会卡在合成阶段（实测 44 分钟无输出）
+- 触发只在文字里认「唱/翻唱 + BV」，不改提示词、不进她的对话
+- 它只是换音色：唱法还是原唱/翻唱源的；要她自己会唱得先有她唱过的素材
+
