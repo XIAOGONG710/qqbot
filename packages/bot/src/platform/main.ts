@@ -41,6 +41,9 @@ const app = startApp({
         sendPrivateText: (userId, text, replyTo) => client.sendPrivateText(userId, text, replyTo),
         sendGroupText: (groupId, text, replyTo) => client.sendGroupText(groupId, text, replyTo),
         sendPrivateImage: (userId, file, summary) => client.sendPrivateImage(userId, file, summary),
+        // 语音条（2026-11-14 补）：这个方法一直没接到 facade 上，app 里 Boolean(transport.sendPrivateVoice)
+        // 恒为 false，所以她的语音和唱歌片段都发不出去（只落到文字）
+        sendPrivateVoice: (userId, file) => client.sendPrivateVoice(userId, file),
         setInputStatus: (userId, eventType) => client.setInputStatus(userId, eventType),
         deleteMessage: async messageId => { await client.call('delete_msg', { message_id: messageId }); },
         pokeFriend: async userId => { await client.call('friend_poke', { user_id: String(userId) }); },
