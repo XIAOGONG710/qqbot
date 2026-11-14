@@ -128,9 +128,45 @@ export function groupNote(input: {
             ? `刚才${input.callers.join('、')}在跟你说话${others > 0 ? `，这一段里还有 ${others} 条是别人在说别的` : ''}：先把上面的记录看完，挑你最想接的那一两句回，不用挨个都应，也不要一个人回一条。`
             : '',
         REASON_NOTE[input.reason],
-        '只输出你要发到群里的话，不写名字前缀、不写动作；不想说就只写「不说」。]',
+        '只输出你要发到群里的话，不写名字前缀、不写动作；想让谁看见就写「@群名片」（只认这个群里叫得出来的名字）；不想说就只写「不说」。]',
     ].filter(Boolean).join('');
 }
+
+/**
+ * 她写的话里带「@老王」就真的 @ 出去（2026-11-14）：只认这个群里认得出的名字，
+ * 认不出的照旧当文字留着（不瞎 @ 人）。返回 undefined = 没有能换成段的 @，发纯文字就行。
+ */
+export function mentionSegments(text: string, names: ReadonlyMap<string, number>): Segment[] | undefined {
+    if (!text.includes('@')) return undefined;
+    const segments: Segment[] = [];
+    let mentioned = false;
+    const pattern = /@([^\s@，。！？!?、:：]{1,16})/g;
+    let last = 0;
+    for (const match of text.matchAll(pattern)) {
+        const name = match[1]!;
+        const qq = names.get(name);
+        if (qq === undefined) continue;
+        const at = match.index!;
+        const before = text.slice(last, at).replace(/[ \t]+$/, '');
+        if (before) segments.push({ type: 'text', data: { text: before } });
+        segments.push({ type: 'at', data: { qq: String(qq) } });
+        last = at + match[0].length;
+        mentioned = true;
+    }
+    if (!mentioned) return undefined;
+    const tail = text.slice(last).trimStart();
+    if (tail) segments.push({ type: 'text', data: { text: ` ${tail}` } });
+    return segments.length ? segments : undefined;
+}
+
+/** 接完话顺手戳一下：约 15%，同一个人 10 分钟最多一次（2026-11-14） */
+export const GROUP_POKE = { chance: 0.15, gapMs: 10 * 60_000 } as const;
+export function groupPokePlan(seed: string, lastAt: number | undefined, now: number): { delayMs: number } | undefined {
+    if (lastAt !== undefined && now - lastAt < GROUP_POKE.gapMs) return undefined;
+    if (pick(seed, 'group-poke', [0, 999]) >= GROUP_POKE.chance * 1000) return undefined;
+    return { delayMs: pick(seed, 'group-poke-delay', [800, 2400]) };
+}
+
 
 /** 她写的群消息整理成要发的一两条；「不说」或者空的就不发 */
 export function groupReply(raw: string, maxBubbles = 2): string[] {

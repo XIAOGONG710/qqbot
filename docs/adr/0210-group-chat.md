@@ -50,6 +50,17 @@
 - **对每个人的印象**（`social/group-impression.ts` + 成员底账新增 `impression` / `impressionAt`）：一批说完，从这一批说话的人里挑一个（说过 ≥5 句、没印象的优先、14 天内不重写），后台让模型从**他自己说过的原话**里写一句话（≤30 字），写进 `groups/<群号>.people.json`，重启还在；下一批的提示词里就是「老王：聊过 42 句……；你对他的印象：爱打球，说话直」。
 - **不编**：模型没写出来就继续没有印象；提示词明说「只从这些话里看得出来的，别编他说过的话」。
 
+## 补：@ 人、引用、戳一戳、点赞（2026-11-14 第三轮）
+
+用户：「他在群里要会 @ 其他人，可以引用消息，还可以戳一戳，给别人的空间点赞」。
+
+- **@ 人**：说明末尾告诉她「想让谁看见就写「@群名片」（只认这个群里叫得出来的名字）」。她把 @ 写进回复，发送前由 `mentionSegments` 换成真正的 `at` 段（名字 → QQ 号来自群记录和成员底账的名字/别名）；认不出的 @ 原样当文字发，不瞎 @ 人。
+- **引用**：这一批里最后一个叫她的人那条消息，做成第一条气泡的 `reply_to`（`send_group_msg` 的 reply 段）。所以别人 @ 她，她回的第一条就是引用着那句的。
+- **通道**：`Transport` 加了 `sendGroupMessage(groupId, segments, replyTo?)` 和 `pokeGroup(groupId, userId)`，两个入口（`main.ts` 自写客户端、koishi 插件）都接上；koishi 那条走 `internal.sendGroupMsg` 的段 + `_get('group_poke')`。
+- **戳一戳**：她接完话，约 15% 概率顺手戳那个叫她的人一下（`groupPokePlan`，同一个人 10 分钟一次，不冲男朋友、危机回合不戳），要 `pokeOut` 开着；NapCat 不支持 `group_poke` 就只记一笔日志。
+- **点赞**：给群里说得多的老熟人（≥5 句）点一次资料卡赞（`send_like`），约四成的日子会点、一天一个人一次（记在 `people.json` 的 `likedDay`），要 `profileLikes` 开着。
+- **没做**：说说（Qzone 动态）点赞没有稳定可用的 NapCat 动作，先只做资料卡点赞；`qzone-feed.ts` 里那两个候选动作名（`like_qzone_msg` / `set_qzone_like`）等线下盘点到可用动作再接。
+
 ## 真模型（同学档承认版卡，每种 2 遍）
 
 | 情形 | 她说的 |

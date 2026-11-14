@@ -6,7 +6,7 @@ import { afterEach, describe, test } from 'node:test';
 import { startApp } from '../src/platform/app.ts';
 import { parseGroups, type AppConfig } from '../src/platform/config.ts';
 import { isGroupMessage, type GroupMessageEvent } from '../src/platform/onebot.ts';
-import { GROUP_LIMITS, groupLine, groupLog, groupNote, groupReply, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
+import { GROUP_LIMITS, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
 import { moodStateLine } from '../src/emotion/express.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import { syntheticCardPattern } from './fixtures/card.ts';
@@ -97,6 +97,25 @@ describe('群聊：给她看的样子', () => {
         assert.deepEqual(groupReply('一\n二\n三'), ['一', '二']);
     });
 
+    test('「@老王」认得出的名字换成段；认不出的留着当文字；戳一戳有冷却', () => {
+        const names = new Map([['老王', 30001], ['陈陈', 30003]]);
+        const segments = mentionSegments('@老王 你说呢', names)!;
+        assert.deepEqual(segments.map(segment => segment.type), ['at', 'text']);
+        assert.equal(String(segments[0]!.data.qq), '30001');
+        assert.equal(String(segments[1]!.data.text), ' 你说呢');
+        assert.equal(mentionSegments('@路人甲 你好', names), undefined, '不认识就不换');
+        assert.equal(mentionSegments('没有 at 的普通话', names), undefined);
+        // 同一句话里两个都认得：两段 at
+        assert.equal(mentionSegments('@老王 @陈陈 来', names)!.filter(segment => segment.type === 'at').length, 2);
+        // 戳一戳：找一天里会发生的种子，同一个人 10 分钟内不重复
+        const now = Date.parse('2026-11-14T12:00:00+08:00');
+        let seed = '';
+        for (let i = 0; i < 200 && !seed; i++) if (groupPokePlan(String(i), undefined, now)) seed = String(i);
+        assert.ok(seed, '两百个种子里总该有戳的');
+        assert.ok(groupPokePlan(seed, now - 60_000, now) === undefined, '刚戳过就不戳了');
+        assert.ok(groupPokePlan(seed, now - 11 * 60_000, now), '隔了十分钟可以再戳');
+    });
+
     test('群记录按群分文件，读回来一样；配置 groups 校验', () => {
         const dir = tmp();
         const logA = groupLog(dir);
@@ -125,6 +144,7 @@ describe('群聊：进应用', () => {
         vision?: { describe: (image: { url: string }) => Promise<string> };
         stickerReader?: { describe: (image: { url: string }) => Promise<string> };
         generate?: (messages: { content: string }[]) => Promise<string>;
+        pokeGroup?: (groupId: number, userId: number) => Promise<void>;
     } = {}) {
         const dataDir = tmp();
         const cfg = {
@@ -139,18 +159,25 @@ describe('群聊：进应用', () => {
             groupChat, groups: [{ id: 555, name: '宿舍群', ...(knowsBot ? { knowsBot: true } : {}) }],
         } as unknown as AppConfig;
         const sentGroup: string[] = [];
+        const sentRich: { segments: { type: string; data: Record<string, unknown> }[]; replyTo?: number }[] = [];
         const prompts: string[] = [];
         const started = startApp({
             config: cfg, log: () => {},
             transport: {
                 sendPrivateText: async () => 1, friendHistory: async () => [],
                 sendGroupText: async (groupId, value) => { sentGroup.push(`${groupId}:${value}`); return 8000 + sentGroup.length; },
+                sendGroupMessage: async (groupId, segments, replyTo) => {
+                    sentRich.push({ segments: segments as { type: string; data: Record<string, unknown> }[], ...(replyTo === undefined ? {} : { replyTo }) });
+                    sentGroup.push(`${groupId}:${segments.map(s => (s.type === 'at' ? `@${String(s.data.qq)}` : String(s.data.text ?? ''))).join('')}`);
+                    return 9000 + sentRich.length;
+                },
+                ...(extra.pokeGroup ? { pokeGroup: extra.pokeGroup } : {}),
             },
             pipeline: { generate: async messages => { prompts.push(messages.map(m => m.content).join('\n')); return extra.generate ? extra.generate(messages) : '来了来了'; }, settle: { quietMs: 0, maxMs: 0 } },
             ...(extra.vision ? { vision: extra.vision } : {}),
             ...(extra.stickerReader ? { stickerReader: extra.stickerReader } : {}),
         });
-        return { app: started, sentGroup, prompts, dataDir };
+        return { app: started, sentGroup, sentRich, prompts, dataDir };
     }
     let id = 1;
     const said = (groupId: number, from: number, card: string, segments: unknown[]): GroupMessageEvent => ({
@@ -242,6 +269,28 @@ describe('群聊：进应用', () => {
         await until(() => prompts.at(-1)!.includes('你对他的印象：爱打球，说话直'));
         a.stop();
         assert.ok(prompts.at(-1)!.includes('你对他的印象：爱打球，说话直'), prompts.at(-1)!.slice(-500));
+    });
+
+    test('她写「@老王」就真的 @ 他；第一条引用那条叫她的话', async () => {
+        const { app: a, sentRich, sentGroup } = app('on', false, { generate: async () => '@老王 昨晚那场我也看了' });
+        await a.connected(SELF);
+        const call = said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 昨晚那场你看了吗')]);
+        a.receiveGroup(call);
+        await until(() => sentRich.length > 0);
+        a.stop();
+        assert.equal(sentRich.length, 1);
+        assert.deepEqual(sentRich[0]!.segments.map(segment => segment.type), ['at', 'text'], '认得出的名字换成 at 段');
+        assert.equal(String(sentRich[0]!.segments[0]!.data.qq), '30001');
+        assert.equal(sentRich[0]!.replyTo, call.message_id, '引用叫她那一条');
+        assert.ok(sentGroup[0]!.includes('@30001'), sentGroup.join('|'));
+    });
+
+    test('认不出的 @ 不瞎换，照旧发文字、不带引用', async () => {
+        const { app: a, sentRich, sentGroup } = app('on', false, { generate: async () => '@路人甲 你说呢' });        await a.connected(SELF);
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 你看呢')]));
+        await until(() => sentGroup.length > 0);
+        a.stop();
+        assert.equal(sentGroup[0], '555:@路人甲 你说呢');
     });
 
     test('群里的图：没人叫她就不读；叫到她了才读，读出来的进提示词', async () => {

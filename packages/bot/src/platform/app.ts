@@ -89,7 +89,7 @@ import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, personaFacts, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
-import { GROUP_CONTEXT, groupLine, groupLog, groupNote, groupReply, nameAts, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
+import { GROUP_CONTEXT, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
 import { groupPeople } from '.././social/group-people.ts';
 import { groupAffect, groupAffectOf, mergeFelt } from '.././social/group-affect.ts';
 import { impressionCandidate, impressionPrompt, parseImpression } from '.././social/group-impression.ts';
@@ -97,7 +97,7 @@ import { moodStateLine } from '.././emotion/express.ts';
 import { feelingsAt } from '.././emotion/feelings.ts';
 import { currentTierHistory, TierRecord } from '.././memory/tier-record.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
-import { arrivedWhileAsleep } from '.././social/reply-timing.ts';
+import { arrivedWhileAsleep, pick } from '.././social/reply-timing.ts';
 import { answerWhy, createSilenceWatcher, noteFromInfo, recordSilence, type SilenceInfo } from '.././social/silence.ts';
 import { drainOutbox } from '.././social/outbox.ts';
 import { revokeOwnerBank, writeOwnerBank } from '.././memory/owner-bank.ts';
@@ -236,6 +236,10 @@ export interface Transport extends PresenceTransport {
     sendPrivateText(userId: number, text: string, replyTo?: number): Promise<number>;
     /** 发群消息（ADR 0210，NapCat 的 send_group_msg）；没有就不在群里说话 */
     sendGroupText?(groupId: number, text: string, replyTo?: number): Promise<number>;
+    /** 发群消息（段）：@某人、引用那一条（2026-11-14）；没有就退回 sendGroupText */
+    sendGroupMessage?(groupId: number, segments: Segment[], replyTo?: number): Promise<number>;
+    /** 在群里戳一下某人（NapCat 的 group_poke，配置 pokeOut）；没有就不戳 */
+    pokeGroup?(groupId: number, userId: number): Promise<void>;
     /** 发一条 QQ 分享卡片（B 站小程序），返回消息 id；没有就不发卡片、用文字链接 */
     sendPrivateCard?(userId: number, cardJson: string): Promise<number>;
     /** 标已读（NapCat mark_private_msg_as_read，配置 readReceipts，ADR 0083）；没有就不标 */
@@ -3517,6 +3521,8 @@ ${body}
     /** 排着队、还没进记录的消息 id（补回的同一条不能排两遍） */
     const groupQueued = new Set<number>();
     const groupFirstAt = new Map<number, number>();
+    /** 上次在群里戳某人的时刻（同一个人 10 分钟一次） */
+    const lastGroupPoke = new Map<number, number>();
     /** 每个群今天顺着话题插了几次 */
     const groupTopics = new Map<number, { day: string; count: number }>();
     const groupDay = () => new Date(worldNow()).toDateString();
@@ -3634,7 +3640,13 @@ ${body}
             const bf = boyfriend ? { qq: boyfriend.qq, name: entries.findLast(e => e.from === boyfriend.qq)?.name ?? boyfriend.name } : undefined;
             const callers = [...new Set(batch.filter(item => item.reason === 'mentioned' || item.reason === 'defend')
                 .map(item => (item.event.sender.card || item.event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16)))];
-            await speakInGroup(group, reason, bf, callers.length ? { callers, pending: batch.length } : { pending: batch.length });
+            const calling = [...batch].reverse().find(item => item.reason === 'mentioned' || item.reason === 'defend');
+            const who = calling ? (calling.event.sender.card || calling.event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16) : undefined;
+            await speakInGroup(group, reason, bf, {
+                ...(callers.length ? { callers, pending: batch.length } : { pending: batch.length }),
+                ...(calling ? { replyTo: calling.event.message_id, caller: calling.event.user_id } : {}),
+                ...(who ? { callerName: who } : {}),
+            });
         } catch (error) {
             log(`[群 ${groupId}] 说话出错：${error instanceof Error ? error.message : String(error)}`);
         } finally {
@@ -3662,7 +3674,7 @@ ${body}
     }
 
     async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean }, reason: SpeakReason, bf: { qq: number; name: string } | undefined,
-        extra: { callers?: readonly string[]; pending?: number } = {}): Promise<void> {
+        extra: { callers?: readonly string[]; pending?: number; replyTo?: number; caller?: number } = {}): Promise<void> {
         // 群里的人都知道她是 AI（用户标过）：原卡，被问时由她定；没标：承认版卡，认真问到就承认；有人说想不开：一律承认版（ADR 0067 / 0068 / 0208）
         const tier = group.knowsBot && reason !== 'crisis' ? 'classmate' : 'classmate-open';
         let card: TierCard;
@@ -3699,13 +3711,64 @@ ${body}
             log(`[群 ${group.id}] 试运行：写了 ${parts.length} 条草稿，没发（${reason}）`);
             return;
         }
+        // 这个群里认得出的名字：她说「@老王」就真的 @ 他（认不出的照旧当文字，不瞎 @ 人）
+        const nameToQq = new Map<string, number>(entries.filter(e => !e.mine).map(e => [e.name, e.from]));
+        for (const person of groupPeopleBook?.load(group.id) ?? []) for (const alias of person.names) if (!nameToQq.has(alias)) nameToQq.set(alias, person.qq);
         for (const [i, part] of parts.entries()) {
             if (i > 0) await new Promise(resolve => setTimeout(resolve, 1200 + part.length * 150));
             if (stopped) return;
-            const messageId = await transport.sendGroupText(group.id, part);
+            // 第一条引用叫她那一条；@ 换成段发出去
+            const replyTo = i === 0 ? extra.replyTo : undefined;
+            const segments = mentionSegments(part, nameToQq);
+            const messageId = transport.sendGroupMessage && segments
+                ? await transport.sendGroupMessage(group.id, segments, replyTo)
+                : await transport.sendGroupText(group.id, part, replyTo);
             groupLogs!.append(group.id, { time: new Date(worldNow()).toISOString(), from: selfIdKnown, name: '你', content: part, messageId, mine: true });
         }
         log(`[群 ${group.id}] 说了 ${parts.length} 条（${reason}；日志不记内容）`);
+        // 接完话的小动作：顺手戳一下、给资料卡点个赞（不冲男朋友、危机回合不做）
+        const caller = extra.caller;
+        if (caller && caller !== bf?.qq && reason !== 'crisis') {
+            const plan = config.pokeOut ? groupPokePlan(`${group.id}:${caller}:${worldNow()}`, lastGroupPoke.get(caller), worldNow()) : undefined;
+            if (plan) {
+                lastGroupPoke.set(caller, worldNow());
+                void pokeInGroup(group.id, caller, plan.delayMs);
+            }
+            likeGroupMember(group.id, caller);
+        }
+    }
+
+    /** 在群里戳一下（NapCat 的 group_poke；版本不支持就记一笔，不重试） */
+    function pokeInGroup(groupId: number, qq: number, delayMs: number): void {
+        void (async () => {
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+            if (stopped) return;
+            try {
+                if (transport.pokeGroup) await transport.pokeGroup(groupId, qq);
+                else if (transport.callAction) await transport.callAction('group_poke', { group_id: String(groupId), user_id: String(qq) });
+                else return;
+                log(`[群 ${groupId}] 戳了一下`);
+            } catch (error) {
+                log(`[群 ${groupId}] 没戳成（${error instanceof Error ? error.message : String(error)}）`);
+            }
+        })();
+    }
+
+    /** 给群里认识的人点一次资料卡赞：一个群友一天最多一次，说得少的不点 */
+    function likeGroupMember(groupId: number, qq: number): void {
+        if (!config.profileLikes || !transport.sendLike || !groupPeopleBook) return;
+        const person = groupPeopleBook.load(groupId).find(item => item.qq === qq);
+        if (!person || person.msgs < 5) return;
+        const day = new Date(worldNow()).toDateString();
+        if (person.likedDay === day) return;
+        // 一天里约四成的日子会点（人也不是天天给每个人点赞）
+        if (pick(`${qq} ${day}`, 'group-like', [0, 999]) >= 400) return;
+        const times = pick(`${qq} ${day}`, 'group-like-times', [1, 3]);
+        groupPeopleBook.markLiked(groupId, qq, day);
+        void transport.sendLike(qq, times).then(
+            () => log(`[群 ${groupId}] 给一个人点了资料卡赞（${times} 下）`),
+            error => log(`[群 ${groupId}] 资料卡赞没点上：${error instanceof Error ? error.message : String(error)}`),
+        );
     }
 
     function prepareReceived(event: MessageEvent, text: string, receipt?: string): StoredMessage {

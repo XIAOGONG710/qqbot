@@ -240,6 +240,20 @@ export class OneBotClient {
         return data.message_id;
     }
 
+    /** 发群消息（段）：@人、引用那一条一起带上（2026-11-14） */
+    async sendGroupMessage(groupId: number, segments: Segment[], replyTo?: number): Promise<number> {
+        const data = await this.call<{ message_id: number }>('send_group_msg', {
+            group_id: groupId,
+            message: replyTo === undefined ? segments : [replySegment(replyTo), ...segments],
+        });
+        return data.message_id;
+    }
+
+    /** 在群里戳一下某人（NapCat 的 group_poke；版本不支持就抛错） */
+    async pokeGroup(groupId: number, userId: number): Promise<void> {
+        await this.call('group_poke', { group_id: String(groupId), user_id: String(userId) });
+    }
+
     async sendPrivateText(userId: number, text: string, replyTo?: number): Promise<number> {
         const data = await this.call<{ message_id: number }>('send_private_msg', {
             user_id: userId,

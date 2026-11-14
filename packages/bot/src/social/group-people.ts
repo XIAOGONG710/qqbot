@@ -31,6 +31,8 @@ export interface GroupPerson {
     /** 她对这个人的印象：一句人话（group-impression.ts 写的），重启还在 */
     impression?: string;
     impressionAt?: string;
+    /** 哪天给他点过资料卡赞（YYYY-MM-DD，防一天重复点） */
+    likedDay?: string;
 }
 
 export interface GroupPeople {
@@ -41,6 +43,8 @@ export interface GroupPeople {
     render(groupId: number, options?: { exclude?: number; now?: number; max?: number }): string | undefined;
     /** 记下对某个人的印象（群印象，一句人话） */
     setImpression(groupId: number, qq: number, impression: string, at: string): void;
+    /** 记下今天给他点过资料卡赞 */
+    markLiked(groupId: number, qq: number, day: string): void;
 }
 
 const clip = (text: string, max: number) => {
@@ -133,6 +137,12 @@ export function groupPeople(dataDir: string): GroupPeople {
             if (!text) return;
             found.impression = text;
             found.impressionAt = at;
+            persist(groupId, load(groupId));
+        },
+        markLiked(groupId, qq, day) {
+            const found = load(groupId).find(person => person.qq === qq);
+            if (!found) return;
+            found.likedDay = day;
             persist(groupId, load(groupId));
         },
         render(groupId, options = {}) {

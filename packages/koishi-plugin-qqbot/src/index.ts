@@ -992,6 +992,9 @@ export function apply(ctx: Context, config: Config) {
         // B 站分享卡片（ADR 0084）：json 段；QQ 不认就抛错，调用方退回发链接
         // 群消息（ADR 0210）
         sendGroupText: async (groupId, text, replyTo) => Number(await onlineBot().internal.sendGroupMsg(groupId, replyTo === undefined ? textToSegments(text) : [replySegment(replyTo), ...textToSegments(text)])),
+        // 段（@人、引用一起带）：群里她能指着人说话（2026-11-14）
+        sendGroupMessage: async (groupId, segments, replyTo) => Number(await onlineBot().internal.sendGroupMsg(groupId, (replyTo === undefined ? segments : [replySegment(replyTo), ...segments]) as never)),
+        pokeGroup: async (groupId, userId) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('group_poke', { group_id: String(groupId), user_id: String(userId) }); },
         sendPrivateCard: async (userId, cardJson) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'json', data: { data: cardJson } }])),
         // 语音条（2026-11-14）：koishi 这条链路原来没有这个方法，app 里 Boolean(transport.sendPrivateVoice)
         // 恒为 false，她的语音和唱歌片段一直发不出去
