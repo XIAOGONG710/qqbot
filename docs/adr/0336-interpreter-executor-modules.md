@@ -830,3 +830,14 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - `src/modules/warm.ts`：`warmModule({ log })`，只有 contribute。App 和模拟器都总是挂。日志「情绪余温：……」挪到拼段落的时候（内容不变）。
 - 删掉的接线：`contact.ts` 里 `affect` / `warm` / `unsettled` 的计算、余温日志、两个段落和两处 import。
 - 验证：`feelings` 逐字不变；变异检验——模块不放、安慰不算修补、旧逻辑不写 `facts.unsettled`，`feelings` 都报不一致。`warm-module.test.ts` 6 项通过；bot 全量 4450 过、13 跳过，红的 2 项是 DSH 那边的；类型检查通过。
+
+### 心境方案第 2 步：真人数值和人格成长层（2026-11-15）
+
+- 是什么：ADR 0222「这一刻的底色」（累、饿、压着事、心情、想找人说话、跟他亲不亲……只给自然语言）放进 `humanState` 槽；ADR 0251「你最近形成的生活脉络」放进 `development` 槽。只想一想的轮次不放，危机、主动找他照放。
+- 由子代理起草（只新建文件）。**计算留在原位**（buildPrompt 开头、第一次 await 之前），走方案里的退路：两样都要读世界账的事件，而带结算的世界账每读一次都会先按墙上时间结算、可能落新事件、写文件、记日志；
+  原位置和 perceive 之间隔着长期记忆的几次 await 和 `onHerDay`，线上这段时间里墙上时间在走、别的联系人的回合和定时推进可能落事件，成长快照的反思不按时刻过滤，就会多一句。
+  基线的假时钟在 await 里不走，抓不到这种差别，所以不能拿「基线逐字不变」证明挪动安全。旧逻辑算完写进新的 `turn.facts.humanValues` / `turn.facts.development`，模块在 contribute 时只放两行（`describeHumanState` / `describeDevelopment` 是纯函数）。
+- `src/modules/human-state.ts`：`humanStateModule()`，只有 contribute，不记日志。App 总是挂（条件已经挡在 `humanValues` 选项上，挡两处变异只能抓到一处）；模拟器不传 `humanValues`，不挂。
+  旧逻辑的 `low` 照旧读它自己算的数值。
+- 删掉的接线：`contact.ts` 里两行的描述和两个段落、对应 import。
+- 验证：基线 38/38 逐字不变；变异检验——模块不放，29 个场景报不一致；只想一想也放，18 个场景报不一致。`human-state-module.test.ts` 7 项、相关测试通过；类型检查通过。

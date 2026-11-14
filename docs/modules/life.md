@@ -41,6 +41,7 @@
 - `life/understanding.ts`
 - `life/development.ts`
 - `human-values.ts`
+- `modules/human-state.ts`
 - `character-terms.ts`
 - `modules/her-now.ts`
 - `modules/books.ts`

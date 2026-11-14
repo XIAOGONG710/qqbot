@@ -48,6 +48,7 @@ import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
 import { continuityModule } from '../modules/continuity.ts';
 import { warmModule } from '../modules/warm.ts';
+import { humanStateModule } from '../modules/human-state.ts';
 import { lengthModule } from '../modules/length.ts';
 import { shapeModule } from '../modules/shape.ts';
 import { quoteModule } from '../modules/quote.ts';
@@ -1100,6 +1101,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         continuityModule(),
         // 情绪余温（ADR 0028）和没了结的事（ADR 0023）：他道歉 / 安慰 / 说想她之后三轮软一点（卡上有心情才算），没了结的事读旧逻辑写的 turn.facts.unsettled；没有开关，不存状态
         warmModule({ log }),
+        // 真人数值（ADR 0222）和人格成长层（ADR 0251）：联系人流水线开头算好写进 turn.facts（读带结算的世界账，不挪过 await），这里只放两行；没有开关（没有需要锚点 / 世界账时 facts 里没有）
+        humanStateModule(),
         // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态
         transcriptModule(),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）

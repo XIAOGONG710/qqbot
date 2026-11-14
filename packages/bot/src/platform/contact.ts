@@ -60,8 +60,8 @@ import { estimateTokens } from '.././language/tokens.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts';
 import { lastNight, withLastNight } from '.././life/nights.ts';
-import { describeHumanState, describeHumanValues, type HumanValues } from '.././human-values.ts';
-import { auditDevelopment, describeDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
+import { describeHumanValues, type HumanValues } from '.././human-values.ts';
+import { auditDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
 import { photoAllowance, photoIntent, photoWanted, stripPhotoArtifacts, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
 
@@ -448,8 +448,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             }
             // 只想一想（ADR 0101 内心）：不是在聊天，不要意图行、形状、字数提示、表情；聊天记录当成“回想”放进说明里，不当成要接着回的对话
             const thinking = Boolean(initiate?.think);
-            const humanStateLine = humanValues && !thinking ? describeHumanState(humanValues, contact.tier) : undefined;
-            const developmentLine = development && !thinking ? describeDevelopment(development) : undefined;
             // 长期记忆只给名单里的人；主动找他时没有「他这次说的」：查想知道的事 + 最后两句，带前 3 天到后 2 天的时间窗（ADR 0012 决策 1 第 7 条）
             const remembers = memory && contact.tier !== UNLISTED_TIER;
             const recallOptions = initiate
@@ -585,6 +583,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(promised ? { promised: true } : {}),
                 ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what), unsettled: loops.unsettled.map(l => l.what) } : {}),
                 ...(untold.length ? { news: untold } : {}),
+                // 真人数值和人格成长层在上面开头算好（不挪过 await），那两行由解释器的模块（modules/human-state.ts）放
+                ...(humanValues ? { humanValues } : {}), ...(development ? { development } : {}),
             } satisfies TurnFacts);
             const assessed = assessTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
@@ -843,8 +843,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 // 「你现在」那几行是底子不是话题（DSH 10-30）由她此刻的模块（modules/her-now.ts）放进 groundNote 槽
                 // 今天的心情（按日期抽的「爱笑」「安静」）不再注入（10-30 用户：这种替她表态的都清掉）：
                 // 心情由真实发生的事推出来的 feelingLine 表达。
-                ...when('humanState', humanStateLine),
-                ...when('development', developmentLine),
+                // 真人数值（ADR 0222）和人格成长层（ADR 0251）是解释器的模块（modules/human-state.ts），经 turnModules 放进 humanState、development 槽
                 // 没了结的事（ADR 0023）、情绪余温（ADR 0028）是解释器的模块（modules/warm.ts），经 turnModules 放进 unsettled、warm 槽
                 ...when('feeling', feelingLine),
                 ...when('pace', paceLine),

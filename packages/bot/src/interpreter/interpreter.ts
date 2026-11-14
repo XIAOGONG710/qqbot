@@ -27,6 +27,8 @@ import type { DescribedBooks } from '../life/her-days.ts';
 import type { ShapePlan } from '../language/shape.ts';
 import type { PhotoKind } from '../vision/photos.ts';
 import type { QuotePlan } from '../social/quote-reply.ts';
+import type { HumanValues } from '../human-values.ts';
+import type { DevelopmentSnapshot } from '../life/development.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -75,6 +77,10 @@ export interface TurnFacts {
     unanswered?: readonly string[];
     /** 挂着的事里没了结的（ADR 0023）：两个人说好的事没成、说到一半就断了，只有事实（what）；旧逻辑和 waiting / unanswered 一起写，modules/warm.ts 读 */
     unsettled?: readonly string[];
+    /** 真人数值（ADR 0222）：App 有需要锚点和世界账时，旧逻辑在 buildPrompt 开头（第一次 await 之前）算好写进来；modules/human-state.ts 放「这一刻的底色」。没有时不写 */
+    humanValues?: HumanValues;
+    /** 人格成长层（ADR 0251）：和数值一起在原位算（读带结算的世界账、可能落事件，不挪过 await）；modules/human-state.ts 放「生活脉络」那一行。投影失败时没有 */
+    development?: DevelopmentSnapshot;
     /** 她那边今天了结了、还没跟他说过的事（ADR 0057）；只算男朋友档 */
     news?: readonly string[];
     /** 被打断（ADR 0115，modules/interruptions.ts 写）：聊着的时候她那边刚发生的一件小事；旧逻辑读它决定这一轮不带意图 / 深思 / 形状 / 长短 */
