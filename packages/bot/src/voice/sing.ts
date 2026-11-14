@@ -20,9 +20,12 @@ export function matchSingRequest(text: string): string | undefined {
     // 《歌名》
     const quoted = /《([^》]{1,30})》/.exec(t)?.[1]?.trim();
     if (quoted && /唱/.test(t)) return quoted;
-    // 「唱 稻香」「给我唱一首 稻香」
-    const plain = /^(?:给我|帮我)?(?:唱|翻唱)(?:一首|一下)?[\s:：]+(.{2,20})$/u.exec(t)?.[1]?.trim();
-    return plain;
+    // 「唱 稻香」「在唱首心似烟火呗」「给我唱一首 稻香」——句尾的语气词要剥掉
+    const raw = /(?:唱|翻唱)(?:一?首|一下|个)?[\s:：]*([^\s，。！？、,.!?]{2,15})/u.exec(t)?.[1];
+    if (!raw) return undefined;
+    const title = raw.replace(/[呗吧啊嘛呀哦啦呢]+$/u, '').trim();
+    if (title.length < 2 || title.startsWith('歌')) return undefined; // 「唱歌好听」不算点歌
+    return title;
 }
 
 export interface SingOptions {

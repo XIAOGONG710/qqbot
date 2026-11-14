@@ -19,6 +19,12 @@ describe('唱歌触发（2026-11-14）', () => {
         assert.equal(matchSingRequest('唱《晴天》'), '晴天');
     });
 
+    test('日常说法也认（2026-11-14 实测他这么说的）', () => {
+        assert.equal(matchSingRequest('宝宝，在唱首心似烟火呗'), '心似烟火');
+        assert.equal(matchSingRequest('唱个晴天'), '晴天');
+        assert.equal(matchSingRequest('翻唱一下 后来 吧'), '后来');
+    });
+
     test('普通聊天不误触', () => {
         assert.equal(matchSingRequest('今天好累'), undefined);
         assert.equal(matchSingRequest('唱歌好听'), undefined);
