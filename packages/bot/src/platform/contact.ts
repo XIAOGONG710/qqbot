@@ -36,7 +36,7 @@ import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import { asksToExplain, ENGAGED_INTENT, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, STILTED_WORDS } from '.././language/expression.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
-import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, shapeReply, type ShapePlan } from '.././language/shape.ts';
+import { DELIBERATE_MAX_BUBBLES, deliberateTurn, shapeReply, type ShapePlan } from '.././language/shape.ts';
 import { finishReply } from '.././language/unfinished.ts';
 import { describeWorld, lastMealDish, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
 import { isExplicitCurrentPhotoRequest, type CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
@@ -217,7 +217,7 @@ export interface ContactPipelineOptions {
     /** 默认调模型接口（llm.ts）；模拟器包一层，在生成中插入对方的消息 */
     generate?: (messages: OpenAIMessage[], log: Log, use?: AppConfig['llm']) => Promise<string>;
     /** 深思（配置 deliberate，ADR 0151）：认真问她的轮次不套字数和条数、用这份更强的模型配置（generate 的第三个参数）、提示词只留一句“先想清楚” */
-    deliberate?: { llm: AppConfig['llm']; /** 换掉深思轮次的那段提示词（只有模拟器的 --deliberate-note 用；线上不传，用 DELIBERATE_NOTE） */ note?: string };
+    deliberate?: { llm: AppConfig['llm'] };
     /** 语义路由（配置 depthRouting，ADR 0202；要 deliberate 开着）：关键词没认出来的轮次问一次小模型这一句是轻是重；说值得认真的（沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩）也走深思。只加不减；没分类出来（出错 / 超时）照旧按关键词 */
     turnWeight?: (input: { history: ChatMessage[]; said: string }) => Promise<TurnWeight | undefined>;
     /**
@@ -796,7 +796,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 长短不一（ADR 0024）和形状（ADR 0091）是解释器的模块（modules/length.ts、modules/shape.ts）；它们要的前面那几样在这里写进 turn.facts
             Object.assign(turn.facts, {
                 ...(intent ? { intent } : {}), ...(cue ? { cue } : {}), ...(stickerOnlyNow ? { stickerOnly: true } : {}), ...(photoNow ? { photo: photoNow } : {}),
-                ...(deliberateNow ? { deliberate: true } : {}), ...(low ? { low: true } : {}), agendaTopics,
+                ...(deliberateNow ? { deliberate: true } : {}), ...(routedHint ? { routedHint } : {}), ...(low ? { low: true } : {}), agendaTopics,
             });
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
@@ -860,8 +860,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 // 人称、正经问就先直接答、别琢磨怎么接（DSH 10-30 / 10-31）是解释器的模块（modules/reply-basics.ts），经 turnModules 放进 person、directAnswer、noOverthink 槽
                 // 他的请求等她点头（2026-10-30）是解释器的模块（modules/consent.ts），经 turnModules 放进 herAsk 槽
                 // 工作模式的三行（他在求她切工作 / 判断要不要动电脑 / 切到了工作）是解释器的模块（modules/work-mode.ts）
-                ...(deliberateNow ? [{ slot: 'deliberate' as const, text: options.deliberate?.note ?? DELIBERATE_NOTE }] : []),
-                ...when('routedHint', routedHint),
+                // 深思那一句和语义路由的方向（ADR 0151 / 0202）是解释器的模块（modules/deliberate.ts）：判断留在上面原位（分类调用不挪过 await），写进 turn.facts，经 turnModules 放进 deliberate、routedHint 槽
                 ...when('intimate', intimateNow),
                 // 「做题式」写法（ADR 0146 实验，只有模拟器用）是解释器的模块（modules/solve-frame.ts），经 turnModules 放进 solveFrame 槽
                 // 主动找他时的说明是解释器的模块（modules/initiate-note.ts），经 turnModules 放进 initiateNote 槽

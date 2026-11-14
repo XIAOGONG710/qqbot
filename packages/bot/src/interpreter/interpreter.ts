@@ -108,8 +108,10 @@ export interface TurnFacts {
     stickerOnly?: boolean;
     /** 这一轮发照片（ADR 0109 / 0128）：哪一种 */
     photo?: PhotoKind;
-    /** 这一轮深思（ADR 0151 / 0202）：换更强的模型、不套字数和条数 */
+    /** 这一轮深思（ADR 0151 / 0202）：换更强的模型、不套字数和条数。旧逻辑原位判断后写（语义路由的分类调用不挪过 await）；modules/deliberate.ts 放「先想清楚」，形状、长短、引用读它 */
     deliberate?: boolean;
+    /** 语义路由（ADR 0202）放进深思的那一轮按分类多放的一小句方向（ROUTED_HINTS）；旧逻辑在判断深思的地方写，modules/deliberate.ts 放进 routedHint 槽。关键词认出来的深思时没有 */
+    routedHint?: string;
     /** 这一轮的形状（ADR 0091）：每条多长、几条。形状的模块（modules/shape.ts）在 contribute 时写，长短的模块和旧逻辑（生成、发出去之前裁）读 */
     shape?: ShapePlan;
     /** 引用回复（ADR 0136，modules/quote.ts 在 contribute 时写）：这一轮第一条引用他哪一条；旧逻辑发送时读 */

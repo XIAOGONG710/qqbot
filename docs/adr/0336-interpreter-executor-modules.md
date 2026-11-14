@@ -841,3 +841,16 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   旧逻辑的 `low` 照旧读它自己算的数值。
 - 删掉的接线：`contact.ts` 里两行的描述和两个段落、对应 import。
 - 验证：基线 38/38 逐字不变；变异检验——模块不放，29 个场景报不一致；只想一想也放，18 个场景报不一致。`human-state-module.test.ts` 7 项、相关测试通过；类型检查通过。
+
+### 深思和语义路由（2026-11-15）
+
+- 是什么：ADR 0151——他认真问她的轮次，不套字数和条数、换更强的模型、提示词放一句「先想清楚」（`deliberate` 槽）；ADR 0202（配置 `depthRouting`）——关键词没认出来时问一次小模型这句话轻不轻，
+  说值得认真的也走深思，并按分类多放一小句方向（`routedHint` 槽）。深思时意图行去掉「怎么答」那一句。
+- 原先的想法是模块在 contribute 时连判断和分类调用一起做。子代理（只新建文件）取证后否掉了：分类调用之后、contribute 之前还有「/亲热」扣次数写文件、上下文要点整理（又一次模型调用）、
+  命令结果读了就删、待批准的请求按时钟判过期、各模块读文件和时钟——挪过去这些都从等待之后变成等待之前；一旦有模块返回 Promise，后面每个模块都多一次微任务。
+  而基线里没有一个场景开 `depthRouting`（分类提示词出现 0 次），挪了也验证不出来。所以**判断和分类调用留在原位**，旧逻辑把结果写进 `facts.deliberate` 和新的 `facts.routedHint`，模块只放两句。
+  `intentLine`、换模型、深思时的最多几条都还在旧逻辑，读它自己的 `deliberateNow`。
+- `src/modules/deliberate.ts`：`deliberateModule({ note })`，只有 contribute。App 总是挂（不传 `note`，用 `DELIBERATE_NOTE`）；模拟器总是挂，换掉的说法按 `--deliberate-note`。联系人流水线的 `deliberate` 选项去掉 `note`。
+- 基线覆盖：只有 `rich-chat` 一轮深思（关键词那条路）；方向那一句 0 处，由 `app.test.ts` 的语义路由用例和新的 `deliberate-module.test.ts`（含两条模拟器测试）管。
+  以后要把判断也挪进模块，先补一个开 `depthRouting` 的基线场景（假模型认出分类提示词，回 heavy / challenge / us / light），并等照片 → 意图 → 心境 → 图片表情这几样迁出。
+- 验证：`rich-chat` 逐字不变；变异检验——模块不放、App 不挂模块，`rich-chat` 报不一致、`app.test.ts` 的深思和语义路由两条红；模块不放方向那句、旧逻辑不写 `facts.routedHint`，`app.test.ts` 语义路由那条红。bot 全量 4455 过、13 跳过；红的是 DSH 那边的 2 项，外加一项负载高时偶发的计时测试（`memory-responder-drain-review`，单独跑 3 次都过）。

@@ -32,6 +32,7 @@ import { devicesModule } from '../modules/devices.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
 import { warmModule } from '../modules/warm.ts';
+import { deliberateModule } from '../modules/deliberate.ts';
 import { lengthModule } from '../modules/length.ts';
 import { shapeModule } from '../modules/shape.ts';
 import { quoteModule } from '../modules/quote.ts';
@@ -604,6 +605,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             lengthModule({ ...(scenario.shortReplies ? { shortReplies: true } : {}), log: message => { if (epoch === responderEpoch) log(message); } }),
             // 主动找他时计划器写的说明，同 App
             initiateNoteModule(),
+            // 深思那一句和语义路由的方向，同 App；换掉的说法按 --deliberate-note
+            deliberateModule({ ...(options.deliberateNote ? { note: options.deliberateNote } : {}) }),
             // 情绪余温和没了结的事，同 App
             warmModule({ log: message => { if (epoch === responderEpoch) log(message); } }),
             // 时间块，同 App
@@ -626,7 +629,7 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ...(scenario.lagTail ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),
         ...(scenario.pursuits ? { pursuits: () => mergePursuits(scenario.pursuitsFile as Pursuit[]) } : {}),
-        ...(options.deliberateLlm ? { deliberate: { llm: options.deliberateLlm, ...(options.deliberateNote ? { note: options.deliberateNote } : {}) } } : {}),
+        ...(options.deliberateLlm ? { deliberate: { llm: options.deliberateLlm } } : {}),
         ...(options.depthRouting && options.deliberateLlm ? {
             turnWeight: createTurnWeigher({
                 ask: messages => (options.generate ? options.generate(messages, log) : chatCompletion({ ...options.llm, temperature: 0, maxTokens: 80, timeoutMs: WEIGH_TIMEOUT_MS, extraBody: { ...(Object.fromEntries(Object.entries(options.llm.extraBody ?? {}).filter(([key]) => key !== 'reasoning_effort'))), thinking: { type: 'disabled' } } }, messages, { log })),

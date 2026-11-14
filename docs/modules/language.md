@@ -89,6 +89,7 @@
 - `modules/quote.ts`
 - `modules/time-block.ts`
 - `modules/continuity.ts`
+- `modules/deliberate.ts`
 - `st/`
 
 ## 开关

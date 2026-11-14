@@ -49,6 +49,7 @@ import { timeBlockModule } from '../modules/time-block.ts';
 import { continuityModule } from '../modules/continuity.ts';
 import { warmModule } from '../modules/warm.ts';
 import { humanStateModule } from '../modules/human-state.ts';
+import { deliberateModule } from '../modules/deliberate.ts';
 import { lengthModule } from '../modules/length.ts';
 import { shapeModule } from '../modules/shape.ts';
 import { quoteModule } from '../modules/quote.ts';
@@ -1103,6 +1104,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         warmModule({ log }),
         // 真人数值（ADR 0222）和人格成长层（ADR 0251）：联系人流水线开头算好写进 turn.facts（读带结算的世界账，不挪过 await），这里只放两行；没有开关（没有需要锚点 / 世界账时 facts 里没有）
         humanStateModule(),
+        // 深思（ADR 0151）和语义路由（ADR 0202）：判断和分类那次模型调用留在联系人流水线原位，写进 turn.facts；这里只放两句。没有开关（deliberate 没开时 facts 里没有）
+        deliberateModule(),
         // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态
         transcriptModule(),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
