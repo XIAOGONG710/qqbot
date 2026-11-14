@@ -178,7 +178,7 @@ def main():
     ap.add_argument("--pitch", type=int, default=0)
     ap.add_argument("--out", default=os.path.join(ROOT, "out", "sing"))
     ap.add_argument("--result", default="", help="把 {bv, mp3} 写进这个 json，给 bot 读")
-    ap.add_argument("--ratio", type=float, default=6.0, help="伴奏比人声低多少 dB（默认 6）")
+    ap.add_argument("--ratio", type=float, default=4.0, help="伴奏比人声低多少 dB（默认 4）")
     ap.add_argument("--mix-only", action="store_true", help="跳过下载/分离/转换，只按现有 stems 重混")
     args = ap.parse_args()
 
