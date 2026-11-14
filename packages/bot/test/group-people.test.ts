@@ -40,6 +40,20 @@ describe('群里认识的人', () => {
         assert.equal(again.render(556), undefined, '另一个群的人不能串过来');
     });
 
+    test('导进来的人（假号）和真人开口（真号）并成同一个人', () => {
+        const dir = tmp();
+        const book = groupPeople(dir);
+        // 文本记录没有 QQ 号：按名字造的负数假号
+        book.note(555, { qq: -686719750, name: '老王', content: '周六打球来不来', at: '2026-11-01T10:00:00+08:00' });
+        // 真人说话了：正数 QQ，同一个名字
+        book.note(555, { qq: 30001, name: '老王', content: '别点外卖了', at: '2026-11-14T10:00:00+08:00' });
+        const list = book.load(555);
+        assert.equal(list.length, 1, '不能出现两个老王');
+        assert.equal(list[0]!.qq, 30001, '换成真号');
+        assert.equal(list[0]!.msgs, 2, '旧的句数并过来');
+        assert.deepEqual(list[0]!.said, ['周六打球来不来', '别点外卖了']);
+    });
+
     test('记满上限时先丢最久没说话的', () => {
         const book = groupPeople(tmp());
         for (let i = 0; i < GROUP_PEOPLE_MAX; i++) {

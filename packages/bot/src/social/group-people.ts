@@ -108,7 +108,21 @@ export function groupPeople(dataDir: string): GroupPeople {
             const list = load(groupId);
             const name = clip(entry.name, 16);
             const line = clip(entry.content, GROUP_PEOPLE_SAID_CHARS);
-            const found = list.find(person => person.qq === entry.qq);
+            // 导进来的记录没有 QQ 号，是按名字造的假号；真人开口（正数 QQ）时按名字并过去，
+            // 不然底账里会有两个「老王」——一个说「聊过 1 句」、一个说「今天第一次见」
+            const found = list.find(person => person.qq === entry.qq)
+                ?? (entry.qq > 0 && name ? list.find(person => person.qq < 0 && person.names.includes(name)) : undefined);
+            if (found && found.qq !== entry.qq) {
+                for (const other of list) if (other !== found && other.qq === entry.qq) {
+                    // 真号那边已经有记录了：把假号的数量并过去，删掉假号那条
+                    found.msgs += other.msgs;
+                    found.said = [...other.said, ...found.said].slice(-GROUP_PEOPLE_LINES);
+                    found.firstAt = Date.parse(other.firstAt) < Date.parse(found.firstAt) ? other.firstAt : found.firstAt;
+                    found.lastAt = Date.parse(other.lastAt) > Date.parse(found.lastAt) ? other.lastAt : found.lastAt;
+                    list.splice(list.indexOf(other), 1);
+                }
+                found.qq = entry.qq;
+            }
             if (!found) {
                 list.push({
                     qq: entry.qq, names: name ? [name] : [], msgs: 1,
