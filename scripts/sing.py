@@ -178,18 +178,30 @@ def main():
     ap.add_argument("--pitch", type=int, default=0)
     ap.add_argument("--out", default=os.path.join(ROOT, "out", "sing"))
     ap.add_argument("--result", default="", help="把 {bv, mp3} 写进这个 json，给 bot 读")
+    ap.add_argument("--ratio", type=float, default=6.0, help="伴奏比人声低多少 dB（默认 6）")
+    ap.add_argument("--mix-only", action="store_true", help="跳过下载/分离/转换，只按现有 stems 重混")
     args = ap.parse_args()
 
     work_root = args.out
     os.makedirs(work_root, exist_ok=True)
     bv, why = pick_source(args.song, work_root)
     print(f"SOURCE {bv} {why}", flush=True)
+    args.song_bv = bv
+    args.source_note = why
 
     work = os.path.join(work_root, bv)
     vocals = os.path.join(work, f"{bv}_(vocals)_model_bs_roformer_ep_317_sdr_12.wav")
     inst = os.path.join(work, f"{bv}_(other)_model_bs_roformer_ep_317_sdr_12.wav")
+    merged = os.path.join(work, "vocals-her.wav")
     if not os.path.exists(inst):
         raise SystemExit(f"伴奏没分离出来：{inst}")
+
+    if args.mix_only:
+        if not os.path.exists(merged):
+            raise SystemExit(f"还没转过人声：{merged}")
+        stage("mix", "复用已转人声")
+        mix(args, inst, merged)
+        return
 
     chunks = os.path.join(work, "chunks")
     shutil.rmtree(chunks, ignore_errors=True)
@@ -212,19 +224,40 @@ def main():
     with open(os.path.join(chunks, "list.txt"), "w", encoding="utf8") as fh:
         for f in parts:
             fh.write(f"file 'out-{f}'\n")
-    merged = os.path.join(work, "vocals-her.wav")
     run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-f", "concat", "-safe", "0",
          "-i", "list.txt", "-c", "copy", merged], cwd=chunks)
 
     stage("mix")
-    mp3 = os.path.join(args.out, f"{bv}-她唱的.mp3")
-    run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-i", inst, "-i", merged,
-         "-filter_complex", "[1:a]volume=1.3[v];[0:a][v]amix=inputs=2:duration=first,loudnorm=I=-14:TP=-1.0:LRA=11",
-         "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", mp3])
+    mix(args, inst, merged)
+
+
+def lufs(path: str) -> float:
+    """整段的综合响度（LUFS）；量不出来给 NaN"""
+    res = subprocess.run([FFMPEG, "-hide_banner", "-nostats", "-i", path, "-af", "ebur128", "-f", "null", "-"],
+                         capture_output=True, text=True, errors="ignore")
+    found = re.findall(r"I:\s+(-?\d+\.\d) LUFS", res.stderr)
+    return float(found[-1]) if found else float("nan")
+
+
+def mix(args, inst: str, vocals: str) -> None:
+    """伴奏压到「比她低 ratio dB」：她的音色和音高不动，只把伴奏让出来。
+    比例按两个 stem 的实测 LUFS 算，换首歌也能用。"""
+    lv, li = lufs(vocals), lufs(inst)
+    gain_db = min(0.0, max(-18.0, (lv - args.ratio) - li)) if lv == lv and li == li else -6.0
+    gain = 10 ** (gain_db / 20)
+    stage("mix-gain", f"人声 {lv:.1f} / 伴奏 {li:.1f} LUFS → 伴奏 {gain_db:+.1f} dB（目标低 {args.ratio} dB）")
+    mp3 = os.path.join(args.out, f"{args.song_bv}-她唱的.mp3")
+    filter_complex = (
+        f"[0:a]volume={gain:.4f}[i];[1:a]volume=1.0[v];"
+        "[i][v]amix=inputs=2:duration=first,loudnorm=I=-14:TP=-1.0:LRA=11"
+    )
+    run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-i", inst, "-i", vocals,
+         "-filter_complex", filter_complex, "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", mp3])
     print("DONE", mp3, flush=True)
-    if args.result:
+    if getattr(args, "result", ""):
         with open(args.result, "w", encoding="utf8") as fh:
-            json.dump({"bv": bv, "mp3": mp3, "source": why}, fh, ensure_ascii=False)
+            json.dump({"bv": args.song_bv, "mp3": mp3, "source": args.source_note, "instGainDb": round(gain_db, 1)},
+                      fh, ensure_ascii=False)
 
 
 if __name__ == "__main__":
