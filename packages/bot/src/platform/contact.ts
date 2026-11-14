@@ -36,7 +36,7 @@ import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { describeQuote, planQuote, quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import { asksToExplain, ENGAGED_INTENT, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, STILTED_WORDS } from '.././language/expression.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
-import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from '.././language/shape.ts';
+import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, shapeReply, type ShapePlan } from '.././language/shape.ts';
 import { finishReply } from '.././language/unfinished.ts';
 import { describeUnsettled } from '.././life/open-loops.ts';
 import { describeWorld, lastMealDish, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
@@ -198,8 +198,6 @@ export interface ContactPipelineOptions {
     memoryFeelings?: boolean;
     /** 昨晚真的怎么睡的（ADR 0219，默认关）：早上困不困从她说「睡了」、半夜被吵醒、睡前跟他聊推，不按课表；被吵醒有起床气 */
     realNights?: boolean;
-    /** 形状对所有轮次都生效（ADR 0220，默认关）：关着时照 DSH 10-28 的松绑，普通闲聊不给形状 */
-    shapeAll?: boolean;
     /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
     dreams?: () => { appraisals: Appraisal[]; line?: string };
     /** 她想查才查（<<查：…>>）：拿到想起来的记忆，再让她重写一次 */
@@ -258,16 +256,6 @@ export interface ContactPipelineOptions {
     rhythm?: boolean;
     /** 更短的回复（ADR 0024 的 10-19 调整，配置 shortReplies）：回很短的概率 0.5、认真接话的轮次让路、新措辞；不开就是上线前的老样子（0.35、老措辞） */
     shortReplies?: boolean;
-    /** 形状控制（配置 shape）：按他这一轮的长短定她每条最多几个字、最多几条，超了重写 / 截断；开了就不用 shortReplies 的软提示（ADR 0091） */
-    shape?: boolean;
-    /** 带自己的小事（配置 shapeAgenda，要 shape 开着）：适用的轮次里约五分之一，答完他的话再从“你那边”里挑一件自己的事说一句（ADR 0094） */
-    shapeAgenda?: boolean;
-    /** 各种形状轮次的占比（调参用，模拟器的场景里设；线上不用，用 shape.ts 的常量） */
-    shapeShares?: ShapeShares;
-    /** 废话（配置 shapeFiller，要 shape 开着）：适用的轮次里约 7% 只回一条笑 / 应声 / 拖音 / 叹一句状态，他拖音时她也跟着拖（ADR 0095） */
-    shapeFiller?: boolean;
-    /** 情绪轮（配置 shapeFeel，要 shape 开着）：适用的轮次里约 18% 先说自己对他的小情绪，不把他的话处理完整（ADR 0099） */
-    shapeFeel?: boolean;
     /** 她自己决定今天想做的事（ADR 0182）：和「在读的书」一起当额外的空闲活动，状态行和「你今天的打算」都带上 */
     herPlan?: (at: Date) => ExtraFreeActivity[];
     /**
@@ -292,12 +280,6 @@ export interface ContactPipelineOptions {
     everydayLife?: boolean;
     /** 回复延迟的长尾（ADR 0105，配置 lagTail）：醒着空着时有一部分消息她在做别的，过一会儿才看到；断网很久之后才回，时间块里写一句 */
     lagTail?: boolean;
-    /** 分成几条（配置 shapeSplit，要 shape 开着）：把形状里抽出的条数当目标写进提示词，不只是上限（ADR 0096） */
-    shapeSplit?: boolean;
-    /** 被问直接问题时答完再接着说（配置 shapeAsk，要 shape 开着，ADR 0149）：不加「应一声、附和」那一句，条数按真人被问问题时的分布抽 */
-    shapeAsk?: boolean;
-    /** 被认真问想法 / 原因时说长一点（配置 shapeLong，要 shape 开着，ADR 0150） */
-    shapeLong?: boolean;
     /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；回复里的 <device:…> 令牌在发送前登记并按档处理。菜单是解释器的模块（modules/devices.ts） */
     devices?: Pick<DeviceControl, 'parse' | 'commit'>;
     /** 他刚才在 DSH 桌面上和她的对话（ADR 0177，配置 crossRecent）：只给男朋友档；返回一段放进提示词的话，没有就不放 */
@@ -803,9 +785,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            // 语言松绑（DSH 10-28 27facc0）：只有“接情绪/好事/亲近/撒娇/认真”或问过去时给形状；普通闲聊不圈条数字数。
-            // shapeAll（ADR 0220，默认关）：所有轮次都给形状（回到 ADR 0091 的样子），用来量松绑前后的差别
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !deliberateNow && (Boolean(options.shapeAll) || Boolean(cue) || Boolean(intent && ENGAGED_INTENT.test(intent))) ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
+            // 形状控制（ADR 0091，语言松绑 DSH 10-28、shapeAll ADR 0220）是解释器的模块（modules/shape.ts）：contribute 时算、写回 turn.facts.shape，放进 shape 槽；
+            // 下面拼完段落之后从 turn.facts 取回来，生成时调最多几条、发出去之前按它裁。这里先清掉上一轮的
+            shapeNow = undefined;
             // 别重复自己（反复说的字词、主动找他的开头、说过了的事，ADR 0098 / 0135）是解释器的模块（modules/repetition.ts），经 turnModules 放进 crutch、opener、told 槽
             // 她最近心里在想的（ADR 0101）是解释器的模块（modules/inner.ts），经 turnModules 放进 inner 槽
             // 「/亲热」（ADR 0170）：他刚让她黏一点，接下来几条回复里放一行；每生成一条取一次
@@ -820,12 +802,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     recentTildes: faceContext(options.history.load(contact.qq), contact.tier).recent.slice(-TEXTURE_TILDE_WINDOW).filter(reply => /[～~]\s*$/m.test(reply)).length,
                 }
                 : undefined;
-            // 长短不一（ADR 0024）是解释器的模块（modules/length.ts），经 turnModules 放进 length 槽；它要的前面那几样在这里写进 turn.facts
+            // 长短不一（ADR 0024）和形状（ADR 0091）是解释器的模块（modules/length.ts、modules/shape.ts）；它们要的前面那几样在这里写进 turn.facts
             Object.assign(turn.facts, {
                 ...(intent ? { intent } : {}), ...(cue ? { cue } : {}), ...(stickerOnlyNow ? { stickerOnly: true } : {}), ...(photoNow ? { photo: photoNow } : {}),
-                ...(deliberateNow ? { deliberate: true } : {}), ...(shapeNow ? { shape: shapeNow } : {}), ...(low ? { low: true } : {}),
+                ...(deliberateNow ? { deliberate: true } : {}), ...(low ? { low: true } : {}), agendaTopics,
             });
-            if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.long ? '，长答' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
             // 想一想：最近的聊天换成一段“回想”放在说明里，是解释器的模块（modules/transcript.ts），经 turnModules 放进 transcript 槽；这里只把原文清空
@@ -892,7 +873,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 // 工作模式的三行（他在求她切工作 / 判断要不要动电脑 / 切到了工作）是解释器的模块（modules/work-mode.ts）
                 ...(deliberateNow ? [{ slot: 'deliberate' as const, text: options.deliberate?.note ?? DELIBERATE_NOTE }] : []),
                 ...when('routedHint', routedHint),
-                ...(shapeNow ? [{ slot: 'shape' as const, text: describeShape(shapeNow) }] : []),
                 ...when('quote', quoteLine),
                 ...when('intimate', intimateNow),
                 // 「做题式」写法（ADR 0146 实验，只有模拟器用）是解释器的模块（modules/solve-frame.ts），经 turnModules 放进 solveFrame 槽
@@ -910,6 +890,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const ran = contributeTurn([...(options.turnModules ?? []), legacy], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             const { afterMain, afterHistory } = ran instanceof Promise ? await ran : ran;
+            shapeNow = turn.facts.shape;
             const prompt = buildPrompt({
                 character: turnCard.character,
                 worldInfo: turnCard.worldInfo,

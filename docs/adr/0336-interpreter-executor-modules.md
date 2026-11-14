@@ -747,3 +747,17 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 删掉的接线：`contact.ts` 里那两行计算和日志、`length` 段落、`lengthHint` / `describeLength` 的 import。日志「这一轮说话：……」挪到拼段落的时候（同一轮之内，内容不变）。
 - 验证：基线 35/35 逐字不变；变异检验——模块什么都不放，26 个场景报不一致。深思时也给，基线抓不到（基线里深思的轮次碰巧都抽不中长短），
   由新的 `length-module.test.ts` 兜：找一句抽得中的话，挡长短的八样逐个打开都不放；去掉深思那一条，测试报错。类型检查通过。
+
+### 形状控制（2026-11-15）
+
+- 是什么：ADR 0091 起——用具体的字数和条数（每条多长、几条，带自己的事、废话、情绪轮、长答、拆条……）代替「回短一点」，放进 `shape` 槽。按他最后一句的哈希抽，不抽随机数。
+  语言松绑（DSH 10-28）：只有接情绪 / 好事 / 亲近 / 撒娇 / 认真、或有记忆线索时给；`shapeAll`（ADR 0220）所有轮次都给——App 从来没把它接到配置上，只有模拟器用，照旧。
+  危机、只发表情、发照片、被打断、只想一想、深思的轮次不给。
+- 比长短多一处：算出来的形状后面还要用——生成时按它调最多几条（心境那条 `tunedMaxBubbles`）、发出去之前按它裁（`shapeReply`）。
+  所以模块在 contribute 时算、写回 `turn.facts.shape`（同热梗写 `facts.meme` 的做法），长短的模块排在它后面读；旧逻辑在拼完段落之后从 facts 取回 `shapeNow`，原来算形状的位置先清成 undefined，不留上一轮的。
+  带自己的事能挑的话题要用心情（还在旧逻辑），由旧逻辑算好写进新的 `turn.facts.agendaTopics`。
+- `src/modules/shape.ts`：`shapeModule({ shape, shapeAll, shapeAgenda, shapeFiller, shapeFeel, shapeSplit, shapeAsk, shapeLong, shapeShares, log })`，只有 contribute。
+  App 和模拟器都总是挂（排在长短之前），开关和分项的值同迁移前给联系人流水线的。`planShape` / `describeShape`（`language/shape.ts`）一个字没改。
+- 删掉的接线：`contact.ts` 里形状的计算、日志、`shape` 段落，流水线的九个形状选项和对应 import；App 和模拟器不再往联系人流水线传它们。`language-review.test.ts` 原来直接给流水线传 `shape` / `shapeAll`，改成挂形状模块（去掉模块那条测试就红）。
+- 日志「这一轮形状：……」从算形状的地方挪到拼段落的时候（同一轮之内，内容不变）。
+- 验证：基线 35/35 逐字不变；变异检验——模块不放这一段，22 个场景报不一致；不写回 `facts.shape`（生成不调条数、发出前不裁、长短照放），14 个场景报不一致。bot 全量 4422 过、13 跳过，红的 2 项是 DSH 那边的（图片表情路径、`voice/sing.ts` 没登记），已留言。

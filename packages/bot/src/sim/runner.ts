@@ -31,6 +31,7 @@ import { innerModule } from '../modules/inner.ts';
 import { devicesModule } from '../modules/devices.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { lengthModule } from '../modules/length.ts';
+import { shapeModule } from '../modules/shape.ts';
 import type { DeviceControl } from '../platform/device-actions.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
@@ -533,10 +534,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ...(scenario.grievance ? { grievance: true } : {}),
         ...(scenario.rhythm ? { rhythm: true } : {}),
         ...(scenario.shortReplies ? { shortReplies: true } : {}),
-        ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda || scenario.shapeFiller || options.shapeFiller || scenario.shapeFeel || options.shapeFeel || scenario.shapeSplit || options.shapeSplit || options.shapeAsk || options.shapeLong ? { shape: true } : {}),
-        ...(scenario.shapeAgenda || options.shapeAgenda ? { shapeAgenda: true } : {}),
-        ...(scenario.shapeFiller || options.shapeFiller ? { shapeFiller: true } : {}),
-        ...(scenario.shapeFeel || options.shapeFeel ? { shapeFeel: true } : {}),
         // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
         ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
         ...(scenario.texture ? { texture: true } : {}),
@@ -585,6 +582,19 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             // 她最近心里在想什么（ADR 0101）：计划器在后面才建，每次现取
             ...(scenario.innerLife ? [innerModule({ innerLine: () => planner?.innerLine(), log: message => { if (epoch === responderEpoch) log(message); } })] : []),
             ...(options.devices ? [devicesModule({ menu: () => options.devices!.menu(), allowed: () => true })] : []),
+            // 形状控制（ADR 0091），同 App，排在长短之前；开关和分项同迁移前给联系人流水线的
+            shapeModule({
+                ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda || scenario.shapeFiller || options.shapeFiller || scenario.shapeFeel || options.shapeFeel || scenario.shapeSplit || options.shapeSplit || options.shapeAsk || options.shapeLong ? { shape: true } : {}),
+                ...(scenario.shapeAgenda || options.shapeAgenda ? { shapeAgenda: true } : {}),
+                ...(scenario.shapeFiller || options.shapeFiller ? { shapeFiller: true } : {}),
+                ...(scenario.shapeFeel || options.shapeFeel ? { shapeFeel: true } : {}),
+                ...(scenario.shapeAll ? { shapeAll: true } : {}),
+                ...(scenario.shapeShares ? { shapeShares: scenario.shapeShares } : {}),
+                ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
+                ...(options.shapeAsk ? { shapeAsk: true } : {}),
+                ...(options.shapeLong ? { shapeLong: true } : {}),
+                log: message => { if (epoch === responderEpoch) log(message); },
+            }),
             // 长短不一（ADR 0024），同 App
             lengthModule({ ...(scenario.shortReplies ? { shortReplies: true } : {}), log: message => { if (epoch === responderEpoch) log(message); } }),
             // 主动找他时计划器写的说明，同 App
@@ -604,14 +614,9 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             ...(scenario.watched?.length ? [watchedModule(() => { const day = formatDate(new Date(clock.now())); return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); }, message => { if (epoch === responderEpoch) log(message); })] : []),
         ],
         ...(scenario.memoryFeelings && scenario.herFeelings ? { memoryFeelings: true } : {}),
-        ...(scenario.shapeAll ? { shapeAll: true } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),
-        ...(scenario.shapeShares ? { shapeShares: scenario.shapeShares } : {}),
         ...(scenario.pursuits ? { pursuits: () => mergePursuits(scenario.pursuitsFile as Pursuit[]) } : {}),
-        ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
-        ...(options.shapeAsk ? { shapeAsk: true } : {}),
-        ...(options.shapeLong ? { shapeLong: true } : {}),
         ...(options.deliberateLlm ? { deliberate: { llm: options.deliberateLlm, ...(options.deliberateNote ? { note: options.deliberateNote } : {}) } } : {}),
         ...(options.depthRouting && options.deliberateLlm ? {
             turnWeight: createTurnWeigher({

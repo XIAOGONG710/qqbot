@@ -101,8 +101,10 @@ export interface TurnFacts {
     photo?: PhotoKind;
     /** 这一轮深思（ADR 0151 / 0202）：换更强的模型、不套字数和条数 */
     deliberate?: boolean;
-    /** 这一轮的形状（ADR 0091）：每条多长、几条 */
+    /** 这一轮的形状（ADR 0091）：每条多长、几条。形状的模块（modules/shape.ts）在 contribute 时写，长短的模块和旧逻辑（生成、发出去之前裁）读 */
     shape?: ShapePlan;
+    /** 带自己的事时能挑的话题（她那边还没说过的、身体、心情）；形状的模块读 */
+    agendaTopics?: readonly string[];
     /** 她这会儿低落（心情安静、身体不舒服、心境偏低、真人数值低）：不加「话多」 */
     low?: boolean;
 }

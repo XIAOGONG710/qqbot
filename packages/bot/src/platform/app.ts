@@ -46,6 +46,7 @@ import { devicesModule } from '../modules/devices.ts';
 import { consentModule } from '../modules/consent.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { lengthModule } from '../modules/length.ts';
+import { shapeModule } from '../modules/shape.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
@@ -1078,6 +1079,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             },
         }),
         // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；没有开关（说话更短 shortReplies 改说法），读旧逻辑写进 turn.facts 的那几样
+        // 形状控制（ADR 0091，配置 shape 及各分项）：contribute 时算出每条多长、几条，写回 turn.facts.shape；排在长短之前（长短读它），旧逻辑生成和裁剪时也读它
+        shapeModule({
+            // shapeAll（ADR 0220）App 从来没接配置，只有模拟器用；分项同下面给联系人流水线的（都要 shape 开着）
+            shape: config.shape, shapeAgenda: config.shape && config.shapeAgenda, shapeFiller: config.shape && config.shapeFiller, shapeFeel: config.shape && config.shapeFeel,
+            shapeSplit: config.shape && config.shapeSplit, shapeAsk: config.shape && config.shapeAsk, shapeLong: config.shape && config.shapeLong, log,
+        }),
         lengthModule({ shortReplies: config.shortReplies, log }),
         // 主动找他时计划器写的说明（initiate.note）；没有开关，不存状态
         initiateNoteModule(),
@@ -2145,10 +2152,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.grievance ? { grievance: true } : {}),
             ...(config.rhythm ? { rhythm: true } : {}),
             ...(config.shortReplies ? { shortReplies: true } : {}),
-            ...(config.shape ? { shape: true } : {}),
-            ...(config.shape && config.shapeAgenda ? { shapeAgenda: true } : {}),
-            ...(config.shape && config.shapeFiller ? { shapeFiller: true } : {}),
-            ...(config.shape && config.shapeFeel ? { shapeFeel: true } : {}),
             // 她自己决定今天想做什么（ADR 0182）：和「在读的书」一起当额外的空闲活动，每次现取
             ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
             // 她理解人的话（10-30）：他这句话和以前被纠正过的事撞上时提醒她
@@ -2169,9 +2172,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
             ...(config.pursuits ? { pursuits: pursuitsNow } : {}),
-            ...(config.shape && config.shapeSplit ? { shapeSplit: true } : {}),
-            ...(config.shape && config.shapeAsk ? { shapeAsk: true } : {}),
-            ...(config.shape && config.shapeLong ? { shapeLong: true } : {}),
             ...(config.deliberate ? { deliberate: { llm: deliberateLlm(config.llm, config.deliberateModel) } } : {}),
             ...(turnWeigher ? { turnWeight: turnWeigher } : {}),
             ...(continuity ? { continuity } : {}),

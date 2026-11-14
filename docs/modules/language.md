@@ -85,6 +85,7 @@
 - `modules/consent.ts`
 - `modules/initiate-note.ts`
 - `modules/length.ts`
+- `modules/shape.ts`
 - `st/`
 
 ## 开关
