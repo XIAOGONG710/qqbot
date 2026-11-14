@@ -3527,8 +3527,21 @@ ${body}
     const groupTopics = new Map<number, { day: string; count: number }>();
     /** 每个群今天「听见别人聊她」接了几次 */
     const groupOverheard = new Map<number, { day: string; count: number }>();
-    /** 她在这个群被叫的名字（QQ 昵称 / 群名片）：别人不一定叫她的真名（2026-11-14） */
+    /** 她在群里可能被叫的名字（QQ 昵称 / 群名片），连上时读一次，落盘记着 */
     const herGroupNames = new Map<number, string[]>();
+    /** 群成员名单（不一定说过话）：导群记录时一起写进 groups/<群号>.members.json */
+    const groupRosters = new Map<number, string[]>();
+    function rosterOf(groupId: number): string[] | undefined {
+        const hit = groupRosters.get(groupId);
+        if (hit) return hit.length ? hit : undefined;
+        try {
+            const file = join(config.dataDir, 'groups', `${groupId}.members.json`);
+            const list = JSON.parse(readFileSync(file, 'utf8')) as { name?: unknown }[];
+            const names = list.map(item => String(item?.name ?? '').replace(/\s+/g, ' ').trim()).filter(name => name.length >= 1).slice(0, 60);
+            groupRosters.set(groupId, names);
+            return names.length ? names : undefined;
+        } catch { groupRosters.set(groupId, []); return undefined; }
+    }
     /** 上次读到的名字存下来（她的 QQ 昵称是「繁星」，NapCat 这次读不到时别把认识的名字忘了） */
     const groupNamesFile = join(config.dataDir, 'groups', 'self-names.json');
     if (groupsOn && existsSync(groupNamesFile)) {
@@ -3752,6 +3765,7 @@ ${body}
         const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, bf)).join('\n');
         // 这个群里她认识谁（聊过就认得，改名也认得）；心情只说「这会儿怎么样」，不说来由（都在私聊里）
         const memory = groupPeopleBook?.render(group.id, { ...(bf ? { exclude: bf.qq } : {}), now: worldNow() });
+        const roster = rosterOf(group.id);
         // 心境：私聊那边算好的 + 群里这些遭遇现算的，同一种取更重的那个
         const feltNow = config.herFeelings
             ? mergeFelt(lastFeelings?.felt ?? [], groupFeel ? feelingsAt(groupFeel.appraisals(group.id), worldNow()) : [])
@@ -3762,6 +3776,7 @@ ${body}
             ...(memory ? { memory } : {}), ...(mood ? { mood } : {}),
             ...(herGroupNames.get(group.id) ? { myNames: herGroupNames.get(group.id)! } : {}),
             ...(entries.some(entry => entry.history === true) ? { veteran: true } : {}),
+            ...(roster ? { roster } : {}),
             // 群里人都知道她是 AI（knowsBot）：不用瞒、也不用主动提；危机那档照旧用承认版卡
             ...(group.knowsBot && reason !== 'crisis' ? { knowsBot: true } : {}),
         });
