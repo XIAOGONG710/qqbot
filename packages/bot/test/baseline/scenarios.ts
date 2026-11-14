@@ -13,6 +13,8 @@
 // 引用回复（他连发里前面那条是问句：引用 / 不引用、只有一条不引用、同学也引用）、
 // 长期记忆（假的 Hindsight、真的客户端：建库和关系概况 / 印象、写入片段和日记、他的私人记忆、公共记忆的线索、她今天跟别人聊过的、
 // 问过去的某一天、说起名单里的人、关系概况、披露分寸；同学档）。
+// 心境（ADR 0102：带感受的梦、作者写下的事、她回想过的感受；难过时他问怎么了 / 哄她、说过难过的下一轮、又烦又累、很开心，节奏和条数跟着变；
+// 小别扭、危机、同学这几轮不放）、没了结的事和安慰后的余温（假 Hindsight 开着，片段抽出一条 unsettled）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：真的 Hindsight 那一侧（抽取、整合、派生修复、对账、遗忘）、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、她自己去看视频、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、真的设备（取件中心、手机推送）、QQ 账号控制面与好友申请、说说与空间、
@@ -32,6 +34,11 @@ import { emptyTakesState, saveTakesState } from '../../src/life/reading-takes.ts
 import { emptyQuestionsState, saveQuestionsState } from '../../src/life/open-questions.ts';
 import { emptyGuessesState, saveGuessesState } from '../../src/life/her-guesses.ts';
 import { saveHerPlan } from '../../src/life/her-plans.ts';
+import { appendDream } from '../../src/life/dreams.ts';
+import { emptyReviewState as emptyFeelingReview, saveReviewState as saveFeelingReview } from '../../src/emotion/feeling-review.ts';
+import { momentsPath } from '../../src/emotion/moments.ts';
+import type { Moment } from '../../src/emotion/feelings.ts';
+import { writeJsonAtomic } from '../../src/memory/json-file.ts';
 import { SELF, type LlmCall, type Replier, type Scenario } from './harness.ts';
 
 const boyfriend: Contact = { qq: 10001, name: '阿明', tier: 'boyfriend', persona: '她的男朋友，同校不同专业', knowsBot: true };
@@ -1174,6 +1181,84 @@ export const SCENARIOS: readonly Scenario[] = [
                 await d.at('2026-12-08T19:55:00+08:00'); d.say(boyfriend.qq, '晚安啦');
                 // 过了 45 分钟，今晚的两段都结束了：下一次定时同步把它们写进去
                 await d.at('2026-12-08T20:45:00+08:00');
+            },
+        } satisfies Scenario;
+    })(),
+    (() => {
+        const at = (iso: string) => Date.parse(iso);
+        // 前天晚上那一段抽出来的「没了结的事」（只写发生了什么，不带情绪词）
+        const unsettled = '{"add":[],"waiting":[],"unanswered":[],"unsettled":[{"what":"12月6日说好一起看电影，他加班没去成"}],"resolved":[],"world":[]}';
+        return {
+            name: 'feelings',
+            about: '心境（ADR 0102 / 0028 / 0023，ADR 0336 迁出之前）：预置昨晚一个带感受的梦（难过）、她回想过的一条感受（担心）、作者写下的三件事（累、烦、很开心），'
+                + '假 Hindsight 开着、前天那一段聊天抽出一条没了结的事。上午：有点难过（梦里的事）、他问怎么了（绷不住、可以哭）、他哄她（安慰的余温、没了结的事按「他在修补」放）、'
+                + '说过难过之后的下一轮（不再提）；中午：又烦又累（提不起劲、条数收紧）；很开心（心情好、条数放宽）；同学（不放）；'
+                + '下午她说了两句烦心事他隔了五十分钟才回（小别扭，不放心境那一行）；危机（不放）',
+            start: '2026-12-09T09:30:00+08:00',
+            contacts: [boyfriend, classmate],
+            config: { ...RICH, proactive: 'off', feelingReview: true },
+            memory: {},
+            seed: (dataDir: string) => {
+                const chats = new ChatHistory(dataDir);
+                const line = (time: string, role: 'user' | 'assistant', content: string, messageId: number) =>
+                    chats.append(boyfriend.qq, { time: new Date(at(time)).toISOString(), role, content, messageId });
+                // 前天晚上：说好的电影没看成（这一段早就结束了，第一次定时同步时抽）
+                line('2026-12-07T20:00:00+08:00', 'user', '昨天说好的电影没看成，临时被叫去加班了', 950);
+                line('2026-12-07T20:01:00+08:00', 'assistant', '嗯\n知道了', 951);
+                line('2026-12-07T20:05:00+08:00', 'user', '那我先去忙了', 952);
+                line('2026-12-07T20:06:00+08:00', 'assistant', '去吧', 953);
+                // 昨晚的梦（用真的写入接口）：梦里等他没等到，醒来有点闷
+                appendDream(dataDir, {
+                    date: '2026-12-08', dream: '梦见在电影院门口等他，等了很久他一直没来，后来电影院变成了一片海。', at: at('2026-12-09T04:30:00+08:00'),
+                    feel: { kind: 'sad', strength: 3, why: '梦里在电影院门口等他，一直没等到' },
+                });
+                // 她回想过、记下的一条感受（ADR 0197）
+                saveFeelingReview(dataDir, {
+                    ...emptyFeelingReview(),
+                    items: [{ id: 'r-2026-12-09-1', at: at('2026-12-09T08:30:00+08:00'), kind: 'worry', strength: 2, cause: '期末作品集还一张都没拍', aboutHim: false, evidence: ['m1', 'm2'], addedAt: at('2026-12-09T08:30:00+08:00') }],
+                });
+                // 作者写下的事（moments.json；作者用 moment-cli 写，这里用它同一个写入函数）
+                const moments: Moment[] = [
+                    { id: 'tired-night', at: new Date(at('2026-12-09T11:00:00+08:00')).toISOString(), kind: 'tired', strength: 2, cause: '昨晚赶实验报告到两点' },
+                    { id: 'parcel', at: new Date(at('2026-12-09T11:40:00+08:00')).toISOString(), kind: 'annoyed', strength: 2, cause: '快递被人拿错了，白跑了一趟' },
+                    { id: 'exhibit', at: new Date(at('2026-12-09T12:50:00+08:00')).toISOString(), kind: 'joy', strength: 3, cause: '拍的晚霞被选进了摄影社的展览', halfLifeH: 12 },
+                ];
+                writeJsonAtomic(momentsPath(dataDir), { moments });
+            },
+            reply: () => {
+                const chat = rotating(['嗯嗯', '是呀', '好', '哈哈']);
+                return (call: LlmCall) => {
+                    const system = typeof call.messages[0]?.content === 'string' ? call.messages[0].content : '';
+                    // 她答应的事 / 挂着的事的抽取（每段聊天结束一次）
+                    if (system.includes('unsettled') && system.includes('还挂着的事')) return unsettled;
+                    // 她聊完回想（ADR 0197）：今天没什么要记的
+                    if (system.includes('一个人安静地回想')) return '{}';
+                    // 他这一轮说的（提示词里「他最后说的是：「…」」那一行；别的行会引到他更早的话）
+                    const his = call.messages.findLast(m => m.role === 'user');
+                    const said = /他最后说的是：「([^」]*)」/.exec(typeof his?.content === 'string' ? his.content : '')?.[1] ?? '';
+                    if (said === '怎么了，感觉你不太开心') return '没事\n就是做了个梦，有点难过';
+                    // 又烦又累那一轮写三行、很开心那一轮写四行（每行都长，质感不会把它们并起来）：条数上限跟着心境收紧 / 放宽，发出去的条数看得出来
+                    if (said === '我也刚吃完饭') return '中午排队排了好久才打到饭\n下午还有一节高数要上\n现在只想躺着什么都不想干';
+                    if (said === '我这节课上完了') return '跟你说个好消息你肯定猜不到\n我拍的那张晚霞被选进展览了\n社长刚刚在群里发的名单\n我开心到现在还在笑';
+                    if (said === '我刚到图书馆') return '刚才被室友当着大家的面说了一顿\n好烦';
+                    return chat(call);
+                };
+            },
+            script: async d => {
+                await d.at('2026-12-09T09:45:00+08:00'); d.say(boyfriend.qq, '下课了吗');
+                await d.at('2026-12-09T09:51:00+08:00'); d.say(boyfriend.qq, '怎么了，感觉你不太开心');
+                await d.at('2026-12-09T09:57:00+08:00'); d.say(boyfriend.qq, '抱抱，别难过');
+                await d.at('2026-12-09T10:05:00+08:00'); d.say(boyfriend.qq, '我先去写作业了');
+                await d.at('2026-12-09T11:50:00+08:00'); d.say(boyfriend.qq, '我也刚吃完饭');
+                await d.at('2026-12-09T13:10:00+08:00'); d.say(boyfriend.qq, '我这节课上完了');
+                await d.at('2026-12-09T13:40:00+08:00'); d.say(classmate.qq, '明天的实验报告你写完了没');
+                await d.at('2026-12-09T14:00:00+08:00'); d.say(boyfriend.qq, '我刚到图书馆');
+                // 她回了两句烦心事，他隔了五十分钟才回、也没哄（ADR 0074 的「被晾着」）
+                await d.at('2026-12-09T14:50:00+08:00'); d.say(boyfriend.qq, '刚打完游戏');
+                await d.at('2026-12-09T15:00:00+08:00'); d.say(boyfriend.qq, '我不想活了');
+                await d.wait(10 * 60_000);
+                d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
+                await d.at('2026-12-09T15:30:00+08:00');
             },
         } satisfies Scenario;
     })(),
