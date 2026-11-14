@@ -45,6 +45,7 @@ import { innerModule } from '../modules/inner.ts';
 import { devicesModule } from '../modules/devices.ts';
 import { consentModule } from '../modules/consent.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
+import { lengthModule } from '../modules/length.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
@@ -1076,6 +1077,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 return askLine(pending.label, Math.floor((Date.now() - pending.at) / 60_000));
             },
         }),
+        // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；没有开关（说话更短 shortReplies 改说法），读旧逻辑写进 turn.facts 的那几样
+        lengthModule({ shortReplies: config.shortReplies, log }),
         // 主动找他时计划器写的说明（initiate.note）；没有开关，不存状态
         initiateNoteModule(),
         // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态

@@ -733,3 +733,17 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - `src/modules/initiate-note.ts`：`initiateNoteModule()`，只有 contribute，读 `turn.initiate`（就是原来的 `initiate`，构造 turn 时放进去的同一个对象）。App 和模拟器都总是挂。
 - 删掉的接线：`contact.ts` 里那一段。
 - 验证：基线 35/35 逐字不变；变异检验——模块什么都不放，16 个场景报不一致。`app`、`sim`、主动消息、回复器、模块总表 332 项通过；类型检查通过。
+
+### 长短不一（2026-11-15）
+
+- 是什么：ADR 0024——偶尔回句短的、偶尔话多一点（按他最后一句的哈希抽，同一句每次一样，不抽随机数）；心情低的时候不加「话多」。放进 `length` 槽。
+  危机、形状生效、问到过去 / 节日的记忆线索、只发表情、发照片、被打断、只想一想、深思的轮次不给。没有开关（`shortReplies` 只改说法）。
+- 这一串怎么拆：照片 → 意图 → 心境 → 图片表情 → 深思 → 引用 → 形状 → 长短，有固定的先后，中间几处抽随机数（顺序一变基线就不一样），结果还被生成和发送阶段用（换模型、引用哪条、最多几条）。
+  从末端倒着迁：长短在最后、后面没人读它。前面那几样还在旧逻辑里，旧逻辑在原来算长短的位置把它们写进 `turn.facts`（新加 `intent`、`cue`、`stickerOnly`、`photo`、`deliberate`、`shape`、`low`），
+  长短的模块在 contribute 时读。这几个字段就是以后它们各自迁成模块时彼此交接的东西。
+- 没补基线：26 个场景的快照里有长短那一行。
+- `src/modules/length.ts`：`lengthModule({ shortReplies, log })`，只有 contribute。App 和模拟器都总是挂。`lengthHint` / `describeLength`（`language/expression.ts`）一个字没改。
+  意图是空串时写成没有（`lengthHint` 里两处都只看真假，一样）。
+- 删掉的接线：`contact.ts` 里那两行计算和日志、`length` 段落、`lengthHint` / `describeLength` 的 import。日志「这一轮说话：……」挪到拼段落的时候（同一轮之内，内容不变）。
+- 验证：基线 35/35 逐字不变；变异检验——模块什么都不放，26 个场景报不一致。深思时也给，基线抓不到（基线里深思的轮次碰巧都抽不中长短），
+  由新的 `length-module.test.ts` 兜：找一句抽得中的话，挡长短的八样逐个打开都不放；去掉深思那一条，测试报错。类型检查通过。

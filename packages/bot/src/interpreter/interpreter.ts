@@ -24,6 +24,8 @@ import type { Character } from '../st/card.ts';
 import type { BodyNow } from '../life/body.ts';
 import type { HerStatus } from '../language/status-line.ts';
 import type { DescribedBooks } from '../life/her-days.ts';
+import type { ShapePlan } from '../language/shape.ts';
+import type { PhotoKind } from '../vision/photos.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -87,6 +89,22 @@ export interface TurnFacts {
     /** 他这一轮说起的她身边的人（ADR 0033，modules/people-around.ts 写）：names 是谁，lines 是放进提示词的那几段（这一档看不到的人没有段）。
      *  旧逻辑的形状和长短读它：说起她身边的人的那一轮按认真接话算、不加「回很短」。没说起、主动找他时没有 */
     aboutPeople?: { names: readonly string[]; lines: readonly string[] };
+    // 下面几样是「照片 → 意图 → 心境 → 图片表情 → 深思 → 引用 → 形状 → 长短」这一串的交接（从末端倒着迁，ADR 0336「长短不一」一节）：
+    // 前面那几样还在旧逻辑里，旧逻辑在拼段落之前写，长短的模块（modules/length.ts）读。
+    /** 这一轮最终的意图行（照片、被打断改写之后，深思删掉「怎么答」那一句之前） */
+    intent?: string;
+    /** 记忆线索（ADR 0017）：他问到过去、提到节日的那个词；开了长期记忆、不是主动找他才有 */
+    cue?: string;
+    /** 这一轮只发图片表情、不写文字（ADR 0132） */
+    stickerOnly?: boolean;
+    /** 这一轮发照片（ADR 0109 / 0128）：哪一种 */
+    photo?: PhotoKind;
+    /** 这一轮深思（ADR 0151 / 0202）：换更强的模型、不套字数和条数 */
+    deliberate?: boolean;
+    /** 这一轮的形状（ADR 0091）：每条多长、几条 */
+    shape?: ShapePlan;
+    /** 她这会儿低落（心情安静、身体不舒服、心境偏低、真人数值低）：不加「话多」 */
+    low?: boolean;
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */
