@@ -46,7 +46,8 @@ export function groupAffectOf(input: {
     if ((addressed || addressedToHer(cause)) && PRAISE.test(cause)) {
         return { id: `group:praise:${entry.messageId}`, at, kind: 'joy', strength: 2, cause: '群里有人夸你、谢你', source: 'group' };
     }
-    if (addressed && RUDE.test(cause)) {
+    // 骂她：冲她来的算，没 @ 她但在群里说她坏话也算（听见了）
+    if ((addressed || addressedToHer(cause)) && RUDE.test(cause)) {
         return { id: `group:rude:${entry.messageId}`, at, kind: 'annoyed', strength: 2, cause: '有人在群里冲你发火', source: 'group' };
     }
     return undefined;

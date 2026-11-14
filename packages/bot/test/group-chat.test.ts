@@ -6,7 +6,7 @@ import { afterEach, describe, test } from 'node:test';
 import { startApp } from '../src/platform/app.ts';
 import { parseGroups, type AppConfig } from '../src/platform/config.ts';
 import { isGroupMessage, type GroupMessageEvent } from '../src/platform/onebot.ts';
-import { GROUP_LIMITS, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
+import { GROUP_LIMITS, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, mentionsHer, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
 import { moodStateLine } from '../src/emotion/express.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import { syntheticCardPattern } from './fixtures/card.ts';
@@ -24,7 +24,7 @@ describe('群聊：什么时候开口', () => {
     test('被 @、被回、被叫名字：开口；平常的话：潜水', () => {
         assert.equal(speakReason([{ type: 'at', data: { qq: String(SELF) } }, text(' 你说呢')], '@你 你说呢', 30001, 1, ctx()), 'mentioned');
         assert.equal(speakReason([{ type: 'reply', data: { id: '7001' } }, text('哈哈哈')], '哈哈哈', 30001, 2, ctx()), 'mentioned');
-        assert.equal(speakReason([text('梦瑶今天来不来')], '梦瑶今天来不来', 30001, 3, ctx()), 'mentioned');
+        assert.equal(speakReason([text('梦瑶你来不来')], '梦瑶你来不来', 30001, 3, ctx()), 'mentioned');
         assert.equal(speakReason([text('明天几点集合')], '明天几点集合', 30001, 4, ctx()), undefined);
     });
 
@@ -245,6 +245,28 @@ describe('群聊：进应用', () => {
         assert.deepEqual(sentGroup, ['555:来了来了', '555:来了来了']);
     });
 
+    test('没 @ 她、只在群里提到她：听见了；叫她名字才是一定要接', () => {
+        // 名字 + 第二人称 = 在跟她说话
+        assert.equal(speakReason([text('梦瑶你说呢')], '梦瑶你说呢', 30001, 1, ctx()), 'mentioned');
+        assert.equal(speakReason([text('梦瑶在吗')], '梦瑶在吗', 30001, 2, ctx()), 'mentioned');
+        // 只是被提起来：按消息 id 抽签，抽中的算听见
+        let heard = 0;
+        for (let id = 100; id < 200; id++) if (speakReason([text('梦瑶昨天那个视频真好笑')], '梦瑶昨天那个视频真好笑', 30001, id, ctx()) === 'overheard') heard++;
+        assert.ok(heard > 20 && heard < 90, `听见 ${heard}/100`);
+        // 说她不好听的：一定接一句
+        assert.equal(speakReason([text('林梦瑶是不是有点傻')], '林梦瑶是不是有点傻', 30001, 3, ctx()), 'overheard');
+        // 今天听见的额度用完就不接了
+        assert.equal(speakReason([text('林梦瑶是不是有点傻')], '林梦瑶是不是有点傻', 30001, 4, ctx({ overheardToday: GROUP_LIMITS.overheardPerDay })), undefined);
+        // 提到别人、没提她：不算
+        assert.equal(mentionsHer('老王昨天那个视频真好笑'), false);
+    });
+
+    test('听见别人聊她时，说明里是「恰好接一句」，不是「他们在问你」', () => {
+        const note = groupNote({ groupName: 'x', boyfriendHere: false, reason: 'overheard' });
+        assert.ok(note.includes('没人在跟你说话'), note);
+        assert.ok(note.includes('不想理就只写「不说」'), note);
+    });
+
     test('群里有人夸她：这一句她带着好心情说', async () => {
         const { app: a, sentGroup, prompts } = app('on');
         await a.connected(SELF);
@@ -291,6 +313,17 @@ describe('群聊：进应用', () => {
         await until(() => sentGroup.length > 0);
         a.stop();
         assert.equal(sentGroup[0], '555:@路人甲 你说呢');
+    });
+
+    test('没 @ 她、只在群里聊到她：她听得见，也能接一句', async () => {
+        const { app: a, sentGroup, prompts, sentRich } = app('on');
+        await a.connected(SELF);
+        a.receiveGroup(said(555, 30001, '老王', [text('林梦瑶是不是有点傻')]));
+        await until(() => sentGroup.length > 0);
+        a.stop();
+        const prompt = prompts.at(-1)!;
+        assert.ok(prompt.includes('没人在跟你说话'), prompt.slice(-500));
+        assert.equal(sentRich.length, 0, '没叫她，就不引用她那一条');
     });
 
     test('群里的图：没人叫她就不读；叫到她了才读，读出来的进提示词', async () => {

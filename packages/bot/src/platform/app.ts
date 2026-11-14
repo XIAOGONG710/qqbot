@@ -3525,6 +3525,8 @@ ${body}
     const lastGroupPoke = new Map<number, number>();
     /** 每个群今天顺着话题插了几次 */
     const groupTopics = new Map<number, { day: string; count: number }>();
+    /** 每个群今天「听见别人聊她」接了几次 */
+    const groupOverheard = new Map<number, { day: string; count: number }>();
     const groupDay = () => new Date(worldNow()).toDateString();
 
     interface GroupBatchItem {
@@ -3558,9 +3560,11 @@ ${body}
         if (!text) return;
         const topics = groupTopics.get(group.id);
         const topicToday = topics && topics.day === groupDay() ? topics.count : 0;
+        const overheard = groupOverheard.get(group.id);
+        const overheardToday = overheard && overheard.day === groupDay() ? overheard.count : 0;
         const bfNames = bf ? [...new Set(entries.filter(e => e.from === bf.qq).map(e => e.name))] : [];
         const reason = speakReason(event.message, text, event.user_id, event.message_id,
-            { selfId: selfIdKnown, ...(bf ? { boyfriend: bf } : {}), boyfriendNames: bfNames, herMessageIds: herIds, topicToday });
+            { selfId: selfIdKnown, ...(bf ? { boyfriend: bf } : {}), boyfriendNames: bfNames, herMessageIds: herIds, topicToday, overheardToday });
         const queue = groupQueue.get(group.id) ?? [];
         queue.push({
             event, text, ...(reason ? { reason } : {}),
@@ -3602,7 +3606,8 @@ ${body}
             const reason = reasons.includes('crisis') ? 'crisis'
                 : reasons.includes('mentioned') ? 'mentioned'
                     : reasons.includes('defend') ? 'defend'
-                        : reasons.includes('topic') ? 'topic' : undefined;
+                        : reasons.includes('overheard') ? 'overheard'
+                            : reasons.includes('topic') ? 'topic' : undefined;
             // 只读这一批里带图/表情/语音的最近几条，而且只在她要开口时读：群里刷图太凶，全量读会堵死看图接口
             if (reason) {
                 for (const item of batch.filter(entry => reading?.needs(entry.event.message)).slice(-GROUP_BATCH.maxReads)) {
@@ -3635,6 +3640,10 @@ ${body}
             if (reason === 'topic') {
                 const topics = groupTopics.get(groupId);
                 groupTopics.set(groupId, { day: groupDay(), count: (topics && topics.day === groupDay() ? topics.count : 0) + 1 });
+            }
+            if (reason === 'overheard') {
+                const overheard = groupOverheard.get(groupId);
+                groupOverheard.set(groupId, { day: groupDay(), count: (overheard && overheard.day === groupDay() ? overheard.count : 0) + 1 });
             }
             const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
             const bf = boyfriend ? { qq: boyfriend.qq, name: entries.findLast(e => e.from === boyfriend.qq)?.name ?? boyfriend.name } : undefined;

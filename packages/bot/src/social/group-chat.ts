@@ -23,7 +23,7 @@ export interface GroupEntry {
 }
 
 /** 每个群的额度：一小时、一天最多几条；不是被叫到的话两句之间至少隔多久；顺着话题插嘴一天几次 */
-export const GROUP_LIMITS = { perHour: 6, perDay: 30, minGapMs: 90_000, topicPerDay: 3, topicChance: 0.3 } as const;
+export const GROUP_LIMITS = { perHour: 6, perDay: 30, minGapMs: 90_000, topicPerDay: 3, topicChance: 0.3, overheardPerDay: 2, overheardChance: 0.4 } as const;
 /** 放进提示词的最近几条 */
 export const GROUP_CONTEXT = 30;
 
@@ -36,7 +36,13 @@ const TEASING = /菜|笨|傻|蠢|丑|怂|废物|拉胯|垃圾|太弱|弱鸡|不�
 /** 想伤害自己、绝望（群里有人这么说，她认真接，不当玩笑）：用私聊那套判定，夸张、否认、说别人的都不算 */
 const despair = (text: string) => detectCrisis(text) !== undefined;
 
-export type SpeakReason = 'mentioned' | 'crisis' | 'defend' | 'topic';
+/** 提到她名字的时候，是不是在冲她说话（「梦瑶你说呢」「梦瑶在吗」「梦瑶？」算；「梦瑶昨天那个视频」不算） */
+const NAMED_AT = /(?:林梦瑶|梦瑶|瑶瑶|瑶姐)\s*[，,、]?\s*(?:你|您|在吗|在不在|在哪|呢|帮|看|听|来|说|唱|觉得|要不要|怎么|为什么|能不能)/;
+/** 谈论她的口气：夸还是损（2026-11-14 没 @ 她、只在群里聊到她） */
+const ABOUT_HER_GOOD = /好看|好听|厉害|牛|可爱|靠谱|温柔|聪明|厉害|真行|不错|挺好|好会|会说话|人好/;
+const ABOUT_HER_BAD = /难看|难听|做作|装|绿茶|蠢|傻|烦人|恶心|刻薄|有病|不行|讨厌|自恋|整天/;
+
+export type SpeakReason = 'mentioned' | 'crisis' | 'defend' | 'topic' | 'overheard';
 
 export interface SpeakContext {
     selfId: number;
@@ -48,6 +54,21 @@ export interface SpeakContext {
     herMessageIds: ReadonlySet<number>;
     /** 这个群今天已经顺着话题插过几次 */
     topicToday: number;
+    /** 这个群今天已经「听见别人聊她」接过几次 */
+    overheardToday?: number;
+}
+
+/** 这条是不是在说「她」：叫她的名字，但不是在叫她 */
+export function mentionsHer(text: string): boolean {
+    return HER_NAMES.some(name => text.includes(name));
+}
+
+/** 提到她的时候是什么口气 */
+export function gossipTone(text: string): 'good' | 'bad' | undefined {
+    if (!mentionsHer(text)) return undefined;
+    if (ABOUT_HER_BAD.test(text)) return 'bad';
+    if (ABOUT_HER_GOOD.test(text)) return 'good';
+    return undefined;
 }
 
 /** 这条该不该让她开口、为什么；undefined = 潜水 */
@@ -56,7 +77,16 @@ export function speakReason(message: Segment[] | string, text: string, from: num
     const atHer = segments.some(s => s.type === 'at' && Number(s.data?.qq) === ctx.selfId);
     const repliesHer = segments.some(s => s.type === 'reply' && ctx.herMessageIds.has(Number(s.data?.id)));
     if (despair(text)) return 'crisis';
-    if (atHer || repliesHer || HER_NAMES.some(name => text.includes(name))) return 'mentioned';
+    if (atHer || repliesHer) return 'mentioned';
+    if (mentionsHer(text)) {
+        // 名字后面跟着「你 / 在吗 / 帮我看」这种，就是在跟她说话；只是被提起来，是「听见」
+        if (NAMED_AT.test(text)) return 'mentioned';
+        if ((ctx.overheardToday ?? 0) >= GROUP_LIMITS.overheardPerDay) return undefined;
+        // 听见别人聊她：说坏话的更容易接一句给自己分辩；被夸、被随口提起来的大多看着不说话
+        if (gossipTone(text) === 'bad') return 'overheard';
+        if (pick(String(messageId), 'group-overheard', [0, 999]) < GROUP_LIMITS.overheardChance * 1000) return 'overheard';
+        return undefined;
+    }
     if (ctx.boyfriend && from !== ctx.boyfriend.qq) {
         const atHim = segments.some(s => s.type === 'at' && Number(s.data?.qq) === ctx.boyfriend!.qq);
         const namesHim = (ctx.boyfriendNames ?? []).some(name => name.length >= 2 && text.includes(name));
@@ -77,7 +107,7 @@ export function withinBudget(mine: readonly GroupEntry[], now: number, reason: S
     if (reason !== 'crisis' && lastHour >= GROUP_LIMITS.perHour) return { ok: false, why: `这一小时已经在这个群说了 ${lastHour} 条` };
     if (reason !== 'crisis' && today >= GROUP_LIMITS.perDay) return { ok: false, why: `今天已经在这个群说了 ${today} 条` };
     const last = times.length ? Math.max(...times) : -Infinity;
-    if ((reason === 'topic' || reason === 'defend') && now - last < GROUP_LIMITS.minGapMs) return { ok: false, why: '刚说过，隔一会儿' };
+    if ((reason === 'topic' || reason === 'defend' || reason === 'overheard') && now - last < GROUP_LIMITS.minGapMs) return { ok: false, why: '刚说过，隔一会儿' };
     return { ok: true };
 }
 
@@ -103,6 +133,7 @@ const REASON_NOTE: Record<SpeakReason, string> = {
     crisis: '刚才有人说了想不开、不想活这类的话：认真接住他，不开玩笑，别讲大道理；劝他找身边信得过的人，或者打心理援助热线（12356，或 400-161-9995）。',
     defend: '刚才有人在损他（你男朋友），你可以出来替他说两句，嘴上别太凶，像平时斗嘴那样。',
     topic: '刚才聊到的正好是你熟的，想插一句就插一句；没什么想说的就只写「不说」。',
+    overheard: '刚才没人在跟你说话，是他们在聊到你（提到你的名字）。你可以装作恰好看见、接一句；被说得不好听就给自己分辩一下，但别大气凛然，也别追着问是谁说的；不想理就只写「不说」。',
 };
 
 /**
