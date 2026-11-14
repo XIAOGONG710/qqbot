@@ -6,7 +6,7 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { HER_NAMES, type GroupEntry } from './group-chat.ts';
+import { herNameList, type GroupEntry } from './group-chat.ts';
 import type { Appraisal, Felt } from '../emotion/feelings.ts';
 
 /** 最多留几条（小事，每人每天也遇不上几件） */
@@ -21,9 +21,9 @@ const RUDE = /闭嘴|滚(?:\s|$|吧|开)|傻[逼比]|你谁啊|别烦|烦死了|
 /** 想不开（和 group-chat 一样用私聊那套判定，这里只要「有人说了」） */
 const DESPAIR_ISH = /不想活|想死|自杀|轻生|活着没意思|活着没意义|跳楼|割腕|结束自己/;
 
-/** 点名她了没有：@她（记录里写成「@你」）、或者叫她的名字 */
-function addressedToHer(content: string): boolean {
-    return content.includes('@你') || HER_NAMES.some(name => content.includes(name));
+/** 点名她了没有：@她（记录里写成「@你」）、或者叫她的名字（真名 / 群里那个昵称） */
+function addressedToHer(content: string, extra: readonly string[] = []): boolean {
+    return content.includes('@你') || herNameList(extra).some(name => content.includes(name));
 }
 
 /**
@@ -35,6 +35,8 @@ export function groupAffectOf(input: {
     /** 这条是不是在跟她说话（speakReason 判出来的 mentioned / defend / crisis） */
     addressed: boolean;
     at: number;
+    /** 她在这个群被叫的名字（QQ 昵称 / 群名片） */
+    herNames?: readonly string[];
 }): Appraisal | undefined {
     const { entry, addressed, at } = input;
     const cause = entry.content;
@@ -43,11 +45,11 @@ export function groupAffectOf(input: {
         return { id: `group:crisis:${entry.messageId}`, at, kind: 'worry', strength: 2, cause: '群里有人说想不开', source: 'group' };
     }
     // 夸 / 谢：得是冲她来的（点名、@、或者正在接她的话）；一条就该让她心情好起来（clear 档）
-    if ((addressed || addressedToHer(cause)) && PRAISE.test(cause)) {
+    if ((addressed || addressedToHer(cause, input.herNames)) && PRAISE.test(cause)) {
         return { id: `group:praise:${entry.messageId}`, at, kind: 'joy', strength: 2, cause: '群里有人夸你、谢你', source: 'group' };
     }
     // 骂她：冲她来的算，没 @ 她但在群里说她坏话也算（听见了）
-    if ((addressed || addressedToHer(cause)) && RUDE.test(cause)) {
+    if ((addressed || addressedToHer(cause, input.herNames)) && RUDE.test(cause)) {
         return { id: `group:rude:${entry.messageId}`, at, kind: 'annoyed', strength: 2, cause: '有人在群里冲你发火', source: 'group' };
     }
     return undefined;

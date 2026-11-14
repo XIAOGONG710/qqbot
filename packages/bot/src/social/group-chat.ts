@@ -27,8 +27,13 @@ export const GROUP_LIMITS = { perHour: 6, perDay: 30, minGapMs: 90_000, topicPer
 /** 放进提示词的最近几条 */
 export const GROUP_CONTEXT = 30;
 
-/** 她的叫法：群里有人这样叫就算叫到她 */
+/** 她的叫法：群里有人这样叫就算叫到她（真名）；QQ 昵称、群名片另从群成员资料读（2026-11-14） */
 export const HER_NAMES = ['林梦瑶', '梦瑶', '瑶瑶', '瑶姐'] as const;
+/** 她在这个群还可能被叫的名字：QQ 昵称 / 群名片 + 真名，去重、太短的不算（「瑶」这种一个字会被当成普通字） */
+export function herNameList(extra: readonly string[] = []): string[] {
+    return [...new Set([...extra.filter(name => typeof name === 'string' && name.trim().length >= 2).map(name => name.trim()), ...HER_NAMES])];
+}
+const escaped = (names: readonly string[]) => names.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
 /** 她熟的话题（她本人：吃的、剧、楼下的猫；猫的名字从卡上读，ADR 0335） */
 const herTopics = () => new RegExp(`吃什么|吃啥|饭|外卖|奶茶|火锅|烧烤|零食|追剧|这剧|电视剧|番剧|新番|电影|猫|${catAlternative()}相机|拍照|摄影|修图|照片`);
 /** 损人的话（有人这样说他） */
@@ -36,8 +41,9 @@ const TEASING = /菜|笨|傻|蠢|丑|怂|废物|拉胯|垃圾|太弱|弱鸡|不�
 /** 想伤害自己、绝望（群里有人这么说，她认真接，不当玩笑）：用私聊那套判定，夸张、否认、说别人的都不算 */
 const despair = (text: string) => detectCrisis(text) !== undefined;
 
-/** 提到她名字的时候，是不是在冲她说话（「梦瑶你说呢」「梦瑶在吗」「梦瑶？」算；「梦瑶昨天那个视频」不算） */
-const NAMED_AT = /(?:林梦瑶|梦瑶|瑶瑶|瑶姐)\s*[，,、]?\s*(?:你|您|在吗|在不在|在哪|呢|帮|看|听|来|说|唱|觉得|要不要|怎么|为什么|能不能)/;
+/** 提到她名字的时候，是不是在冲她说话（「梦瑶你说呢」「梦瑶在吗」算；「梦瑶昨天那个视频」不算） */
+const namedAt = (text: string, names: readonly string[]) =>
+    new RegExp(`(?:${escaped(names)})\\s*[，,、]?\\s*(?:你|您|在吗|在不在|在哪|呢|帮|看|听|来|说|唱|觉得|要不要|怎么|为什么|能不能)`).test(text);
 /** 谈论她的口气：夸还是损（2026-11-14 没 @ 她、只在群里聊到她） */
 const ABOUT_HER_GOOD = /好看|好听|厉害|牛|可爱|靠谱|温柔|聪明|厉害|真行|不错|挺好|好会|会说话|人好/;
 const ABOUT_HER_BAD = /难看|难听|做作|装|绿茶|蠢|傻|烦人|恶心|刻薄|有病|不行|讨厌|自恋|整天/;
@@ -56,16 +62,18 @@ export interface SpeakContext {
     topicToday: number;
     /** 这个群今天已经「听见别人聊她」接过几次 */
     overheardToday?: number;
+    /** 她在群里被叫的名字（QQ 昵称 / 群名片）；不给就只认真名 */
+    herNames?: readonly string[];
 }
 
-/** 这条是不是在说「她」：叫她的名字，但不是在叫她 */
-export function mentionsHer(text: string): boolean {
-    return HER_NAMES.some(name => text.includes(name));
+/** 这条是不是在说「她」：叫她的名字（或群里叫她那个名字），但不是在叫她 */
+export function mentionsHer(text: string, extra: readonly string[] = []): boolean {
+    return herNameList(extra).some(name => text.includes(name));
 }
 
 /** 提到她的时候是什么口气 */
-export function gossipTone(text: string): 'good' | 'bad' | undefined {
-    if (!mentionsHer(text)) return undefined;
+export function gossipTone(text: string, extra: readonly string[] = []): 'good' | 'bad' | undefined {
+    if (!mentionsHer(text, extra)) return undefined;
     if (ABOUT_HER_BAD.test(text)) return 'bad';
     if (ABOUT_HER_GOOD.test(text)) return 'good';
     return undefined;
@@ -78,12 +86,13 @@ export function speakReason(message: Segment[] | string, text: string, from: num
     const repliesHer = segments.some(s => s.type === 'reply' && ctx.herMessageIds.has(Number(s.data?.id)));
     if (despair(text)) return 'crisis';
     if (atHer || repliesHer) return 'mentioned';
-    if (mentionsHer(text)) {
+    const names = ctx.herNames ?? [];
+    if (mentionsHer(text, names)) {
         // 名字后面跟着「你 / 在吗 / 帮我看」这种，就是在跟她说话；只是被提起来，是「听见」
-        if (NAMED_AT.test(text)) return 'mentioned';
+        if (namedAt(text, herNameList(names))) return 'mentioned';
         if ((ctx.overheardToday ?? 0) >= GROUP_LIMITS.overheardPerDay) return undefined;
         // 听见别人聊她：说坏话的更容易接一句给自己分辩；被夸、被随口提起来的大多看着不说话
-        if (gossipTone(text) === 'bad') return 'overheard';
+        if (gossipTone(text, names) === 'bad') return 'overheard';
         if (pick(String(messageId), 'group-overheard', [0, 999]) < GROUP_LIMITS.overheardChance * 1000) return 'overheard';
         return undefined;
     }
@@ -147,10 +156,15 @@ export function groupNote(input: {
     memory?: string;
     /** 她这会儿的心情（只说怎么样，不说来由） */
     mood?: string;
+    /** 她在这个群的 QQ 昵称 / 群名片：别人不一定叫她的真名 */
+    myNames?: readonly string[];
 }): string {
     const others = input.pending && input.callers ? input.pending - input.callers.length : 0;
+    // 群里叫她别的名字（QQ 昵称、群名片）：那也是她，别人叫那些也算叫她
+    const aliases = (input.myNames ?? []).filter(name => name.trim().length >= 2 && !HER_NAMES.includes(name.trim() as typeof HER_NAMES[number]));
     return [
         `[这是 QQ 群「${input.groupName}」里的聊天，群里有好几个人，上面每行冒号前是谁说的，「你」是你自己说的。`,
+        aliases.length ? `群里他们也可能叫你「${aliases.join('」「')}」（你在这个群的昵称 / 群名片）；那都是你，别当成别人。` : '',
         '群里说话像在群里：短，一两句，不刷屏，不用每句都接；不在群里说你和他之间的私事，也不说别人私下跟你说的事。',
         input.boyfriendHere && input.boyfriendName ? `${input.boyfriendName}（你男朋友）也在这个群：群里收着点，正常说话，别喊得黏，也别装不认识。` : '',
         input.memory ?? '',

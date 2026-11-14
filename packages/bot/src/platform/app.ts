@@ -89,7 +89,7 @@ import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, personaFacts, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
-import { GROUP_CONTEXT, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
+import { GROUP_CONTEXT, HER_NAMES, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
 import { groupPeople } from '.././social/group-people.ts';
 import { groupAffect, groupAffectOf, mergeFelt } from '.././social/group-affect.ts';
 import { impressionCandidate, impressionPrompt, parseImpression } from '.././social/group-impression.ts';
@@ -3527,6 +3527,33 @@ ${body}
     const groupTopics = new Map<number, { day: string; count: number }>();
     /** 每个群今天「听见别人聊她」接了几次 */
     const groupOverheard = new Map<number, { day: string; count: number }>();
+    /** 她在这个群被叫的名字（QQ 昵称 / 群名片）：别人不一定叫她的真名（2026-11-14） */
+    const herGroupNames = new Map<number, string[]>();
+    /** 连上之后读一次：她自己的 QQ 昵称 + 每个群里的群名片（NapCat 拿不到就只认真名） */
+    async function syncGroupNames(): Promise<void> {
+        if (!groupsOn || !transport.callAction) return;
+        let nickname = '';
+        try {
+            const info = await transport.callAction('get_login_info', {}) as { nickname?: string } | undefined;
+            nickname = typeof info?.nickname === 'string' ? info.nickname.trim() : '';
+        } catch (error) {
+            log(`群聊：读不到自己的 QQ 昵称（${error instanceof Error ? error.message : String(error)}）`);
+        }
+        for (const group of config.groups ?? []) {
+            try {
+                const info = await transport.callAction('get_group_member_info', { group_id: group.id, user_id: selfIdKnown }) as { card?: string; nickname?: string } | undefined;
+                const card = typeof info?.card === 'string' ? info.card.trim() : '';
+                const nick = typeof info?.nickname === 'string' ? info.nickname.trim() : '';
+                const names = [...new Set([card, nick, nickname].filter(name => name.length >= 2 && !HER_NAMES.includes(name as typeof HER_NAMES[number])))];
+                if (names.length) {
+                    herGroupNames.set(group.id, names);
+                    log(`[群 ${group.id}] 群里叫她：${names.join(' / ')}`);
+                }
+            } catch (error) {
+                log(`[群 ${group.id}] 读不到自己在群里的名片（${error instanceof Error ? error.message : String(error)}）`);
+            }
+        }
+    }
     const groupDay = () => new Date(worldNow()).toDateString();
 
     interface GroupBatchItem {
@@ -3563,8 +3590,9 @@ ${body}
         const overheard = groupOverheard.get(group.id);
         const overheardToday = overheard && overheard.day === groupDay() ? overheard.count : 0;
         const bfNames = bf ? [...new Set(entries.filter(e => e.from === bf.qq).map(e => e.name))] : [];
+        const herNames = herGroupNames.get(group.id);
         const reason = speakReason(event.message, text, event.user_id, event.message_id,
-            { selfId: selfIdKnown, ...(bf ? { boyfriend: bf } : {}), boyfriendNames: bfNames, herMessageIds: herIds, topicToday, overheardToday });
+            { selfId: selfIdKnown, ...(bf ? { boyfriend: bf } : {}), boyfriendNames: bfNames, herMessageIds: herIds, topicToday, overheardToday, ...(herNames ? { herNames } : {}) });
         const queue = groupQueue.get(group.id) ?? [];
         queue.push({
             event, text, ...(reason ? { reason } : {}),
@@ -3629,6 +3657,7 @@ ${body}
                 groupFeel?.note(groupId, groupAffectOf({
                     entry: { content: item.text, messageId: item.event.message_id },
                     addressed: item.reason === 'mentioned' || item.reason === 'defend', at: Date.parse(at),
+                    ...(herGroupNames.get(groupId) ? { herNames: herGroupNames.get(groupId)! } : {}),
                 }));
             }
             // 这一批说完，顺手把某个人在她心里的样子写一句（后台、一批最多一个、14 天才重写；不耽误回话）
@@ -3707,6 +3736,7 @@ ${body}
         const note = groupNote({
             groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason, ...extra,
             ...(memory ? { memory } : {}), ...(mood ? { mood } : {}),
+            ...(herGroupNames.get(group.id) ? { myNames: herGroupNames.get(group.id)! } : {}),
         });
         const messages = [{ role: 'system' as const, content: system }, { role: 'user' as const, content: `${transcript}\n\n${note}` }];
         const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);
@@ -4336,6 +4366,7 @@ ${body}
                     discoverStickers();
                     discoverPhotos();
                     discoverFoodPhotos();
+                    void syncGroupNames();
                     void refreshMemeJob();
                     if (!dormancy?.isDormant()) void watchJob();
                     // 补完漏掉的消息之后：各模块连上后要做一次的事（小梗抽一次、口头习惯学一次……，ADR 0336）

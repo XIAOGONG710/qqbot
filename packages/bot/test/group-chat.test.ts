@@ -6,7 +6,7 @@ import { afterEach, describe, test } from 'node:test';
 import { startApp } from '../src/platform/app.ts';
 import { parseGroups, type AppConfig } from '../src/platform/config.ts';
 import { isGroupMessage, type GroupMessageEvent } from '../src/platform/onebot.ts';
-import { GROUP_LIMITS, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, mentionsHer, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
+import { GROUP_LIMITS, groupLine, groupLog, groupNote, groupPokePlan, groupReply, herNameList, mentionSegments, mentionsHer, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
 import { moodStateLine } from '../src/emotion/express.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import { syntheticCardPattern } from './fixtures/card.ts';
@@ -145,6 +145,7 @@ describe('群聊：进应用', () => {
         stickerReader?: { describe: (image: { url: string }) => Promise<string> };
         generate?: (messages: { content: string }[]) => Promise<string>;
         pokeGroup?: (groupId: number, userId: number) => Promise<void>;
+        callAction?: (action: string, params: Record<string, unknown>) => Promise<unknown>;
     } = {}) {
         const dataDir = tmp();
         const cfg = {
@@ -172,6 +173,7 @@ describe('群聊：进应用', () => {
                     return 9000 + sentRich.length;
                 },
                 ...(extra.pokeGroup ? { pokeGroup: extra.pokeGroup } : {}),
+                callAction: async (action, params) => (extra.callAction ? extra.callAction(action, params) : ({} as never)),
             },
             pipeline: { generate: async messages => { prompts.push(messages.map(m => m.content).join('\n')); return extra.generate ? extra.generate(messages) : '来了来了'; }, settle: { quietMs: 0, maxMs: 0 } },
             ...(extra.vision ? { vision: extra.vision } : {}),
@@ -243,6 +245,20 @@ describe('群聊：进应用', () => {
         await until(() => sentGroup.length === 2);
         a.stop();
         assert.deepEqual(sentGroup, ['555:来了来了', '555:来了来了']);
+    });
+
+    test('群里的昵称也算叫她：真名之外，群里那个名字要认', () => {
+        const withAlias = ctx({ herNames: ['小瑶'] });
+        assert.equal(mentionsHer('小瑶昨天那条视频', ['小瑶']), true);
+        assert.equal(mentionsHer('小瑶昨天那条视频'), false, '不给她群里那个名字，就只认真名');
+        assert.equal(speakReason([text('小瑶你说呢')], '小瑶你说呢', 30001, 11, withAlias), 'mentioned');
+        assert.equal(speakReason([text('小瑶是不是有点傻')], '小瑶是不是有点傻', 30001, 12, withAlias), 'overheard');
+        // 一个字的别名不算（「瑶」会撞普通字）
+        assert.deepEqual(herNameList(['瑶', '小瑶']), ['小瑶', '林梦瑶', '梦瑶', '瑶瑶', '瑶姐']);
+        // 说明里告诉她：这些名字也是你
+        const note = groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', myNames: ['小瑶', '林梦瑶'] });
+        assert.ok(note.includes('「小瑶」'), note);
+        assert.ok(!note.includes('「林梦瑶」'), '真名不用再解释一遍');
     });
 
     test('没 @ 她、只在群里提到她：听见了；叫她名字才是一定要接', () => {
@@ -324,6 +340,22 @@ describe('群聊：进应用', () => {
         const prompt = prompts.at(-1)!;
         assert.ok(prompt.includes('没人在跟你说话'), prompt.slice(-500));
         assert.equal(sentRich.length, 0, '没叫她，就不引用她那一条');
+    });
+
+    test('她在群里被叫别的名字（QQ 昵称 / 群名片）：那也是她，叫了要应', async () => {
+        const { app: a, sentGroup, prompts } = app('on', false, {
+            callAction: async action => (action === 'get_login_info'
+                ? { nickname: '瑶瑶不熬夜' }
+                : { card: '小瑶', nickname: '瑶瑶不熬夜' }),
+        });
+        await a.connected(SELF);
+        await new Promise(r => setTimeout(r, 100)); // 连上之后读自己在群里的名片
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 小瑶你来不来')]));
+        await until(() => sentGroup.length > 0);
+        a.stop();
+        assert.equal(sentGroup.length, 1, '叫到的是她，要应');
+        const prompt = prompts.at(-1)!;
+        assert.ok(prompt.includes('群里他们也可能叫你「小瑶」'), prompt.slice(-600));
     });
 
     test('群里的图：没人叫她就不读；叫到她了才读，读出来的进提示词', async () => {
