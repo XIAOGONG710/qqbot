@@ -51,7 +51,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'vision', name: '看（视觉）',
         scope: '她怎么看图：照片货架、食物照片、图片安全检查、媒体（雪碧图/封面）与看图模型；只负责“看见”，不负责怎么说。',
-        files: ['vision/vision.ts', 'vision/photos.ts', 'vision/photo-index-lock.ts', 'vision/photo-sources.ts', 'vision/ai-photo-drafts.ts', 'vision/ai-photo-provider.ts', 'vision/ai-photo-quality.ts', 'vision/ai-photo-quality-adapter.ts', 'vision/ai-photo-references.ts', 'vision/ai-photo-storage.ts', 'vision/safe-image.ts', 'vision/media.ts', 'vision/hearing.ts', 'vision/voice-out.ts', 'vision/sticker-reads.ts'],
+        files: ['vision/vision.ts', 'vision/photos.ts', 'vision/photo-index-lock.ts', 'vision/photo-sources.ts', 'vision/ai-photo-drafts.ts', 'vision/ai-photo-provider.ts', 'vision/ai-photo-quality.ts', 'vision/ai-photo-quality-adapter.ts', 'vision/ai-photo-references.ts', 'vision/ai-photo-storage.ts', 'vision/safe-image.ts', 'vision/media.ts', 'vision/hearing.ts', 'vision/voice-out.ts', 'vision/sticker-reads.ts', 'voice/sing.ts'],
         groups: ['照片和表情'],
         metrics: '周报「图片」；vision 相关单测；图片不发外网的比例',
         adrs: ['0055', '0109', '0128', '0206', '0239', '0242', '0244', '0246', '0306', '0326'],
@@ -85,7 +85,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'social', name: '在 QQ 上的样子（社交）',
         scope: '什么时候看到、打字多久、一次发几条；图片表情和照片货架；戳一戳、已读、在线状态、说说、签名、“正在输入”、撤回；听语音看图。',
-        files: ['social/responder.ts', 'social/silence.ts', 'social/outbox.ts', 'social/others.ts', 'social/reply-timing.ts', 'social/rate-limit.ts', 'social/strangers.ts', 'social/group-chat.ts', 'social/async-gate.ts', 'social/stickers.ts', 'social/sticker-favorites.ts', 'social/sticker-sources.ts', 'social/pokes.ts', 'social/presence.ts', 'social/qzone.ts', 'social/qzone-feed.ts', 'social/qzone-feeds3.ts', 'social/qzone-remote.ts', 'social/qzone-strangers.ts', 'social/account.ts', 'social/quote-reply.ts', 'social/external-drafts.ts', 'social/external-platforms.ts', 'social/official-adapter.ts'],
+        files: ['social/responder.ts', 'social/silence.ts', 'social/outbox.ts', 'social/others.ts', 'social/reply-timing.ts', 'social/rate-limit.ts', 'social/strangers.ts', 'social/group-chat.ts', 'social/group-people.ts', 'social/group-affect.ts', 'social/group-impression.ts', 'social/async-gate.ts', 'social/stickers.ts', 'social/sticker-favorites.ts', 'social/sticker-sources.ts', 'social/pokes.ts', 'social/presence.ts', 'social/qzone.ts', 'social/qzone-feed.ts', 'social/qzone-feeds3.ts', 'social/qzone-remote.ts', 'social/qzone-strangers.ts', 'social/account.ts', 'social/quote-reply.ts', 'social/external-drafts.ts', 'social/external-platforms.ts', 'social/official-adapter.ts'],
         groups: ['照片和表情', '在 QQ 上的样子'],
         metrics: '周报「说话的样子」里的延迟、「表情和语气」',
         adrs: ['0063', '0075', '0077', '0083', '0105', '0109', '0136', '0142', '0143', '0144', '0173', '0174', '0209', '0210', '0311'],

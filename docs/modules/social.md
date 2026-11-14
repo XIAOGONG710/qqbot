@@ -14,6 +14,9 @@
 - `social/rate-limit.ts`
 - `social/strangers.ts`
 - `social/group-chat.ts`
+- `social/group-people.ts`
+- `social/group-affect.ts`
+- `social/group-impression.ts`
 - `social/async-gate.ts`
 - `social/stickers.ts`
 - `social/sticker-favorites.ts`

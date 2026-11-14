@@ -21,6 +21,7 @@
 - `vision/hearing.ts`
 - `vision/voice-out.ts`
 - `vision/sticker-reads.ts`
+- `voice/sing.ts`
 
 ## 开关
 
