@@ -47,6 +47,7 @@ import { consentModule } from '../modules/consent.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
 import { continuityModule } from '../modules/continuity.ts';
+import { warmModule } from '../modules/warm.ts';
 import { lengthModule } from '../modules/length.ts';
 import { shapeModule } from '../modules/shape.ts';
 import { quoteModule } from '../modules/quote.ts';
@@ -1097,6 +1098,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         timeBlockModule({ lagTail: config.lagTail }),
         // 连续性（ADR 0157–0163）：联系人流水线取回来的几行（turn.facts.continuity）照放；continuity 在解释器之后才建、取也在流水线里，所以总是挂
         continuityModule(),
+        // 情绪余温（ADR 0028）和没了结的事（ADR 0023）：他道歉 / 安慰 / 说想她之后三轮软一点（卡上有心情才算），没了结的事读旧逻辑写的 turn.facts.unsettled；没有开关，不存状态
+        warmModule({ log }),
         // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态
         transcriptModule(),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）

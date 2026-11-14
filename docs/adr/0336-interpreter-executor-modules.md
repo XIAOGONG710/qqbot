@@ -819,3 +819,14 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   没了结的事（平常写法 7 处、他在修补 2 处）、安慰的余温、小别扭生效那一轮没有心境、危机和同学没有心境、`onFeelings` 进了回想调用的提示词。单跑约 205 秒（开了长期记忆，每 5 分钟同步）。
 - 没走到：「很难过」（strong、不绷不住）、开心时放宽条数（没有形状时 `min(4,3)` 还是 3，测不出）、昨天她那边的事、追求给心境的打分。
 - 在旧代码上变异（每个都让 `feelings` 报不一致）：去掉余温、修补写死成否、不读梦、不读回想过的、作者写下的事给空、去掉小别扭的条件、不绷不住、去掉节奏、条数不按心境调、不交 `onFeelings`。
+
+### 心境方案第 1 步：情绪余温和没了结的事（2026-11-15）
+
+- 是什么：ADR 0028 情绪余温——他道歉 / 安慰 / 说想她之后三轮软一点（卡上有心情才算），放进 `warm` 槽；ADR 0023 没了结的事——两个人说好的事没成、说到一半就断了，只有事实，放进 `unsettled` 槽；
+  他在道歉或安慰时换成「他刚刚正在修补」的写法。迁移前两段都不看危机、只想一想、主动找他。
+- 由子代理起草（只新建文件）。`loops`（读答应的事那份状态）留在旧逻辑：它还写 `waiting` / `unanswered`，和「挂着的事：……」日志（`sim.test.ts` 断言它）；没了结的事实由旧逻辑一并写进新的 `turn.facts.unsettled`。
+  `warmAffect` / `describeWarmAffect` / `describeUnsettled` 都是纯函数，`chat` 就是 `turn.history`、`character` 就是 `turn.card`（危机换卡只换说话用的 turnCard），挪到 contribute 时算结果一样。
+  `describeUnsettled` 的参数类型放宽成只要 `what`（只改类型）。
+- `src/modules/warm.ts`：`warmModule({ log })`，只有 contribute。App 和模拟器都总是挂。日志「情绪余温：……」挪到拼段落的时候（内容不变）。
+- 删掉的接线：`contact.ts` 里 `affect` / `warm` / `unsettled` 的计算、余温日志、两个段落和两处 import。
+- 验证：`feelings` 逐字不变；变异检验——模块不放、安慰不算修补、旧逻辑不写 `facts.unsettled`，`feelings` 都报不一致。`warm-module.test.ts` 6 项通过；bot 全量 4450 过、13 跳过，红的 2 项是 DSH 那边的；类型检查通过。

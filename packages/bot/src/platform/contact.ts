@@ -38,13 +38,11 @@ import { asksToExplain, ENGAGED_INTENT, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE,
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
 import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, shapeReply, type ShapePlan } from '.././language/shape.ts';
 import { finishReply } from '.././language/unfinished.ts';
-import { describeUnsettled } from '.././life/open-loops.ts';
 import { describeWorld, lastMealDish, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
 import { isExplicitCurrentPhotoRequest, type CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { dayPlan, describeSlot } from '.././life/day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from '.././life/body.ts';
 import { saidAsleepAt } from '.././life/bedtime.ts';
-import { describeWarmAffect, warmAffect } from '.././emotion/affect.ts';
 import { moodPaceLine, moodShape, tunedMaxBubbles } from '.././emotion/express.ts';
 import { withEveryday } from '.././life/everyday.ts';
 import { withMenu } from '.././life/menu.ts';
@@ -565,14 +563,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 他提到见面时她那几天不方便的时段（ADR 0066 决策 2）是解释器的模块（modules/meetup.ts），经 turnModules 放进 obstacle 槽
             // 挂着的事（ADR 0023）：等他说结果的、她问了他没答的进意图行；没了结的事实放在心情后面，只给事实
             const loops = contact.tier !== UNLISTED_TIER ? options.promises?.openLoops?.(contact, chat, time) : undefined;
-            // 陌生人 / 名单外档没有她自己的日子，也不会因为一句越界的「爱你」凭空亲近。
-            const affect = character.moods.length ? warmAffect(chat) : undefined;
-            const warm = describeWarmAffect(affect);
-            const unsettled = loops ? describeUnsettled(loops.unsettled, affect?.kind === 'repair' || affect?.kind === 'comfort') : undefined;
+            // 情绪余温（ADR 0028）和没了结的事（ADR 0023）是解释器的模块（modules/warm.ts）：contribute 时算，经 turnModules 放进 unsettled、warm 槽；没了结的事实由下面写进 turn.facts.unsettled
             if (loops && (loops.waiting.length || loops.unanswered.length || loops.unsettled.length)) {
                 log(`挂着的事：等结果 ${loops.waiting.length}、没回答 ${loops.unanswered.length}、没了结 ${loops.unsettled.length}`);
             }
-            if (affect) log(`情绪余温：${affect.kind}，还影响 ${affect.remaining} 轮`);
             // 她那边的事还没说过（ADR 0057 调整）：她的今天了结的、那之后她一句话都还没说过（主动那条发出去了也算说过）——这一轮顺带说。先只给男朋友档
             const untold = around && herSchedule && contact.tier === 'boyfriend' && !initiate
                 ? worldNews(around).filter(n => n.at <= time && formatDate(herDay(herSchedule, n.at)) === around.day
@@ -589,7 +583,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她此刻在干嘛、作息、她答应的事、挂着的事、她那边还没说过的事还是旧逻辑算的，写进 facts 给意图阶梯（modules/intent.ts）读
             Object.assign(turn.facts, {
                 ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(promised ? { promised: true } : {}),
-                ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what) } : {}),
+                ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what), unsettled: loops.unsettled.map(l => l.what) } : {}),
                 ...(untold.length ? { news: untold } : {}),
             } satisfies TurnFacts);
             const assessed = assessTurn(options.turnModules ?? [], turn);
@@ -851,8 +845,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 // 心情由真实发生的事推出来的 feelingLine 表达。
                 ...when('humanState', humanStateLine),
                 ...when('development', developmentLine),
-                ...when('unsettled', unsettled),
-                ...when('warm', warm),
+                // 没了结的事（ADR 0023）、情绪余温（ADR 0028）是解释器的模块（modules/warm.ts），经 turnModules 放进 unsettled、warm 槽
                 ...when('feeling', feelingLine),
                 ...when('pace', paceLine),
                 // 追求（「别挂科」「用新相机拍出满意的东西」）也不再注入（10-30 同一条）：她想追什么，自己说。

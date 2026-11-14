@@ -104,7 +104,7 @@ export function dueLoops(loops: readonly OpenLoop[], today: Date, now: Date, cha
  * 时间块里心情后面的一行：跨天留下的仍只有事实；当下那一点余波每次从事实重算，不落盘。
  * repairing 表示他刚刚在道歉/安慰，修补动作应当先于旧余波，不能让她机械地继续冷着。
  */
-export function describeUnsettled(loops: readonly OpenLoop[], repairing = false): string | undefined {
+export function describeUnsettled(loops: readonly Pick<OpenLoop, 'what'>[], repairing = false): string | undefined {
     if (loops.length === 0) return undefined;
     const effect = repairing
         ? '他刚刚正在修补，所以别机械地继续绷着；先接住当下的好意'

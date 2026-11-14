@@ -20,6 +20,7 @@
 - `emotion/feedback.ts`
 - `emotion/feedback-digest.ts`
 - `emotion/feedback-digest-cli.ts`
+- `modules/warm.ts`
 
 ## 开关
 

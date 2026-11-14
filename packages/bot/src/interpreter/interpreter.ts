@@ -73,6 +73,8 @@ export interface TurnFacts {
     /** 挂着的事（ADR 0023）：在等他说结果的事、她问了他没答的；开了长期记忆才有 */
     waiting?: readonly string[];
     unanswered?: readonly string[];
+    /** 挂着的事里没了结的（ADR 0023）：两个人说好的事没成、说到一半就断了，只有事实（what）；旧逻辑和 waiting / unanswered 一起写，modules/warm.ts 读 */
+    unsettled?: readonly string[];
     /** 她那边今天了结了、还没跟他说过的事（ADR 0057）；只算男朋友档 */
     news?: readonly string[];
     /** 被打断（ADR 0115，modules/interruptions.ts 写）：聊着的时候她那边刚发生的一件小事；旧逻辑读它决定这一轮不带意图 / 深思 / 形状 / 长短 */
