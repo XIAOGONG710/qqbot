@@ -71,6 +71,17 @@ import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } f
 import { createHearing } from '.././vision/hearing.ts';
 import { speakViaGateway, speakViaHttp, speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
 import { matchSingRequest, singSong } from '../voice/sing.ts';
+
+/** 唱歌这条链路的回执也是她说的：短、口语，别像系统提示（2026-11-14 用户要求） */
+const SING_LINES = {
+    start: ['行，唱一首，等我几分钟。', '唱就唱，别催啊，得几分钟。', '好，那你等会儿，我唱。'],
+    busy: ['上一首还没唱完呢，急什么。', '还在唱呢，等我唱完这个。'],
+    fail: ['诶，没唱成：{0}', '这个我唱不了——{0}'],
+    done: ['喏，唱完了。', '听吧，唱好了。', '唱完了，凑合听。'],
+    donePath: ['唱完了，文件在 {0}', '喏，{0}'],
+};
+const pickLine = (lines: readonly string[], ...args: string[]): string =>
+    lines[Math.floor(Math.random() * lines.length)]!.replace(/\{(\d)\}/g, (_, i: string) => args[Number(i)] ?? '');
 import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
@@ -3241,10 +3252,10 @@ ${body}
             if (dormancy && plain && /^\/休眠(?:\s|$)/.test(plain)) { void handleDormancyCommand(plain.replace(/^\/休眠\s*/, '')); return; }
             if (dormancy && plain === '/唤醒') { void wakeUp(); return; }
             // 「唱 BVxxxx」（2026-11-14）：他要她唱一首。后台跑 scripts/sing.py（约 5 分钟），
-            // 出结果发 60 秒片段 + 整首路径；不占她这一轮的回复，也不进提示词。
+            // 出结果发整首语音条；不占她这一轮的回复，也不进提示词。
             const singBv = plain ? matchSingRequest(plain) : undefined;
             if (singBv) {
-                tellOwner('那我唱一首，得几分钟，唱完发你。');
+                tellOwner(pickLine(SING_LINES.start));
                 log(`[${event.user_id}] 唱歌：开始 ${singBv}`);
                 void singSong(singBv, {
                     root: repoRoot,
@@ -3253,7 +3264,9 @@ ${body}
                     log,
                 }).then(async result => {
                     if (result.error || !result.mp3) {
-                        tellOwner(result.error === 'busy' ? '上一首还在唱，等它唱完再说。' : `没唱成——${result.error ?? '没出结果'}`);
+                        tellOwner(result.error === 'busy'
+                            ? pickLine(SING_LINES.busy)
+                            : pickLine(SING_LINES.fail, result.error ?? '没出结果'));
                         log(`[${event.user_id}] 唱歌：失败 ${singBv}（${result.error ?? 'no result'}）`);
                         return;
                     }
@@ -3275,10 +3288,10 @@ ${body}
                             }
                         }
                     }
-                    tellOwner(sent ? '唱完了，整首在下面这条里。' : `唱完了，整首在 ${result.mp3}`);
+                    tellOwner(sent ? pickLine(SING_LINES.done) : pickLine(SING_LINES.donePath, result.mp3));
                     log(`[${event.user_id}] 唱歌：完成 ${singBv}（语音${sent ? '已发' : '没发出去'}）`);
                 }).catch(error => {
-                    tellOwner('唱到一半出错了。');
+                    tellOwner(pickLine(SING_LINES.fail, '唱到一半出错了'));
                     log(`[${event.user_id}] 唱歌：出错（${error instanceof Error ? error.message : String(error)}）`);
                 });
                 return;
