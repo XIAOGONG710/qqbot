@@ -109,11 +109,15 @@ const REASON_NOTE: Record<SpeakReason, string> = {
  * 给她的说明（放在聊天记录后面）：这是哪个群、群里怎么说话、他在不在、这次为什么开口。
  * 不写「你是 AI」的立场：认不认按卡（ADR 0067 / 0208），这里不重复
  */
-export function groupNote(input: { groupName: string; boyfriendHere: boolean; boyfriendName?: string; reason: SpeakReason }): string {
+export function groupNote(input: { groupName: string; boyfriendHere: boolean; boyfriendName?: string; reason: SpeakReason; callers?: readonly string[]; pending?: number }): string {
+    const others = input.pending && input.callers ? input.pending - input.callers.length : 0;
     return [
         `[这是 QQ 群「${input.groupName}」里的聊天，群里有好几个人，上面每行冒号前是谁说的，「你」是你自己说的。`,
         '群里说话像在群里：短，一两句，不刷屏，不用每句都接；不在群里说你和他之间的私事，也不说别人私下跟你说的事。',
         input.boyfriendHere && input.boyfriendName ? `${input.boyfriendName}（你男朋友）也在这个群：群里收着点，正常说话，别喊得黏，也别装不认识。` : '',
+        input.callers?.length
+            ? `刚才${input.callers.join('、')}在跟你说话${others > 0 ? `，这一段里还有 ${others} 条是别人在说别的` : ''}：先把上面的记录看完，挑你最想接的那一两句回，不用挨个都应，也不要一个人回一条。`
+            : '',
         REASON_NOTE[input.reason],
         '只输出你要发到群里的话，不写名字前缀、不写动作；不想说就只写「不说」。]',
     ].filter(Boolean).join('');

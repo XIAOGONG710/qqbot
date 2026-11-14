@@ -3496,16 +3496,31 @@ ${body}
     const groupsOn = (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0;
     const groupLogs = groupsOn ? groupLog(config.dataDir) : undefined;
     const groupBusy = new Set<number>();
-    /** 正在读图的那几条消息 id：读的时候还没进记录，同一条补回两次不能各读一遍（2026-11-14） */
-    const groupReading = new Set<number>();
+    /** 攒一攒再处理（用户 2026-11-14「多人同时找她要读记录、有选择地回答，不然很混乱」）：安静这么久就处理这一批 */
+    const GROUP_BATCH = { quietMs: 1500, maxMs: 6000, maxMessages: 12, maxReads: 3 } as const;
+    /** 每个群等着处理的这一批 */
+    const groupQueue = new Map<number, GroupBatchItem[]>();
+    const groupTimers = new Map<number, ReturnType<typeof setTimeout>>();
+    /** 排着队、还没进记录的消息 id（补回的同一条不能排两遍） */
+    const groupQueued = new Set<number>();
+    const groupFirstAt = new Map<number, number>();
     /** 每个群今天顺着话题插了几次 */
     const groupTopics = new Map<number, { day: string; count: number }>();
     const groupDay = () => new Date(worldNow()).toDateString();
+
+    interface GroupBatchItem {
+        event: GroupMessageEvent;
+        /** 进记录的文字（带图的要等读完再改写成看得懂的那行） */
+        text: string;
+        reason?: SpeakReason;
+        render: (message: Segment[] | string) => string;
+    }
+
     function onGroupMessage(event: GroupMessageEvent): void {
         if (stopped || !groupLogs || !selfIdKnown) return;
         const group = (config.groups ?? []).find(g => g.id === event.group_id);
         if (!group) return; // 不在名单的群：不看、不记、不写日志
-        if (groupLogs.has(group.id, event.message_id) || groupReading.has(event.message_id) || dormancy?.isDormant()) return;
+        if (groupQueued.has(event.message_id) || groupLogs.has(group.id, event.message_id) || dormancy?.isDormant()) return;
         const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
         const entries = groupLogs.load(group.id);
         // 群里他叫什么就写什么（他的群名片）：提示词里写「宝宝（你男朋友）」时她会当众喊「宝宝」（真模型 2/2），群里收着点
@@ -3522,36 +3537,91 @@ ${body}
         };
         const text = nameAts(segmentsToText(event.message, quoted).trim(), selfIdKnown, names, bf);
         if (!text) return;
-        const record = (content: string) => groupLogs!.append(group.id, { time: new Date(event.time * 1000).toISOString(), from: event.user_id, name: senderName, content, messageId: event.message_id });
         const topics = groupTopics.get(group.id);
         const topicToday = topics && topics.day === groupDay() ? topics.count : 0;
         const bfNames = bf ? [...new Set(entries.filter(e => e.from === bf.qq).map(e => e.name))] : [];
         const reason = speakReason(event.message, text, event.user_id, event.message_id,
             { selfId: selfIdKnown, ...(bf ? { boyfriend: bf } : {}), boyfriendNames: bfNames, herMessageIds: herIds, topicToday });
-        if (!reason) { record(text); return; }
-        const budget = withinBudget(entries.filter(e => e.mine), worldNow(), reason);
-        if (!budget.ok) { record(text); log(`[群 ${group.id}] 想开口但${budget.why}`); return; }
-        if (groupBusy.has(group.id)) { record(text); return; }
-        if (reason === 'topic') groupTopics.set(group.id, { day: groupDay(), count: topicToday + 1 });
-        groupBusy.add(group.id);
-        groupReading.add(event.message_id);
-        void (async () => {
-            // 只有要开口时才读图/表情/语音：群里刷图太凶，全量读会把看图接口的并发闸门堵死（vision 超时 8 秒）
-            let content = text;
-            if (reading) {
-                const message = await reading.read(event.message, event.message_id, notice => log(`[群 ${group.id}] ${notice}`),
-                    { role: 'user', time: new Date(event.time * 1000).toISOString(), messageId: event.message_id, peer: group.id })
-                    .catch(() => event.message);
-                content = nameAts(segmentsToText(message, quoted).trim(), selfIdKnown, names, bf) || text;
-            }
-            // 读过的这条进记录，记录本身就是缓存：同一条不再读第二遍
-            record(content);
-            await speakInGroup(group, reason, bf);
-        })()
-            .catch(error => log(`[群 ${group.id}] 说话出错：${error instanceof Error ? error.message : String(error)}`))
-            .finally(() => { groupBusy.delete(group.id); groupReading.delete(event.message_id); });
+        const queue = groupQueue.get(group.id) ?? [];
+        queue.push({
+            event, text, ...(reason ? { reason } : {}),
+            render: message => nameAts(segmentsToText(message, quoted).trim(), selfIdKnown, names, bf) || text,
+        });
+        groupQueue.set(group.id, queue);
+        groupQueued.add(event.message_id);
+        const first = groupFirstAt.get(group.id) ?? worldNow();
+        groupFirstAt.set(group.id, first);
+        // 攒够了、或者等太久了（一直有人说话也不能一直不接）：立刻处理
+        if (queue.length >= GROUP_BATCH.maxMessages || worldNow() - first >= GROUP_BATCH.maxMs) { void flushGroup(group.id); return; }
+        const timer = groupTimers.get(group.id);
+        if (timer) clearTimeout(timer);
+        groupTimers.set(group.id, setTimeout(() => { groupTimers.delete(group.id); void flushGroup(group.id); }, GROUP_BATCH.quietMs));
     }
-    async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean }, reason: SpeakReason, bf: { qq: number; name: string } | undefined): Promise<void> {
+
+    /**
+     * 这一段话处理完再决定说什么：先都记下来（带图的只读这一批里最近几张），
+     * 然后按危机 > 被叫 > 替他说 > 话题挑一个理由回一次——两个人同时叫她，不是回两条。
+     */
+    async function flushGroup(groupId: number): Promise<void> {
+        if (stopped || !groupLogs) return;
+        const group = (config.groups ?? []).find(g => g.id === groupId);
+        const batch = groupQueue.get(groupId) ?? [];
+        if (!group || !batch.length) { groupQueue.delete(groupId); groupFirstAt.delete(groupId); return; }
+        const timer = groupTimers.get(groupId);
+        if (timer) { clearTimeout(timer); groupTimers.delete(groupId); }
+        // 她这轮还没说完：这批留着，说完再接（原来这里是直接丢）
+        if (groupBusy.has(groupId)) {
+            groupTimers.set(groupId, setTimeout(() => { groupTimers.delete(groupId); void flushGroup(groupId); }, GROUP_BATCH.quietMs));
+            return;
+        }
+        groupQueue.delete(groupId);
+        groupFirstAt.delete(groupId);
+        for (const item of batch) groupQueued.delete(item.event.message_id);
+        groupBusy.add(groupId);
+        try {
+            const reasons = batch.flatMap(item => (item.reason ? [item.reason] : []));
+            const reason = reasons.includes('crisis') ? 'crisis'
+                : reasons.includes('mentioned') ? 'mentioned'
+                    : reasons.includes('defend') ? 'defend'
+                        : reasons.includes('topic') ? 'topic' : undefined;
+            // 只读这一批里带图/表情/语音的最近几条，而且只在她要开口时读：群里刷图太凶，全量读会堵死看图接口
+            if (reason) {
+                for (const item of batch.filter(entry => reading?.needs(entry.event.message)).slice(-GROUP_BATCH.maxReads)) {
+                    if (stopped) break;
+                    const message = await reading!.read(item.event.message, item.event.message_id, notice => log(`[群 ${groupId}] ${notice}`),
+                        { role: 'user', time: new Date(item.event.time * 1000).toISOString(), messageId: item.event.message_id, peer: groupId })
+                        .catch(() => item.event.message);
+                    item.text = item.render(message);
+                }
+            }
+            // 整段进记录：她说的话要从这里读得到上下文
+            for (const item of batch) {
+                const name = (item.event.sender.card || item.event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16);
+                groupLogs.append(groupId, { time: new Date(item.event.time * 1000).toISOString(), from: item.event.user_id, name, content: item.text, messageId: item.event.message_id });
+            }
+            if (!reason) return;
+            const entries = groupLogs.load(groupId);
+            const budget = withinBudget(entries.filter(e => e.mine), worldNow(), reason);
+            if (!budget.ok) { log(`[群 ${groupId}] 想开口但${budget.why}`); return; }
+            if (reason === 'topic') {
+                const topics = groupTopics.get(groupId);
+                groupTopics.set(groupId, { day: groupDay(), count: (topics && topics.day === groupDay() ? topics.count : 0) + 1 });
+            }
+            const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
+            const bf = boyfriend ? { qq: boyfriend.qq, name: entries.findLast(e => e.from === boyfriend.qq)?.name ?? boyfriend.name } : undefined;
+            const callers = [...new Set(batch.filter(item => item.reason === 'mentioned' || item.reason === 'defend')
+                .map(item => (item.event.sender.card || item.event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16)))];
+            await speakInGroup(group, reason, bf, callers.length ? { callers, pending: batch.length } : { pending: batch.length });
+        } catch (error) {
+            log(`[群 ${groupId}] 说话出错：${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            groupBusy.delete(groupId);
+            // 她说的这会儿又有人说话：接着处理，不丢
+            if (!stopped && (groupQueue.get(groupId)?.length ?? 0)) void flushGroup(groupId);
+        }
+    }
+    async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean }, reason: SpeakReason, bf: { qq: number; name: string } | undefined,
+        extra: { callers?: readonly string[]; pending?: number } = {}): Promise<void> {
         // 群里的人都知道她是 AI（用户标过）：原卡，被问时由她定；没标：承认版卡，认真问到就承认；有人说想不开：一律承认版（ADR 0067 / 0068 / 0208）
         const tier = group.knowsBot && reason !== 'crisis' ? 'classmate' : 'classmate-open';
         let card: TierCard;
@@ -3565,7 +3635,7 @@ ${body}
         const boyfriendHere = Boolean(bf && entries.some(e => e.from === bf.qq));
         const system = `你是${card.character.name}，在 QQ 群里和大家聊天。下面是你的设定。\n${personaFacts(card.character.description)}`;
         const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, bf)).join('\n');
-        const note = groupNote({ groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason });
+        const note = groupNote({ groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason, ...extra });
         const messages = [{ role: 'system' as const, content: system }, { role: 'user' as const, content: `${transcript}\n\n${note}` }];
         const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);
         // 这一档的禁用词（群里叫不出「宝宝」这类黏的叫法）：带了的那条不发

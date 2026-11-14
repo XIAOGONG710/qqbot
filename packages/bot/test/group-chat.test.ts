@@ -107,7 +107,11 @@ describe('群聊：给她看的样子', () => {
 });
 
 describe('群聊：进应用', () => {
-    function app(groupChat: 'dryRun' | 'on', knowsBot = false, extra: { vision?: { describe: (image: { url: string }) => Promise<string> }; stickerReader?: { describe: (image: { url: string }) => Promise<string> } } = {}) {
+    function app(groupChat: 'dryRun' | 'on', knowsBot = false, extra: {
+        vision?: { describe: (image: { url: string }) => Promise<string> };
+        stickerReader?: { describe: (image: { url: string }) => Promise<string> };
+        generate?: (messages: { content: string }[]) => Promise<string>;
+    } = {}) {
         const dataDir = tmp();
         const cfg = {
             llm: { baseUrl: 'http://127.0.0.1:1', model: 'm', apiKey: 'k', temperature: 1, maxTokens: 300, timeoutMs: 1000, promptPostProcessing: 'semi', extraBody: {} },
@@ -127,7 +131,7 @@ describe('群聊：进应用', () => {
                 sendPrivateText: async () => 1, friendHistory: async () => [],
                 sendGroupText: async (groupId, value) => { sentGroup.push(`${groupId}:${value}`); return 8000 + sentGroup.length; },
             },
-            pipeline: { generate: async messages => { prompts.push(messages.map(m => m.content).join('\n')); return '来了来了'; }, settle: { quietMs: 0, maxMs: 0 } },
+            pipeline: { generate: async messages => { prompts.push(messages.map(m => m.content).join('\n')); return extra.generate ? extra.generate(messages) : '来了来了'; }, settle: { quietMs: 0, maxMs: 0 } },
             ...(extra.vision ? { vision: extra.vision } : {}),
             ...(extra.stickerReader ? { stickerReader: extra.stickerReader } : {}),
         });
@@ -165,14 +169,47 @@ describe('群聊：进应用', () => {
         assert.ok(log.includes('"mine":true') && log.includes('来了来了'));
     });
 
+    test('两个人前后脚叫她：攒成一段、只回一次，说明里点出是谁在叫她', async () => {
+        const { app: a, sentGroup, prompts } = app('on');
+        await a.connected(SELF);
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 在吗')]));
+        a.receiveGroup(said(555, 30003, '陈陈', [text('梦瑶你中午吃啥')]));
+        await until(() => sentGroup.length > 0);
+        await new Promise(r => setTimeout(r, 200));
+        a.stop();
+        // 不是一人回一条：这一批只发一次
+        assert.deepEqual(sentGroup, ['555:来了来了']);
+        const prompt = prompts.at(-1)!;
+        assert.ok(prompt.includes('老王、陈陈在跟你说话'), prompt.slice(-500));
+        assert.ok(prompt.includes('不用挨个都应'), '多人找她时让她自己挑');
+    });
+
+    test('她说话的时候又有人叫她：不丢，说完接着处理下一批', async () => {
+        const pending: (() => void)[] = [];
+        const { app: a, sentGroup } = app('on', false, {
+            generate: async () => { await new Promise<void>(resolve => pending.push(resolve)); return '来了来了'; },
+        });
+        await a.connected(SELF);
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 在吗')]));
+        await until(() => pending.length === 1);
+        // 她正在想的时候第二个人叫她
+        a.receiveGroup(said(555, 30003, '陈陈', [{ type: 'at', data: { qq: String(SELF) } }, text(' 梦瑶呢')]));
+        pending.shift()!();
+        await until(() => pending.length === 1);
+        pending.shift()!();
+        await until(() => sentGroup.length === 2);
+        a.stop();
+        assert.deepEqual(sentGroup, ['555:来了来了', '555:来了来了']);
+    });
+
     test('群里的图：没人叫她就不读；叫到她了才读，读出来的进提示词', async () => {
         let looked = 0;
         const vision = { describe: async () => { looked++; return '一张火锅照片'; } };
         const { app: a, sentGroup, prompts, dataDir } = app('on', false, { vision });
         await a.connected(SELF);
-        // 没叫到她：不读图，记录里留着占位
+        // 没叫到她：不读图，记录里留着占位（记录在安静 1.5 秒后这一批处理时才落盘）
         a.receiveGroup(said(555, 30001, '老王', [{ type: 'image', data: { url: 'http://x/1.jpg' } }, text('今晚吃这个')]));
-        await new Promise(r => setTimeout(r, 100));
+        await until(() => existsSync(join(dataDir, 'groups', '555.jsonl')));
         assert.equal(looked, 0, '没触发就不该调看图接口');
         assert.ok(readFileSync(join(dataDir, 'groups', '555.jsonl'), 'utf8').includes('[图片]'));
         // @ 她 + 一张图：读图，提示词里是她看出来的内容
