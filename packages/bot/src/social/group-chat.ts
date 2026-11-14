@@ -168,6 +168,8 @@ export function groupNote(input: {
     disguise?: boolean;
     /** 群成员名单（不一定跟她说过话）：别把人当陌生人 */
     roster?: readonly string[];
+    /** 这个群平时的味儿（group-style.ts 从聊天记录里统计的） */
+    style?: string;
 }): string {
     const others = input.pending && input.callers ? input.pending - input.callers.length : 0;
     // 群里叫她别的名字（QQ 昵称、群名片）：那也是她，别人叫那些也算叫她
@@ -179,6 +181,7 @@ export function groupNote(input: {
         input.disguise ? '别主动提、也别承认自己是 AI（这里没人知道）：有人认真问就含糊带过、换个话题，别一本正经解释；被开玩笑叫机器人就当玩笑接。' : '',
         input.knowsBot ? '群里的人都知道你是 AI（他跟大家说过）：不用主动提，也不用瞒、不用否认；有人拿这个开玩笑就顺着开两句，别一本正经解释。' : '',
         input.roster?.length ? `群里的人：${input.roster.join('、')}。这些人你都认得（不一定都跟你说过话），别当陌生人。` : '',
+        input.style ?? '',
         '群里说话像在群里：短，一两句，不刷屏，不用每句都接；不在群里说你和他之间的私事，也不说别人私下跟你说的事。',
         input.boyfriendHere && input.boyfriendName ? `${input.boyfriendName}（你男朋友）也在这个群：群里收着点，正常说话，别喊得黏，也别装不认识。` : '',
         input.memory ?? '',

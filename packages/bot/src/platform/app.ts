@@ -91,6 +91,7 @@ import { contextSummarizer } from '.././language/context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, personaFacts, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
 import { GROUP_CONTEXT, HER_NAMES, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
 import { groupPeople } from '.././social/group-people.ts';
+import { analyzeGroupStyle, renderGroupStyle } from '.././social/group-style.ts';
 import { groupAffect, groupAffectOf, mergeFelt } from '.././social/group-affect.ts';
 import { impressionCandidate, impressionPrompt, parseImpression } from '.././social/group-impression.ts';
 import { moodStateLine } from '.././emotion/express.ts';
@@ -3529,6 +3530,16 @@ ${body}
     const groupOverheard = new Map<number, { day: string; count: number }>();
     /** 她在群里可能被叫的名字（QQ 昵称 / 群名片），连上时读一次，落盘记着 */
     const herGroupNames = new Map<number, string[]>();
+    /** 群风格（从聊天记录里统计的口气），按群缓存，记录变多才重算 */
+    const groupStyles = new Map<number, { at: number; text?: string }>();
+    function styleOf(groupId: number): string | undefined {
+        const entries = groupLogs?.load(groupId) ?? [];
+        const hit = groupStyles.get(groupId);
+        if (hit && hit.at === entries.length) return hit.text;
+        const text = renderGroupStyle(analyzeGroupStyle(entries));
+        groupStyles.set(groupId, { at: entries.length, ...(text ? { text } : {}) });
+        return text;
+    }
     /** 群成员名单（不一定说过话）：导群记录时一起写进 groups/<群号>.members.json */
     const groupRosters = new Map<number, string[]>();
     function rosterOf(groupId: number): string[] | undefined {
@@ -3767,6 +3778,7 @@ ${body}
         // 这个群里她认识谁（聊过就认得，改名也认得）；心情只说「这会儿怎么样」，不说来由（都在私聊里）
         const memory = groupPeopleBook?.render(group.id, { ...(bf ? { exclude: bf.qq } : {}), now: worldNow() });
         const roster = rosterOf(group.id);
+        const style = styleOf(group.id);
         // 心境：私聊那边算好的 + 群里这些遭遇现算的，同一种取更重的那个
         const feltNow = config.herFeelings
             ? mergeFelt(lastFeelings?.felt ?? [], groupFeel ? feelingsAt(groupFeel.appraisals(group.id), worldNow()) : [])
@@ -3778,6 +3790,7 @@ ${body}
             ...(herGroupNames.get(group.id) ? { myNames: herGroupNames.get(group.id)! } : {}),
             ...(entries.some(entry => entry.history === true) ? { veteran: true } : {}),
             ...(roster ? { roster } : {}),
+            ...(style ? { style } : {}),
             // 群里人都知道她是 AI（knowsBot）：不用瞒、也不用主动提；危机那档照旧用承认版卡
             ...(group.knowsBot && reason !== 'crisis' ? { knowsBot: true } : {}),
             ...(group.disguise && reason !== 'crisis' && !group.knowsBot ? { disguise: true } : {}),

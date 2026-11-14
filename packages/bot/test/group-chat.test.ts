@@ -8,6 +8,7 @@ import { parseGroups, type AppConfig } from '../src/platform/config.ts';
 import { isGroupMessage, type GroupMessageEvent } from '../src/platform/onebot.ts';
 import { GROUP_LIMITS, groupLine, groupLog, groupNote, groupPokePlan, groupReply, herNameList, mentionSegments, mentionsHer, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
 import { moodStateLine } from '../src/emotion/express.ts';
+import { analyzeGroupStyle, renderGroupStyle } from '../src/social/group-style.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import { syntheticCardPattern } from './fixtures/card.ts';
 
@@ -266,6 +267,25 @@ describe('群聊：进应用', () => {
         assert.ok(note.includes('都知道你是 AI'), note);
         assert.ok(note.includes('不用主动提'), note);
         assert.ok(!groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned' }).includes('都知道你是 AI'));
+    });
+
+    test('从聊天记录里学这个群的口气：长度、常出现的词、表情、谁话多、示范原话', () => {
+        const entries = Array.from({ length: 12 }, (_, i) => ({
+            time: `2026-11-${String(3 + (i % 5)).padStart(2, '0')}T20:0${i % 10}:00+08:00`,
+            from: 30001 + (i % 3),
+            name: ['小肥鱼', '大肥鱼', '老吴'][i % 3]!,
+            content: i % 3 === 0 ? '这破显卡才 3g 显存😂' : i % 3 === 1 ? '跑整首歌要两个钟😂' : '我嘞个豆',
+            messageId: i,
+        }));
+        const style = analyzeGroupStyle(entries);
+        assert.ok(style.avgChars > 3 && style.avgChars < 30, String(style.avgChars));
+        assert.ok(style.topWords.includes('显卡') || style.topWords.includes('显存'), style.topWords.join(','));
+        assert.ok(style.emojis.includes('😂'), style.emojis.join(''));
+        assert.equal(style.talkers.length, 3);
+        assert.ok(style.exemplars.length > 0);
+        const text = renderGroupStyle(style)!;
+        assert.ok(text.includes('学他们的口气') && text.includes('「'), text);
+        assert.equal(renderGroupStyle(undefined), undefined);
     });
 
     test('导过以前的记录：补过课，但她是刚进群的', () => {
