@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 /** 一轮最多等多久（毫秒）：含搜索/下载/分离，留足余量 */
 export const SING_TIMEOUT_MS = 30 * 60_000;
-/** 发出去的片段多长（秒）：QQ 语音条吃不下整首 */
+/** 发出去的片段多长（秒）：整首发不出去时的退路（2026-11-14 实测 QQ 能收整首 3:46） */
 export const SING_CLIP_SECONDS = 60;
 
 /** 从他的话里取「唱什么」：BV 或歌名；不是这个意思就 undefined */
@@ -81,6 +81,8 @@ export async function singSong(song: string, options: SingOptions): Promise<Sing
     }
     if (!mp3) return { error: '没唱完（等超时了）' };
     options.log(`唱歌：「${song}」出结果了`);
+    // 2026-11-14 实测：NapCat/QQ 收得下整首（3:46 也发成功），所以默认整首发；
+    // 片段只留作退路——发整首失败时再发这段。
     const clip = await cutClip(options.ffmpeg, mp3, mp3.replace(/\.mp3$/, '-片段.wav'), options.log);
     return { mp3, ...(clip ? { clip } : {}) };
 }

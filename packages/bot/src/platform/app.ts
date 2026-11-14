@@ -3257,15 +3257,26 @@ ${body}
                         log(`[${event.user_id}] 唱歌：失败 ${singBv}（${result.error ?? 'no result'}）`);
                         return;
                     }
-                    if (result.clip) {
+                    // 整首直接发语音条（2026-11-14 实测 3:46 也收得下）；发不动才退回 60 秒片段
+                    let sent = false;
+                    if (transport.sendPrivateVoice) {
                         try {
-                            await transport.sendPrivateVoice!(event.user_id, result.clip);
+                            await transport.sendPrivateVoice(event.user_id, result.mp3);
+                            sent = true;
                         } catch (error) {
-                            log(`[${event.user_id}] 唱歌：片段没发出去（${error instanceof Error ? error.message : String(error)}）`);
+                            log(`[${event.user_id}] 唱歌：整首没发出去（${error instanceof Error ? error.message : String(error)}），改发片段`);
+                        }
+                        if (!sent && result.clip) {
+                            try {
+                                await transport.sendPrivateVoice(event.user_id, result.clip);
+                                sent = true;
+                            } catch (error) {
+                                log(`[${event.user_id}] 唱歌：片段也没发出去（${error instanceof Error ? error.message : String(error)}）`);
+                            }
                         }
                     }
-                    tellOwner(`唱完了，整首在 ${result.mp3}`);
-                    log(`[${event.user_id}] 唱歌：完成 ${singBv}`);
+                    tellOwner(sent ? '唱完了，整首在下面这条里。' : `唱完了，整首在 ${result.mp3}`);
+                    log(`[${event.user_id}] 唱歌：完成 ${singBv}（语音${sent ? '已发' : '没发出去'}）`);
                 }).catch(error => {
                     tellOwner('唱到一半出错了。');
                     log(`[${event.user_id}] 唱歌：出错（${error instanceof Error ? error.message : String(error)}）`);
