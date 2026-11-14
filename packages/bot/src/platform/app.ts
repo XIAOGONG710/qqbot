@@ -3029,9 +3029,9 @@ ${body}
         } catch (error) { log(`陌生人：读不到现在的个性签名（${error instanceof Error ? error.message : String(error)}），按空的补`); }
         const next = markSignature(current);
         try {
-            if (next !== current.replace(/s+/g, ' ').trim()) await transport.setSignature(next);
+            if (next !== current.replace(/\s+/g, ' ').trim()) await transport.setSignature(next);
             strangers.markSigned(worldNow());
-            log(`陌生人：个性签名写明了她是 AI（${next === current.replace(/s+/g, ' ').trim() ? '本来就写着' : '补上了「（AI）」'}）`);
+            log(`陌生人：个性签名写明了她是 AI（${next === current.replace(/\s+/g, ' ').trim() ? '本来就写着' : '补上了「（AI）」'}）`);
         } catch (error) {
             log(`陌生人：个性签名没改成（${error instanceof Error ? error.message : String(error)}），先不回陌生人`);
         }
@@ -3509,7 +3509,7 @@ ${body}
         const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
         const entries = groupLogs.load(group.id);
         // 群里他叫什么就写什么（他的群名片）：提示词里写「宝宝（你男朋友）」时她会当众喊「宝宝」（真模型 2/2），群里收着点
-        const senderCard = (event.sender.card || event.sender.nickname || '').replace(/s+/g, ' ').trim().slice(0, 16);
+        const senderCard = (event.sender.card || event.sender.nickname || '').replace(/\s+/g, ' ').trim().slice(0, 16);
         const bfName = boyfriend ? (event.user_id === boyfriend.qq && senderCard ? senderCard : entries.findLast(e => e.from === boyfriend.qq)?.name) ?? boyfriend.name : undefined;
         const bf = boyfriend ? { qq: boyfriend.qq, name: bfName! } : undefined;
         const names = new Map<number, string>(entries.filter(e => !e.mine).map(e => [e.from, e.name]));

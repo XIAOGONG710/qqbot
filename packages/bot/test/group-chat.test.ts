@@ -139,6 +139,7 @@ describe('群聊：进应用', () => {
         await a.connected(SELF);
         a.receiveGroup(said(999, 30001, '路人', [text('@梦瑶 在吗')]));
         a.receiveGroup(said(555, 10001, '阿明', [text('今晚吃啥')]));
+        a.receiveGroup(said(555, 30002, 'Lisa', [text('我也去')]));
         a.receiveGroup(said(555, 30001, '老王', [text('明天几点集合')]));
         await new Promise(r => setTimeout(r, 100));
         assert.equal(sentGroup.length, 0);
@@ -150,6 +151,8 @@ describe('群聊：进应用', () => {
         const prompt = prompts.at(-1)!;
         // 群里写他的群名片，不写「宝宝」（她会当众喊出来）
         assert.ok(prompt.includes('阿明（你男朋友）：今晚吃啥') && prompt.includes('老王：@你  你来不来') && !prompt.includes('宝宝（你男朋友）'), prompt.slice(-400));
+        // 群名片里的字母 s 不能被当成空白吃掉（2026-11-14 修：/s+/ 少了反斜杠，「Lisa」会变成「Li a」）
+        assert.ok(prompt.includes('Lisa：我也去'), prompt.slice(-400));
         assert.ok(prompt.includes('别喊得黏'), '他在群里');
         assert.match(prompt, /不要否认，用你自己的口气大方承认/, '没标「都知道」的群用承认版');
         const log = readFileSync(join(dataDir, 'groups', '555.jsonl'), 'utf8');
