@@ -106,6 +106,9 @@ export interface TurnFacts {
     shape?: ShapePlan;
     /** 引用回复（ADR 0136，modules/quote.ts 在 contribute 时写）：这一轮第一条引用他哪一条；旧逻辑发送时读 */
     quote?: QuotePlan;
+    /** 连续性（ADR 0157–0163）：这一轮放进提示词的几行（设定改动的背景、QQ 以外做过的事、上网查到的、自己发现的口味、又见到的人）。
+     *  取是异步的、会上网调模型，还在联系人流水线原来的位置（危机回合、只想一想的轮次不取，出错当没有）；modules/continuity.ts 读、放进 continuity 槽。没取到时没有 */
+    continuity?: readonly string[];
     /** 带自己的事时能挑的话题（她那边还没说过的、身体、心情）；形状的模块读 */
     agendaTopics?: readonly string[];
     /** 她这会儿低落（心情安静、身体不舒服、心境偏低、真人数值低）：不加「话多」 */

@@ -88,6 +88,7 @@
 - `modules/shape.ts`
 - `modules/quote.ts`
 - `modules/time-block.ts`
+- `modules/continuity.ts`
 - `st/`
 
 ## 开关

@@ -731,6 +731,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     return [] as string[];
                 })
                 : [];
+            // 连续性那几段是解释器的模块（modules/continuity.ts）：取是异步的（上网、调模型、记「已告诉他」），留在这里不挪——后面紧跟着语义路由、「/亲热」、各模块的 contribute；
+            // 取回来的写进 turn.facts，经 turnModules 放进 continuity 槽
+            if (continuityLines.length) turn.facts.continuity = continuityLines;
             // 没有明确反应的轮次也抽一抽（ADR 0132）：她拿不到小黄脸以后，表情包得顶上；抽签的种子和有反应的那条路分开
             const stickerDrawn = stickersAllowed && (stickerCued(saidNow)
                 ? stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE)
@@ -856,7 +859,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('selfNote', selfNote),
                 ...when('promised', promised),
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
-                ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
+                // 连续性那几段是解释器的模块（modules/continuity.ts），经 turnModules 放进 continuity 槽
                 // 她能替他操作的设备（ADR 0148）的菜单是解释器的模块（modules/devices.ts），经 turnModules 放进 devices 槽
                 ...when('sticker', stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined),
                 ...when('photo', photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)! : undefined),

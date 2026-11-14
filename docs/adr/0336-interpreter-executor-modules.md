@@ -800,3 +800,13 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   3. `feelings` 模块（一）：assess 算 `feltNow`（梦、追求、昨天、作者写下的事、回想过的）写 `facts.felt`，contribute 放 `dreams` 槽；旧逻辑读 `facts.felt` 接着算。
   4. `feelings` 模块（二）：contribute 读 `facts.grievanceActive` 放 `feeling` / `pace`。`onFeelings`、`low`、`maxBubbles`、`agendaTopics` 先留在旧逻辑，等意图 → 照片 → 小别扭那条链迁出再收。
 - 验证：基线逐字不变；变异检验——模块什么都不放，36 个场景报不一致。主动找他那一轮写成不是主动，基线抓不到：主动找他时聊天记录里本来就没有等她回的消息，两种写法算出来一样；由 `time-block-module.test.ts` 兜（这个变异让它报错）。类型检查通过。
+
+### 连续性（2026-11-15）
+
+- 是什么：ADR 0157–0163——设定改动的背景、QQ 以外做过的事、上网查到的、自己发现的口味、又见到的人，按这一轮他说的话取几行，放进 `continuity` 槽。只给男朋友档（App 的 `continuity` 里判断），危机、只想一想的轮次不取。
+- 由子代理起草。取的那一下（`options.continuity`）是异步的：会上网、调小模型（最长等 25 秒）、记「已经告诉他了」，App 停下时抛 AbortError；它后面紧跟着图片表情、语义路由（又一次模型调用）、「/亲热」取一条、各模块的 contribute。
+  挪到 contribute 会改变外部调用和日志的先后、等待的位置、停下时哪些副作用已经发生——所以**取留在原位不挪**，只把放段落交给模块：取回来的写进新的 `turn.facts.continuity`，模块照原样放。等前后那几样都迁成模块再考虑把取也挪进来。
+- `src/modules/continuity.ts`：`continuityModule()`，只有 contribute，不再判断危机 / 只想一想（判断在取的地方，挡在两处时变异只能抓到一处）。App 总是挂（`continuity` 在解释器之后才建）；模拟器原来就不传 `continuity`，不挂。
+- 基线里这一段一直是空的（RICH 开了 timeline 和 tastes，取会发生、返回空），基线核对的是「取没挪、没多 await」。放段落由真实 App 的 `memory-app-web-owner-review.test.ts`（上网查到的那一行）兜：
+  模块不放、旧逻辑不写 facts、App 不挂模块，它都报错。
+- 验证：基线 37 个场景逐字不变；变异检验（`memory-app-web-owner-review`）——模块不放、旧逻辑不写 `facts.continuity`、App 不挂模块，都报错。`continuity-module.test.ts` 5 项、相关 App 测试通过；类型检查通过。
