@@ -2203,7 +2203,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 }
                 const sticker = contact.tier === 'boyfriend' ? sendingStickers?.resolve(text) : undefined;
                 if (sticker) {
-                    const id = await transport.sendPrivateImage!(userId, sticker.file, `[${sticker.description}]`);
+                    // sticker.file 只是文件名（c15a5b9e3b6e.png）：直接丢给 NapCat 会找不到文件，
+                    // QQ 里就变成一条 [c15a5b9e3b6e] 的纯文本（2026-11-14 实测）。这里补上绝对路径。
+                    const id = await transport.sendPrivateImage!(userId, join(config.dataDir, 'stickers', sticker.file), `[${sticker.description}]`);
                     sendingStickers!.used(sticker.id);
                     return id;
                 }
