@@ -10,9 +10,11 @@
 // 她的过去（他说到卡上自传的线索才想起、追问时沿用、留白三种、一轮最多两块；别的档位的卡、危机、她说了等下之后自己回来）、
 // 设备控制（假的设备服务、真的控制器：服务起来之前菜单是空的、自动做的、要他批准的；危机、别的档位）、
 // 他的请求等她点头（看屏幕 / 摄像头：同意、拒绝、放久了不作数；别的档位）、
-// 引用回复（他连发里前面那条是问句：引用 / 不引用、只有一条不引用、同学也引用）。
+// 引用回复（他连发里前面那条是问句：引用 / 不引用、只有一条不引用、同学也引用）、
+// 长期记忆（假的 Hindsight、真的客户端：建库和关系概况 / 印象、写入片段和日记、他的私人记忆、公共记忆的线索、她今天跟别人聊过的、
+// 问过去的某一天、说起名单里的人、关系概况、披露分寸；同学档）。
 //
-// 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：长期记忆 Hindsight、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、她自己去看视频、
+// 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：真的 Hindsight 那一侧（抽取、整合、派生修复、对账、遗忘）、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、她自己去看视频、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、真的设备（取件中心、手机推送）、QQ 账号控制面与好友申请、说说与空间、
 // 逐条事实检查（factCheck，它的审稿调用不经 pipeline.generate）、设定账本（identityLedger：写死读真实角色目录 characters/linmengyao 并调 git，
 // 基线不能碰真实资料，也不能随每次提交的 HEAD 变）。
@@ -1097,4 +1099,82 @@ export const SCENARIOS: readonly Scenario[] = [
             await d.at('2026-12-05T22:10:00+08:00');
         },
     },
+    (() => {
+        // 说起名单里的人要那人写了介绍（ADR 0016）；QQ 号和档位同上面的同学，记忆库的哈希也一样
+        const mate: Contact = { ...classmate, intro: '同班同学，实验课和她一组' };
+        return {
+            name: 'memory',
+            about: '长期记忆（ADR 0004 / 0016–0020 / 0032，ADR 0336 迁出之前）：假的 Hindsight、真的客户端。连上时把以前的聊天写进他的库和公共库、建好关系概况和印象，补写最近几天的日记；'
+                + '男朋友开启新一段对话时想起她今天跟同学聊过的（today + 披露分寸）；每轮召回他的私人记忆（recalled）；第二轮起有关系概况（relationship）；'
+                + '说到公共库里的实体（奶茶店）想起公共记忆（common）；问她昨天干嘛了，想起那天的日记、给那天她那边的事（recap）；'
+                + '说起名单里的同学（people：介绍 + 他库里的旧事，下一轮加上印象）；同学档自己的召回和关系概况；聊完过了 45 分钟把今晚的片段写进去',
+            start: '2026-12-08T18:30:00+08:00',
+            contacts: [boyfriend, mate],
+            config: RICH,
+            seed: (dataDir: string, start: number) => {
+                const chats = new ChatHistory(dataDir);
+                const line = (qq: number, at: number, role: 'user' | 'assistant', content: string, messageId: number) =>
+                    chats.append(qq, { time: new Date(at).toISOString(), role, content, messageId });
+                // 男朋友：前天、昨天晚上各聊了几句；同学：今天下午问了实验报告
+                line(boyfriend.qq, start - 2 * 86_400_000 + 5_400_000, 'user', '今天去图书馆复习了一下午', 900);
+                line(boyfriend.qq, start - 2 * 86_400_000 + 5_400_000 + 60_000, 'assistant', '好认真\n我也该复习了', 901);
+                line(boyfriend.qq, start - 86_400_000 + 9_000_000, 'user', '明天上午考高数，有点慌', 902);
+                line(boyfriend.qq, start - 86_400_000 + 9_000_000 + 60_000, 'assistant', '你肯定没问题的\n早点睡', 903);
+                line(mate.qq, start - 3 * 3600_000, 'user', '下周的实验报告怎么分工', 904);
+                line(mate.qq, start - 3 * 3600_000 + 60_000, 'assistant', '我写数据分析吧', 905);
+            },
+            memory: {
+                entities: ['奶茶店', '高数'],
+                relationship: {
+                    [boyfriend.qq]: '在一起一年多，感情稳定；他这周期末考试，12月8日上午考高数，你答应考完陪他去吃火锅。',
+                    [mate.qq]: '同班同学，实验课一组，平时只聊作业，合作顺利。',
+                },
+                impressions: { [mate.qq]: '小周做事认真，交作业从不拖，就是话少。' },
+                recall: [
+                    // 她今天跟别人聊过的（ADR 0020）：今天下午和同学的那一段
+                    { bank: 'common', query: '今天和小周聊了什么', results: [
+                        { id: 'c-today', text: '小周问下周的实验报告怎么分工，测试角色说自己写数据分析', type: 'experience', occurred_start: '2026-12-08T15:30:00+08:00', mentioned_at: '2026-12-08T15:30:00+08:00', document_id: '@10002:ep-1', entities: ['小周'] },
+                    ] },
+                    // 公共记忆的线索：奶茶店（公共库里的实体）
+                    { bank: 'common', query: '奶茶店', results: [
+                        { id: 'c-tea', text: '小周说学校门口的奶茶店这周买一送一', type: 'world', occurred_start: '2026-12-05T12:00:00+08:00', mentioned_at: '2026-12-05T12:00:00+08:00', document_id: '@10002:ep-2', entities: ['小周', '奶茶店'] },
+                    ] },
+                    // 问她昨天干嘛了：那天的日记（时间窗里只留那天的）
+                    { bank: 'common', query: '昨天干嘛', results: [
+                        { id: 'c-diary', text: '测试角色的日记：下午去图书馆还书，晚上和他聊到考试，她给他打气', type: 'experience', occurred_start: '2026-12-07T22:00:00+08:00', mentioned_at: '2026-12-07T22:00:00+08:00', document_id: 'diary:2026-12-07', entities: ['测试角色'] },
+                    ] },
+                    // 说起小周：公共库里和小周有关的、他库里的旧事
+                    { bank: 'common', query: '小周', results: [
+                        { id: 'c-mate', text: '小周和测试角色约好周五前把实验报告合起来', type: 'world', occurred_start: '2026-12-08T15:30:00+08:00', mentioned_at: '2026-12-08T15:30:00+08:00', document_id: '@10002:ep-1', entities: ['小周'] },
+                    ] },
+                    { bank: mate.qq, query: '对方：小周', results: [
+                        { id: 'm-old', text: '小周说他上学期实验课拿了优秀', type: 'world', occurred_start: '2026-12-03T10:00:00+08:00', mentioned_at: '2026-12-03T10:00:00+08:00', document_id: 'ep-3', entities: ['小周'] },
+                    ] },
+                    // 同学自己的私人记忆
+                    { bank: mate.qq, query: '实验报告', results: [
+                        { id: 'm-own', text: '小周负责写实验原理，测试角色写数据分析', type: 'world', occurred_start: '2026-12-08T15:30:00+08:00', mentioned_at: '2026-12-08T15:30:00+08:00', document_id: 'ep-4', entities: ['小周'] },
+                    ] },
+                    // 男朋友的私人记忆：每轮都查，只要不是上面几条更具体的就回这两条
+                    { bank: boyfriend.qq, results: [
+                        { id: 'b-exam', text: '他说12月8日上午考高数，有点慌 | When: 2026-12-07', type: 'world', occurred_start: '2026-12-07T21:00:00+08:00', mentioned_at: '2026-12-07T21:00:00+08:00', document_id: 'ep-5', entities: ['高数'] },
+                        { id: 'b-hotpot', text: '测试角色答应他考完一起去吃火锅', type: 'experience', occurred_start: '2026-12-07T21:01:00+08:00', mentioned_at: '2026-12-07T21:01:00+08:00', document_id: 'ep-5', entities: ['火锅'] },
+                    ] },
+                ],
+            },
+            reply: () => rotating(['嗯嗯', '是呀', '怎么啦', '好']),
+            script: async d => {
+                await d.at('2026-12-08T19:00:00+08:00'); d.say(boyfriend.qq, '在干嘛');
+                await d.at('2026-12-08T19:06:00+08:00'); d.say(boyfriend.qq, '考试考完了，感觉还行');
+                await d.at('2026-12-08T19:12:00+08:00'); d.say(boyfriend.qq, '学校门口那家奶茶店你去过没');
+                await d.at('2026-12-08T19:18:00+08:00'); d.say(boyfriend.qq, '你昨天干嘛了');
+                await d.at('2026-12-08T19:26:00+08:00'); d.say(boyfriend.qq, '小周最近在忙什么');
+                await d.at('2026-12-08T19:32:00+08:00'); d.say(boyfriend.qq, '他实验报告写完了吗');
+                await d.at('2026-12-08T19:40:00+08:00'); d.say(mate.qq, '实验报告我写完了，你看看');
+                await d.at('2026-12-08T19:46:00+08:00'); d.say(mate.qq, '数据那块你再核对一下');
+                await d.at('2026-12-08T19:55:00+08:00'); d.say(boyfriend.qq, '晚安啦');
+                // 过了 45 分钟，今晚的两段都结束了：下一次定时同步把它们写进去
+                await d.at('2026-12-08T20:45:00+08:00');
+            },
+        } satisfies Scenario;
+    })(),
 ];
