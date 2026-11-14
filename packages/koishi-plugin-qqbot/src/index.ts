@@ -993,6 +993,9 @@ export function apply(ctx: Context, config: Config) {
         // 群消息（ADR 0210）
         sendGroupText: async (groupId, text, replyTo) => Number(await onlineBot().internal.sendGroupMsg(groupId, replyTo === undefined ? textToSegments(text) : [replySegment(replyTo), ...textToSegments(text)])),
         sendPrivateCard: async (userId, cardJson) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'json', data: { data: cardJson } }])),
+        // 语音条（2026-11-14）：koishi 这条链路原来没有这个方法，app 里 Boolean(transport.sendPrivateVoice)
+        // 恒为 false，她的语音和唱歌片段一直发不出去
+        sendPrivateVoice: async (userId, file) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'record', data: { file: `file:///${file.split('\\').join('/')}` } }])),
         deleteMessage: async messageId => { await onlineBot().internal.deleteMsg(messageId); },
         pokeFriend: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('friend_poke', { user_id: String(userId) }); },
         markRead: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('mark_private_msg_as_read', { user_id: String(userId) }); },
