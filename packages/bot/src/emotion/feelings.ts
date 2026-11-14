@@ -38,8 +38,8 @@ const HALF_LIVES_KEPT = 4;
 /** 聊天记录往回看多久（他做的事引起的感受） */
 const HISTORY_WINDOW_MS = 30 * HOUR;
 
-/** world：她那边的事；him：他的态度；author：作者写下的大事；self：她自己夜里回想、指出了依据的（ADR 0197） */
-export type Source = 'world' | 'him' | 'author' | 'self';
+/** world：她那边的事；him：他的态度；author：作者写下的大事；self：她自己夜里回想、指出了依据的（ADR 0197）；group：群里的遭遇（2026-11-14） */
+export type Source = 'world' | 'him' | 'author' | 'self' | 'group';
 
 export interface Appraisal {
     /** 稳定的标识：同一件事每次算出来一样 */
@@ -207,7 +207,7 @@ export function feelingsAt(list: readonly Appraisal[], now: number): Felt[] {
     for (const item of list) {
         if (!isObject(item) || typeof item.id !== 'string' || !item.id.trim() || !Number.isFinite(item.at)
             || !FEELING_KINDS.includes(item.kind) || ![1, 2, 3].includes(item.strength)
-            || typeof item.cause !== 'string' || !item.cause.trim() || !['world', 'him', 'author', 'self'].includes(item.source)
+            || typeof item.cause !== 'string' || !item.cause.trim() || !['world', 'him', 'author', 'self', 'group'].includes(item.source)
             || (item.aboutHim !== undefined && typeof item.aboutHim !== 'boolean')) continue;
         if (item.at > now) continue;
         if (item.halfLifeH !== undefined && typeof item.halfLifeH !== 'number') continue;

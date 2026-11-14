@@ -282,6 +282,8 @@ export interface ContactPipelineOptions {
     onFeelings?: (report: FeelingsReport) => void;
     /** 她夜里回想、指出了依据的感受（ADR 0197，配置 feelingReview）：作为「别处算好的评估」进心境；要 herFeelings 开着 */
     feelingReview?: () => readonly Appraisal[];
+    /** 群里的遭遇（2026-11-14）：有人夸她、冲她发火、说想不开——作为额外评估进心境，要 herFeelings 开着 */
+    groupMood?: () => readonly Appraisal[];
     /** 说话的质感（ADR 0131）：发出去之前在气泡上加真人常有的小黄脸 / 「～」 / 问号 / 叠字……；危机和他难过的回合不加 */
     texture?: boolean;
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
@@ -720,7 +722,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 : undefined;
             // 心境（ADR 0102）：事实 → 带来由的评估 → 按半衰期衰减的感受，不落盘、每一轮重算；只给男朋友档，危机回合不算；小别扭 / 和好那一轮由 0074 的态度管，不叠
             const feltNow: Felt[] = options.herFeelings && contact.tier === 'boyfriend' && !crisisNow
-                ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), ...(previousAround ? { previousWorld: previousAround } : {}), moments: options.moments?.() ?? [], extra: [...pursuitViewsNow.flatMap(view => view.appraisals), ...(options.feelingReview?.() ?? []), ...(dreamsNow?.appraisals ?? [])] }), time.getTime())
+                ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), ...(previousAround ? { previousWorld: previousAround } : {}), moments: options.moments?.() ?? [], extra: [...pursuitViewsNow.flatMap(view => view.appraisals), ...(options.feelingReview?.() ?? []), ...(options.groupMood?.() ?? []), ...(dreamsNow?.appraisals ?? [])] }), time.getTime())
                 : [];
             const hisWords = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             const feelingLine = feltNow.length && !grievanceActive

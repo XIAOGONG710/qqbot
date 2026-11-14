@@ -134,6 +134,7 @@ describe('群聊：进应用', () => {
             contacts: [{ qq: 10001, name: '宝宝', tier: 'boyfriend', knowsBot: true }],
             unlistedFriends: false, schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false,
             lifeInPrompt: false, grievance: false, feedbackCommands: false, realWeather: false, media: true, readStickers: Boolean(extra.stickerReader),
+            herFeelings: true,
             candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir,
             groupChat, groups: [{ id: 555, name: '宿舍群', ...(knowsBot ? { knowsBot: true } : {}) }],
         } as unknown as AppConfig;
@@ -215,6 +216,32 @@ describe('群聊：进应用', () => {
         await until(() => sentGroup.length === 2);
         a.stop();
         assert.deepEqual(sentGroup, ['555:来了来了', '555:来了来了']);
+    });
+
+    test('群里有人夸她：这一句她带着好心情说', async () => {
+        const { app: a, sentGroup, prompts } = app('on');
+        await a.connected(SELF);
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 你唱得真好听')]));
+        await until(() => sentGroup.length > 0);
+        await new Promise(r => setTimeout(r, 200));
+        a.stop();
+        assert.ok(prompts.at(-1)!.includes('你这会儿心情不错'), prompts.at(-1)!.slice(-500));
+    });
+
+    test('对某个人的印象写下来、下次带上', async () => {
+        const { app: a, sentGroup, prompts, dataDir } = app('on', false, {
+            generate: async messages => (messages.some(message => message.content.includes('用一句话写出')) ? '爱打球，说话直' : '来了来了'),
+        });
+        await a.connected(SELF);
+        for (let i = 0; i < 5; i++) a.receiveGroup(said(555, 30001, '老王', [text(`第${i + 1}句`) ]));
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 在不在')]));
+        await until(() => sentGroup.length > 0);
+        await until(() => { try { return readFileSync(join(dataDir, 'groups', '555.people.json'), 'utf8').includes('爱打球，说话直'); } catch { return false; } });
+        // 下一批说话时，印象已经在她看得到的那段里
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 在干嘛')]));
+        await until(() => prompts.at(-1)!.includes('你对他的印象：爱打球，说话直'));
+        a.stop();
+        assert.ok(prompts.at(-1)!.includes('你对他的印象：爱打球，说话直'), prompts.at(-1)!.slice(-500));
     });
 
     test('群里的图：没人叫她就不读；叫到她了才读，读出来的进提示词', async () => {

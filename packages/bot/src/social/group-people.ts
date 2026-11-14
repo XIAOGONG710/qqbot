@@ -28,6 +28,9 @@ export interface GroupPerson {
     lastAt: string;
     /** 最近说过的几句（旧的在前） */
     said: string[];
+    /** 她对这个人的印象：一句人话（group-impression.ts 写的），重启还在 */
+    impression?: string;
+    impressionAt?: string;
 }
 
 export interface GroupPeople {
@@ -36,6 +39,8 @@ export interface GroupPeople {
     note(groupId: number, entry: { qq: number; name: string; content: string; at: string }): void;
     /** 给她的说明：这个群里她认识谁（认识 = 聊过；第一次见的直接说第一次见） */
     render(groupId: number, options?: { exclude?: number; now?: number; max?: number }): string | undefined;
+    /** 记下对某个人的印象（群印象，一句人话） */
+    setImpression(groupId: number, qq: number, impression: string, at: string): void;
 }
 
 const clip = (text: string, max: number) => {
@@ -121,6 +126,15 @@ export function groupPeople(dataDir: string): GroupPeople {
             }
             persist(groupId, list);
         },
+        setImpression(groupId, qq, impression, at) {
+            const found = load(groupId).find(person => person.qq === qq);
+            if (!found) return;
+            const text = clip(impression, 40);
+            if (!text) return;
+            found.impression = text;
+            found.impressionAt = at;
+            persist(groupId, load(groupId));
+        },
         render(groupId, options = {}) {
             const now = options.now ?? Date.now();
             const max = options.max ?? GROUP_PEOPLE_RENDER;
@@ -135,7 +149,8 @@ export function groupPeople(dataDir: string): GroupPeople {
                     const who = aliases.length ? `${name}（也叫${aliases.map(alias => `「${alias}」`).join('、')}）` : name;
                     if (person.msgs <= 1) return `${who}：今天第一次见`;
                     const said = person.said.length ? `；说过${person.said.map(line => `「${line}」`).join('')}` : '';
-                    return `${who}：聊过 ${person.msgs} 句，最后一次是${whenText(person.lastAt, now)}${said}`;
+                    const impression = person.impression ? `；你对他的印象：${person.impression}` : '';
+                    return `${who}：聊过 ${person.msgs} 句，最后一次是${whenText(person.lastAt, now)}${impression}${said}`;
                 });
             return `[你在这个群认识的人（聊过就是认识，别问人家「你是谁」）：\n${lines.join('\n')}]`;
         },

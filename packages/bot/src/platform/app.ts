@@ -91,7 +91,10 @@ import { contextSummarizer } from '.././language/context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, personaFacts, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
 import { GROUP_CONTEXT, groupLine, groupLog, groupNote, groupReply, nameAts, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
 import { groupPeople } from '.././social/group-people.ts';
+import { groupAffect, groupAffectOf, mergeFelt } from '.././social/group-affect.ts';
+import { impressionCandidate, impressionPrompt, parseImpression } from '.././social/group-impression.ts';
 import { moodStateLine } from '.././emotion/express.ts';
+import { feelingsAt } from '.././emotion/feelings.ts';
 import { currentTierHistory, TierRecord } from '.././memory/tier-record.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
 import { arrivedWhileAsleep } from '.././social/reply-timing.ts';
@@ -1570,6 +1573,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const pursuitsNow = config.selfPursuits ? selfAwareReader(config.dataDir, authorPursuits) : authorPursuits;
     // 最近一次给他算的心境（ADR 0197）：写给桌面上的她，/心境 也看它；同样要在创建回复器之前定义
     let lastFeelings: FeelingsReport | undefined;
+    // 群里的遭遇（2026-11-14，心境用）：群聊那段构造时才赋值，这里先声明，回复器每次现取
+    let groupFeel: ReturnType<typeof groupAffect> | undefined;
     // 她夜里回想、指出了依据的感受（ADR 0197）：作为「别处算好的评估」进心境；要 herFeelings 开着
     const feelingReviewNow = config.feelingReview && config.herFeelings ? reviewReader(config.dataDir) : undefined;
     const contextSummaries = new Set<ReturnType<typeof contextSummarizer>>();
@@ -2156,6 +2161,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
+            // 群里的遭遇也进心境（2026-11-14）：有人在群里夸她、冲她发火、说想不开，私聊里她也带着
+            ...(config.herFeelings && (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0 ? { groupMood: () => groupFeel?.appraisals() ?? [] } : {}),
             // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
             ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => { lastFeelings = report; writeFeelingsExport(soulDir(), report); } } : {}),
             ...(feelingReviewNow && contact.tier === 'boyfriend' ? { feelingReview: feelingReviewNow } : {}),
@@ -3499,6 +3506,8 @@ ${body}
     const groupLogs = groupsOn ? groupLog(config.dataDir) : undefined;
     /** 群里认识的人（2026-11-14）：聊过就记住，下次再见不能当陌生人 */
     const groupPeopleBook = groupsOn ? groupPeople(config.dataDir) : undefined;
+    /** 群里的遭遇（有人夸她、冲她发火、有人想不开）也算进心境 */
+    groupFeel = groupsOn ? groupAffect(config.dataDir) : undefined;
     const groupBusy = new Set<number>();
     /** 攒一攒再处理（用户 2026-11-14「多人同时找她要读记录、有选择地回答，不然很混乱」）：安静这么久就处理这一批 */
     const GROUP_BATCH = { quietMs: 1500, maxMs: 6000, maxMessages: 12, maxReads: 3 } as const;
@@ -3605,7 +3614,14 @@ ${body}
                 groupLogs.append(groupId, { time: at, from: item.event.user_id, name, content: item.text, messageId: item.event.message_id });
                 // 谁在这个群说过什么：下次再见她不能当陌生人
                 groupPeopleBook?.note(groupId, { qq: item.event.user_id, name, content: item.text, at });
+                // 冲她来的话（夸、骂、有人想不开）在她心里留一件事，按半衰期慢慢散
+                groupFeel?.note(groupId, groupAffectOf({
+                    entry: { content: item.text, messageId: item.event.message_id },
+                    addressed: item.reason === 'mentioned' || item.reason === 'defend', at: Date.parse(at),
+                }));
             }
+            // 这一批说完，顺手把某个人在她心里的样子写一句（后台、一批最多一个、14 天才重写；不耽误回话）
+            if (config.groupChat === 'on') refineGroupImpression(groupId, batch);
             if (!reason) return;
             const entries = groupLogs.load(groupId);
             const budget = withinBudget(entries.filter(e => e.mine), worldNow(), reason);
@@ -3627,6 +3643,24 @@ ${body}
             if (!stopped && (groupQueue.get(groupId)?.length ?? 0)) void flushGroup(groupId);
         }
     }
+    /**
+     * 她对群里某个人的印象：只从那个人自己说过的原话里总结一句，写进成员底账（重启还在）。
+     * 说得少的不写、14 天内写过的不重写；一批最多一个人，后台跑，失败就是没有。
+     */
+    function refineGroupImpression(groupId: number, batch: readonly GroupBatchItem[]): void {
+        if (!groupPeopleBook || stopped) return;
+        const spoke = new Set(batch.map(item => item.event.user_id));
+        const candidate = impressionCandidate(groupPeopleBook.load(groupId), spoke, worldNow());
+        if (!candidate) return;
+        void (async () => {
+            const raw = await exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.7 }, messages: [{ role: 'user', content: impressionPrompt(candidate) }] }, log);
+            const text = parseImpression(raw);
+            if (!text || stopped) return;
+            groupPeopleBook.setImpression(groupId, candidate.qq, text, new Date(worldNow()).toISOString());
+            log(`[群 ${groupId}] 记下了对一个人的印象（${[...text].length} 字；日志不记内容）`);
+        })().catch(error => log(`[群 ${groupId}] 印象没写成：${error instanceof Error ? error.message : String(error)}`));
+    }
+
     async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean }, reason: SpeakReason, bf: { qq: number; name: string } | undefined,
         extra: { callers?: readonly string[]; pending?: number } = {}): Promise<void> {
         // 群里的人都知道她是 AI（用户标过）：原卡，被问时由她定；没标：承认版卡，认真问到就承认；有人说想不开：一律承认版（ADR 0067 / 0068 / 0208）
@@ -3644,7 +3678,11 @@ ${body}
         const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, bf)).join('\n');
         // 这个群里她认识谁（聊过就认得，改名也认得）；心情只说「这会儿怎么样」，不说来由（都在私聊里）
         const memory = groupPeopleBook?.render(group.id, { ...(bf ? { exclude: bf.qq } : {}), now: worldNow() });
-        const mood = config.herFeelings && lastFeelings ? moodStateLine(lastFeelings.felt) : undefined;
+        // 心境：私聊那边算好的 + 群里这些遭遇现算的，同一种取更重的那个
+        const feltNow = config.herFeelings
+            ? mergeFelt(lastFeelings?.felt ?? [], groupFeel ? feelingsAt(groupFeel.appraisals(group.id), worldNow()) : [])
+            : [];
+        const mood = feltNow.length ? moodStateLine(feltNow) : undefined;
         const note = groupNote({
             groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason, ...extra,
             ...(memory ? { memory } : {}), ...(mood ? { mood } : {}),
