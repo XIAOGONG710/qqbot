@@ -103,7 +103,8 @@ export function groupPeople(dataDir: string): GroupPeople {
     return {
         load,
         note(groupId, entry) {
-            if (!Number.isSafeInteger(entry.qq) || entry.qq <= 0) return;
+            // 负数是从文本记录里推出来的假号（group-import.ts），也要认：不然导进来的老面孔全丢了
+            if (!Number.isSafeInteger(entry.qq) || entry.qq === 0) return;
             const list = load(groupId);
             const name = clip(entry.name, 16);
             const line = clip(entry.content, GROUP_PEOPLE_SAID_CHARS);

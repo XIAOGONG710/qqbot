@@ -3761,6 +3761,7 @@ ${body}
             groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason, ...extra,
             ...(memory ? { memory } : {}), ...(mood ? { mood } : {}),
             ...(herGroupNames.get(group.id) ? { myNames: herGroupNames.get(group.id)! } : {}),
+            ...(entries.some(entry => entry.history === true) ? { veteran: true } : {}),
         });
         const messages = [{ role: 'system' as const, content: system }, { role: 'user' as const, content: `${transcript}\n\n${note}` }];
         const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);

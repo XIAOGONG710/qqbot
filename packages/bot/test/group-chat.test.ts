@@ -261,6 +261,13 @@ describe('群聊：进应用', () => {
         assert.ok(!note.includes('「林梦瑶」'), '真名不用再解释一遍');
     });
 
+    test('导过以前的记录：她不装新来的', () => {
+        const note = groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', veteran: true });
+        assert.ok(note.includes('待了一阵子'), note);
+        assert.ok(note.includes('不知道的别硬编'), note);
+        assert.ok(!groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned' }).includes('待了一阵子'));
+    });
+
     test('没 @ 她、只在群里提到她：听见了；叫她名字才是一定要接', () => {
         // 名字 + 第二人称 = 在跟她说话
         assert.equal(speakReason([text('梦瑶你说呢')], '梦瑶你说呢', 30001, 1, ctx()), 'mentioned');

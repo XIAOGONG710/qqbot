@@ -20,6 +20,8 @@ export interface GroupEntry {
     content: string;
     messageId: number;
     mine?: true;
+    /** 进群之前导进来的旧记录（2026-11-14）：只当上下文，不是刚到的消息、不触发回话 */
+    history?: true;
 }
 
 /** 每个群的额度：一小时、一天最多几条；不是被叫到的话两句之间至少隔多久；顺着话题插嘴一天几次 */
@@ -158,6 +160,8 @@ export function groupNote(input: {
     mood?: string;
     /** 她在这个群的 QQ 昵称 / 群名片：别人不一定叫她的真名 */
     myNames?: readonly string[];
+    /** 群里导进过以前的记录：她不是刚进群，别人提旧事别露怯（也别硬编不知道的） */
+    veteran?: boolean;
 }): string {
     const others = input.pending && input.callers ? input.pending - input.callers.length : 0;
     // 群里叫她别的名字（QQ 昵称、群名片）：那也是她，别人叫那些也算叫她
@@ -165,6 +169,7 @@ export function groupNote(input: {
     return [
         `[这是 QQ 群「${input.groupName}」里的聊天，群里有好几个人，上面每行冒号前是谁说的，「你」是你自己说的。`,
         aliases.length ? `群里他们也可能叫你「${aliases.join('」「')}」（你在这个群的昵称 / 群名片）；那都是你，别当成别人。` : '',
+        input.veteran ? '你在这个群待了一阵子了，上面的旧聊天你都经历过：提到以前的事就照你知道的说，不知道的别硬编，也别问「什么情况」。' : '',
         '群里说话像在群里：短，一两句，不刷屏，不用每句都接；不在群里说你和他之间的私事，也不说别人私下跟你说的事。',
         input.boyfriendHere && input.boyfriendName ? `${input.boyfriendName}（你男朋友）也在这个群：群里收着点，正常说话，别喊得黏，也别装不认识。` : '',
         input.memory ?? '',
