@@ -155,7 +155,7 @@ export const DEFAULTS = {
     qzoneBrowse: 'off' as PresenceMode,
     qzonePeek: 'off' as PresenceMode,
     qzoneStrangers: 'off' as PresenceMode,
-    groupChat: 'off' as PresenceMode,
+    groupChat: 'off' as GroupChatMode,
     qqControl: 'off' as ControlMode,
     qqAllowFriends: [] as readonly number[],
     qqAllowGroups: [] as readonly number[],
@@ -596,8 +596,8 @@ export interface AppConfig {
     qzonePeek?: PresenceMode;
     /** 刷平台推的陌生人说说（ADR 0144，「空友爱看」那种流）：09:00–23:00、每 3 小时最多一次；只读、只留正文样本。默认关 */
     qzoneStrangers?: PresenceMode;
-    /** 群聊（ADR 0210）：off 关 / dryRun 只写草稿不发 / on 发。只在 groups 名单里的群说话。默认 off */
-    groupChat?: PresenceMode;
+    /** 群聊（ADR 0210）：off 关 / read 只看只记不说话 / dryRun 写草稿不发 / on 发。只在 groups 名单里的群。默认 off */
+    groupChat?: GroupChatMode;
     /** 她能说话的群（用户拉她进去、再加进这里的）；knowsBot：群里的人都知道她是 AI（用户确认过） */
     groups?: GroupConfig[];
     /** 账号控制面（ADR 0142）：off 关 / read 只读盘点 / on 放行写动作。默认 off */
@@ -708,6 +708,10 @@ export interface AppConfig {
 }
 
 /** 一个群（ADR 0210）：群号、叫什么、群里的人是不是都知道她是 AI（不写 = 不知道：认真问到就承认） */
+/** 群聊的四种状态（ADR 0210，2026-11-14 加 read）：off 完全不管；read 只看只记不说话；dryRun 写草稿不发；on 真说 */
+export const GROUP_CHAT_MODES = ['off', 'read', 'dryRun', 'on'] as const;
+export type GroupChatMode = (typeof GROUP_CHAT_MODES)[number];
+
 export interface GroupConfig {
     id: number;
     name: string;
@@ -994,7 +998,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qzoneBrowse: oneOf(file.qzoneBrowse, 'qzoneBrowse', PRESENCE_MODES, DEFAULTS.qzoneBrowse),
         qzonePeek: oneOf(file.qzonePeek, 'qzonePeek', PRESENCE_MODES, DEFAULTS.qzonePeek),
         qzoneStrangers: oneOf(file.qzoneStrangers, 'qzoneStrangers', PRESENCE_MODES, DEFAULTS.qzoneStrangers),
-        groupChat: oneOf(file.groupChat, 'groupChat', PRESENCE_MODES, DEFAULTS.groupChat),
+        groupChat: oneOf(file.groupChat, 'groupChat', GROUP_CHAT_MODES, DEFAULTS.groupChat),
         groups: parseGroups(file.groups),
         qqControl: oneOf(file.qqControl, 'qqControl', ACCOUNT_MODES, DEFAULTS.qqControl),
         qqAllowFriends: qqList(file.qqAllowFriends, 'qqAllowFriends'),

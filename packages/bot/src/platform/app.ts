@@ -3710,7 +3710,8 @@ ${body}
             }
             // 这一批说完，顺手把某个人在她心里的样子写一句（后台、一批最多一个、14 天才重写；不耽误回话）
             if (config.groupChat === 'on') refineGroupImpression(groupId, batch);
-            if (!reason) return;
+            // 只看只记（read）：心里有数，但不说话
+            if (!reason || config.groupChat === 'read') return;
             const entries = groupLogs.load(groupId);
             const budget = withinBudget(entries.filter(e => e.mine), worldNow(), reason);
             if (!budget.ok) { log(`[群 ${groupId}] 想开口但${budget.why}`); return; }

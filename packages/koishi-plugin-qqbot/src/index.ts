@@ -22,6 +22,7 @@ import { CONTACT_TIERS, DEFAULTS, STICKER_MODES, parseAppConfig, type AppConfig,
 import { createLog, type Log } from '../../bot/src/platform/log.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from '../../bot/src/language/fact-check.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/social/presence.ts';
+import { GROUP_CHAT_MODES, type GroupChatMode } from '../../bot/src/platform/config.ts';
 import { readQzoneFeed } from '../../bot/src/social/qzone-feed.ts';
 import { readFriendsFeed } from '../../bot/src/social/qzone-feeds3.ts';
 import { sessionFromCookies } from '../../bot/src/social/qzone-remote.ts';
@@ -240,8 +241,8 @@ export interface Config {
     qzoneBrowse: PresenceMode;
     qzonePeek: PresenceMode;
     qzoneStrangers: PresenceMode;
-    groupChat: PresenceMode;
-    groups: { id: number; name: string; knowsBot?: boolean }[];
+    groupChat: GroupChatMode;
+    groups: { id: number; name: string; knowsBot?: boolean; disguise?: boolean; cover?: string }[];
     qqControl: ControlMode;
     qqFriendGate: FriendGate;
     qqAllowFriends: number[];
@@ -525,12 +526,15 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**刷好友动态**（ADR 0145）：用她自己的登录态（NapCat 的 get_cookies）读她自己的好友动态页，挑出名单里好友 3 天内新发的说说（不进对方空间、不留访客记录），10:00–22:00、每 4 小时最多一次；摘成一行带时间进提示词，6 小时内她可以自己提起。名单是下面「允许动作的好友」；读不到（登录态过期 / 断网 / 风控）6 小时后再试。默认关'),
         qzoneStrangers: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qzoneStrangers)
             .description('**刷陌生人的空间**（ADR 0144）：用她的登录态读平台推的陌生人说说（「空友爱看」那种流），09:00–23:00、每 3 小时最多一次；只读不互动。摘一句进提示词，样本（只有正文，没有名字和号）留在 presence/strangers.jsonl。接口名没有公开文档，读不到只记一行。默认关'),
-        groupChat: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.groupChat)
-            .description('**群聊**（ADR 0210）：off 关 / dryRun 只写草稿（runtime/bot/groups/drafts.md）不发 / on 发。只在下面「群」里列出的群说话；她基本潜水，被叫到、有人损他、聊到她熟的才开口，一个群一小时最多 6 条、一天 30 条。不主动进群、不接别人的邀请'),
+        groupChat: Schema.union(GROUP_CHAT_MODES.map(mode => Schema.const(mode).description(
+            mode === 'off' ? '关' : mode === 'read' ? '只看只记，不说话' : mode === 'dryRun' ? '只写草稿，不发' : '开'))).default(DEFAULTS.groupChat)
+            .description('**群聊**（ADR 0210）：off 关 / read 只看聊天记录、认下人，但不说话 / dryRun 写草稿（groups/drafts.md）不发 / on 发。只在下面「群」里列出的群；她基本潜水，被叫到、有人损他、聊到她熟的才开口，一个群一小时最多 6 条、一天 30 条。不主动进群、不接别人的邀请'),
         groups: Schema.array(Schema.object({
             id: Schema.natural().required().description('**群号**'),
             name: Schema.string().required().pattern(NOT_BLANK).description('**群名**：给她看的，比如「宿舍群」'),
             knowsBot: Schema.boolean().description('**群里的人都知道她是 AI**：勾上＝被认真问是不是 AI 时由她自己决定；不勾＝按不知道，认真问到就承认（ADR 0067 / 0208 / 0210）'),
+            disguise: Schema.boolean().description('**装成真人**：用原卡、不承认是 AI，被认真问就含糊带过（危机时仍用承认版）'),
+            cover: Schema.string().description('**进群的说法**：有人问「你也是来养鱼的吗」「你是不是谁养的鱼」时照这个口径答（只在这一群用）'),
         })).default([]).description('**群**（ADR 0210）：你拉她进去、想让她在里面说话的群'),
         qqControl: Schema.union(ACCOUNT_MODES.map(mode => Schema.const(mode).description(mode === 'off' ? '关' : mode === 'read' ? '只读（盘点）' : '放行写动作'))).default(DEFAULTS.qqControl)
             .description('**账号控制面**（ADR 0142）：off 关 / read 只读（盘点好友、群、空间）/ on 放行写动作。写动作只限登记过的那批（改资料、群名片、好友申请、发消息……），并且必须过下面的允许清单和一小时 6 次的限流；踢人、禁言、删好友、群发要再开「危险动作」。每次动作留审计（只记动作和对象，不记正文）。默认关'),

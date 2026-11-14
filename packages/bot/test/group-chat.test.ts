@@ -141,7 +141,7 @@ describe('群聊：给她看的样子', () => {
 });
 
 describe('群聊：进应用', () => {
-    function app(groupChat: 'dryRun' | 'on', knowsBot = false, extra: {
+    function app(groupChat: 'dryRun' | 'on' | 'read', knowsBot = false, extra: {
         vision?: { describe: (image: { url: string }) => Promise<string> };
         stickerReader?: { describe: (image: { url: string }) => Promise<string> };
         generate?: (messages: { content: string }[]) => Promise<string>;
@@ -447,6 +447,20 @@ describe('群聊：进应用', () => {
         await until(() => sentGroup.length > 0);
         a.stop();
         assert.match(prompts.at(-1)!, /承不承认、怎么说，你自己决定/);
+    });
+
+    test('只看只记：消息和人都记下，但她不说话、不写草稿', async () => {
+        const { app: a, sentGroup, sentRich, dataDir } = app('read');
+        await a.connected(SELF);
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 在吗')]));
+        await until(() => existsSync(join(dataDir, 'groups', '555.jsonl')));
+        await new Promise(r => setTimeout(r, 300));
+        a.stop();
+        assert.equal(sentGroup.length, 0, '没说话');
+        assert.equal(sentRich.length, 0, '也没引用');
+        assert.ok(readFileSync(join(dataDir, 'groups', '555.jsonl'), 'utf8').includes('在吗'), '但记下了');
+        assert.ok(!existsSync(join(dataDir, 'groups', 'drafts.md')), '不写草稿');
+        assert.ok(existsSync(join(dataDir, 'groups', '555.people.json')), '人认下了');
     });
 
     test('试运行：只写草稿，不发', async () => {
