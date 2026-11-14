@@ -773,3 +773,30 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 删掉的接线：`contact.ts` 里那一段计算、日志、`quote` 段落、`quoteShare` 选项和对应 import。`quoteReply` 选项留着：发送时引用、打错字补「*对的词」时引用那条错的（`quoteFix`）还在旧逻辑。
 - 先补基线（单独提交 `7466c0b8`）：第一次迁完跑基线 35/35 全过，连「模块不放这一行」「不写回 facts」两个变异都抓不到——原来没有一个场景走到过引用（没人连发、前面那条是问句）。于是收起迁移、在旧代码上补 `quote` 场景：几串两三条的连发（三串抽中引用、其余没抽中）、只发一条（不引用）、同学连发（照样引用）；在旧代码上去掉这一行、发送时不引用，`quote` 都报不一致。带着问句的难过那一串照样引用：意图阶梯里「先回答他问的」排在「先接住情绪」前面，连发里有可引用的问句时几乎走不到后者。所以危机、只发表情、照片、主动找他、只想一想、先接住情绪这六样由新的 `quote-module.test.ts` 逐个核对（去掉先接住情绪那一条，测试报错）。
 - 验证：基线逐字不变；变异检验——模块不放这一行、不写回 `facts.quote`（发送时不引用），`quote` 都报不一致。类型检查通过。
+
+### 时间块（2026-11-15）
+
+- 是什么：ADR 0004 决策 2——「此刻」块的第一行：当前时间、距上一条消息多久、他这次的消息是不是隔了很久才回（连发按这一组的第一条算）；她主动找他时只写上一条消息是谁发的、多久前。
+  回复一直失败、断网很久才回（ADR 0105，配置 `lagTail`）再加一句断网的事实。放进 `time` 槽，每一轮都放，没有别的开关。
+- 这一节由子代理起草（用户 11-15 让开几个子代理并行；子代理只新建文件，共享文件的接线、基线、提交由主代理做）：
+  核对过 `chat` 就是 `turn.history`（构造 turn 时放进去、之后没人改）、`time` 就是 `turn.at`、断网起点就是 `turn.offlineSince`；`describeTime` 是纯函数，不抽随机数、不记日志，挪到 contribute 时算结果一样。
+- 没补基线：35 个场景都有这一行，17 个场景有主动找他的写法。断网那一句基线一处都没走到（没有连着失败超过十分钟的），由 `time-block-module.test.ts` 管。
+- `src/modules/time-block.ts`：`timeBlockModule({ lagTail })`，只有 contribute。App 和模拟器都总是挂。
+- 删掉的接线：`contact.ts` 里那一段和 `describeTime` 的 import。`lagTail` 选项留着（「几点看到」的长尾还在用）。
+- 直接调联系人流水线、没挂这个模块的四个测试（`language-review`、`meme-dict-turn`、`photo-contact-review`、`photo-send-history-review`）提示词里从此没有时间行；它们都不断言时间，照样通过。
+
+### 心境这一组：方案（2026-11-15，子代理只读分析，主代理照此做）
+
+- 范围：心境（`herFeelings`）的 `feltNow` / 心境那一行 / 节奏（`pace`）/ `onFeelings`，做的梦（`dreams` 槽和它给心境的打分）、她的追求给心境的打分、昨天她那边（`previousAround`）、作者写下的事（moments）、
+  回想过的心境（feelingReview），还有 `warm`（想念 / 道歉 / 安慰后变软）、`unsettled`（没了结的事）、`humanState` / `development`（真人数值）、心情（`moodAt`）和 `low`。
+- 取证要点：整组没有 `Math.random`（心情按日期 `stableHash`）；组内没有 await。`grievanceActive` 很晚才有（照片、被打断改写意图之后），心境那一行、节奏、`low`、生成时的最多几条都要它。
+  `onFeelings` 写 `lastFeelings`，午睡 / 做梦的提示词会读，不能挪过连续性和语义路由那两次 await。`maxBubbles` 那条看的是 `feltNow.length`（含 faint），不能改成看心境那一行。
+  `pursuitLine`、`describeMood` 的 import 是死代码。
+- 基线覆盖不够：心境那一行只有担心、开心、松了口气三种；难过 / 烦 / 累 / 绷不住 / 「前面已经说过了」、节奏、带感受的梦、安慰、`unsettled` 都是 0。
+- 步骤（每步一个提交）：
+  0. 先补 `feelings` 基线场景（预置作者写下的事、一条带感受的梦、feelingReview；她难过时他问怎么了、说过难过的下一轮、很开心那一轮、小别扭生效、危机、同学），在旧代码上逐个变异。`unsettled` 和安慰等假记忆服务落地后补。
+  1. `warm` / `unsettled` 模块（只有 contribute，新 fact `unsettled`）。
+  2. `human-state` 模块（perceive 算数值、写 facts；contribute 放两行；越过 await 后基线不一致就退回「旧逻辑原位算、模块只放」）。
+  3. `feelings` 模块（一）：assess 算 `feltNow`（梦、追求、昨天、作者写下的事、回想过的）写 `facts.felt`，contribute 放 `dreams` 槽；旧逻辑读 `facts.felt` 接着算。
+  4. `feelings` 模块（二）：contribute 读 `facts.grievanceActive` 放 `feeling` / `pace`。`onFeelings`、`low`、`maxBubbles`、`agendaTopics` 先留在旧逻辑，等意图 → 照片 → 小别扭那条链迁出再收。
+- 验证：基线逐字不变；变异检验——模块什么都不放，36 个场景报不一致。主动找他那一轮写成不是主动，基线抓不到：主动找他时聊天记录里本来就没有等她回的消息，两种写法算出来一样；由 `time-block-module.test.ts` 兜（这个变异让它报错）。类型检查通过。

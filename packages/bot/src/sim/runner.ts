@@ -30,6 +30,7 @@ import { solveFrameModule } from '../modules/solve-frame.ts';
 import { innerModule } from '../modules/inner.ts';
 import { devicesModule } from '../modules/devices.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
+import { timeBlockModule } from '../modules/time-block.ts';
 import { lengthModule } from '../modules/length.ts';
 import { shapeModule } from '../modules/shape.ts';
 import { quoteModule } from '../modules/quote.ts';
@@ -602,6 +603,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             lengthModule({ ...(scenario.shortReplies ? { shortReplies: true } : {}), log: message => { if (epoch === responderEpoch) log(message); } }),
             // 主动找他时计划器写的说明，同 App
             initiateNoteModule(),
+            // 时间块，同 App
+            timeBlockModule({ ...(scenario.lagTail ? { lagTail: true } : {}) }),
             // 只想一想的轮次：聊天原文换成一段回想，同 App
             transcriptModule(),
             // 「做题式」写法（ADR 0146 实验）：只有 --frame solve 时挂

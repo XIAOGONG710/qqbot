@@ -45,6 +45,7 @@ import { innerModule } from '../modules/inner.ts';
 import { devicesModule } from '../modules/devices.ts';
 import { consentModule } from '../modules/consent.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
+import { timeBlockModule } from '../modules/time-block.ts';
 import { lengthModule } from '../modules/length.ts';
 import { shapeModule } from '../modules/shape.ts';
 import { quoteModule } from '../modules/quote.ts';
@@ -1091,6 +1092,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ...(config.quoteReply ? [quoteModule({ history: qq => history.load(qq), log })] : []),
         // 主动找他时计划器写的说明（initiate.note）；没有开关，不存状态
         initiateNoteModule(),
+        // 时间块（ADR 0004 / 0105）：每一轮「此刻」块的第一行；断网很久才回那一句跟着 lagTail。没有别的开关，不存状态
+        timeBlockModule({ lagTail: config.lagTail }),
         // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态
         transcriptModule(),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）

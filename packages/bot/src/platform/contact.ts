@@ -57,7 +57,7 @@ import { formatDate, herDay, type ExtraFreeActivity } from '.././life/schedule.t
 import { speechContext, TAIL_CAPS, type BookProgressContext } from '.././language/speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from '.././language/candidates.ts';
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
-import { describeDays, describeTime } from '.././language/time-context.ts';
+import { describeDays } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts';
@@ -276,7 +276,7 @@ export interface ContactPipelineOptions {
     pursuits?: () => readonly Pursuit[];
     /** 她每天碰到的小事（ADR 0106，配置 everydayLife；卡在 loadTierCard 里补）：他问“今天干嘛了 / 有什么好玩的事”时让她从今天的小事里挑具体的说 */
     everydayLife?: boolean;
-    /** 回复延迟的长尾（ADR 0105，配置 lagTail）：醒着空着时有一部分消息她在做别的，过一会儿才看到；断网很久之后才回，时间块里写一句 */
+    /** 回复延迟的长尾（ADR 0105，配置 lagTail）：醒着空着时有一部分消息她在做别的，过一会儿才看到；断网很久之后才回，时间块里写一句（那一句由 modules/time-block.ts 放） */
     lagTail?: boolean;
     /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；回复里的 <device:…> 令牌在发送前登记并按档处理。菜单是解释器的模块（modules/devices.ts） */
     devices?: Pick<DeviceControl, 'parse' | 'commit'>;
@@ -841,7 +841,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('today', today),
                 ...peopleText.map(text => ({ slot: 'people' as const, text })),
                 ...(common || today || peopleText.length ? [{ slot: 'disclosure' as const, text: disclosureRules(contact) }] : []),
-                { slot: 'time', text: describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }) },
+                // 时间块（ADR 0004 / 0105）是解释器的模块（modules/time-block.ts），经 turnModules 放进 time 槽
                 ...when('days', days),
                 // 「你现在」那几行是底子不是话题（DSH 10-30）由她此刻的模块（modules/her-now.ts）放进 groundNote 槽
                 // 今天的心情（按日期抽的「爱笑」「安静」）不再注入（10-30 用户：这种替她表态的都清掉）：
