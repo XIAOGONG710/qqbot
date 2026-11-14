@@ -3529,7 +3529,27 @@ ${body}
     const groupOverheard = new Map<number, { day: string; count: number }>();
     /** 她在这个群被叫的名字（QQ 昵称 / 群名片）：别人不一定叫她的真名（2026-11-14） */
     const herGroupNames = new Map<number, string[]>();
-    /** 连上之后读一次：她自己的 QQ 昵称 + 每个群里的群名片（NapCat 拿不到就只认真名） */
+    /** 上次读到的名字存下来（她的 QQ 昵称是「繁星」，NapCat 这次读不到时别把认识的名字忘了） */
+    const groupNamesFile = join(config.dataDir, 'groups', 'self-names.json');
+    if (groupsOn && existsSync(groupNamesFile)) {
+        try {
+            const saved = JSON.parse(readFileSync(groupNamesFile, 'utf8')) as Record<string, unknown>;
+            for (const [id, names] of Object.entries(saved)) {
+                const groupId = Number(id);
+                if (Number.isSafeInteger(groupId) && Array.isArray(names)) {
+                    const list = names.filter((name): name is string => typeof name === 'string' && name.trim().length >= 2);
+                    if (list.length) herGroupNames.set(groupId, list);
+                }
+            }
+        } catch { /* 坏了就重新读一遍 */ }
+    }
+    function saveGroupNames(): void {
+        try {
+            mkdirSync(dirname(groupNamesFile), { recursive: true });
+            writeFileSync(groupNamesFile, JSON.stringify(Object.fromEntries(herGroupNames)));
+        } catch { /* 写不进去只是下次重启要重新读 */ }
+    }
+    /** 连上之后读一次：她自己的 QQ 昵称 + 每个群里的群名片；读不到的群用 QQ 昵称兜底 */
     async function syncGroupNames(): Promise<void> {
         if (!groupsOn || !transport.callAction) return;
         let nickname = '';
@@ -3540,17 +3560,21 @@ ${body}
             log(`群聊：读不到自己的 QQ 昵称（${error instanceof Error ? error.message : String(error)}）`);
         }
         for (const group of config.groups ?? []) {
+            let names: string[] = [];
             try {
                 const info = await transport.callAction('get_group_member_info', { group_id: group.id, user_id: selfIdKnown }) as { card?: string; nickname?: string } | undefined;
                 const card = typeof info?.card === 'string' ? info.card.trim() : '';
                 const nick = typeof info?.nickname === 'string' ? info.nickname.trim() : '';
-                const names = [...new Set([card, nick, nickname].filter(name => name.length >= 2 && !HER_NAMES.includes(name as typeof HER_NAMES[number])))];
-                if (names.length) {
-                    herGroupNames.set(group.id, names);
-                    log(`[群 ${group.id}] 群里叫她：${names.join(' / ')}`);
-                }
+                names = [...new Set([card, nick, nickname].filter(name => name.length >= 2 && !HER_NAMES.includes(name as typeof HER_NAMES[number])))];
             } catch (error) {
+                // 名片读不到（有的 NapCat 版本群成员接口要权限）：用 QQ 昵称兜底，别一个都不认
+                if (nickname.length >= 2 && !HER_NAMES.includes(nickname as typeof HER_NAMES[number])) names = [nickname];
                 log(`[群 ${group.id}] 读不到自己在群里的名片（${error instanceof Error ? error.message : String(error)}）`);
+            }
+            if (names.length) {
+                herGroupNames.set(group.id, names);
+                saveGroupNames();
+                log(`[群 ${group.id}] 群里叫她：${names.join(' / ')}`);
             }
         }
     }

@@ -342,20 +342,24 @@ describe('群聊：进应用', () => {
         assert.equal(sentRich.length, 0, '没叫她，就不引用她那一条');
     });
 
-    test('她在群里被叫别的名字（QQ 昵称 / 群名片）：那也是她，叫了要应', async () => {
-        const { app: a, sentGroup, prompts } = app('on', false, {
-            callAction: async action => (action === 'get_login_info'
-                ? { nickname: '瑶瑶不熬夜' }
-                : { card: '小瑶', nickname: '瑶瑶不熬夜' }),
+    test('她在群里被叫别的名字（QQ 昵称「繁星」）：那也是她，叫了要应', async () => {
+        const { app: a, sentGroup, prompts, dataDir } = app('on', false, {
+            // 和线上一样：她的 QQ 昵称是「繁星」；群成员接口这条不给（有的 NapCat 版本要权限）
+            callAction: async action => {
+                if (action === 'get_login_info') return { nickname: '繁星' };
+                throw new Error('没有权限读群成员资料');
+            },
         });
         await a.connected(SELF);
-        await new Promise(r => setTimeout(r, 100)); // 连上之后读自己在群里的名片
-        a.receiveGroup(said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 小瑶你来不来')]));
+        await new Promise(r => setTimeout(r, 100)); // 连上之后读自己的名字
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 繁星你来不来')]));
         await until(() => sentGroup.length > 0);
         a.stop();
         assert.equal(sentGroup.length, 1, '叫到的是她，要应');
         const prompt = prompts.at(-1)!;
-        assert.ok(prompt.includes('群里他们也可能叫你「小瑶」'), prompt.slice(-600));
+        assert.ok(prompt.includes('群里他们也可能叫你「繁星」'), prompt.slice(-600));
+        // 名字存下来：下次 NapCat 读不到也还认得
+        assert.ok(readFileSync(join(dataDir, 'groups', 'self-names.json'), 'utf8').includes('繁星'));
     });
 
     test('群里的图：没人叫她就不读；叫到她了才读，读出来的进提示词', async () => {

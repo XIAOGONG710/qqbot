@@ -76,7 +76,7 @@
 
 用户：「林梦瑶是她的真名，要让她在群里知道自己的QQ昵称，别人或许不会叫她真名」。
 
-- **读自己的名字**：连上之后（`syncGroupNames`）调一次 `get_login_info` 拿她的 QQ 昵称，再对每个配置的群调 `get_group_member_info(group_id, 她自己的 id)` 拿群名片；去重、太短的不要（一个字的别名会被当成普通字），存 `herGroupNames`。NapCat 拿不到就不加，只认真名。
+- **读自己的名字**：连上之后（`syncGroupNames`）调一次 `get_login_info` 拿她的 QQ 昵称（线上是「**繁星**」，见 [0085](0085-napcat-probe.md) 的确认记录），再对每个配置的群调 `get_group_member_info(group_id, 她自己的 id)` 拿群名片；去重、太短的不要（一个字的别名会被当成普通字），存 `herGroupNames`，同时写进 `<数据目录>/groups/self-names.json`——下次 NapCat 读不到也还认得。群成员接口拿不到权限时用 QQ 昵称兜底，所以「繁星」在任何配置的群里都算叫她。
 - **认这些名字**：`herNameList()` = 群里那名片 / 昵称 + `HER_NAMES`（林梦瑶 / 梦瑶 / 瑶瑶 / 瑶姐）。说「小瑶你来不来」= `mentioned`；说「小瑶是不是有点傻」= `overheard`；心情那边的 `addressedToHer` 也认。
 - **她也知道那是自己**：说明里多一句「群里他们也可能叫你「小瑶」（你在这个群的昵称 / 群名片）；那都是你，别当成别人」。真名不再重复解释。
 - **日志**：连上时记一行「[群 x] 群里叫她：小瑶 / 瑶瑶不熬夜」（日志不记正文）。
