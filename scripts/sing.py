@@ -8,6 +8,7 @@
 每步打一行 STAGE，最后一行 DONE <mp3 路径>，方便 bot 那边读日志。
 """
 import argparse
+import atexit
 import hashlib
 import json
 import os
@@ -42,9 +43,9 @@ def stage(name, extra=""):
     print(f"STAGE {name} {extra}".strip(), flush=True)
 
 
-def run(cmd, cwd=None, env=None):
+def run(cmd, cwd=None, env=None, timeout=None):
     print("  $", " ".join(cmd[:6]), flush=True)
-    subprocess.run(cmd, cwd=cwd, env=env, check=True)
+    subprocess.run(cmd, cwd=cwd, env=env, check=True, timeout=timeout)
 
 
 # --- B 站搜索（wbi 签名） ---------------------------------------------------
@@ -128,28 +129,31 @@ def vocal_f0(wav: str) -> float:
 
 
 def pick_source(song: str, work_root: str):
-    """返回 (bv, 说明)。给 BV 就直接用；给歌名就搜女声翻唱，按音高验。"""
+    """返回 (bv, 说明)。给 BV 就直接用。
+
+    给歌名时先看**原唱**（用户 2026-11-14：原唱是女声就直接用，只有原唱是男声才另找女声翻唱）：
+    1. 搜「<歌名> 原唱」「<歌名>」，播放最高的前两个候选取来验音高；
+    2. 都不合格（男声源）才搜「女声 翻唱 / 女声版 / 翻唱」，再验；
+    3. 音高验不过的一律跳过——RVC 用男声源转出来会怪。
+    """
     m = re.search(r"(BV[0-9A-Za-z]{10})", song)
     if m:
         return m.group(1), "直接指定"
-    queries = [f"{song} 女声 翻唱", f"{song} 女声版", f"{song} 翻唱"]
-    seen, candidates = set(), []
-    for q in queries:
-        try:
-            for item in search_covers(q):
-                if item["bv"] in seen:
-                    continue
-                if re.search(r"男声|男生|原唱", item["title"]):
-                    continue
-                seen.add(item["bv"])
-                candidates.append(item)
-        except Exception as error:  # 搜索挂了就往下走，别把整首带崩
-            print(f"  ! 搜索「{q}」失败：{error}", flush=True)
-    if not candidates:
-        raise SystemExit(f"没搜到《{song}》的女声翻唱")
-    print(f"  候选 {len(candidates)} 个：" + "、".join(c["title"][:18] for c in candidates[:MAX_CANDIDATES]), flush=True)
 
-    for cand in candidates[:MAX_CANDIDATES]:
+    originals = search_group([f"{song} 原唱", song], skip_male_marker=False)[:2]
+    covers = search_group([f"{song} 女声 翻唱", f"{song} 女声版", f"{song} 翻唱"], skip_male_marker=True)
+
+    seen, candidates = set(), []
+    for item, kind in [(c, "原唱") for c in originals] + [(c, "翻唱") for c in covers]:
+        if item["bv"] in seen:
+            continue
+        seen.add(item["bv"])
+        candidates.append((item, kind))
+    if not candidates:
+        raise SystemExit(f"没搜到《{song}》的可用源")
+    print("  候选：" + "、".join(f"{k}:{c['title'][:14]}" for c, k in candidates[:MAX_CANDIDATES]), flush=True)
+
+    for cand, kind in candidates[:MAX_CANDIDATES]:
         bv = cand["bv"]
         src = os.path.join("E:\\音色素材", bv + ".wav")
         work = os.path.join(work_root, bv)
@@ -163,13 +167,31 @@ def pick_source(song: str, work_root: str):
                 stage("separate", bv)
                 run([PY, SEP, src, work])
             f0 = vocal_f0(vocals)
-            stage("f0-check", f"{bv} {f0:.0f} Hz")
+            stage("f0-check", f"{bv} {kind} {f0:.0f} Hz")
             if FEMALE_LO <= f0 <= FEMALE_HI:
-                return bv, f"{cand['title'][:24]}（{f0:.0f} Hz）"
-            print(f"  ! {bv} 中位 {f0:.0f} Hz，不像女声，换下一个", flush=True)
+                return bv, f"{kind}：{cand['title'][:24]}（{f0:.0f} Hz）"
+            print(f"  ! {bv}（{kind}）中位 {f0:.0f} Hz，不是女声源，换下一个", flush=True)
         except subprocess.CalledProcessError as error:
             print(f"  ! {bv} 处理失败：{error}", flush=True)
     raise SystemExit("前几个候选都不是女声源")
+
+
+def search_group(queries, skip_male_marker: bool):
+    """按一组关键词搜，合并去重，播放高的在前"""
+    seen, out = set(), []
+    for q in queries:
+        try:
+            for item in search_covers(q):
+                if item["bv"] in seen:
+                    continue
+                if skip_male_marker and re.search(r"男声|男生", item["title"]):
+                    continue
+                seen.add(item["bv"])
+                out.append(item)
+        except Exception as error:  # 搜索挂了就往下走，别把整首带崩
+            print(f"  ! 搜索「{q}」失败：{error}", flush=True)
+    out.sort(key=lambda x: x["play"], reverse=True)
+    return out
 
 
 def main():
@@ -180,10 +202,13 @@ def main():
     ap.add_argument("--result", default="", help="把 {bv, mp3} 写进这个 json，给 bot 读")
     ap.add_argument("--ratio", type=float, default=4.0, help="伴奏比人声低多少 dB（默认 4）")
     ap.add_argument("--mix-only", action="store_true", help="跳过下载/分离/转换，只按现有 stems 重混")
+    ap.add_argument("--force", action="store_true", help="已经有成品也重唱一遍")
+    ap.add_argument("--keep-chunks", action="store_true", help="保留分块中间产物（排查用）")
     args = ap.parse_args()
 
     work_root = args.out
     os.makedirs(work_root, exist_ok=True)
+    guard(work_root, args.result)
     bv, why = pick_source(args.song, work_root)
     print(f"SOURCE {bv} {why}", flush=True)
     args.song_bv = bv
@@ -195,6 +220,13 @@ def main():
     merged = os.path.join(work, "vocals-her.wav")
     if not os.path.exists(inst):
         raise SystemExit(f"伴奏没分离出来：{inst}")
+
+    # 同一首歌唱过就直接给成品：素材、分块都不重跑（用户再点一次不用再等 5 分钟）
+    cached = os.path.join(args.out, f"{bv}-她唱的.mp3")
+    if not args.force and not args.mix_only and os.path.exists(cached):
+        stage("cached", bv)
+        finish(args, cached)
+        return
 
     if args.mix_only:
         if not os.path.exists(merged):
@@ -215,10 +247,21 @@ def main():
     parts = sorted(f for f in os.listdir(chunks) if f.startswith("c") and f.endswith(".wav"))
     for i, f in enumerate(parts):
         stage("rvc", f"{i + 1}/{len(parts)} {f}")
-        run([PY, "-m", "infer.cli", "--model", MODEL,
-             "--input", os.path.join(chunks, f), "--output", os.path.join(chunks, "out-" + f),
-             "--pitch", str(args.pitch), "--f0-method", "rmvpe", "--index-rate", "0"],
-            cwd=RVC, env=env)
+        out_chunk = os.path.join(chunks, "out-" + f)
+        if os.path.exists(out_chunk):
+            continue
+        # 单个分块最坏情况会上百秒；卡住就掐掉重来一次——整曲一次跑卡过 44 分钟，不能没有兜底
+        for attempt in (1, 2):
+            try:
+                run([PY, "-m", "infer.cli", "--model", MODEL,
+                     "--input", os.path.join(chunks, f), "--output", out_chunk,
+                     "--pitch", str(args.pitch), "--f0-method", "rmvpe", "--index-rate", "0"],
+                    cwd=RVC, env=env, timeout=900)
+                break
+            except subprocess.TimeoutExpired:
+                print(f"  ! {f} 第 {attempt} 次超时，重来", flush=True)
+                if attempt == 2:
+                    raise SystemExit(f"分块 {f} 一直转不出来")
 
     stage("concat")
     with open(os.path.join(chunks, "list.txt"), "w", encoding="utf8") as fh:
@@ -229,6 +272,44 @@ def main():
 
     stage("mix")
     mix(args, inst, merged)
+    # 分块只是中间产物（几十 MB），成品和 stems 留着供重混
+    if not args.keep_chunks:
+        shutil.rmtree(chunks, ignore_errors=True)
+
+
+def guard(work_root: str, result_path: str = "") -> None:
+    """同一时间只跑一首：两个进程抢 8 GB 显存会一起崩。拿不到锁就直接退出，让 bot 回一句。"""
+    lock = os.path.join(work_root, ".sing.lock")
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        try:
+            pid = int(open(lock, encoding="utf8").read().strip() or 0)
+        except Exception:
+            pid = 0
+        if pid and _alive(pid):
+            print("BUSY 已经有一首在唱了", flush=True)
+            if result_path:      # 让 bot 立刻知道是「忙着」，不用等 30 分钟超时
+                with open(result_path, "w", encoding="utf8") as fh:
+                    json.dump({"busy": True}, fh)
+            raise SystemExit(3)
+        os.remove(lock)          # 残留的旧锁，接着用
+        return guard(work_root, result_path)
+    with os.fdopen(fd, "w", encoding="utf8") as fh:
+        fh.write(str(os.getpid()))
+    atexit.register(lambda: os.path.exists(lock) and os.remove(lock))
+
+
+def _alive(pid: int) -> bool:
+    import ctypes
+    kernel = ctypes.windll.kernel32 if os.name == "nt" else None
+    if kernel is None:
+        return True
+    handle = kernel.OpenProcess(0x1000, False, pid)
+    if handle:
+        kernel.CloseHandle(handle)
+        return True
+    return False
 
 
 def lufs(path: str) -> float:
@@ -253,11 +334,19 @@ def mix(args, inst: str, vocals: str) -> None:
     )
     run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-i", inst, "-i", vocals,
          "-filter_complex", filter_complex, "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "192k", mp3])
+    finish(args, mp3, inst_gain_db=round(gain_db, 1))
+
+
+def finish(args, mp3, inst_gain_db=None):
+    """收尾：打 DONE、给 bot 写结果文件（有了它 bot 才不用猜文件名）"""
+    mp3 = os.path.abspath(mp3)
     print("DONE", mp3, flush=True)
     if getattr(args, "result", ""):
+        payload = {"bv": args.song_bv, "mp3": mp3, "source": getattr(args, "source_note", "")}
+        if inst_gain_db is not None:
+            payload["instGainDb"] = inst_gain_db
         with open(args.result, "w", encoding="utf8") as fh:
-            json.dump({"bv": args.song_bv, "mp3": mp3, "source": args.source_note, "instGainDb": round(gain_db, 1)},
-                      fh, ensure_ascii=False)
+            json.dump(payload, fh, ensure_ascii=False)
 
 
 if __name__ == "__main__":
