@@ -282,6 +282,8 @@ export interface ContactPipelineOptions {
     onFeelings?: (report: FeelingsReport) => void;
     /** 她夜里回想、指出了依据的感受（ADR 0197，配置 feelingReview）：作为「别处算好的评估」进心境；要 herFeelings 开着 */
     feelingReview?: () => readonly Appraisal[];
+    /** 群里最近的事（2026-11-14）：群里的事他私下问起，她要答得上 */
+    groupRecent?: () => string | undefined;
     /** 群里的遭遇（2026-11-14）：有人夸她、冲她发火、说想不开——作为额外评估进心境，要 herFeelings 开着 */
     groupMood?: () => readonly Appraisal[];
     /** 说话的质感（ADR 0131）：发出去之前在气泡上加真人常有的小黄脸 / 「～」 / 问号 / 叠字……；危机和他难过的回合不加 */
@@ -537,6 +539,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const work = remembers && contact.tier === 'boyfriend' ? you(await memory.recallWork(contact, chat, time)) : undefined;
             if (work) log(`召回工作记忆 ${countLines(work)} 条`);
             // 同一个她（ADR 0177）：他刚才在电脑上（DSH）和她说的，QQ 这边接着知道
+            const groupEcho = options.groupRecent?.();
             const desktop = options.desktopRecent?.(time);
             if (desktop) log(`带上他刚才在 DSH 桌面上的对话 ${(desktop.match(/ 他：/g) ?? []).length} 轮`);
             let common = freshCommon;
@@ -859,6 +862,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('recalled', recalled),
                 ...when('work', work),
                 ...when('desktop', desktop),
+                ...when('group', groupEcho),
                 // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3：放在前面时问「昨天都干嘛了」她照着报喂猫、取快递，想不起那天记得住的麻辣烫，1/3）
                 ...when('common', common),
                 ...(recap ? [{ slot: 'recap' as const, text: recap.text }] : []),

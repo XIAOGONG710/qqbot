@@ -89,7 +89,7 @@ import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, personaFacts, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
-import { GROUP_CONTEXT, HER_NAMES, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
+import { GROUP_CONTEXT, HER_NAMES, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, recentGroupBrief, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
 import { groupPeople } from '.././social/group-people.ts';
 import { analyzeGroupStyle, renderGroupStyle } from '.././social/group-style.ts';
 import { groupAffect, groupAffectOf, mergeFelt } from '.././social/group-affect.ts';
@@ -1580,6 +1580,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     let lastFeelings: FeelingsReport | undefined;
     // 群里的遭遇（2026-11-14，心境用）：群聊那段构造时才赋值，这里先声明，回复器每次现取
     let groupFeel: ReturnType<typeof groupAffect> | undefined;
+    // 群记录同理：私聊要能读到「群里最近的事」，得在回复器构造之前就声明
+    let groupLogs: ReturnType<typeof groupLog> | undefined;
     // 她夜里回想、指出了依据的感受（ADR 0197）：作为「别处算好的评估」进心境；要 herFeelings 开着
     const feelingReviewNow = config.feelingReview && config.herFeelings ? reviewReader(config.dataDir) : undefined;
     const contextSummaries = new Set<ReturnType<typeof contextSummarizer>>();
@@ -2166,6 +2168,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
+            // 群里最近的事（2026-11-14）：他私下问「群里刚才说什么了」，她答得上；只给男朋友档
+            ...(groupLogs && contact.tier === 'boyfriend' ? {
+                groupRecent: () => recentGroupBrief((config.groups ?? []).map(item => ({ name: item.name, entries: groupLogs?.load(item.id) ?? [] })), worldNow()),
+            } : {}),
             // 群里的遭遇也进心境（2026-11-14）：有人在群里夸她、冲她发火、说想不开，私聊里她也带着
             ...(config.herFeelings && (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0 ? { groupMood: () => groupFeel?.appraisals() ?? [] } : {}),
             // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
@@ -3508,7 +3514,7 @@ ${body}
 
     // ───────── 群聊（ADR 0210） ─────────
     const groupsOn = (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0;
-    const groupLogs = groupsOn ? groupLog(config.dataDir) : undefined;
+    groupLogs = groupsOn ? groupLog(config.dataDir) : undefined;
     /** 群里认识的人（2026-11-14）：聊过就记住，下次再见不能当陌生人 */
     const groupPeopleBook = groupsOn ? groupPeople(config.dataDir) : undefined;
     /** 群里的遭遇（有人夸她、冲她发火、有人想不开）也算进心境 */

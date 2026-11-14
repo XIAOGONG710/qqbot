@@ -15,6 +15,7 @@ export const AFTER_HISTORY_SLOTS = [
     'recalled', // 他的私人记忆
     'work', // 她在电脑上做的事（DSH 工作模式）
     'desktop', // 桌面上的她（DSH）
+    'group', // QQ 群里最近的事（2026-11-14：群里的事私下问她，她得知道）
     'common', // 公共记忆（那天的流水账放在它后面，ADR 0032 调整 3）
     'recap', // 他问到的那一天她那边的事
     'today', // 她今天和别人聊过的

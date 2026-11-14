@@ -6,7 +6,7 @@ import { afterEach, describe, test } from 'node:test';
 import { startApp } from '../src/platform/app.ts';
 import { parseGroups, type AppConfig } from '../src/platform/config.ts';
 import { isGroupMessage, type GroupMessageEvent } from '../src/platform/onebot.ts';
-import { GROUP_LIMITS, groupLine, groupLog, groupNote, groupPokePlan, groupReply, herNameList, mentionSegments, mentionsHer, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
+import { GROUP_LIMITS, groupLine, recentGroupBrief, groupLog, groupNote, groupPokePlan, groupReply, herNameList, mentionSegments, mentionsHer, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
 import { moodStateLine } from '../src/emotion/express.ts';
 import { analyzeGroupStyle, renderGroupStyle } from '../src/social/group-style.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
@@ -293,6 +293,21 @@ describe('群聊：进应用', () => {
         assert.ok(note.includes('你也是来养鱼的吗'), note);
         assert.ok(note.includes('算是来养鱼的，被穹P拉进来的'), note);
         assert.ok(note.includes('别主动扯上他和你的关系'), note);
+    });
+
+    test('群里最近的事：私聊问她，她答得上（只取最近一段、不搬全文）', () => {
+        const now = Date.parse('2026-11-14T21:00:00+08:00');
+        const entries = [
+            { time: '2026-11-13T10:00:00+08:00', from: 1, name: '老王', content: '昨天的旧事', messageId: 1 },
+            { time: '2026-11-14T20:50:00+08:00', from: 2, name: '小肥鱼', content: '这破显卡才3g显存', messageId: 2 },
+            { time: '2026-11-14T20:55:00+08:00', from: 3, name: '老吴', content: '跑整首歌要两个钟', messageId: 3 },
+        ] as never;
+        const brief = recentGroupBrief([{ name: '宿舍群', entries }], now)!;
+        assert.ok(brief.includes('小肥鱼：这破显卡'), brief);
+        assert.ok(brief.includes('老吴：跑整首歌'), brief);
+        assert.ok(!brief.includes('昨天的旧事'), '超过 24 小时的不带');
+        assert.ok(brief.startsWith('[群里最近的事'), brief);
+        assert.equal(recentGroupBrief([{ name: '空的', entries: [] }], now), undefined);
     });
 
     test('导过以前的记录：补过课，但她是刚进群的', () => {
