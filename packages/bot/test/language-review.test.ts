@@ -45,7 +45,7 @@ function contact(overrides: Partial<ContactPipelineOptions> = {}) {
         generate: async () => '好呀',
         devices: {
             parse: text => parseDeviceTokens(text, { links: new Map(), apps: [], maxVolume: 50 }),
-            commit: parsed => committed.push(...parsed.proposals), menu: () => '',
+            commit: parsed => committed.push(...parsed.proposals),
         },
         onPrompt: prompt => { prompts.push(prompt.messages); },
         ...overrides,

@@ -42,6 +42,9 @@ import { meetupModule } from '../modules/meetup.ts';
 import { exemplarsModule } from '../modules/exemplars.ts';
 import { practiceModule } from '../modules/practice.ts';
 import { innerModule } from '../modules/inner.ts';
+import { devicesModule } from '../modules/devices.ts';
+import { consentModule } from '../modules/consent.ts';
+import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
@@ -1060,6 +1063,21 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         practiceModule({ lifeInPrompt: Boolean(config.lifeInPrompt && lifeRunner), herDays: config.herDays, worldState: () => sharedWorld ?? undefined }),
         // 她最近心里在想什么（ADR 0101，配置 innerLife）：念头是主动消息的计划器想的，计划器在后面才建，每次现取
         ...(config.innerLife ? [innerModule({ innerLine: contact => planners.get(contact.qq)?.innerLine(), log })] : []),
+        // 她能替他操作的设备的菜单（ADR 0148，配置 deviceControl）：名单里有男朋友档才有设备控制（同下面的 deviceOwner）；服务是异步起的，起来之前菜单是空串，每轮现取
+        ...(config.deviceControl !== 'off' && config.contacts.some(c => c.tier === 'boyfriend')
+            ? [devicesModule({ menu: () => deviceService?.control.menu() ?? '', allowed: contact => contact.tier === 'boyfriend' })]
+            : []),
+        // 他的请求等她点头（2026-10-30）：他发「/看屏幕」「/摄像头」时下面的 pendingAsk 先记下来，她写 <<同意>> 才做；只给男朋友档、过期的不算，每轮现取
+        consentModule({
+            ask: contact => {
+                if (contact.tier !== 'boyfriend') return undefined;
+                const pending = pendingAsk.get(contact.qq);
+                if (!pending || askExpired(pending.at, Date.now())) return undefined;
+                return askLine(pending.label, Math.floor((Date.now() - pending.at) / 60_000));
+            },
+        }),
+        // 主动找他时计划器写的说明（initiate.note）；没有开关，不存状态
+        initiateNoteModule(),
         // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态
         transcriptModule(),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
@@ -1305,7 +1323,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         : undefined;
     const deviceHooks: NonNullable<ContactPipelineOptions['devices']> | undefined = config.deviceControl !== 'off' && deviceOwner
         ? {
-            menu: () => deviceService?.control.menu() ?? '',
             parse: reply => deviceService?.control.parse(reply) ?? { reply: stripDeviceTokens(reply), proposals: [], rejected: [] },
             commit: parsed => deviceService?.control.commit(parsed),
         }
@@ -2073,11 +2090,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                         return journalOn(journal, loadSelfDiary(config.dataDir), date);
                     },
                 } : {}),
-                ask: (): string | undefined => {
-                    const pending = pendingAsk.get(contact.qq);
-                    if (!pending || askExpired(pending.at, Date.now())) return undefined;
-                    return askLine(pending.label, Math.floor((Date.now() - pending.at) / 60_000));
-                },
             } : {}),
             // 他的消息没有马上回的每一个原因逐条记账（ADR 0173）：只是旁观，记不进去也不影响回复
             ...(config.silenceNotice ? { onSilence: (info: SilenceInfo) => { try { recordSilence(config.dataDir, contact.qq, noteFromInfo(info, clockNow().getTime())); } catch (error) { log(`没回的原因记不进账（${error instanceof Error ? error.message : String(error)}）`); } } } : {}),

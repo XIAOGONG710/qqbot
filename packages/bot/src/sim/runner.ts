@@ -28,6 +28,9 @@ import { practiceModule } from '../modules/practice.ts';
 import { pastModule } from '../modules/past.ts';
 import { solveFrameModule } from '../modules/solve-frame.ts';
 import { innerModule } from '../modules/inner.ts';
+import { devicesModule } from '../modules/devices.ts';
+import { initiateNoteModule } from '../modules/initiate-note.ts';
+import type { DeviceControl } from '../platform/device-actions.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
 import { repetitionModule } from '../modules/repetition.ts';
@@ -137,8 +140,8 @@ export interface RunOptions {
     factHim?: boolean;
     /** 「做题式」写法（ADR 0146 实验）：run.ts 的 --frame solve；线上没有 */
     replyFrame?: 'solve';
-    /** 测试注入：设备控制的钩子（ADR 0148）；模拟器命令行不传 */
-    devices?: ContactPipelineOptions['devices'];
+    /** 测试注入：设备控制的钩子（ADR 0148）；模拟器命令行不传。菜单经模块（modules/devices.ts）放进提示词，不看档位，同迁移前 */
+    devices?: Pick<DeviceControl, 'menu' | 'parse' | 'commit'>;
     /** 逐条事实检查的档位（ADR 0137，run.ts 的 --fact）：覆盖场景自己写的；不传按场景 */
     factCheck?: 'off' | 'log' | 'fix';
     /** 日记里的世界（ADR 0026）：同学档的卡上的，run.ts 传 */
@@ -580,6 +583,9 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             practiceModule({ lifeInPrompt: Boolean(scenario.lifeInPrompt && scenario.autonomous), herDays: options.herDays ?? false, worldState: () => sharedWorld ?? undefined }),
             // 她最近心里在想什么（ADR 0101）：计划器在后面才建，每次现取
             ...(scenario.innerLife ? [innerModule({ innerLine: () => planner?.innerLine(), log: message => { if (epoch === responderEpoch) log(message); } })] : []),
+            ...(options.devices ? [devicesModule({ menu: () => options.devices!.menu(), allowed: () => true })] : []),
+            // 主动找他时计划器写的说明，同 App
+            initiateNoteModule(),
             // 只想一想的轮次：聊天原文换成一段回想，同 App
             transcriptModule(),
             // 「做题式」写法（ADR 0146 实验）：只有 --frame solve 时挂

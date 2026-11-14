@@ -15,6 +15,7 @@ import {
     COMPLETE_MARKER,
     FAILURE_MARKER,
     backupDirectoriesToPrune,
+    configuredDataDir,
     discoverStateBackup,
     isCompleteBackup,
     isReusableBackupArtifact,
@@ -105,7 +106,9 @@ function prune() {
     }
 }
 
-const statePlan = discoverStateBackup(root);
+const dataDir = configuredDataDir(root);
+log(dataDir ? `数据目录按 Koishi 配置：${dataDir}` : '没读到 Koishi 配置里的 dataDir，按 runtime/bot、runtime/bot-shadow 的顺序找');
+const statePlan = discoverStateBackup(root, dataDir);
 if (!force && isCompleteBackup(target, statePlan?.source ?? null)) {
     log(`今天已经有备份了（${day}），跳过`);
     process.exit(0);

@@ -81,6 +81,9 @@
 - `modules/solve-frame.ts`
 - `modules/inner.ts`
 - `modules/transcript.ts`
+- `modules/devices.ts`
+- `modules/consent.ts`
+- `modules/initiate-note.ts`
 - `st/`
 
 ## 开关

@@ -202,8 +202,6 @@ export interface ContactPipelineOptions {
     shapeAll?: boolean;
     /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
     dreams?: () => { appraisals: Appraisal[]; line?: string };
-    /** 他的请求等她点头（2026-10-30）：看屏幕 / 摄像头这类，她写 <<同意>> 才做 */
-    ask?: () => string | undefined;
     /** 她想查才查（<<查：…>>）：拿到想起来的记忆，再让她重写一次 */
     pullRecall?: (query: string) => Promise<string | undefined>;
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
@@ -300,8 +298,8 @@ export interface ContactPipelineOptions {
     shapeAsk?: boolean;
     /** 被认真问想法 / 原因时说长一点（配置 shapeLong，要 shape 开着，ADR 0150） */
     shapeLong?: boolean;
-    /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；菜单进提示词，回复里的 <device:…> 令牌在发送前登记并按档处理 */
-    devices?: Pick<DeviceControl, 'menu' | 'parse' | 'commit'>;
+    /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；回复里的 <device:…> 令牌在发送前登记并按档处理。菜单是解释器的模块（modules/devices.ts） */
+    devices?: Pick<DeviceControl, 'parse' | 'commit'>;
     /** 他刚才在 DSH 桌面上和她的对话（ADR 0177，配置 crossRecent）：只给男朋友档；返回一段放进提示词的话，没有就不放 */
     desktopRecent?: (now: Date) => string | undefined;
     /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
@@ -573,7 +571,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (perceived instanceof Promise) await perceived;
             // 她此刻（她那边 ADR 0021、身体 ADR 0025、状态行 ADR 0042 等）是解释器的模块（modules/her-now.ts）：perceive 时写进 turn.facts，
             // 经 turnModules 放进 state、world、body、plans、partnerBack 槽；下面的旧逻辑读 facts
-            const { world: around, body: bodyNow, state } = turn.facts;
+            const { world: around, body: bodyNow } = turn.facts;
             // 她这几天拍照修图（配置 lifeInPrompt）是解释器的模块（modules/practice.ts），经 turnModules 放进 practice 槽
             const selfNote = options.selfNote?.(time.getTime());
             // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
@@ -867,9 +865,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(common || today || peopleText.length ? [{ slot: 'disclosure' as const, text: disclosureRules(contact) }] : []),
                 { slot: 'time', text: describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }) },
                 ...when('days', days),
-                // 2026-10-30 线上：她凭空来了一句「今天有点累，就更不想说话了」，他看着莫名其妙——
-                // 「你现在」那几行是底子不是话题，没人问就别拿它开头。
-                ...(state || body ? [{ slot: 'groundNote' as const, text: '（上面「你现在」和身体那几行是你的底子，不是话题：没人问就别主动说你累了、心情怎样，也别把它当成一句话发出去）' }] : []),
+                // 「你现在」那几行是底子不是话题（DSH 10-30）由她此刻的模块（modules/her-now.ts）放进 groundNote 槽
                 // 今天的心情（按日期抽的「爱笑」「安静」）不再注入（10-30 用户：这种替她表态的都清掉）：
                 // 心情由真实发生的事推出来的 feelingLine 表达。
                 ...when('humanState', humanStateLine),
@@ -883,14 +879,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('promised', promised),
                 ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
                 ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
-                // 她能替他操作的设备（ADR 0148）：危机回合、只想一想（内心）的轮次不给
-                ...(options.devices && !crisisNow && !thinking ? [{ slot: 'devices' as const, text: options.devices.menu() }] : []),
+                // 她能替他操作的设备（ADR 0148）的菜单是解释器的模块（modules/devices.ts），经 turnModules 放进 devices 槽
                 ...when('sticker', stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined),
                 ...when('photo', photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)! : undefined),
                 ...when('intent', intentLine),
                 // 理解偏过、他最近的事（DSH 10-30 / 10-31）和「记忆由你自己决定」是解释器的模块（modules/self-memory.ts）
                 // 人称、正经问就先直接答、别琢磨怎么接（DSH 10-30 / 10-31）是解释器的模块（modules/reply-basics.ts），经 turnModules 放进 person、directAnswer、noOverthink 槽
-                ...(options.ask?.() ? [{ slot: 'herAsk' as const, text: options.ask()! }] : []),
+                // 他的请求等她点头（2026-10-30）是解释器的模块（modules/consent.ts），经 turnModules 放进 herAsk 槽
                 // 工作模式的三行（他在求她切工作 / 判断要不要动电脑 / 切到了工作）是解释器的模块（modules/work-mode.ts）
                 ...(deliberateNow ? [{ slot: 'deliberate' as const, text: options.deliberate?.note ?? DELIBERATE_NOTE }] : []),
                 ...when('routedHint', routedHint),
@@ -899,7 +894,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...when('quote', quoteLine),
                 ...when('intimate', intimateNow),
                 // 「做题式」写法（ADR 0146 实验，只有模拟器用）是解释器的模块（modules/solve-frame.ts），经 turnModules 放进 solveFrame 槽
-                ...(initiate ? [{ slot: 'initiateNote' as const, text: initiate.note }] : []),
+                // 主动找他时的说明是解释器的模块（modules/initiate-note.ts），经 turnModules 放进 initiateNote 槽
             ];
             const legacy: Module = {
                 id: 'contact-legacy',
