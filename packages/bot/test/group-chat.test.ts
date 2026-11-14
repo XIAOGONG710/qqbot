@@ -288,6 +288,13 @@ describe('群聊：进应用', () => {
         assert.equal(renderGroupStyle(undefined), undefined);
     });
 
+    test('有人问「你也是来养鱼的吗」：说明里给了口径', () => {
+        const note = groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', disguise: true, cover: '算是来养鱼的，被穹P拉进来的' });
+        assert.ok(note.includes('你也是来养鱼的吗'), note);
+        assert.ok(note.includes('算是来养鱼的，被穹P拉进来的'), note);
+        assert.ok(note.includes('别主动扯上他和你的关系'), note);
+    });
+
     test('导过以前的记录：补过课，但她是刚进群的', () => {
         const note = groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', veteran: true });
         assert.ok(note.includes('刚进群'), note);

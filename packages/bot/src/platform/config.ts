@@ -714,6 +714,8 @@ export interface GroupConfig {
     knowsBot?: boolean;
     /** 要装成真人（2026-11-14）：用原卡、不承认是 AI，被认真问就含糊带过去 */
     disguise?: boolean;
+    /** 进群的说法（2026-11-14）：有人问「你也是来养鱼的吗」「你是某人养的鱼吗」时照这个口径答 */
+    cover?: string;
 }
 
 export interface Contact {
@@ -1205,10 +1207,12 @@ export function parseGroups(value: unknown): GroupConfig[] {
         if (typeof o.name !== 'string' || !o.name.trim()) throw new Error(`配置 ${where}.name 应为群名`);
         if (o.knowsBot !== undefined && typeof o.knowsBot !== 'boolean') throw new Error(`配置 ${where}.knowsBot 应为 true 或 false（群里的人都知不知道她是 AI）`);
         if (o.disguise !== undefined && typeof o.disguise !== 'boolean') throw new Error(`配置 ${where}.disguise 应为 true 或 false（要不要装成真人）`);
+        if (o.cover !== undefined && (typeof o.cover !== 'string' || !o.cover.trim())) throw new Error(`配置 ${where}.cover 应为一句非空的话（进群的说法）`);
         return {
             id, name: o.name.trim(),
             ...(o.knowsBot === true ? { knowsBot: true } : {}),
             ...(o.disguise === true ? { disguise: true } : {}),
+            ...(typeof o.cover === 'string' && o.cover.trim() ? { cover: o.cover.trim().slice(0, 200) } : {}),
         };
     });
     const dup = groups.find((g, i) => groups.findIndex(h => h.id === g.id) !== i);

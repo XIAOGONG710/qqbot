@@ -3759,7 +3759,7 @@ ${body}
         })().catch(error => log(`[群 ${groupId}] 印象没写成：${error instanceof Error ? error.message : String(error)}`));
     }
 
-    async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean; disguise?: boolean }, reason: SpeakReason, bf: { qq: number; name: string } | undefined,
+    async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean; disguise?: boolean; cover?: string }, reason: SpeakReason, bf: { qq: number; name: string } | undefined,
         extra: { callers?: readonly string[]; pending?: number; replyTo?: number; caller?: number } = {}): Promise<void> {
         // 群里的人都知道她是 AI（用户标过）：原卡，被问时由她定；没标：承认版卡，认真问到就承认；有人说想不开：一律承认版（ADR 0067 / 0068 / 0208）
         // 都知道、或者要装成真人：用同学档原卡（她不用承认）；没标的群用承认版；危机一律承认版
@@ -3794,6 +3794,7 @@ ${body}
             // 群里人都知道她是 AI（knowsBot）：不用瞒、也不用主动提；危机那档照旧用承认版卡
             ...(group.knowsBot && reason !== 'crisis' ? { knowsBot: true } : {}),
             ...(group.disguise && reason !== 'crisis' && !group.knowsBot ? { disguise: true } : {}),
+            ...(group.cover ? { cover: group.cover } : {}),
         });
         const messages = [{ role: 'system' as const, content: system }, { role: 'user' as const, content: `${transcript}\n\n${note}` }];
         const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);
