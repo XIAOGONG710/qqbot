@@ -3762,6 +3762,8 @@ ${body}
             ...(memory ? { memory } : {}), ...(mood ? { mood } : {}),
             ...(herGroupNames.get(group.id) ? { myNames: herGroupNames.get(group.id)! } : {}),
             ...(entries.some(entry => entry.history === true) ? { veteran: true } : {}),
+            // 群里人都知道她是 AI（knowsBot）：不用瞒、也不用主动提；危机那档照旧用承认版卡
+            ...(group.knowsBot && reason !== 'crisis' ? { knowsBot: true } : {}),
         });
         const messages = [{ role: 'system' as const, content: system }, { role: 'user' as const, content: `${transcript}\n\n${note}` }];
         const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);

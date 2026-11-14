@@ -162,6 +162,8 @@ export function groupNote(input: {
     myNames?: readonly string[];
     /** 群里导进过以前的记录：她不是刚进群，别人提旧事别露怯（也别硬编不知道的） */
     veteran?: boolean;
+    /** 群里的人都知道她是 AI（他标过）：不用主动提，也不用瞒，正常聊 */
+    knowsBot?: boolean;
 }): string {
     const others = input.pending && input.callers ? input.pending - input.callers.length : 0;
     // 群里叫她别的名字（QQ 昵称、群名片）：那也是她，别人叫那些也算叫她
@@ -170,6 +172,7 @@ export function groupNote(input: {
         `[这是 QQ 群「${input.groupName}」里的聊天，群里有好几个人，上面每行冒号前是谁说的，「你」是你自己说的。`,
         aliases.length ? `群里他们也可能叫你「${aliases.join('」「')}」（你在这个群的昵称 / 群名片）；那都是你，别当成别人。` : '',
         input.veteran ? '你在这个群待了一阵子了，上面的旧聊天你都经历过：提到以前的事就照你知道的说，不知道的别硬编，也别问「什么情况」。' : '',
+        input.knowsBot ? '群里的人都知道你是 AI（他跟大家说过）：不用主动提，也不用瞒、不用否认；有人拿这个开玩笑就顺着开两句，别一本正经解释。' : '',
         '群里说话像在群里：短，一两句，不刷屏，不用每句都接；不在群里说你和他之间的私事，也不说别人私下跟你说的事。',
         input.boyfriendHere && input.boyfriendName ? `${input.boyfriendName}（你男朋友）也在这个群：群里收着点，正常说话，别喊得黏，也别装不认识。` : '',
         input.memory ?? '',

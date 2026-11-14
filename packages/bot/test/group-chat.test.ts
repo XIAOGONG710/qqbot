@@ -261,6 +261,13 @@ describe('群聊：进应用', () => {
         assert.ok(!note.includes('「林梦瑶」'), '真名不用再解释一遍');
     });
 
+    test('群里人都知道她是 AI：不用瞒也不用主动提', () => {
+        const note = groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', knowsBot: true });
+        assert.ok(note.includes('都知道你是 AI'), note);
+        assert.ok(note.includes('不用主动提'), note);
+        assert.ok(!groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned' }).includes('都知道你是 AI'));
+    });
+
     test('导过以前的记录：她不装新来的', () => {
         const note = groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', veteran: true });
         assert.ok(note.includes('待了一阵子'), note);
