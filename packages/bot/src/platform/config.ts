@@ -712,6 +712,8 @@ export interface GroupConfig {
     id: number;
     name: string;
     knowsBot?: boolean;
+    /** 要装成真人（2026-11-14）：用原卡、不承认是 AI，被认真问就含糊带过去 */
+    disguise?: boolean;
 }
 
 export interface Contact {
@@ -1202,7 +1204,12 @@ export function parseGroups(value: unknown): GroupConfig[] {
         if (!Number.isSafeInteger(id) || id <= 0) throw new Error(`配置 ${where}.id 应为群号`);
         if (typeof o.name !== 'string' || !o.name.trim()) throw new Error(`配置 ${where}.name 应为群名`);
         if (o.knowsBot !== undefined && typeof o.knowsBot !== 'boolean') throw new Error(`配置 ${where}.knowsBot 应为 true 或 false（群里的人都知不知道她是 AI）`);
-        return { id, name: o.name.trim(), ...(o.knowsBot === true ? { knowsBot: true } : {}) };
+        if (o.disguise !== undefined && typeof o.disguise !== 'boolean') throw new Error(`配置 ${where}.disguise 应为 true 或 false（要不要装成真人）`);
+        return {
+            id, name: o.name.trim(),
+            ...(o.knowsBot === true ? { knowsBot: true } : {}),
+            ...(o.disguise === true ? { disguise: true } : {}),
+        };
     });
     const dup = groups.find((g, i) => groups.findIndex(h => h.id === g.id) !== i);
     if (dup) throw new Error(`配置 groups 里群 ${dup.id} 重复`);

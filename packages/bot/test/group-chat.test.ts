@@ -268,11 +268,18 @@ describe('群聊：进应用', () => {
         assert.ok(!groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned' }).includes('都知道你是 AI'));
     });
 
-    test('导过以前的记录：她不装新来的', () => {
+    test('导过以前的记录：补过课，但她是刚进群的', () => {
         const note = groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', veteran: true });
-        assert.ok(note.includes('待了一阵子'), note);
-        assert.ok(note.includes('不知道的别硬编'), note);
-        assert.ok(!groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned' }).includes('待了一阵子'));
+        assert.ok(note.includes('刚进群'), note);
+        assert.ok(note.includes('别把旧事说成你在场'), note);
+        assert.ok(!groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned' }).includes('刚进群'));
+    });
+
+    test('要装成真人：别提、别承认是 AI', () => {
+        const note = groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', disguise: true });
+        assert.ok(note.includes('别主动提、也别承认自己是 AI'), note);
+        assert.ok(note.includes('含糊带过'), note);
+        assert.ok(!groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned' }).includes('别承认自己是 AI'));
     });
 
     test('没 @ 她、只在群里提到她：听见了；叫她名字才是一定要接', () => {
