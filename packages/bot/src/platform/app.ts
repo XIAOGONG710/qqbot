@@ -47,6 +47,7 @@ import { consentModule } from '../modules/consent.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
 import { continuityModule } from '../modules/continuity.ts';
+import { memoryModule } from '../modules/memory.ts';
 import { warmModule } from '../modules/warm.ts';
 import { feelingsModule } from '../modules/feelings.ts';
 import { humanStateModule } from '../modules/human-state.ts';
@@ -1101,6 +1102,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         timeBlockModule({ lagTail: config.lagTail }),
         // 连续性（ADR 0157–0163）：联系人流水线取回来的几行（turn.facts.continuity）照放；continuity 在解释器之后才建、取也在流水线里，所以总是挂
         continuityModule(),
+        // 记忆这一组（ADR 0012 / 0016–0020 / 0032 / 0043 / 0176 / 0177）：联系人流水线原位召回好写进 turn.facts.memory，这里只放；没有开关（没开长期记忆、名单外、crossRecent 没开时 facts 里没有）
+        memoryModule(),
         // 情绪余温（ADR 0028）和没了结的事（ADR 0023）：他道歉 / 安慰 / 说想她之后三轮软一点（卡上有心情才算），没了结的事读旧逻辑写的 turn.facts.unsettled；没有开关，不存状态
         warmModule({ log }),
         // 心境那一行、节奏、梦那一行（ADR 0102）：联系人流水线原位算好写进 turn.facts（读梦、作者写下的事、回想过的感受、带结算的世界账，要等小别扭是否生效），这里只放；没有开关（herFeelings 没开时 facts 里没有）

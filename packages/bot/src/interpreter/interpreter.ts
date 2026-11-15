@@ -29,6 +29,7 @@ import type { PhotoKind } from '../vision/photos.ts';
 import type { QuotePlan } from '../social/quote-reply.ts';
 import type { HumanValues } from '../human-values.ts';
 import type { DevelopmentSnapshot } from '../life/development.ts';
+import type { MemoryPieces } from '../modules/memory.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -129,6 +130,9 @@ export interface TurnFacts {
     feelingLine?: string;
     /** 心境 → 说话的量（2026-10-30）：和心境那一行同一处、同样的条件；modules/feelings.ts 放进 pace 槽。生成时的最多几条还在旧逻辑 */
     paceLine?: string;
+    /** 记忆这一组（ADR 0012 / 0016–0020 / 0032 / 0043 / 0176 / 0177）：联系人流水线原位召回 / 读好的几段（她的名字已换成「你」；召回的 await、关系概况和印象读缓存后台重读、要点的后台整理、召回日志都留在原位），
+     *  modules/memory.ts 照原样放进各自的槽，有 common / today / people 时接 disclosure。没有的不写（desktop 不要长期记忆，跟着 crossRecent） */
+    memory?: MemoryPieces;
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */

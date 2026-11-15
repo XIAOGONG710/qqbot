@@ -7,11 +7,12 @@ import { localDate } from '../local-date.ts';
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
 import { assessTurn, contributeTurn, perceiveTurn, type Module, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
+import type { MemoryPieces } from '../modules/memory.ts';
 import type { Piece, Slot } from '../interpreter/slots.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
-import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
+import { isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
 import { crisisFallback, faceContext, finalizeReply, reviewCrisisReply, reviewReply, type ReviewOptions } from '.././language/exit-check.ts';
 import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
 import { checkFacts, type FactCheckMode, type FactRecord } from '.././language/fact-check.ts';
@@ -820,6 +821,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 }
             }
             if (thinking) shown = { chat: [], omitted: 0 };
+            // 记忆这一组（关系概况、要点、他的私人记忆、工作房、DSH 桌面、公共记忆、那一天、今天和别人聊过的、提到的人）是解释器的模块（modules/memory.ts）：
+            // 召回留在上面原位（几次 await 等 Hindsight、关系概况和印象读缓存后台重读、要点后台整理），最终的字写进 turn.facts.memory，经 turnModules 放进各自的槽，披露分寸由模块接
+            const memoryNow: MemoryPieces = {
+                ...(relationship ? { relationship } : {}), ...(summary ? { summary } : {}), ...(recalled ? { recalled } : {}),
+                ...(work ? { work } : {}), ...(desktop ? { desktop } : {}), ...(common ? { common } : {}),
+                ...(recap ? { recap: recap.text } : {}), ...(today ? { today } : {}), ...(peopleText.length ? { people: peopleText } : {}),
+            };
+            if (Object.keys(memoryNow).length) turn.facts.memory = memoryNow;
             // 危机回合被问是不是真人 / 程序一律承认（ADR 0068 决策 7）：换用承认版的卡，不在运行时叠一条覆盖（ADR 0003 / 0067 的纪律）
             // 想一想的时候卡末尾那句“只输出你要发出去的消息：不写心理活动”正好和要求相反，这一次去掉（只有内心用）
             // 10-30 用户：把她身上「作者写的设定」拿掉——description / personality / scenario / 示例对话不再进提示词。
@@ -832,17 +841,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 以后迁出去的模块经 options.turnModules 加进来。原来按真假判断的照旧按真假，原来无条件放的照旧无条件放
             const when = (slot: Slot, text: string | undefined | false | null): Piece[] => (text ? [{ slot, text }] : []);
             const legacyPieces: Piece[] = [
-                ...when('relationship', relationship),
-                ...when('summary', summary),
-                ...when('recalled', recalled),
-                ...when('work', work),
-                ...when('desktop', desktop),
-                // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3：放在前面时问「昨天都干嘛了」她照着报喂猫、取快递，想不起那天记得住的麻辣烫，1/3）
-                ...when('common', common),
-                ...(recap ? [{ slot: 'recap' as const, text: recap.text }] : []),
-                ...when('today', today),
-                ...peopleText.map(text => ({ slot: 'people' as const, text })),
-                ...(common || today || peopleText.length ? [{ slot: 'disclosure' as const, text: disclosureRules(contact) }] : []),
+                // 记忆这一组（relationship、summary、recalled、work、desktop、common、recap、today、people、disclosure）是解释器的模块（modules/memory.ts），经 turnModules 放；
+                // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3）由槽位表的先后保证
                 // 时间块（ADR 0004 / 0105）是解释器的模块（modules/time-block.ts），经 turnModules 放进 time 槽
                 ...when('days', days),
                 // 「你现在」那几行是底子不是话题（DSH 10-30）由她此刻的模块（modules/her-now.ts）放进 groundNote 槽

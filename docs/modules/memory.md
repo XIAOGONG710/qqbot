@@ -8,6 +8,7 @@
 
 - `local-date.ts`
 - `memory/`
+- `modules/memory.ts`
 - `memory/history.ts`
 - `memory/archive.ts`
 - `memory/backfill.ts`

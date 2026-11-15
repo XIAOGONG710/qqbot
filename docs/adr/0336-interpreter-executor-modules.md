@@ -864,3 +864,15 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - `src/modules/feelings.ts`：`feelingsModule()`，只有 contribute，不再判断条件（都在算的地方）。App 和模拟器都总是挂。
 - 删掉的接线：`contact.ts` 里三个段落。死代码（`pursuitLine`、`describePursuits` / `describeMood` 的 import）另开提交清理。
 - 验证：基线 38/38 逐字不变；变异检验——模块不放，26 个场景报不一致；只是不放节奏，`feelings` 报不一致。`feelings-module.test.ts` 5 项、相关测试通过；类型检查通过。
+
+### 记忆这一组（2026-11-15）
+
+- 是什么：关系概况（ADR 0012，main 之后）、更早聊天的要点（ADR 0043）、他的私人记忆、她在 DSH 里做过的事（ADR 0176）、DSH 桌面上的对话（ADR 0177）、公共记忆（ADR 0016 / 0017）、
+  他问到的那一天她那边的流水账（ADR 0032）、她今天和别人聊过的（ADR 0020）、他提到的名单里的人（ADR 0016，一人一段），有公共记忆 / 今天的 / 提到的人时接对别人说起时的分寸（ADR 0020）。
+- 先补基线（`1fb3db7f`，子代理做的假 Hindsight 和 `memory` 场景）。迁移由子代理起草（只新建文件）。**召回全部留在原位**：几次 await 都等 Hindsight，前后夹着真人数值、`onHerDay`、perceive；
+  关系概况和印象是「读缓存、后台重读」，调用时机本身就是行为；要点会起后台整理；变淡统计、日志、记忆线索都还要用召回结果。旧逻辑在拼段落前把最终的字（已换成「你」）写进新的 `turn.facts.memory`，
+  模块按槽放；披露分寸由模块按同样的条件接（`disclosureRules` 只看名字和档位）。
+- `src/modules/memory.ts`：`memoryModule()`，只有 contribute，没有别的模块往这十个槽放东西。App 和模拟器都总是挂（模拟器有长期记忆和要点，`people.test.ts`、`context-window.test.ts` 走这一路）。
+- 基线覆盖：`memory` 场景里关系概况 4、私人记忆 10、公共记忆 3、那一天 1、今天的 3、提到的人 5、分寸 8；工作房、要点、桌面 0，分别由 `people.test.ts`、`context-window.test.ts`、`app.test.ts` 的 crossRecent 用例管。
+- 删掉的接线：`contact.ts` 里十个段落和 `disclosureRules` 的 import。
+- 验证：`memory` 逐字不变，基线 38/38；变异检验——模块不放、旧逻辑不写 `facts.memory`，`memory` 报不一致，`people.test.ts` / `context-window.test.ts` / `app.test.ts` 的 crossRecent 用例红；模拟器不挂模块，`people.test.ts`、`context-window.test.ts` 红。bot 全量 4474 过、13 跳过，红的 2 项是 DSH 那边的。
