@@ -36,7 +36,7 @@ import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import { asksToExplain, ENGAGED_INTENT, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, STILTED_WORDS } from '.././language/expression.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
-import { DELIBERATE_MAX_BUBBLES, deliberateTurn, shapeReply, type ShapePlan } from '.././language/shape.ts';
+import { DELIBERATE_MAX_BUBBLES, deliberateTurn, type ShapePlan } from '.././language/shape.ts';
 import { describeWorld, lastMealDish, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
 import { isExplicitCurrentPhotoRequest, type CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { dayPlan, describeSlot } from '.././life/day-plan.ts';
@@ -957,7 +957,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (atPull.stop) return atPull.text;
             reviewed = atPull.text;
             // 形状控制（配置 shape）：出口检查之后再看字数和条数，超了重写一次、还超就在分句处截断
-            let atShape = at('shape', shapeNow ? await shapeReply(reviewed, shapeNow, { regenerate, onRewriteAccepted, log }) : reviewed);
+            // 形状裁剪是形状模块（modules/shape.ts）的 reviewAt.shape：有形状时超字数重写一次、还超就按分句截断
+            let atShape = at('shape', reviewed);
             if (atShape instanceof Promise) atShape = await atShape;
             if (atShape.stop) return atShape.text;
             const shaped = atShape.text;

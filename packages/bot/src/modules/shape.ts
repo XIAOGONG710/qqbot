@@ -5,12 +5,13 @@
 //
 // 「照片 → 意图 → 心境 → 图片表情 → 深思 → 引用 → 形状 → 长短」这一串从末端倒着迁（见 modules/length.ts）：
 // 前面那几样还在旧逻辑里，旧逻辑写进 turn.facts，这里读；算出的形状写回 turn.facts.shape——长短的模块读它（要排在它后面），
-// 旧逻辑在拼完段落之后也读它：生成时按它调最多几条、发出去之前按它裁（shapeReply）。不存状态、不调模型。
+// 旧逻辑在拼完段落之后也读它：生成时按它调最多几条。发出去之前按它裁（shapeReply）是这个模块的 reviewAt.shape（ADR 0336「生成之后那一段」第 3 步）：
+// 只有 contribute 写了 facts.shape 才有事做，超字数重写一次、还超就按分句截断。不存状态。
 // 行为和迁移前 contact.ts 里的逐字一样（行为基线核对）。
 
 import type { Module } from '../interpreter/interpreter.ts';
 import { ENGAGED_INTENT } from '../language/expression.ts';
-import { describeShape, planShape, type ShapeShares } from '../language/shape.ts';
+import { describeShape, planShape, shapeReply, type ShapeShares } from '../language/shape.ts';
 import type { Log } from '../platform/log.ts';
 
 export interface ShapeModuleOptions {
@@ -32,6 +33,14 @@ export interface ShapeModuleOptions {
 export function shapeModule(options: ShapeModuleOptions): Module {
     return {
         id: 'shape',
+        reviewAt: {
+            // 发出去之前按这一轮的形状裁：没形状同步原样返回（同原来不 await）
+            shape(text, turn, ctx) {
+                const plan = turn.facts.shape;
+                if (!plan) return text;
+                return shapeReply(text, plan, { regenerate: ctx.regenerate, onRewriteAccepted: ctx.accept, log: ctx.log });
+            },
+        },
         contribute(turn) {
             const { facts } = turn;
             if (!options.shape || facts.crisis || facts.stickerOnly || facts.photo || facts.interruption || turn.thinking || facts.deliberate) return [];
