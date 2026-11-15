@@ -3,6 +3,7 @@
 import { resolve } from 'node:path';
 import { statSync } from 'node:fs';
 import { feedbackDigest, readFeedback } from './feedback-digest.ts';
+import { liveDataDir } from '../ops/data-dir.ts';
 
 const args = process.argv.slice(2);
 try {
@@ -14,7 +15,7 @@ try {
     }
     const days = Number(options.get('--days') ?? 7);
     if (!Number.isFinite(days) || days <= 0 || !Number.isFinite(days * 86_400_000)) throw new Error('天数无效');
-    const dataDir = resolve(options.get('--dir') ?? resolve(import.meta.dirname, '../../../../runtime/bot'));
+    const dataDir = resolve(options.get('--dir') ?? liveDataDir());
     try { if (!statSync(dataDir).isDirectory()) throw new Error('不是目录'); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     console.log(feedbackDigest(readFeedback(dataDir), new Date(), days));

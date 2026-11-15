@@ -3,18 +3,19 @@
 //   add --id <名字> --title "<一句话>" --why "<她为什么想要，用她会说的话的方向>" [--steps "第一步;第二步;第三步"]
 //   step <id> <第几步>                            标这一步做完了（记当前时刻）
 //   status <id> <active|paused|dropped|done>     暂停 / 放下 / 做完 / 恢复；内置的 courses、camera 也这样改
-// 写的是 <数据目录>/pursuits.json（默认 runtime/bot）。别替她定一个作者没说过的未来：毕业以后做什么、家里的期待这类悬着的问题不是追求。
+// 写的是 <数据目录>/pursuits.json（默认线上 Koishi 配置的 dataDir）。别替她定一个作者没说过的未来：毕业以后做什么、家里的期待这类悬着的问题不是追求。
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeJsonAtomic } from '../memory/json-file.ts';
 import { BUILTIN_PURSUITS, mergePursuits, pursuitsPath, validPursuits, type Pursuit, type PursuitStatus } from '../life/pursuits.ts';
+import { liveDataDir } from './data-dir.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
 const one = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
-const dir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? resolve(repoRoot, 'runtime/bot'));
+const dir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? liveDataDir());
 const path = pursuitsPath(dir);
 const command = args[0];
 const STATUS: Record<PursuitStatus, string> = { active: '在做', paused: '暂停', dropped: '放下了', done: '做完了' };

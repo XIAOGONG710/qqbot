@@ -1,14 +1,15 @@
 // 重启记录（任务书 T3a）：
 //   npm run restart-log -w packages/bot -- --to <提交> --kind behavior|safety|recovery --reason "<为什么>" [--by claude] [--at <ISO，默认现在>] [--file <路径>]
 //   npm run restart-log -w packages/bot -- --list [--file <路径>]
-// 默认文件：线上目录的 runtime/bot/restarts.log（runtime/ 被忽略，不进仓库）。每次重启 / 上线做完就追加一行；上线前检查（golive-check）据此挡「不满 48 小时」。
+// 默认文件：线上数据目录（Koishi 配置的 dataDir）下的 restarts.log（runtime/ 被忽略，不进仓库）。每次重启 / 上线做完就追加一行；上线前检查（golive-check）据此挡「不满 48 小时」。
 // kind：behavior 会改变她的行为或多一个变量（计入 48 小时）；safety 修故障 / 安全；recovery 整机重启 / 崩溃后恢复，同一版代码。
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { appendRestart, behaviorGap, readRestartLog, RESTART_KINDS, type RestartKind } from './restart-log.ts';
+import { liveDataDir } from './data-dir.ts';
 
 const args = process.argv.slice(2);
 const option = (name: string) => { const at = args.indexOf(name); return at >= 0 ? args[at + 1] : undefined; };
-const file = resolve(option('--file') ?? resolve(import.meta.dirname, '../../../../runtime/bot/restarts.log'));
+const file = resolve(option('--file') ?? join(liveDataDir(), 'restarts.log'));
 
 if (args.includes('--list')) {
     const entries = readRestartLog(file);

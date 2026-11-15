@@ -1,6 +1,6 @@
 // node src/ops/selfcheck-cli.ts [--chat <聊天 jsonl>]... [--limit 10] [--max-chars 25] [--card <角色卡 json>] [--prompt]
 // 人格自检（ADR 0167）：最近十条回复对照设定卡，只出线索，不改任何东西、不发群。
-//   --chat    聊天记录（可多次；默认 <数据目录>/chats/<QQBOT_OWNER_QQ>.jsonl，数据目录默认 runtime/bot；
+//   --chat    聊天记录（可多次；默认 <数据目录>/chats/<QQBOT_OWNER_QQ>.jsonl，数据目录默认线上 Koishi 配置的 dataDir；
 //             没设环境变量 QQBOT_OWNER_QQ 时必须给 --chat）
 //   --card    哪一档的卡（默认 characters/linmengyao/st/linmengyao-{tier}.json；--tier 选档，默认 boyfriend）
 //   --prompt  额外打印交给模型逐条判断的提示词（需要模型时自己贴给任意模型；本工具不调模型、不花 token）
@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildJudgePrompt, checkReplies, recentReplies } from '../language/selfcheck.ts';
+import { liveDataDir } from './data-dir.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
@@ -18,7 +19,7 @@ const one = (name: string) => all(name).at(-1);
 const abs = (path: string) => resolve(process.env.INIT_CWD ?? process.cwd(), path);
 
 const tier = one('--tier') ?? 'boyfriend';
-const dir = resolve(repoRoot, one('--dir') ?? 'runtime/bot');
+const dir = resolve(repoRoot, one('--dir') ?? liveDataDir());
 const chats = all('--chat').map(abs);
 const ownerQq = process.env.QQBOT_OWNER_QQ?.trim();
 if (!chats.length && !/^\d+$/.test(ownerQq ?? '')) {

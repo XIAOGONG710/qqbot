@@ -1,4 +1,4 @@
-// node src/ops/heartbeat-watch-cli.ts [--dir <数据目录，默认 runtime/bot>] [--max-minutes 15] [--every 60] [--once]
+// node src/ops/heartbeat-watch-cli.ts [--dir <数据目录，默认线上 Koishi 配置的 dataDir>] [--max-minutes 15] [--every 60] [--once]
 // 看 heartbeat.json 多久没更新（超过 --max-minutes 分钟且没有维护旗就告警）。不改任何东西，除了下面的告警输出。
 // 告警通道可插拔，默认两处：控制台一行；数据目录里的 ALERT.txt（故障时写，恢复时删）。
 // 推送留空，用哪个服务由用户定：设环境变量 QQBOT_ALERT_COMMAND（比如调 ntfy / Bark 的 curl），故障和恢复时各运行一次，
@@ -9,10 +9,11 @@ import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { checkHeartbeat, HEARTBEAT_STALE_MS, watchStep, type AlertSink } from '../platform/heartbeat.ts';
+import { liveDataDir } from './data-dir.ts';
 
 const args = process.argv.slice(2);
 const option = (name: string) => { const at = args.indexOf(name); return at >= 0 ? args[at + 1] : undefined; };
-const dataDir = resolve(option('--dir') ?? resolve(import.meta.dirname, '../../../../runtime/bot'));
+const dataDir = resolve(option('--dir') ?? liveDataDir());
 const maxAgeMs = Number(option('--max-minutes') ?? HEARTBEAT_STALE_MS / 60_000) * 60_000;
 const everyMs = Number(option('--every') ?? 60) * 1000;
 const once = args.includes('--once');

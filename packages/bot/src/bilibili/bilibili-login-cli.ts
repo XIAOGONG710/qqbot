@@ -1,5 +1,5 @@
 // node src/bilibili-login-cli.ts [--data-dir <目录>] [--check] [--probe [--dm <uid>]] [--no-open]
-// 给她的 B 站号扫码登录（ADR 0089）。默认数据目录是仓库根目录下的 runtime/bot（线上那份在 qqbot/runtime/bot）；
+// 给她的 B 站号扫码登录（ADR 0089）。默认数据目录是线上 Koishi 配置的 dataDir（读不到配置才用仓库根目录下的 runtime/bot）；
 // --check 只确认现有凭证还能不能用；--probe 只读体检（搜索、读字幕）；--probe --dm <uid> 另外真发一条测试私信；
 // --no-open 不自动打开二维码图片（只在终端里画）。
 import { spawn } from 'node:child_process';
@@ -7,11 +7,12 @@ import { resolve } from 'node:path';
 import { realRequest } from './bilibili-account.ts';
 import { checkLogin, runLogin } from './bilibili-login.ts';
 import { runProbe } from './bilibili-probe.ts';
+import { liveDataDir } from '../ops/data-dir.ts';
 
 const args = process.argv.slice(2);
 const value = (name: string) => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };
 const given = value('--data-dir');
-const dataDir = given ? resolve(process.env.INIT_CWD ?? process.cwd(), given) : resolve(import.meta.dirname, '../../../../runtime/bot');
+const dataDir = given ? resolve(process.env.INIT_CWD ?? process.cwd(), given) : liveDataDir();
 const deps = {
     request: realRequest,
     dataDir,

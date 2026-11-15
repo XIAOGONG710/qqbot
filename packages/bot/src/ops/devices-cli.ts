@@ -11,11 +11,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { breakerPath, createBreaker } from '../bilibili/platform-breaker.ts';
 import { devicesSecretsPath, guessHubHost, loadDeviceSecrets, newDeviceSecrets, writeDeviceSecrets } from '../platform/device-service.ts';
+import { liveDataDir } from './data-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(name);
 const value = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
-const dataDir = resolve(process.env.INIT_CWD ?? process.cwd(), value('--data-dir') ?? 'runtime/bot');
+const dataDir = resolve(process.env.INIT_CWD ?? process.cwd(), value('--data-dir') ?? liveDataDir());
 const command = args[0];
 
 if (command === 'init') {

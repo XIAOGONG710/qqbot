@@ -2,7 +2,7 @@
 //   list                         列出现有的事，和它们此刻在她心里还剩多重
 //   add --id <名字> --kind <joy|relief|worry|sad|annoyed|tired> --strength <1|2|3> --cause "<她能说出口的一句事实>" [--at "2026-10-25 20:00"|now] [--half-life <小时>]
 //   remove <id>
-// 写的是 <数据目录>/moments.json（默认 runtime/bot）；文件由作者管，代码和模型都不往里写。强度：1 小事，2 明显，3 大事。
+// 写的是 <数据目录>/moments.json（默认线上 Koishi 配置的 dataDir）；文件由作者管，代码和模型都不往里写。强度：1 小事，2 明显，3 大事。
 // 来由要像她自己能说的一句事实（“高数小测没考好”），不要写她的情绪或台词；事情是作者定的，别让她经历作者没批准的大事。
 
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -13,6 +13,7 @@ import { appraisals, FEELING_KINDS, FEELING_NAME, feelingsAt, validMoments, type
 import { momentsPath } from '../emotion/moments.ts';
 import { calendarDate, stateTimestamp } from '../memory/state-schema.ts';
 import { DatabaseSync } from 'node:sqlite';
+import { liveDataDir } from './data-dir.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
@@ -30,7 +31,7 @@ function run(): void {
         values.set(key, value);
     }
     const one = (name: string) => values.get(name);
-    const dir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? resolve(repoRoot, 'runtime/bot'));
+    const dir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? liveDataDir());
     const path = momentsPath(dir);
     const command = args[0];
     if ((command === 'remove' && positional.length !== 1) || (command !== 'remove' && positional.length)) throw new CommandError('用法错误：多余或缺少参数');

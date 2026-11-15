@@ -11,11 +11,12 @@ import { aiPhotoReviewModelFromImageDescriber, createAiPhotoVisualReviewer, qual
 import { configuredImageDescriber } from '../vision/vision.ts';
 import { loadConfig } from '../platform/config.ts';
 import { aiPhotoLivePreflight, runAiPhotoLiveCheck } from './ai-photo-live-check.ts';
+import { liveDataDir } from './data-dir.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
 const one = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
-const baseDir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? resolve(repoRoot, 'runtime/bot'));
+const baseDir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? liveDataDir());
 const command = args[0];
 let draftStore: ReturnType<typeof aiPhotoDraftStore> | undefined;
 const drafts = () => draftStore ??= aiPhotoDraftStore({ dir: resolve(baseDir, 'ai-photo-drafts'), log: line => console.log(line) });

@@ -9,7 +9,7 @@
 // 外网：每次也解析一下模型接口的域名、再连一下它的 443；最近 10 次里 7 次以上不通就记一行，最近 5 次都通了再记一行（不动手，只留痕）。
 // 10-11 12:15–19:52 虚拟机解析不了外网，她连不上模型、主动消息全失败，守护只看进程和端口，一点没发现。
 // 10-18 02:05 起的断网是时好时坏（DNS 偶尔成功、新连接大半超时），原来「连着 10 分钟解析不了」永远凑不齐，所以改成滑动窗口、并且加连 443。
-// 告警直接发到用户的 QQ：runtime/bot/alert.json 里 enabled 为 true 并写了 qq 才发（packages/bot/src/ops/alert-qq.ts），默认什么都不发。
+// 告警直接发到用户的 QQ：线上数据目录（Koishi 配置的 dataDir）下的 alert.json 里 enabled 为 true 并写了 qq 才发（packages/bot/src/ops/alert-qq.ts），默认什么都不发。
 //
 // node scripts/services-watchdog.mjs [--once]（--once：只查一次、打印结果、不动手，用来自检）
 import { execFileSync, spawn } from 'node:child_process';
@@ -20,6 +20,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createNetWatch } from './net-watch.mjs';
+import { configuredDataDir } from './backup-state.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const once = process.argv.includes('--once');
@@ -33,7 +34,9 @@ const RESTART_WINDOW_MS = 10 * 60_000;
 const NET_HOST = 'api.deepseek.com';
 /** 最近 10 次检查里不通的有 7 次以上算断；断了以后最近 5 次都通算恢复（net-watch.mjs） */
 const NET_WINDOW = 10;
-const ALERT_FILE = join(root, 'runtime', 'bot', 'alert.json');
+// 告警开关在线上数据目录里（Koishi 配置的 dataDir，11-13 起是 runtime/bot-shadow）；读不到配置才用 runtime/bot。
+// 原来写死 runtime/bot：数据目录换走、旧目录改名之后，守护读不到开关，QQ 告警就悄悄停了
+const ALERT_FILE = resolve(root, configuredDataDir(root) ?? 'runtime/bot', 'alert.json');
 
 const say = (text) => {
     const line = `${new Date().toLocaleString('zh-CN', { hour12: false })} ${text}`;

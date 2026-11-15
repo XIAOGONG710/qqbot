@@ -6,10 +6,11 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { breakerPath, createBreaker } from '../bilibili/platform-breaker.ts';
+import { liveDataDir } from './data-dir.ts';
 
 const args = process.argv.slice(2);
 const flagValue = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
-const dataDir = resolve(process.env.INIT_CWD ?? process.cwd(), flagValue('--data-dir') ?? 'runtime/bot');
+const dataDir = resolve(process.env.INIT_CWD ?? process.cwd(), flagValue('--data-dir') ?? liveDataDir());
 const command = args[0];
 
 function platforms(): string[] {

@@ -2,7 +2,7 @@
 //   list                                          列出库里的梗（词、把握、意思、出现几次、最近一次）
 //   add "<词>" "<一句话意思>" [--example "<例句>"]  作者手动加一个（比如你刷到她还不知道的新梗）；把握记“高”
 //   remove "<词>"                                 删掉一个（学错了 / 不想让她用）
-// 库在 <数据目录>/memes/memes.json（默认 runtime/bot）；她自己每 12 小时从热榜学新的（配置 memes + bilibiliAccount），手动加的同样受 45 天过期约束——
+// 库在 <数据目录>/memes/memes.json（默认线上 Koishi 配置的 dataDir）；她自己每 12 小时从热榜学新的（配置 memes + bilibiliAccount），手动加的同样受 45 天过期约束——
 // 过期是按“最近一次在榜上出现”算的，手动加的从加的那天起算，之后不在榜上就会过期；想长期留着，隔一阵再 add 一次。
 // 手动加的也过敏感词（政治、灾难、案件、低俗、骂人的一律不收）和长度检查。
 
@@ -10,12 +10,13 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadMemes, MEME_BLOCK, memesPath, updateMemes, trimMemes, type MemeEntry } from '../language/memes.ts';
 import { parseMemeArgs } from './meme-cli-args.ts';
+import { liveDataDir } from './data-dir.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 let parsed: ReturnType<typeof parseMemeArgs>;
 try { parsed = parseMemeArgs(process.argv.slice(2)); }
 catch (error) { console.error(error instanceof Error ? error.message : '参数无效'); process.exit(2); }
-const dir = resolve(process.env.INIT_CWD ?? process.cwd(), parsed.dir ?? resolve(repoRoot, 'runtime/bot'));
+const dir = resolve(process.env.INIT_CWD ?? process.cwd(), parsed.dir ?? liveDataDir());
 const path = memesPath(dir);
 const { command, positional } = parsed;
 const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();

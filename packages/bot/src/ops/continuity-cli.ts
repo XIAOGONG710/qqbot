@@ -1,16 +1,17 @@
 // node src/ops/continuity-cli.ts identity status | check | verify | note "<说明>"
 // node src/ops/continuity-cli.ts memory summary | verify | tail [N] | note "<说明>"
-// 设定账本和记忆账本（ADR 0157 / 0158）的命令行：看、验、手动补一条说明。可选 --data-dir D（默认 runtime/bot）、--repo R（默认当前仓库）。
+// 设定账本和记忆账本（ADR 0157 / 0158）的命令行：看、验、手动补一条说明。可选 --data-dir D（默认线上 Koishi 配置的 dataDir）、--repo R（默认当前仓库）。
 // 账本只追加；这里没有删除或改写的入口。账本验不过时，修之前先留着原文件，再让我看。
 
 import { resolve } from 'node:path';
 import { Identity } from '../memory/identity.ts';
 import { memoryLedger, recordNote, summarize } from '../memory/memory-audit.ts';
+import { liveDataDir } from './data-dir.ts';
 
 const args = process.argv.slice(2);
 const flagValue = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 const base = process.env.INIT_CWD ?? process.cwd();
-const dataDir = resolve(base, flagValue('--data-dir') ?? 'runtime/bot');
+const dataDir = resolve(base, flagValue('--data-dir') ?? liveDataDir());
 const repoRoot = resolve(base, flagValue('--repo') ?? '.');
 const [area, command, ...rest] = args.filter((arg, i) => !arg.startsWith('--') && args[i - 1] !== '--data-dir' && args[i - 1] !== '--repo');
 

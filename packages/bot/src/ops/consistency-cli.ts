@@ -9,11 +9,12 @@ import { checkConsistency, describeFindings, type SaidRow } from '../platform/co
 import { loadCharacterCard } from '../st/card.ts';
 import { worldState } from '../world/world.ts';
 import { localDate } from '../local-date.ts';
+import { liveDataDir } from './data-dir.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
 const one = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
-const dataDir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? resolve(repoRoot, 'runtime/bot'));
+const dataDir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? liveDataDir());
 const cardFile = resolve(process.env.INIT_CWD ?? process.cwd(), one('--card') ?? resolve(repoRoot, 'characters/linmengyao/st/linmengyao-boyfriend.json'));
 let qq = Number(one('--qq'));
 if (!qq && existsSync(join(dataDir, 'config.json'))) {

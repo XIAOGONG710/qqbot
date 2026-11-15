@@ -6,11 +6,12 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validInnerState, type InnerState } from '../proactive/inner.ts';
+import { liveDataDir } from './data-dir.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
 const one = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
-const dir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? join(repoRoot, 'runtime/bot/proactive'));
+const dir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? join(liveDataDir(), 'proactive'));
 const last = Number(one('--last') ?? 30);
 const GOES = { tell: '想告诉他', ask: '想问他', keep: '自己想想' } as const;
 
