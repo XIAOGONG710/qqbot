@@ -1,13 +1,21 @@
 // 这一轮的意图（意图阶梯，language/intent.ts 的 describeIntent）作为解释器的模块（ADR 0336 第 5 步）：
 // - assess 时按阶梯（约 30 级：危机、小别扭、会拒绝、亲密邀约、吃醋、撒娇、追问……）算出这一轮她想怎么接，写进 turn.facts.baseIntent；
 //   注册在 assess 的最前面，后面的模块（被打断、小梗那几样的让路规则）和旧逻辑都读它。只想一想时不算（不是在聊天）。
-// - 不放段落：意图行由旧逻辑在照片 / 被打断改写之后放进 intent 槽，那几样各自迁成模块之前不动。
+// - 不放段落：意图行由 modules/intent-line.ts 放进 intent 槽（读下面定下的 facts.intent）。
 // - 开关（会拒绝、拒绝之后、吃醋、追问、今天的小事、她的追求）是模块的选项；输入里的危机、小别扭、她那边此刻是 turn.facts 里已有的判断，
 //   她此刻在干嘛和作息、挂着的事、她答应的事、她那边还没说过的事由旧逻辑写进 turn.facts（以后各自迁成模块时改由那些模块写）。
+// 最终的意图（ADR 0336「判断那一串」第 2 步，decideAt.intent）：照片判断之后。和迁移前联系人流水线里的逐字一样：
+// - 这一轮发照片（不是主动那条——它的意图在 initiate.note 里）：意图换成「发这一类照片」那一句；发的是审核过的「现在的照片」时换成只发这一张那一句；
+// - 他要「现在」的照片但没有匹配图（facts.photoUnavailable）：换成如实说发不了那一句；
+// - 被打断的这一轮（ADR 0115）：不带意图（和「先接他的话、顺带说一声刚被什么岔了一下」冲突）；
+// - 其余用意图阶梯给的 baseIntent。
+// 小别扭 / 和好真的生效 = 最终的意图就是小别扭那一句（没被照片、被打断、更高的意图盖掉）：写 grievanceActive，是小别扭（不是和好）再写 sulk；记一行日志。有意图也记一行。
 // 阶梯本身原样不动；行为和迁移前 contact.ts 里的逐字一样（行为基线 intents 等场景核对）。
 
 import type { Module, Turn } from '../interpreter/interpreter.ts';
+import { describeGrievance } from '../emotion/grievance.ts';
 import { describeIntent } from '../language/intent.ts';
+import { photoIntent } from '../vision/photos.ts';
 import { projectActivity } from '../life/projects.ts';
 
 export interface IntentModuleOptions {
@@ -56,6 +64,26 @@ export function intentOf(turn: Turn, options: IntentModuleOptions): string | und
 export function intentModule(options: IntentModuleOptions = {}): Module {
     return {
         id: 'intent',
+        decideAt: {
+            intent: (turn, ctx) => {
+                const { facts } = turn;
+                const { grievance } = facts;
+                const intent = facts.photo && !turn.initiate
+                    ? (facts.photoPrompt ? '[这一轮你想：他明确要看现在的照片，你有一张与此刻匹配、已经审核过的：自然带一句后发这一张；别换成别的照片]' : photoIntent(facts.photo))
+                    : facts.photoUnavailable
+                        ? '[这一轮你想：他明确要看现在的照片，但现在没有一张已经审核且与此刻匹配的；如实说这会儿发不了，别拿以前的图冒充“现在”，也别承诺马上补发]'
+                        : facts.interruption ? undefined : facts.baseIntent;
+                if (intent) facts.intent = intent;
+                if (grievance && intent === describeGrievance(grievance)) {
+                    facts.grievanceActive = true;
+                    if (grievance.stage === 'sulk') facts.sulk = true;
+                    ctx.log(grievance.cause === 'ignored'
+                        ? '小别扭：她倾诉了几条他隔了很久才回（他回来后第一轮；日志不记内容）'
+                        : `${grievance.stage === 'makeup' ? '和好' : '小别扭'}：他隔了 ${grievance.days} 天才来（他回来后第 ${grievance.round + 1} 轮；日志不记内容）`);
+                }
+                if (intent) ctx.log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
+            },
+        },
         assess(turn) {
             const intent = intentOf(turn, options);
             if (intent) turn.facts.baseIntent = intent;

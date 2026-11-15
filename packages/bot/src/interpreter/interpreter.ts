@@ -101,6 +101,8 @@ export interface TurnFacts {
     meme?: string;
     /** 这一轮小别扭真的生效（意图就是小别扭那一句；旧逻辑在照片 / 被打断改写意图之后写）：可以跑命令那一行（modules/shell.ts）读它 */
     grievanceActive?: boolean;
+    /** 这一轮生效的是小别扭（不是和好）：出口检查放过「隔了很多天才来」这类带点抱怨的话（ADR 0074）；和 grievanceActive 同一处写（modules/intent.ts 的 decideAt.intent） */
+    sulk?: boolean;
     /** 这一轮放的在读的书和进度（ADR 0015，modules/books.ts 写）；旧逻辑的出口检查拿进度核对她说的第几章。他没提、她也没在看书时没有 */
     books?: DescribedBooks;
     /** 她这一天半里已经主动跟他说过的事（ADR 0098，modules/repetition.ts 写）；危机回合不算。旧逻辑的形状读它：带自己的事时跳过说过了的 */
@@ -307,7 +309,7 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['photo'] as const;
+export const DECIDE_STAGES = ['photo', 'intent'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */

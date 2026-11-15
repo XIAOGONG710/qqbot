@@ -29,7 +29,7 @@ import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from '.././social
 import type { SilenceInfo } from '.././social/silence.ts';
 import { describeMood, moodAt, readingActivities } from '.././life/her-days.ts';
 import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
-import { describeGrievance, grievanceNow, ignoredNow } from '.././emotion/grievance.ts';
+import { grievanceNow, ignoredNow } from '.././emotion/grievance.ts';
 import { needsCareText } from '.././language/intent.ts';
 import { TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
@@ -58,7 +58,7 @@ import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts'
 import { lastNight, withLastNight } from '.././life/nights.ts';
 import { describeHumanValues, type HumanValues } from '.././human-values.ts';
 import { auditDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
-import { photoIntent, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
+import type { PhotoKind, PhotoShelf } from '.././vision/photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
 
 const DAY_MS = 86_400_000;
@@ -605,19 +605,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 梗百科词库（2026-10-29）是解释器的模块（modules/meme-dict.ts），挂在热梗之后（读 turn.facts.meme）
             // 主动发的那条（喂完猫拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
             // 被打断的这一轮（ADR 0115）：不带“先直接回答他刚问的”这类意图、不套形状 / 长短提示——它们和“先接他的话、顺带说一声刚被什么岔了一下”冲突，模型会按更紧的那条来、把打断吞掉（模拟 5/5 没提）
-            const intent = photoNow && !initiate
-                ? (photoPromptNow ? '[这一轮你想：他明确要看现在的照片，你有一张与此刻匹配、已经审核过的：自然带一句后发这一张；别换成别的照片]' : photoIntent(photoNow))
-                : currentPhotoUnavailableNow
-                    ? '[这一轮你想：他明确要看现在的照片，但现在没有一张已经审核且与此刻匹配的；如实说这会儿发不了，别拿以前的图冒充“现在”，也别承诺马上补发]'
-                    : interruption ? undefined : baseIntent;
-            const grievanceActive = Boolean(grievance && intent === describeGrievance(grievance));
-            // 这一轮小别扭真的生效（意图就是小别扭那一句）：可以跑命令那一行（modules/shell.ts）读它
-            if (grievanceActive) turn.facts.grievanceActive = true;
-            sulkNow = grievanceActive && grievance!.stage === 'sulk';
-            if (grievanceActive) log(grievance!.cause === 'ignored'
-                ? '小别扭：她倾诉了几条他隔了很久才回（他回来后第一轮；日志不记内容）'
-                : `${grievance!.stage === 'makeup' ? '和好' : '小别扭'}：他隔了 ${grievance!.days} 天才来（他回来后第 ${grievance!.round + 1} 轮；日志不记内容）`);
-            if (intent) log(`这一轮有意图：${intent.slice('[这一轮你想：'.length, -1)}`);
+            // 最终的意图和小别扭是否生效是解释器的模块（modules/intent.ts 的 decideAt.intent）：按照片 / 「现在的照片发不了」/ 被打断改写 baseIntent，
+            // 写进 turn.facts.intent、grievanceActive、sulk，两行日志也在那里记；下面读
+            decideStage(options.turnModules ?? [], 'intent', turn, decideCtx);
+            const intent = turn.facts.intent;
+            const grievanceActive = Boolean(turn.facts.grievanceActive);
+            sulkNow = Boolean(turn.facts.sulk);
             // 前一天的世界（到那天结束）：小测出分这类事第二天她还记着（ADR 0106）；只在开了心境时算
             // 她自己的追求（ADR 0104）：进度只来自她做过的事（生活账里的摄影）和出分的小测
             const pursuitList = options.pursuits && contact.tier === 'boyfriend' && herSchedule ? options.pursuits() : [];
@@ -735,7 +728,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 : undefined;
             // 长短不一（ADR 0024）和形状（ADR 0091）是解释器的模块（modules/length.ts、modules/shape.ts）；它们要的前面那几样在这里写进 turn.facts
             Object.assign(turn.facts, {
-                ...(intent ? { intent } : {}), ...(cue ? { cue } : {}), ...(stickerOnlyNow ? { stickerOnly: true } : {}),
+                ...(cue ? { cue } : {}), ...(stickerOnlyNow ? { stickerOnly: true } : {}),
                 ...(deliberateNow ? { deliberate: true } : {}), ...(routedHint ? { routedHint } : {}), ...(low ? { low: true } : {}), agendaTopics,
                 // 「/亲热」那一行在上面原位取（每取一次扣一条、写文件），由解释器的模块（modules/intent-line.ts）放
                 ...(intimateNow ? { intimateLine: intimateNow } : {}),

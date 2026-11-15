@@ -1078,3 +1078,14 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   `photo` / `photoDish` 原来在拼段落前才写进 facts，现在判断完就写（中间没有模块读它们）。流水线在原位调 `decideStage('photo')`，后面的意图、图片表情、深思、清单照旧从 facts 读。
 - 这一模块 App 和模拟器都总是挂；直接调流水线又不挂它的调用方不再发照片（原来也清不掉编号，见第 9 步的注意）。
 - 验证：基线 41/41 逐字不变；变异检验——流水线不调 `decideStage('photo')`，`media` 报不一致。`decide-stage.test.ts` 10 项（含基线走不到的「现在的照片」审核通过 / 没有匹配图两条路），涉及照片的测试共 1134 项通过；类型检查通过。
+
+### 判断那一串，第 2 步：最终的意图和小别扭是否生效（2026-11-16）
+
+- 是什么：照片判断之后把意图阶梯给的 `baseIntent` 改写成这一轮最终的意图——发照片换成发照片那一句（审核过的「现在的照片」是只发这一张那一句；主动那条不换）、「现在的照片」发不了换成如实说、
+  被打断的这一轮不带意图；最终的意图就是小别扭那一句时才算小别扭 / 和好生效（`grievanceActive`），两行日志。
+- `DECIDE_STAGES` 加 `intent`。挂在**意图阶梯模块** `modules/intent.ts` 的 `decideAt.intent`（它 assess 时写 `baseIntent`，这里把它定成 `intent`）。
+  先试过挂在放意图行的 `intent-line.ts` 上：直接调流水线的测试（`clean-stage`、`language-review`）只挂意图阶梯、不挂意图行，意图就没了、挑候选和深思的预算两条用例红——判断该跟着算意图的模块，不跟着放那一行的模块。
+- 新 fact `sulk`（生效的是小别扭、不是和好；出口检查放过带点抱怨的话），和 `grievanceActive` 同一处写。`intent` 原来在拼段落前才写进 facts，现在判断完就写。
+  流水线在原位调 `decideStage('intent')`，`intent`、`grievanceActive`、`sulkNow` 从 facts 读回（闭包变量 `sulkNow` 还在，出口检查的上下文迁出时再去掉）。
+- 验证：基线 41/41 逐字不变；变异检验——被打断也带意图，`interruptions` 报不一致；小别扭不写 `grievanceActive`，`closeness` 报不一致。`decide-stage.test.ts` 加 4 项（共 14），
+  所有直接用联系人流水线或涉及意图 / 小别扭的测试共 830 项通过；类型检查通过。

@@ -23,8 +23,8 @@ const ctxOf = (have: readonly string[], extra: Partial<DecideCtx> = {}) => {
 const decide = (turn: Turn, ctx: DecideCtx) => { decideStage([mediaOffersModule()], 'photo', turn, ctx); return turn.facts; };
 
 describe('判断顺序表（ADR 0336「判断那一串」）', () => {
-    test('表上的位置随迁出逐个加；第一个是照片', () => {
-        assert.equal(DECIDE_STAGES[0], 'photo');
+    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：照片 → 最终的意图', () => {
+        assert.deepEqual(DECIDE_STAGES.slice(0, 2), ['photo', 'intent']);
     });
 
     test('一个位置上按注册顺序跑，拿到同一轮和流水线给的东西；只挂 decideAt 的模块不被解释器筛掉', () => {
@@ -109,5 +109,61 @@ describe('这一轮发不发照片（modules/media-offers.ts 的 decideAt.photo�
 
     test('没有「现在的照片」的解析（没开 AI 生活照）：照旧从货架发', () => {
         assert.equal(decide(turnOf('拍张现在窗外的风景照片给我看', { world: world() }), ctxOf(['view']).ctx).photo, 'view');
+    });
+});
+
+describe('最终的意图和小别扭是否生效（modules/intent.ts 的 decideAt.intent）', async () => {
+    const { intentModule } = await import('../src/modules/intent.ts');
+    const { describeGrievance } = await import('../src/emotion/grievance.ts');
+    const { photoIntent } = await import('../src/vision/photos.ts');
+    const BASE = '[这一轮你想：先直接回答他刚问的]';
+    const run = (facts: Turn['facts'], extra: Partial<Turn> = {}) => {
+        const { ctx, lines } = ctxOf([]);
+        const turn = turnOf('在吗', facts, extra);
+        decideStage([intentModule()], 'intent', turn, ctx);
+        return { facts: turn.facts, lines };
+    };
+
+    test('平常：用意图阶梯给的那一句，记一行日志；没有意图就不写', () => {
+        const plain = run({ baseIntent: BASE });
+        assert.equal(plain.facts.intent, BASE);
+        assert.deepEqual(plain.lines, ['这一轮有意图：先直接回答他刚问的']);
+        const none = run({});
+        assert.equal(none.facts.intent, undefined);
+        assert.deepEqual(none.lines, []);
+    });
+
+    test('这一轮发照片：换成发照片那一句；审核过的「现在的照片」是只发这一张那一句；主动那条不换', () => {
+        assert.equal(run({ baseIntent: BASE, photo: 'cat' }).facts.intent, photoIntent('cat'));
+        assert.match(run({ baseIntent: BASE, photo: 'view', photoPrompt: '清单' }).facts.intent!, /已经审核过的：自然带一句后发这一张/);
+        assert.equal(run({ baseIntent: BASE, photo: 'cat' }, { initiate: { note: '喂完猫拍的' } as NonNullable<Turn['initiate']> }).facts.intent, BASE);
+    });
+
+    test('「现在的照片」发不了：换成如实说发不了那一句；被打断：不带意图', () => {
+        assert.match(run({ baseIntent: BASE, photoUnavailable: true }).facts.intent!, /如实说这会儿发不了/);
+        const interrupted = run({ baseIntent: BASE, interruption: { text: '猫打翻了水杯', minutesAgo: 1 } });
+        assert.equal(interrupted.facts.intent, undefined);
+        assert.deepEqual(interrupted.lines, []);
+    });
+
+    test('小别扭生效 = 最终的意图就是小别扭那一句：写 grievanceActive 和 sulk；和好只写 grievanceActive；被别的意图盖掉就不算', () => {
+        const sulk = { stage: 'sulk', days: 3, round: 0 } as NonNullable<Turn['facts']['grievance']>;
+        const active = run({ grievance: sulk, baseIntent: describeGrievance(sulk) });
+        assert.equal(active.facts.grievanceActive, true);
+        assert.equal(active.facts.sulk, true);
+        assert.equal(active.lines[0], '小别扭：他隔了 3 天才来（他回来后第 1 轮；日志不记内容）');
+        assert.equal(active.lines.length, 2, '后面还有「这一轮有意图」那一行');
+        const makeup = { stage: 'makeup', days: 3, round: 1 } as NonNullable<Turn['facts']['grievance']>;
+        const made = run({ grievance: makeup, baseIntent: describeGrievance(makeup) });
+        assert.equal(made.facts.grievanceActive, true);
+        assert.equal(made.facts.sulk, undefined);
+        assert.match(made.lines[0]!, /^和好：/);
+        const ignored = { stage: 'sulk', days: 0, round: 0, cause: 'ignored' } as NonNullable<Turn['facts']['grievance']>;
+        assert.equal(run({ grievance: ignored, baseIntent: describeGrievance(ignored) }).lines[0], '小别扭：她倾诉了几条他隔了很久才回（他回来后第一轮；日志不记内容）');
+        const covered = run({ grievance: sulk, baseIntent: BASE });
+        assert.equal(covered.facts.grievanceActive, undefined);
+        assert.equal(covered.facts.sulk, undefined);
+        const interrupted = run({ grievance: sulk, baseIntent: describeGrievance(sulk), interruption: { text: '猫打翻了水杯', minutesAgo: 1 } });
+        assert.equal(interrupted.facts.grievanceActive, undefined, '被打断的这一轮不带意图，小别扭也不算生效');
     });
 });
