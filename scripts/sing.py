@@ -336,6 +336,15 @@ def lufs(path: str) -> float:
     return float(found[-1]) if found else float("nan")
 
 
+def song_file_name(args) -> str:
+    """存盘用歌名，不用 BV（用户 2026-11-15）。给的就是 BV 才退回 BV；Windows 非法字符去掉。"""
+    raw = str(getattr(args, "song", "") or "").strip()
+    if not raw or re.fullmatch(r"BV[0-9A-Za-z]{10}", raw, re.I):
+        raw = str(getattr(args, "song_bv", "") or raw)
+    name = re.sub(r'[\/:*?"<>|]', "", raw).strip().strip(".")
+    return (name or str(getattr(args, "song_bv", "她唱的")))[:60]
+
+
 def mix(args, inst: str, vocals: str) -> None:
     """伴奏压到「比她低 ratio dB」：她的音色和音高不动，只把伴奏让出来。
     比例按两个 stem 的实测 LUFS 算，换首歌也能用。"""
@@ -343,7 +352,7 @@ def mix(args, inst: str, vocals: str) -> None:
     gain_db = min(0.0, max(-18.0, (lv - args.ratio) - li)) if lv == lv and li == li else -6.0
     gain = 10 ** (gain_db / 20)
     stage("mix-gain", f"人声 {lv:.1f} / 伴奏 {li:.1f} LUFS → 伴奏 {gain_db:+.1f} dB（目标低 {args.ratio} dB）")
-    mp3 = os.path.join(args.out, f"{args.song_bv}-她唱的.mp3")
+    mp3 = os.path.join(args.out, f"{song_file_name(args)}-她唱的.mp3")
     filter_complex = (
         f"[0:a]volume={gain:.4f}[i];[1:a]volume=1.0[v];"
         "[i][v]amix=inputs=2:duration=first,loudnorm=I=-14:TP=-1.0:LRA=11"
