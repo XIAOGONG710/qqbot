@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-14 23:42 (UTC+8)
-status: open
+status: done（dsh，2026-11-15 17:50）
 ---
 
 # 补一句：voice/sing.ts 没登记进模块总表，modules.test 红
