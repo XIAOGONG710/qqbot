@@ -824,7 +824,7 @@ describe('她此刻模块（ADR 0021 / 0025 / 0042 / 0047 / 0336）', () => {
         const { facts, pieces } = run(herNowModule(base), turnOf(amin));
         assert.ok(facts.world && facts.status && facts.state && facts.schedule);
         assert.equal(facts.state, facts.status.state);
-        assert.deepEqual(pieces.map(piece => piece.slot), ['state', 'world', ...(facts.state || facts.body ? ['groundNote'] : []), ...(facts.body ? ['body'] : []), 'plans', 'partnerBack']);
+        assert.deepEqual(pieces.map(piece => piece.slot), ['state', 'world', 'groundNote', ...(facts.body ? ['body'] : []), 'plans', 'partnerBack']);
         assert.match(text(pieces, 'state')!, /^\[你现在：/);
         assert.equal(text(pieces, 'partnerBack'), '[阿明国庆放完回学校了，已经在学校里了]');
     });
@@ -834,7 +834,7 @@ describe('她此刻模块（ADR 0021 / 0025 / 0042 / 0047 / 0336）', () => {
         assert.deepEqual(run(herNowModule({ ...base, schedule: false, herDays: false }), turnOf(amin)), { facts: {}, pieces: [] });
         const only = run(herNowModule({ ...base, herDays: false }), turnOf(amin));
         assert.equal(only.facts.world, undefined);
-        assert.deepEqual(only.pieces.map(piece => piece.slot), ['state', ...(only.facts.state ? ['groundNote'] : []), 'partnerBack']);
+        assert.deepEqual(only.pieces.map(piece => piece.slot), ['state', 'groundNote', 'partnerBack']);
     });
     test('说过「睡了」：对谁说的都算（同学来问也是在睡）；吵醒那一轮写被吵醒', () => {
         const said: Record<number, StoredMessage[]> = { 1: [{ time: '2026-10-08T15:20:00.000Z', role: 'assistant', content: '我先睡了，晚安' }] };

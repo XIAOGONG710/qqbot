@@ -1,7 +1,8 @@
 // 行为基线（ADR 0336 第 2 步）：在合成角色上用假模型、假 QQ、假时钟跑真实的 App（startApp），
 // 把每一次对外调用记下来——发给模型的完整提示词（和用的哪个模型）、每个 QQ 动作和它的时刻、最后留在数据目录里的每个文件——写成一份纯文本快照。
 // 架构迁移的每一步都必须让快照逐字不变；有意改变行为的提交才改快照，并写明原因。
-// 只用合成角色（ADR 0260），不连网：长期记忆、真实天气、B 站、网页、DSH 都关着；设备只在 devices 场景里换上假的服务（见 scenarios.ts 开头的覆盖说明）。
+// 只用合成角色（ADR 0260），不连网：长期记忆、真实天气、B 站、网页、DSH 都关着；设备只在 devices 场景里换上假的服务，
+// 长期记忆只在场景给了 memory 时换上假的 Hindsight（fake-memory.ts；见 scenarios.ts 开头的覆盖说明）。
 
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
@@ -19,6 +20,7 @@ import { FakeClock } from './clock.ts';
 import type { LlmAction } from '../../src/executor/executor.ts';
 import { createDeviceControl } from '../../src/platform/device-actions.ts';
 import { DEVICE_MAX_VOLUME, linksOf, type startDeviceService } from '../../src/platform/device-service.ts';
+import { FAKE_MEMORY_PREFIX, FAKE_MEMORY_URL, fakeHindsight, type FakeMemory } from './fake-memory.ts';
 
 // 快照里的时刻、作息、「今天」都按本地时间算：进程时区固定在 Asia/Shanghai（同配置的 timeZone），不随跑测试的机器变。
 // 基线只在 baseline.test.ts 自己的测试进程里跑（node --test 每个文件一个进程），这里改了不影响别的测试文件。
@@ -52,6 +54,11 @@ export interface Scenario {
      * readyAfterMs：服务过多久才起来（起来之前她的菜单是空的，和线上一样）。配置里还要开 deviceControl
      */
     devices?: { readyAfterMs: number };
+    /**
+     * 长期记忆（ADR 0004 决策 3）：给了就在配置里开 memory、换上假的 Hindsight（fake-memory.ts）——App 的 HTTP 请求照常发，
+     * 由假服务按固定的规则回（召回结果、关系概况、印象、公共库实体名由这里给），每个请求记进快照
+     */
+    memory?: FakeMemory;
     script: (driver: Driver) => Promise<void>;
 }
 
@@ -218,8 +225,13 @@ export async function runScenario(scenario: Scenario): Promise<string> {
     useSyntheticTerms();
     // 基线不连网：走全局 fetch 的一律记下来并失败（模型调用走 pipeline.generate，不经这里）
     const realFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: string | URL | Request) => {
+    // 开了假记忆时，发给它的请求由它回（其余照旧拦下）
+    const hindsight = scenario.memory ? fakeHindsight(scenario.memory, scenario.contacts, record) : undefined;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (hindsight && url.startsWith(`${FAKE_MEMORY_URL}/`)) {
+            return hindsight(init?.method ?? 'GET', url.slice(FAKE_MEMORY_URL.length), typeof init?.body === 'string' ? init.body : undefined);
+        }
         record(`fetch 被拦下 ${url}`);
         throw new TypeError('fetch failed（行为基线不连网）');
     }) as typeof fetch;
@@ -250,7 +262,9 @@ export async function runScenario(scenario: Scenario): Promise<string> {
             },
         };
         const app = startApp({
-            config: baselineConfig(dataDir, scenario.contacts, scenario.config),
+            config: baselineConfig(dataDir, scenario.contacts, scenario.memory
+                ? { ...scenario.config, memory: { baseUrl: FAKE_MEMORY_URL, timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: FAKE_MEMORY_PREFIX } }
+                : scenario.config),
             transport,
             log: () => {},
             sensitive: { on: () => false, describe: () => '' },

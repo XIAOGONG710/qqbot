@@ -24,6 +24,13 @@ import type { Character } from '../st/card.ts';
 import type { BodyNow } from '../life/body.ts';
 import type { HerStatus } from '../language/status-line.ts';
 import type { DescribedBooks } from '../life/her-days.ts';
+import type { ShapePlan } from '../language/shape.ts';
+import type { PhotoKind } from '../vision/photos.ts';
+import type { QuotePlan } from '../social/quote-reply.ts';
+import type { HumanValues } from '../human-values.ts';
+import type { DevelopmentSnapshot } from '../life/development.ts';
+import type { MemoryPieces } from '../modules/memory.ts';
+import type { ReviewOptions } from '../language/exit-check.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -63,6 +70,8 @@ export interface TurnFacts {
     status?: HerStatus;
     /** 她此刻在干嘛（status.state）；开了作息才有 */
     state?: State;
+    /** 群里最近发生的事（2026-11-14，contact 取好写进来；modules/group.ts 放进 group 槽） */
+    groupEcho?: string;
     /** 作息（快睡了“回两句就去忙”按它算）；开了作息或她自己的日子才有 */
     schedule?: Schedule;
     /** 时间块里已经有「她答应的事」（ADR 0018） */
@@ -70,13 +79,19 @@ export interface TurnFacts {
     /** 挂着的事（ADR 0023）：在等他说结果的事、她问了他没答的；开了长期记忆才有 */
     waiting?: readonly string[];
     unanswered?: readonly string[];
+    /** 挂着的事里没了结的（ADR 0023）：两个人说好的事没成、说到一半就断了，只有事实（what）；旧逻辑和 waiting / unanswered 一起写，modules/warm.ts 读 */
+    unsettled?: readonly string[];
+    /** 真人数值（ADR 0222）：App 有需要锚点和世界账时，旧逻辑在 buildPrompt 开头（第一次 await 之前）算好写进来；modules/human-state.ts 放「这一刻的底色」。没有时不写 */
+    humanValues?: HumanValues;
+    /** 人格成长层（ADR 0251）：和数值一起在原位算（读带结算的世界账、可能落事件，不挪过 await）；modules/human-state.ts 放「生活脉络」那一行。投影失败时没有 */
+    development?: DevelopmentSnapshot;
     /** 她那边今天了结了、还没跟他说过的事（ADR 0057）；只算男朋友档 */
     news?: readonly string[];
     /** 被打断（ADR 0115，modules/interruptions.ts 写）：聊着的时候她那边刚发生的一件小事；旧逻辑读它决定这一轮不带意图 / 深思 / 形状 / 长短 */
     interruption?: { text: string; minutesAgo: number };
     /** 陪玩（ADR 0111，modules/together.ts 写）：此刻正和他一起玩什么、从哪一刻答应的 */
     together?: Together;
-    /** 网络热梗（ADR 0129，modules/memes.ts 在 contribute 时写）：这一轮放进提示词的那一行；梗百科（旧逻辑）读它，不重复给同一个词 */
+    /** 网络热梗（ADR 0129，modules/memes.ts 在 contribute 时写）：这一轮放进提示词的那一行；梗百科（modules/meme-dict.ts）读它，不重复给同一个词 */
     meme?: string;
     /** 这一轮小别扭真的生效（意图就是小别扭那一句；旧逻辑在照片 / 被打断改写意图之后写）：可以跑命令那一行（modules/shell.ts）读它 */
     grievanceActive?: boolean;
@@ -87,6 +102,50 @@ export interface TurnFacts {
     /** 他这一轮说起的她身边的人（ADR 0033，modules/people-around.ts 写）：names 是谁，lines 是放进提示词的那几段（这一档看不到的人没有段）。
      *  旧逻辑的形状和长短读它：说起她身边的人的那一轮按认真接话算、不加「回很短」。没说起、主动找他时没有 */
     aboutPeople?: { names: readonly string[]; lines: readonly string[] };
+    // 下面几样是「照片 → 意图 → 心境 → 图片表情 → 深思 → 引用 → 形状 → 长短」这一串的交接（从末端倒着迁，ADR 0336「长短不一」一节）：
+    // 前面那几样还在旧逻辑里，旧逻辑在拼段落之前写，长短的模块（modules/length.ts）读。
+    /** 这一轮最终的意图行（照片、被打断改写之后，深思删掉「怎么答」那一句之前） */
+    intent?: string;
+    /** 记忆线索（ADR 0017）：他问到过去、提到节日的那个词；开了长期记忆、不是主动找他才有 */
+    cue?: string;
+    /** 这一轮只发图片表情、不写文字（ADR 0132） */
+    stickerOnly?: boolean;
+    /** 这一轮发照片（ADR 0109 / 0128）：哪一种 */
+    photo?: PhotoKind;
+    /** 这一轮深思（ADR 0151 / 0202）：换更强的模型、不套字数和条数。旧逻辑原位判断后写（语义路由的分类调用不挪过 await）；modules/deliberate.ts 放「先想清楚」，形状、长短、引用读它 */
+    deliberate?: boolean;
+    /** 语义路由（ADR 0202）放进深思的那一轮按分类多放的一小句方向（ROUTED_HINTS）；旧逻辑在判断深思的地方写，modules/deliberate.ts 放进 routedHint 槽。关键词认出来的深思时没有 */
+    routedHint?: string;
+    /** 这一轮的形状（ADR 0091）：每条多长、几条。形状的模块（modules/shape.ts）在 contribute 时写，长短的模块和旧逻辑（生成、发出去之前裁）读 */
+    shape?: ShapePlan;
+    /** 引用回复（ADR 0136，modules/quote.ts 在 contribute 时写）：这一轮第一条引用他哪一条；旧逻辑发送时读 */
+    quote?: QuotePlan;
+    /** 连续性（ADR 0157–0163）：这一轮放进提示词的几行（设定改动的背景、QQ 以外做过的事、上网查到的、自己发现的口味、又见到的人）。
+     *  取是异步的、会上网调模型，还在联系人流水线原来的位置（危机回合、只想一想的轮次不取，出错当没有）；modules/continuity.ts 读、放进 continuity 槽。没取到时没有 */
+    continuity?: readonly string[];
+    /** 带自己的事时能挑的话题（她那边还没说过的、身体、心情）；形状的模块读 */
+    agendaTopics?: readonly string[];
+    /** 她这会儿低落（心情安静、身体不舒服、心境偏低、真人数值低）：不加「话多」 */
+    low?: boolean;
+    /** 早上那句梦（2026-10-31）：联系人流水线原位读梦（同时取梦给心境的打分）后写；App 只给男朋友档、开了 herFeelings，危机回合没有。modules/feelings.ts 放进 dreams 槽 */
+    dreamLine?: string;
+    /** 心境那一行（ADR 0102，QQ 这一句的写法：他在关心她时绷不住）：旧逻辑在小别扭是否生效之后原位算后写；男朋友档、开了 herFeelings、不是危机、小别扭没生效才有。modules/feelings.ts 放进 feeling 槽 */
+    feelingLine?: string;
+    /** 心境 → 说话的量（2026-10-30）：和心境那一行同一处、同样的条件；modules/feelings.ts 放进 pace 槽。生成时的最多几条还在旧逻辑 */
+    paceLine?: string;
+    /** 记忆这一组（ADR 0012 / 0016–0020 / 0032 / 0043 / 0176 / 0177）：联系人流水线原位召回 / 读好的几段（她的名字已换成「你」；召回的 await、关系概况和印象读缓存后台重读、要点的后台整理、召回日志都留在原位），
+     *  modules/memory.ts 照原样放进各自的槽，有 common / today / people 时接 disclosure。没有的不写（desktop 不要长期记忆，跟着 crossRecent） */
+    memory?: MemoryPieces;
+    /** 她在 QQ 上的样子（ADR 0083）：联系人流水线原位取（presence 的内存状态，后台 tick 会改，不挪过 await）后写；modules/time-notes.ts 放进 selfNote 槽 */
+    selfNote?: string;
+    /** 她答应过他、还没做的事那一句（ADR 0018 决策 2）：和 promised 同一处写（读承诺状态、记日志）；modules/time-notes.ts 放进 promised 槽 */
+    promisedLine?: string;
+    /** 图片表情清单（ADR 0063 / 0132）：在所有 contribute 之前原位取（货架查索引 / 文件、会抛错；条件一次、内容一次）；modules/media-offers.ts 放进 sticker 槽 */
+    stickerLine?: string;
+    /** 照片清单（ADR 0109 / 0128 / 0240）：同上（照片货架每次重读索引）；modules/media-offers.ts 放进 photo 槽 */
+    photoLine?: string;
+    /** 「/亲热」那一行（ADR 0170）：原位取（每取一次扣一条、写文件），主动找他、危机回合不取；modules/intent-line.ts 放进 intimate 槽 */
+    intimateLine?: string;
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */
@@ -113,6 +172,11 @@ export interface Module {
     assess?(turn: Turn): Maybe<void>;
     contribute?(turn: Turn): Maybe<readonly Piece[]>;
     review?(draft: string, turn: Turn): Maybe<string>;
+    /**
+     * 生成之后的审稿（ADR 0336「生成之后那一段」）：挂在审稿顺序表（REVIEW_STAGES）的某几个位置，按位置、再按模块注册顺序跑。
+     * 返回改过的稿子；要这一轮到此为止（事实检查删光了、危机回合）就返回 { text, stop: true }
+     */
+    reviewAt?: Partial<Record<ReviewStage, (text: string, turn: Turn, ctx: ReviewCtx) => Maybe<string | ReviewVerdict>>>;
     /** 定时要做的事：解释器在 startSchedules 时经执行器开计时器，stop 时关 */
     schedules?: readonly { every: number; run: () => void }[];
     /** 停下：拒绝新工作；返回等已派发的活收尾的 promise（没有就不返回） */
@@ -185,6 +249,65 @@ function runAfterPerceive(modules: readonly Module[], turn: Turn): Maybe<Assembl
     return isThenable(assessed) ? Promise.resolve(assessed).then(() => contributeTurn(modules, turn)) : contributeTurn(modules, turn);
 }
 
+/**
+ * 审稿的顺序（ADR 0336「生成之后那一段」）：同 slots.ts，先后由这张表定，不由模块决定。照搬迁移前联系人流水线里手写的顺序：
+ * 逐条事实检查 → 出口检查（危机回合走危机检查、到此为止）→ <<查>> → 形状裁剪 → 话说到一半 → 删行收尾 → 最后再查一次事实
+ */
+export const REVIEW_STAGES = ['facts', 'exit', 'pull', 'shape', 'unfinished', 'finalize', 'factsFinal'] as const;
+export type ReviewStage = (typeof REVIEW_STAGES)[number];
+
+/** 审稿时联系人流水线给的东西；字段随审稿模块迁出逐个加 */
+export interface ReviewCtx {
+    /** 在这一轮的提示词后面加一句说明，重新生成一次（已经清理过：设备指令摘了、正则过了）；返回新稿 */
+    regenerate(note: string): Promise<string>;
+    /** 采用了刚才那次重写（设备指令跟着换成重写稿的） */
+    accept(): void;
+    /** 主动找他的这一轮（事实检查删光了可以整条不发） */
+    initiating?: boolean;
+    /** 固定说法、允许重复（事实检查、出口检查的重复规则不查） */
+    allowRepeat?: boolean;
+    /** 审稿模块之间这一轮共用的东西 */
+    scratch: ReviewScratch;
+    log: (line: string) => void;
+}
+
+export interface ReviewVerdict { text: string; stop?: true }
+
+/** 审稿模块之间这一轮共用的东西（同 TurnFacts：写的在前、读的在后；字段随审稿模块迁出逐个加） */
+export interface ReviewScratch {
+    /** 出口检查那一刻算好的上下文（禁用词、说话的毛病——聊天记录在那一刻读、书、小黄脸……）：迁移期联系人流水线在出口检查之前写，
+     *  出口检查迁成模块后由它写；删行收尾（modules/review-finalize.ts）用同一份，不重读聊天记录 */
+    exitOptions?: ReviewOptions;
+}
+
+/**
+ * 审稿顺序表上的一个位置：挂在这里的模块按注册顺序跑；返回 stop 时后面的不跑。
+ * 都是同步返回时整个也同步返回（没挂模块、模块这一轮不用做事时不多一个微任务，同 contributeTurn）；碰到第一个异步的才转成 promise
+ */
+export function reviewStage(modules: readonly Module[], stage: ReviewStage, draft: string, turn: Turn, ctx: ReviewCtx): Maybe<ReviewVerdict> {
+    const steps = modules.map(module => module.reviewAt?.[stage]).filter((step): step is NonNullable<typeof step> => Boolean(step));
+    // 吃进一步的结果：stop 就停（返回结论），否则返回下一步要审的稿子
+    const take = (out: string | ReviewVerdict): string | ReviewVerdict => (typeof out === 'string' ? out : out.stop ? { text: out.text, stop: true } : out.text);
+    let text = draft;
+    for (let i = 0; i < steps.length; i++) {
+        const out = steps[i]!(text, turn, ctx);
+        if (isThenable(out)) {
+            return (async () => {
+                let next = take(await out);
+                for (let j = i + 1; ; j++) {
+                    if (typeof next !== 'string') return next;
+                    if (j >= steps.length) return { text: next };
+                    next = take(await steps[j]!(next, turn, ctx));
+                }
+            })();
+        }
+        const taken = take(out);
+        if (typeof taken !== 'string') return taken;
+        text = taken;
+    }
+    return { text };
+}
+
 /** 第四个阶段：草稿按模块顺序逐个 review */
 export function reviewTurn(modules: readonly Module[], draft: string, turn: Turn): Maybe<string> {
     return sequence(modules, (module, text) => module.review ? module.review(text, turn) : text, draft);
@@ -213,7 +336,7 @@ export function createInterpreter(options: { modules: readonly Module[]; exec: P
         ids.add(module.id);
     }
     const modules = [...options.modules];
-    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review);
+    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review || module.reviewAt);
     const { exec } = options;
     let timers: ReturnType<Executor['every']>[] | undefined;
     return {

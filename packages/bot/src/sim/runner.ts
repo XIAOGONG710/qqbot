@@ -30,6 +30,20 @@ import { solveFrameModule } from '../modules/solve-frame.ts';
 import { innerModule } from '../modules/inner.ts';
 import { devicesModule } from '../modules/devices.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
+import { reviewFinalizeModule } from '../modules/review-finalize.ts';
+import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
+import { reviewPullModule } from '../modules/review-pull.ts';
+import { timeBlockModule } from '../modules/time-block.ts';
+import { warmModule } from '../modules/warm.ts';
+import { feelingsModule } from '../modules/feelings.ts';
+import { timeNotesModule } from '../modules/time-notes.ts';
+import { mediaOffersModule } from '../modules/media-offers.ts';
+import { intentLineModule } from '../modules/intent-line.ts';
+import { memoryModule } from '../modules/memory.ts';
+import { deliberateModule } from '../modules/deliberate.ts';
+import { lengthModule } from '../modules/length.ts';
+import { shapeModule } from '../modules/shape.ts';
+import { quoteModule } from '../modules/quote.ts';
 import type { DeviceControl } from '../platform/device-actions.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
@@ -532,14 +546,10 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ...(scenario.grievance ? { grievance: true } : {}),
         ...(scenario.rhythm ? { rhythm: true } : {}),
         ...(scenario.shortReplies ? { shortReplies: true } : {}),
-        ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda || scenario.shapeFiller || options.shapeFiller || scenario.shapeFeel || options.shapeFeel || scenario.shapeSplit || options.shapeSplit || options.shapeAsk || options.shapeLong ? { shape: true } : {}),
-        ...(scenario.shapeAgenda || options.shapeAgenda ? { shapeAgenda: true } : {}),
-        ...(scenario.shapeFiller || options.shapeFiller ? { shapeFiller: true } : {}),
-        ...(scenario.shapeFeel || options.shapeFeel ? { shapeFeel: true } : {}),
         // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
         ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
         ...(scenario.texture ? { texture: true } : {}),
-        ...(scenario.quoteReply ? { quoteReply: true, ...(scenario.quoteShare !== undefined ? { quoteShare: scenario.quoteShare } : {}) } : {}),
+        ...(scenario.quoteReply ? { quoteReply: true } : {}),
         // 逐条事实检查（ADR 0137）：审稿的调用走场景自己的模型（假模型也行）；每次的记录进这一步，报告里看得到
         ...((options.factCheck ?? scenario.factCheck) !== 'off' ? {
             factCheck: options.factCheck ?? scenario.factCheck,
@@ -584,8 +594,45 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             // 她最近心里在想什么（ADR 0101）：计划器在后面才建，每次现取
             ...(scenario.innerLife ? [innerModule({ innerLine: () => planner?.innerLine(), log: message => { if (epoch === responderEpoch) log(message); } })] : []),
             ...(options.devices ? [devicesModule({ menu: () => options.devices!.menu(), allowed: () => true })] : []),
+            // 形状控制（ADR 0091），同 App，排在长短之前；开关和分项同迁移前给联系人流水线的
+            shapeModule({
+                ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda || scenario.shapeFiller || options.shapeFiller || scenario.shapeFeel || options.shapeFeel || scenario.shapeSplit || options.shapeSplit || options.shapeAsk || options.shapeLong ? { shape: true } : {}),
+                ...(scenario.shapeAgenda || options.shapeAgenda ? { shapeAgenda: true } : {}),
+                ...(scenario.shapeFiller || options.shapeFiller ? { shapeFiller: true } : {}),
+                ...(scenario.shapeFeel || options.shapeFeel ? { shapeFeel: true } : {}),
+                ...(scenario.shapeAll ? { shapeAll: true } : {}),
+                ...(scenario.shapeShares ? { shapeShares: scenario.shapeShares } : {}),
+                ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
+                ...(options.shapeAsk ? { shapeAsk: true } : {}),
+                ...(options.shapeLong ? { shapeLong: true } : {}),
+                log: message => { if (epoch === responderEpoch) log(message); },
+            }),
+            // 引用回复（ADR 0136），同 App；比例按场景
+            ...(scenario.quoteReply ? [quoteModule({ history: qq => history.load(qq), ...(scenario.quoteShare !== undefined ? { share: scenario.quoteShare } : {}), log: message => { if (epoch === responderEpoch) log(message); } })] : []),
+            // 长短不一（ADR 0024），同 App
+            lengthModule({ ...(scenario.shortReplies ? { shortReplies: true } : {}), log: message => { if (epoch === responderEpoch) log(message); } }),
             // 主动找他时计划器写的说明，同 App
             initiateNoteModule(),
+            // 生成之后的审稿：删行收尾，同 App
+            reviewFinalizeModule(),
+            // 话说到一半，同 App（跟着 speechCheck）
+            ...(options.speechCheck ? [reviewUnfinishedModule()] : []),
+            // 她想查才查：模拟器没有查记忆，只摘标记（同迁移前）
+            reviewPullModule(),
+            // 深思那一句和语义路由的方向，同 App；换掉的说法按 --deliberate-note
+            deliberateModule({ ...(options.deliberateNote ? { note: options.deliberateNote } : {}) }),
+            // 情绪余温和没了结的事，同 App
+            warmModule({ log: message => { if (epoch === responderEpoch) log(message); } }),
+            // 记忆这一组，同 App（要点只有 contextTurns 时有）
+            memoryModule(),
+            // 心境那一行、节奏、梦那一行，同 App
+            feelingsModule(),
+            // 时间块里的另几行、图片表情 / 照片清单、意图行和「/亲热」，同 App（模拟器没有梗百科词库，不挂）
+            timeNotesModule(),
+            mediaOffersModule(),
+            intentLineModule(),
+            // 时间块，同 App
+            timeBlockModule({ ...(scenario.lagTail ? { lagTail: true } : {}) }),
             // 只想一想的轮次：聊天原文换成一段回想，同 App
             transcriptModule(),
             // 「做题式」写法（ADR 0146 实验）：只有 --frame solve 时挂
@@ -601,15 +648,10 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             ...(scenario.watched?.length ? [watchedModule(() => { const day = formatDate(new Date(clock.now())); return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); }, message => { if (epoch === responderEpoch) log(message); })] : []),
         ],
         ...(scenario.memoryFeelings && scenario.herFeelings ? { memoryFeelings: true } : {}),
-        ...(scenario.shapeAll ? { shapeAll: true } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),
-        ...(scenario.shapeShares ? { shapeShares: scenario.shapeShares } : {}),
         ...(scenario.pursuits ? { pursuits: () => mergePursuits(scenario.pursuitsFile as Pursuit[]) } : {}),
-        ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
-        ...(options.shapeAsk ? { shapeAsk: true } : {}),
-        ...(options.shapeLong ? { shapeLong: true } : {}),
-        ...(options.deliberateLlm ? { deliberate: { llm: options.deliberateLlm, ...(options.deliberateNote ? { note: options.deliberateNote } : {}) } } : {}),
+        ...(options.deliberateLlm ? { deliberate: { llm: options.deliberateLlm } } : {}),
         ...(options.depthRouting && options.deliberateLlm ? {
             turnWeight: createTurnWeigher({
                 ask: messages => (options.generate ? options.generate(messages, log) : chatCompletion({ ...options.llm, temperature: 0, maxTokens: 80, timeoutMs: WEIGH_TIMEOUT_MS, extraBody: { ...(Object.fromEntries(Object.entries(options.llm.extraBody ?? {}).filter(([key]) => key !== 'reasoning_effort'))), thinking: { type: 'disabled' } } }, messages, { log })),

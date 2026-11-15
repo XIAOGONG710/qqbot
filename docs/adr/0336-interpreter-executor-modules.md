@@ -733,3 +733,220 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - `src/modules/initiate-note.ts`：`initiateNoteModule()`，只有 contribute，读 `turn.initiate`（就是原来的 `initiate`，构造 turn 时放进去的同一个对象）。App 和模拟器都总是挂。
 - 删掉的接线：`contact.ts` 里那一段。
 - 验证：基线 35/35 逐字不变；变异检验——模块什么都不放，16 个场景报不一致。`app`、`sim`、主动消息、回复器、模块总表 332 项通过；类型检查通过。
+
+### 长短不一（2026-11-15）
+
+- 是什么：ADR 0024——偶尔回句短的、偶尔话多一点（按他最后一句的哈希抽，同一句每次一样，不抽随机数）；心情低的时候不加「话多」。放进 `length` 槽。
+  危机、形状生效、问到过去 / 节日的记忆线索、只发表情、发照片、被打断、只想一想、深思的轮次不给。没有开关（`shortReplies` 只改说法）。
+- 这一串怎么拆：照片 → 意图 → 心境 → 图片表情 → 深思 → 引用 → 形状 → 长短，有固定的先后，中间几处抽随机数（顺序一变基线就不一样），结果还被生成和发送阶段用（换模型、引用哪条、最多几条）。
+  从末端倒着迁：长短在最后、后面没人读它。前面那几样还在旧逻辑里，旧逻辑在原来算长短的位置把它们写进 `turn.facts`（新加 `intent`、`cue`、`stickerOnly`、`photo`、`deliberate`、`shape`、`low`），
+  长短的模块在 contribute 时读。这几个字段就是以后它们各自迁成模块时彼此交接的东西。
+- 没补基线：26 个场景的快照里有长短那一行。
+- `src/modules/length.ts`：`lengthModule({ shortReplies, log })`，只有 contribute。App 和模拟器都总是挂。`lengthHint` / `describeLength`（`language/expression.ts`）一个字没改。
+  意图是空串时写成没有（`lengthHint` 里两处都只看真假，一样）。
+- 删掉的接线：`contact.ts` 里那两行计算和日志、`length` 段落、`lengthHint` / `describeLength` 的 import。日志「这一轮说话：……」挪到拼段落的时候（同一轮之内，内容不变）。
+- 验证：基线 35/35 逐字不变；变异检验——模块什么都不放，26 个场景报不一致。深思时也给，基线抓不到（基线里深思的轮次碰巧都抽不中长短），
+  由新的 `length-module.test.ts` 兜：找一句抽得中的话，挡长短的八样逐个打开都不放；去掉深思那一条，测试报错。类型检查通过。
+
+### 形状控制（2026-11-15）
+
+- 是什么：ADR 0091 起——用具体的字数和条数（每条多长、几条，带自己的事、废话、情绪轮、长答、拆条……）代替「回短一点」，放进 `shape` 槽。按他最后一句的哈希抽，不抽随机数。
+  语言松绑（DSH 10-28）：只有接情绪 / 好事 / 亲近 / 撒娇 / 认真、或有记忆线索时给；`shapeAll`（ADR 0220）所有轮次都给——App 从来没把它接到配置上，只有模拟器用，照旧。
+  危机、只发表情、发照片、被打断、只想一想、深思的轮次不给。
+- 比长短多一处：算出来的形状后面还要用——生成时按它调最多几条（心境那条 `tunedMaxBubbles`）、发出去之前按它裁（`shapeReply`）。
+  所以模块在 contribute 时算、写回 `turn.facts.shape`（同热梗写 `facts.meme` 的做法），长短的模块排在它后面读；旧逻辑在拼完段落之后从 facts 取回 `shapeNow`，原来算形状的位置先清成 undefined，不留上一轮的。
+  带自己的事能挑的话题要用心情（还在旧逻辑），由旧逻辑算好写进新的 `turn.facts.agendaTopics`。
+- `src/modules/shape.ts`：`shapeModule({ shape, shapeAll, shapeAgenda, shapeFiller, shapeFeel, shapeSplit, shapeAsk, shapeLong, shapeShares, log })`，只有 contribute。
+  App 和模拟器都总是挂（排在长短之前），开关和分项的值同迁移前给联系人流水线的。`planShape` / `describeShape`（`language/shape.ts`）一个字没改。
+- 删掉的接线：`contact.ts` 里形状的计算、日志、`shape` 段落，流水线的九个形状选项和对应 import；App 和模拟器不再往联系人流水线传它们。`language-review.test.ts` 原来直接给流水线传 `shape` / `shapeAll`，改成挂形状模块（去掉模块那条测试就红）。
+- 日志「这一轮形状：……」从算形状的地方挪到拼段落的时候（同一轮之内，内容不变）。
+- 验证：基线 35/35 逐字不变；变异检验——模块不放这一段，22 个场景报不一致；不写回 `facts.shape`（生成不调条数、发出前不裁、长短照放），14 个场景报不一致。bot 全量 4422 过、13 跳过，红的 2 项是 DSH 那边的（图片表情路径、`voice/sing.ts` 没登记），已留言。
+
+### 引用回复（2026-11-15）
+
+- 是什么：ADR 0136（配置 `quoteReply`）——他连发里有个不是最后一条的问题，按比例（按那条消息 id 哈希，不抽随机数）第一条在 QQ 里引用它回；提示词里放一行（`quote` 槽）。
+  主动找他、只想一想、危机、只发表情 / 发照片、他难过（意图是先接住他此刻的情绪）的轮次不引用。
+- 和形状一样，结果后面还要用（发送时真的引用那条消息）：模块在 contribute 时挑、写回新的 `turn.facts.quote`；旧逻辑原位置先清成 undefined，拼完段落之后取回 `quoteNow`。
+  `planQuote` 读的是存下来的聊天记录（带 QQ 消息 id），从原位置到拼段落之间没有 await，读到的是同一份。
+- `src/modules/quote.ts`：`quoteModule({ history, share, log })`，只有 contribute。App 在 `quoteReply` 开着时挂；模拟器在场景开着时挂，比例按场景（`quoteShare`）。
+  `planQuote` / `describeQuote`（`social/quote-reply.ts`）一个字没改。
+- 删掉的接线：`contact.ts` 里那一段计算、日志、`quote` 段落、`quoteShare` 选项和对应 import。`quoteReply` 选项留着：发送时引用、打错字补「*对的词」时引用那条错的（`quoteFix`）还在旧逻辑。
+- 先补基线（单独提交 `7466c0b8`）：第一次迁完跑基线 35/35 全过，连「模块不放这一行」「不写回 facts」两个变异都抓不到——原来没有一个场景走到过引用（没人连发、前面那条是问句）。于是收起迁移、在旧代码上补 `quote` 场景：几串两三条的连发（三串抽中引用、其余没抽中）、只发一条（不引用）、同学连发（照样引用）；在旧代码上去掉这一行、发送时不引用，`quote` 都报不一致。带着问句的难过那一串照样引用：意图阶梯里「先回答他问的」排在「先接住情绪」前面，连发里有可引用的问句时几乎走不到后者。所以危机、只发表情、照片、主动找他、只想一想、先接住情绪这六样由新的 `quote-module.test.ts` 逐个核对（去掉先接住情绪那一条，测试报错）。
+- 验证：基线逐字不变；变异检验——模块不放这一行、不写回 `facts.quote`（发送时不引用），`quote` 都报不一致。类型检查通过。
+
+### 时间块（2026-11-15）
+
+- 是什么：ADR 0004 决策 2——「此刻」块的第一行：当前时间、距上一条消息多久、他这次的消息是不是隔了很久才回（连发按这一组的第一条算）；她主动找他时只写上一条消息是谁发的、多久前。
+  回复一直失败、断网很久才回（ADR 0105，配置 `lagTail`）再加一句断网的事实。放进 `time` 槽，每一轮都放，没有别的开关。
+- 这一节由子代理起草（用户 11-15 让开几个子代理并行；子代理只新建文件，共享文件的接线、基线、提交由主代理做）：
+  核对过 `chat` 就是 `turn.history`（构造 turn 时放进去、之后没人改）、`time` 就是 `turn.at`、断网起点就是 `turn.offlineSince`；`describeTime` 是纯函数，不抽随机数、不记日志，挪到 contribute 时算结果一样。
+- 没补基线：35 个场景都有这一行，17 个场景有主动找他的写法。断网那一句基线一处都没走到（没有连着失败超过十分钟的），由 `time-block-module.test.ts` 管。
+- `src/modules/time-block.ts`：`timeBlockModule({ lagTail })`，只有 contribute。App 和模拟器都总是挂。
+- 删掉的接线：`contact.ts` 里那一段和 `describeTime` 的 import。`lagTail` 选项留着（「几点看到」的长尾还在用）。
+- 直接调联系人流水线、没挂这个模块的四个测试（`language-review`、`meme-dict-turn`、`photo-contact-review`、`photo-send-history-review`）提示词里从此没有时间行；它们都不断言时间，照样通过。
+
+### 心境这一组：方案（2026-11-15，子代理只读分析，主代理照此做）
+
+- 范围：心境（`herFeelings`）的 `feltNow` / 心境那一行 / 节奏（`pace`）/ `onFeelings`，做的梦（`dreams` 槽和它给心境的打分）、她的追求给心境的打分、昨天她那边（`previousAround`）、作者写下的事（moments）、
+  回想过的心境（feelingReview），还有 `warm`（想念 / 道歉 / 安慰后变软）、`unsettled`（没了结的事）、`humanState` / `development`（真人数值）、心情（`moodAt`）和 `low`。
+- 取证要点：整组没有 `Math.random`（心情按日期 `stableHash`）；组内没有 await。`grievanceActive` 很晚才有（照片、被打断改写意图之后），心境那一行、节奏、`low`、生成时的最多几条都要它。
+  `onFeelings` 写 `lastFeelings`，午睡 / 做梦的提示词会读，不能挪过连续性和语义路由那两次 await。`maxBubbles` 那条看的是 `feltNow.length`（含 faint），不能改成看心境那一行。
+  `pursuitLine`、`describeMood` 的 import 是死代码。
+- 基线覆盖不够：心境那一行只有担心、开心、松了口气三种；难过 / 烦 / 累 / 绷不住 / 「前面已经说过了」、节奏、带感受的梦、安慰、`unsettled` 都是 0。
+- 步骤（每步一个提交）：
+  0. 先补 `feelings` 基线场景（预置作者写下的事、一条带感受的梦、feelingReview；她难过时他问怎么了、说过难过的下一轮、很开心那一轮、小别扭生效、危机、同学），在旧代码上逐个变异。`unsettled` 和安慰等假记忆服务落地后补。
+  1. `warm` / `unsettled` 模块（只有 contribute，新 fact `unsettled`）。
+  2. `human-state` 模块（perceive 算数值、写 facts；contribute 放两行；越过 await 后基线不一致就退回「旧逻辑原位算、模块只放」）。
+  3. `feelings` 模块（一）：assess 算 `feltNow`（梦、追求、昨天、作者写下的事、回想过的）写 `facts.felt`，contribute 放 `dreams` 槽；旧逻辑读 `facts.felt` 接着算。
+  4. `feelings` 模块（二）：contribute 读 `facts.grievanceActive` 放 `feeling` / `pace`。`onFeelings`、`low`、`maxBubbles`、`agendaTopics` 先留在旧逻辑，等意图 → 照片 → 小别扭那条链迁出再收。
+- 验证：基线逐字不变；变异检验——模块什么都不放，36 个场景报不一致。主动找他那一轮写成不是主动，基线抓不到：主动找他时聊天记录里本来就没有等她回的消息，两种写法算出来一样；由 `time-block-module.test.ts` 兜（这个变异让它报错）。类型检查通过。
+
+### 连续性（2026-11-15）
+
+- 是什么：ADR 0157–0163——设定改动的背景、QQ 以外做过的事、上网查到的、自己发现的口味、又见到的人，按这一轮他说的话取几行，放进 `continuity` 槽。只给男朋友档（App 的 `continuity` 里判断），危机、只想一想的轮次不取。
+- 由子代理起草。取的那一下（`options.continuity`）是异步的：会上网、调小模型（最长等 25 秒）、记「已经告诉他了」，App 停下时抛 AbortError；它后面紧跟着图片表情、语义路由（又一次模型调用）、「/亲热」取一条、各模块的 contribute。
+  挪到 contribute 会改变外部调用和日志的先后、等待的位置、停下时哪些副作用已经发生——所以**取留在原位不挪**，只把放段落交给模块：取回来的写进新的 `turn.facts.continuity`，模块照原样放。等前后那几样都迁成模块再考虑把取也挪进来。
+- `src/modules/continuity.ts`：`continuityModule()`，只有 contribute，不再判断危机 / 只想一想（判断在取的地方，挡在两处时变异只能抓到一处）。App 总是挂（`continuity` 在解释器之后才建）；模拟器原来就不传 `continuity`，不挂。
+- 基线里这一段一直是空的（RICH 开了 timeline 和 tastes，取会发生、返回空），基线核对的是「取没挪、没多 await」。放段落由真实 App 的 `memory-app-web-owner-review.test.ts`（上网查到的那一行）兜：
+  模块不放、旧逻辑不写 facts、App 不挂模块，它都报错。
+- 验证：基线 37 个场景逐字不变；变异检验（`memory-app-web-owner-review`）——模块不放、旧逻辑不写 `facts.continuity`、App 不挂模块，都报错。`continuity-module.test.ts` 5 项、相关 App 测试通过；类型检查通过。
+
+### 心境方案第 0 步：补 `feelings` 基线（2026-11-15）
+
+- 子代理补的场景（只碰 `scenarios.ts` 和新快照；变异由主代理在旧代码上做）：12-09 一个白天，男朋友 + 同学，RICH 关主动消息、开 feelingReview，开假记忆（挂着的事跟着长期记忆）。
+  预置：几天前他说「说好的电影没看成，临时加班」的一段、一个带「难过」感受的梦、一条回想过的担心、作者写下的三件事（累、烦、开心）；假模型认出挂着的事的抽取，回一条没了结的事。
+- 走到的分支（原来都是 0）：难过、绷不住、「前面已经说过了」、烦、累、特别开心、节奏（提不起劲 / 心情好）、条数收紧（3 行发成 2 条）、带感受的梦、回想过的感受、作者写下的事、
+  没了结的事（平常写法 7 处、他在修补 2 处）、安慰的余温、小别扭生效那一轮没有心境、危机和同学没有心境、`onFeelings` 进了回想调用的提示词。单跑约 205 秒（开了长期记忆，每 5 分钟同步）。
+- 没走到：「很难过」（strong、不绷不住）、开心时放宽条数（没有形状时 `min(4,3)` 还是 3，测不出）、昨天她那边的事、追求给心境的打分。
+- 在旧代码上变异（每个都让 `feelings` 报不一致）：去掉余温、修补写死成否、不读梦、不读回想过的、作者写下的事给空、去掉小别扭的条件、不绷不住、去掉节奏、条数不按心境调、不交 `onFeelings`。
+
+### 心境方案第 1 步：情绪余温和没了结的事（2026-11-15）
+
+- 是什么：ADR 0028 情绪余温——他道歉 / 安慰 / 说想她之后三轮软一点（卡上有心情才算），放进 `warm` 槽；ADR 0023 没了结的事——两个人说好的事没成、说到一半就断了，只有事实，放进 `unsettled` 槽；
+  他在道歉或安慰时换成「他刚刚正在修补」的写法。迁移前两段都不看危机、只想一想、主动找他。
+- 由子代理起草（只新建文件）。`loops`（读答应的事那份状态）留在旧逻辑：它还写 `waiting` / `unanswered`，和「挂着的事：……」日志（`sim.test.ts` 断言它）；没了结的事实由旧逻辑一并写进新的 `turn.facts.unsettled`。
+  `warmAffect` / `describeWarmAffect` / `describeUnsettled` 都是纯函数，`chat` 就是 `turn.history`、`character` 就是 `turn.card`（危机换卡只换说话用的 turnCard），挪到 contribute 时算结果一样。
+  `describeUnsettled` 的参数类型放宽成只要 `what`（只改类型）。
+- `src/modules/warm.ts`：`warmModule({ log })`，只有 contribute。App 和模拟器都总是挂。日志「情绪余温：……」挪到拼段落的时候（内容不变）。
+- 删掉的接线：`contact.ts` 里 `affect` / `warm` / `unsettled` 的计算、余温日志、两个段落和两处 import。
+- 验证：`feelings` 逐字不变；变异检验——模块不放、安慰不算修补、旧逻辑不写 `facts.unsettled`，`feelings` 都报不一致。`warm-module.test.ts` 6 项通过；bot 全量 4450 过、13 跳过，红的 2 项是 DSH 那边的；类型检查通过。
+
+### 心境方案第 2 步：真人数值和人格成长层（2026-11-15）
+
+- 是什么：ADR 0222「这一刻的底色」（累、饿、压着事、心情、想找人说话、跟他亲不亲……只给自然语言）放进 `humanState` 槽；ADR 0251「你最近形成的生活脉络」放进 `development` 槽。只想一想的轮次不放，危机、主动找他照放。
+- 由子代理起草（只新建文件）。**计算留在原位**（buildPrompt 开头、第一次 await 之前），走方案里的退路：两样都要读世界账的事件，而带结算的世界账每读一次都会先按墙上时间结算、可能落新事件、写文件、记日志；
+  原位置和 perceive 之间隔着长期记忆的几次 await 和 `onHerDay`，线上这段时间里墙上时间在走、别的联系人的回合和定时推进可能落事件，成长快照的反思不按时刻过滤，就会多一句。
+  基线的假时钟在 await 里不走，抓不到这种差别，所以不能拿「基线逐字不变」证明挪动安全。旧逻辑算完写进新的 `turn.facts.humanValues` / `turn.facts.development`，模块在 contribute 时只放两行（`describeHumanState` / `describeDevelopment` 是纯函数）。
+- `src/modules/human-state.ts`：`humanStateModule()`，只有 contribute，不记日志。App 总是挂（条件已经挡在 `humanValues` 选项上，挡两处变异只能抓到一处）；模拟器不传 `humanValues`，不挂。
+  旧逻辑的 `low` 照旧读它自己算的数值。
+- 删掉的接线：`contact.ts` 里两行的描述和两个段落、对应 import。
+- 验证：基线 38/38 逐字不变；变异检验——模块不放，29 个场景报不一致；只想一想也放，18 个场景报不一致。`human-state-module.test.ts` 7 项、相关测试通过；类型检查通过。
+
+### 深思和语义路由（2026-11-15）
+
+- 是什么：ADR 0151——他认真问她的轮次，不套字数和条数、换更强的模型、提示词放一句「先想清楚」（`deliberate` 槽）；ADR 0202（配置 `depthRouting`）——关键词没认出来时问一次小模型这句话轻不轻，
+  说值得认真的也走深思，并按分类多放一小句方向（`routedHint` 槽）。深思时意图行去掉「怎么答」那一句。
+- 原先的想法是模块在 contribute 时连判断和分类调用一起做。子代理（只新建文件）取证后否掉了：分类调用之后、contribute 之前还有「/亲热」扣次数写文件、上下文要点整理（又一次模型调用）、
+  命令结果读了就删、待批准的请求按时钟判过期、各模块读文件和时钟——挪过去这些都从等待之后变成等待之前；一旦有模块返回 Promise，后面每个模块都多一次微任务。
+  而基线里没有一个场景开 `depthRouting`（分类提示词出现 0 次），挪了也验证不出来。所以**判断和分类调用留在原位**，旧逻辑把结果写进 `facts.deliberate` 和新的 `facts.routedHint`，模块只放两句。
+  `intentLine`、换模型、深思时的最多几条都还在旧逻辑，读它自己的 `deliberateNow`。
+- `src/modules/deliberate.ts`：`deliberateModule({ note })`，只有 contribute。App 总是挂（不传 `note`，用 `DELIBERATE_NOTE`）；模拟器总是挂，换掉的说法按 `--deliberate-note`。联系人流水线的 `deliberate` 选项去掉 `note`。
+- 基线覆盖：只有 `rich-chat` 一轮深思（关键词那条路）；方向那一句 0 处，由 `app.test.ts` 的语义路由用例和新的 `deliberate-module.test.ts`（含两条模拟器测试）管。
+  以后要把判断也挪进模块，先补一个开 `depthRouting` 的基线场景（假模型认出分类提示词，回 heavy / challenge / us / light），并等照片 → 意图 → 心境 → 图片表情这几样迁出。
+- 验证：`rich-chat` 逐字不变；变异检验——模块不放、App 不挂模块，`rich-chat` 报不一致、`app.test.ts` 的深思和语义路由两条红；模块不放方向那句、旧逻辑不写 `facts.routedHint`，`app.test.ts` 语义路由那条红。bot 全量 4455 过、13 跳过；红的是 DSH 那边的 2 项，外加一项负载高时偶发的计时测试（`memory-responder-drain-review`，单独跑 3 次都过）。
+
+### 心境方案第 3、4 步：心境那一行、节奏、梦那一行（2026-11-15）
+
+- 是什么：ADR 0102 心境那一行（有来由的心境；他在关心她时绷不住、说过了的不再说）放进 `feeling` 槽；心境 → 说话的量（2026-10-30）放进 `pace` 槽；早上那句梦（2026-10-31）放进 `dreams` 槽。
+- 由子代理起草（只新建文件）。方案原想 assess 时算心境、contribute 时放；取证后**合成一步、走退路**：算心境的输入（梦、作者写下的事、回想过的感受、追求）都是按联系人给的流水线选项，
+  回忆和问到那一天时（`feltOnDay`）还要读同一份；读昨天她那边和追求时会结算带结算的世界账；心境那一行和节奏还要等很晚才有的 `grievanceActive`。挪进 assess 会让两次结算和三个文件的读取提前到照片那一段之前，
+  基线里追求和昨天她那边给心境的打分一处都没走到，证明不了挪动安全。所以**计算留在原位**，写进新的 `turn.facts.dreamLine` / `feelingLine` / `paceLine`，模块只放。`onFeelings`、`low`、最多几条、日志读旧逻辑自己那一份。
+- `src/modules/feelings.ts`：`feelingsModule()`，只有 contribute，不再判断条件（都在算的地方）。App 和模拟器都总是挂。
+- 删掉的接线：`contact.ts` 里三个段落。死代码（`pursuitLine`、`describePursuits` / `describeMood` 的 import）另开提交清理。
+- 验证：基线 38/38 逐字不变；变异检验——模块不放，26 个场景报不一致；只是不放节奏，`feelings` 报不一致。`feelings-module.test.ts` 5 项、相关测试通过；类型检查通过。
+
+### 记忆这一组（2026-11-15）
+
+- 是什么：关系概况（ADR 0012，main 之后）、更早聊天的要点（ADR 0043）、他的私人记忆、她在 DSH 里做过的事（ADR 0176）、DSH 桌面上的对话（ADR 0177）、公共记忆（ADR 0016 / 0017）、
+  他问到的那一天她那边的流水账（ADR 0032）、她今天和别人聊过的（ADR 0020）、他提到的名单里的人（ADR 0016，一人一段），有公共记忆 / 今天的 / 提到的人时接对别人说起时的分寸（ADR 0020）。
+- 先补基线（`1fb3db7f`，子代理做的假 Hindsight 和 `memory` 场景）。迁移由子代理起草（只新建文件）。**召回全部留在原位**：几次 await 都等 Hindsight，前后夹着真人数值、`onHerDay`、perceive；
+  关系概况和印象是「读缓存、后台重读」，调用时机本身就是行为；要点会起后台整理；变淡统计、日志、记忆线索都还要用召回结果。旧逻辑在拼段落前把最终的字（已换成「你」）写进新的 `turn.facts.memory`，
+  模块按槽放；披露分寸由模块按同样的条件接（`disclosureRules` 只看名字和档位）。
+- `src/modules/memory.ts`：`memoryModule()`，只有 contribute，没有别的模块往这十个槽放东西。App 和模拟器都总是挂（模拟器有长期记忆和要点，`people.test.ts`、`context-window.test.ts` 走这一路）。
+- 基线覆盖：`memory` 场景里关系概况 4、私人记忆 10、公共记忆 3、那一天 1、今天的 3、提到的人 5、分寸 8；工作房、要点、桌面 0，分别由 `people.test.ts`、`context-window.test.ts`、`app.test.ts` 的 crossRecent 用例管。
+- 删掉的接线：`contact.ts` 里十个段落和 `disclosureRules` 的 import。
+- 验证：`memory` 逐字不变，基线 38/38；变异检验——模块不放、旧逻辑不写 `facts.memory`，`memory` 报不一致，`people.test.ts` / `context-window.test.ts` / `app.test.ts` 的 crossRecent 用例红；模拟器不挂模块，`people.test.ts`、`context-window.test.ts` 红。bot 全量 4474 过、13 跳过，红的 2 项是 DSH 那边的。
+
+### 最后八段，「旧逻辑」大模块删掉（2026-11-15）
+
+- 第 4 步把 `contact.ts` 手写的那一串段落包成了一个「旧逻辑」大模块（`contact-legacy`），排在所有模块之后。这一节把它剩下的八段迁完，**这个大模块整个删掉**：
+  联系人流水线现在只调 `contributeTurn(options.turnModules ?? [], turn)`，提示词里的每一段都由某个模块放。由子代理起草（只新建文件）。
+- 分成四个模块：
+  - `modules/time-notes.ts`：重要的日子（ADR 0011，`describeDays` 是纯函数、卡上的日子建卡时就定了，contribute 时现算）、她在 QQ 上的样子（ADR 0083，presence 的状态后台会改，**原位取**）、
+    答应的事那一句（ADR 0018，读承诺状态、记日志、还要在 assess 之前写 `facts.promised`，**原位取**）。新 fact `selfNote`、`promisedLine`。
+  - `modules/media-offers.ts`：图片表情和照片的清单（ADR 0063 / 0109 / 0240）。货架每取一次都查索引 / 文件、坏了会抛错，原来在所有模块 contribute 之前取、条件一次内容一次——**原位不动**，次数和先后照旧，
+    写进新 fact `stickerLine`、`photoLine`。以后谁想「顺手优化成取一次」就是行为改变，`media-offers-module.test.ts` 会拦住（断言调用两次）。
+  - `modules/intent-line.ts`：意图行（深思时去掉「怎么答」那一句，按 `facts.intent` / `facts.deliberate` 现算）和「/亲热」那一行（每取一次扣一条、写文件，**原位取**，新 fact `intimateLine`）。
+  - `modules/meme-dict.ts`：梗百科（DSH 10-29），条件同 `playfulAllowed`，读热梗模块写的 `facts.meme`，所以排在热梗之后；App 挂在表的最后，日志先后同原来。模拟器没有词库，不挂。
+    联系人流水线的 `memeDict` 选项删掉，`meme-dict-turn.test.ts` 改成挂模块。
+- 基线覆盖：意图行 37 个场景、重要的日子 `meetup`；QQ 上的样子、答应的事那一句、图片表情、照片、「/亲热」、梗百科基线 0 处，由新的四个测试（含流水线和模拟器用例）、`sim.test.ts`、`app.test.ts`、`meme-dict-turn.test.ts` 管。
+- 验证：基线 38/38 逐字不变（含删掉「旧逻辑」大模块）；变异检验——意图行模块不放，37 个场景报不一致；深思时也放意图行，`rich-chat` 报不一致；日子那几行不放，`meetup` 报不一致。四个新测试 28 项、相关测试通过；bot 全量 4495 过、13 跳过，红的是 DSH 那边的 2 项和那条负载下偶发的计时测试。
+
+### 生成之后那一段：方案（2026-11-15，子代理只读盘点，主代理照此做）
+
+- 现状：提示词的每一段都由模块放了，但生成之后的审稿与发送还全在联系人流水线和 App 里。解释器的 `review` 阶段还没有模块用（签名是 `review?(draft, turn): Maybe<string>`，没有上下文，也带不出要做的事）。
+- 顺序（行号见盘点）：`clean`（设备指令解析、ST 正则、表情 / 照片清理、只发表情）→ 挑候选（`pickBest` 对每个候选都 clean 一次，`deviceNow` 被反复改写，隐蔽的副作用要保住）→
+  审稿（事实检查 → 出口检查 / 危机检查，危机回合到此为止 → `<<查>>` → 形状裁剪 → 话说到一半 → 删行收尾 → 末查事实）→ `decorate`（质感、打错字，都按哈希不抽随机数）→ 设备登记 → 逐条发送
+  （App 的 `send`：标记处理、照片 / 表情 resolve、引用和小黄脸发不出的重发；只有整条全是标记的气泡在发送前处理，普通气泡里的标记要那一条真发出去才处理——这个行为要保留）。
+- 形状：文字进文字出、最多重写一次的几步（删行收尾、话说到一半、形状裁剪、`<<查>>`、出口 / 危机检查、事实检查）适合 `review`，但接口要长：
+  `ReviewCtx`（重写、接受、审稿调用、查记忆、审稿那一刻的聊天记录、模块间的 scratch）、能中途停下的结果（事实检查删光、危机回合）、一张审稿顺序表（同 slots.ts）。
+  `clean`、`decorate`、发送前那几样（设备登记、标记、照片 / 表情、聊天记录写法）另设同步阶段，副作用写成动作交给执行器。
+- 基线：出口检查重写 22 处、形状「太长了」8 处、打错字补「*对的词」3 处、引用、设备、点头、工作模式有；事实检查、话说到一半、`<<查>>`、危机重写和兜底、挑候选、撤回重发、
+  图片 / 表情 / 照片发送、语音、回复里的 `<<记住>>` 等标记都是 0，迁之前先补。
+- 步骤：0 补基线 → 1 接线（审稿上下文、顺序表、在每个位置调一次，App 不挂任何审稿模块，基线逐字不变）→ 2 删行收尾 → 3 形状裁剪并进 `modules/shape.ts` → 4 话说到一半 → 5 `<<查>>` 并进 self-memory →
+  6 出口检查 → 7 事实检查 → 8 草稿和设备指令分开、设备登记交执行器 → 9 clean 阶段 → 10 挑候选 → 11 decorate → 12 发送前的标记（语音是用户的代码，不碰）。
+- 另外：`app.ts` 里还有 19 处直接 `setInterval`（空气 / 日照 / 日历 / 交通、DSH 信箱、状态导出、outbox、每晚八个反思、没回原因的提醒、做梦、离开、DSH 状态），
+  是第 3 步之后合进来的，和「计时器全部经执行器」对不上；随对应功能迁成模块的 `schedules` 时一并收。
+
+### 生成之后那一段，第 0 步：补 `review` 基线（2026-11-15）
+
+- 子代理补的场景（`e1f9dfca`；只碰 `scenarios.ts` 和新快照，变异由主代理做）：一个晚上，男朋友档，开形状、逐条事实检查（`fix`）、替他说的、主动消息，带假记忆。单跑约 4 秒。
+- 走到的（原来都是 0）：事实检查的审稿调用、带说明重写后通过、重写后仍有就删行、主动找他那条删光了就整条不发、最后再查一次删掉一行；`<<查>>` 查到就带着结果重写、查不到就摘掉标记；
+  话说到一半重写好了 / 退到上一个逗号 / 并回前一条；形状太长重写、还长就按分句截断；危机重写通过 / 还不过就发固定兜底；只有标记的 `<<记住>>` 气泡在发送前处理、普通气泡里的 `<<日记>>` 那一条发出去时才处理。
+- 在旧代码上的九个变异（事实检查关掉、主动找他不准删光、危机回合走普通检查、查到也不重写、不裁形状、不管话说到一半、不做最后一查、只有标记的气泡不处理、发送时不处理标记）都让 `review` 报不一致。
+- 没走到的：`<<私密>>`（要起 powershell、写灵魂目录）、各种「重写抛错」的分支（基线里没法只让重写那一次失败）、挑候选、语音、`<<用电脑>>`、设备指令和重写稿的配合。
+
+### 生成之后那一段，第 1 步：审稿顺序表接线（2026-11-15）
+
+- 解释器加审稿顺序表 `REVIEW_STAGES`（`facts` → `exit` → `pull` → `shape` → `unfinished` → `finalize` → `factsFinal`，照搬迁移前手写的顺序）、审稿上下文 `ReviewCtx`（重写、采用重写、主动找他、允许重复、
+  模块间共用的 scratch、日志；字段随审稿模块迁出逐个加）、能中途停下的结果 `ReviewVerdict`，以及 `Module.reviewAt`（按位置挂处理函数）。原来的 `review?` 不动。
+- `reviewStage`：这个位置没有模块挂时**同步**返回原稿，不多一个微任务；有就按注册顺序跑，返回 stop 时后面的不跑。
+- 联系人流水线在每一步审稿之后调一次对应的位置（拼提示词时记下这一轮的 `turn`）。App 和模拟器还没有挂任何审稿模块，所以什么都不变；以后每迁一步，就删掉那一步的旧逻辑、换成挂在同一位置的模块。
+- 子代理起草下一步时发现两处，在同一个提交里修了：`createInterpreter` 原来只放行有 perceive / assess / contribute / review 的模块，只挂了 `reviewAt` 的会被筛掉、到不了联系人流水线；
+  `reviewStage` 原来只要有模块挂上就一定走异步，删行收尾这类同步的步骤会多出微任务——改成都同步时同步返回，碰到第一个异步的才转成 promise（同 `contributeTurn`）。
+- 验证：基线逐字不变（没有挂任何审稿模块）；`review-stage.test.ts`（顺序、没挂时同步、都同步时同步、中间异步、stop、只挂 `reviewAt` 的模块不被筛掉、流水线里删行收尾位置生效、事实检查位置 stop）。bot 全量 4503 过、13 跳过，红的 2 项是 DSH 那边的。
+
+### 生成之后那一段，第 2 步：删行收尾（2026-11-15）
+
+- 是什么：出口检查之后最后一道——只删行（禁用词、说话的毛病、书的进度说错、小黄脸太密……），不重写；危机回合走不到（出口检查之后就返回了）。
+- 由子代理起草（只新建文件）。删行收尾要用**出口检查那一刻算好的同一份上下文**（聊天记录在那一刻读一次），不在自己这里重读：联系人流水线在出口检查之前把它写进 `ReviewCtx.scratch.exitOptions`（新的 `ReviewScratch` 类型），
+  出口检查迁成模块之后改由它写。模块取不到时原样放过、记一句日志（接线漏了由测试发现）。
+- `src/modules/review-finalize.ts`：`reviewFinalizeModule()`，挂在 `finalize` 位置，同步。App 和模拟器都总是挂。
+- 删掉的接线：联系人流水线里 `finalizeReply(...)` 那一处和 import。直接调流水线的 `language-review.test.ts` 默认挂上这个模块。
+- 验证：基线 39/39 逐字不变；基线里没有一处发出去的话被删行收尾改过，所以「模块原样放过」基线抓不到，由 `language-review.test.ts`（重写加入禁用词仍被最终检查拦截）和 `review-finalize-module.test.ts` 管：原样放过红 6 项，不写 `scratch.exitOptions` 红 3 项。
+
+### 生成之后那一段，第 4 步：话说到一半（2026-11-15）
+
+- 是什么：ADR 0141——开着 `speechCheck` 时，一条话停在转折、「觉得」这种地方：重写一次，还不行就退到上一个逗号或并回前一条。挂在 `unfinished` 位置。危机回合走不到。
+- 由子代理起草。`src/modules/review-unfinished.ts`：`reviewUnfinishedModule()`，`finishReply` 原样调，重写 / 采用 / 日志用 `ReviewCtx` 的（和原来传给它的是同一组函数）。原来就 await，多出的一两个微任务落在本来异步的路径上，基线逐字不变。
+- App 和模拟器跟着 `speechCheck` 挂；流水线的 `speechCheck` 选项留着（出口检查的说话上下文还用它）。`language-review.test.ts` 开了 `speechCheck` 的用例挂上模块。
+- 验证：`review` 逐字不变；变异检验——App 不挂：`review` 报不一致、`app.test.ts` 话说到一半的用例红；`speechCheck` 关着也挂：`app.test.ts` 关着那条断言红。`review-unfinished-module.test.ts` 7 项通过。
+
+### 生成之后那一段，第 5 步：她想查才查（2026-11-15）
+
+- 是什么：她回复里写 `<<查：…>>` 时，按那个词查一次长期记忆，查到就带着结果重写一次；查没查到都把标记摘掉，不发出去。挂在 `pull` 位置。危机回合走不到。
+- 由子代理起草。方案原想并进 self-memory 模块，子代理指出不能并：self-memory 只在 `selfDirectedMemory` 开着时才挂，而摘标记从来不看这个开关，并进去之后关掉开关时 `<<查>>` 就会被发出去。所以单独一个模块、**总是挂**。
+- `src/modules/review-pull.ts`：`reviewPullModule({ recall })`。查记忆是模块选项（App 在开了长期记忆和 `selfDirectedMemory` 时给 `memory.recallPull`；`memory` 在解释器之后才建，查的时候现取），不放在 `ReviewCtx` 上——
+  按联系人变的只有 contact，`turn.contact` 就是它。流水线的 `pullRecall` 选项删掉。没写标记、没有查记忆、关键词为空时同步返回（同原来不 await 的几种情况）；查到之后的重写不算「采用重写」（同原来，设备指令仍是原稿的）。
+- 模拟器只摘标记（原来就没有查记忆）。
+- 验证：`review` 逐字不变；变异检验——不给查记忆、模块什么都不做，`review` 都报不一致。`review-pull-module.test.ts` 11 项（原来跳过的流水线用例接线后打开）通过。

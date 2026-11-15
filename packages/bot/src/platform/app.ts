@@ -45,6 +45,24 @@ import { innerModule } from '../modules/inner.ts';
 import { devicesModule } from '../modules/devices.ts';
 import { consentModule } from '../modules/consent.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
+import { reviewFinalizeModule } from '../modules/review-finalize.ts';
+import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
+import { reviewPullModule } from '../modules/review-pull.ts';
+import { timeBlockModule } from '../modules/time-block.ts';
+import { continuityModule } from '../modules/continuity.ts';
+import { groupModule } from '../modules/group.ts';
+import { memoryModule } from '../modules/memory.ts';
+import { warmModule } from '../modules/warm.ts';
+import { feelingsModule } from '../modules/feelings.ts';
+import { timeNotesModule } from '../modules/time-notes.ts';
+import { mediaOffersModule } from '../modules/media-offers.ts';
+import { intentLineModule } from '../modules/intent-line.ts';
+import { memeDictModule } from '../modules/meme-dict.ts';
+import { humanStateModule } from '../modules/human-state.ts';
+import { deliberateModule } from '../modules/deliberate.ts';
+import { lengthModule } from '../modules/length.ts';
+import { shapeModule } from '../modules/shape.ts';
+import { quoteModule } from '../modules/quote.ts';
 import { transcriptModule } from '../modules/transcript.ts';
 import { pastModule } from '../modules/past.ts';
 import { peopleAroundModule } from '../modules/people-around.ts';
@@ -1086,8 +1104,45 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 return askLine(pending.label, Math.floor((Date.now() - pending.at) / 60_000));
             },
         }),
+        // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；没有开关（说话更短 shortReplies 改说法），读旧逻辑写进 turn.facts 的那几样
+        // 形状控制（ADR 0091，配置 shape 及各分项）：contribute 时算出每条多长、几条，写回 turn.facts.shape；排在长短之前（长短读它），旧逻辑生成和裁剪时也读它
+        shapeModule({
+            // shapeAll（ADR 0220）App 从来没接配置，只有模拟器用；分项同下面给联系人流水线的（都要 shape 开着）
+            shape: config.shape, shapeAgenda: config.shape && config.shapeAgenda, shapeFiller: config.shape && config.shapeFiller, shapeFeel: config.shape && config.shapeFeel,
+            shapeSplit: config.shape && config.shapeSplit, shapeAsk: config.shape && config.shapeAsk, shapeLong: config.shape && config.shapeLong, log,
+        }),
+        lengthModule({ shortReplies: config.shortReplies, log }),
+        // 引用回复（ADR 0136，配置 quoteReply）：contribute 时挑出要引用的那条、写回 turn.facts.quote，旧逻辑发送时引用它
+        ...(config.quoteReply ? [quoteModule({ history: qq => history.load(qq), log })] : []),
         // 主动找他时计划器写的说明（initiate.note）；没有开关，不存状态
         initiateNoteModule(),
+        // 生成之后的审稿（ADR 0336）：删行收尾，挂在 finalize 位置；没有开关
+        reviewFinalizeModule(),
+        // 话说到一半（ADR 0141）：跟着 speechCheck，挂在 unfinished 位置
+        ...(config.speechCheck ? [reviewUnfinishedModule()] : []),
+        // 她想查才查（<<查：…>>）：挂在 pull 位置，总是挂（摘标记和开关无关）；开了长期记忆和 selfDirectedMemory 才真的去查。memory 在后面才建，查的时候现取
+        reviewPullModule({ ...(config.memory && config.selfDirectedMemory ? { recall: (contact: Contact, query: string) => memory!.recallPull(contact, query, new Date()) } : {}) }),
+        // 时间块（ADR 0004 / 0105）：每一轮「此刻」块的第一行；断网很久才回那一句跟着 lagTail。没有别的开关，不存状态
+        timeBlockModule({ lagTail: config.lagTail }),
+        // 连续性（ADR 0157–0163）：联系人流水线取回来的几行（turn.facts.continuity）照放；continuity 在解释器之后才建、取也在流水线里，所以总是挂
+        continuityModule(),
+        groupModule(),
+        // 记忆这一组（ADR 0012 / 0016–0020 / 0032 / 0043 / 0176 / 0177）：联系人流水线原位召回好写进 turn.facts.memory，这里只放；没有开关（没开长期记忆、名单外、crossRecent 没开时 facts 里没有）
+        memoryModule(),
+        // 情绪余温（ADR 0028）和没了结的事（ADR 0023）：他道歉 / 安慰 / 说想她之后三轮软一点（卡上有心情才算），没了结的事读旧逻辑写的 turn.facts.unsettled；没有开关，不存状态
+        warmModule({ log }),
+        // 心境那一行、节奏、梦那一行（ADR 0102）：联系人流水线原位算好写进 turn.facts（读梦、作者写下的事、回想过的感受、带结算的世界账，要等小别扭是否生效），这里只放；没有开关（herFeelings 没开时 facts 里没有）
+        feelingsModule(),
+        // 时间块里的另几行（重要的日子 ADR 0011、她在 QQ 上的样子 ADR 0083、答应的事 ADR 0018）：日子现算，另两行由联系人流水线原位取好写进 facts
+        timeNotesModule(),
+        // 这一轮的图片表情 / 照片清单（ADR 0063 / 0109）：联系人流水线在 contribute 之前原位取好写进 facts，这里只放
+        mediaOffersModule(),
+        // 意图行（深思时去掉「怎么答」那一句）和「/亲热」那一行
+        intentLineModule(),
+        // 真人数值（ADR 0222）和人格成长层（ADR 0251）：联系人流水线开头算好写进 turn.facts（读带结算的世界账，不挪过 await），这里只放两行；没有开关（没有需要锚点 / 世界账时 facts 里没有）
+        humanStateModule(),
+        // 深思（ADR 0151）和语义路由（ADR 0202）：判断和分类那次模型调用留在联系人流水线原位，写进 turn.facts；这里只放两句。没有开关（deliberate 没开时 facts 里没有）
+        deliberateModule(),
         // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态
         transcriptModule(),
         // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
@@ -1100,7 +1155,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 网络热梗（ADR 0129）：每一轮从库里现读（作者可以在两轮之间改 / 删，别用改之前的快照），停下之后不再读；从热榜学新梗还在下面（要她的 B 站号）
         ...(config.memes ? [memesModule(() => (stopped ? [] : loadMemes(memesFile, log).entries), log)] : []),
         // 她看视频（ADR 0130）：他问起时放她真看过的两条；用的是内存里那份，她看完一个就换新的
-        ...(config.watching ? [watchedModule(() => watchedEntries, log)] : [])],
+        ...(config.watching ? [watchedModule(() => watchedEntries, log)] : []),
+        // 梗百科（DSH 10-29）：要在热梗之后（读 facts.meme）；挂在最后，同迁移前「旧逻辑」那一行日志的先后
+        ...(memeDict ? [memeDictModule(memeDict, log)] : [])],
         exec,
     });
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
@@ -2149,17 +2206,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 },
             } : {}),
             memory,
-            ...(memory && config.selfDirectedMemory ? { pullRecall: (query: string) => memory!.recallPull(contact, query, new Date()) } : {}),
             ...(promises ? { promises } : {}),
             ...(sharedWorld ? { worldState: sharedWorld } : {}),
             ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
             ...(config.grievance ? { grievance: true } : {}),
             ...(config.rhythm ? { rhythm: true } : {}),
             ...(config.shortReplies ? { shortReplies: true } : {}),
-            ...(config.shape ? { shape: true } : {}),
-            ...(config.shape && config.shapeAgenda ? { shapeAgenda: true } : {}),
-            ...(config.shape && config.shapeFiller ? { shapeFiller: true } : {}),
-            ...(config.shape && config.shapeFeel ? { shapeFeel: true } : {}),
             // 她自己决定今天想做什么（ADR 0182）：和「在读的书」一起当额外的空闲活动，每次现取
             ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
             // 她理解人的话（10-30）：他这句话和以前被纠正过的事撞上时提醒她
@@ -2177,7 +2229,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
             ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => { lastFeelings = report; writeFeelingsExport(soulDir(), report); } } : {}),
             ...(feelingReviewNow && contact.tier === 'boyfriend' ? { feelingReview: feelingReviewNow } : {}),
-            ...(memeDict && contact.tier === 'boyfriend' ? { memeDict } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
             ...(config.factCheck !== 'off' ? { factCheck: config.factCheck, ...(config.factHim ? { factAboutHim: true } : {}) } : {}),
@@ -2186,9 +2237,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
             ...(config.pursuits ? { pursuits: pursuitsNow } : {}),
-            ...(config.shape && config.shapeSplit ? { shapeSplit: true } : {}),
-            ...(config.shape && config.shapeAsk ? { shapeAsk: true } : {}),
-            ...(config.shape && config.shapeLong ? { shapeLong: true } : {}),
             ...(config.deliberate ? { deliberate: { llm: deliberateLlm(config.llm, config.deliberateModel) } } : {}),
             ...(turnWeigher ? { turnWeight: turnWeigher } : {}),
             ...(continuity ? { continuity } : {}),

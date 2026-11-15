@@ -6,13 +6,13 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
-import { assessTurn, contributeTurn, perceiveTurn, type Module, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
-import type { Piece, Slot } from '../interpreter/slots.ts';
+import { assessTurn, contributeTurn, perceiveTurn, reviewStage, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
+import type { MemoryPieces } from '../modules/memory.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
-import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
-import { crisisFallback, faceContext, finalizeReply, reviewCrisisReply, reviewReply, type ReviewOptions } from '.././language/exit-check.ts';
+import { isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
+import { crisisFallback, faceContext, reviewCrisisReply, reviewReply, type ReviewOptions } from '.././language/exit-check.ts';
 import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
 import { checkFacts, type FactCheckMode, type FactRecord } from '.././language/fact-check.ts';
 import { chatCompletion, completionMaxTokens, forExtraction } from '.././language/llm.ts';
@@ -33,18 +33,15 @@ import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from '.././emotion/grievance.ts';
 import { needsCareText } from '.././language/intent.ts';
 import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
-import { describeQuote, planQuote, quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
-import { asksToExplain, describeLength, ENGAGED_INTENT, lengthHint, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, STILTED_WORDS } from '.././language/expression.ts';
+import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
+import { asksToExplain, ENGAGED_INTENT, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, STILTED_WORDS } from '.././language/expression.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
-import { DELIBERATE_MAX_BUBBLES, DELIBERATE_NOTE, deliberateTurn, describeShape, planShape, shapeReply, type ShapePlan, type ShapeShares } from '.././language/shape.ts';
-import { finishReply } from '.././language/unfinished.ts';
-import { describeUnsettled } from '.././life/open-loops.ts';
+import { DELIBERATE_MAX_BUBBLES, deliberateTurn, shapeReply, type ShapePlan } from '.././language/shape.ts';
 import { describeWorld, lastMealDish, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
 import { isExplicitCurrentPhotoRequest, type CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { dayPlan, describeSlot } from '.././life/day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from '.././life/body.ts';
 import { saidAsleepAt } from '.././life/bedtime.ts';
-import { describeWarmAffect, warmAffect } from '.././emotion/affect.ts';
 import { moodPaceLine, moodShape, tunedMaxBubbles } from '.././emotion/express.ts';
 import { withEveryday } from '.././life/everyday.ts';
 import { withMenu } from '.././life/menu.ts';
@@ -57,13 +54,12 @@ import { formatDate, herDay, type ExtraFreeActivity } from '.././life/schedule.t
 import { speechContext, TAIL_CAPS, type BookProgressContext } from '.././language/speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from '.././language/candidates.ts';
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
-import { describeDays, describeTime } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts';
 import { lastNight, withLastNight } from '.././life/nights.ts';
-import { describeHumanState, describeHumanValues, type HumanValues } from '.././human-values.ts';
-import { auditDevelopment, describeDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
+import { describeHumanValues, type HumanValues } from '.././human-values.ts';
+import { auditDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
 import { photoAllowance, photoIntent, photoWanted, stripPhotoArtifacts, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
 
@@ -173,8 +169,6 @@ export interface ContactPipelineOptions {
     factAudit?: (messages: OpenAIMessage[]) => Promise<string>;
     /** 每次事实检查的记录（模拟器的报告用） */
     onFactCheck?: (record: FactRecord) => void;
-    /** 引用的概率（默认 QUOTE_SHARE；模拟器场景可以调来测）*/
-    quoteShare?: number;
     /** 她打字的这段时间让对方那边显示「正在输入…」（ADR 0077，配置 typingStatus）；不给就不显示 */
     typing?: (userId: number) => void;
     /** 撤回自己发出去的一条（配置 selfRecall，ADR 0086）：打错字改口的，一部分改成撤回重发；不给就一律补一条「*对的词」 */
@@ -190,20 +184,14 @@ export interface ContactPipelineOptions {
     photos?: PhotoShelf;
     /** AI 生活照（ADR 0240）：只解析“现在/刚刚”的明确请求；新图只建待审核草稿，返回 approved 才能发匹配编号。 */
     currentAiPhoto?: (request: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => CurrentAiPhotoResult;
-    /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
-    memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
     /** 他问到过去的某一天时，她那天自己写的日记（ADR 0217，默认关）：date 是她的那一天 YYYY-MM-DD */
     diaryOn?: (date: string) => string | undefined;
     /** 回忆带着当时的感觉（ADR 0218，默认关）：想起某一天的事时附一句她那天有依据的感觉；因为他而难过 / 烦 / 担心的不附 */
     memoryFeelings?: boolean;
     /** 昨晚真的怎么睡的（ADR 0219，默认关）：早上困不困从她说「睡了」、半夜被吵醒、睡前跟他聊推，不按课表；被吵醒有起床气 */
     realNights?: boolean;
-    /** 形状对所有轮次都生效（ADR 0220，默认关）：关着时照 DSH 10-28 的松绑，普通闲聊不给形状 */
-    shapeAll?: boolean;
     /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
     dreams?: () => { appraisals: Appraisal[]; line?: string };
-    /** 她想查才查（<<查：…>>）：拿到想起来的记忆，再让她重写一次 */
-    pullRecall?: (query: string) => Promise<string | undefined>;
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
     stickerChance?: number;
     /** 抽到发表情的轮次里只发表情不写文字的概率（不写 = 0，不开；app.ts 在 shapeFeel 开着时给 STICKER_ONLY_SHARE；模拟器场景可以调来测，ADR 0099） */
@@ -223,7 +211,7 @@ export interface ContactPipelineOptions {
     /** 默认调模型接口（llm.ts）；模拟器包一层，在生成中插入对方的消息 */
     generate?: (messages: OpenAIMessage[], log: Log, use?: AppConfig['llm']) => Promise<string>;
     /** 深思（配置 deliberate，ADR 0151）：认真问她的轮次不套字数和条数、用这份更强的模型配置（generate 的第三个参数）、提示词只留一句“先想清楚” */
-    deliberate?: { llm: AppConfig['llm']; /** 换掉深思轮次的那段提示词（只有模拟器的 --deliberate-note 用；线上不传，用 DELIBERATE_NOTE） */ note?: string };
+    deliberate?: { llm: AppConfig['llm'] };
     /** 语义路由（配置 depthRouting，ADR 0202；要 deliberate 开着）：关键词没认出来的轮次问一次小模型这一句是轻是重；说值得认真的（沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩）也走深思。只加不减；没分类出来（出错 / 超时）照旧按关键词 */
     turnWeight?: (input: { history: ChatMessage[]; said: string }) => Promise<TurnWeight | undefined>;
     /**
@@ -258,16 +246,6 @@ export interface ContactPipelineOptions {
     rhythm?: boolean;
     /** 更短的回复（ADR 0024 的 10-19 调整，配置 shortReplies）：回很短的概率 0.5、认真接话的轮次让路、新措辞；不开就是上线前的老样子（0.35、老措辞） */
     shortReplies?: boolean;
-    /** 形状控制（配置 shape）：按他这一轮的长短定她每条最多几个字、最多几条，超了重写 / 截断；开了就不用 shortReplies 的软提示（ADR 0091） */
-    shape?: boolean;
-    /** 带自己的小事（配置 shapeAgenda，要 shape 开着）：适用的轮次里约五分之一，答完他的话再从“你那边”里挑一件自己的事说一句（ADR 0094） */
-    shapeAgenda?: boolean;
-    /** 各种形状轮次的占比（调参用，模拟器的场景里设；线上不用，用 shape.ts 的常量） */
-    shapeShares?: ShapeShares;
-    /** 废话（配置 shapeFiller，要 shape 开着）：适用的轮次里约 7% 只回一条笑 / 应声 / 拖音 / 叹一句状态，他拖音时她也跟着拖（ADR 0095） */
-    shapeFiller?: boolean;
-    /** 情绪轮（配置 shapeFeel，要 shape 开着）：适用的轮次里约 18% 先说自己对他的小情绪，不把他的话处理完整（ADR 0099） */
-    shapeFeel?: boolean;
     /** 她自己决定今天想做的事（ADR 0182）：和「在读的书」一起当额外的空闲活动，状态行和「你今天的打算」都带上 */
     herPlan?: (at: Date) => ExtraFreeActivity[];
     /**
@@ -294,14 +272,8 @@ export interface ContactPipelineOptions {
     pursuits?: () => readonly Pursuit[];
     /** 她每天碰到的小事（ADR 0106，配置 everydayLife；卡在 loadTierCard 里补）：他问“今天干嘛了 / 有什么好玩的事”时让她从今天的小事里挑具体的说 */
     everydayLife?: boolean;
-    /** 回复延迟的长尾（ADR 0105，配置 lagTail）：醒着空着时有一部分消息她在做别的，过一会儿才看到；断网很久之后才回，时间块里写一句 */
+    /** 回复延迟的长尾（ADR 0105，配置 lagTail）：醒着空着时有一部分消息她在做别的，过一会儿才看到；断网很久之后才回，时间块里写一句（那一句由 modules/time-block.ts 放） */
     lagTail?: boolean;
-    /** 分成几条（配置 shapeSplit，要 shape 开着）：把形状里抽出的条数当目标写进提示词，不只是上限（ADR 0096） */
-    shapeSplit?: boolean;
-    /** 被问直接问题时答完再接着说（配置 shapeAsk，要 shape 开着，ADR 0149）：不加「应一声、附和」那一句，条数按真人被问问题时的分布抽 */
-    shapeAsk?: boolean;
-    /** 被认真问想法 / 原因时说长一点（配置 shapeLong，要 shape 开着，ADR 0150） */
-    shapeLong?: boolean;
     /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；回复里的 <device:…> 令牌在发送前登记并按档处理。菜单是解释器的模块（modules/devices.ts） */
     devices?: Pick<DeviceControl, 'parse' | 'commit'>;
     /** 他刚才在 DSH 桌面上和她的对话（ADR 0177，配置 crossRecent）：只给男朋友档；返回一段放进提示词的话，没有就不放 */
@@ -395,6 +367,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let textureNow: { said: string; serious: boolean; recentFaces: number; recentTildes: number } | undefined;
     /** 这一轮第一条要引用他的哪一句（ADR 0136，配置 quoteReply）：buildPrompt 按他没回的那一串定，紧跟着发送时现取 */
     let quoteNow: QuotePlan | undefined;
+    /** 这一轮的 turn（拼提示词时建的）：生成之后审稿的模块（ADR 0336 reviewAt）要读它 */
+    let turnNow: Turn | undefined;
     /** 这一轮拼出来的提示词（ST 后处理之前，system 还是 system）：事实检查拿它当“她能依据的事实”（ADR 0137） */
     let promptSource: OpenAIMessage[] | undefined;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022，modules/past.ts）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
@@ -474,8 +448,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             }
             // 只想一想（ADR 0101 内心）：不是在聊天，不要意图行、形状、字数提示、表情；聊天记录当成“回想”放进说明里，不当成要接着回的对话
             const thinking = Boolean(initiate?.think);
-            const humanStateLine = humanValues && !thinking ? describeHumanState(humanValues, contact.tier) : undefined;
-            const developmentLine = development && !thinking ? describeDevelopment(development) : undefined;
             // 长期记忆只给名单里的人；主动找他时没有「他这次说的」：查想知道的事 + 最后两句，带前 3 天到后 2 天的时间窗（ADR 0012 决策 1 第 7 条）
             const remembers = memory && contact.tier !== UNLISTED_TIER;
             const recallOptions = initiate
@@ -563,7 +535,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const peopleText = people.map((person, i) => describePerson(person, impressions[i], aboutPeople[i]));
             const today = common ? undefined : you(await todayOthers);
             if (today) log(`今天和别人聊过的 ${countLines(today)} 条（新一段对话，有由头可以含糊提一件）`);
-            const days = describeDays(character.dates, time);
+            // 重要的日子那一行（ADR 0011）是解释器的模块（modules/time-notes.ts）：卡上的日子建卡时就定了，在 contribute 时现算
             if (herSchedule) options.onHerDay?.(time);
             // 这一轮交给解释器的模块（ADR 0336）：在这里建 turn、先 perceive——看清她此刻（她那边、身体、在干嘛），写进 turn.facts；
             // 下面的旧逻辑和后面的 assess 都读。旧逻辑算的判断在 assess 之前写进同一个 turn
@@ -571,6 +543,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 contact, at: time, history: chat, thinking, card: character, facts: {},
                 ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
             };
+            turnNow = turn;
+            if (groupEcho) turn.facts.groupEcho = groupEcho;
             const perceived = perceiveTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             if (perceived instanceof Promise) await perceived;
@@ -590,14 +564,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 他提到见面时她那几天不方便的时段（ADR 0066 决策 2）是解释器的模块（modules/meetup.ts），经 turnModules 放进 obstacle 槽
             // 挂着的事（ADR 0023）：等他说结果的、她问了他没答的进意图行；没了结的事实放在心情后面，只给事实
             const loops = contact.tier !== UNLISTED_TIER ? options.promises?.openLoops?.(contact, chat, time) : undefined;
-            // 陌生人 / 名单外档没有她自己的日子，也不会因为一句越界的「爱你」凭空亲近。
-            const affect = character.moods.length ? warmAffect(chat) : undefined;
-            const warm = describeWarmAffect(affect);
-            const unsettled = loops ? describeUnsettled(loops.unsettled, affect?.kind === 'repair' || affect?.kind === 'comfort') : undefined;
+            // 情绪余温（ADR 0028）和没了结的事（ADR 0023）是解释器的模块（modules/warm.ts）：contribute 时算，经 turnModules 放进 unsettled、warm 槽；没了结的事实由下面写进 turn.facts.unsettled
             if (loops && (loops.waiting.length || loops.unanswered.length || loops.unsettled.length)) {
                 log(`挂着的事：等结果 ${loops.waiting.length}、没回答 ${loops.unanswered.length}、没了结 ${loops.unsettled.length}`);
             }
-            if (affect) log(`情绪余温：${affect.kind}，还影响 ${affect.remaining} 轮`);
             // 她那边的事还没说过（ADR 0057 调整）：她的今天了结的、那之后她一句话都还没说过（主动那条发出去了也算说过）——这一轮顺带说。先只给男朋友档
             const untold = around && herSchedule && contact.tier === 'boyfriend' && !initiate
                 ? worldNews(around).filter(n => n.at <= time && formatDate(herDay(herSchedule, n.at)) === around.day
@@ -613,9 +583,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 接着 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
             // 她此刻在干嘛、作息、她答应的事、挂着的事、她那边还没说过的事还是旧逻辑算的，写进 facts 给意图阶梯（modules/intent.ts）读
             Object.assign(turn.facts, {
-                ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(promised ? { promised: true } : {}),
-                ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what) } : {}),
+                ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(promised ? { promised: true, promisedLine: promised } : {}),
+                // 她在 QQ 上的样子（ADR 0083）、答应的事那一句由解释器的模块（modules/time-notes.ts）放；取留在上面原位（presence 的状态后台会改、答应的事读状态记日志）
+                ...(selfNote ? { selfNote } : {}),
+                ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what), unsettled: loops.unsettled.map(l => l.what) } : {}),
                 ...(untold.length ? { news: untold } : {}),
+                // 真人数值和人格成长层在上面开头算好（不挪过 await），那两行由解释器的模块（modules/human-state.ts）放
+                ...(humanValues ? { humanValues } : {}), ...(development ? { development } : {}),
             } satisfies TurnFacts);
             const assessed = assessTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
@@ -683,18 +657,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她自己最近的日子（心里的线头）、拒绝过的、评价、「你现在的生活」、首轮铺底是解释器的模块（modules/soul.ts）
             // 他的口气（2026-10-30：说话还是使唤、当程序说话、很元的问题、使唤得比说话多）是解释器的模块（modules/register.ts），经 turnModules 放进 register 槽
             // 她自己记下的东西（说话习惯、聊天回顾、日记里发现的自己、读完看完的想法、没想完的问题、她猜的事）是解释器的模块（modules/her-notes.ts）
-            // 梗百科词库（2026-10-29）：她自己的库太小；他提到的词只要词库里有，就把「怎么用/出处/标签」给她。
-            // 让路条件和热梗一样；已经在热梗那一行里的不重复给。热梗那一行由热梗模块（modules/memes.ts）在 contribute 时写进 turn.facts.meme，
-            // 所以这一行到拼段落时（下面「旧逻辑」模块的 contribute）才算，日志也在那时记
-            const dictLine = (memeNow: string | undefined) => options.memeDict && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance
-                && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
-                ? (() => {
-                    const last = chat.findLast(message => message.role === 'user');
-                    if (!last) return undefined;
-                    const hit = options.memeDict!.mention(last.content);
-                    if (!hit || memeNow?.includes(hit.term)) return undefined;
-                    return `[他这句里提到一个网络词「${hit.term}」：怎么用——${hit.meaning}${hit.origin ? `；出处——${hit.origin}` : ''}${hit.tags ? `；标签——${hit.tags}` : ''}。你大概知道这个梗：顺着他的意思接，别科普、别解释梗、别拆穿]`;
-                })() : undefined;
+            // 梗百科词库（2026-10-29）是解释器的模块（modules/meme-dict.ts），挂在热梗之后（读 turn.facts.meme）
             // 主动发的那条（喂完猫拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
             // 被打断的这一轮（ADR 0115）：不带“先直接回答他刚问的”这类意图、不套形状 / 长短提示——它们和“先接他的话、顺带说一声刚被什么岔了一下”冲突，模型会按更紧的那条来、把打断吞掉（模拟 5/5 没提）
             const intent = photoNow && !initiate
@@ -743,6 +706,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 try { options.onFeelings({ at: time.getTime(), felt: feltNow, line: neutral }); } catch (error) { log(`心境：没能交给桌面上的她（${error instanceof Error ? error.message : String(error)}）`); }
             }
             if (feelingLine) log(`心境：${feltNow.filter(item => item.level !== 'faint').slice(0, 2).map(item => `${FEELING_NAME[item.kind]}·${item.level === 'strong' ? '很重' : '明显'}（${item.source === 'world' ? '她那边的事' : item.source === 'him' ? '他的态度' : item.source === 'self' ? '她自己回想的' : '作者写下的事'}）`).join('、')}（日志不记内容）`);
+            // 心境那一行、节奏、梦那一行是解释器的模块（modules/feelings.ts）：在这里原位算（读梦、作者写下的事、回想过的感受、带结算的世界账，要等小别扭是否生效），
+            // 写进 turn.facts，经 turnModules 放进 feeling、pace、dreams 槽；onFeelings、low、最多几条、日志还读这里算的
+            Object.assign(turn.facts, {
+                ...(dreamsNow?.line ? { dreamLine: dreamsNow.line } : {}), ...(feelingLine ? { feelingLine } : {}), ...(paceLine ? { paceLine } : {}),
+            } satisfies TurnFacts);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
             const stickerAllowance = options.stickers && !thinking ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
@@ -756,6 +724,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     return [] as string[];
                 })
                 : [];
+            // 连续性那几段是解释器的模块（modules/continuity.ts）：取是异步的（上网、调模型、记「已告诉他」），留在这里不挪——后面紧跟着语义路由、「/亲热」、各模块的 contribute；
+            // 取回来的写进 turn.facts，经 turnModules 放进 continuity 槽
+            if (continuityLines.length) turn.facts.continuity = continuityLines;
             // 没有明确反应的轮次也抽一抽（ADR 0132）：她拿不到小黄脸以后，表情包得顶上；抽签的种子和有反应的那条路分开
             const stickerDrawn = stickersAllowed && (stickerCued(saidNow)
                 ? stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE)
@@ -779,13 +750,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     : `深思：他在认真问她，这一轮不套字数和条数、用 ${options.deliberate!.llm.model}、提示词只留一句“先想清楚”`);
             }
             // 深思时那条只管“怎么答”的意图行（先直接回答 / 很大很抽象的问题）由深思那一句代替；追着要答案、说她不像真人这类纠偏的意图行保留
-            const intentLine = deliberateNow && intent && /先直接回答他刚问的|他在问一个很大、很抽象的问题/.test(intent) ? undefined : intent;
-            // 引用回复（ADR 0136）：他连发里有个不是最后一条的问题，按概率引用它；危机、他难过、主动找他、只发表情 / 照片的回合不引用
-            quoteNow = options.quoteReply && !initiate && !thinking && !crisisNow && !stickerOnlyNow && !photoNow && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
-                ? planQuote(options.history.load(contact.qq), contact.qq, options.quoteShare)
-                : undefined;
-            const quoteLine = quoteNow ? describeQuote(quoteNow) : undefined;
-            if (quoteLine) log('引用回复：这一轮第一条引用他连发里的一个问题（日志不记内容）');
+            // 意图行（深思时去掉「怎么答」那一句）是解释器的模块（modules/intent-line.ts），读 turn.facts.intent / deliberate
+            // 引用回复（ADR 0136）是解释器的模块（modules/quote.ts）：contribute 时算、写回 turn.facts.quote，放进 quote 槽；拼完段落之后取回来，发送时引用那条。这里先清掉上一轮的
+            quoteNow = undefined;
             pick = picked ? {
                 kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS],
                 // 她自己生活里的东西：猫、相机、在读的书、手上的爱好（DSH 诊断 1.2、ADR 0036 的四类）
@@ -808,9 +775,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            // 语言松绑（DSH 10-28 27facc0）：只有“接情绪/好事/亲近/撒娇/认真”或问过去时给形状；普通闲聊不圈条数字数。
-            // shapeAll（ADR 0220，默认关）：所有轮次都给形状（回到 ADR 0091 的样子），用来量松绑前后的差别
-            shapeNow = options.shape && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !deliberateNow && (Boolean(options.shapeAll) || Boolean(cue) || Boolean(intent && ENGAGED_INTENT.test(intent))) ? planShape({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson, agenda: options.shapeAgenda, filler: options.shapeFiller, feel: options.shapeFeel, split: options.shapeSplit, ask: options.shapeAsk, long: options.shapeLong, agendaTopics, ...(options.shapeShares ? { shares: options.shapeShares } : {}) }) : undefined;
+            // 形状控制（ADR 0091，语言松绑 DSH 10-28、shapeAll ADR 0220）是解释器的模块（modules/shape.ts）：contribute 时算、写回 turn.facts.shape，放进 shape 槽；
+            // 下面拼完段落之后从 turn.facts 取回来，生成时调最多几条、发出去之前按它裁。这里先清掉上一轮的
+            shapeNow = undefined;
             // 别重复自己（反复说的字词、主动找他的开头、说过了的事，ADR 0098 / 0135）是解释器的模块（modules/repetition.ts），经 turnModules 放进 crutch、opener、told 槽
             // 她最近心里在想的（ADR 0101）是解释器的模块（modules/inner.ts），经 turnModules 放进 inner 槽
             // 「/亲热」（ADR 0170）：他刚让她黏一点，接下来几条回复里放一行；每生成一条取一次
@@ -825,9 +792,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     recentTildes: faceContext(options.history.load(contact.qq), contact.tier).recent.slice(-TEXTURE_TILDE_WINDOW).filter(reply => /[～~]\s*$/m.test(reply)).length,
                 }
                 : undefined;
-            const length = crisisNow || shapeNow || cue || stickerOnlyNow || photoNow || interruption || thinking || deliberateNow ? undefined : lengthHint({ history: chat, intent, initiating: Boolean(initiate), low, aboutPerson, shortReplies: options.shortReplies });
-            if (length) log(`这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
-            if (shapeNow) log(`这一轮形状：每条不超过 ${shapeNow.cap} 字、最多 ${shapeNow.maxBubbles} 条（${shapeNow.kind}${shapeNow.agenda ? `，带自己的事${shapeNow.agendaTopic ? `：${shapeNow.agendaTopic}` : ''}` : ''}${shapeNow.filler ? '，废话' : ''}${shapeNow.long ? '，长答' : ''}${shapeNow.feel ? '，先说小情绪' : ''}${shapeNow.stretch ? '，跟着拖音' : ''}${shapeNow.drawl ? '，语气松一点' : ''}${shapeNow.parts ? `，分 ${shapeNow.parts} 条` : ''}）`);
+            // 长短不一（ADR 0024）和形状（ADR 0091）是解释器的模块（modules/length.ts、modules/shape.ts）；它们要的前面那几样在这里写进 turn.facts
+            Object.assign(turn.facts, {
+                ...(intent ? { intent } : {}), ...(cue ? { cue } : {}), ...(stickerOnlyNow ? { stickerOnly: true } : {}), ...(photoNow ? { photo: photoNow } : {}),
+                ...(deliberateNow ? { deliberate: true } : {}), ...(routedHint ? { routedHint } : {}), ...(low ? { low: true } : {}), agendaTopics,
+                // 「/亲热」那一行在上面原位取（每取一次扣一条、写文件），由解释器的模块（modules/intent-line.ts）放
+                ...(intimateNow ? { intimateLine: intimateNow } : {}),
+            });
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
             // 想一想：最近的聊天换成一段“回想”放在说明里，是解释器的模块（modules/transcript.ts），经 turnModules 放进 transcript 槽；这里只把原文清空
@@ -845,6 +816,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 }
             }
             if (thinking) shown = { chat: [], omitted: 0 };
+            // 记忆这一组（关系概况、要点、他的私人记忆、工作房、DSH 桌面、公共记忆、那一天、今天和别人聊过的、提到的人）是解释器的模块（modules/memory.ts）：
+            // 召回留在上面原位（几次 await 等 Hindsight、关系概况和印象读缓存后台重读、要点后台整理），最终的字写进 turn.facts.memory，经 turnModules 放进各自的槽，披露分寸由模块接
+            const memoryNow: MemoryPieces = {
+                ...(relationship ? { relationship } : {}), ...(summary ? { summary } : {}), ...(recalled ? { recalled } : {}),
+                ...(work ? { work } : {}), ...(desktop ? { desktop } : {}), ...(common ? { common } : {}),
+                ...(recap ? { recap: recap.text } : {}), ...(today ? { today } : {}), ...(peopleText.length ? { people: peopleText } : {}),
+            };
+            if (Object.keys(memoryNow).length) turn.facts.memory = memoryNow;
             // 危机回合被问是不是真人 / 程序一律承认（ADR 0068 决策 7）：换用承认版的卡，不在运行时叠一条覆盖（ADR 0003 / 0067 的纪律）
             // 想一想的时候卡末尾那句“只输出你要发出去的消息：不写心理活动”正好和要求相反，这一次去掉（只有内心用）
             // 10-30 用户：把她身上「作者写的设定」拿掉——description / personality / scenario / 示例对话不再进提示词。
@@ -853,67 +832,17 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 只留卡里那段「被问是不是 AI」的说明（承认是程序是底线，不能跟设定一起清掉）；open 卡本来没有这段
             const bare = INJECT_PERSONA ? character : { ...character, description: personaFacts(character.description), personality: '', scenario: '', mesExample: '' };
             const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...bare, postHistoryInstructions: '' }, worldInfo } : { character: bare, worldInfo };
-            // 按槽位表拼（ADR 0336 第 4 步）：迁移前这里手写的那一串，现在是「旧逻辑」这个大模块的段落，顺序由 interpreter/slots.ts 定；
-            // 以后迁出去的模块经 options.turnModules 加进来。原来按真假判断的照旧按真假，原来无条件放的照旧无条件放
-            const when = (slot: Slot, text: string | undefined | false | null): Piece[] => (text ? [{ slot, text }] : []);
-            const legacyPieces: Piece[] = [
-                ...when('relationship', relationship),
-                ...when('summary', summary),
-                ...when('recalled', recalled),
-                ...when('work', work),
-                ...when('desktop', desktop),
-                ...when('group', groupEcho),
-                // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3：放在前面时问「昨天都干嘛了」她照着报喂猫、取快递，想不起那天记得住的麻辣烫，1/3）
-                ...when('common', common),
-                ...(recap ? [{ slot: 'recap' as const, text: recap.text }] : []),
-                ...when('today', today),
-                ...peopleText.map(text => ({ slot: 'people' as const, text })),
-                ...(common || today || peopleText.length ? [{ slot: 'disclosure' as const, text: disclosureRules(contact) }] : []),
-                { slot: 'time', text: describeTime(chat, time, { initiating: Boolean(initiate), ...(options.lagTail && offlineSince !== undefined ? { offlineSince } : {}) }) },
-                ...when('days', days),
-                // 「你现在」那几行是底子不是话题（DSH 10-30）由她此刻的模块（modules/her-now.ts）放进 groundNote 槽
-                // 今天的心情（按日期抽的「爱笑」「安静」）不再注入（10-30 用户：这种替她表态的都清掉）：
-                // 心情由真实发生的事推出来的 feelingLine 表达。
-                ...when('humanState', humanStateLine),
-                ...when('development', developmentLine),
-                ...when('unsettled', unsettled),
-                ...when('warm', warm),
-                ...when('feeling', feelingLine),
-                ...when('pace', paceLine),
-                // 追求（「别挂科」「用新相机拍出满意的东西」）也不再注入（10-30 同一条）：她想追什么，自己说。
-                ...when('selfNote', selfNote),
-                ...when('promised', promised),
-                ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
-                ...continuityLines.map(text => ({ slot: 'continuity' as const, text })),
-                // 她能替他操作的设备（ADR 0148）的菜单是解释器的模块（modules/devices.ts），经 turnModules 放进 devices 槽
-                ...when('sticker', stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined),
-                ...when('photo', photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)! : undefined),
-                ...when('intent', intentLine),
-                // 理解偏过、他最近的事（DSH 10-30 / 10-31）和「记忆由你自己决定」是解释器的模块（modules/self-memory.ts）
-                // 人称、正经问就先直接答、别琢磨怎么接（DSH 10-30 / 10-31）是解释器的模块（modules/reply-basics.ts），经 turnModules 放进 person、directAnswer、noOverthink 槽
-                // 他的请求等她点头（2026-10-30）是解释器的模块（modules/consent.ts），经 turnModules 放进 herAsk 槽
-                // 工作模式的三行（他在求她切工作 / 判断要不要动电脑 / 切到了工作）是解释器的模块（modules/work-mode.ts）
-                ...(deliberateNow ? [{ slot: 'deliberate' as const, text: options.deliberate?.note ?? DELIBERATE_NOTE }] : []),
-                ...when('routedHint', routedHint),
-                ...(length ? [{ slot: 'length' as const, text: describeLength(length, options.shortReplies) }] : []),
-                ...(shapeNow ? [{ slot: 'shape' as const, text: describeShape(shapeNow) }] : []),
-                ...when('quote', quoteLine),
-                ...when('intimate', intimateNow),
-                // 「做题式」写法（ADR 0146 实验，只有模拟器用）是解释器的模块（modules/solve-frame.ts），经 turnModules 放进 solveFrame 槽
-                // 主动找他时的说明是解释器的模块（modules/initiate-note.ts），经 turnModules 放进 initiateNote 槽
-            ];
-            const legacy: Module = {
-                id: 'contact-legacy',
-                // 梗百科那一行要看热梗模块这一轮放了什么（turn.facts.meme），所以在这里、热梗模块之后再算
-                contribute: () => {
-                    const dictNow = dictLine(turn.facts.meme);
-                    if (dictNow) log('梗百科：这一轮查到了他提的词（日志不记内容）');
-                    return [...legacyPieces, ...when('memeDict', dictNow)];
-                },
-            };
-            const ran = contributeTurn([...(options.turnModules ?? []), legacy], turn);
+            // 图片表情和照片的清单（ADR 0063 / 0109 / 0240）是解释器的模块（modules/media-offers.ts）：清单在这里、所有模块的 contribute 之前原位取
+            // （货架每取一次都查索引 / 文件，坏了会抛错；条件一次、内容一次，照旧），写进 turn.facts，经 turnModules 放进 sticker、photo 槽
+            const stickerLine = stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined;
+            const photoLine = photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)! : undefined;
+            Object.assign(turn.facts, { ...(stickerLine ? { stickerLine } : {}), ...(photoLine ? { photoLine } : {}) } satisfies TurnFacts);
+            // 按槽位表拼（ADR 0336）：迁移前这里手写的那一串（第 4 步时包成的「旧逻辑」大模块）已经全部拆成解释器的模块，经 options.turnModules 放；顺序由 interpreter/slots.ts 定
+            const ran = contributeTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             const { afterMain, afterHistory } = ran instanceof Promise ? await ran : ran;
+            shapeNow = turn.facts.shape;
+            quoteNow = turn.facts.quote;
             const prompt = buildPrompt({
                 character: turnCard.character,
                 worldInfo: turnCard.worldInfo,
@@ -980,13 +909,22 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 return rewrittenDraft.text;
             };
             const onRewriteAccepted = () => { deviceNow = rewrittenDraft?.devices; };
+            // 审稿顺序表上的位置（ADR 0336「生成之后那一段」）：挂了 reviewAt 的模块在对应的那一步之后跑；都没挂时同步返回原稿，不多等
+            const reviewCtx: ReviewCtx = {
+                regenerate, accept: onRewriteAccepted, scratch: {}, log,
+                ...(reviewContext?.initiating ? { initiating: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}),
+            };
+            const at = (stage: ReviewStage, text: string) => (turnNow ? reviewStage(options.turnModules ?? [], stage, text, turnNow, reviewCtx) : { text });
             const factOptions = options.factCheck && options.factCheck !== 'off' && !crisisNow && !reviewContext?.allowRepeat && promptSource ? {
                 mode: options.factCheck, source: promptSource, names, mayDropAll: Boolean(reviewContext?.initiating), ...(options.factAboutHim ? { aboutHim: true } : {}),
                 audit: options.factAudit ?? ((auditMessages: OpenAIMessage[]) => chatCompletion({ ...forExtraction(llm), temperature: 0 }, auditMessages, { log })),
                 regenerate, onRewriteAccepted, log, ...(options.onFactCheck ? { onRecord: options.onFactCheck } : {}),
             } : undefined;
             // 逐条事实检查（ADR 0137）：先于出口检查——重写出来的话还要过出口检查这一关；危机回合、固定说法（allowRepeat）不查
-            const factual = factOptions ? await checkFacts(reply, factOptions) : reply;
+            let atFacts = at('facts', factOptions ? await checkFacts(reply, factOptions) : reply);
+            if (atFacts instanceof Promise) atFacts = await atFacts;
+            if (atFacts.stop) return atFacts.text;
+            const factual = atFacts.text;
             // 事实检查判定“想说的那部分被删光了”：这轮不发；主动消息那边会按“生成的是空的”跳过
             if (factual === '' && reply !== '') return '';
             const reviewOptions: ReviewOptions = {
@@ -1003,28 +941,40 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 onRewriteAccepted,
                 log,
             };
-            let reviewed = crisisNow ? await reviewCrisisReply(factual, reviewOptions, crisisNow.level) : await reviewReply(factual, reviewOptions);
+            // 出口检查那一刻的上下文交给后面的审稿模块（删行收尾用同一份，不重读聊天记录）
+            reviewCtx.scratch.exitOptions = reviewOptions;
+            let atExit = at('exit', crisisNow ? await reviewCrisisReply(factual, reviewOptions, crisisNow.level) : await reviewReply(factual, reviewOptions));
+            if (atExit instanceof Promise) atExit = await atExit;
+            if (atExit.stop) return atExit.text;
+            let reviewed = atExit.text;
             if (crisisNow) {
                 deviceNow = undefined;
                 return reviewed;
             }
-            // 她想查才查：看到她写 <<查：…>> 才去查，查到就带着结果重写一次；标记不发出去
-            const pull = /<<查[：:]\s*([\s\S]*?)>>/.exec(reviewed);
-            if (pull) {
-                const query = pull[1]!.trim();
-                const recalled = query && options.pullRecall ? await options.pullRecall(query).catch(() => undefined) : undefined;
-                if (recalled) {
-                    log(`她主动查记忆：${query}（${countLines(recalled)} 条）`);
-                    reviewed = await regenerate(`（你刚才想起来了：\n${recalled}\n用这些回答他，不要再写 <<查>> 标记。）`);
-                }
-                reviewed = reviewed.replace(/<<查[：:][\s\S]*?>>/g, '').trim();
-            }
+            // 她想查才查（<<查：…>>）是解释器的模块（modules/review-pull.ts），挂在 pull 位置：查到就带着结果重写一次，查没查到都把标记摘掉
+            let atPull = at('pull', reviewed);
+            if (atPull instanceof Promise) atPull = await atPull;
+            if (atPull.stop) return atPull.text;
+            reviewed = atPull.text;
             // 形状控制（配置 shape）：出口检查之后再看字数和条数，超了重写一次、还超就在分句处截断
-            const shaped = shapeNow ? await shapeReply(reviewed, shapeNow, { regenerate, onRewriteAccepted, log }) : reviewed;
+            let atShape = at('shape', shapeNow ? await shapeReply(reviewed, shapeNow, { regenerate, onRewriteAccepted, log }) : reviewed);
+            if (atShape instanceof Promise) atShape = await atShape;
+            if (atShape.stop) return atShape.text;
+            const shaped = atShape.text;
             // 话说到一半（ADR 0141）：形状之后再看，并回去 / 退回去会让一条变长，放在字数检查前面会被再截一次；危机回合不走
-            const finished = options.speechCheck ? await finishReply(shaped, { regenerate, onRewriteAccepted, log }) : shaped;
-            const final = finalizeReply(finished, reviewOptions);
-            return factOptions && final !== factual ? checkFacts(final, { ...factOptions, finalOnly: true }) : final;
+            // 话说到一半（ADR 0141）是解释器的模块（modules/review-unfinished.ts），开着 speechCheck 时挂在 unfinished 位置
+            let atUnfinished = at('unfinished', shaped);
+            if (atUnfinished instanceof Promise) atUnfinished = await atUnfinished;
+            if (atUnfinished.stop) return atUnfinished.text;
+            const finished = atUnfinished.text;
+            // 删行收尾是解释器的模块（modules/review-finalize.ts），挂在 finalize 位置，用上面出口检查那一刻算好的同一份上下文
+            let atFinalize = at('finalize', finished);
+            if (atFinalize instanceof Promise) atFinalize = await atFinalize;
+            if (atFinalize.stop) return atFinalize.text;
+            const final = atFinalize.text;
+            let atFactsFinal = at('factsFinal', factOptions && final !== factual ? await checkFacts(final, { ...factOptions, finalOnly: true }) : final);
+            if (atFactsFinal instanceof Promise) atFactsFinal = await atFactsFinal;
+            return atFactsFinal.text;
         },
         send: options.send,
         ...(options.absorb ? { absorb: (part: string) => options.absorb!(contact.qq, part) } : {}),
