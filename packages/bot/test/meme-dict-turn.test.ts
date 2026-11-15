@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { memesModule } from '../src/modules/memes.ts';
 import { memeDictModule } from '../src/modules/meme-dict.ts';
@@ -33,7 +34,7 @@ async function promptFor(said: string, overrides: Partial<ContactPipelineOptions
         history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
         now: () => NOW, log: quiet, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
         // 梗百科是解释器的模块（ADR 0336），排在热梗之后（读 turn.facts.meme）
-        turnModules: [intentModule(), memesModule(() => library, quiet), memeDictModule(dict, quiet)],
+        turnModules: [crisisModule({ log: () => {} }), intentModule(), memesModule(() => library, quiet), memeDictModule(dict, quiet)],
         send: async () => 101,
         generate: async () => '真的呀',
         onPrompt: prompt => { prompts.push(prompt.messages); },
@@ -58,7 +59,7 @@ describe('梗百科与热梗模块（DSH 梗百科 / ADR 0129）', () => {
     });
 
     test('热梗没开（没有热梗模块）：词库照样给', async () => {
-        const prompt = await promptFor('尊嘟假嘟', { turnModules: [intentModule(), memeDictModule(dict, quiet)] });
+        const prompt = await promptFor('尊嘟假嘟', { turnModules: [crisisModule({ log: () => {} }), intentModule(), memeDictModule(dict, quiet)] });
         assert.ok(prompt.includes(`${DICT_LINE}「尊嘟假嘟」`));
         assert.ok(!prompt.includes('他这一句里用了个网上的梗'));
     });

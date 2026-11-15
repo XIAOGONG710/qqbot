@@ -4,6 +4,7 @@ import { reviewStage, type Module, type ReviewCtx, type ReviewScratch, type Turn
 import { auditRules, factRewriteNote, type FactClaim, type FactRecord } from '../src/language/fact-check.ts';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { reviewFactsModule, type ReviewFactsOptions } from '../src/modules/review-facts.ts';
 import { reviewFinalizeModule } from '../src/modules/review-finalize.ts';
@@ -266,7 +267,7 @@ describe('联系人流水线里的事实检查', { skip: !WIRED && '等接线（
             prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
             history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
             now: () => NOW, log: () => {}, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
-            turnModules: [intentModule(), reviewFactsModule({ mode: 'fix', audit: a.audit }), reviewFinalizeModule(), ...modules, probe],
+            turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewFactsModule({ mode: 'fix', audit: a.audit }), reviewFinalizeModule(), ...modules, probe],
             send: async (_qq, text) => { sent.push(text); return sent.length + 100; },
             generate: async messages => generate(messages),
             ...overrides,

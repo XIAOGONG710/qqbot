@@ -29,7 +29,6 @@ import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from '.././social
 import type { SilenceInfo } from '.././social/silence.ts';
 import { describeMood, moodAt, readingActivities } from '.././life/her-days.ts';
 import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
-import { grievanceNow, ignoredNow } from '.././emotion/grievance.ts';
 import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import { asksToExplain, ENGAGED_INTENT, ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
@@ -262,8 +261,6 @@ export interface ContactPipelineOptions {
     devices?: Pick<DeviceControl, 'parse' | 'commit'>;
     /** 他刚才在 DSH 桌面上和她的对话（ADR 0177，配置 crossRecent）：只给男朋友档；返回一段放进提示词的话，没有就不放 */
     desktopRecent?: (now: Date) => string | undefined;
-    /** 有起因的小别扭与和好（ADR 0074，配置 grievance）：他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点；只给男朋友档 */
-    grievance?: boolean;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
     mood?: string;
     /** herDays 开着时每次生成前调一次（app 按她的一天去重，写当天的摘要） */
@@ -548,16 +545,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     && !chat.some(m => m.role === 'assistant' && m.time !== undefined && Date.parse(m.time) >= n.at.getTime())).map(n => n.what)
                 : [];
             if (untold.length) log(`她那边的事还没跟他说过：${untold.join('、')}`);
-            // 危机信号（ADR 0068）：纯函数检测，最高优先级；主动找他时不算
-            crisisNow = !initiate ? crisisInHistory(chat) : undefined;
-            if (crisisNow) log(`危机信号：按 ${crisisNow.level} 级辅助响应处理（日志不记内容）`);
-            // 小别扭 / 和好（ADR 0074）：从聊天记录的时间戳重算，不落盘；危机、主动找他、非男朋友档都不算
-            // 起因有两种：隔了好几天才来（grievanceNow），或者她倾诉了几条、他隔了很久才回（ignoredNow，10-20）
-            const grievance = options.grievance && contact.tier === 'boyfriend' && !initiate && !crisisNow ? (grievanceNow(chat) ?? ignoredNow(chat)) : undefined;
+            // 危机信号（ADR 0068）和小别扭 / 和好的起因（ADR 0074）是解释器的模块（modules/crisis.ts）：排在 assess 的最前面，写进 turn.facts.crisis / grievance；assess 之后读回
             // 接着 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
             // 她此刻在干嘛、作息、她答应的事、挂着的事、她那边还没说过的事还是旧逻辑算的，写进 facts 给意图阶梯（modules/intent.ts）读
             Object.assign(turn.facts, {
-                ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(promised ? { promised: true, promisedLine: promised } : {}),
+                ...(promised ? { promised: true, promisedLine: promised } : {}),
                 // 她在 QQ 上的样子（ADR 0083）、答应的事那一句由解释器的模块（modules/time-notes.ts）放；取留在上面原位（presence 的状态后台会改、答应的事读状态记日志）
                 ...(selfNote ? { selfNote } : {}),
                 ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what), unsettled: loops.unsettled.map(l => l.what) } : {}),
@@ -568,6 +560,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const assessed = assessTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             if (assessed instanceof Promise) await assessed;
+            crisisNow = turn.facts.crisis;
+            const grievance = turn.facts.grievance;
             // 他说起她身边的人（ADR 0033）是解释器的模块（modules/people-around.ts）：assess 时写进 turn.facts.aboutPeople，经 turnModules 放进 npcs 槽；下面的形状和长短读它
             const aboutPerson = Boolean(turn.facts.aboutPeople);
             // 意图阶梯（ADR 0019 起）是解释器的模块（modules/intent.ts）：assess 时写进 turn.facts.baseIntent（照片 / 被打断改写之前的那一版）

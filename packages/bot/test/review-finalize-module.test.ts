@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import type { ReviewCtx, Turn } from '../src/interpreter/interpreter.ts';
 import type { ReviewOptions } from '../src/language/exit-check.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { reviewFinalizeModule } from '../src/modules/review-finalize.ts';
 import { reviewUnfinishedModule } from '../src/modules/review-unfinished.ts';
@@ -82,7 +83,7 @@ describe('联系人流水线里的删行收尾（接线前后都应通过）', (
             history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
             now: () => NOW, log: () => {}, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
             speechCheck: true,
-            turnModules: [intentModule(), reviewUnfinishedModule(), reviewFinalizeModule()],
+            turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewUnfinishedModule(), reviewFinalizeModule()],
             send: async (_qq, text) => { sent.push(text); return sent.length + 100; },
             generate: async () => (++calls === 1 ? '我知道了\n不过你别得意' : '秘密\n好呀'),
         });

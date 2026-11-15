@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import type { ReviewCtx, ReviewVerdict, Turn, TurnFacts } from '../src/interpreter/interpreter.ts';
 import { crisisFallback, reviewCrisisReply, reviewReply, type ReviewOptions } from '../src/language/exit-check.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { reviewExitModule } from '../src/modules/review-exit.ts';
 import { reviewFinalizeModule } from '../src/modules/review-finalize.ts';
@@ -160,7 +161,7 @@ describe('联系人流水线里的出口检查', () => {
             prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
             history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
             now: () => NOW, log: () => {}, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
-            turnModules: [intentModule(), reviewExitModule(), reviewFinalizeModule()],
+            turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewExitModule(), reviewFinalizeModule()],
             send: async (_qq, text) => { sent.push(text); return sent.length + 100; },
             generate: async () => generate(++calls),
             devices: {

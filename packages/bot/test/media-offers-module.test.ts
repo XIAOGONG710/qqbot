@@ -7,6 +7,7 @@ import { contributeTurn, type Turn, type TurnFacts } from '../src/interpreter/in
 import type { Piece } from '../src/interpreter/slots.ts';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { mediaOffersModule, type MediaOffersFacts } from '../src/modules/media-offers.ts';
 import type { BotConfig } from '../src/platform/config.ts';
@@ -73,7 +74,7 @@ describe('图片表情和照片清单（ADR 0063 / 0109 / 0336）', () => {
                 prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
                 history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
                 now: () => NOW, log: () => {}, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
-                turnModules: [intentModule(), mediaOffersModule()],
+                turnModules: [crisisModule({ log: () => {} }), intentModule(), mediaOffersModule()],
                 send: async () => 101,
                 generate: async () => '哈哈哈',
                 onPrompt: prompt => { prompts.push(prompt.messages); },

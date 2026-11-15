@@ -17,6 +17,7 @@
 - `language/unfinished.ts`
 - `language/candidates.ts`
 - `modules/candidates.ts`
+- `modules/crisis.ts`
 - `modules/decorate.ts`
 - `modules/self-notes.ts`
 - `language/humanness.ts`

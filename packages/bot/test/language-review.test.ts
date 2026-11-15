@@ -16,6 +16,7 @@ import { togetherNow } from '../src/language/together.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 import { deliberateLlm } from '../src/platform/config.ts';
 import { createContactResponder, type ContactPipelineOptions } from '../src/platform/contact.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { shapeModule } from '../src/modules/shape.ts';
 import { reviewFinalizeModule } from '../src/modules/review-finalize.ts';
@@ -45,7 +46,7 @@ function contact(overrides: Partial<ContactPipelineOptions> = {}) {
         history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
         now: () => NOW, log: quiet, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
         // 意图阶梯是解释器的模块（ADR 0336），App 总是挂着它；深思按意图判断
-        turnModules: [intentModule(), reviewExitModule(), reviewFinalizeModule()],
+        turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewExitModule(), reviewFinalizeModule()],
         send: async (_qq, text) => { sent.push(text); return sent.length + 100; },
         generate: async () => '好呀',
         devices: {
@@ -71,7 +72,7 @@ describe('最终草稿、硬规则与设备动作', () => {
             const fixture = contact({
                 // ADR 0220 之后形状控制只在 shapeAll / 有提示 / 特定意图时生效：这里要它生效
                 // 形状是解释器的模块（ADR 0336）：挂上它，开着 shapeAll
-                ...(stage === 'shape' ? { turnModules: [intentModule(), reviewExitModule(), shapeModule({ shape: true, shapeAll: true, log: quiet }), reviewFinalizeModule()] } : { speechCheck: true, turnModules: [intentModule(), reviewExitModule(), reviewFinalizeModule(), reviewUnfinishedModule()] }),
+                ...(stage === 'shape' ? { turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewExitModule(), shapeModule({ shape: true, shapeAll: true, log: quiet }), reviewFinalizeModule()] } : { speechCheck: true, turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewExitModule(), reviewFinalizeModule(), reviewUnfinishedModule()] }),
                 generate: async () => {
                     calls++;
                     if (calls === 1) return stage === 'shape' ? '今天我有好多好多好多事情想跟你说'.repeat(10) : '我知道了\n不过你别得意';
@@ -88,7 +89,7 @@ describe('最终草稿、硬规则与设备动作', () => {
     test('空重写被弃用时，不提交其中的设备动作；选中非空重写时正常提交', async () => {
         for (const accepted of [false, true]) {
             let calls = 0;
-            const fixture = contact({ speechCheck: true, turnModules: [intentModule(), reviewExitModule(), reviewFinalizeModule(), reviewUnfinishedModule()], generate: async () => ++calls === 1 ? '我知道了\n不过你别得意' : `${accepted ? '好呀\n' : ''}<device:ring>` });
+            const fixture = contact({ speechCheck: true, turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewExitModule(), reviewFinalizeModule(), reviewUnfinishedModule()], generate: async () => ++calls === 1 ? '我知道了\n不过你别得意' : `${accepted ? '好呀\n' : ''}<device:ring>` });
             await fixture.run();
             assert.equal(calls, 2);
             assert.ok(fixture.sent.length > 0);
@@ -115,7 +116,7 @@ describe('最终草稿、硬规则与设备动作', () => {
         const fixture = contact({
             speechCheck: true,
             // 逐条事实检查是解释器的审稿模块（ADR 0336），挂在 facts / factsFinal
-            turnModules: [intentModule(), reviewFactsModule({ mode: 'fix', audit: factAudit }), reviewExitModule(), reviewFinalizeModule(), reviewUnfinishedModule()],
+            turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewFactsModule({ mode: 'fix', audit: factAudit }), reviewExitModule(), reviewFinalizeModule(), reviewUnfinishedModule()],
             generate: async () => ++calls === 1 ? '我知道你在说什么了\n不过你别得意' : '猫刚跑到楼下去了\n我知道你在说什么了',
         });
         await fixture.run();

@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import type { ReviewCtx, Turn, TurnFacts } from '../src/interpreter/interpreter.ts';
 import { shapeReply, type ShapePlan } from '../src/language/shape.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { reviewFinalizeModule } from '../src/modules/review-finalize.ts';
 import { shapeModule } from '../src/modules/shape.ts';
@@ -116,7 +117,7 @@ describe('联系人流水线里的形状裁剪（接线前后都应通过）', (
             history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
             now: () => NOW, log: line => { logs.push(line); }, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
             // 形状和裁剪是同一个模块
-            turnModules: [intentModule(), shapeModule({ shape: true, shapeAll: true, log: () => {} }), reviewFinalizeModule()],
+            turnModules: [crisisModule({ log: () => {} }), intentModule(), shapeModule({ shape: true, shapeAll: true, log: () => {} }), reviewFinalizeModule()],
             send: async (_qq, text) => { sent.push(text); return sent.length + 100; },
             generate: async () => { calls++; return generate(calls); },
         });

@@ -1117,3 +1117,15 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   存下来的聊天记录经 `DecideCtx.history()` 在那一刻现读（原来就是那一刻读两次）。只有男朋友档、不是只想一想才写。
 - 质感模块跟着开关挂（App：`config.texture`，模拟器：场景的 `texture`），所以联系人流水线的 `texture` 选项用不着了，删掉；App 和模拟器不再传。
 - 验证：基线 41/41 逐字不变；变异检验——「认真的回合」取反，`rich-chat`、`closeness`、`watched`、`her-now` 报不一致。`decide-stage.test.ts` 加 3 项（共 24），相关测试 320 项通过；类型检查通过。
+
+### 判断那一串，第 6 步：危机信号和小别扭的起因（2026-11-16）
+
+- 是什么：这一轮最先定的两件事——他最近说的话里有没有危机信号（ADR 0068，主动找他时不算）；小别扭 / 和好的起因（ADR 0074，配置 `grievance`：隔了好几天才来，或者她倾诉了几条他很久才回；只算男朋友档，危机、主动找他时没有）。
+  原来在联系人流水线里、调 assess 之前原位算，写进 facts 给意图阶梯读。
+- `src/modules/crisis.ts`（新）：`crisisModule({ grievance, log })`，assess 时算、写 `turn.facts.crisis` / `grievance`，**注册在所有 assess 的最前面**（App 和模拟器都排在意图阶梯之前）。不用新的顺序表：它本来就在 assess 之前。
+- 流水线：那几行删掉，assess 之后从 facts 读回 `crisisNow`（闭包变量还在：生成之后的兜底、最多几条还读它）和 `grievance`。`grievance` 选项用不着了，删掉，App 和模拟器改成给模块。
+- 直接调联系人流水线的测试原来靠流水线自己认危机；现在要挂 `crisisModule`，十三个测试文件的模块列表里补上了（没补的三个危机用例会红，就是这么发现的）。
+- 验证：基线 41/41 逐字不变；变异检验——App 不挂危机模块，`crisis`、`closeness`、`review` 报不一致；不给 `grievance`，`closeness` 报不一致。`crisis-module.test.ts` 3 项；
+  所有直接用联系人流水线或涉及危机 / 小别扭的测试 1155 项里除 DSH 的 `group-affect` 外都通过；类型检查通过。
+- 判断那一串到这里：`photo`、`intent`、`stickers`、`texture` 四个位置和最前面的危机模块迁完。还在流水线原位的：心境那一段（等补基线）、连续性和深思 / 语义路由（有 await、调模型）、
+  长短要的几样（`low`、`agendaTopics`、`cue`）、聊天原文放多少、记忆那一组的召回。

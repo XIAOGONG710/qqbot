@@ -4,6 +4,7 @@ import { CLEAN_STAGES, cleanStages, createInterpreter, type CleanCtx, type Modul
 import type { StoredMessage } from '../src/memory/history.ts';
 import { createContactResponder, type ContactPipelineOptions } from '../src/platform/contact.ts';
 import { stripDeviceTokens, type ParsedTokens } from '../src/platform/device-actions.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { candidatesModule } from '../src/modules/candidates.ts';
 import { mediaOffersModule } from '../src/modules/media-offers.ts';
@@ -87,7 +88,7 @@ describe('草稿和设备指令分开（ADR 0336 第 8 步）', () => {
             prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
             history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
             now: () => NOW, log: () => {}, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
-            turnModules: [intentModule(), reviewExitModule(), reviewFinalizeModule()],
+            turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewExitModule(), reviewFinalizeModule()],
             send: async (_qq, text) => { sent.push(text); return sent.length + 100; },
             devices: {
                 parse: (text): ParsedTokens => {
@@ -107,7 +108,7 @@ describe('草稿和设备指令分开（ADR 0336 第 8 步）', () => {
         const candidates = ['别难过了\n早点睡\n明天就好了\n<device:timer>', '抱抱\n怎么回事呀\n<device:ring>', '抱抱\n写完跟我说一声\n<device:notify>'];
         let n = 0;
         const out = await run('今天又被导师骂了，好难过', {
-            turnModules: [intentModule(), reviewExitModule(), reviewFinalizeModule(), candidatesModule({ count: 3, history: () => [] })],
+            turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewExitModule(), reviewFinalizeModule(), candidatesModule({ count: 3, history: () => [] })],
             generate: async () => candidates[n++ % 3]!,
         });
         assert.equal(n, 3);

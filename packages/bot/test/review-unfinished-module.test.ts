@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import type { ReviewCtx, Turn } from '../src/interpreter/interpreter.ts';
 import { findUnfinished, repairUnfinished } from '../src/language/unfinished.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { reviewUnfinishedModule } from '../src/modules/review-unfinished.ts';
 import { createContactResponder } from '../src/platform/contact.ts';
@@ -90,7 +91,7 @@ describe('联系人流水线里的话说到一半（接线前后都应通过）'
             history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
             now: () => NOW, log: line => { logs.push(line); }, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
             speechCheck: true,
-            turnModules: [intentModule(), reviewUnfinishedModule()],
+            turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewUnfinishedModule()],
             send: async (_qq, text) => { sent.push(text); return sent.length + 100; },
             generate: async messages => {
                 calls++;

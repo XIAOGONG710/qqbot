@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { ReviewCtx, Turn } from '../src/interpreter/interpreter.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { pullNote, reviewPullModule } from '../src/modules/review-pull.ts';
 import type { Contact } from '../src/platform/config.ts';
@@ -123,7 +124,7 @@ describe('联系人流水线里的 <<查>>', () => {
             prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
             history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
             now: () => NOW, log: () => {}, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
-            turnModules: [intentModule(), reviewPullModule({ recall: r.recall })],
+            turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewPullModule({ recall: r.recall })],
             send: async (_qq, text) => { sent.push(text); return sent.length + 100; },
             generate: async messages => (messages.some(m => typeof m.content === 'string' && m.content.includes('（你刚才想起来了：')) ? '记得呀，火锅店' : '<<查：第一次约会>>\n我想想'),
         });

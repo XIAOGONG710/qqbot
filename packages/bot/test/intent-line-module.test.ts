@@ -4,6 +4,7 @@ import { contributeTurn, type Turn, type TurnFacts } from '../src/interpreter/in
 import type { Piece } from '../src/interpreter/slots.ts';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { intentLineModule, type IntentLineFacts } from '../src/modules/intent-line.ts';
 import { createContactResponder } from '../src/platform/contact.ts';
@@ -65,7 +66,7 @@ describe('意图行和「/亲热」（ADR 0019 / 0151 / 0170 / 0336）', () => {
             prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
             history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
             now: () => NOW, log: () => {}, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
-            turnModules: [intentModule(), intentLineModule()],
+            turnModules: [crisisModule({ log: () => {} }), intentModule(), intentLineModule()],
             intimacyLine: () => { taken++; return INTIMATE; },
             send: async () => 101,
             generate: async () => '抱抱',

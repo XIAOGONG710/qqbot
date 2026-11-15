@@ -41,6 +41,7 @@ import { feelingsModule } from '../modules/feelings.ts';
 import { timeNotesModule } from '../modules/time-notes.ts';
 import { mediaOffersModule } from '../modules/media-offers.ts';
 import { candidatesModule } from '../modules/candidates.ts';
+import { crisisModule } from '../modules/crisis.ts';
 import { textureModule, typoModule } from '../modules/decorate.ts';
 import { intentLineModule } from '../modules/intent-line.ts';
 import { memoryModule } from '../modules/memory.ts';
@@ -546,7 +547,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ...(promises ? { promises } : {}),
         ...(sharedWorld ? { worldState: sharedWorld } : {}),
         ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}),
-        ...(scenario.grievance ? { grievance: true } : {}),
         ...(scenario.rhythm ? { rhythm: true } : {}),
         ...(scenario.shortReplies ? { shortReplies: true } : {}),
         // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
@@ -561,6 +561,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
                 contacts: () => [contact, ...others], history: qq => history.load(qq),
                 log: message => { if (epoch === responderEpoch) log(message); },
             }),
+            // 危机信号和小别扭的起因，同 App：排在意图阶梯前面
+            crisisModule({ ...(scenario.grievance ? { grievance: true } : {}), log: message => { if (epoch === responderEpoch) log(message); } }),
             intentModule({
                 ...(scenario.herNo ? { refuse: true } : {}), ...(scenario.afterNo ? { afterNo: true } : {}), ...(scenario.jealousy ? { jealous: true } : {}), ...(scenario.curious ? { curious: true } : {}),
                 ...(scenario.everydayLife ? { everydayLife: true } : {}), ...(scenario.pursuits ? { pursuits: true } : {}),

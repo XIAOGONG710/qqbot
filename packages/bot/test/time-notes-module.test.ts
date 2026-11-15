@@ -8,6 +8,7 @@ import type { Piece } from '../src/interpreter/slots.ts';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
 import { describeDays } from '../src/language/time-context.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { timeNotesModule, type TimeNotesFacts } from '../src/modules/time-notes.ts';
 import type { BotConfig } from '../src/platform/config.ts';
@@ -85,7 +86,7 @@ describe('时间块里的另几行（ADR 0011 / 0083 / 0018 / 0336）', () => {
             prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
             history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
             now: () => NOW, log: () => {}, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
-            turnModules: [intentModule(), timeNotesModule()],
+            turnModules: [crisisModule({ log: () => {} }), intentModule(), timeNotesModule()],
             selfNote: now => { calls.selfNote.push(now); return NOTE; },
             promises: { describe: () => { calls.describe++; return PROMISE; } },
             send: async () => 101,

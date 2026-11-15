@@ -60,6 +60,7 @@ import { feelingsModule } from '../modules/feelings.ts';
 import { timeNotesModule } from '../modules/time-notes.ts';
 import { mediaOffersModule } from '../modules/media-offers.ts';
 import { candidatesModule } from '../modules/candidates.ts';
+import { crisisModule } from '../modules/crisis.ts';
 import { textureModule, typoModule } from '../modules/decorate.ts';
 import { intentLineModule } from '../modules/intent-line.ts';
 import { memeDictModule } from '../modules/meme-dict.ts';
@@ -999,6 +1000,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             worldState: () => sharedWorld ?? undefined, appointmentsAt: at => promises?.appointmentsAt?.(at),
             contacts: () => config.contacts, history: qq => history.load(qq), log,
         }),
+        // 危机信号（ADR 0068）和小别扭 / 和好的起因（ADR 0074，配置 grievance）：assess 的最前面，意图阶梯和后面的判断都读
+        crisisModule({ grievance: config.grievance, log }),
         // 意图阶梯（ADR 0019 起）：assess 时写这一轮的意图，排在最前（后面的模块和旧逻辑都读它）；开关是它的选项
         intentModule({
             ...(config.herNo ? { refuse: true } : {}), ...(config.afterNo ? { afterNo: true } : {}), ...(config.jealousy ? { jealous: true } : {}), ...(config.curious ? { curious: true } : {}),
@@ -2175,7 +2178,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(promises ? { promises } : {}),
             ...(sharedWorld ? { worldState: sharedWorld } : {}),
             ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
-            ...(config.grievance ? { grievance: true } : {}),
             ...(config.rhythm ? { rhythm: true } : {}),
             ...(config.shortReplies ? { shortReplies: true } : {}),
             // 她自己决定今天想做什么（ADR 0182）：和「在读的书」一起当额外的空闲活动，每次现取

@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import { createInterpreter, REVIEW_STAGES, reviewStage, type Module, type ReviewCtx, type Turn } from '../src/interpreter/interpreter.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 import { createContactResponder } from '../src/platform/contact.ts';
+import { crisisModule } from '../src/modules/crisis.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { parseCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
@@ -69,7 +70,7 @@ describe('联系人流水线在每个位置调审稿模块（ADR 0336）', () =>
             prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
             history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
             now: () => NOW, log: () => {}, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
-            turnModules: [intentModule(), ...modules],
+            turnModules: [crisisModule({ log: () => {} }), intentModule(), ...modules],
             send: async (_qq, text) => { sent.push(text); return sent.length + 100; },
             generate: async () => '好呀',
         });
