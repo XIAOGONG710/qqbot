@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
-import { crisisFallback, faceContext, reviewCrisisReply, reviewReply, type ReviewOptions } from '.././language/exit-check.ts';
+import { crisisFallback, faceContext, type ReviewOptions } from '.././language/exit-check.ts';
 import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
 import { checkFacts, type FactCheckMode, type FactRecord } from '.././language/fact-check.ts';
 import { chatCompletion, completionMaxTokens, forExtraction } from '.././language/llm.ts';
@@ -911,7 +911,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const onRewriteAccepted = () => { deviceNow = rewrittenDraft?.devices; };
             // 审稿顺序表上的位置（ADR 0336「生成之后那一段」）：挂了 reviewAt 的模块在对应的那一步之后跑；都没挂时同步返回原稿，不多等
             const reviewCtx: ReviewCtx = {
-                regenerate, accept: onRewriteAccepted, scratch: {}, log,
+                regenerate, accept: onRewriteAccepted, dropDevices: () => { deviceNow = undefined; }, scratch: {}, log,
                 ...(reviewContext?.initiating ? { initiating: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}),
             };
             const at = (stage: ReviewStage, text: string) => (turnNow ? reviewStage(options.turnModules ?? [], stage, text, turnNow, reviewCtx) : { text });
@@ -943,14 +943,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             };
             // 出口检查那一刻的上下文交给后面的审稿模块（删行收尾用同一份，不重读聊天记录）
             reviewCtx.scratch.exitOptions = reviewOptions;
-            let atExit = at('exit', crisisNow ? await reviewCrisisReply(factual, reviewOptions, crisisNow.level) : await reviewReply(factual, reviewOptions));
+            // 出口检查 / 危机检查是解释器的模块（modules/review-exit.ts），挂在 exit 位置：危机回合它换成危机检查、不登记设备指令，并到此为止（stop）
+            let atExit = at('exit', factual);
             if (atExit instanceof Promise) atExit = await atExit;
             if (atExit.stop) return atExit.text;
             let reviewed = atExit.text;
-            if (crisisNow) {
-                deviceNow = undefined;
-                return reviewed;
-            }
             // 她想查才查（<<查：…>>）是解释器的模块（modules/review-pull.ts），挂在 pull 位置：查到就带着结果重写一次，查没查到都把标记摘掉
             let atPull = at('pull', reviewed);
             if (atPull instanceof Promise) atPull = await atPull;

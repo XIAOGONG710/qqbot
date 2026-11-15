@@ -96,6 +96,7 @@
 - `modules/review-finalize.ts`
 - `modules/review-unfinished.ts`
 - `modules/review-pull.ts`
+- `modules/review-exit.ts`
 - `st/`
 
 ## 开关

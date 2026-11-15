@@ -262,6 +262,8 @@ export interface ReviewCtx {
     regenerate(note: string): Promise<string>;
     /** 采用了刚才那次重写（设备指令跟着换成重写稿的） */
     accept(): void;
+    /** 这一轮不操作他的设备：草稿和重写里的设备指令都不登记（危机回合，ADR 0068 / 0148）；出口检查模块（modules/review-exit.ts）在危机回合调 */
+    dropDevices(): void;
     /** 主动找他的这一轮（事实检查删光了可以整条不发） */
     initiating?: boolean;
     /** 固定说法、允许重复（事实检查、出口检查的重复规则不查） */
@@ -275,8 +277,8 @@ export interface ReviewVerdict { text: string; stop?: true }
 
 /** 审稿模块之间这一轮共用的东西（同 TurnFacts：写的在前、读的在后；字段随审稿模块迁出逐个加） */
 export interface ReviewScratch {
-    /** 出口检查那一刻算好的上下文（禁用词、说话的毛病——聊天记录在那一刻读、书、小黄脸……）：迁移期联系人流水线在出口检查之前写，
-     *  出口检查迁成模块后由它写；删行收尾（modules/review-finalize.ts）用同一份，不重读聊天记录 */
+    /** 出口检查那一刻算好的上下文（禁用词、说话的毛病——聊天记录在那一刻读、书、小黄脸……）：联系人流水线在出口检查之前写；
+     *  出口检查（modules/review-exit.ts）和删行收尾（modules/review-finalize.ts）都用这一份，不重读聊天记录 */
     exitOptions?: ReviewOptions;
 }
 

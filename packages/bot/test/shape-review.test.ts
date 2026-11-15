@@ -22,6 +22,7 @@ function ctxWith(rewrite: (note: string) => Promise<string>) {
     const ctx: ReviewCtx = {
         regenerate: note => { notes.push(note); return rewrite(note); },
         accept: () => { accepted++; },
+        dropDevices: () => {},
         scratch: {},
         log: line => { logs.push(line); },
     };

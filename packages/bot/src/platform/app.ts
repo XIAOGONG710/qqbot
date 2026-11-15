@@ -46,6 +46,7 @@ import { devicesModule } from '../modules/devices.ts';
 import { consentModule } from '../modules/consent.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { reviewFinalizeModule } from '../modules/review-finalize.ts';
+import { reviewExitModule } from '../modules/review-exit.ts';
 import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
 import { reviewPullModule } from '../modules/review-pull.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
@@ -1118,6 +1119,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         initiateNoteModule(),
         // 生成之后的审稿（ADR 0336）：删行收尾，挂在 finalize 位置；没有开关
         reviewFinalizeModule(),
+        // 出口检查 / 危机检查（ADR 0014 / 0068）：挂在 exit 位置，总是挂；上下文由联系人流水线写进 scratch.exitOptions，危机回合到此为止、设备指令不登记
+        reviewExitModule(),
         // 话说到一半（ADR 0141）：跟着 speechCheck，挂在 unfinished 位置
         ...(config.speechCheck ? [reviewUnfinishedModule()] : []),
         // 她想查才查（<<查：…>>）：挂在 pull 位置，总是挂（摘标记和开关无关）；开了长期记忆和 selfDirectedMemory 才真的去查。memory 在后面才建，查的时候现取

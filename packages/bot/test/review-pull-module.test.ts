@@ -19,6 +19,7 @@ function ctxWith(rewrite = async (_note: string) => '记得呀，学校后门那
     const ctx: ReviewCtx = {
         regenerate: note => { notes.push(note); return rewrite(note); },
         accept: () => { accepted++; },
+        dropDevices: () => {},
         scratch: {},
         log: line => { logs.push(line); },
     };

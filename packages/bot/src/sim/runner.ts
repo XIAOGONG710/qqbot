@@ -31,6 +31,7 @@ import { innerModule } from '../modules/inner.ts';
 import { devicesModule } from '../modules/devices.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { reviewFinalizeModule } from '../modules/review-finalize.ts';
+import { reviewExitModule } from '../modules/review-exit.ts';
 import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
 import { reviewPullModule } from '../modules/review-pull.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
@@ -615,6 +616,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             initiateNoteModule(),
             // 生成之后的审稿：删行收尾，同 App
             reviewFinalizeModule(),
+            // 出口检查 / 危机检查，同 App
+            reviewExitModule(),
             // 话说到一半，同 App（跟着 speechCheck）
             ...(options.speechCheck ? [reviewUnfinishedModule()] : []),
             // 她想查才查：模拟器没有查记忆，只摘标记（同迁移前）

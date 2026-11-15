@@ -18,7 +18,7 @@ function setup() {
     const ctxLogs: string[] = [];
     const exitLogs: string[] = [];
     let regenerated = 0;
-    const ctx: ReviewCtx = { regenerate: async () => { regenerated++; return '重写'; }, accept: () => {}, scratch: {}, log: line => { ctxLogs.push(line); } };
+    const ctx: ReviewCtx = { regenerate: async () => { regenerated++; return '重写'; }, accept: () => {}, dropDevices: () => {}, scratch: {}, log: line => { ctxLogs.push(line); } };
     const exitOptions: ReviewOptions = { banned: ['秘密'], userName: '阿明', regenerate: async () => { regenerated++; return '重写'; }, log: line => { exitLogs.push(line); } };
     return { ctx, exitOptions, ctxLogs, exitLogs, regenerated: () => regenerated };
 }

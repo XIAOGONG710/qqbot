@@ -10,7 +10,7 @@ import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 // 生成之后的审稿位置（ADR 0336「生成之后那一段」第 1 步）：接线不改行为（行为基线 review 等场景逐字不变），这里核对位置本身
 describe('审稿顺序表上的位置（ADR 0336）', () => {
     const turn: Turn = { contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at: new Date('2026-11-20T20:00:00+08:00'), history: [], thinking: false, facts: {} };
-    const ctx: ReviewCtx = { regenerate: async () => '重写', accept: () => {}, scratch: {}, log: () => {} };
+    const ctx: ReviewCtx = { regenerate: async () => '重写', accept: () => {}, dropDevices: () => {}, scratch: {}, log: () => {} };
 
     test('顺序照迁移前的手写顺序', () => {
         assert.deepEqual([...REVIEW_STAGES], ['facts', 'exit', 'pull', 'shape', 'unfinished', 'finalize', 'factsFinal']);
