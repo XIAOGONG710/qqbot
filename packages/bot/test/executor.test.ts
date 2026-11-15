@@ -100,3 +100,12 @@ describe('执行器（ADR 0336）', () => {
         assert.doesNotThrow(() => createExecutor({ transport: fakeTransport([]) }).run({ kind: 'device', parsed }));
     });
 });
+
+describe('计时器全部经执行器（ADR 0336 第 3 步；2026-11-16 收齐 App 里后来合进来的那些）', () => {
+    test('app.ts 不直接开 / 关周期计时器：都走 exec.every / exec.cancel（执行器才数得清还有几个活着）', async () => {
+        const { readFileSync } = await import('node:fs');
+        const source = readFileSync(new URL('../src/platform/app.ts', import.meta.url), 'utf8');
+        const direct = source.split('\n').map((line, i) => ({ line, n: i + 1 })).filter(({ line }) => /(?<![.\w])(setInterval|clearInterval)\(/.test(line));
+        assert.deepEqual(direct.map(({ n, line }) => `${n}: ${line.trim().slice(0, 80)}`), []);
+    });
+});

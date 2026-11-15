@@ -738,8 +738,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             if (failures.length) throw new AggregateError(failures.map(result => result.reason), '空气质量刷新停止收尾未确认');
         }) : undefined;
     });
-    const airQualityTimer = airQuality ? setInterval(() => void refreshAirQuality(), AIR_QUALITY_REFRESH_MS) : undefined;
-    construction.onFailure(() => { if (airQualityTimer) clearInterval(airQualityTimer); });
+    const airQualityTimer = airQuality ? exec.every(() => void refreshAirQuality(), AIR_QUALITY_REFRESH_MS) : undefined;
+    construction.onFailure(() => { if (airQualityTimer) exec.cancel(airQualityTimer); });
     airQualityTimer?.unref();
     if (worldCard) log(`真实空气质量：${airQuality ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}当前观测，每 ${AIR_QUALITY_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realAirQuality !== true ? '关（配置 realAirQuality: false）' : '关（卡上没写 weather.places）')}`);
     const daylight = config.realDaylight === true && worldCard && weatherPlaces ? daylightFetcher({ dir: join(config.dataDir, 'daylight'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
@@ -754,8 +754,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             if (failures.length) throw new AggregateError(failures.map(result => result.reason), '日照刷新停止收尾未确认');
         }) : undefined;
     });
-    const daylightTimer = daylight ? setInterval(() => void refreshDaylight(), DAYLIGHT_REFRESH_MS) : undefined;
-    construction.onFailure(() => { if (daylightTimer) clearInterval(daylightTimer); });
+    const daylightTimer = daylight ? exec.every(() => void refreshDaylight(), DAYLIGHT_REFRESH_MS) : undefined;
+    construction.onFailure(() => { if (daylightTimer) exec.cancel(daylightTimer); });
     daylightTimer?.unref();
     if (worldCard) log(`真实日照：${daylight ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}日出日落，每 ${DAYLIGHT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realDaylight !== true ? '关（配置 realDaylight: false）' : '关（卡上没写 weather.places）')}`);
     const calendar = config.realCalendar === true && worldCard ? calendarFetcher({ dir: join(config.dataDir, 'calendar'), log, now: worldNow }) : undefined;
@@ -770,8 +770,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             if (failures.length) throw new AggregateError(failures.map(result => result.reason), '法定日历刷新停止收尾未确认');
         }) : undefined;
     });
-    const calendarTimer = calendar ? setInterval(() => void refreshCalendar(), CALENDAR_REFRESH_MS) : undefined;
-    construction.onFailure(() => { if (calendarTimer) clearInterval(calendarTimer); });
+    const calendarTimer = calendar ? exec.every(() => void refreshCalendar(), CALENDAR_REFRESH_MS) : undefined;
+    construction.onFailure(() => { if (calendarTimer) exec.cancel(calendarTimer); });
     calendarTimer?.unref();
     if (worldCard) log(`现实法定日历：${calendar ? `开（当前年和下一年，每 ${CALENDAR_REFRESH_MS / 60_000} 小时取一次；取不到不写进世界）` : '关（配置 realCalendar: false）'}`);
     const transportConfig = config.realTransport ?? DEFAULTS.realTransport;
@@ -792,8 +792,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             if (failures.length) throw new AggregateError(failures.map(result => result.reason), '现实交通刷新停止收尾未确认');
         }) : undefined;
     });
-    const transportTimer = worldTransport ? setInterval(() => void refreshTransport(), TRANSPORT_REFRESH_MS) : undefined;
-    construction.onFailure(() => { if (transportTimer) clearInterval(transportTimer); });
+    const transportTimer = worldTransport ? exec.every(() => void refreshTransport(), TRANSPORT_REFRESH_MS) : undefined;
+    construction.onFailure(() => { if (transportTimer) exec.cancel(transportTimer); });
     transportTimer?.unref();
     if (worldCard) log(`现实交通：${worldTransport ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}，每 ${TRANSPORT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (!transportConfig.enabled ? '关（配置 realTransport.enabled: false）' : '关（卡上没写 weather.places）')}`);
     // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
@@ -1355,7 +1355,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     };
     if (dshEnabled && (timeline || sharedWorld)) {
         syncDshInboxes();
-        dshInboxTimer = setInterval(syncDshInboxes, 30_000);
+        dshInboxTimer = exec.every(syncDshInboxes, 30_000);
         dshInboxTimer.unref();
     }
     const identity = config.identityLedger ? new Identity({ repoRoot, dataDir: config.dataDir, now: clockNow, log }) : undefined;
@@ -1680,8 +1680,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         }
     };
     exportNow();
-    const nowTimer = setInterval(exportNow, NOW_REFRESH_MS);
-    construction.onFailure(() => clearInterval(nowTimer));
+    const nowTimer = exec.every(exportNow, NOW_REFRESH_MS);
+    construction.onFailure(() => exec.cancel(nowTimer));
     nowTimer.unref();
 
     // 她自己想让他知道的事：常驻进程/她写进 OUTBOX.jsonl，这里发出去（ADR 0174：和别的主动消息守同一套规矩）
@@ -1689,7 +1689,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const OUTBOX_BLOCKING = new Set<ExitIssue['kind']>(['banned', 'promise', 'media', 'script', 'text-intimacy']);
     let outboxBusy = false;
     let outboxBlockedBy: string | undefined;
-    const outboxTimer = setInterval(() => {
+    const outboxTimer = exec.every(() => {
         const owner = deviceOwner;
         if (!owner || outboxBusy) return;
         const { character } = cardFor(owner.tier);
@@ -1716,7 +1716,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             }
         }).catch(error => log(`主动留话出错：${error instanceof Error ? error.message : String(error)}`)).finally(() => { outboxBusy = false; });
     }, 30_000);
-    construction.onFailure(() => clearInterval(outboxTimer));
+    construction.onFailure(() => exec.cancel(outboxTimer));
     outboxTimer.unref();
 
     // 追求（ADR 0104）：作者的文件 + 内置；开了 selfPursuits（ADR 0178）再套上她自己的决定、接上她自己加的
@@ -1764,7 +1764,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 log,
             }).catch(error => log(`追求：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
         };
-        const timer = setInterval(tick, 30 * 60_000);
+        const timer = exec.every(tick, 30 * 60_000);
         timer.unref();
         return timer;
     })() : undefined;
@@ -1790,7 +1790,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 log,
             }).catch(error => log(`说话习惯：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
         };
-        const timer = setInterval(tick, 30 * 60_000);
+        const timer = exec.every(tick, 30 * 60_000);
         timer.unref();
         return timer;
     })() : undefined;
@@ -1814,7 +1814,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 log,
             }).catch(error => log(`聊天回顾：看的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
         };
-        const timer = setInterval(tick, 30 * 60_000);
+        const timer = exec.every(tick, 30 * 60_000);
         timer.unref();
         return timer;
     })() : undefined;
@@ -1849,7 +1849,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 log,
             }).catch(error => log(`心境回想：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
         };
-        const timer = setInterval(tick, 10 * 60_000);
+        const timer = exec.every(tick, 10 * 60_000);
         timer.unref();
         return timer;
     })() : undefined;
@@ -1874,7 +1874,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             }).catch(error => log(`自我认识：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; exportInsights(); });
         };
         exportInsights();
-        const timer = setInterval(tick, 30 * 60_000);
+        const timer = exec.every(tick, 30 * 60_000);
         timer.unref();
         return timer;
     })() : undefined;
@@ -1905,7 +1905,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 log,
             }).catch(error => log(`读完看完的想法：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
         };
-        const timer = setInterval(tick, 30 * 60_000);
+        const timer = exec.every(tick, 30 * 60_000);
         timer.unref();
         return timer;
     })() : undefined;
@@ -1930,7 +1930,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 log,
             }).catch(error => log(`没想完的问题：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
         };
-        const timer = setInterval(tick, 30 * 60_000);
+        const timer = exec.every(tick, 30 * 60_000);
         timer.unref();
         return timer;
     })() : undefined;
@@ -1957,14 +1957,14 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 log,
             }).catch(error => log(`她猜的事：对的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
         };
-        const timer = setInterval(tick, 30 * 60_000);
+        const timer = exec.every(tick, 30 * 60_000);
         timer.unref();
         return timer;
     })() : undefined;
     if (config.herGuesses) log(!deviceOwner ? '她猜的事：herGuesses 开着，但名单里没有男朋友档，不起作用' : !(sharedWorld && worldCard) ? '她猜的事：herGuesses 开着，但没有她那边的世界（世界账），对不上结果，不起作用' : `她猜的事：开（白天留意她像在猜结果的话，每晚 22 点以后她自己挑哪句算数、对照世界账看对没对；私人空间，没有命令念给他${config.innerLife ? '；刚对上的那件她下次一个人想事情时会想到' : ''}）`);
     const silenceTimer = config.silenceNotice && deviceOwner ? (() => {
         const watcher = createSilenceWatcher({ ...silenceDeps(deviceOwner), tell: text => tellOwner(text), log });
-        const timer = setInterval(() => { try { watcher.tick(); } catch (error) { log(`没回的原因没能告诉他（${error instanceof Error ? error.message : String(error)}）`); } }, 60_000);
+        const timer = exec.every(() => { try { watcher.tick(); } catch (error) { log(`没回的原因没能告诉他（${error instanceof Error ? error.message : String(error)}）`); } }, 60_000);
         timer.unref();
         return timer;
     })() : undefined;
@@ -2303,7 +2303,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     /** 她刚跑过的命令结果：下一轮提示词给她看一眼就清掉（max 权限，但结果要回到她脑子里） */
     const shellNotes = new Map<number, string>();
     // 做梦（2026-10-31）：她睡着的那几小时里，把白天的东西糊成一团；一晚一个，存 dreams/DREAMS.jsonl
-    const dreamTimer = deviceOwner && config.herFeelings ? setInterval(() => { void makeDream(); void makeNapDream(); void makeMonthlyInsight(); void makeLearningQuestion(); }, 30 * 60_000) : undefined;
+    const dreamTimer = deviceOwner && config.herFeelings ? exec.every(() => { void makeDream(); void makeNapDream(); void makeMonthlyInsight(); void makeLearningQuestion(); }, 30 * 60_000) : undefined;
 
     /** 她学说话/翻日记时没想通的地方，挑一个留到聊天里问他（2026-10-31） */
     async function makeLearningQuestion(): Promise<void> {
@@ -2421,7 +2421,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const announcedLeaves: number[] = [];
     let leaveDay = '';
     let leaveCount = 0;
-    const leaveTimer = (config.proactive !== 'off' && deviceOwner && lifeRunner) ? setInterval(() => { void checkLeave(); }, 3 * 60_000) : undefined;
+    const leaveTimer = (config.proactive !== 'off' && deviceOwner && lifeRunner) ? exec.every(() => { void checkLeave(); }, 3 * 60_000) : undefined;
     async function checkLeave(): Promise<void> {
         if (stopped || !sharedWorld || !worldCard?.herWorld || !worldCard.schedule || !deviceOwner) return;
         const owner = deviceOwner;
@@ -4078,7 +4078,7 @@ ${body}
     let dshStateTimer: ReturnType<typeof setInterval> | undefined;
     if (dshEnabled) {
         exportDshState();
-        dshStateTimer = setInterval(exportDshState, NOW_REFRESH_MS);
+        dshStateTimer = exec.every(exportDshState, NOW_REFRESH_MS);
         dshStateTimer.unref();
     } else {
         rmSync(dshStateFile, { force: true });
@@ -4626,29 +4626,30 @@ ${body}
             const repliesDrain = replies?.stop();
             const riskDrain = risk?.stop();
             if (lifeTimer) exec.cancel(lifeTimer);
-            if (dreamTimer) clearInterval(dreamTimer);
+            if (dreamTimer) exec.cancel(dreamTimer);
+            if (leaveTimer) exec.cancel(leaveTimer);
             if (weatherTimer) exec.cancel(weatherTimer);
-            if (airQualityTimer) clearInterval(airQualityTimer);
-            if (daylightTimer) clearInterval(daylightTimer);
-            if (calendarTimer) clearInterval(calendarTimer);
-            if (transportTimer) clearInterval(transportTimer);
-            if (dshInboxTimer) clearInterval(dshInboxTimer);
-            if (dshStateTimer) clearInterval(dshStateTimer);
+            if (airQualityTimer) exec.cancel(airQualityTimer);
+            if (daylightTimer) exec.cancel(daylightTimer);
+            if (calendarTimer) exec.cancel(calendarTimer);
+            if (transportTimer) exec.cancel(transportTimer);
+            if (dshInboxTimer) exec.cancel(dshInboxTimer);
+            if (dshStateTimer) exec.cancel(dshStateTimer);
             if (stickerDiscoveryTimer) exec.cancel(stickerDiscoveryTimer);
             if (photoDiscoveryTimer) exec.cancel(photoDiscoveryTimer);
             if (memesTimer) exec.cancel(memesTimer);
             if (watchingTimer) exec.cancel(watchingTimer);
             if (feedTimer) exec.cancel(feedTimer);
-            if (silenceTimer) clearInterval(silenceTimer);
-            if (selfPursuitTimer) clearInterval(selfPursuitTimer);
-            if (speechNotesTimer) clearInterval(speechNotesTimer);
-            if (chatReviewTimer) clearInterval(chatReviewTimer);
-            if (diaryInsightsTimer) clearInterval(diaryInsightsTimer);
-            if (readingTakesTimer) clearInterval(readingTakesTimer);
-            if (openQuestionsTimer) clearInterval(openQuestionsTimer);
-            if (herGuessesTimer) clearInterval(herGuessesTimer);
-            if (feelingReviewTimer) clearInterval(feelingReviewTimer);
-            clearInterval(outboxTimer);
+            if (silenceTimer) exec.cancel(silenceTimer);
+            if (selfPursuitTimer) exec.cancel(selfPursuitTimer);
+            if (speechNotesTimer) exec.cancel(speechNotesTimer);
+            if (chatReviewTimer) exec.cancel(chatReviewTimer);
+            if (diaryInsightsTimer) exec.cancel(diaryInsightsTimer);
+            if (readingTakesTimer) exec.cancel(readingTakesTimer);
+            if (openQuestionsTimer) exec.cancel(openQuestionsTimer);
+            if (herGuessesTimer) exec.cancel(herGuessesTimer);
+            if (feelingReviewTimer) exec.cancel(feelingReviewTimer);
+            exec.cancel(outboxTimer);
             if (foodDiscoveryTimer) exec.cancel(foodDiscoveryTimer);
             exec.cancel(foodRetryTimer);
             const deviceDrain = stopDevices();

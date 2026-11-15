@@ -1041,3 +1041,15 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 没做的：这些副作用（发 QQ、写文件、起子进程）还是 App 的函数直接做，没有写成执行器的动作；执行器现在只有 `qq` / `llm` / `device` 三种动作，「状态文件读写、子进程」按第 3 步的表留到收尾时一起收。
 - 验证：基线 41/41 逐字不变；变异检验（App 里）——不过 `notes` 位置、记忆不写，`review` 报不一致；不过 `workSwitch`，`work-mode` 报不一致；不过 `consent`，`consent` 报不一致。
   基线走不到的（跑命令、动电脑、拒绝切工作、私密、本地日记）由 `absorb-stage.test.ts` 16 项用假的函数核对。涉及标记的测试和模块总表共 601 项通过；类型检查通过。这次没有跑 bot 全量。
+
+### App 里后来合进来的周期计时器收进执行器（2026-11-16）
+
+- 「生成之后那一段：方案」末尾记的那批：`app.ts` 里直接 `setInterval` 的（空气 / 日照 / 校历 / 交通的刷新、DSH 信箱、状态导出、outbox、每晚那八个反思、没回原因的提醒、做梦、离开、DSH 状态）
+  共 19 处，连同 23 处 `clearInterval`，机械地换成 `exec.every` / `exec.cancel`（执行器的 `every` 就是 `setInterval` 加登记，行为不变）。现在 `app.ts` 里的周期计时器全部经执行器，`exec.timers` 数得清。
+- 核对「每个 `exec.every` 的变量都有对应的 `exec.cancel`」时发现一处原有的漏：`leaveTimer`（每 3 分钟看她要不要说一声「离开」）停止时从没取消。`checkLeave` 自己看 `stopped`，所以停下之后不会真去做事，
+  但计时器一直活着、也没 `unref`。在 `stop` 里补上取消。
+- 还没做：这些计时器仍是 App 自己开的，没有迁成各模块的 `schedules`（那要随对应功能迁成模块时做）；`after`（一次性）和群聊攒批的两处 `setTimeout` 不在这次范围。
+  `app.ts` 之外还有直接 `setInterval` 的：`bilibili/` 三个文件、`social/presence.ts`、`platform/heartbeat.ts`、`platform/lock.ts`（自带循环的功能，第 5 步末尾那一类）。
+- 防回退：`executor.test.ts` 加一条——`app.ts` 里不出现直接的 `setInterval(` / `clearInterval(`。
+- 验证：基线 41/41 逐字不变；`executor.test.ts`、`app.test.ts`、`runtime.test.ts` 和各停止 / 生命周期复核测试共 1578 项通过；类型检查通过。
+  改之前跑过一次 bot 全量（第 12 步之后）：4665 过、13 跳过，红 2 项——DSH 的 `group-affect.test.ts`（已留言）和 `memory-responder-drain-review.test.ts` 那条 10 秒等待的计时测试（全量负载下超时，单跑三次都过）。
