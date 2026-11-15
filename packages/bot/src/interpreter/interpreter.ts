@@ -36,6 +36,7 @@ import type { MemoryPieces } from '../modules/memory.ts';
 import type { ReviewOptions } from '../language/exit-check.ts';
 import type { PickRules } from '../language/candidates.ts';
 import type { TypoRecall } from '../language/expression.ts';
+import type { CurrentAiPhotoResult } from '../proactive/ai-photo-requests.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -156,6 +157,10 @@ export interface TurnFacts {
     stickersAllowed?: boolean;
     /** 这一轮发的吃的照片是哪道菜（ADR 0128）：和 photo 同一处写，只有发照片、有菜名时有；清理时核对编号是不是这道菜的 */
     photoDish?: string;
+    /** 「现在的照片」有一张审核通过、和此刻精确匹配的（ADR 0240）：只给模型这一张的那一段清单；有它时 photo 一定有。modules/media-offers.ts 的 decideAt.photo 写 */
+    photoPrompt?: string;
+    /** 他明确要「现在」的照片，但没有已审核的匹配图：这一轮的意图改成如实说发不了（不拿旧图冒充） */
+    photoUnavailable?: boolean;
     /** 这一轮挑候选的规则（ADR 0041，modules/candidates.ts 在 contribute 时写）：他难过、说亲密话、收尾的轮次才有；联系人流水线生成时经 candidatePlan 问 */
     pick?: PickRules;
     /** 这一轮发出去之前加质感用的上下文（ADR 0131 / 0134）：他这一串说的话、是不是认真的回合、她最近几次回复里带了几次小黄脸 / 句尾「～」。
@@ -187,6 +192,10 @@ export interface Module {
     assess?(turn: Turn): Maybe<void>;
     contribute?(turn: Turn): Maybe<readonly Piece[]>;
     review?(draft: string, turn: Turn): Maybe<string>;
+    /**
+     * 判断那一串（ADR 0336「判断那一串」）：assess 之后、拼段落之前，挂在判断顺序表（DECIDE_STAGES）的某几个位置，读前面写下的事实、把自己的判断写进 turn.facts。同步
+     */
+    decideAt?: Partial<Record<DecideStage, (turn: Turn, ctx: DecideCtx) => void>>;
     /**
      * 挑候选（ADR 0336「生成之后那一段」第 10 步）：这一轮要不要同一份提示词生成几个、挑一个。不挑就不返回；
      * 联系人流水线在生成时问一次，按 count 生成、各清理一次，把清理过的字交给 choose
@@ -292,6 +301,27 @@ export interface Draft {
     readonly text: string;
     /** 摘出来的设备指令；没开设备控制时没有 */
     readonly devices?: ParsedTokens;
+}
+
+/**
+ * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
+ * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
+ */
+export const DECIDE_STAGES = ['photo'] as const;
+export type DecideStage = (typeof DECIDE_STAGES)[number];
+
+/** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
+export interface DecideCtx {
+    /** 照片货架（ADR 0109）：有没有这一类、列出来找审核过的那一张；没开、不是男朋友档时没有 */
+    photos?: Pick<PhotoShelf, 'has' | 'list'>;
+    /** 「现在的照片」的解析（ADR 0240）：只有已审核、和此刻匹配的才能发 */
+    currentAiPhoto?: (request: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => CurrentAiPhotoResult;
+    log: (line: string) => void;
+}
+
+/** 判断顺序表上的一个位置：挂在这里的模块按注册顺序跑；同步 */
+export function decideStage(modules: readonly Module[], stage: DecideStage, turn: Turn, ctx: DecideCtx): void {
+    for (const module of modules) module.decideAt?.[stage]?.(turn, ctx);
 }
 
 /** 挑候选的打算（ADR 0041）：生成几个、怎么挑。choose 拿到的是每个候选清理之后的字（顺序同生成），返回挑中的下标；日志是这个联系人的 */
@@ -488,7 +518,7 @@ export function createInterpreter(options: { modules: readonly Module[]; exec: P
         ids.add(module.id);
     }
     const modules = [...options.modules];
-    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review || module.reviewAt || module.cleanAt || module.candidates || module.decorateAt);
+    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review || module.reviewAt || module.cleanAt || module.candidates || module.decorateAt || module.decideAt);
     const { exec } = options;
     let timers: ReturnType<Executor['every']>[] | undefined;
     return {

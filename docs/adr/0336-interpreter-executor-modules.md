@@ -1059,3 +1059,22 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 「不做 / 不变」里说第 6 步之后用一条测试核对「模块目录里不出现 `node:fs`、`fetch`、`setTimeout` / `setInterval`、`chatCompletion` 和对 `Transport` 的直接调用」。今天查了一遍，`src/modules/` 下 58 个文件已经全部满足，
   所以不等第 6 步，现在就加 `modules-purity.test.ts`，以后新模块直接碰外部会红。
 - 只看模块文件自己写的；它 import 的 `platform/`、`language/` 里的函数碰不碰外部（比如 `platform/shell-tool.ts` 起子进程）不在这条测试里，那是把副作用写成执行器动作时的事。
+
+### 判断那一串：方案（2026-11-16，主代理读流水线后定）
+
+- 现状：提示词的段落、生成之后的清理 / 挑候选 / 审稿 / 修饰 / 标记都是模块了。联系人流水线的 `buildPrompt` 里还剩 assess 之后、拼段落之前的一串互相接着的判断，结果写进 `turn.facts` 给模块放：
+  照片（他要看、货架里有、允许发）→ 最终的意图（照片 / 「现在的照片发不了」/ 被打断改写）和小别扭是否生效 → 追求和心境（那一行、节奏、交给桌面上的她）→ 图片表情允不允许、抽没抽到、只发表情
+  → 连续性（await）→ 深思和语义路由（await）→ 质感的上下文、长短要的几样、聊天原文放多少、记忆那一组的交接。闭包变量（`crisisNow`、`sulkNow`、`textIntimacy`、`shapeNow`……）也是这一串留下的。
+- 形状：一张判断顺序表 `DECIDE_STAGES`（同 slots / REVIEW / CLEAN / DECORATE / ABSORB），`Module.decideAt[位置](turn, ctx)`：同步，读前面写下的事实、把自己的判断写进 `turn.facts`；
+  这个联系人才有的东西（货架、解析函数）经 `DecideCtx` 给。流水线在原来的位置调 `decideStage`，后面的旧逻辑从 `turn.facts` 读回来——每迁一步删一段、表加一个位置，基线逐字不变。
+- 顺序（从头往后，每步一个提交）：1 照片 → 2 最终的意图和小别扭是否生效 → 3 图片表情（允许、抽签、只发表情）→ 4 心境那一段（追求、感受、那一行、节奏；`onFeelings` 的交接留在流水线）→
+  5 质感的上下文 → 6 危机和小别扭的起因（assess 之前那两行，挪成最先 assess 的模块）。深思 / 语义路由和连续性有 await、调模型，放最后单独看。
+
+### 判断那一串，第 1 步：这一轮发不发照片（2026-11-16）
+
+- 是什么：ADR 0109 / 0128 / 0240——他要看猫 / 风景 / 她的片子 / 吃的，货架里有、允许发就定下这一轮发哪一类（吃的是哪道菜）；他明确要「现在」的照片时只认已审核、和此刻匹配的那一张，没有就如实说发不了。
+- `DECIDE_STAGES = ['photo']`、`Module.decideAt`、`decideStage()`、`DecideCtx`（照片货架的 `has` / `list`、`currentAiPhoto`、日志）；`createInterpreter` 放行只挂 `decideAt` 的模块。
+- `modules/media-offers.ts` 的 `decideAt.photo`：流水线里那四十行逐字搬过来（`options.photos` / `options.currentAiPhoto` 换成 `ctx` 的，四个局部变量换成 facts）。新 fact `photoPrompt`（只给审核过的那一张的清单）、`photoUnavailable`；
+  `photo` / `photoDish` 原来在拼段落前才写进 facts，现在判断完就写（中间没有模块读它们）。流水线在原位调 `decideStage('photo')`，后面的意图、图片表情、深思、清单照旧从 facts 读。
+- 这一模块 App 和模拟器都总是挂；直接调流水线又不挂它的调用方不再发照片（原来也清不掉编号，见第 9 步的注意）。
+- 验证：基线 41/41 逐字不变；变异检验——流水线不调 `decideStage('photo')`，`media` 报不一致。`decide-stage.test.ts` 10 项（含基线走不到的「现在的照片」审核通过 / 没有匹配图两条路），涉及照片的测试共 1134 项通过；类型检查通过。

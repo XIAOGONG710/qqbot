@@ -16,11 +16,20 @@
 // - photos：有照片货架时只留这一轮那一类（turn.facts.photo / photoDish）的一张；这一轮不发照片就全摘掉；没有货架一律摘掉。
 // - stickerOnly：只发表情的轮次（turn.facts.stickerOnly）模型多写了文字就去掉、只留表情那一行；它没写表情就照它写的发。
 // 货架是联系人流水线的（清单的取、聊天记录的写法也用），经 CleanCtx 给；这一模块 App 和模拟器都总是挂，不挂的话编号会原样发出去。
+//
+// 这一轮发不发照片（ADR 0336「判断那一串」，decideAt.photo）：assess 之后、算最终意图之前。和迁移前联系人流水线里的逐字一样：
+// - 只给男朋友档；只想一想、危机、小别扭 / 和好、他难过（意图是先接住他此刻的情绪）的轮次不发；货架和「现在的照片」的解析都没有时不看。
+// - 他明确要看猫 / 风景 / 她的片子 / 吃的（主动那条自己带着哪一类、哪道菜），货架里有、允许发（没连着发、今天没发够、没被吵醒）就发：写 photo（吃的再写 photoDish）。
+//   没说哪一类（只说「发张照片」）取货架上有的第一类；吃的只拿她最近那一顿那道菜的。
+// - 他明确要「现在」的照片（ADR 0240）：只有已审核、和此刻精确匹配的那一张能发（写 photo、photoPrompt）；没有就写 photoUnavailable，不拿旧图冒充。
+// 货架和解析经 DecideCtx 给；日志是这个联系人的。
 
 import type { Module, TurnFacts } from '../interpreter/interpreter.ts';
 import type { Piece } from '../interpreter/slots.ts';
 import { stripStickerArtifacts } from '../social/stickers.ts';
-import { stripPhotoArtifacts } from '../vision/photos.ts';
+import { isExplicitCurrentPhotoRequest } from '../proactive/ai-photo-requests.ts';
+import { photoAllowance, photoWanted, PHOTO_KINDS, stripPhotoArtifacts } from '../vision/photos.ts';
+import { lastMealDish } from '../world/world.ts';
 
 /** 这几样由联系人流水线写进 turn.facts，这里只读（字段说明见 interpreter.ts 的 TurnFacts） */
 export type MediaOffersFacts = Pick<TurnFacts, 'stickerLine' | 'photoLine'>;
@@ -37,6 +46,46 @@ export function mediaOffersModule(): Module {
             if (facts.stickerLine) pieces.push({ slot: 'sticker', text: facts.stickerLine });
             if (facts.photoLine) pieces.push({ slot: 'photo', text: facts.photoLine });
             return pieces;
+        },
+        decideAt: {
+            photo: (turn, ctx) => {
+                const { contact, facts, initiate, history: chat, at: time } = turn;
+                const around = facts.world;
+                if (!(ctx.photos || ctx.currentAiPhoto) || contact.tier !== 'boyfriend' || turn.thinking || facts.crisis || facts.grievance || (facts.baseIntent && /先接住他此刻的情绪/.test(facts.baseIntent))) return;
+                const photoRequestText = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
+                const wanted = initiate ? initiate.photo : photoWanted(photoRequestText);
+                const kind = wanted === 'any' ? PHOTO_KINDS.find(k => ctx.photos?.has(k)) : wanted;
+                // 吃的（ADR 0128）：只拿她最近吃的那一顿那道菜的；主动那条自己带着菜名
+                const dish = kind === 'food' ? (initiate?.photoDish ?? (around ? lastMealDish(around, time)?.dish : undefined)) : undefined;
+                const wantsCurrent = !initiate && Boolean(wanted) && isExplicitCurrentPhotoRequest(photoRequestText);
+                const currentKind = wanted === 'any' ? (around && lastMealDish(around, time)?.dish ? 'food' : 'view') : wanted;
+                if (wantsCurrent && currentKind && around && ctx.currentAiPhoto) {
+                    const currentDish = currentKind === 'food' ? lastMealDish(around, time)?.dish : undefined;
+                    const resolved = ctx.currentAiPhoto({ kind: currentKind, ...(currentDish ? { dish: currentDish } : {}), at: time, world: around });
+                    const exact = resolved.state === 'approved'
+                        ? ctx.photos?.list(currentKind, currentDish).find(entry => entry.id === resolved.shelfId)
+                        : undefined;
+                    if (exact) {
+                        const allowance = photoAllowance(chat, time.getTime(), false, Boolean(turn.woken));
+                        if (allowance.allowed) {
+                            facts.photo = currentKind;
+                            if (currentDish) facts.photoDish = currentDish;
+                            facts.photoPrompt = `[和他这次“现在的照片”请求精确对应、已经人工审核过的照片（只能发这一张，编号不解释）：先用一句话带一下，然后另起一行只写 <photo:${exact.id}>]\n- <photo:${exact.id}>：${exact.caption}`;
+                            ctx.log(`AI 照片草稿：当前请求已有审核通过的匹配照片 ${exact.id}，这一轮可发`);
+                        } else ctx.log(`AI 照片草稿：当前请求已有匹配照片，但这一轮不发（${allowance.reason}）`);
+                    } else {
+                        facts.photoUnavailable = true;
+                        ctx.log(`AI 照片草稿：当前请求没有已审核匹配照片（${resolved.state}），不拿旧图冒充`);
+                    }
+                } else if (kind && ctx.photos?.has(kind, dish)) {
+                    const allowance = photoAllowance(chat, time.getTime(), false, Boolean(turn.woken));
+                    if (allowance.allowed) {
+                        facts.photo = kind;
+                        if (dish) facts.photoDish = dish;
+                        ctx.log(`照片货架：他想看${kind}${dish ? `（${dish}）` : ''}，货架里有，这一轮发一张`);
+                    } else ctx.log(`照片货架：这一轮不发（${allowance.reason}）`);
+                }
+            },
         },
         cleanAt: {
             stickers: (text, turn, ctx) => ctx.stickers?.clean(text, Boolean(turn.facts.stickersAllowed)) ?? stripStickerArtifacts(text),

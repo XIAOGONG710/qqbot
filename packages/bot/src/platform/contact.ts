@@ -6,7 +6,7 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
-import { assessTurn, candidatePlan, cleanStages, contributeTurn, decorateStages, perceiveTurn, reviewStage, type CleanCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
+import { assessTurn, candidatePlan, cleanStages, contributeTurn, decideStage, decorateStages, perceiveTurn, reviewStage, type CleanCtx, type DecideCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
@@ -36,8 +36,8 @@ import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import { asksToExplain, ENGAGED_INTENT, ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
 import { DELIBERATE_MAX_BUBBLES, deliberateTurn, type ShapePlan } from '.././language/shape.ts';
-import { describeWorld, lastMealDish, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
-import { isExplicitCurrentPhotoRequest, type CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
+import { describeWorld, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
+import type { CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { dayPlan, describeSlot } from '.././life/day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from '.././life/body.ts';
 import { saidAsleepAt } from '.././life/bedtime.ts';
@@ -58,7 +58,7 @@ import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts'
 import { lastNight, withLastNight } from '.././life/nights.ts';
 import { describeHumanValues, type HumanValues } from '.././human-values.ts';
 import { auditDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
-import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
+import { photoIntent, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
 
 const DAY_MS = 86_400_000;
@@ -303,6 +303,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     /** 这一轮抽到要发图片表情，并带上他这一轮说的话（给货架按它挑）；没抽到就不给她看货架 */
     let stickerContext: { text: string; only?: boolean } | undefined;
     /** 清理时交给模块的两个货架（ADR 0336 第 9 步，CleanCtx）：清单的取、聊天记录的写法也还在这里用它们 */
+    /** 判断那一串（ADR 0336，DECIDE_STAGES）交给模块的东西：照片货架和「现在的照片」的解析 */
+    const decideCtx: DecideCtx = { ...(options.photos ? { photos: options.photos } : {}), ...(options.currentAiPhoto ? { currentAiPhoto: options.currentAiPhoto } : {}), log: message => log(message) };
     const shelves: CleanCtx = { ...(options.stickers ? { stickers: options.stickers } : {}), ...(options.photos ? { photos: options.photos } : {}) };
     /**
      * 清理生成的一稿（ADR 0336「生成之后那一段」第 8、9 步）：先摘设备指令（ADR 0148：摘出来放进 Draft.devices，字里不留；没开设备控制也一律摘掉令牌），
@@ -581,46 +583,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const interruption = turn.facts.interruption;
             // 照片（ADR 0109）：他明确要看猫 / 风景 / 她的片子，货架里有这一类，允许发（没连着发、今天没发够、不是危机 / 吵醒 / 小别扭 / 他难过），就发；
             // 没有明确对象（只说“发张照片”）取手上有的第一类；要的是她本人（自拍）不在货架里，照旧走“先不发”
-            /** 这一轮发哪一类照片（ADR 0109）：他要看、货架里有、允许发才有；写进 turn.facts.photo，清理时没有就一律清掉模型写的照片指令 */
-            let photoNow: PhotoKind | undefined;
-            /** 吃的照片是哪道菜（ADR 0128）；只有 photoNow 是 food 时有 */
-            let photoDishNow: string | undefined;
-            /** AI 草稿审核通过后只给模型这一张精确匹配的照片，禁止从同类旧图里随便挑。 */
-            let photoPromptNow: string | undefined;
-            /** 明确索要“现在”的照片但没有已审核匹配图：告诉模型如实说发不了，不能拿旧图冒充。 */
-            let currentPhotoUnavailableNow = false;
-            if ((options.photos || options.currentAiPhoto) && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))) {
-                const photoRequestText = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
-                const wanted = initiate ? initiate.photo : photoWanted(photoRequestText);
-                const kind = wanted === 'any' ? PHOTO_KINDS.find(k => options.photos?.has(k)) : wanted;
-                // 吃的（ADR 0128）：只拿她最近吃的那一顿那道菜的；主动那条自己带着菜名
-                const dish = kind === 'food' ? (initiate?.photoDish ?? (around ? lastMealDish(around, time)?.dish : undefined)) : undefined;
-                const wantsCurrent = !initiate && Boolean(wanted) && isExplicitCurrentPhotoRequest(photoRequestText);
-                const currentKind = wanted === 'any' ? (around && lastMealDish(around, time)?.dish ? 'food' : 'view') : wanted;
-                if (wantsCurrent && currentKind && around && options.currentAiPhoto) {
-                    const currentDish = currentKind === 'food' ? lastMealDish(around, time)?.dish : undefined;
-                    const resolved = options.currentAiPhoto({ kind: currentKind, ...(currentDish ? { dish: currentDish } : {}), at: time, world: around });
-                    const exact = resolved.state === 'approved'
-                        ? options.photos?.list(currentKind, currentDish).find(entry => entry.id === resolved.shelfId)
-                        : undefined;
-                    if (exact) {
-                        const allowance = photoAllowance(chat, time.getTime(), false, Boolean(woken));
-                        if (allowance.allowed) {
-                            photoNow = currentKind;
-                            photoDishNow = currentDish;
-                            photoPromptNow = `[和他这次“现在的照片”请求精确对应、已经人工审核过的照片（只能发这一张，编号不解释）：先用一句话带一下，然后另起一行只写 <photo:${exact.id}>]\n- <photo:${exact.id}>：${exact.caption}`;
-                            log(`AI 照片草稿：当前请求已有审核通过的匹配照片 ${exact.id}，这一轮可发`);
-                        } else log(`AI 照片草稿：当前请求已有匹配照片，但这一轮不发（${allowance.reason}）`);
-                    } else {
-                        currentPhotoUnavailableNow = true;
-                        log(`AI 照片草稿：当前请求没有已审核匹配照片（${resolved.state}），不拿旧图冒充`);
-                    }
-                } else if (kind && options.photos?.has(kind, dish)) {
-                    const allowance = photoAllowance(chat, time.getTime(), false, Boolean(woken));
-                    if (allowance.allowed) { photoNow = kind; photoDishNow = dish; log(`照片货架：他想看${kind}${dish ? `（${dish}）` : ''}，货架里有，这一轮发一张`); }
-                    else log(`照片货架：这一轮不发（${allowance.reason}）`);
-                }
-            }
+            // 这个判断是解释器的模块（modules/media-offers.ts 的 decideAt.photo）：货架和「现在的照片」的解析经 DecideCtx 给，结果写进 turn.facts（photo、photoDish、photoPrompt、photoUnavailable），下面读
+            decideStage(options.turnModules ?? [], 'photo', turn, decideCtx);
+            const { photo: photoNow, photoDish: photoDishNow, photoPrompt: photoPromptNow } = turn.facts;
+            const currentPhotoUnavailableNow = Boolean(turn.facts.photoUnavailable);
             // 陪玩（ADR 0111）、关系阶段（ADR 0113）、被打断（ADR 0115）是解释器的模块（见上面 assess 那里）
             // 小梗（ADR 0114）、他的口头习惯（ADR 0138）是解释器的模块（modules/jokes.ts、modules/idioms.ts），经 turnModules 放进 joke、idiom 槽
             // 网络热梗（ADR 0129）是解释器的模块（modules/memes.ts），经 turnModules 放进 meme 槽
@@ -769,12 +735,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 : undefined;
             // 长短不一（ADR 0024）和形状（ADR 0091）是解释器的模块（modules/length.ts、modules/shape.ts）；它们要的前面那几样在这里写进 turn.facts
             Object.assign(turn.facts, {
-                ...(intent ? { intent } : {}), ...(cue ? { cue } : {}), ...(stickerOnlyNow ? { stickerOnly: true } : {}), ...(photoNow ? { photo: photoNow } : {}),
+                ...(intent ? { intent } : {}), ...(cue ? { cue } : {}), ...(stickerOnlyNow ? { stickerOnly: true } : {}),
                 ...(deliberateNow ? { deliberate: true } : {}), ...(routedHint ? { routedHint } : {}), ...(low ? { low: true } : {}), agendaTopics,
                 // 「/亲热」那一行在上面原位取（每取一次扣一条、写文件），由解释器的模块（modules/intent-line.ts）放
                 ...(intimateNow ? { intimateLine: intimateNow } : {}),
                 // 清理时（modules/media-offers.ts 的 cleanAt）按这几样留不留表情 / 照片编号
-                ...(stickersAllowed ? { stickersAllowed: true } : {}), ...(photoNow && photoDishNow ? { photoDish: photoDishNow } : {}),
+                ...(stickersAllowed ? { stickersAllowed: true } : {}),
                 ...(textureNow ? { texture: textureNow } : {}),
             });
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
