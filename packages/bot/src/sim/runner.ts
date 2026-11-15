@@ -33,6 +33,9 @@ import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
 import { warmModule } from '../modules/warm.ts';
 import { feelingsModule } from '../modules/feelings.ts';
+import { timeNotesModule } from '../modules/time-notes.ts';
+import { mediaOffersModule } from '../modules/media-offers.ts';
+import { intentLineModule } from '../modules/intent-line.ts';
 import { memoryModule } from '../modules/memory.ts';
 import { deliberateModule } from '../modules/deliberate.ts';
 import { lengthModule } from '../modules/length.ts';
@@ -615,6 +618,10 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             memoryModule(),
             // 心境那一行、节奏、梦那一行，同 App
             feelingsModule(),
+            // 时间块里的另几行、图片表情 / 照片清单、意图行和「/亲热」，同 App（模拟器没有梗百科词库，不挂）
+            timeNotesModule(),
+            mediaOffersModule(),
+            intentLineModule(),
             // 时间块，同 App
             timeBlockModule({ ...(scenario.lagTail ? { lagTail: true } : {}) }),
             // 只想一想的轮次：聊天原文换成一段回想，同 App

@@ -88,7 +88,7 @@ export interface TurnFacts {
     interruption?: { text: string; minutesAgo: number };
     /** 陪玩（ADR 0111，modules/together.ts 写）：此刻正和他一起玩什么、从哪一刻答应的 */
     together?: Together;
-    /** 网络热梗（ADR 0129，modules/memes.ts 在 contribute 时写）：这一轮放进提示词的那一行；梗百科（旧逻辑）读它，不重复给同一个词 */
+    /** 网络热梗（ADR 0129，modules/memes.ts 在 contribute 时写）：这一轮放进提示词的那一行；梗百科（modules/meme-dict.ts）读它，不重复给同一个词 */
     meme?: string;
     /** 这一轮小别扭真的生效（意图就是小别扭那一句；旧逻辑在照片 / 被打断改写意图之后写）：可以跑命令那一行（modules/shell.ts）读它 */
     grievanceActive?: boolean;
@@ -133,6 +133,16 @@ export interface TurnFacts {
     /** 记忆这一组（ADR 0012 / 0016–0020 / 0032 / 0043 / 0176 / 0177）：联系人流水线原位召回 / 读好的几段（她的名字已换成「你」；召回的 await、关系概况和印象读缓存后台重读、要点的后台整理、召回日志都留在原位），
      *  modules/memory.ts 照原样放进各自的槽，有 common / today / people 时接 disclosure。没有的不写（desktop 不要长期记忆，跟着 crossRecent） */
     memory?: MemoryPieces;
+    /** 她在 QQ 上的样子（ADR 0083）：联系人流水线原位取（presence 的内存状态，后台 tick 会改，不挪过 await）后写；modules/time-notes.ts 放进 selfNote 槽 */
+    selfNote?: string;
+    /** 她答应过他、还没做的事那一句（ADR 0018 决策 2）：和 promised 同一处写（读承诺状态、记日志）；modules/time-notes.ts 放进 promised 槽 */
+    promisedLine?: string;
+    /** 图片表情清单（ADR 0063 / 0132）：在所有 contribute 之前原位取（货架查索引 / 文件、会抛错；条件一次、内容一次）；modules/media-offers.ts 放进 sticker 槽 */
+    stickerLine?: string;
+    /** 照片清单（ADR 0109 / 0128 / 0240）：同上（照片货架每次重读索引）；modules/media-offers.ts 放进 photo 槽 */
+    photoLine?: string;
+    /** 「/亲热」那一行（ADR 0170）：原位取（每取一次扣一条、写文件），主动找他、危机回合不取；modules/intent-line.ts 放进 intimate 槽 */
+    intimateLine?: string;
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */

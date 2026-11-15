@@ -876,3 +876,18 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 基线覆盖：`memory` 场景里关系概况 4、私人记忆 10、公共记忆 3、那一天 1、今天的 3、提到的人 5、分寸 8；工作房、要点、桌面 0，分别由 `people.test.ts`、`context-window.test.ts`、`app.test.ts` 的 crossRecent 用例管。
 - 删掉的接线：`contact.ts` 里十个段落和 `disclosureRules` 的 import。
 - 验证：`memory` 逐字不变，基线 38/38；变异检验——模块不放、旧逻辑不写 `facts.memory`，`memory` 报不一致，`people.test.ts` / `context-window.test.ts` / `app.test.ts` 的 crossRecent 用例红；模拟器不挂模块，`people.test.ts`、`context-window.test.ts` 红。bot 全量 4474 过、13 跳过，红的 2 项是 DSH 那边的。
+
+### 最后八段，「旧逻辑」大模块删掉（2026-11-15）
+
+- 第 4 步把 `contact.ts` 手写的那一串段落包成了一个「旧逻辑」大模块（`contact-legacy`），排在所有模块之后。这一节把它剩下的八段迁完，**这个大模块整个删掉**：
+  联系人流水线现在只调 `contributeTurn(options.turnModules ?? [], turn)`，提示词里的每一段都由某个模块放。由子代理起草（只新建文件）。
+- 分成四个模块：
+  - `modules/time-notes.ts`：重要的日子（ADR 0011，`describeDays` 是纯函数、卡上的日子建卡时就定了，contribute 时现算）、她在 QQ 上的样子（ADR 0083，presence 的状态后台会改，**原位取**）、
+    答应的事那一句（ADR 0018，读承诺状态、记日志、还要在 assess 之前写 `facts.promised`，**原位取**）。新 fact `selfNote`、`promisedLine`。
+  - `modules/media-offers.ts`：图片表情和照片的清单（ADR 0063 / 0109 / 0240）。货架每取一次都查索引 / 文件、坏了会抛错，原来在所有模块 contribute 之前取、条件一次内容一次——**原位不动**，次数和先后照旧，
+    写进新 fact `stickerLine`、`photoLine`。以后谁想「顺手优化成取一次」就是行为改变，`media-offers-module.test.ts` 会拦住（断言调用两次）。
+  - `modules/intent-line.ts`：意图行（深思时去掉「怎么答」那一句，按 `facts.intent` / `facts.deliberate` 现算）和「/亲热」那一行（每取一次扣一条、写文件，**原位取**，新 fact `intimateLine`）。
+  - `modules/meme-dict.ts`：梗百科（DSH 10-29），条件同 `playfulAllowed`，读热梗模块写的 `facts.meme`，所以排在热梗之后；App 挂在表的最后，日志先后同原来。模拟器没有词库，不挂。
+    联系人流水线的 `memeDict` 选项删掉，`meme-dict-turn.test.ts` 改成挂模块。
+- 基线覆盖：意图行 37 个场景、重要的日子 `meetup`；QQ 上的样子、答应的事那一句、图片表情、照片、「/亲热」、梗百科基线 0 处，由新的四个测试（含流水线和模拟器用例）、`sim.test.ts`、`app.test.ts`、`meme-dict-turn.test.ts` 管。
+- 验证：基线 38/38 逐字不变（含删掉「旧逻辑」大模块）；变异检验——意图行模块不放，37 个场景报不一致；深思时也放意图行，`rich-chat` 报不一致；日子那几行不放，`meetup` 报不一致。四个新测试 28 项、相关测试通过；bot 全量 4495 过、13 跳过，红的是 DSH 那边的 2 项和那条负载下偶发的计时测试。

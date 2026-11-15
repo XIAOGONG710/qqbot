@@ -50,6 +50,10 @@ import { continuityModule } from '../modules/continuity.ts';
 import { memoryModule } from '../modules/memory.ts';
 import { warmModule } from '../modules/warm.ts';
 import { feelingsModule } from '../modules/feelings.ts';
+import { timeNotesModule } from '../modules/time-notes.ts';
+import { mediaOffersModule } from '../modules/media-offers.ts';
+import { intentLineModule } from '../modules/intent-line.ts';
+import { memeDictModule } from '../modules/meme-dict.ts';
 import { humanStateModule } from '../modules/human-state.ts';
 import { deliberateModule } from '../modules/deliberate.ts';
 import { lengthModule } from '../modules/length.ts';
@@ -1108,6 +1112,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         warmModule({ log }),
         // 心境那一行、节奏、梦那一行（ADR 0102）：联系人流水线原位算好写进 turn.facts（读梦、作者写下的事、回想过的感受、带结算的世界账，要等小别扭是否生效），这里只放；没有开关（herFeelings 没开时 facts 里没有）
         feelingsModule(),
+        // 时间块里的另几行（重要的日子 ADR 0011、她在 QQ 上的样子 ADR 0083、答应的事 ADR 0018）：日子现算，另两行由联系人流水线原位取好写进 facts
+        timeNotesModule(),
+        // 这一轮的图片表情 / 照片清单（ADR 0063 / 0109）：联系人流水线在 contribute 之前原位取好写进 facts，这里只放
+        mediaOffersModule(),
+        // 意图行（深思时去掉「怎么答」那一句）和「/亲热」那一行
+        intentLineModule(),
         // 真人数值（ADR 0222）和人格成长层（ADR 0251）：联系人流水线开头算好写进 turn.facts（读带结算的世界账，不挪过 await），这里只放两行；没有开关（没有需要锚点 / 世界账时 facts 里没有）
         humanStateModule(),
         // 深思（ADR 0151）和语义路由（ADR 0202）：判断和分类那次模型调用留在联系人流水线原位，写进 turn.facts；这里只放两句。没有开关（deliberate 没开时 facts 里没有）
@@ -1124,7 +1134,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 网络热梗（ADR 0129）：每一轮从库里现读（作者可以在两轮之间改 / 删，别用改之前的快照），停下之后不再读；从热榜学新梗还在下面（要她的 B 站号）
         ...(config.memes ? [memesModule(() => (stopped ? [] : loadMemes(memesFile, log).entries), log)] : []),
         // 她看视频（ADR 0130）：他问起时放她真看过的两条；用的是内存里那份，她看完一个就换新的
-        ...(config.watching ? [watchedModule(() => watchedEntries, log)] : [])],
+        ...(config.watching ? [watchedModule(() => watchedEntries, log)] : []),
+        // 梗百科（DSH 10-29）：要在热梗之后（读 facts.meme）；挂在最后，同迁移前「旧逻辑」那一行日志的先后
+        ...(memeDict ? [memeDictModule(memeDict, log)] : [])],
         exec,
     });
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
@@ -2187,7 +2199,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
             ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => { lastFeelings = report; writeFeelingsExport(soulDir(), report); } } : {}),
             ...(feelingReviewNow && contact.tier === 'boyfriend' ? { feelingReview: feelingReviewNow } : {}),
-            ...(memeDict && contact.tier === 'boyfriend' ? { memeDict } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
             ...(config.factCheck !== 'off' ? { factCheck: config.factCheck, ...(config.factHim ? { factAboutHim: true } : {}) } : {}),

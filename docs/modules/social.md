@@ -7,6 +7,7 @@
 ## 文件（`packages/bot/src/` 下）
 
 - `social/responder.ts`
+- `modules/media-offers.ts`
 - `social/silence.ts`
 - `social/outbox.ts`
 - `social/others.ts`

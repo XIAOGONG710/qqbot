@@ -8,7 +8,6 @@ import { localDate } from '../local-date.ts';
 
 import { assessTurn, contributeTurn, perceiveTurn, type Module, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
-import type { Piece, Slot } from '../interpreter/slots.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
@@ -56,7 +55,6 @@ import { formatDate, herDay, type ExtraFreeActivity } from '.././life/schedule.t
 import { speechContext, TAIL_CAPS, type BookProgressContext } from '.././language/speech-check.ts';
 import { describePick, pickBest, PICKED_INTENTS, type PickRules } from '.././language/candidates.ts';
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
-import { describeDays } from '.././language/time-context.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts';
@@ -187,8 +185,6 @@ export interface ContactPipelineOptions {
     photos?: PhotoShelf;
     /** AI 生活照（ADR 0240）：只解析“现在/刚刚”的明确请求；新图只建待审核草稿，返回 approved 才能发匹配编号。 */
     currentAiPhoto?: (request: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => CurrentAiPhotoResult;
-    /** 梗百科词库（2026-10-29）：他这句里提到一个词，只读地查一眼，不写进她自己的梗库 */
-    memeDict?: { mention(text: string): { term: string; meaning: string; origin: string; tags: string } | undefined };
     /** 他问到过去的某一天时，她那天自己写的日记（ADR 0217，默认关）：date 是她的那一天 YYYY-MM-DD */
     diaryOn?: (date: string) => string | undefined;
     /** 回忆带着当时的感觉（ADR 0218，默认关）：想起某一天的事时附一句她那天有依据的感觉；因为他而难过 / 烦 / 担心的不附 */
@@ -535,7 +531,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const peopleText = people.map((person, i) => describePerson(person, impressions[i], aboutPeople[i]));
             const today = common ? undefined : you(await todayOthers);
             if (today) log(`今天和别人聊过的 ${countLines(today)} 条（新一段对话，有由头可以含糊提一件）`);
-            const days = describeDays(character.dates, time);
+            // 重要的日子那一行（ADR 0011）是解释器的模块（modules/time-notes.ts）：卡上的日子建卡时就定了，在 contribute 时现算
             if (herSchedule) options.onHerDay?.(time);
             // 这一轮交给解释器的模块（ADR 0336）：在这里建 turn、先 perceive——看清她此刻（她那边、身体、在干嘛），写进 turn.facts；
             // 下面的旧逻辑和后面的 assess 都读。旧逻辑算的判断在 assess 之前写进同一个 turn
@@ -581,7 +577,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 接着 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
             // 她此刻在干嘛、作息、她答应的事、挂着的事、她那边还没说过的事还是旧逻辑算的，写进 facts 给意图阶梯（modules/intent.ts）读
             Object.assign(turn.facts, {
-                ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(promised ? { promised: true } : {}),
+                ...(crisisNow ? { crisis: crisisNow } : {}), ...(grievance ? { grievance } : {}), ...(promised ? { promised: true, promisedLine: promised } : {}),
+                // 她在 QQ 上的样子（ADR 0083）、答应的事那一句由解释器的模块（modules/time-notes.ts）放；取留在上面原位（presence 的状态后台会改、答应的事读状态记日志）
+                ...(selfNote ? { selfNote } : {}),
                 ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what), unsettled: loops.unsettled.map(l => l.what) } : {}),
                 ...(untold.length ? { news: untold } : {}),
                 // 真人数值和人格成长层在上面开头算好（不挪过 await），那两行由解释器的模块（modules/human-state.ts）放
@@ -653,18 +651,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她自己最近的日子（心里的线头）、拒绝过的、评价、「你现在的生活」、首轮铺底是解释器的模块（modules/soul.ts）
             // 他的口气（2026-10-30：说话还是使唤、当程序说话、很元的问题、使唤得比说话多）是解释器的模块（modules/register.ts），经 turnModules 放进 register 槽
             // 她自己记下的东西（说话习惯、聊天回顾、日记里发现的自己、读完看完的想法、没想完的问题、她猜的事）是解释器的模块（modules/her-notes.ts）
-            // 梗百科词库（2026-10-29）：她自己的库太小；他提到的词只要词库里有，就把「怎么用/出处/标签」给她。
-            // 让路条件和热梗一样；已经在热梗那一行里的不重复给。热梗那一行由热梗模块（modules/memes.ts）在 contribute 时写进 turn.facts.meme，
-            // 所以这一行到拼段落时（下面「旧逻辑」模块的 contribute）才算，日志也在那时记
-            const dictLine = (memeNow: string | undefined) => options.memeDict && contact.tier === 'boyfriend' && !initiate && !thinking && !crisisNow && !grievance
-                && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))
-                ? (() => {
-                    const last = chat.findLast(message => message.role === 'user');
-                    if (!last) return undefined;
-                    const hit = options.memeDict!.mention(last.content);
-                    if (!hit || memeNow?.includes(hit.term)) return undefined;
-                    return `[他这句里提到一个网络词「${hit.term}」：怎么用——${hit.meaning}${hit.origin ? `；出处——${hit.origin}` : ''}${hit.tags ? `；标签——${hit.tags}` : ''}。你大概知道这个梗：顺着他的意思接，别科普、别解释梗、别拆穿]`;
-                })() : undefined;
+            // 梗百科词库（2026-10-29）是解释器的模块（modules/meme-dict.ts），挂在热梗之后（读 turn.facts.meme）
             // 主动发的那条（喂完猫拍的）意图在 initiate.note 里，这里不再加“他想看”的意图行
             // 被打断的这一轮（ADR 0115）：不带“先直接回答他刚问的”这类意图、不套形状 / 长短提示——它们和“先接他的话、顺带说一声刚被什么岔了一下”冲突，模型会按更紧的那条来、把打断吞掉（模拟 5/5 没提）
             const intent = photoNow && !initiate
@@ -757,7 +744,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                     : `深思：他在认真问她，这一轮不套字数和条数、用 ${options.deliberate!.llm.model}、提示词只留一句“先想清楚”`);
             }
             // 深思时那条只管“怎么答”的意图行（先直接回答 / 很大很抽象的问题）由深思那一句代替；追着要答案、说她不像真人这类纠偏的意图行保留
-            const intentLine = deliberateNow && intent && /先直接回答他刚问的|他在问一个很大、很抽象的问题/.test(intent) ? undefined : intent;
+            // 意图行（深思时去掉「怎么答」那一句）是解释器的模块（modules/intent-line.ts），读 turn.facts.intent / deliberate
             // 引用回复（ADR 0136）是解释器的模块（modules/quote.ts）：contribute 时算、写回 turn.facts.quote，放进 quote 槽；拼完段落之后取回来，发送时引用那条。这里先清掉上一轮的
             quoteNow = undefined;
             pick = picked ? {
@@ -803,6 +790,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             Object.assign(turn.facts, {
                 ...(intent ? { intent } : {}), ...(cue ? { cue } : {}), ...(stickerOnlyNow ? { stickerOnly: true } : {}), ...(photoNow ? { photo: photoNow } : {}),
                 ...(deliberateNow ? { deliberate: true } : {}), ...(routedHint ? { routedHint } : {}), ...(low ? { low: true } : {}), agendaTopics,
+                // 「/亲热」那一行在上面原位取（每取一次扣一条、写文件），由解释器的模块（modules/intent-line.ts）放
+                ...(intimateNow ? { intimateLine: intimateNow } : {}),
             });
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
@@ -837,48 +826,13 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 只留卡里那段「被问是不是 AI」的说明（承认是程序是底线，不能跟设定一起清掉）；open 卡本来没有这段
             const bare = INJECT_PERSONA ? character : { ...character, description: personaFacts(character.description), personality: '', scenario: '', mesExample: '' };
             const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...bare, postHistoryInstructions: '' }, worldInfo } : { character: bare, worldInfo };
-            // 按槽位表拼（ADR 0336 第 4 步）：迁移前这里手写的那一串，现在是「旧逻辑」这个大模块的段落，顺序由 interpreter/slots.ts 定；
-            // 以后迁出去的模块经 options.turnModules 加进来。原来按真假判断的照旧按真假，原来无条件放的照旧无条件放
-            const when = (slot: Slot, text: string | undefined | false | null): Piece[] => (text ? [{ slot, text }] : []);
-            const legacyPieces: Piece[] = [
-                // 记忆这一组（relationship、summary、recalled、work、desktop、common、recap、today、people、disclosure）是解释器的模块（modules/memory.ts），经 turnModules 放；
-                // 那天的流水账放在日记、记忆后面（ADR 0032 调整 3）由槽位表的先后保证
-                // 时间块（ADR 0004 / 0105）是解释器的模块（modules/time-block.ts），经 turnModules 放进 time 槽
-                ...when('days', days),
-                // 「你现在」那几行是底子不是话题（DSH 10-30）由她此刻的模块（modules/her-now.ts）放进 groundNote 槽
-                // 今天的心情（按日期抽的「爱笑」「安静」）不再注入（10-30 用户：这种替她表态的都清掉）：
-                // 心情由真实发生的事推出来的 feelingLine 表达。
-                // 真人数值（ADR 0222）和人格成长层（ADR 0251）是解释器的模块（modules/human-state.ts），经 turnModules 放进 humanState、development 槽
-                // 没了结的事（ADR 0023）、情绪余温（ADR 0028）是解释器的模块（modules/warm.ts），经 turnModules 放进 unsettled、warm 槽
-                // 心境那一行、节奏（ADR 0102 / 2026-10-30）是解释器的模块（modules/feelings.ts），经 turnModules 放进 feeling、pace 槽
-                // 追求（「别挂科」「用新相机拍出满意的东西」）也不再注入（10-30 同一条）：她想追什么，自己说。
-                ...when('selfNote', selfNote),
-                ...when('promised', promised),
-                // 梦那一行（2026-10-31）是解释器的模块（modules/feelings.ts），经 turnModules 放进 dreams 槽
-                // 连续性那几段是解释器的模块（modules/continuity.ts），经 turnModules 放进 continuity 槽
-                // 她能替他操作的设备（ADR 0148）的菜单是解释器的模块（modules/devices.ts），经 turnModules 放进 devices 槽
-                ...when('sticker', stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined),
-                ...when('photo', photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)! : undefined),
-                ...when('intent', intentLine),
-                // 理解偏过、他最近的事（DSH 10-30 / 10-31）和「记忆由你自己决定」是解释器的模块（modules/self-memory.ts）
-                // 人称、正经问就先直接答、别琢磨怎么接（DSH 10-30 / 10-31）是解释器的模块（modules/reply-basics.ts），经 turnModules 放进 person、directAnswer、noOverthink 槽
-                // 他的请求等她点头（2026-10-30）是解释器的模块（modules/consent.ts），经 turnModules 放进 herAsk 槽
-                // 工作模式的三行（他在求她切工作 / 判断要不要动电脑 / 切到了工作）是解释器的模块（modules/work-mode.ts）
-                // 深思那一句和语义路由的方向（ADR 0151 / 0202）是解释器的模块（modules/deliberate.ts）：判断留在上面原位（分类调用不挪过 await），写进 turn.facts，经 turnModules 放进 deliberate、routedHint 槽
-                ...when('intimate', intimateNow),
-                // 「做题式」写法（ADR 0146 实验，只有模拟器用）是解释器的模块（modules/solve-frame.ts），经 turnModules 放进 solveFrame 槽
-                // 主动找他时的说明是解释器的模块（modules/initiate-note.ts），经 turnModules 放进 initiateNote 槽
-            ];
-            const legacy: Module = {
-                id: 'contact-legacy',
-                // 梗百科那一行要看热梗模块这一轮放了什么（turn.facts.meme），所以在这里、热梗模块之后再算
-                contribute: () => {
-                    const dictNow = dictLine(turn.facts.meme);
-                    if (dictNow) log('梗百科：这一轮查到了他提的词（日志不记内容）');
-                    return [...legacyPieces, ...when('memeDict', dictNow)];
-                },
-            };
-            const ran = contributeTurn([...(options.turnModules ?? []), legacy], turn);
+            // 图片表情和照片的清单（ADR 0063 / 0109 / 0240）是解释器的模块（modules/media-offers.ts）：清单在这里、所有模块的 contribute 之前原位取
+            // （货架每取一次都查索引 / 文件，坏了会抛错；条件一次、内容一次，照旧），写进 turn.facts，经 turnModules 放进 sticker、photo 槽
+            const stickerLine = stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined;
+            const photoLine = photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)! : undefined;
+            Object.assign(turn.facts, { ...(stickerLine ? { stickerLine } : {}), ...(photoLine ? { photoLine } : {}) } satisfies TurnFacts);
+            // 按槽位表拼（ADR 0336）：迁移前这里手写的那一串（第 4 步时包成的「旧逻辑」大模块）已经全部拆成解释器的模块，经 options.turnModules 放；顺序由 interpreter/slots.ts 定
+            const ran = contributeTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             const { afterMain, afterHistory } = ran instanceof Promise ? await ran : ran;
             shapeNow = turn.facts.shape;

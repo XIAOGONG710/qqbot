@@ -90,6 +90,9 @@
 - `modules/time-block.ts`
 - `modules/continuity.ts`
 - `modules/deliberate.ts`
+- `modules/time-notes.ts`
+- `modules/intent-line.ts`
+- `modules/meme-dict.ts`
 - `st/`
 
 ## 开关
