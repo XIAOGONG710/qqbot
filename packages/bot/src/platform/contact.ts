@@ -6,7 +6,7 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
-import { assessTurn, contributeTurn, perceiveTurn, type Module, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
+import { assessTurn, contributeTurn, perceiveTurn, reviewStage, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
@@ -366,6 +366,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let textureNow: { said: string; serious: boolean; recentFaces: number; recentTildes: number } | undefined;
     /** 这一轮第一条要引用他的哪一句（ADR 0136，配置 quoteReply）：buildPrompt 按他没回的那一串定，紧跟着发送时现取 */
     let quoteNow: QuotePlan | undefined;
+    /** 这一轮的 turn（拼提示词时建的）：生成之后审稿的模块（ADR 0336 reviewAt）要读它 */
+    let turnNow: Turn | undefined;
     /** 这一轮拼出来的提示词（ST 后处理之前，system 还是 system）：事实检查拿它当“她能依据的事实”（ADR 0137） */
     let promptSource: OpenAIMessage[] | undefined;
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022，modules/past.ts）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
@@ -539,6 +541,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 contact, at: time, history: chat, thinking, card: character, facts: {},
                 ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
             };
+            turnNow = turn;
             const perceived = perceiveTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             if (perceived instanceof Promise) await perceived;
@@ -903,13 +906,22 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 return rewrittenDraft.text;
             };
             const onRewriteAccepted = () => { deviceNow = rewrittenDraft?.devices; };
+            // 审稿顺序表上的位置（ADR 0336「生成之后那一段」）：挂了 reviewAt 的模块在对应的那一步之后跑；都没挂时同步返回原稿，不多等
+            const reviewCtx: ReviewCtx = {
+                regenerate, accept: onRewriteAccepted, scratch: {}, log,
+                ...(reviewContext?.initiating ? { initiating: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}),
+            };
+            const at = (stage: ReviewStage, text: string) => (turnNow ? reviewStage(options.turnModules ?? [], stage, text, turnNow, reviewCtx) : { text });
             const factOptions = options.factCheck && options.factCheck !== 'off' && !crisisNow && !reviewContext?.allowRepeat && promptSource ? {
                 mode: options.factCheck, source: promptSource, names, mayDropAll: Boolean(reviewContext?.initiating), ...(options.factAboutHim ? { aboutHim: true } : {}),
                 audit: options.factAudit ?? ((auditMessages: OpenAIMessage[]) => chatCompletion({ ...forExtraction(llm), temperature: 0 }, auditMessages, { log })),
                 regenerate, onRewriteAccepted, log, ...(options.onFactCheck ? { onRecord: options.onFactCheck } : {}),
             } : undefined;
             // 逐条事实检查（ADR 0137）：先于出口检查——重写出来的话还要过出口检查这一关；危机回合、固定说法（allowRepeat）不查
-            const factual = factOptions ? await checkFacts(reply, factOptions) : reply;
+            let atFacts = at('facts', factOptions ? await checkFacts(reply, factOptions) : reply);
+            if (atFacts instanceof Promise) atFacts = await atFacts;
+            if (atFacts.stop) return atFacts.text;
+            const factual = atFacts.text;
             // 事实检查判定“想说的那部分被删光了”：这轮不发；主动消息那边会按“生成的是空的”跳过
             if (factual === '' && reply !== '') return '';
             const reviewOptions: ReviewOptions = {
@@ -926,7 +938,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 onRewriteAccepted,
                 log,
             };
-            let reviewed = crisisNow ? await reviewCrisisReply(factual, reviewOptions, crisisNow.level) : await reviewReply(factual, reviewOptions);
+            let atExit = at('exit', crisisNow ? await reviewCrisisReply(factual, reviewOptions, crisisNow.level) : await reviewReply(factual, reviewOptions));
+            if (atExit instanceof Promise) atExit = await atExit;
+            if (atExit.stop) return atExit.text;
+            let reviewed = atExit.text;
             if (crisisNow) {
                 deviceNow = undefined;
                 return reviewed;
@@ -942,12 +957,27 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 }
                 reviewed = reviewed.replace(/<<查[：:][\s\S]*?>>/g, '').trim();
             }
+            let atPull = at('pull', reviewed);
+            if (atPull instanceof Promise) atPull = await atPull;
+            if (atPull.stop) return atPull.text;
+            reviewed = atPull.text;
             // 形状控制（配置 shape）：出口检查之后再看字数和条数，超了重写一次、还超就在分句处截断
-            const shaped = shapeNow ? await shapeReply(reviewed, shapeNow, { regenerate, onRewriteAccepted, log }) : reviewed;
+            let atShape = at('shape', shapeNow ? await shapeReply(reviewed, shapeNow, { regenerate, onRewriteAccepted, log }) : reviewed);
+            if (atShape instanceof Promise) atShape = await atShape;
+            if (atShape.stop) return atShape.text;
+            const shaped = atShape.text;
             // 话说到一半（ADR 0141）：形状之后再看，并回去 / 退回去会让一条变长，放在字数检查前面会被再截一次；危机回合不走
-            const finished = options.speechCheck ? await finishReply(shaped, { regenerate, onRewriteAccepted, log }) : shaped;
-            const final = finalizeReply(finished, reviewOptions);
-            return factOptions && final !== factual ? checkFacts(final, { ...factOptions, finalOnly: true }) : final;
+            let atUnfinished = at('unfinished', options.speechCheck ? await finishReply(shaped, { regenerate, onRewriteAccepted, log }) : shaped);
+            if (atUnfinished instanceof Promise) atUnfinished = await atUnfinished;
+            if (atUnfinished.stop) return atUnfinished.text;
+            const finished = atUnfinished.text;
+            let atFinalize = at('finalize', finalizeReply(finished, reviewOptions));
+            if (atFinalize instanceof Promise) atFinalize = await atFinalize;
+            if (atFinalize.stop) return atFinalize.text;
+            const final = atFinalize.text;
+            let atFactsFinal = at('factsFinal', factOptions && final !== factual ? await checkFacts(final, { ...factOptions, finalOnly: true }) : final);
+            if (atFactsFinal instanceof Promise) atFactsFinal = await atFactsFinal;
+            return atFactsFinal.text;
         },
         send: options.send,
         ...(options.absorb ? { absorb: (part: string) => options.absorb!(contact.qq, part) } : {}),

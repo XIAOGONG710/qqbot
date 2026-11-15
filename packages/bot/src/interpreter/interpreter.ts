@@ -169,6 +169,11 @@ export interface Module {
     assess?(turn: Turn): Maybe<void>;
     contribute?(turn: Turn): Maybe<readonly Piece[]>;
     review?(draft: string, turn: Turn): Maybe<string>;
+    /**
+     * 生成之后的审稿（ADR 0336「生成之后那一段」）：挂在审稿顺序表（REVIEW_STAGES）的某几个位置，按位置、再按模块注册顺序跑。
+     * 返回改过的稿子；要这一轮到此为止（事实检查删光了、危机回合）就返回 { text, stop: true }
+     */
+    reviewAt?: Partial<Record<ReviewStage, (text: string, turn: Turn, ctx: ReviewCtx) => Maybe<string | ReviewVerdict>>>;
     /** 定时要做的事：解释器在 startSchedules 时经执行器开计时器，stop 时关 */
     schedules?: readonly { every: number; run: () => void }[];
     /** 停下：拒绝新工作；返回等已派发的活收尾的 promise（没有就不返回） */
@@ -241,6 +246,58 @@ function runAfterPerceive(modules: readonly Module[], turn: Turn): Maybe<Assembl
     return isThenable(assessed) ? Promise.resolve(assessed).then(() => contributeTurn(modules, turn)) : contributeTurn(modules, turn);
 }
 
+/**
+ * 审稿的顺序（ADR 0336「生成之后那一段」）：同 slots.ts，先后由这张表定，不由模块决定。照搬迁移前联系人流水线里手写的顺序：
+ * 逐条事实检查 → 出口检查（危机回合走危机检查、到此为止）→ <<查>> → 形状裁剪 → 话说到一半 → 删行收尾 → 最后再查一次事实
+ */
+export const REVIEW_STAGES = ['facts', 'exit', 'pull', 'shape', 'unfinished', 'finalize', 'factsFinal'] as const;
+export type ReviewStage = (typeof REVIEW_STAGES)[number];
+
+/** 审稿时联系人流水线给的东西；字段随审稿模块迁出逐个加 */
+export interface ReviewCtx {
+    /** 在这一轮的提示词后面加一句说明，重新生成一次（已经清理过：设备指令摘了、正则过了）；返回新稿 */
+    regenerate(note: string): Promise<string>;
+    /** 采用了刚才那次重写（设备指令跟着换成重写稿的） */
+    accept(): void;
+    /** 主动找他的这一轮（事实检查删光了可以整条不发） */
+    initiating?: boolean;
+    /** 固定说法、允许重复（事实检查、出口检查的重复规则不查） */
+    allowRepeat?: boolean;
+    /** 审稿模块之间这一轮共用的东西（例如出口检查算好的上下文，删行收尾要用同一份） */
+    scratch: Record<string, unknown>;
+    log: (line: string) => void;
+}
+
+export interface ReviewVerdict { text: string; stop?: true }
+
+/**
+ * 审稿顺序表上的一个位置：挂在这里的模块按注册顺序跑；返回 stop 时后面的不跑。
+ * 都是同步返回时整个也同步返回（没挂模块、模块这一轮不用做事时不多一个微任务，同 contributeTurn）；碰到第一个异步的才转成 promise
+ */
+export function reviewStage(modules: readonly Module[], stage: ReviewStage, draft: string, turn: Turn, ctx: ReviewCtx): Maybe<ReviewVerdict> {
+    const steps = modules.map(module => module.reviewAt?.[stage]).filter((step): step is NonNullable<typeof step> => Boolean(step));
+    // 吃进一步的结果：stop 就停（返回结论），否则返回下一步要审的稿子
+    const take = (out: string | ReviewVerdict): string | ReviewVerdict => (typeof out === 'string' ? out : out.stop ? { text: out.text, stop: true } : out.text);
+    let text = draft;
+    for (let i = 0; i < steps.length; i++) {
+        const out = steps[i]!(text, turn, ctx);
+        if (isThenable(out)) {
+            return (async () => {
+                let next = take(await out);
+                for (let j = i + 1; ; j++) {
+                    if (typeof next !== 'string') return next;
+                    if (j >= steps.length) return { text: next };
+                    next = take(await steps[j]!(next, turn, ctx));
+                }
+            })();
+        }
+        const taken = take(out);
+        if (typeof taken !== 'string') return taken;
+        text = taken;
+    }
+    return { text };
+}
+
 /** 第四个阶段：草稿按模块顺序逐个 review */
 export function reviewTurn(modules: readonly Module[], draft: string, turn: Turn): Maybe<string> {
     return sequence(modules, (module, text) => module.review ? module.review(text, turn) : text, draft);
@@ -269,7 +326,7 @@ export function createInterpreter(options: { modules: readonly Module[]; exec: P
         ids.add(module.id);
     }
     const modules = [...options.modules];
-    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review);
+    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review || module.reviewAt);
     const { exec } = options;
     let timers: ReturnType<Executor['every']>[] | undefined;
     return {
