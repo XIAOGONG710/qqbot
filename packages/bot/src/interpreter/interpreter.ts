@@ -207,6 +207,11 @@ export interface Module {
      * 要带出「撤回改口」的打算（打错字，ADR 0086）就返回 { parts, recall }
      */
     decorateAt?: Partial<Record<DecorateStage, (parts: string[], turn: Turn, ctx: DecorateCtx) => string[] | Decorated>>;
+    /**
+     * 回复里的内部标记（ADR 0336「生成之后那一段」第 12 步）：每条气泡发出去之前（整条只有标记、不发的气泡也一样），挂在标记处理顺序表（ABSORB_STAGES）的某几个位置，
+     * 把自己的标记从字里摘掉、该办的事办了，返回剩下的字。同步；要等的事（写记忆、跑命令、去干活）不等它
+     */
+    absorbAt?: Partial<Record<AbsorbStage, (text: string, contact: Contact) => string>>;
     /** 定时要做的事：解释器在 startSchedules 时经执行器开计时器，stop 时关 */
     schedules?: readonly { every: number; run: () => void }[];
     /** 停下：拒绝新工作；返回等已派发的活收尾的 promise（没有就不返回） */
@@ -368,6 +373,24 @@ export function decorateStages(modules: readonly Module[], parts: string[], turn
         }
     }
     return recall ? { parts: shaped, recall } : shaped;
+}
+
+/**
+ * 回复里内部标记的处理顺序（ADR 0336「生成之后那一段」第 12 步）：同别的顺序表，先后由这张表定。照搬迁移前 app.ts 的 absorbMarkers 里手写的顺序：
+ * 她自己记的（<<记住>> / <<日记>> / <<私密>>）→ 语音（<<语音>>）→ 跑命令（<<执行>>）→ 切工作（<<同意工作>> / <<拒绝工作>>）→ 动电脑（<<用电脑>>）→ 他的请求（<<同意>> / <<拒绝>>）。
+ * voice 这个位置没有模块：语音是用户自己的代码，原样留在 App 里，App 在 notes 之后、shell 之前做
+ */
+export const ABSORB_STAGES = ['notes', 'voice', 'shell', 'workSwitch', 'work', 'consent'] as const;
+export type AbsorbStage = (typeof ABSORB_STAGES)[number];
+
+/** 标记处理顺序表上的一个位置：挂在这里的模块按注册顺序跑；同步，没有模块挂时原样返回 */
+export function absorbStage(modules: readonly Module[], stage: AbsorbStage, text: string, contact: Contact): string {
+    let rest = text;
+    for (const module of modules) {
+        const step = module.absorbAt?.[stage];
+        if (step) rest = step(rest, contact);
+    }
+    return rest;
 }
 
 /**
