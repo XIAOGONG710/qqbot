@@ -18,6 +18,8 @@
 - `social/group-people.ts`
 - `social/group-affect.ts`
 - `social/group-impression.ts`
+- `social/group-import.ts`
+- `social/group-style.ts`
 - `social/async-gate.ts`
 - `social/stickers.ts`
 - `social/sticker-favorites.ts`

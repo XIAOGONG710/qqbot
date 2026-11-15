@@ -30,3 +30,7 @@ bili-dmqq/
 RVC/
 /out/
 bili_cookies.txt
+
+# 运行时临时目录（qqbot 的 sqlite 落在 .tmp/）
+.tmp/
+__pycache__/

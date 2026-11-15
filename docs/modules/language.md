@@ -82,6 +82,7 @@
 - `modules/inner.ts`
 - `modules/transcript.ts`
 - `modules/devices.ts`
+- `modules/group.ts`
 - `modules/consent.ts`
 - `modules/initiate-note.ts`
 - `modules/length.ts`
