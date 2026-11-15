@@ -1386,7 +1386,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 const timer = exec.after(() => deadline.abort(), 25_000);
                 timer.unref?.();
                 const signal = AbortSignal.any([passiveLifetime.signal, deadline.signal]);
-                try { looked = await untilCancelled(web.line(said, signal), signal); }
+                // 上一轮他的话：像「你看看能不能搜到」这种话里没有检索对象，得靠它（2026-11-15）
+                const carry = chatHistory.load(contact.qq).filter(m => m.role === 'user' && m.content !== said).at(-1)?.content;
+                try { looked = await untilCancelled(web.line(said, signal, carry), signal); }
                 finally { exec.cancel(timer); }
                 // deadline 只是不放 Web 资料，仍照常回复；App stop 则终止整次提示词构建，
                 // 避免孤儿 continuity 在目录租约释放后继续写日志或派模型。

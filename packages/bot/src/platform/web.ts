@@ -226,7 +226,15 @@ const EXPLICIT = /^(?:宝宝|瑶瑶|梦瑶)?[\s,，]*(?:那|你|麻烦|帮我|�
 export type LookupPlan = { kind: 'read'; url: string } | { kind: 'search'; query: string; explicit: boolean };
 
 /** 只看他这一轮说的话：有链接就读；明说「搜 / 查」就搜（去掉触发词当关键词）。auto 档的分类器在 WebLookup 里 */
-export function planExplicit(said: string): LookupPlan | undefined {
+const ASK_RESCUE = /(?:你|帮我|给我|看看|试试看|试看)?\s*(?:能不能|可不可以|能否|能|会)?\s*(?:搜到|查到|搜搜看|找找看|搜索|搜一下|找一下)/;
+const stripTrigger = (t: string) => t
+    .replace(/^(?:宝宝|瑶瑶|梦瑶)?[\s,，]*/, '')
+    .replace(/^(?:那|你|麻烦|帮我|帮忙|给我|去|再|先|能不能|可以|要不|快|看看|试试)*/, '')
+    .replace(/^(?:上网|网上)?(?:搜|查|搜索|百度|谷歌|google)(?:一下|一搜|搜|索|查|下)?/, '')
+    .replace(/[~～啊呀吧嘛呢]+$/g, '')
+    .trim();
+
+export function planExplicit(said: string, context?: string): LookupPlan | undefined {
     const url = URL_RE.exec(said)?.[0];
     if (url) {
         try {
@@ -240,9 +248,26 @@ export function planExplicit(said: string): LookupPlan | undefined {
         if (!match) continue;
         const clean = (t: string) => t.replace(/[~～啊呀吧嘛呢]+$/g, '').replace(/^(?:一下|看看|看|下)+/, '').trim();
         const query = clean(clause.slice(match[0].length)) || clean(clauses[i + 1] ?? '');
-        return query.length >= 2 ? { kind: 'search', query: clip(query, 60), explicit: true } : undefined;
+        if (query.length >= 2) return { kind: 'search', query: clip(query, 60), explicit: true };
+        // 「你看看能不能搜到」这种：话里没有检索对象，用上一轮他说的事（2026-11-15）
+        const carry = carryQuery(context ?? '');
+        return carry ? { kind: 'search', query: clip(carry, 60), explicit: true } : undefined;
+    }
+    // 不是「搜一下 X」而是「能搜到吗 / 搜搜看」：同样退回上一轮
+    // 「我刚搜到了」这种是他的陈述，不是让她去搜
+    if (!/^(?:我|刚|已经|上次)/.test(said.trim()) && ASK_RESCUE.test(said)) {
+        const carry = carryQuery(context ?? '');
+        if (carry) return { kind: 'search', query: clip(carry, 60), explicit: true };
     }
     return undefined;
+}
+
+/** 上一轮他的话里能被搜的部分：取第一个够长的分句（不剥前缀，别再吃掉「那」这种词） */
+function carryQuery(context: string): string | undefined {
+    if (!context.trim()) return undefined;
+    const clauses = context.replace(URL_RE, ' ').split(/[，,。！？!?；;\n]/).map(c => c.trim()).filter(Boolean);
+    const pick = clauses.find(c => c.length >= 2 && !/^(?:你看看|能不能|可不可以|可以吗|行吗|是吗|好吧|哈哈|嗯嗯)/.test(c));
+    return pick ? clip(pick, 60) : undefined;
 }
 
 // ───────── 把它们串起来：这一轮要不要查、查什么、怎么放进提示词 ─────────
@@ -299,9 +324,9 @@ export class WebLookup {
         writeFileSync(this.#statePath, JSON.stringify({ day: now.toDateString(), count: this.#usedToday(now) + 1 }));
     }
 
-    async #plan(said: string, signal?: AbortSignal): Promise<LookupPlan | undefined> {
+    async #plan(said: string, signal?: AbortSignal, context?: string): Promise<LookupPlan | undefined> {
         if (signal?.aborted) return undefined;
-        const explicit = planExplicit(said);
+        const explicit = planExplicit(said, context);
         if (explicit || this.#options.mode !== 'auto') return explicit;
         const text = said.trim();
         if (text.length < 6 || !/[？?]|是什么|是谁|多少|哪年|怎么|为什么|什么时候|有没有|推荐/.test(text)) return undefined;
@@ -314,9 +339,9 @@ export class WebLookup {
     }
 
     /** 这一轮要放进提示词的一行；不用查就是 undefined */
-    async line(said: string, signal?: AbortSignal): Promise<string | undefined> {
+    async line(said: string, signal?: AbortSignal, context?: string): Promise<string | undefined> {
         if (!this.enabled || signal?.aborted) return undefined;
-        const plan = await this.#plan(said, signal);
+        const plan = await this.#plan(said, signal, context);
         if (signal?.aborted) return undefined;
         if (!plan) return undefined;
         const now = this.#options.now?.() ?? new Date();

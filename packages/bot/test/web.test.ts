@@ -169,6 +169,20 @@ describe('WebLookup：串起来', () => {
         assert.deepEqual(done, [{ kind: 'search', summary: '上网查了「量子纠缠」', ok: true }]);
     });
 
+    test('他说「你看看能不能搜到」：话里没对象，用上一轮他的那句当检索词（2026-11-15）', () => {
+        assert.deepEqual(planExplicit('你看看能不能搜到'), undefined);
+        assert.deepEqual(planExplicit('你看看能不能搜到', '那个橙色头发的角色是谁'), {
+            kind: 'search', query: '那个橙色头发的角色是谁', explicit: true,
+        });
+        assert.deepEqual(planExplicit('你能搜到吗', '蓝发鲸鱼尾巴的女仆是谁'), {
+            kind: 'search', query: '蓝发鲸鱼尾巴的女仆是谁', explicit: true,
+        });
+        // 上一轮也问不出东西就不查
+        assert.deepEqual(planExplicit('你看看能不能搜到', '嗯嗯'), undefined);
+        // 他自己的陈述不算让她搜
+        assert.deepEqual(planExplicit('我刚搜到了', '蓝发鲸鱼尾巴的女仆是谁'), undefined);
+    });
+
     test('自动档：小分类器认出是在问客观事实才查，认不出就不查；平常问句不触发', async () => {
         const yes = make({ mode: 'auto' }, ['{"search":"量子纠缠"}', '量子纠缠是一种现象']);
         assert.match((await yes.lookup.line('量子纠缠到底是什么原理啊？'))!, /你刚上网查了一下/);
