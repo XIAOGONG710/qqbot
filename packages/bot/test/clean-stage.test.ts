@@ -5,6 +5,7 @@ import type { StoredMessage } from '../src/memory/history.ts';
 import { createContactResponder, type ContactPipelineOptions } from '../src/platform/contact.ts';
 import { stripDeviceTokens, type ParsedTokens } from '../src/platform/device-actions.ts';
 import { intentModule } from '../src/modules/intent.ts';
+import { candidatesModule } from '../src/modules/candidates.ts';
 import { mediaOffersModule } from '../src/modules/media-offers.ts';
 import { reviewExitModule } from '../src/modules/review-exit.ts';
 import { reviewFinalizeModule } from '../src/modules/review-finalize.ts';
@@ -105,7 +106,10 @@ describe('草稿和设备指令分开（ADR 0336 第 8 步）', () => {
         // 他难过（care，最多 2 句）：第 1 个 3 句还叮嘱作息、第 3 个约「写完跟我说一声」，挑第 2 个
         const candidates = ['别难过了\n早点睡\n明天就好了\n<device:timer>', '抱抱\n怎么回事呀\n<device:ring>', '抱抱\n写完跟我说一声\n<device:notify>'];
         let n = 0;
-        const out = await run('今天又被导师骂了，好难过', { candidates: 3, generate: async () => candidates[n++ % 3]! });
+        const out = await run('今天又被导师骂了，好难过', {
+            turnModules: [intentModule(), reviewExitModule(), reviewFinalizeModule(), candidatesModule({ count: 3, history: () => [] })],
+            generate: async () => candidates[n++ % 3]!,
+        });
         assert.equal(n, 3);
         assert.deepEqual(out.parsed, [...candidates, candidates[1]]);
         assert.deepEqual(out.committed, [['ring']]);

@@ -6,7 +6,7 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
-import { assessTurn, cleanStages, contributeTurn, perceiveTurn, reviewStage, type CleanCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
+import { assessTurn, candidatePlan, cleanStages, contributeTurn, perceiveTurn, reviewStage, type CleanCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
@@ -17,7 +17,7 @@ import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
 import { chatCompletion, completionMaxTokens, forExtraction } from '.././language/llm.ts';
 import type { Log } from './log.ts';
 import { CLEAR_DAYS, recentChat, type FadeStats } from '.././memory/fading.ts';
-import { heardSinceReply, initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from '.././memory/long-term.ts';
+import { initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from '.././memory/long-term.ts';
 import { buildPrompt, type ChatMessage, type OpenAIMessage, type PromptResult } from '.././language/prompt.ts';
 import { cleanUpReply } from '.././language/reply.ts';
 import { stripDeviceTokens, type DeviceControl } from './device-actions.ts';
@@ -51,7 +51,6 @@ import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWor
 import { type PromiseKeeper } from '.././life/promises.ts';
 import { formatDate, herDay, type ExtraFreeActivity } from '.././life/schedule.ts';
 import { speechContext, TAIL_CAPS, type BookProgressContext } from '.././language/speech-check.ts';
-import { describePick, pickBest, PICKED_INTENTS, type PickRules } from '.././language/candidates.ts';
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
@@ -220,8 +219,6 @@ export interface ContactPipelineOptions {
     speechCheck?: boolean;
     /** 句尾语气字封顶（ADR 0146，配置 tailCap，要 speechCheck 开着）：她最近的气泡里挂尾巴的占比到了真人的水平，这一轮再挂的把那个字去掉 */
     tailCap?: boolean;
-    /** 他难过、说亲密话、收尾时一次生成几个候选、按规则挑一个（ADR 0041）；不写或 1 是不挑 */
-    candidates?: number;
     /**
      * 她自己的日子（ADR 0015）：心情行、「在读的书」、看书的空闲活动、进度数字的检查；默认否。
      * 一天怎么算、课多不多按卡上的作息，所以卡上没有作息（或者没有心情、书）就没有；schedule 关着时心情和书照样有，只是没有看书的空闲活动
@@ -331,8 +328,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const extraFree = herSchedule ? readingActivities(character.books) : [];
     // 这一轮放了「在读的书」时，出口检查拿它核对进度数字。同一个回复器一次只生成一条，review 紧跟着这一轮的 buildPrompt
     let reading: BookProgressContext | undefined;
-    // 这一轮要不要挑候选（ADR 0041）：buildPrompt 按意图行定，紧跟着的 generate 用
-    let pick: PickRules | undefined;
     // 亲密轮次的出口检查：只在男朋友明确要抱抱、亲亲等时，拦“只能当面 / 隔空不算”把文字回应收回。
     let textIntimacy = false;
     // 这一轮是不是危机回合（ADR 0068）：buildPrompt 按他发的内容定，紧跟着的出口检查、打错字、长短都按它
@@ -698,7 +693,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(dreamsNow?.line ? { dreamLine: dreamsNow.line } : {}), ...(feelingLine ? { feelingLine } : {}), ...(paceLine ? { paceLine } : {}),
             } satisfies TurnFacts);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
-            const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
             const stickerAllowance = options.stickers && !thinking ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
             const stickersAllowed = stickerAllowance.allowed && !photoNow;
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
@@ -740,12 +734,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 意图行（深思时去掉「怎么答」那一句）是解释器的模块（modules/intent-line.ts），读 turn.facts.intent / deliberate
             // 引用回复（ADR 0136）是解释器的模块（modules/quote.ts）：contribute 时算、写回 turn.facts.quote，放进 quote 槽；拼完段落之后取回来，发送时引用那条。这里先清掉上一轮的
             quoteNow = undefined;
-            pick = picked ? {
-                kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(chat), banned: [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS],
-                // 她自己生活里的东西：猫、相机、在读的书、手上的爱好（DSH 诊断 1.2、ADR 0036 的四类）
-                own: [...(around?.cat ? [around.cat.name] : []), '相机', ...character.books.map(book => book.title), '追剧', '调色', '构图', '修片', '摄影区'],
-                ...(options.speechCheck ? { speech: speechContext(options.history.load(contact.qq), options.tailCap ? { tailCaps: TAIL_CAPS } : {}) } : {}),
-            } : undefined;
+            // 挑候选（ADR 0041）是解释器的模块（modules/candidates.ts）：contribute 时按最终的意图行定这一轮挑不挑、按什么规则，写进 turn.facts.pick；生成时经 candidatePlan 问
             // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
             const low = mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) || (feelingLine !== undefined && feelsLow(feltNow))
                 || Boolean(humanValues && (humanValues.energy <= 30 || humanValues.hunger >= 82 || humanValues.stress >= 78 || humanValues.mood <= 30));
@@ -860,13 +849,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             };
         },
         generate: async messages => {
-            const rules = pick;
-            if (!rules) return generate(messages, log, useNow());
-            // 同一份提示词生成几个，挑扣分最少的（ADR 0041）：每一个都清理之后再打分（只清理，不动选中的那一稿）；返回原文，挑中的那个由回复器再清理一次、成为选中的那一稿
-            const all = await Promise.all(Array.from({ length: options.candidates! }, () => generate(messages, log, useNow())));
-            const { index, scored } = pickBest(all, rules, raw => draftOf(raw).text);
-            log(describePick(index, scored));
-            return all[index]!;
+            const plan = turnNow ? candidatePlan(options.turnModules ?? [], turnNow) : undefined;
+            if (!plan) return generate(messages, log, useNow());
+            // 同一份提示词生成几个，挑扣分最少的（ADR 0041，modules/candidates.ts）：每一个都清理之后再交给模块打分（只清理，不动选中的那一稿）；返回原文，挑中的那个由回复器再清理一次、成为选中的那一稿
+            const all = await Promise.all(Array.from({ length: plan.count }, () => generate(messages, log, useNow())));
+            return all[plan.choose(all.map(raw => draftOf(raw).text), log)]!;
         },
         // 回复器清理的那一稿就是选中的那一稿
         clean: raw => (chosen = draftOf(raw)).text,

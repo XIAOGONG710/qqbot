@@ -999,3 +999,16 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   六个闭包变量（表情允许、只发表情、照片种类 / 菜 / 清单 / 当前照片不可用）变成 `buildPrompt` 里的局部变量。
 - 注意：直接调联系人流水线又不挂 `mediaOffersModule` 的调用方，表情和照片编号不会被摘掉——现在只有 App 和模拟器两个调用方，都总是挂着；测试已改。
 - 验证（工作区）：基线 41/41 逐字不变，bot 全量 4636 过、13 跳过；红的 1 项是 DSH 群聊的 `group-affect.test.ts`（清旧记录用真实时钟、测试的日子写死，和这次无关，已留言）。子代理在副本上的九个变异（模块不挂 cleanAt、只发表情不做事、不写 `stickersAllowed`、发送前不登记、执行器的 device 动作不做事、accept / dropDevices 不做事、挑候选不清理就打分、回复器清理不设选中稿）都被基线或单测抓到。
+
+### 生成之后那一段，第 10 步：挑候选（2026-11-16）
+
+- 是什么：ADR 0041——配置 `candidates` 大于 1 时，他难过、说亲密话、收尾这三种轮次（按最终的意图行认；主动找他不算）同一份提示词生成几个，每个清理之后按规则打分，挑扣分最少的。
+- 主代理直接做的（没开子代理）。新钩子 `Module.candidates?(turn): CandidatePlan | undefined`（`{ count, choose(cleaned, log) }`）和 `candidatePlan(modules, turn)`（按注册顺序问，第一个有打算的说了算）；
+  `createInterpreter` 放行只实现 `candidates` 的模块。
+- `src/modules/candidates.ts`：`candidatesModule({ count, speechCheck, tailCap, history })`。contribute 时按 `turn.facts.intent` 定挑不挑，把规则（他这次说的、禁用词、她自己的东西——猫的名字读 `facts.world`、书读 `turn.card`、
+  说话的毛病的上下文）写进新 fact `pick`，不放段落；`candidates(turn)` 读它。生成几次、每个怎么清理仍在联系人流水线（它有模型和清理顺序表）：问到打算就生成 `count` 个、各清理一次、把字交给 `choose`，
+  挑中的原文交回复器再清理一次（次数和先后同第 8 步）。
+- 和原来不完全同一刻的一处：说话的毛病要的聊天记录原来在拼段落之前读，现在在这个模块的 contribute 里读；两处之间流水线没有 await，只有排在它前面的模块 contribute 是异步时才会隔开，
+  而那期间他要是又发了消息，这一轮本来就要重来。
+- 删掉的接线：联系人流水线的 `candidates` 选项、闭包变量 `pick`、算规则那一段和 import。App 在 `config.candidates > 1` 时挂，模拟器在 `--candidates` / 配置大于 1 时挂；`clean-stage.test.ts` 的挑候选用例改成挂模块。
+- 验证：基线 41/41 逐字不变（全量跑一遍约 21 分钟）；变异检验——App 不挂这个模块，`candidates` 场景报不一致。`candidates-module.test.ts` 6 项、`clean-stage.test.ts`、模块总表、`app.test.ts`、审稿和模拟器相关共 357 项通过；类型检查通过。这次没有跑 bot 全量。

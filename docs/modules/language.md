@@ -16,6 +16,7 @@
 - `language/speech-check.ts`
 - `language/unfinished.ts`
 - `language/candidates.ts`
+- `modules/candidates.ts`
 - `language/humanness.ts`
 - `language/rough-edges.ts`
 - `language/reply.ts`

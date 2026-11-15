@@ -40,6 +40,7 @@ import { warmModule } from '../modules/warm.ts';
 import { feelingsModule } from '../modules/feelings.ts';
 import { timeNotesModule } from '../modules/time-notes.ts';
 import { mediaOffersModule } from '../modules/media-offers.ts';
+import { candidatesModule } from '../modules/candidates.ts';
 import { intentLineModule } from '../modules/intent-line.ts';
 import { memoryModule } from '../modules/memory.ts';
 import { deliberateModule } from '../modules/deliberate.ts';
@@ -533,7 +534,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ...(scenario.moodyChance !== undefined ? { moodyChance: scenario.moodyChance } : {}),
         speechCheck: options.speechCheck ?? false,
         herDays: options.herDays ?? false,
-        ...(options.candidates ? { candidates: options.candidates } : {}),
         ...(scenario.mood !== undefined ? { mood: scenario.mood } : {}),
         ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
         ...(contextWindow ? { contextWindow: { ...contextWindow, summarize: Object.assign(
@@ -633,6 +633,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             // 时间块里的另几行、图片表情 / 照片清单、意图行和「/亲热」，同 App（模拟器没有梗百科词库，不挂）
             timeNotesModule(),
             mediaOffersModule(),
+            // 挑候选（ADR 0041），同 App：--candidates 或 bot 的配置大于 1 才挂（模拟器没有 tailCap）
+            ...((options.candidates ?? 1) > 1 ? [candidatesModule({ count: options.candidates!, speechCheck: options.speechCheck ?? false, history: qq => history.load(qq) })] : []),
             intentLineModule(),
             // 时间块，同 App
             timeBlockModule({ ...(scenario.lagTail ? { lagTail: true } : {}) }),

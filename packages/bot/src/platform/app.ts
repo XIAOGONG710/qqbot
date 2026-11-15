@@ -58,6 +58,7 @@ import { warmModule } from '../modules/warm.ts';
 import { feelingsModule } from '../modules/feelings.ts';
 import { timeNotesModule } from '../modules/time-notes.ts';
 import { mediaOffersModule } from '../modules/media-offers.ts';
+import { candidatesModule } from '../modules/candidates.ts';
 import { intentLineModule } from '../modules/intent-line.ts';
 import { memeDictModule } from '../modules/meme-dict.ts';
 import { humanStateModule } from '../modules/human-state.ts';
@@ -1146,6 +1147,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         timeNotesModule(),
         // 这一轮的图片表情 / 照片清单（ADR 0063 / 0109）：联系人流水线在 contribute 之前原位取好写进 facts，这里只放
         mediaOffersModule(),
+        // 挑候选（ADR 0041，配置 candidates 大于 1 才挂）：他难过、说亲密话、收尾的轮次同一份提示词生成几个、按规则挑一个；说话的毛病跟着 speechCheck / tailCap
+        ...(config.candidates > 1 ? [candidatesModule({ count: config.candidates, speechCheck: config.speechCheck, tailCap: config.tailCap, history: qq => history.load(qq) })] : []),
         // 意图行（深思时去掉「怎么答」那一句）和「/亲热」那一行
         intentLineModule(),
         // 真人数值（ADR 0222）和人格成长层（ADR 0251）：联系人流水线开头算好写进 turn.facts（读带结算的世界账，不挪过 await），这里只放两行；没有开关（没有需要锚点 / 世界账时 facts 里没有）
@@ -2183,7 +2186,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             speechCheck: config.speechCheck,
             ...(config.tailCap ? { tailCap: true } : {}),
             herDays: config.herDays,
-            candidates: config.candidates,
             ...contextWindowFor(contact),
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
             ...(deviceHooks && contact.tier === 'boyfriend' ? { devices: deviceHooks } : {}),

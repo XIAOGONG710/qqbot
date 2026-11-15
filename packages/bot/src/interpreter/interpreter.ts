@@ -34,6 +34,7 @@ import type { HumanValues } from '../human-values.ts';
 import type { DevelopmentSnapshot } from '../life/development.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
 import type { ReviewOptions } from '../language/exit-check.ts';
+import type { PickRules } from '../language/candidates.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -154,6 +155,8 @@ export interface TurnFacts {
     stickersAllowed?: boolean;
     /** 这一轮发的吃的照片是哪道菜（ADR 0128）：和 photo 同一处写，只有发照片、有菜名时有；清理时核对编号是不是这道菜的 */
     photoDish?: string;
+    /** 这一轮挑候选的规则（ADR 0041，modules/candidates.ts 在 contribute 时写）：他难过、说亲密话、收尾的轮次才有；联系人流水线生成时经 candidatePlan 问 */
+    pick?: PickRules;
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */
@@ -180,6 +183,11 @@ export interface Module {
     assess?(turn: Turn): Maybe<void>;
     contribute?(turn: Turn): Maybe<readonly Piece[]>;
     review?(draft: string, turn: Turn): Maybe<string>;
+    /**
+     * 挑候选（ADR 0336「生成之后那一段」第 10 步）：这一轮要不要同一份提示词生成几个、挑一个。不挑就不返回；
+     * 联系人流水线在生成时问一次，按 count 生成、各清理一次，把清理过的字交给 choose
+     */
+    candidates?(turn: Turn): CandidatePlan | undefined;
     /**
      * 清理（ADR 0336「生成之后那一段」第 9 步）：挂在清理顺序表（CLEAN_STAGES）的某几个位置，同步、文字进文字出。
      * 生成的每一稿都清一次（挑候选的每一个、审稿的每次重写、回复器清理的那一稿）：次数是行为，货架清理会查索引、记日志
@@ -270,6 +278,21 @@ export interface Draft {
     readonly text: string;
     /** 摘出来的设备指令；没开设备控制时没有 */
     readonly devices?: ParsedTokens;
+}
+
+/** 挑候选的打算（ADR 0041）：生成几个、怎么挑。choose 拿到的是每个候选清理之后的字（顺序同生成），返回挑中的下标；日志是这个联系人的 */
+export interface CandidatePlan {
+    count: number;
+    choose(cleaned: readonly string[], log: (line: string) => void): number;
+}
+
+/** 这一轮挑不挑候选：按注册顺序问，第一个有打算的模块说了算；都没有就只生成一个 */
+export function candidatePlan(modules: readonly Module[], turn: Turn): CandidatePlan | undefined {
+    for (const module of modules) {
+        const plan = module.candidates?.(turn);
+        if (plan) return plan;
+    }
+    return undefined;
 }
 
 /**
@@ -374,7 +397,7 @@ export interface Interpreter {
     readonly modules: readonly Module[];
     /** 把事件交给每个有对应处理的模块（按注册顺序）；只有一个返回 promise 时原样返回它，几个时等全部 */
     dispatch(event: BotEvent): Maybe<void>;
-    /** 实现了 perceive / assess / contribute / review / reviewAt / cleanAt 的模块（一轮回复时用） */
+    /** 实现了 perceive / assess / contribute / review / reviewAt / cleanAt / candidates 的模块（一轮回复时用） */
     readonly turnModules: readonly Module[];
     /** 开各模块的定时任务（重复调用不重开） */
     startSchedules(): void;
@@ -393,7 +416,7 @@ export function createInterpreter(options: { modules: readonly Module[]; exec: P
         ids.add(module.id);
     }
     const modules = [...options.modules];
-    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review || module.reviewAt || module.cleanAt);
+    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review || module.reviewAt || module.cleanAt || module.candidates);
     const { exec } = options;
     let timers: ReturnType<Executor['every']>[] | undefined;
     return {
