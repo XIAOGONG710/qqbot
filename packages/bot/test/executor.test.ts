@@ -83,4 +83,20 @@ describe('执行器（ADR 0336）', () => {
         exec.cancel(undefined);
         assert.equal(exec.timers, 0);
     });
+
+    test('设备登记（ADR 0336「生成之后那一段」第 8 步）：同步交给登记时现取的设备控制；没有设备控制就什么都不做', () => {
+        const parsed = { reply: '好呀', proposals: [{ action: 'ring', targets: [], params: {} }], rejected: [] };
+        const committed: unknown[] = [];
+        const seen: Action[] = [];
+        let control: { commit: (p: typeof parsed) => void } | undefined;
+        const exec = createExecutor({ transport: fakeTransport([]), observe: action => seen.push(action), devices: () => control });
+        assert.equal(exec.run({ kind: 'device', parsed }), undefined, '还没起来：不做');
+        control = { commit: p => { committed.push(p); } };
+        exec.run({ kind: 'device', parsed });
+        assert.deepEqual(committed, [parsed]);
+        assert.deepEqual(seen, [{ kind: 'device', parsed }, { kind: 'device', parsed }]);
+        control = { commit: () => { throw new Error('登记失败'); } };
+        assert.throws(() => exec.run({ kind: 'device', parsed }), /登记失败/, '同步抛错，和原来直接调一样');
+        assert.doesNotThrow(() => createExecutor({ transport: fakeTransport([]) }).run({ kind: 'device', parsed }));
+    });
 });

@@ -981,3 +981,21 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   `language-review.test.ts` 的事实检查用例改成挂模块。
 - 验证：`review` 逐字不变；变异检验——App 不挂模块、末查直接放过，`review` 都报不一致；子代理在副本上另跑过七个（去掉 stop、末查不带 finalOnly、不看危机、不看固定说法、主动找他不准删光、不写 scratch 等），都让新测试红。
 - bot 全量 4619 过、13 跳过；红的 1 项是模块总表：DSH 群聊那批的 `modules/group.ts`、`social/group-import.ts`、`social/group-style.ts` 没登记，已留言。
+
+### 生成之后那一段，第 0 步补充：`media`、`candidates` 基线（2026-11-15）
+
+- 子代理补的（`4c59d224`）：harness 加可选的真图片表情收藏库（`scenario.stickers`，走收藏库自己的收图路，下载 / 看图 / 判断换成假的），照片用 App 自己的货架。
+  `media`：表情清单进提示词、问句 / 同学 / 危机时摘掉编号、照片请求发图和聊天记录里的那一行、刚发过不再发、只发表情、最近八条发过不再发、文字加表情图。
+  `candidates`（`candidates: 3`）：难过 / 亲密话 / 收尾的轮次生成三个、发挑中的（含清理后平分按先后挑），先回答的轮次只生成一个。旧代码上八个变异都抓到。
+
+### 生成之后那一段，第 8、9 步：草稿和设备指令分开，清理成一个阶段（2026-11-15）
+
+- 两步在同一个函数里连着，子代理在副本上做成一个补丁（不碰工作区），主代理审过、在工作区重跑基线和全量后提交。
+- 第 8 步：`Draft { text, devices? }`。联系人流水线的 `draftOf(raw)` 只清理、不改状态（摘设备指令 → 卡上的 ST 正则 → 清理顺序表）；闭包里的 `deviceNow` / `prepareReply` / `rewrittenDraft` 换成「选中的那一稿」`chosen`：
+  回复器清理的那一稿进 `chosen`，挑候选落选的不进，审稿里 `accept()` 换成重写稿、`dropDevices()` 去掉指令，发送前只登记 `chosen` 的。次数和先后不变（N 个候选各清一次、挑中的再清一次、每次重写一次）。
+  **设备登记经执行器**：新动作 `{ kind: 'device', parsed }`，App 的 `deviceHooks.commit` 改成 `exec.run(...)`（ADR 第 2 节「动作是数据」）；模拟器没有执行器，照旧直接给。回复器的接口没动。
+- 第 9 步：清理顺序表 `CLEAN_STAGES`（`stickers` → `photos` → `stickerOnly`，照搬原来的顺序）、同步的 `Module.cleanAt`、`cleanStages()`。图片表情和照片的清理、只发表情那一步挂在 `modules/media-offers.ts` 上，表达式逐字照搬；
+  两个货架经 `CleanCtx` 由流水线给（清单的取和聊天记录写法还在流水线用同一份货架，照片货架在解释器之后才建、按档位给）。新 fact `stickersAllowed`、`photoDish`。设备指令解析和卡的 ST 正则留在流水线。
+  六个闭包变量（表情允许、只发表情、照片种类 / 菜 / 清单 / 当前照片不可用）变成 `buildPrompt` 里的局部变量。
+- 注意：直接调联系人流水线又不挂 `mediaOffersModule` 的调用方，表情和照片编号不会被摘掉——现在只有 App 和模拟器两个调用方，都总是挂着；测试已改。
+- 验证（工作区）：基线 41/41 逐字不变，bot 全量 4636 过、13 跳过；红的 1 项是 DSH 群聊的 `group-affect.test.ts`（清旧记录用真实时钟、测试的日子写死，和这次无关，已留言）。子代理在副本上的九个变异（模块不挂 cleanAt、只发表情不做事、不写 `stickersAllowed`、发送前不登记、执行器的 device 动作不做事、accept / dropDevices 不做事、挑候选不清理就打分、回复器清理不设选中稿）都被基线或单测抓到。

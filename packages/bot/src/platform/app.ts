@@ -480,8 +480,8 @@ export function startApp(options: AppOptions): App {
 }
 
 function createApp({ config, transport: rawTransport, log, pipeline, media, vision, stickerReader, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
-    // 碰外部的都经执行器（ADR 0336 第 3 步）：QQ 动作、调模型、时钟和计时器
-    const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}) });
+    // 碰外部的都经执行器（ADR 0336 第 3 步）：QQ 动作、调模型、时钟和计时器、设备登记（第 8 步：设备服务下面才异步起，登记时现取）
+    const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}), devices: () => deviceService?.control });
     const transport = exec.qq;
     let stopped = false;
     construction.onFailure(() => { stopped = true; });
@@ -1400,7 +1400,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const deviceHooks: NonNullable<ContactPipelineOptions['devices']> | undefined = config.deviceControl !== 'off' && deviceOwner
         ? {
             parse: reply => deviceService?.control.parse(reply) ?? { reply: stripDeviceTokens(reply), proposals: [], rejected: [] },
-            commit: parsed => deviceService?.control.commit(parsed),
+            // 发送前登记选中那一稿的设备指令（联系人流水线的 beforeSend）：经执行器的 device 动作
+            commit: parsed => exec.run({ kind: 'device', parsed }),
         }
         : undefined;
     if (config.deviceControl !== 'off' && !deviceOwner) log('设备控制：开着，但名单里没有男朋友档的联系人，不启动');

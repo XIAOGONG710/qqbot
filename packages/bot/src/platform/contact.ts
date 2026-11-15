@@ -6,7 +6,7 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
-import { assessTurn, contributeTurn, perceiveTurn, reviewStage, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
+import { assessTurn, cleanStages, contributeTurn, perceiveTurn, reviewStage, type CleanCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
@@ -20,7 +20,7 @@ import { CLEAR_DAYS, recentChat, type FadeStats } from '.././memory/fading.ts';
 import { heardSinceReply, initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from '.././memory/long-term.ts';
 import { buildPrompt, type ChatMessage, type OpenAIMessage, type PromptResult } from '.././language/prompt.ts';
 import { cleanUpReply } from '.././language/reply.ts';
-import { stripDeviceTokens, type DeviceControl, type ParsedTokens } from './device-actions.ts';
+import { stripDeviceTokens, type DeviceControl } from './device-actions.ts';
 import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from '.././social/responder.ts';
 import { loadCharacterCard, type Character } from '.././st/card.ts';
 import { postProcessPrompt } from '.././st/prompt-converters.ts';
@@ -59,8 +59,8 @@ import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts'
 import { lastNight, withLastNight } from '.././life/nights.ts';
 import { describeHumanValues, type HumanValues } from '.././human-values.ts';
 import { auditDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
-import { photoAllowance, photoIntent, photoWanted, stripPhotoArtifacts, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
-import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, stripStickerArtifacts, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
+import { photoAllowance, photoIntent, photoWanted, PHOTO_KINDS, type PhotoKind, type PhotoShelf } from '.././vision/photos.ts';
+import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
 
 const DAY_MS = 86_400_000;
 
@@ -265,7 +265,7 @@ export interface ContactPipelineOptions {
     everydayLife?: boolean;
     /** 回复延迟的长尾（ADR 0105，配置 lagTail）：醒着空着时有一部分消息她在做别的，过一会儿才看到；断网很久之后才回，时间块里写一句（那一句由 modules/time-block.ts 放） */
     lagTail?: boolean;
-    /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；回复里的 <device:…> 令牌在发送前登记并按档处理。菜单是解释器的模块（modules/devices.ts） */
+    /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；回复里的 <device:…> 令牌清理时摘出来（Draft.devices），发送前只登记选中那一稿的（App 的 commit 经执行器的 device 动作）。菜单是解释器的模块（modules/devices.ts） */
     devices?: Pick<DeviceControl, 'parse' | 'commit'>;
     /** 他刚才在 DSH 桌面上和她的对话（ADR 0177，配置 crossRecent）：只给男朋友档；返回一段放进提示词的话，没有就不放 */
     desktopRecent?: (now: Date) => string | undefined;
@@ -303,35 +303,26 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const generate = options.generate ?? ((messages, log, use) => chatCompletion(use ?? llm, messages, { log }));
     /** 深思轮次用更强的模型（ADR 0151）；别的轮次不传，用默认的 */
     const useNow = () => (deliberateNow ? options.deliberate?.llm : undefined);
-    let stickersAllowed = true;
     /** 这一轮抽到要发图片表情，并带上他这一轮说的话（给货架按它挑）；没抽到就不给她看货架 */
     let stickerContext: { text: string; only?: boolean } | undefined;
-    /** 这一轮只发表情、不写文字（ADR 0099）：模型多写了文字就去掉，只留那一行表情；它没写表情就照它写的发 */
-    let stickerOnlyNow = false;
-    /** 这一轮发哪一类照片（ADR 0109）：他要看、货架里有、允许发才有；没有就一律清掉模型写的照片指令 */
-    let photoNow: PhotoKind | undefined;
-    /** 吃的照片是哪道菜（ADR 0128）；只有 photoNow 是 food 时有 */
-    let photoDishNow: string | undefined;
-    /** AI 草稿审核通过后只给模型这一张精确匹配的照片，禁止从同类旧图里随便挑。 */
-    let photoPromptNow: string | undefined;
-    /** 明确索要“现在”的照片但没有已审核匹配图：告诉模型如实说发不了，不能拿旧图冒充。 */
-    let currentPhotoUnavailableNow = false;
-    /** 当前被选中草稿的动作；废弃的重写稿只解析，不替换这里。 */
-    let deviceNow: ParsedTokens | undefined;
-    const prepareReply = (reply: string): { text: string; devices: ParsedTokens | undefined } => {
-        const devices = options.devices?.parse(reply);
-        const text = cleanUpReply(devices ? devices.reply : stripDeviceTokens(reply), names, character.regexScripts);
-        const stickered = options.stickers?.clean(text, stickersAllowed) ?? stripStickerArtifacts(text);
-        const cleaned = options.photos ? options.photos.clean(stickered, photoNow !== undefined, photoNow ? { kind: photoNow, ...(photoDishNow ? { dish: photoDishNow } : {}) } : undefined) : stripPhotoArtifacts(stickered);
-        if (!stickerOnlyNow) return { text: cleaned, devices };
-        const only = cleaned.split('\n').map(line => line.trim()).filter(line => /^<sticker:[a-f0-9]{12}>$/i.test(line));
-        return { text: only.length ? only.join('\n') : cleaned, devices };
+    /** 清理时交给模块的两个货架（ADR 0336 第 9 步，CleanCtx）：清单的取、聊天记录的写法也还在这里用它们 */
+    const shelves: CleanCtx = { ...(options.stickers ? { stickers: options.stickers } : {}), ...(options.photos ? { photos: options.photos } : {}) };
+    /**
+     * 清理生成的一稿（ADR 0336「生成之后那一段」第 8、9 步）：先摘设备指令（ADR 0148：摘出来放进 Draft.devices，字里不留；没开设备控制也一律摘掉令牌），
+     * 再过卡上的 ST 正则、截掉替他说的话（cleanUpReply），最后按清理顺序表交给挂了 cleanAt 的模块（图片表情 → 照片 → 只发表情，modules/media-offers.ts）。
+     * 生成的每一稿都清一次：挑候选的每一个、审稿的每次重写、回复器清理的那一稿（次数是行为：货架清理会查索引、记日志）。只清理，不改「选中的那一稿」
+     */
+    const draftOf = (raw: string): Draft => {
+        const devices = options.devices?.parse(raw);
+        const text = cleanUpReply(devices ? devices.reply : stripDeviceTokens(raw), names, character.regexScripts);
+        const cleaned = turnNow ? cleanStages(options.turnModules ?? [], text, turnNow, shelves) : text;
+        return devices ? { text: cleaned, devices } : { text: cleaned };
     };
-    const clean = (reply: string) => {
-        const draft = prepareReply(reply);
-        deviceNow = draft.devices;
-        return draft.text;
-    };
+    /**
+     * 这一轮选中的那一稿（Draft）：回复器清理的那一稿（挑候选时就是挑中的那个）；审稿里模块采用了重写（accept）就换成重写稿，
+     * 危机回合（dropDevices）换成不带设备指令的。发送前只登记它的设备指令（beforeSend）；挑候选落选的、没被采用的重写稿只清理，不进这里。拼提示词时清掉上一轮的
+     */
+    let chosen: Draft | undefined;
     const schedule = options.schedule ? character.schedule : undefined;
     const herSchedule = options.herDays ? character.schedule : undefined;
     // 她说过「睡了」（ADR 0042）：对名单里谁说的都算，从说完那一刻起在睡——各个联系人看到的是同一个她（状态行、什么时候看到消息）
@@ -418,7 +409,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         userId: contact.qq,
         history: options.history,
         buildPrompt: async (chat, { woken, initiate, offlineSince }) => {
-            deviceNow = undefined;
+            chosen = undefined;
             const time = new Date(now());
             const humanValues = options.humanValues?.({ contact, history: chat, at: time });
             if (humanValues) log(describeHumanValues(humanValues));
@@ -597,10 +588,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const interruption = turn.facts.interruption;
             // 照片（ADR 0109）：他明确要看猫 / 风景 / 她的片子，货架里有这一类，允许发（没连着发、今天没发够、不是危机 / 吵醒 / 小别扭 / 他难过），就发；
             // 没有明确对象（只说“发张照片”）取手上有的第一类；要的是她本人（自拍）不在货架里，照旧走“先不发”
-            photoNow = undefined;
-            photoDishNow = undefined;
-            photoPromptNow = undefined;
-            currentPhotoUnavailableNow = false;
+            /** 这一轮发哪一类照片（ADR 0109）：他要看、货架里有、允许发才有；写进 turn.facts.photo，清理时没有就一律清掉模型写的照片指令 */
+            let photoNow: PhotoKind | undefined;
+            /** 吃的照片是哪道菜（ADR 0128）；只有 photoNow 是 food 时有 */
+            let photoDishNow: string | undefined;
+            /** AI 草稿审核通过后只给模型这一张精确匹配的照片，禁止从同类旧图里随便挑。 */
+            let photoPromptNow: string | undefined;
+            /** 明确索要“现在”的照片但没有已审核匹配图：告诉模型如实说发不了，不能拿旧图冒充。 */
+            let currentPhotoUnavailableNow = false;
             if ((options.photos || options.currentAiPhoto) && contact.tier === 'boyfriend' && !thinking && !crisisNow && !grievance && !(baseIntent && /先接住他此刻的情绪/.test(baseIntent))) {
                 const photoRequestText = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
                 const wanted = initiate ? initiate.photo : photoWanted(photoRequestText);
@@ -705,7 +700,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
             const stickerAllowance = options.stickers && !thinking ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
-            stickersAllowed = stickerAllowance.allowed && !photoNow;
+            const stickersAllowed = stickerAllowance.allowed && !photoNow;
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             // 连续性（ADR 0157–0163）：设定改动的背景 / QQ 以外做过的事 / 上网查到的 / 自己发现的口味 / 又见到的人；出错当没有，不挡回复
             const continuityLines = options.continuity && !crisisNow && !thinking
@@ -722,7 +717,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const stickerDrawn = stickersAllowed && (stickerCued(saidNow)
                 ? stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE)
                 : Boolean(options.stickerUncued) && saidNow.trim().length > 0 && stickerTurn(chat, options.stickerUncued!, 'sticker uncued'));
-            stickerOnlyNow = stickerDrawn && stickerOnlyTurn(chat, options.stickerOnlyChance ?? 0);
+            // 这一轮只发表情、不写文字（ADR 0099）：写进 turn.facts.stickerOnly，清理时模型多写了文字就去掉，只留那一行表情
+            const stickerOnlyNow = stickerDrawn && stickerOnlyTurn(chat, options.stickerOnlyChance ?? 0);
             stickerContext = stickerDrawn ? { text: saidNow, ...(stickerOnlyNow ? { only: true } : {}) } : undefined;
             if (stickerContext) log(stickerOnlyNow ? '图片表情：这一轮抽到只发表情、不写文字' : '图片表情：这一轮抽到要发一个');
             if (options.stickers && !thinking && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
@@ -789,6 +785,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(deliberateNow ? { deliberate: true } : {}), ...(routedHint ? { routedHint } : {}), ...(low ? { low: true } : {}), agendaTopics,
                 // 「/亲热」那一行在上面原位取（每取一次扣一条、写文件），由解释器的模块（modules/intent-line.ts）放
                 ...(intimateNow ? { intimateLine: intimateNow } : {}),
+                // 清理时（modules/media-offers.ts 的 cleanAt）按这几样留不留表情 / 照片编号
+                ...(stickersAllowed ? { stickersAllowed: true } : {}), ...(photoNow && photoDishNow ? { photoDish: photoDishNow } : {}),
             });
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
@@ -864,17 +862,18 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         generate: async messages => {
             const rules = pick;
             if (!rules) return generate(messages, log, useNow());
-            // 同一份提示词生成几个，挑扣分最少的（ADR 0041）；返回原文，清理照常在回复器里做
+            // 同一份提示词生成几个，挑扣分最少的（ADR 0041）：每一个都清理之后再打分（只清理，不动选中的那一稿）；返回原文，挑中的那个由回复器再清理一次、成为选中的那一稿
             const all = await Promise.all(Array.from({ length: options.candidates! }, () => generate(messages, log, useNow())));
-            const { index, scored } = pickBest(all, rules, clean);
+            const { index, scored } = pickBest(all, rules, raw => draftOf(raw).text);
             log(describePick(index, scored));
             return all[index]!;
         },
-        clean,
-        // 设备指令（ADR 0148）：回复定下来、马上要发的那一刻才登记；被丢弃 / 重写的草稿不会操作他的设备
+        // 回复器清理的那一稿就是选中的那一稿
+        clean: raw => (chosen = draftOf(raw)).text,
+        // 设备指令（ADR 0148）：回复定下来、马上要发的那一刻才登记选中那一稿的（App 经执行器的 device 动作）；挑候选落选的、被丢弃 / 没被采用的重写稿不会操作他的设备
         beforeSend: () => {
-            if (deviceNow && options.devices) options.devices.commit(deviceNow);
-            deviceNow = undefined;
+            if (chosen?.devices && options.devices) options.devices.commit(chosen.devices);
+            chosen = undefined;
         },
         // 出口检查：重写时在后处理过的提示词末尾加一条说明，再按同样的方式后处理一次
         // 打错字再改口（ADR 0024）：拆好条之后、发出去之前。种子只看是谁、说了什么，不看时间：同一句话结果固定
@@ -894,15 +893,16 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return typo.recall ? { parts: typo.parts, recall: typo.recall } : typo.parts;
         },
         review: async (reply, messages, reviewContext) => {
-            let rewrittenDraft: ReturnType<typeof prepareReply> | undefined;
+            // 审稿从选中的那一稿开始：模块只改字；重写出来的那一稿先放在一边，模块说采用了（accept）才换成选中的，危机回合（dropDevices）选中的不带设备指令
+            let rewrite: Draft | undefined;
             const regenerate = async (note: string) => {
-                rewrittenDraft = prepareReply(await generate(postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names), log, useNow()));
-                return rewrittenDraft.text;
+                rewrite = draftOf(await generate(postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names), log, useNow()));
+                return rewrite.text;
             };
-            const onRewriteAccepted = () => { deviceNow = rewrittenDraft?.devices; };
+            const onRewriteAccepted = () => { chosen = rewrite; };
             // 审稿顺序表上的位置（ADR 0336「生成之后那一段」）：挂了 reviewAt 的模块在对应的那一步之后跑；都没挂时同步返回原稿，不多等
             const reviewCtx: ReviewCtx = {
-                regenerate, accept: onRewriteAccepted, dropDevices: () => { deviceNow = undefined; }, scratch: {}, log, names, ...(promptSource ? { promptSource } : {}),
+                regenerate, accept: onRewriteAccepted, dropDevices: () => { chosen = chosen && { text: chosen.text }; }, scratch: {}, log, names, ...(promptSource ? { promptSource } : {}),
                 ...(reviewContext?.initiating ? { initiating: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}),
             };
             const at = (stage: ReviewStage, text: string) => (turnNow ? reviewStage(options.turnModules ?? [], stage, text, turnNow, reviewCtx) : { text });

@@ -5,6 +5,7 @@
 // - QQ 动作同步调用底层 Transport，原样返回同一个 promise（不多套一层 then，免得改变微任务顺序）；底层同步抛错也同步抛出。
 // - 模型调用：有测试替身（AppOptions.pipeline.generate）时按原来的参数调替身，否则调 chatCompletion。
 // - 计时器：调用时取全局的 setTimeout / setInterval（假时钟替换全局后同样生效），原样返回句柄。
+// - 设备登记（device，ADR 0336「生成之后那一段」第 8 步）：同步交给设备控制的 commit，和原来直接调一样。
 // 正在进行的动作和周期计时器都登记在这里，供以后的统一停止（ADR 0336 第 4 节）使用；这一步还不改变 App 的停止流程。
 
 import { chatCompletion, type LlmOptions } from '../language/llm.ts';
@@ -13,6 +14,7 @@ import type { OpenAIMessage } from '../language/prompt.ts';
 import type { Log } from '../platform/log.ts';
 import type { Transport } from '../platform/app.ts';
 import type { AppConfig } from '../platform/config.ts';
+import type { DeviceControl, ParsedTokens } from '../platform/device-actions.ts';
 
 /** QQ（NapCat / OneBot）这一侧能做的事：Transport 上的方法名 */
 export type QqMethod = keyof Transport;
@@ -31,7 +33,13 @@ export interface LlmAction {
     signal?: AbortSignal;
 }
 
-export type Action = QqAction | LlmAction;
+/**
+ * 一次设备登记（ADR 0148；ADR 0336「生成之后那一段」第 8 步）：这一轮发出去的那一稿带的设备指令，发送前交给设备控制登记、按档处理
+ * （提议等他批准、直接做、拒绝的记账）。哪一稿、要不要登记由联系人流水线定，这里只交出去
+ */
+export interface DeviceAction { kind: 'device'; parsed: ParsedTokens }
+
+export type Action = QqAction | LlmAction | DeviceAction;
 
 /** 测试替身：换掉真的模型调用（同 ContactPipelineOptions.generate 的签名） */
 export type Generate = (messages: OpenAIMessage[], log: Log, use?: AppConfig['llm']) => Promise<string>;
@@ -46,6 +54,8 @@ export interface ExecutorOptions {
     now?: () => number;
     /** 每个动作派发前看一眼（审计、录制）；不能改动作，出错不影响执行 */
     observe?: (action: Action) => void;
+    /** 设备控制（ADR 0148）：服务是异步起的，登记时现取；没有（没开、还没起来）就什么都不做 */
+    devices?: () => Pick<DeviceControl, 'commit'> | undefined;
 }
 
 type Timer = ReturnType<typeof setTimeout>;
@@ -54,6 +64,7 @@ export interface Executor {
     /** 执行一个动作。QQ 动作的返回值就是 Transport 方法的返回值 */
     run(action: QqAction): unknown;
     run(action: LlmAction, log: Log): Promise<string>;
+    run(action: DeviceAction): void;
     /** 和 Transport 同形状：每个方法调用都变成一个 QQ 动作；底层没有的可选方法这里也没有 */
     readonly qq: Transport;
     /** 调模型 */
@@ -119,14 +130,22 @@ export function createExecutor(options: ExecutorOptions): Executor {
         return track(result);
     }
 
+    /** 同步交给设备控制（和原来直接调 commit 一样：同步做完、同步抛错） */
+    function runDevice(action: DeviceAction): void {
+        look(action);
+        options.devices?.()?.commit(action.parsed);
+    }
+
     function run(action: QqAction): unknown;
     function run(action: LlmAction, log: Log): Promise<string>;
+    function run(action: DeviceAction): void;
     function run(action: Action, log?: Log): unknown {
         if (action.kind === 'qq') return runQq(action);
         if (action.kind === 'llm') {
             if (!log) throw new Error('模型调用要带日志');
             return runLlm(action, log);
         }
+        if (action.kind === 'device') return runDevice(action);
         throw new Error(`不认识的动作 ${(action as { kind: string }).kind}`);
     }
 

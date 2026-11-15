@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { photoShelf, stripPhotoArtifacts } from '../src/vision/photos.ts';
 import { createContactResponder } from '../src/platform/contact.ts';
+import { mediaOffersModule } from '../src/modules/media-offers.ts';
 import { parseCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 
@@ -29,6 +30,8 @@ test('联系人链只允许本轮照片类别与当前菜名，模型不能借�
                 llm: { baseUrl: 'https://unused.invalid', model: 'fake', apiKey: 'fake', temperature: 0, maxTokens: 300, timeoutMs: 100, extraBody: {}, promptPostProcessing: '' },
                 prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
                 history: { load: () => [], append: () => {} }, photos: shelf, now: () => now, log: () => {},
+                // 照片编号的清理是解释器的模块（modules/media-offers.ts 的 cleanAt，ADR 0336），App 和模拟器总是挂着它
+                turnModules: [mediaOffersModule()],
                 send: async () => 1, generate: async () => `翻到啦\n<photo:${chosen}>`,
             });
             try {
@@ -54,6 +57,7 @@ test('照片关闭或开启时都清掉未知畸形控制语法，只保留本�
     llm: { baseUrl: 'https://unused.invalid', model: 'fake', apiKey: 'fake', temperature: 0, maxTokens: 300, timeoutMs: 100, extraBody: {}, promptPostProcessing: '' },
     prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
     history: { load: () => [], append: () => {} }, ...(enabled ? { photos: shelf } : {}), now: () => Date.parse('2026-11-05T12:00:00Z'), log: () => {}, send: async () => 1,
+    turnModules: [mediaOffersModule()],
     generate: async () => '普通文字\n' + artifact,
    });
    try {

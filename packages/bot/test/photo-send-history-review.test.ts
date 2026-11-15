@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { photoShelf } from '../src/vision/photos.ts';
 import { createContactResponder } from '../src/platform/contact.ts';
+import { mediaOffersModule } from '../src/modules/media-offers.ts';
 import { parseCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -22,7 +23,7 @@ test('主动图片历史传递确认消息ID并优先使用发送快照，旧货
     card: { character: parseCharacterCard({ spec: 'chara_card_v2', data: { name: '合成角色' } }), worldInfo: [] },
     llm: { baseUrl: 'https://unused.invalid', model: 'fake', apiKey: 'fake', temperature: 0, maxTokens: 300, timeoutMs: 100, extraBody: {}, promptPostProcessing: '' },
     prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
-    history: { load: () => stored, append: (_qq, message) => { stored.push(message); } }, photos: shelf,
+    history: { load: () => stored, append: (_qq, message) => { stored.push(message); } }, photos: shelf, turnModules: [mediaOffersModule()],
     ...(useSnapshot ? { sentHistory: (sent: string, id: number) => { assert.equal(sent, token); assert.equal(id, 44); calls++; return '她发了张照片：本次发送快照'; } } : {}),
     now: () => Date.parse('2026-11-05T12:00:00Z'), log: () => {}, send: async () => 44, generate: async () => token,
    });

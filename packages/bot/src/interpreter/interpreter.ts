@@ -6,6 +6,7 @@
 // 2. assess：往这一轮写判断（turn.facts）——是不是危机、意图、形状……；后面的模块读前面写下的，模块之间不互相 import 内部函数。
 // 3. contribute：往提示词的具名槽位里放段落（slots.ts）；先后由槽位表定，模块不管。
 // 4. review：拿到草稿之后改一改（出口检查、事实检查、句尾封顶……）。
+// 生成出来的每一稿在审稿之前先按清理顺序表（CLEAN_STAGES）清一次（cleanAt：图片表情、照片……），同步。
 //
 // 迁移期（ADR 0336 第 4 步）：每个钩子都同步时整轮也同步返回、不多等一个微任务；分发只有一个处理函数返回 promise 时原样返回它。
 // 这样经解释器走和原来直接调用逐字等价（行为基线核对）。
@@ -25,7 +26,9 @@ import type { BodyNow } from '../life/body.ts';
 import type { HerStatus } from '../language/status-line.ts';
 import type { DescribedBooks } from '../life/her-days.ts';
 import type { ShapePlan } from '../language/shape.ts';
-import type { PhotoKind } from '../vision/photos.ts';
+import type { PhotoKind, PhotoShelf } from '../vision/photos.ts';
+import type { StickerShelf } from '../social/stickers.ts';
+import type { ParsedTokens } from '../platform/device-actions.ts';
 import type { QuotePlan } from '../social/quote-reply.ts';
 import type { HumanValues } from '../human-values.ts';
 import type { DevelopmentSnapshot } from '../life/development.ts';
@@ -146,6 +149,11 @@ export interface TurnFacts {
     photoLine?: string;
     /** 「/亲热」那一行（ADR 0170）：原位取（每取一次扣一条、写文件），主动找他、危机回合不取；modules/intent-line.ts 放进 intimate 槽 */
     intimateLine?: string;
+    /** 这一轮允许发图片表情（ADR 0063 / 0132）：联系人流水线按档位、危机、被吵醒、他难过、这一轮发照片……算好后写；
+     *  清理时 modules/media-offers.ts 按它决定留不留一个认识的编号。不允许时没有 */
+    stickersAllowed?: boolean;
+    /** 这一轮发的吃的照片是哪道菜（ADR 0128）：和 photo 同一处写，只有发照片、有菜名时有；清理时核对编号是不是这道菜的 */
+    photoDish?: string;
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */
@@ -172,6 +180,11 @@ export interface Module {
     assess?(turn: Turn): Maybe<void>;
     contribute?(turn: Turn): Maybe<readonly Piece[]>;
     review?(draft: string, turn: Turn): Maybe<string>;
+    /**
+     * 清理（ADR 0336「生成之后那一段」第 9 步）：挂在清理顺序表（CLEAN_STAGES）的某几个位置，同步、文字进文字出。
+     * 生成的每一稿都清一次（挑候选的每一个、审稿的每次重写、回复器清理的那一稿）：次数是行为，货架清理会查索引、记日志
+     */
+    cleanAt?: Partial<Record<CleanStage, (text: string, turn: Turn, ctx: CleanCtx) => string>>;
     /**
      * 生成之后的审稿（ADR 0336「生成之后那一段」）：挂在审稿顺序表（REVIEW_STAGES）的某几个位置，按位置、再按模块注册顺序跑。
      * 返回改过的稿子；要这一轮到此为止（事实检查删光了、危机回合）就返回 { text, stop: true }
@@ -250,6 +263,42 @@ function runAfterPerceive(modules: readonly Module[], turn: Turn): Maybe<Assembl
 }
 
 /**
+ * 一稿（ADR 0336「生成之后那一段」第 8 步）：要发出去的字和它带的设备指令（ADR 0148）分开。联系人流水线清理时把指令从字里摘出来放进 devices；
+ * 审稿模块只改字，设备指令跟着「选中的那一稿」走（采用了重写 accept 就换成重写稿的，危机回合 dropDevices 就不带），发送前只登记选中那一稿的
+ */
+export interface Draft {
+    readonly text: string;
+    /** 摘出来的设备指令；没开设备控制时没有 */
+    readonly devices?: ParsedTokens;
+}
+
+/**
+ * 清理的顺序（ADR 0336「生成之后那一段」第 9 步）：同 slots.ts / REVIEW_STAGES，先后由这张表定。照搬迁移前联系人流水线里手写的顺序：
+ * 图片表情（留一个认识的编号、去掉多的）→ 照片（只留这一轮那一类的一张）→ 只发表情的轮次只留表情那一行。
+ * 在这之前联系人流水线先摘设备指令（摘出来成 Draft.devices）、过卡上的 ST 正则（cleanUpReply，卡的一部分），这两步不在表上
+ */
+export const CLEAN_STAGES = ['stickers', 'photos', 'stickerOnly'] as const;
+export type CleanStage = (typeof CLEAN_STAGES)[number];
+
+/** 清理时联系人流水线给的东西：这个联系人的两个货架（清单的取、聊天记录的写法也还在流水线里用，所以货架仍是流水线的选项）；没给就没有 */
+export interface CleanCtx {
+    stickers?: Pick<StickerShelf, 'clean'>;
+    photos?: Pick<PhotoShelf, 'clean'>;
+}
+
+/** 按清理顺序表清一稿：每个位置上挂了 cleanAt 的模块按注册顺序跑；同步 */
+export function cleanStages(modules: readonly Module[], text: string, turn: Turn, ctx: CleanCtx): string {
+    let cleaned = text;
+    for (const stage of CLEAN_STAGES) {
+        for (const module of modules) {
+            const step = module.cleanAt?.[stage];
+            if (step) cleaned = step(cleaned, turn, ctx);
+        }
+    }
+    return cleaned;
+}
+
+/**
  * 审稿的顺序（ADR 0336「生成之后那一段」）：同 slots.ts，先后由这张表定，不由模块决定。照搬迁移前联系人流水线里手写的顺序：
  * 逐条事实检查 → 出口检查（危机回合走危机检查、到此为止）→ <<查>> → 形状裁剪 → 话说到一半 → 删行收尾 → 最后再查一次事实
  */
@@ -260,7 +309,7 @@ export type ReviewStage = (typeof REVIEW_STAGES)[number];
 export interface ReviewCtx {
     /** 在这一轮的提示词后面加一句说明，重新生成一次（已经清理过：设备指令摘了、正则过了）；返回新稿 */
     regenerate(note: string): Promise<string>;
-    /** 采用了刚才那次重写（设备指令跟着换成重写稿的） */
+    /** 采用了刚才那次重写：选中的那一稿（Draft）换成重写稿，设备指令跟着换成重写稿的 */
     accept(): void;
     /** 这一轮不操作他的设备：草稿和重写里的设备指令都不登记（危机回合，ADR 0068 / 0148）；出口检查模块（modules/review-exit.ts）在危机回合调 */
     dropDevices(): void;
@@ -325,7 +374,7 @@ export interface Interpreter {
     readonly modules: readonly Module[];
     /** 把事件交给每个有对应处理的模块（按注册顺序）；只有一个返回 promise 时原样返回它，几个时等全部 */
     dispatch(event: BotEvent): Maybe<void>;
-    /** 实现了 perceive / assess / contribute / review 的模块（一轮回复时用） */
+    /** 实现了 perceive / assess / contribute / review / reviewAt / cleanAt 的模块（一轮回复时用） */
     readonly turnModules: readonly Module[];
     /** 开各模块的定时任务（重复调用不重开） */
     startSchedules(): void;
@@ -344,7 +393,7 @@ export function createInterpreter(options: { modules: readonly Module[]; exec: P
         ids.add(module.id);
     }
     const modules = [...options.modules];
-    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review || module.reviewAt);
+    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review || module.reviewAt || module.cleanAt);
     const { exec } = options;
     let timers: ReturnType<Executor['every']>[] | undefined;
     return {
