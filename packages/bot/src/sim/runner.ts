@@ -31,6 +31,7 @@ import { innerModule } from '../modules/inner.ts';
 import { devicesModule } from '../modules/devices.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { reviewFinalizeModule } from '../modules/review-finalize.ts';
+import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
 import { warmModule } from '../modules/warm.ts';
 import { feelingsModule } from '../modules/feelings.ts';
@@ -613,6 +614,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             initiateNoteModule(),
             // 生成之后的审稿：删行收尾，同 App
             reviewFinalizeModule(),
+            // 话说到一半，同 App（跟着 speechCheck）
+            ...(options.speechCheck ? [reviewUnfinishedModule()] : []),
             // 深思那一句和语义路由的方向，同 App；换掉的说法按 --deliberate-note
             deliberateModule({ ...(options.deliberateNote ? { note: options.deliberateNote } : {}) }),
             // 情绪余温和没了结的事，同 App

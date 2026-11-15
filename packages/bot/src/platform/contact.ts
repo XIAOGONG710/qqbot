@@ -37,7 +37,6 @@ import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import { asksToExplain, ENGAGED_INTENT, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, STILTED_WORDS } from '.././language/expression.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
 import { DELIBERATE_MAX_BUBBLES, deliberateTurn, shapeReply, type ShapePlan } from '.././language/shape.ts';
-import { finishReply } from '.././language/unfinished.ts';
 import { describeWorld, lastMealDish, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
 import { isExplicitCurrentPhotoRequest, type CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { dayPlan, describeSlot } from '.././life/day-plan.ts';
@@ -969,7 +968,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (atShape.stop) return atShape.text;
             const shaped = atShape.text;
             // 话说到一半（ADR 0141）：形状之后再看，并回去 / 退回去会让一条变长，放在字数检查前面会被再截一次；危机回合不走
-            let atUnfinished = at('unfinished', options.speechCheck ? await finishReply(shaped, { regenerate, onRewriteAccepted, log }) : shaped);
+            // 话说到一半（ADR 0141）是解释器的模块（modules/review-unfinished.ts），开着 speechCheck 时挂在 unfinished 位置
+            let atUnfinished = at('unfinished', shaped);
             if (atUnfinished instanceof Promise) atUnfinished = await atUnfinished;
             if (atUnfinished.stop) return atUnfinished.text;
             const finished = atUnfinished.text;

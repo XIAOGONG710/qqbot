@@ -46,6 +46,7 @@ import { devicesModule } from '../modules/devices.ts';
 import { consentModule } from '../modules/consent.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { reviewFinalizeModule } from '../modules/review-finalize.ts';
+import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
 import { continuityModule } from '../modules/continuity.ts';
 import { memoryModule } from '../modules/memory.ts';
@@ -1105,6 +1106,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         initiateNoteModule(),
         // 生成之后的审稿（ADR 0336）：删行收尾，挂在 finalize 位置；没有开关
         reviewFinalizeModule(),
+        // 话说到一半（ADR 0141）：跟着 speechCheck，挂在 unfinished 位置
+        ...(config.speechCheck ? [reviewUnfinishedModule()] : []),
         // 时间块（ADR 0004 / 0105）：每一轮「此刻」块的第一行；断网很久才回那一句跟着 lagTail。没有别的开关，不存状态
         timeBlockModule({ lagTail: config.lagTail }),
         // 连续性（ADR 0157–0163）：联系人流水线取回来的几行（turn.facts.continuity）照放；continuity 在解释器之后才建、取也在流水线里，所以总是挂

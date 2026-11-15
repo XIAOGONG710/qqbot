@@ -934,3 +934,10 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - `src/modules/review-finalize.ts`：`reviewFinalizeModule()`，挂在 `finalize` 位置，同步。App 和模拟器都总是挂。
 - 删掉的接线：联系人流水线里 `finalizeReply(...)` 那一处和 import。直接调流水线的 `language-review.test.ts` 默认挂上这个模块。
 - 验证：基线 39/39 逐字不变；基线里没有一处发出去的话被删行收尾改过，所以「模块原样放过」基线抓不到，由 `language-review.test.ts`（重写加入禁用词仍被最终检查拦截）和 `review-finalize-module.test.ts` 管：原样放过红 6 项，不写 `scratch.exitOptions` 红 3 项。
+
+### 生成之后那一段，第 4 步：话说到一半（2026-11-15）
+
+- 是什么：ADR 0141——开着 `speechCheck` 时，一条话停在转折、「觉得」这种地方：重写一次，还不行就退到上一个逗号或并回前一条。挂在 `unfinished` 位置。危机回合走不到。
+- 由子代理起草。`src/modules/review-unfinished.ts`：`reviewUnfinishedModule()`，`finishReply` 原样调，重写 / 采用 / 日志用 `ReviewCtx` 的（和原来传给它的是同一组函数）。原来就 await，多出的一两个微任务落在本来异步的路径上，基线逐字不变。
+- App 和模拟器跟着 `speechCheck` 挂；流水线的 `speechCheck` 选项留着（出口检查的说话上下文还用它）。`language-review.test.ts` 开了 `speechCheck` 的用例挂上模块。
+- 验证：`review` 逐字不变；变异检验——App 不挂：`review` 报不一致、`app.test.ts` 话说到一半的用例红；`speechCheck` 关着也挂：`app.test.ts` 关着那条断言红。`review-unfinished-module.test.ts` 7 项通过。
