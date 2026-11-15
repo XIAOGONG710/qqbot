@@ -12,7 +12,7 @@
 
 import type { Contact } from '../platform/config.ts';
 import type { GroupMessageEvent, MessageEvent, PokeEvent, RecallEvent } from '../platform/onebot.ts';
-import type { ChatMessage } from '../language/prompt.ts';
+import type { ChatMessage, OpenAIMessage } from '../language/prompt.ts';
 import type { ResponderDeps } from '../social/responder.ts';
 import type { CrisisHit } from '../emotion/crisis.ts';
 import type { Grievance } from '../emotion/grievance.ts';
@@ -264,6 +264,10 @@ export interface ReviewCtx {
     accept(): void;
     /** 这一轮不操作他的设备：草稿和重写里的设备指令都不登记（危机回合，ADR 0068 / 0148）；出口检查模块（modules/review-exit.ts）在危机回合调 */
     dropDevices(): void;
+    /** 这一轮拼出来的提示词（ST 后处理之前，system 还是 system）：事实检查（modules/review-facts.ts）拿它当「她能依据的事实」；拼提示词没走到时没有 */
+    promptSource?: readonly OpenAIMessage[];
+    /** 他 / 她的名字（审稿提示词里聊天记录的称呼） */
+    names?: { user: string; char: string };
     /** 主动找他的这一轮（事实检查删光了可以整条不发） */
     initiating?: boolean;
     /** 固定说法、允许重复（事实检查、出口检查的重复规则不查） */
@@ -280,6 +284,8 @@ export interface ReviewScratch {
     /** 出口检查那一刻算好的上下文（禁用词、说话的毛病——聊天记录在那一刻读、书、小黄脸……）：联系人流水线在出口检查之前写；
      *  出口检查（modules/review-exit.ts）和删行收尾（modules/review-finalize.ts）都用这一份，不重读聊天记录 */
     exitOptions?: ReviewOptions;
+    /** 第一次事实检查（facts 位置）查完的稿子：事实检查模块写，factsFinal 只在稿子跟它不一样时再查；没查（危机、固定说法、没开）就没有 */
+    factsChecked?: string;
 }
 
 /**

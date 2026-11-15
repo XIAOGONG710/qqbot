@@ -32,6 +32,7 @@ import { devicesModule } from '../modules/devices.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { reviewFinalizeModule } from '../modules/review-finalize.ts';
 import { reviewExitModule } from '../modules/review-exit.ts';
+import { reviewFactsModule } from '../modules/review-facts.ts';
 import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
 import { reviewPullModule } from '../modules/review-pull.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
@@ -551,17 +552,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
         ...(scenario.texture ? { texture: true } : {}),
         ...(scenario.quoteReply ? { quoteReply: true } : {}),
-        // 逐条事实检查（ADR 0137）：审稿的调用走场景自己的模型（假模型也行）；每次的记录进这一步，报告里看得到
-        ...((options.factCheck ?? scenario.factCheck) !== 'off' ? {
-            factCheck: options.factCheck ?? scenario.factCheck,
-            ...(options.factHim ? { factAboutHim: true } : {}),
-            factAudit: (messages: OpenAIMessage[]) => {
-                if (epoch !== responderEpoch) return Promise.reject(new Error('模拟回复器已停止'));
-                const scoped = generationLog();
-                return options.generate ? options.generate(messages, scoped) : chatCompletion({ ...forExtraction(options.llm), temperature: 0 }, messages, { log: scoped });
-            },
-            onFactCheck: (record: FactRecord) => { if (epoch === responderEpoch) (current.facts ??= []).push(record); },
-        } : {}),
         // 做判断的模块（ADR 0336），顺序同 App：意图阶梯总在最前；小梗（ADR 0114）直接给场景里写好的梗，不抽
         turnModules: [
             // 她此刻（她那边、身体、状态行）：开关同上面给流水线的；世界账、答应的事、聊天记录重启后会换新的，用到时再取
@@ -618,6 +608,16 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             reviewFinalizeModule(),
             // 出口检查 / 危机检查，同 App
             reviewExitModule(),
+            // 逐条事实检查，同 App：审稿走场景自己的模型（假模型也行），每次的记录进这一步，报告里看得到
+            ...((options.factCheck ?? scenario.factCheck) !== 'off' ? [reviewFactsModule({
+                mode: (options.factCheck ?? scenario.factCheck) as 'log' | 'fix', ...(options.factHim ? { aboutHim: true } : {}),
+                audit: messages => {
+                    if (epoch !== responderEpoch) return Promise.reject(new Error('模拟回复器已停止'));
+                    const scoped = generationLog();
+                    return options.generate ? options.generate(messages, scoped) : chatCompletion({ ...forExtraction(options.llm), temperature: 0 }, messages, { log: scoped });
+                },
+                onRecord: record => { if (epoch === responderEpoch) (current.facts ??= []).push(record); },
+            })] : []),
             // 话说到一半，同 App（跟着 speechCheck）
             ...(options.speechCheck ? [reviewUnfinishedModule()] : []),
             // 她想查才查：模拟器没有查记忆，只摘标记（同迁移前）

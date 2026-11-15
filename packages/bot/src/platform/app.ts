@@ -47,6 +47,7 @@ import { consentModule } from '../modules/consent.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { reviewFinalizeModule } from '../modules/review-finalize.ts';
 import { reviewExitModule } from '../modules/review-exit.ts';
+import { reviewFactsModule } from '../modules/review-facts.ts';
 import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
 import { reviewPullModule } from '../modules/review-pull.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
@@ -1121,6 +1122,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         reviewFinalizeModule(),
         // 出口检查 / 危机检查（ADR 0014 / 0068）：挂在 exit 位置，总是挂；上下文由联系人流水线写进 scratch.exitOptions，危机回合到此为止、设备指令不登记
         reviewExitModule(),
+        // 逐条事实检查（ADR 0137 / 0203）：factCheck 是 log / fix 时挂在 facts / factsFinal；审稿经执行器，同一个模型、温度 0，日志用这个联系人的（ctx.log 已带 [QQ]）
+        ...(config.factCheck !== 'off' ? [reviewFactsModule({
+            mode: config.factCheck, ...(config.factHim ? { aboutHim: true } : {}),
+            audit: (messages, scopedLog) => exec.llm({ purpose: 'chat', config: { ...forExtraction(config.llm), temperature: 0 }, messages }, scopedLog),
+        })] : []),
         // 话说到一半（ADR 0141）：跟着 speechCheck，挂在 unfinished 位置
         ...(config.speechCheck ? [reviewUnfinishedModule()] : []),
         // 她想查才查（<<查：…>>）：挂在 pull 位置，总是挂（摘标记和开关无关）；开了长期记忆和 selfDirectedMemory 才真的去查。memory 在后面才建，查的时候现取
@@ -2234,7 +2240,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(feelingReviewNow && contact.tier === 'boyfriend' ? { feelingReview: feelingReviewNow } : {}),
             ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
-            ...(config.factCheck !== 'off' ? { factCheck: config.factCheck, ...(config.factHim ? { factAboutHim: true } : {}) } : {}),
             ...(config.memoryFeelings && config.herFeelings ? { memoryFeelings: true } : {}),
             ...(config.realNights ? { realNights: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
@@ -2331,7 +2336,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 回复和逐条事实检查的审稿也经执行器（ADR 0336 第 3 步）：配置、日志和原来 contact.ts 的默认调用一样；
             // 换模型（深思）时测试替身收到换成的那份配置，同原来 generate 的第三个参数
             generate: (messages, scopedLog, use) => exec.llm({ purpose: 'chat', config: use ?? config.llm, messages, ...(use ? { use } : {}) }, scopedLog),
-            factAudit: messages => exec.llm({ purpose: 'chat', config: { ...forExtraction(config.llm), temperature: 0 }, messages }, message => log(`[${contact.qq}] ${message}`)),
         });
         construction.onFailure(() => responder.stop());
         return responder;

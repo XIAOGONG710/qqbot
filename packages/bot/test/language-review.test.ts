@@ -20,6 +20,7 @@ import { intentModule } from '../src/modules/intent.ts';
 import { shapeModule } from '../src/modules/shape.ts';
 import { reviewFinalizeModule } from '../src/modules/review-finalize.ts';
 import { reviewExitModule } from '../src/modules/review-exit.ts';
+import { reviewFactsModule } from '../src/modules/review-facts.ts';
 import { reviewUnfinishedModule } from '../src/modules/review-unfinished.ts';
 import { parseDeviceTokens, type DeviceProposal } from '../src/platform/device-actions.ts';
 import { parseCharacterCard } from '../src/st/card.ts';
@@ -107,13 +108,15 @@ describe('最终草稿、硬规则与设备动作', () => {
     test('末次事实检查只删行，不再次重写；新事实不会因后续重写漏查', async () => {
         let calls = 0;
         let audits = 0;
+        const factAudit = async (messages: { content: unknown }[]) => {
+            audits++;
+            return String(messages[1]!.content).includes('猫刚跑到楼下去了') ? JSON.stringify([{ quote: '猫刚跑到楼下去了', kind: 'invented', why: '没有依据' }]) : '[]';
+        };
         const fixture = contact({
-            speechCheck: true, factCheck: 'fix', turnModules: [intentModule(), reviewExitModule(), reviewFinalizeModule(), reviewUnfinishedModule()],
+            speechCheck: true,
+            // 逐条事实检查是解释器的审稿模块（ADR 0336），挂在 facts / factsFinal
+            turnModules: [intentModule(), reviewFactsModule({ mode: 'fix', audit: factAudit }), reviewExitModule(), reviewFinalizeModule(), reviewUnfinishedModule()],
             generate: async () => ++calls === 1 ? '我知道你在说什么了\n不过你别得意' : '猫刚跑到楼下去了\n我知道你在说什么了',
-            factAudit: async messages => {
-                audits++;
-                return messages[1]!.content.includes('猫刚跑到楼下去了') ? JSON.stringify([{ quote: '猫刚跑到楼下去了', kind: 'invented', why: '没有依据' }]) : '[]';
-            },
         });
         await fixture.run();
         assert.equal(calls, 2);

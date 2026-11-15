@@ -969,3 +969,15 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - `src/modules/review-exit.ts`：`reviewExitModule()`，App 和模拟器都总是挂。危机级别读 `turn.facts.crisis`（和原来的 `crisisNow` 是同一个对象）。
 - 删掉的接线：联系人流水线里 `reviewReply` / `reviewCrisisReply` 那一处、危机回合提前返回那段、对应 import。直接调流水线的 `language-review.test.ts` 挂上这个模块。
 - 验证：基线 39/39 逐字不变；变异检验——模块原样放过，7 个场景报不一致；危机回合不停下，`review` 报不一致；`dropDevices` 什么都不做，`language-review`「危机空正文……兜底不提交原稿动作」和 `review-exit-module` 的危机流水线用例红（子代理在副本上测过）。
+
+### 生成之后那一段，第 7 步：逐条事实检查（2026-11-15）
+
+- 是什么：ADR 0137 / 0203（配置 `factCheck` 为 log / fix、`factHim`）——审稿模型逐条看她这条回复里的说法有没有依据（编的、替他说的），fix 档带说明重写一次、还有就删行；
+  主动找他时删光了就整条不发。先于出口检查（`facts` 位置）；后面的审稿改过稿子时再只删行地查一次（`factsFinal`）。危机回合、固定说法不查。
+- 由子代理起草（只新建文件，并在临时副本上接线试过）。一个模块占两个位置：`facts` 查完把结果写进 `scratch.factsChecked`，删光了返回 stop（同原来立即返回空串）；`factsFinal` 只在稿子和它不一样时再查。
+  开关和审稿调用是模块选项（`mode`、`aboutHim`、`audit`、`onRecord`）；这一轮的提示词原文和双方名字是 `ReviewCtx` 新加的 `promptSource` / `names`；是否危机读 `turn.facts.crisis`。审稿调用的次数和先后不变。
+- `src/modules/review-facts.ts`：`reviewFactsModule(...)`。App 在 `factCheck` 不是 off 时挂，审稿经执行器（同一个模型、温度 0），日志用 `ctx.log`（已带 [QQ]，和原来逐字一样）；模拟器按场景 / `--fact` 挂，审稿走场景的模型，记录进报告。
+- 删掉的接线：联系人流水线的 `factCheck` / `factAboutHim` / `factAudit` / `onFactCheck` 四个选项、`factOptions` 那段、两处 `checkFacts`、删光了立即返回那一行和 import；App 不再传 `factAudit`。
+  `language-review.test.ts` 的事实检查用例改成挂模块。
+- 验证：`review` 逐字不变；变异检验——App 不挂模块、末查直接放过，`review` 都报不一致；子代理在副本上另跑过七个（去掉 stop、末查不带 finalOnly、不看危机、不看固定说法、主动找他不准删光、不写 scratch 等），都让新测试红。
+- bot 全量 4619 过、13 跳过；红的 1 项是模块总表：DSH 群聊那批的 `modules/group.ts`、`social/group-import.ts`、`social/group-style.ts` 没登记，已留言。

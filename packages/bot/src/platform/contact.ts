@@ -14,7 +14,6 @@ import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config
 import { isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
 import { crisisFallback, faceContext, type ReviewOptions } from '.././language/exit-check.ts';
 import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
-import { checkFacts, type FactCheckMode, type FactRecord } from '.././language/fact-check.ts';
 import { chatCompletion, completionMaxTokens, forExtraction } from '.././language/llm.ts';
 import type { Log } from './log.ts';
 import { CLEAR_DAYS, recentChat, type FadeStats } from '.././memory/fading.ts';
@@ -161,14 +160,6 @@ export interface ContactPipelineOptions {
     sentHistory?: (sent: string, messageId: number) => string | undefined;
     /** 引用回复（ADR 0136，配置 quoteReply）：他连发里有个不是最后一条的问题时，第一条引用它来回；打错字撤回失败补「*对的词」时有时引用那条错的 */
     quoteReply?: boolean;
-    /** 逐条事实检查（ADR 0137，配置 factCheck）：log 只查、记日志；fix 有对不上事实的说法就带说明重写一次。不传 / off 不查 */
-    factCheck?: FactCheckMode;
-    /** 事实检查多查一类：她替他说的、没有依据的事（配置 factHim，ADR 0203）；要 factCheck 开着 */
-    factAboutHim?: boolean;
-    /** 审稿用的模型调用（默认同一个模型、温度 0；模拟器 / 测试换成自己的） */
-    factAudit?: (messages: OpenAIMessage[]) => Promise<string>;
-    /** 每次事实检查的记录（模拟器的报告用） */
-    onFactCheck?: (record: FactRecord) => void;
     /** 她打字的这段时间让对方那边显示「正在输入…」（ADR 0077，配置 typingStatus）；不给就不显示 */
     typing?: (userId: number) => void;
     /** 撤回自己发出去的一条（配置 selfRecall，ADR 0086）：打错字改口的，一部分改成撤回重发；不给就一律补一条「*对的词」 */
@@ -911,22 +902,15 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const onRewriteAccepted = () => { deviceNow = rewrittenDraft?.devices; };
             // 审稿顺序表上的位置（ADR 0336「生成之后那一段」）：挂了 reviewAt 的模块在对应的那一步之后跑；都没挂时同步返回原稿，不多等
             const reviewCtx: ReviewCtx = {
-                regenerate, accept: onRewriteAccepted, dropDevices: () => { deviceNow = undefined; }, scratch: {}, log,
+                regenerate, accept: onRewriteAccepted, dropDevices: () => { deviceNow = undefined; }, scratch: {}, log, names, ...(promptSource ? { promptSource } : {}),
                 ...(reviewContext?.initiating ? { initiating: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}),
             };
             const at = (stage: ReviewStage, text: string) => (turnNow ? reviewStage(options.turnModules ?? [], stage, text, turnNow, reviewCtx) : { text });
-            const factOptions = options.factCheck && options.factCheck !== 'off' && !crisisNow && !reviewContext?.allowRepeat && promptSource ? {
-                mode: options.factCheck, source: promptSource, names, mayDropAll: Boolean(reviewContext?.initiating), ...(options.factAboutHim ? { aboutHim: true } : {}),
-                audit: options.factAudit ?? ((auditMessages: OpenAIMessage[]) => chatCompletion({ ...forExtraction(llm), temperature: 0 }, auditMessages, { log })),
-                regenerate, onRewriteAccepted, log, ...(options.onFactCheck ? { onRecord: options.onFactCheck } : {}),
-            } : undefined;
-            // 逐条事实检查（ADR 0137）：先于出口检查——重写出来的话还要过出口检查这一关；危机回合、固定说法（allowRepeat）不查
-            let atFacts = at('facts', factOptions ? await checkFacts(reply, factOptions) : reply);
+            // 逐条事实检查（ADR 0137）是解释器的模块（modules/review-facts.ts），开着 factCheck 时挂在 facts / factsFinal：先于出口检查；主动找他时删光了就 stop，这轮不发
+            let atFacts = at('facts', reply);
             if (atFacts instanceof Promise) atFacts = await atFacts;
             if (atFacts.stop) return atFacts.text;
             const factual = atFacts.text;
-            // 事实检查判定“想说的那部分被删光了”：这轮不发；主动消息那边会按“生成的是空的”跳过
-            if (factual === '' && reply !== '') return '';
             const reviewOptions: ReviewOptions = {
                 // 角色卡的禁用词 + 医书里的词（“肚子坠着”之类，expression.ts 的 ODD_BODY_WORDS）：出了就让她重写
                 banned: [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS],
@@ -970,7 +954,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (atFinalize instanceof Promise) atFinalize = await atFinalize;
             if (atFinalize.stop) return atFinalize.text;
             const final = atFinalize.text;
-            let atFactsFinal = at('factsFinal', factOptions && final !== factual ? await checkFacts(final, { ...factOptions, finalOnly: true }) : final);
+            // 最后再查一次事实：同一个模块，稿子跟第一次查完的不一样时只删行
+            let atFactsFinal = at('factsFinal', final);
             if (atFactsFinal instanceof Promise) atFactsFinal = await atFactsFinal;
             return atFactsFinal.text;
         },

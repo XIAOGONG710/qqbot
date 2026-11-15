@@ -97,6 +97,7 @@
 - `modules/review-unfinished.ts`
 - `modules/review-pull.ts`
 - `modules/review-exit.ts`
+- `modules/review-facts.ts`
 - `st/`
 
 ## 开关
