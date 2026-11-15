@@ -1056,6 +1056,6 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 
 ### 模块不绕过执行器：核对的测试先立起来（2026-11-16）
 
-- 「不做 / 不变」里说第 6 步之后用一条测试核对「模块目录里不出现 `node:fs`、`fetch`、`setTimeout` / `setInterval`、`chatCompletion` 和对 `Transport` 的直接调用」。今天查了一遍，`src/modules/` 下 57 个文件已经全部满足，
+- 「不做 / 不变」里说第 6 步之后用一条测试核对「模块目录里不出现 `node:fs`、`fetch`、`setTimeout` / `setInterval`、`chatCompletion` 和对 `Transport` 的直接调用」。今天查了一遍，`src/modules/` 下 58 个文件已经全部满足，
   所以不等第 6 步，现在就加 `modules-purity.test.ts`，以后新模块直接碰外部会红。
 - 只看模块文件自己写的；它 import 的 `platform/`、`language/` 里的函数碰不碰外部（比如 `platform/shell-tool.ts` 起子进程）不在这条测试里，那是把副作用写成执行器动作时的事。
