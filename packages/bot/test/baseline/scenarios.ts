@@ -17,16 +17,18 @@
 // 小别扭、危机、同学这几轮不放）、没了结的事和安慰后的余温（假 Hindsight 开着，片段抽出一条 unsettled）。
 // 生成之后的审稿（review：逐条事实检查的重写 / 删行 / 主动消息整条不发 / 最后核对、<<查>> 查到和没查到、话说到一半的重写和就地处理、形状截断、
 // 回复里的 <<记住>> / <<日记>>、危机回合的重写和固定兜底；<<私密>> 要起 PowerShell 写灵魂目录，不在基线里）。
+// 图片表情和照片（media：真的收藏库和照片货架；清单进提示词、发图、只发表情、聊天记录里的写法、各种不发的轮次和摘掉编号；同学档）、
+// 挑候选（candidates：难过 / 亲密话 / 收尾三种轮次各生成三个按规则挑，清理之后再打分；别的轮次只生成一个；同学档）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：真的 Hindsight 那一侧（抽取、整合、派生修复、对账、遗忘）、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、她自己去看视频、
-// 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、真的设备（取件中心、手机推送）、QQ 账号控制面与好友申请、说说与空间、
+// 照片货架自己去网上找、吃的照片、主动发的猫片、收藏他发来的表情和 QQ 收藏同步、看图与语音、网页查询、DSH 与手机伴侣、真的设备（取件中心、手机推送）、QQ 账号控制面与好友申请、说说与空间、
 // 设定账本（identityLedger：写死读真实角色目录 characters/linmengyao 并调 git，
 // 基线不能碰真实资料，也不能随每次提交的 HEAD 变）。
 
 import type { Contact } from '../../src/platform/config.ts';
 import type { AppConfig } from '../../src/platform/config.ts';
 import type { HistoryMessage } from '../../src/memory/backfill.ts';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ChatHistory } from '../../src/memory/history.ts';
 import { emptyNotesState, saveNotesState } from '../../src/language/speech-notes.ts';
@@ -41,7 +43,8 @@ import { emptyReviewState as emptyFeelingReview, saveReviewState as saveFeelingR
 import { momentsPath } from '../../src/emotion/moments.ts';
 import type { Moment } from '../../src/emotion/feelings.ts';
 import { writeJsonAtomic } from '../../src/memory/json-file.ts';
-import { SELF, type LlmCall, type Replier, type Scenario } from './harness.ts';
+import { photoShelf, type PhotoKind } from '../../src/vision/photos.ts';
+import { SELF, stickerIdOf, type LlmCall, type Replier, type Scenario } from './harness.ts';
 
 const boyfriend: Contact = { qq: 10001, name: '阿明', tier: 'boyfriend', persona: '她的男朋友，同校不同专业', knowsBot: true };
 const classmate: Contact = { qq: 10002, name: '小周', tier: 'classmate' };
@@ -73,6 +76,19 @@ function rotating(lines: readonly string[]): Replier {
 }
 
 const CHAT_LINES = ['嗯嗯\n刚在看书', '哈哈哈离谱', '行吧\n那你早点睡', '我刚下课\n饿死了', '你在干嘛呢', '好呀'];
+
+/** 照片货架（ADR 0109）里预先放几张：用货架自己的 add（作者手动加照片那条路），源文件是一段固定的字节，加完就删掉 */
+function seedPhotos(dataDir: string, list: readonly { kind: PhotoKind; caption: string }[]): void {
+    const shelf = photoShelf({ dir: join(dataDir, 'photos'), log: () => {} });
+    const source = join(dataDir, 'photo-source');
+    mkdirSync(source, { recursive: true });
+    list.forEach((photo, i) => {
+        const file = join(source, `${i + 1}.jpg`);
+        writeFileSync(file, `baseline photo ${i + 1} ${photo.kind} ${photo.caption}`);
+        shelf.add(file, photo.kind, photo.caption);
+    });
+    rmSync(source, { recursive: true, force: true });
+}
 
 const msg = (messageId: number, from: number, text: string, time: number): HistoryMessage =>
     ({ message_id: messageId, time: Math.floor(time / 1000), sender: { user_id: from }, message: [{ type: 'text', data: { text } }] });
@@ -1347,6 +1363,120 @@ export const SCENARIOS: readonly Scenario[] = [
                     d.say(boyfriend.qq, said);
                 }
                 await d.at('2026-12-10T22:10:00+08:00');
+            },
+        } satisfies Scenario;
+    })(),
+    (() => {
+        const text = (message: { content?: unknown } | undefined) => (typeof message?.content === 'string' ? message.content : '');
+        const STICKERS = [
+            { description: '小猫捂着嘴偷笑', tags: ['搞笑', '开心', '偷笑'] },
+            { description: '小熊抱着枕头说晚安', tags: ['晚安', '睡', '困'] },
+            { description: '兔子瘫在地上翻白眼', tags: ['无语', '无奈', '摆烂'] },
+        ];
+        const known = STICKERS.map((sticker, i) => `<sticker:${stickerIdOf(i, sticker.description)}>`);
+        return {
+            name: 'media',
+            about: '图片表情和照片（ADR 0063 / 0099 / 0109，ADR 0336「生成之后那一段」迁出之前）：真的收藏库（连上之前经它自己的收藏路径收进三张）、真的照片货架（作者手动加的三张）。'
+                + '男朋友：带反应的问句（不发表情，她照写的编号摘掉）；要看风景照（清单进提示词，先带一句、另起一行发照片，聊天记录写「她发了张照片：…」；这一轮不发表情，她顺手写的编号摘掉）；'
+                + '刚发过又要一张（不给清单，她照写的照片编号摘掉）；危机（不发，摘掉）；只发表情的一轮（清单写明只发一个，她多写的文字去掉、只发图）；最近八条回复里发过（不发，摘掉）；'
+                + '过了八条之后文字加表情（发图，聊天记录写「她发了个表情包：…」，收藏库记一次用过）。同学（没有收藏库，编号摘掉）',
+            start: '2026-12-11T19:00:00+08:00',
+            contacts: [boyfriend, classmate],
+            config: { shape: true, shapeFeel: true, stickers: 'send', photos: true },
+            stickers: STICKERS,
+            seed: dataDir => seedPhotos(dataDir, [
+                { kind: 'view', caption: '傍晚在宿舍阳台拍的晚霞，云是粉紫色的' },
+                { kind: 'view', caption: '下过雨的操场，跑道上有一片倒影' },
+                { kind: 'work', caption: '校园湖边的一张黑白长曝光，湖面像镜子' },
+            ]),
+            reply: () => {
+                const chat = rotating(['嗯嗯', '是呀', '好', '怎么啦']);
+                let photo = '<photo:000000000000>';
+                return (call: LlmCall) => {
+                    const all = call.messages.map(text).join('\n');
+                    const first = text(call.messages[0]);
+                    const last = text(call.messages.at(-1));
+                    if (/JSON|json/.test(last) || /JSON|json/.test(first)) return '[]';
+                    const his = text(call.messages.findLast(m => m.role === 'user'));
+                    const offered = /- (<sticker:[a-f0-9]{12}>)/.exec(all)?.[1];
+                    const shown = /- (<photo:[a-f0-9]{12}>)/.exec(all)?.[1];
+                    // 货架给她看了：照片先带一句、另起一行发清单里的第一张（她还顺手写了个表情：发照片的轮次不发表情）；表情接在文字后面（只发表情的那一轮文字要去掉）
+                    if (shown) { photo = shown; return `翻到一张以前拍的\n${shown}\n${known[0]}`; }
+                    if (offered) return `哈哈哈哈\n${offered}`;
+                    // 没给她看货架的轮次，她也照着编号写：发送前都要摘掉
+                    if (his.includes('下午去哪')) return `去图书馆了\n${known[0]}`;
+                    if (his.includes('再发一张')) return `没有啦\n${photo}`;
+                    if (his.includes('笑死我了') && !his.includes('哈哈')) return `哈哈\n${known[0]}`;
+                    if (his.includes('不想活')) return `我在\n${known[1]}`;
+                    if (his.includes('太好笑了')) return `哈哈哈\n${known[2]}`;
+                    return chat(call);
+                };
+            },
+            script: async d => {
+                const at = (time: string) => d.at(`2026-12-11T${time}:00+08:00`);
+                // 抽不抽发表情按他这句话和时刻的哈希定（同一句每次一样）：下面每句带明确反应的话在各自的时刻都抽得中，没发的都是规则挡下的
+                await at('19:20'); d.say(boyfriend.qq, '哈哈那你下午去哪了？');
+                await at('19:26'); d.say(boyfriend.qq, '哈哈发张风景照给我看看');
+                await at('19:32'); d.say(boyfriend.qq, '好看，再发一张风景给我看看');
+                await at('19:40'); d.say(classmate.qq, '笑死我了');
+                await at('19:45'); d.say(boyfriend.qq, '好烦，我不想活了');
+                await at('19:55'); d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
+                await at('20:40'); d.say(boyfriend.qq, '哈哈哈绝了');
+                await at('20:46'); d.say(boyfriend.qq, '哈哈哈太好笑了');
+                for (const [time, said] of [['21:00', '我刚到宿舍'], ['21:06', '今天降温了'], ['21:12', '明天早上有课'], ['21:18', '我室友在打游戏'],
+                    ['21:24', '刚洗完衣服'], ['21:30', '我在追一个综艺'], ['21:36', '外面下雨了']] as const) {
+                    await at(time); d.say(boyfriend.qq, said);
+                }
+                await at('21:50'); d.say(boyfriend.qq, '哈哈哈哈笑死我了');
+                await at('22:00'); d.say(boyfriend.qq, '这个表情好可爱');
+                await at('22:10');
+            },
+        } satisfies Scenario;
+    })(),
+    (() => {
+        const text = (message: { content?: unknown } | undefined) => (typeof message?.content === 'string' ? message.content : '');
+        // 挑候选的轮次：同一份提示词连着生成三个，按顺序回这三个（几个规则各扣几分写在后面）
+        const PICKS: readonly [string, readonly [string, string, string]][] = [
+            // 他难过（care，最多 2 句）：3 句 + 叮嘱作息、0 分、约「写完跟我说一声」→ 挑第 2 个
+            ['被导师骂了', ['别难过了\n早点睡\n明天就好了', '抱抱\n怎么回事呀', '抱抱\n写完跟我说一声']],
+            // 同学难过：同上，挑第 2 个
+            ['实验做砸了', ['没事的\n早点睡\n下次就好了', '啊\n怎么砸的', '没事\n弄完跟我说一声']],
+            // 亲密话（bid，最多 3 句）：第 1 个原文 4 行、清理掉表情编号那一行之后 3 行、0 分；第 2 个 0 分；第 3 个扯到自己的相机 → 一样少挑先生成的，第 1 个
+            ['想你了', ['我也想你\n<sticker:0123456789ab>\n你呢\n嘿嘿', '我也想你\n你在干嘛', '我也想你\n刚在看相机里的照片']],
+            // 收尾（ending，最多 2 句）：3 句 + 扯到追剧、约「回来跟我说一声」、0 分 → 挑第 3 个
+            ['我去洗澡了', ['好\n去吧\n我也去追剧了', '去吧\n回来跟我说一声', '好\n去吧']],
+        ];
+        return {
+            name: 'candidates',
+            about: '挑候选（ADR 0041，ADR 0336「生成之后那一段」迁出之前）：配置 candidates 为 3。他难过（care）、同学难过、亲密话（bid）、收尾（ending）这几轮同一份提示词连着生成三个，'
+                + '按看得见的规则挑扣分最少的发：第 2 个、第 2 个、一样少挑先生成的第 1 个（它的原文多一行表情编号，清理之后才不超句数）、第 3 个；先直接回答他问的那两轮只生成一个',
+            start: '2026-12-12T19:00:00+08:00',
+            contacts: [boyfriend, classmate],
+            config: { candidates: 3 },
+            reply: () => {
+                const chat = rotating(['嗯嗯', '是呀', '好', '怎么啦']);
+                const counts = new Map<string, number>();
+                return (call: LlmCall) => {
+                    const first = text(call.messages[0]);
+                    const last = text(call.messages.at(-1));
+                    if (/JSON|json/.test(last) || /JSON|json/.test(first)) return '[]';
+                    const his = text(call.messages.findLast(m => m.role === 'user'));
+                    const pick = PICKS.find(([needle]) => his.includes(needle));
+                    if (!pick) return chat(call);
+                    const n = counts.get(pick[0]) ?? 0;
+                    counts.set(pick[0], n + 1);
+                    return pick[1][n % 3]!;
+                };
+            },
+            script: async d => {
+                const at = (time: string) => d.at(`2026-12-12T${time}:00+08:00`);
+                await at('19:30'); d.say(boyfriend.qq, '在干嘛');
+                await at('19:40'); d.say(boyfriend.qq, '今天又被导师骂了，好难过');
+                await at('19:50'); d.say(classmate.qq, '今天实验做砸了，好烦');
+                await at('20:30'); d.say(boyfriend.qq, '想你了');
+                await at('21:00'); d.say(boyfriend.qq, '好的，我去洗澡了');
+                await at('21:40'); d.say(boyfriend.qq, '洗完了，你明天几点的课？');
+                await at('22:00');
             },
         } satisfies Scenario;
     })(),

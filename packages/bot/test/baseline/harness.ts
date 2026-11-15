@@ -2,13 +2,13 @@
 // 把每一次对外调用记下来——发给模型的完整提示词（和用的哪个模型）、每个 QQ 动作和它的时刻、最后留在数据目录里的每个文件——写成一份纯文本快照。
 // 架构迁移的每一步都必须让快照逐字不变；有意改变行为的提交才改快照，并写明原因。
 // 只用合成角色（ADR 0260），不连网：长期记忆、真实天气、B 站、网页、DSH 都关着；设备只在 devices 场景里换上假的服务，
-// 长期记忆只在场景给了 memory 时换上假的 Hindsight（fake-memory.ts；见 scenarios.ts 开头的覆盖说明）。
+// 长期记忆只在场景给了 memory 时换上假的 Hindsight（fake-memory.ts；见 scenarios.ts 开头的覆盖说明），图片表情只在场景给了 stickers 时换上真的收藏库。
 
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
-import { join, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { startApp, type App, type Transport } from '../../src/platform/app.ts';
 import { DEFAULTS, type AppConfig, type Contact } from '../../src/platform/config.ts';
 import type { HistoryMessage } from '../../src/memory/backfill.ts';
@@ -21,6 +21,7 @@ import type { LlmAction } from '../../src/executor/executor.ts';
 import { createDeviceControl } from '../../src/platform/device-actions.ts';
 import { DEVICE_MAX_VOLUME, linksOf, type startDeviceService } from '../../src/platform/device-service.ts';
 import { FAKE_MEMORY_PREFIX, FAKE_MEMORY_URL, fakeHindsight, type FakeMemory } from './fake-memory.ts';
+import { stickerShelf, type StickerShelf } from '../../src/social/stickers.ts';
 
 // 快照里的时刻、作息、「今天」都按本地时间算：进程时区固定在 Asia/Shanghai（同配置的 timeZone），不随跑测试的机器变。
 // 基线只在 baseline.test.ts 自己的测试进程里跑（node --test 每个文件一个进程），这里改了不影响别的测试文件。
@@ -59,6 +60,11 @@ export interface Scenario {
      * 由假服务按固定的规则回（召回结果、关系概况、印象、公共库实体名由这里给），每个请求记进快照
      */
     memory?: FakeMemory;
+    /**
+     * 图片表情（ADR 0063）：给了就换上真的收藏库（stickerShelf，数据目录的 stickers/ 下），连上之前经它自己的收藏路径（consider：
+     * 他发来的表情，下载、看图、判断都是假的、都说收）把这几张收进来——编号按图片内容的哈希、索引由收藏库自己写。配置里还要开 stickers: 'send'
+     */
+    stickers?: { description: string; tags: string[] }[];
     script: (driver: Driver) => Promise<void>;
 }
 
@@ -125,6 +131,37 @@ function fakeDevices(readyAfterMs: number, record: (head: string, body?: string)
             stop: async () => { record('设备 服务停了'); },
         };
     };
+}
+
+/**
+ * 真的图片表情收藏库，连上之前把场景给的几张收进来（走收藏库收他发来的表情的那条路：下载、看图、判断换成假的）。
+ * 每张图是一段固定的字节（PNG 文件头 + 序号和描述），编号是它的哈希，每次跑都一样
+ */
+const stickerBytes = (i: number, description: string) =>
+    new Uint8Array(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(`baseline sticker ${i + 1} ${description}`)]));
+/** 场景里第 i 张（从 0 数）图片表情收进去之后的编号（同收藏库：内容哈希的前 12 位）；假模型在没给她看货架的轮次里照写，看发送前摘不摘 */
+export const stickerIdOf = (i: number, description: string) => createHash('sha256').update(stickerBytes(i, description)).digest('hex').slice(0, 12);
+
+async function seededStickers(dir: string, list: NonNullable<Scenario['stickers']>, clock: FakeClock): Promise<StickerShelf> {
+    const urlOf = (i: number) => `https://stickers.baseline.invalid/${i + 1}.png`;
+    const byUrl = new Map(list.map((sticker, i) => [urlOf(i), { ...sticker, bytes: stickerBytes(i, sticker.description) }]));
+    const shelf = stickerShelf({
+        dir,
+        download: async url => {
+            const sticker = byUrl.get(url);
+            if (!sticker) throw new Error(`假表情：没有 ${url}`);
+            return { bytes: sticker.bytes, type: 'image/png' };
+        },
+        describe: async ({ url }) => byUrl.get(url)?.description ?? '',
+        decide: async description => {
+            const sticker = [...byUrl.values()].find(item => item.description === description);
+            return { keep: Boolean(sticker), description, tags: sticker?.tags ?? [] };
+        },
+        log: () => {},
+    });
+    await clock.settle(shelf.consider(list.map((_, i) => ({ type: 'image', data: { url: urlOf(i), sub_type: 1, summary: '[动画表情]' } })), {}));
+    if (shelf.status().count !== list.length) throw new Error(`假表情：只收进了 ${shelf.status().count} 张`);
+    return shelf;
 }
 
 const defaultReply: Replier = call => {
@@ -242,10 +279,16 @@ export async function runScenario(scenario: Scenario): Promise<string> {
             mkdirSync(process.env.QQBOT_SOUL_DIR!, { recursive: true });
             scenario.soul(process.env.QQBOT_SOUL_DIR!, start);
         }
+        const stickers = scenario.stickers ? await seededStickers(join(dataDir, 'stickers'), scenario.stickers, clock) : undefined;
         const transport: Transport = {
             sendPrivateText: async (userId, text, replyTo) => { call('sendPrivateText', replyTo === undefined ? [userId, text] : [userId, text, replyTo]); return sent(); },
             sendPrivateCard: async (userId, cardJson) => { call('sendPrivateCard', [userId, cardJson]); return sent(); },
-            sendPrivateImage: async (userId, file, summary) => { call('sendPrivateImage', [userId, file, summary]); return sent(); },
+            // 图片是数据目录里的文件：路径记成相对数据目录、用 /，快照不随系统的路径分隔符变
+            sendPrivateImage: async (userId, file, summary) => {
+                const inData = relative(dataDir, file);
+                call('sendPrivateImage', [userId, inData && !inData.startsWith('..') && !isAbsolute(inData) ? `<data>/${inData.split(sep).join('/')}` : file, summary]);
+                return sent();
+            },
             markRead: async userId => { call('markRead', [userId]); },
             reactMessage: async (messageId, emojiId) => { call('reactMessage', [messageId, emojiId]); },
             setInputStatus: async (userId, eventType) => { call('setInputStatus', eventType === undefined ? [userId] : [userId, eventType]); },
@@ -271,6 +314,7 @@ export async function runScenario(scenario: Scenario): Promise<string> {
             // 执行器派发模型调用前先告诉这里完整的动作（用途、模型配置），紧接着才调假模型
             observe: action => { if (action.kind === 'llm') observed = action; },
             ...(scenario.devices ? { startDevices: fakeDevices(scenario.devices.readyAfterMs, record) } : {}),
+            ...(stickers ? { stickers } : {}),
             pipeline: {
                 generate: async (messages, _log, use) => {
                     const index = ++llmCalls;
