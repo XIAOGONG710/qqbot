@@ -160,6 +160,15 @@ describe('WebLookup：串起来', () => {
         assert.match((await c.lookup.line('搜一下溪口镇啤酒节'))!, /今天查得太多了/);
     });
 
+    test('第一轮抽不出事实：拿标题里的词换一个再查一次（2026-11-15）', async () => {
+        const { lookup, asked, done } = make({}, ['无', '量子纠缠', '量子纠缠是两个粒子状态相互关联的现象']);
+        const line = (await lookup.line('帮我查一下量子纠缠是什么'))!;
+        assert.match(line, /量子纠缠是两个粒子状态相互关联的现象/, '第二轮查到的东西要进提示词');
+        assert.equal(asked.length, 3, '摘录 → 改词 → 再摘录');
+        assert.match(asked[1]![1]!.content, /上次用的词：量子纠缠是什么/, '改词那一步要看到上一轮的结果');
+        assert.deepEqual(done, [{ kind: 'search', summary: '上网查了「量子纠缠」', ok: true }]);
+    });
+
     test('自动档：小分类器认出是在问客观事实才查，认不出就不查；平常问句不触发', async () => {
         const yes = make({ mode: 'auto' }, ['{"search":"量子纠缠"}', '量子纠缠是一种现象']);
         assert.match((await yes.lookup.line('量子纠缠到底是什么原理啊？'))!, /你刚上网查了一下/);
