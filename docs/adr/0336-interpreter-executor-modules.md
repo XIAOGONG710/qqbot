@@ -854,3 +854,13 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 基线覆盖：只有 `rich-chat` 一轮深思（关键词那条路）；方向那一句 0 处，由 `app.test.ts` 的语义路由用例和新的 `deliberate-module.test.ts`（含两条模拟器测试）管。
   以后要把判断也挪进模块，先补一个开 `depthRouting` 的基线场景（假模型认出分类提示词，回 heavy / challenge / us / light），并等照片 → 意图 → 心境 → 图片表情这几样迁出。
 - 验证：`rich-chat` 逐字不变；变异检验——模块不放、App 不挂模块，`rich-chat` 报不一致、`app.test.ts` 的深思和语义路由两条红；模块不放方向那句、旧逻辑不写 `facts.routedHint`，`app.test.ts` 语义路由那条红。bot 全量 4455 过、13 跳过；红的是 DSH 那边的 2 项，外加一项负载高时偶发的计时测试（`memory-responder-drain-review`，单独跑 3 次都过）。
+
+### 心境方案第 3、4 步：心境那一行、节奏、梦那一行（2026-11-15）
+
+- 是什么：ADR 0102 心境那一行（有来由的心境；他在关心她时绷不住、说过了的不再说）放进 `feeling` 槽；心境 → 说话的量（2026-10-30）放进 `pace` 槽；早上那句梦（2026-10-31）放进 `dreams` 槽。
+- 由子代理起草（只新建文件）。方案原想 assess 时算心境、contribute 时放；取证后**合成一步、走退路**：算心境的输入（梦、作者写下的事、回想过的感受、追求）都是按联系人给的流水线选项，
+  回忆和问到那一天时（`feltOnDay`）还要读同一份；读昨天她那边和追求时会结算带结算的世界账；心境那一行和节奏还要等很晚才有的 `grievanceActive`。挪进 assess 会让两次结算和三个文件的读取提前到照片那一段之前，
+  基线里追求和昨天她那边给心境的打分一处都没走到，证明不了挪动安全。所以**计算留在原位**，写进新的 `turn.facts.dreamLine` / `feelingLine` / `paceLine`，模块只放。`onFeelings`、`low`、最多几条、日志读旧逻辑自己那一份。
+- `src/modules/feelings.ts`：`feelingsModule()`，只有 contribute，不再判断条件（都在算的地方）。App 和模拟器都总是挂。
+- 删掉的接线：`contact.ts` 里三个段落。死代码（`pursuitLine`、`describePursuits` / `describeMood` 的 import）另开提交清理。
+- 验证：基线 38/38 逐字不变；变异检验——模块不放，26 个场景报不一致；只是不放节奏，`feelings` 报不一致。`feelings-module.test.ts` 5 项、相关测试通过；类型检查通过。

@@ -712,6 +712,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 try { options.onFeelings({ at: time.getTime(), felt: feltNow, line: neutral }); } catch (error) { log(`心境：没能交给桌面上的她（${error instanceof Error ? error.message : String(error)}）`); }
             }
             if (feelingLine) log(`心境：${feltNow.filter(item => item.level !== 'faint').slice(0, 2).map(item => `${FEELING_NAME[item.kind]}·${item.level === 'strong' ? '很重' : '明显'}（${item.source === 'world' ? '她那边的事' : item.source === 'him' ? '他的态度' : item.source === 'self' ? '她自己回想的' : '作者写下的事'}）`).join('、')}（日志不记内容）`);
+            // 心境那一行、节奏、梦那一行是解释器的模块（modules/feelings.ts）：在这里原位算（读梦、作者写下的事、回想过的感受、带结算的世界账，要等小别扭是否生效），
+            // 写进 turn.facts，经 turnModules 放进 feeling、pace、dreams 槽；onFeelings、low、最多几条、日志还读这里算的
+            Object.assign(turn.facts, {
+                ...(dreamsNow?.line ? { dreamLine: dreamsNow.line } : {}), ...(feelingLine ? { feelingLine } : {}), ...(paceLine ? { paceLine } : {}),
+            } satisfies TurnFacts);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const picked = (options.candidates ?? 1) > 1 && intent && !initiate ? PICKED_INTENTS.find(p => p.pattern.test(intent)) : undefined;
             const stickerAllowance = options.stickers && !thinking ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
@@ -845,12 +850,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 // 心情由真实发生的事推出来的 feelingLine 表达。
                 // 真人数值（ADR 0222）和人格成长层（ADR 0251）是解释器的模块（modules/human-state.ts），经 turnModules 放进 humanState、development 槽
                 // 没了结的事（ADR 0023）、情绪余温（ADR 0028）是解释器的模块（modules/warm.ts），经 turnModules 放进 unsettled、warm 槽
-                ...when('feeling', feelingLine),
-                ...when('pace', paceLine),
+                // 心境那一行、节奏（ADR 0102 / 2026-10-30）是解释器的模块（modules/feelings.ts），经 turnModules 放进 feeling、pace 槽
                 // 追求（「别挂科」「用新相机拍出满意的东西」）也不再注入（10-30 同一条）：她想追什么，自己说。
                 ...when('selfNote', selfNote),
                 ...when('promised', promised),
-                ...(dreamsNow?.line ? [{ slot: 'dreams' as const, text: dreamsNow.line }] : []),
+                // 梦那一行（2026-10-31）是解释器的模块（modules/feelings.ts），经 turnModules 放进 dreams 槽
                 // 连续性那几段是解释器的模块（modules/continuity.ts），经 turnModules 放进 continuity 槽
                 // 她能替他操作的设备（ADR 0148）的菜单是解释器的模块（modules/devices.ts），经 turnModules 放进 devices 槽
                 ...when('sticker', stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined),

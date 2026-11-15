@@ -123,6 +123,12 @@ export interface TurnFacts {
     agendaTopics?: readonly string[];
     /** 她这会儿低落（心情安静、身体不舒服、心境偏低、真人数值低）：不加「话多」 */
     low?: boolean;
+    /** 早上那句梦（2026-10-31）：联系人流水线原位读梦（同时取梦给心境的打分）后写；App 只给男朋友档、开了 herFeelings，危机回合没有。modules/feelings.ts 放进 dreams 槽 */
+    dreamLine?: string;
+    /** 心境那一行（ADR 0102，QQ 这一句的写法：他在关心她时绷不住）：旧逻辑在小别扭是否生效之后原位算后写；男朋友档、开了 herFeelings、不是危机、小别扭没生效才有。modules/feelings.ts 放进 feeling 槽 */
+    feelingLine?: string;
+    /** 心境 → 说话的量（2026-10-30）：和心境那一行同一处、同样的条件；modules/feelings.ts 放进 pace 槽。生成时的最多几条还在旧逻辑 */
+    paceLine?: string;
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */

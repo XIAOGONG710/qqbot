@@ -32,6 +32,7 @@ import { devicesModule } from '../modules/devices.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
 import { warmModule } from '../modules/warm.ts';
+import { feelingsModule } from '../modules/feelings.ts';
 import { deliberateModule } from '../modules/deliberate.ts';
 import { lengthModule } from '../modules/length.ts';
 import { shapeModule } from '../modules/shape.ts';
@@ -609,6 +610,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             deliberateModule({ ...(options.deliberateNote ? { note: options.deliberateNote } : {}) }),
             // 情绪余温和没了结的事，同 App
             warmModule({ log: message => { if (epoch === responderEpoch) log(message); } }),
+            // 心境那一行、节奏、梦那一行，同 App
+            feelingsModule(),
             // 时间块，同 App
             timeBlockModule({ ...(scenario.lagTail ? { lagTail: true } : {}) }),
             // 只想一想的轮次：聊天原文换成一段回想，同 App

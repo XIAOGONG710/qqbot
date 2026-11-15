@@ -48,6 +48,7 @@ import { initiateNoteModule } from '../modules/initiate-note.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
 import { continuityModule } from '../modules/continuity.ts';
 import { warmModule } from '../modules/warm.ts';
+import { feelingsModule } from '../modules/feelings.ts';
 import { humanStateModule } from '../modules/human-state.ts';
 import { deliberateModule } from '../modules/deliberate.ts';
 import { lengthModule } from '../modules/length.ts';
@@ -1102,6 +1103,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         continuityModule(),
         // 情绪余温（ADR 0028）和没了结的事（ADR 0023）：他道歉 / 安慰 / 说想她之后三轮软一点（卡上有心情才算），没了结的事读旧逻辑写的 turn.facts.unsettled；没有开关，不存状态
         warmModule({ log }),
+        // 心境那一行、节奏、梦那一行（ADR 0102）：联系人流水线原位算好写进 turn.facts（读梦、作者写下的事、回想过的感受、带结算的世界账，要等小别扭是否生效），这里只放；没有开关（herFeelings 没开时 facts 里没有）
+        feelingsModule(),
         // 真人数值（ADR 0222）和人格成长层（ADR 0251）：联系人流水线开头算好写进 turn.facts（读带结算的世界账，不挪过 await），这里只放两行；没有开关（没有需要锚点 / 世界账时 facts 里没有）
         humanStateModule(),
         // 深思（ADR 0151）和语义路由（ADR 0202）：判断和分类那次模型调用留在联系人流水线原位，写进 turn.facts；这里只放两句。没有开关（deliberate 没开时 facts 里没有）
