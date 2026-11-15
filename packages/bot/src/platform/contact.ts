@@ -59,7 +59,7 @@ import { lastNight, withLastNight } from '.././life/nights.ts';
 import { describeHumanValues, type HumanValues } from '.././human-values.ts';
 import { auditDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
 import type { PhotoKind, PhotoShelf } from '.././vision/photos.ts';
-import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, STICKER_TURN_CHANCE, type StickerShelf } from '.././social/stickers.ts';
+import type { StickerShelf } from '.././social/stickers.ts';
 
 const DAY_MS = 86_400_000;
 
@@ -300,11 +300,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const generate = options.generate ?? ((messages, log, use) => chatCompletion(use ?? llm, messages, { log }));
     /** 深思轮次用更强的模型（ADR 0151）；别的轮次不传，用默认的 */
     const useNow = () => (deliberateNow ? options.deliberate?.llm : undefined);
-    /** 这一轮抽到要发图片表情，并带上他这一轮说的话（给货架按它挑）；没抽到就不给她看货架 */
-    let stickerContext: { text: string; only?: boolean } | undefined;
     /** 清理时交给模块的两个货架（ADR 0336 第 9 步，CleanCtx）：清单的取、聊天记录的写法也还在这里用它们 */
     /** 判断那一串（ADR 0336，DECIDE_STAGES）交给模块的东西：照片货架和「现在的照片」的解析 */
-    const decideCtx: DecideCtx = { ...(options.photos ? { photos: options.photos } : {}), ...(options.currentAiPhoto ? { currentAiPhoto: options.currentAiPhoto } : {}), log: message => log(message) };
+    const decideCtx: DecideCtx = {
+        ...(options.stickers ? { stickers: { ...(options.stickerChance !== undefined ? { chance: options.stickerChance } : {}), ...(options.stickerUncued ? { uncued: options.stickerUncued } : {}), ...(options.stickerOnlyChance ? { onlyChance: options.stickerOnlyChance } : {}) } } : {}),
+        ...(options.photos ? { photos: options.photos } : {}), ...(options.currentAiPhoto ? { currentAiPhoto: options.currentAiPhoto } : {}), log: message => log(message) };
     const shelves: CleanCtx = { ...(options.stickers ? { stickers: options.stickers } : {}), ...(options.photos ? { photos: options.photos } : {}) };
     /**
      * 清理生成的一稿（ADR 0336「生成之后那一段」第 8、9 步）：先摘设备指令（ADR 0148：摘出来放进 Draft.devices，字里不留；没开设备控制也一律摘掉令牌），
@@ -650,8 +650,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(dreamsNow?.line ? { dreamLine: dreamsNow.line } : {}), ...(feelingLine ? { feelingLine } : {}), ...(paceLine ? { paceLine } : {}),
             } satisfies TurnFacts);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
-            const stickerAllowance = options.stickers && !thinking ? imageStickerAllowance(chat, intent, Boolean(woken), crisisNow?.level) : { allowed: false };
-            const stickersAllowed = stickerAllowance.allowed && !photoNow;
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             // 连续性（ADR 0157–0163）：设定改动的背景 / QQ 以外做过的事 / 上网查到的 / 自己发现的口味 / 又见到的人；出错当没有，不挡回复
             const continuityLines = options.continuity && !crisisNow && !thinking
@@ -664,15 +662,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 连续性那几段是解释器的模块（modules/continuity.ts）：取是异步的（上网、调模型、记「已告诉他」），留在这里不挪——后面紧跟着语义路由、「/亲热」、各模块的 contribute；
             // 取回来的写进 turn.facts，经 turnModules 放进 continuity 槽
             if (continuityLines.length) turn.facts.continuity = continuityLines;
-            // 没有明确反应的轮次也抽一抽（ADR 0132）：她拿不到小黄脸以后，表情包得顶上；抽签的种子和有反应的那条路分开
-            const stickerDrawn = stickersAllowed && (stickerCued(saidNow)
-                ? stickerTurn(chat, options.stickerChance ?? STICKER_TURN_CHANCE)
-                : Boolean(options.stickerUncued) && saidNow.trim().length > 0 && stickerTurn(chat, options.stickerUncued!, 'sticker uncued'));
-            // 这一轮只发表情、不写文字（ADR 0099）：写进 turn.facts.stickerOnly，清理时模型多写了文字就去掉，只留那一行表情
-            const stickerOnlyNow = stickerDrawn && stickerOnlyTurn(chat, options.stickerOnlyChance ?? 0);
-            stickerContext = stickerDrawn ? { text: saidNow, ...(stickerOnlyNow ? { only: true } : {}) } : undefined;
-            if (stickerContext) log(stickerOnlyNow ? '图片表情：这一轮抽到只发表情、不写文字' : '图片表情：这一轮抽到要发一个');
-            if (options.stickers && !thinking && !stickersAllowed) log(`图片表情：这轮不用（${stickerAllowance.reason}）`);
+            // 图片表情这一轮用不用、抽没抽到、是不是只发表情（ADR 0063 / 0099 / 0132）是解释器的模块（modules/media-offers.ts 的 decideAt.stickers）：
+            // 写进 turn.facts.stickersAllowed、stickerDraw、stickerOnly，日志也在那里记；下面读
+            decideStage(options.turnModules ?? [], 'stickers', turn, decideCtx);
+            const stickerOnlyNow = Boolean(turn.facts.stickerOnly);
             // 深思（ADR 0151）：他是认真在问她的轮次，不套字数和条数、换更强的模型、提示词只留一句“先想清楚”；危机 / 小别扭 / 亲近等别的意图照旧让路
             const deliberateEligible = Boolean(options.deliberate) && !initiate && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !grievanceActive;
             const lexicalDeep = deliberateEligible && deliberateTurn(intent, saidNow, asksToExplain(saidNow));
@@ -728,12 +721,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 : undefined;
             // 长短不一（ADR 0024）和形状（ADR 0091）是解释器的模块（modules/length.ts、modules/shape.ts）；它们要的前面那几样在这里写进 turn.facts
             Object.assign(turn.facts, {
-                ...(cue ? { cue } : {}), ...(stickerOnlyNow ? { stickerOnly: true } : {}),
+                ...(cue ? { cue } : {}),
                 ...(deliberateNow ? { deliberate: true } : {}), ...(routedHint ? { routedHint } : {}), ...(low ? { low: true } : {}), agendaTopics,
                 // 「/亲热」那一行在上面原位取（每取一次扣一条、写文件），由解释器的模块（modules/intent-line.ts）放
                 ...(intimateNow ? { intimateLine: intimateNow } : {}),
-                // 清理时（modules/media-offers.ts 的 cleanAt）按这几样留不留表情 / 照片编号
-                ...(stickersAllowed ? { stickersAllowed: true } : {}),
                 ...(textureNow ? { texture: textureNow } : {}),
             });
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
@@ -771,6 +762,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...bare, postHistoryInstructions: '' }, worldInfo } : { character: bare, worldInfo };
             // 图片表情和照片的清单（ADR 0063 / 0109 / 0240）是解释器的模块（modules/media-offers.ts）：清单在这里、所有模块的 contribute 之前原位取
             // （货架每取一次都查索引 / 文件，坏了会抛错；条件一次、内容一次，照旧），写进 turn.facts，经 turnModules 放进 sticker、photo 槽
+            const stickerContext = turn.facts.stickerDraw;
             const stickerLine = stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined;
             const photoLine = photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)! : undefined;
             Object.assign(turn.facts, { ...(stickerLine ? { stickerLine } : {}), ...(photoLine ? { photoLine } : {}) } satisfies TurnFacts);

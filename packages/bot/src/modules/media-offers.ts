@@ -23,10 +23,15 @@
 //   没说哪一类（只说「发张照片」）取货架上有的第一类；吃的只拿她最近那一顿那道菜的。
 // - 他明确要「现在」的照片（ADR 0240）：只有已审核、和此刻精确匹配的那一张能发（写 photo、photoPrompt）；没有就写 photoUnavailable，不拿旧图冒充。
 // 货架和解析经 DecideCtx 给；日志是这个联系人的。
+//
+// 图片表情这一轮用不用（「判断那一串」第 3 步，decideAt.stickers）：连续性取完之后、深思之前。和迁移前联系人流水线里的逐字一样：
+// - 有收藏库（ctx.stickers）、不是只想一想才看；允不允许按聊天记录、最终的意图、被吵醒、危机定（imageStickerAllowance），这一轮发照片就不发表情：写 stickersAllowed；不允许记一行原因。
+// - 允许时抽签：他这句有明确反应（哈哈、图……）按 chance 抽，没有的按 uncued 抽（没给就不抽，种子分开）；抽到写 stickerDraw（带他这一轮说的话，收藏库按它挑）。
+// - 抽到之后再抽是不是只发表情、不写文字（onlyChance）：写 stickerOnly。
 
 import type { Module, TurnFacts } from '../interpreter/interpreter.ts';
 import type { Piece } from '../interpreter/slots.ts';
-import { stripStickerArtifacts } from '../social/stickers.ts';
+import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, STICKER_TURN_CHANCE, stripStickerArtifacts } from '../social/stickers.ts';
 import { isExplicitCurrentPhotoRequest } from '../proactive/ai-photo-requests.ts';
 import { photoAllowance, photoWanted, PHOTO_KINDS, stripPhotoArtifacts } from '../vision/photos.ts';
 import { lastMealDish } from '../world/world.ts';
@@ -85,6 +90,26 @@ export function mediaOffersModule(): Module {
                         ctx.log(`照片货架：他想看${kind}${dish ? `（${dish}）` : ''}，货架里有，这一轮发一张`);
                     } else ctx.log(`照片货架：这一轮不发（${allowance.reason}）`);
                 }
+            },
+            stickers: (turn, ctx) => {
+                if (!ctx.stickers || turn.thinking) return;
+                const { facts, history: chat } = turn;
+                const allowance = imageStickerAllowance(chat, facts.intent, Boolean(turn.woken), facts.crisis?.level);
+                const allowed = allowance.allowed && !facts.photo;
+                if (allowed) facts.stickersAllowed = true;
+                const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
+                // 没有明确反应的轮次也抽一抽（ADR 0132）：她拿不到小黄脸以后，表情包得顶上；抽签的种子和有反应的那条路分开
+                const drawn = allowed && (stickerCued(saidNow)
+                    ? stickerTurn(chat, ctx.stickers.chance ?? STICKER_TURN_CHANCE)
+                    : Boolean(ctx.stickers.uncued) && saidNow.trim().length > 0 && stickerTurn(chat, ctx.stickers.uncued!, 'sticker uncued'));
+                // 这一轮只发表情、不写文字（ADR 0099）：清理时模型多写了文字就去掉，只留那一行表情
+                const only = drawn && stickerOnlyTurn(chat, ctx.stickers.onlyChance ?? 0);
+                if (only) facts.stickerOnly = true;
+                if (drawn) {
+                    facts.stickerDraw = { text: saidNow, ...(only ? { only: true } : {}) };
+                    ctx.log(only ? '图片表情：这一轮抽到只发表情、不写文字' : '图片表情：这一轮抽到要发一个');
+                }
+                if (!allowed) ctx.log(`图片表情：这轮不用（${allowance.reason}）`);
             },
         },
         cleanAt: {

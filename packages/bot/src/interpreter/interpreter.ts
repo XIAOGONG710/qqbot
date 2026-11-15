@@ -116,6 +116,8 @@ export interface TurnFacts {
     intent?: string;
     /** 记忆线索（ADR 0017）：他问到过去、提到节日的那个词；开了长期记忆、不是主动找他才有 */
     cue?: string;
+    /** 这一轮抽到要发图片表情（ADR 0132）：他这一轮说的话（收藏库按它挑）、是不是只发表情；流水线拿它取清单。modules/media-offers.ts 的 decideAt.stickers 写 */
+    stickerDraw?: { text: string; only?: boolean };
     /** 这一轮只发图片表情、不写文字（ADR 0132） */
     stickerOnly?: boolean;
     /** 这一轮发照片（ADR 0109 / 0128）：哪一种 */
@@ -309,11 +311,13 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['photo', 'intent'] as const;
+export const DECIDE_STAGES = ['photo', 'intent', 'stickers'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
 export interface DecideCtx {
+    /** 这个联系人有图片表情收藏库（ADR 0063）时才有：这一轮抽不抽的几个比例（不写用默认；uncued / onlyChance 不写就是不抽） */
+    stickers?: { chance?: number; uncued?: number; onlyChance?: number };
     /** 照片货架（ADR 0109）：有没有这一类、列出来找审核过的那一张；没开、不是男朋友档时没有 */
     photos?: Pick<PhotoShelf, 'has' | 'list'>;
     /** 「现在的照片」的解析（ADR 0240）：只有已审核、和此刻匹配的才能发 */

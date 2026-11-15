@@ -1089,3 +1089,13 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   流水线在原位调 `decideStage('intent')`，`intent`、`grievanceActive`、`sulkNow` 从 facts 读回（闭包变量 `sulkNow` 还在，出口检查的上下文迁出时再去掉）。
 - 验证：基线 41/41 逐字不变；变异检验——被打断也带意图，`interruptions` 报不一致；小别扭不写 `grievanceActive`，`closeness` 报不一致。`decide-stage.test.ts` 加 4 项（共 14），
   所有直接用联系人流水线或涉及意图 / 小别扭的测试共 830 项通过；类型检查通过。
+
+### 判断那一串，第 3 步：图片表情这一轮用不用（2026-11-16）
+
+- 是什么：ADR 0063 / 0099 / 0132——有收藏库、不是只想一想时，按聊天记录、最终的意图、被吵醒、危机定这一轮允不允许发图片表情（发照片就不发表情）；允许时按哈希抽签
+  （他这句有明确反应按一个比例，没有的按另一个、没给就不抽），抽到再抽是不是只发表情。
+- `DECIDE_STAGES` 加 `stickers`，挂在 `modules/media-offers.ts` 的 `decideAt.stickers`。原来「允许」在连续性那次 await 之前算、抽签在之后算；两样都只看这一轮的聊天记录快照和意图（纯函数），
+  合成一步放在 await 之后原来抽签的位置，日志的先后不变。三个比例经 `DecideCtx.stickers` 给（有收藏库才有）。
+- 新 fact `stickerDraw`（抽到时他这一轮说的话、是不是只发表情；流水线拿它向收藏库取清单，清单的取仍在原位）；`stickersAllowed`、`stickerOnly` 改由模块写。闭包变量 `stickerContext` 去掉。
+- 照搬的一处怪：允许、但被这一轮的照片挡住时，日志是「这轮不用（undefined）」——原来就这样，行为不变的提交不改。
+- 验证：基线 41/41 逐字不变；变异检验——流水线不调 `decideStage('stickers')`，`media` 报不一致。`decide-stage.test.ts` 加 7 项（共 21），所有直接用联系人流水线或涉及图片表情的测试共 954 项通过；类型检查通过。

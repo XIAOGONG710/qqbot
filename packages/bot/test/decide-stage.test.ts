@@ -23,8 +23,8 @@ const ctxOf = (have: readonly string[], extra: Partial<DecideCtx> = {}) => {
 const decide = (turn: Turn, ctx: DecideCtx) => { decideStage([mediaOffersModule()], 'photo', turn, ctx); return turn.facts; };
 
 describe('判断顺序表（ADR 0336「判断那一串」）', () => {
-    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：照片 → 最终的意图', () => {
-        assert.deepEqual(DECIDE_STAGES.slice(0, 2), ['photo', 'intent']);
+    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：照片 → 最终的意图 → 图片表情', () => {
+        assert.deepEqual(DECIDE_STAGES.slice(0, 3), ['photo', 'intent', 'stickers']);
     });
 
     test('一个位置上按注册顺序跑，拿到同一轮和流水线给的东西；只挂 decideAt 的模块不被解释器筛掉', () => {
@@ -165,5 +165,61 @@ describe('最终的意图和小别扭是否生效（modules/intent.ts 的 decide
         assert.equal(covered.facts.sulk, undefined);
         const interrupted = run({ grievance: sulk, baseIntent: describeGrievance(sulk), interruption: { text: '猫打翻了水杯', minutesAgo: 1 } });
         assert.equal(interrupted.facts.grievanceActive, undefined, '被打断的这一轮不带意图，小别扭也不算生效');
+    });
+});
+
+describe('图片表情这一轮用不用（modules/media-offers.ts 的 decideAt.stickers）', () => {
+    const run = (text: string, facts: Turn['facts'] = {}, odds: NonNullable<DecideCtx['stickers']> | null = { chance: 1 }, extra: Partial<Turn> = {}) => {
+        const { ctx, lines } = ctxOf([], odds ? { stickers: odds } : {});
+        const turn = turnOf(text, facts, extra);
+        decideStage([mediaOffersModule()], 'stickers', turn, ctx);
+        return { facts: turn.facts, lines };
+    };
+
+    test('没有收藏库、只想一想：不看，也不记日志', () => {
+        assert.deepEqual(run('哈哈哈哈笑死', {}, null), { facts: {}, lines: [] });
+        assert.deepEqual(run('哈哈哈哈笑死', {}, { chance: 1 }, { thinking: true }), { facts: {}, lines: [] });
+    });
+
+    test('他这句有明确反应、抽到：允许、带上他这一轮说的话，记一行日志', () => {
+        const out = run('哈哈哈哈笑死');
+        assert.deepEqual(out.facts, { stickersAllowed: true, stickerDraw: { text: '哈哈哈哈笑死' } });
+        assert.deepEqual(out.lines, ['图片表情：这一轮抽到要发一个']);
+    });
+
+    test('没抽到：只写允许（模型自己写的认识的编号清理时可以留）', () => {
+        assert.deepEqual(run('哈哈哈哈笑死', {}, { chance: 0 }), { facts: { stickersAllowed: true }, lines: [] });
+    });
+
+    test('没有明确反应的轮次：给了 uncued 才抽', () => {
+        assert.equal(run('今天去图书馆了', {}, { chance: 1 }).facts.stickerDraw, undefined);
+        assert.deepEqual(run('今天去图书馆了', {}, { chance: 1, uncued: 1 }).facts.stickerDraw, { text: '今天去图书馆了' });
+    });
+
+    test('抽到之后再抽只发表情：写 stickerOnly，日志换一句', () => {
+        const out = run('哈哈哈哈笑死', {}, { chance: 1, onlyChance: 1 });
+        assert.deepEqual(out.facts, { stickersAllowed: true, stickerOnly: true, stickerDraw: { text: '哈哈哈哈笑死', only: true } });
+        assert.deepEqual(out.lines, ['图片表情：这一轮抽到只发表情、不写文字']);
+    });
+
+    test('不允许：危机、被吵醒、他问了直接问题、意图要认真接——不抽，记原因', () => {
+        const blocked = (out: ReturnType<typeof run>, reason: string) => {
+            assert.equal(out.facts.stickersAllowed, undefined);
+            assert.equal(out.facts.stickerDraw, undefined);
+            assert.deepEqual(out.lines, [`图片表情：这轮不用（${reason}）`]);
+        };
+        blocked(run('哈哈哈哈笑死', { crisis: { level: 'high' } as NonNullable<Turn['facts']['crisis']> }), '危机辅助响应');
+        blocked(run('哈哈哈哈笑死', {}, { chance: 1 }, { woken: true }), '刚被消息吵醒');
+        blocked(run('你今天怎么没来？'), '他这一轮问了直接问题');
+        const care = run('哈哈哈哈笑死', { intent: '[这一轮你想：先接住他此刻的情绪]' });
+        assert.equal(care.facts.stickersAllowed, undefined);
+        assert.equal(care.lines.length, 1);
+    });
+
+    test('这一轮发照片就不发表情（允许也不算）', () => {
+        const out = run('哈哈哈哈笑死', { photo: 'cat' });
+        assert.equal(out.facts.stickersAllowed, undefined);
+        assert.equal(out.facts.stickerDraw, undefined);
+        assert.deepEqual(out.lines, ['图片表情：这轮不用（undefined）'], '原来就是这句（允许但被照片挡住时没有原因），照搬');
     });
 });
