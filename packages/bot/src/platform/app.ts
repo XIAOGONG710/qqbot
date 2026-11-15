@@ -2195,7 +2195,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
             ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => { lastFeelings = report; writeFeelingsExport(soulDir(), report); } } : {}),
             ...(feelingReviewNow && contact.tier === 'boyfriend' ? { feelingReview: feelingReviewNow } : {}),
-            ...(config.texture ? { texture: true } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
             ...(config.memoryFeelings && config.herFeelings ? { memoryFeelings: true } : {}),
             ...(config.realNights ? { realNights: true } : {}),

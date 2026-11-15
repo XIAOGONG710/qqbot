@@ -30,8 +30,6 @@ import type { SilenceInfo } from '.././social/silence.ts';
 import { describeMood, moodAt, readingActivities } from '.././life/her-days.ts';
 import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
 import { grievanceNow, ignoredNow } from '.././emotion/grievance.ts';
-import { needsCareText } from '.././language/intent.ts';
-import { TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import { asksToExplain, ENGAGED_INTENT, ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
@@ -252,8 +250,6 @@ export interface ContactPipelineOptions {
     groupRecent?: () => string | undefined;
     /** 群里的遭遇（2026-11-14）：有人夸她、冲她发火、说想不开——作为额外评估进心境，要 herFeelings 开着 */
     groupMood?: () => readonly Appraisal[];
-    /** 说话的质感（ADR 0131）：发出去之前在气泡上加真人常有的小黄脸 / 「～」 / 问号 / 叠字……；危机和他难过的回合不加 */
-    texture?: boolean;
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
     moments?: () => readonly Moment[];
     /** 她自己的追求（ADR 0104，配置 pursuits）：内置两条（别挂科、用新相机拍出满意的东西）加作者在 pursuits.json 里改的 / 加的；每次生成现取 */
@@ -304,7 +300,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     /** 判断那一串（ADR 0336，DECIDE_STAGES）交给模块的东西：照片货架和「现在的照片」的解析 */
     const decideCtx: DecideCtx = {
         ...(options.stickers ? { stickers: { ...(options.stickerChance !== undefined ? { chance: options.stickerChance } : {}), ...(options.stickerUncued ? { uncued: options.stickerUncued } : {}), ...(options.stickerOnlyChance ? { onlyChance: options.stickerOnlyChance } : {}) } } : {}),
-        ...(options.photos ? { photos: options.photos } : {}), ...(options.currentAiPhoto ? { currentAiPhoto: options.currentAiPhoto } : {}), log: message => log(message) };
+        ...(options.photos ? { photos: options.photos } : {}),
+        history: () => options.history.load(contact.qq), ...(options.currentAiPhoto ? { currentAiPhoto: options.currentAiPhoto } : {}), log: message => log(message) };
     const shelves: CleanCtx = { ...(options.stickers ? { stickers: options.stickers } : {}), ...(options.photos ? { photos: options.photos } : {}) };
     /**
      * 清理生成的一稿（ADR 0336「生成之后那一段」第 8、9 步）：先摘设备指令（ADR 0148：摘出来放进 Draft.devices，字里不留；没开设备控制也一律摘掉令牌），
@@ -709,23 +706,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 「/亲热」（ADR 0170）：他刚让她黏一点，接下来几条回复里放一行；每生成一条取一次
             const intimateNow = !initiate && !crisisNow ? options.intimacyLine?.() : undefined;
             if (intimateNow) log('亲热：他刚发过 /亲热，这一轮提示词里让她黏一点');
-            // 质感（ADR 0131）发出去之前用的上下文：只对男朋友档；他难过 / 生病 / 小别扭 / 危机的回合不加。在这里原位算（读聊天记录、小别扭是否生效），
-            // 写进 turn.facts.texture，发出去之前由质感的模块（modules/decorate.ts）用
-            const textureNow = options.texture && contact.tier === 'boyfriend' && !thinking
-                ? {
-                    said: saidNow,
-                    serious: Boolean(crisisNow || grievanceActive || sulkNow || needsCareText(saidNow) || (baseIntent && /先接住他此刻的情绪/.test(baseIntent))),
-                    recentFaces: faceContext(options.history.load(contact.qq), contact.tier).recent.filter(reply => /\[[\p{Script=Han}A-Za-z0-9]{1,6}\]/u.test(reply)).length,
-                    recentTildes: faceContext(options.history.load(contact.qq), contact.tier).recent.slice(-TEXTURE_TILDE_WINDOW).filter(reply => /[～~]\s*$/m.test(reply)).length,
-                }
-                : undefined;
+            // 质感（ADR 0131）发出去之前用的上下文是解释器的模块（modules/decorate.ts 的 decideAt.texture，开了 texture 才挂）：写进 turn.facts.texture
+            decideStage(options.turnModules ?? [], 'texture', turn, decideCtx);
             // 长短不一（ADR 0024）和形状（ADR 0091）是解释器的模块（modules/length.ts、modules/shape.ts）；它们要的前面那几样在这里写进 turn.facts
             Object.assign(turn.facts, {
                 ...(cue ? { cue } : {}),
                 ...(deliberateNow ? { deliberate: true } : {}), ...(routedHint ? { routedHint } : {}), ...(low ? { low: true } : {}), agendaTopics,
                 // 「/亲热」那一行在上面原位取（每取一次扣一条、写文件），由解释器的模块（modules/intent-line.ts）放
                 ...(intimateNow ? { intimateLine: intimateNow } : {}),
-                ...(textureNow ? { texture: textureNow } : {}),
             });
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };

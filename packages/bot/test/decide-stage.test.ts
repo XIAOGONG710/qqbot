@@ -16,15 +16,15 @@ const ctxOf = (have: readonly string[], extra: Partial<DecideCtx> = {}) => {
     const asked: unknown[][] = [];
     const ctx: DecideCtx = {
         photos: { has: (kind, dish) => { asked.push([kind, dish]); return have.includes(dish ? `${kind}:${dish}` : kind); }, list: () => [] },
-        log: line => lines.push(line), ...extra,
+        history: () => [], log: line => lines.push(line), ...extra,
     };
     return { ctx, lines, asked };
 };
 const decide = (turn: Turn, ctx: DecideCtx) => { decideStage([mediaOffersModule()], 'photo', turn, ctx); return turn.facts; };
 
 describe('判断顺序表（ADR 0336「判断那一串」）', () => {
-    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：照片 → 最终的意图 → 图片表情', () => {
-        assert.deepEqual(DECIDE_STAGES.slice(0, 3), ['photo', 'intent', 'stickers']);
+    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：照片 → 最终的意图 → 图片表情 → 质感的上下文', () => {
+        assert.deepEqual([...DECIDE_STAGES], ['photo', 'intent', 'stickers', 'texture']);
     });
 
     test('一个位置上按注册顺序跑，拿到同一轮和流水线给的东西；只挂 decideAt 的模块不被解释器筛掉', () => {
@@ -75,7 +75,7 @@ describe('这一轮发不发照片（modules/media-offers.ts 的 decideAt.photo�
         none(turnOf(ask, { grievance: { stage: 'sulk' } as NonNullable<Turn['facts']['grievance']> }));
         none(turnOf(ask, { baseIntent: '[这一轮你想：先接住他此刻的情绪]' }));
         const bare = have();
-        none(turnOf(ask), { log: bare.ctx.log });
+        none(turnOf(ask), { history: () => [], log: bare.ctx.log });
         assert.deepEqual(bare.asked, [], '这些轮次连货架都不问');
     });
 
@@ -221,5 +221,37 @@ describe('图片表情这一轮用不用（modules/media-offers.ts 的 decideAt.
         assert.equal(out.facts.stickersAllowed, undefined);
         assert.equal(out.facts.stickerDraw, undefined);
         assert.deepEqual(out.lines, ['图片表情：这轮不用（undefined）'], '原来就是这句（允许但被照片挡住时没有原因），照搬');
+    });
+});
+
+describe('质感的上下文（modules/decorate.ts 的 decideAt.texture）', async () => {
+    const { textureModule } = await import('../src/modules/decorate.ts');
+    const reply = (content: string) => ({ role: 'assistant' as const, content, time: NOW.toISOString() });
+    const run = (text: string, facts: Turn['facts'] = {}, extra: Partial<Turn> = {}, stored: ReturnType<typeof reply>[] = []) => {
+        const { ctx } = ctxOf([], { history: () => stored });
+        const turn = turnOf(text, facts, extra);
+        decideStage([textureModule()], 'texture', turn, ctx);
+        return turn.facts.texture;
+    };
+
+    test('男朋友档、不是只想一想才有；带上他这一串说的话', () => {
+        assert.deepEqual(run('今天去图书馆了'), { said: '今天去图书馆了', serious: false, recentFaces: 0, recentTildes: 0 });
+        assert.equal(run('今天去图书馆了', {}, { contact: { qq: 2, name: '小周', tier: 'classmate' } }), undefined);
+        assert.equal(run('今天去图书馆了', {}, { thinking: true }), undefined);
+    });
+
+    test('认真的回合：危机、小别扭生效、他难过、意图是先接住他此刻的情绪', () => {
+        assert.equal(run('哈哈', { crisis: { level: 'high' } as NonNullable<Turn['facts']['crisis']> })!.serious, true);
+        assert.equal(run('哈哈', { grievanceActive: true })!.serious, true);
+        assert.equal(run('哈哈', { sulk: true })!.serious, true);
+        assert.equal(run('哈哈', { baseIntent: '[这一轮你想：先接住他此刻的情绪]' })!.serious, true);
+        assert.equal(run('今天被导师骂了，好难过')!.serious, true);
+        assert.equal(run('哈哈')!.serious, false);
+    });
+
+    test('她最近几次回复带了几次小黄脸、句尾「～」：从存下来的聊天记录里数（那一刻现读）', () => {
+        const out = run('哈哈', {}, {}, [reply('好呀[doge]'), reply('在的～'), reply('嗯嗯')]);
+        assert.equal(out!.recentFaces, 1);
+        assert.equal(out!.recentTildes, 1);
     });
 });

@@ -35,6 +35,7 @@ import type { DevelopmentSnapshot } from '../life/development.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
 import type { ReviewOptions } from '../language/exit-check.ts';
 import type { PickRules } from '../language/candidates.ts';
+import type { StoredMessage } from '../memory/history.ts';
 import type { TypoRecall } from '../language/expression.ts';
 import type { CurrentAiPhotoResult } from '../proactive/ai-photo-requests.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
@@ -168,7 +169,7 @@ export interface TurnFacts {
     /** 这一轮挑候选的规则（ADR 0041，modules/candidates.ts 在 contribute 时写）：他难过、说亲密话、收尾的轮次才有；联系人流水线生成时经 candidatePlan 问 */
     pick?: PickRules;
     /** 这一轮发出去之前加质感用的上下文（ADR 0131 / 0134）：他这一串说的话、是不是认真的回合、她最近几次回复里带了几次小黄脸 / 句尾「～」。
-     *  联系人流水线在拼段落时原位算好后写（开了 texture、男朋友档、不是只想一想才有）；modules/decorate.ts 的质感模块修饰时读 */
+     *  modules/decorate.ts 的质感模块在 decideAt.texture 写（开了 texture、男朋友档、不是只想一想才有），修饰时读 */
     texture?: { said: string; serious: boolean; recentFaces: number; recentTildes: number };
 }
 
@@ -311,13 +312,15 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['photo', 'intent', 'stickers'] as const;
+export const DECIDE_STAGES = ['photo', 'intent', 'stickers', 'texture'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
 export interface DecideCtx {
     /** 这个联系人有图片表情收藏库（ADR 0063）时才有：这一轮抽不抽的几个比例（不写用默认；uncued / onlyChance 不写就是不抽） */
     stickers?: { chance?: number; uncued?: number; onlyChance?: number };
+    /** 这个联系人存下来的聊天记录（判断的那一刻现读：她最近几次回复带了几次小黄脸之类） */
+    history: () => readonly StoredMessage[];
     /** 照片货架（ADR 0109）：有没有这一类、列出来找审核过的那一张；没开、不是男朋友档时没有 */
     photos?: Pick<PhotoShelf, 'has' | 'list'>;
     /** 「现在的照片」的解析（ADR 0240）：只有已审核、和此刻匹配的才能发 */

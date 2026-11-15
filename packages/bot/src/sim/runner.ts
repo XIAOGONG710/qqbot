@@ -551,7 +551,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ...(scenario.shortReplies ? { shortReplies: true } : {}),
         // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
         ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
-        ...(scenario.texture ? { texture: true } : {}),
         ...(scenario.quoteReply ? { quoteReply: true } : {}),
         // 做判断的模块（ADR 0336），顺序同 App：意图阶梯总在最前；小梗（ADR 0114）直接给场景里写好的梗，不抽
         turnModules: [
