@@ -19,6 +19,7 @@
 // 回复里的 <<记住>> / <<日记>>、危机回合的重写和固定兜底；<<私密>> 要起 PowerShell 写灵魂目录，不在基线里）。
 // 图片表情和照片（media：真的收藏库和照片货架；清单进提示词、发图、只发表情、聊天记录里的写法、各种不发的轮次和摘掉编号；同学档）、
 // 挑候选（candidates：难过 / 亲密话 / 收尾三种轮次各生成三个按规则挑，清理之后再打分；别的轮次只生成一个；同学档）。
+// 心境的另两个来由（feelings-sources：她的追求做完一步、昨天她那边的事——今天的小事早就开着，所以「前一天」有东西）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：真的 Hindsight 那一侧（抽取、整合、派生修复、对账、遗忘）、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、她自己去看视频、
 // 照片货架自己去网上找、吃的照片、主动发的猫片、收藏他发来的表情和 QQ 收藏同步、看图与语音、网页查询、DSH 与手机伴侣、真的设备（取件中心、手机推送）、QQ 账号控制面与好友申请、说说与空间、
@@ -1480,4 +1481,33 @@ export const SCENARIOS: readonly Scenario[] = [
             },
         } satisfies Scenario;
     })(),
+    {
+        name: 'feelings-sources',
+        about: '心境的另两个来由（ADR 0102 / 0104 / 0106，ADR 0336「判断那一串」心境那一段迁出之前）：今天的小事从两周前就开着（预置 everyday-from），所以昨天她那边有带感受的事'
+            + '（昨晚出分的小测：开心）；作者的追求文件里有一条自己加的追求，最后一步六小时前做完（开心）。两件单独都不到「明显」，加起来才到：早上他来说话，心境那一行写挺开心、'
+            + '来由是分量大的那件（追求那一步）；缺了哪一件这一行都没有。同学那一轮不放',
+        start: '2026-12-03T08:55:00+08:00',
+        contacts: [boyfriend, classmate],
+        config: { ...RICH, proactive: 'off' },
+        seed: (dataDir, start) => {
+            // 今天的小事（everydayLife）早就开着：不预置的话从「现在」算起，前一天什么都没有
+            mkdirSync(join(dataDir, 'world'), { recursive: true });
+            writeFileSync(join(dataDir, 'world', 'everyday-from.json'), JSON.stringify({ version: 1, from: '2026-11-20' }));
+            // 作者自己加的一条追求：两步都做完了，最后一步六小时前（单独一件到早上已经不到「明显」）
+            writeFileSync(join(dataDir, 'pursuits.json'), JSON.stringify({ pursuits: [{
+                id: 'zine', title: '做一本自己的摄影小册子', why: '想把这学期拍的东西留下来', status: 'active',
+                steps: [
+                    { text: '挑出二十张照片', doneAt: new Date(start - 3 * 86_400_000).toISOString() },
+                    { text: '排好版送去打印', doneAt: new Date(start - 6 * 3_600_000).toISOString() },
+                ],
+            }] }));
+        },
+        reply: () => rotating(['嗯嗯', '是呀', '好', '哈哈']),
+        script: async d => {
+            await d.at('2026-12-03T09:05:00+08:00'); d.say(boyfriend.qq, '早呀，起了没');
+            await d.at('2026-12-03T09:12:00+08:00'); d.say(boyfriend.qq, '今天感觉你心情不错');
+            await d.at('2026-12-03T09:20:00+08:00'); d.say(classmate.qq, '今天的课在哪个教室');
+            await d.at('2026-12-03T09:40:00+08:00');
+        },
+    },
 ];
