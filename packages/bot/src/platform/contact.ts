@@ -192,8 +192,6 @@ export interface ContactPipelineOptions {
     realNights?: boolean;
     /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
     dreams?: () => { appraisals: Appraisal[]; line?: string };
-    /** 她想查才查（<<查：…>>）：拿到想起来的记忆，再让她重写一次 */
-    pullRecall?: (query: string) => Promise<string | undefined>;
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
     stickerChance?: number;
     /** 抽到发表情的轮次里只发表情不写文字的概率（不写 = 0，不开；app.ts 在 shapeFeel 开着时给 STICKER_ONLY_SHARE；模拟器场景可以调来测，ADR 0099） */
@@ -947,17 +945,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 deviceNow = undefined;
                 return reviewed;
             }
-            // 她想查才查：看到她写 <<查：…>> 才去查，查到就带着结果重写一次；标记不发出去
-            const pull = /<<查[：:]\s*([\s\S]*?)>>/.exec(reviewed);
-            if (pull) {
-                const query = pull[1]!.trim();
-                const recalled = query && options.pullRecall ? await options.pullRecall(query).catch(() => undefined) : undefined;
-                if (recalled) {
-                    log(`她主动查记忆：${query}（${countLines(recalled)} 条）`);
-                    reviewed = await regenerate(`（你刚才想起来了：\n${recalled}\n用这些回答他，不要再写 <<查>> 标记。）`);
-                }
-                reviewed = reviewed.replace(/<<查[：:][\s\S]*?>>/g, '').trim();
-            }
+            // 她想查才查（<<查：…>>）是解释器的模块（modules/review-pull.ts），挂在 pull 位置：查到就带着结果重写一次，查没查到都把标记摘掉
             let atPull = at('pull', reviewed);
             if (atPull instanceof Promise) atPull = await atPull;
             if (atPull.stop) return atPull.text;

@@ -941,3 +941,12 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 由子代理起草。`src/modules/review-unfinished.ts`：`reviewUnfinishedModule()`，`finishReply` 原样调，重写 / 采用 / 日志用 `ReviewCtx` 的（和原来传给它的是同一组函数）。原来就 await，多出的一两个微任务落在本来异步的路径上，基线逐字不变。
 - App 和模拟器跟着 `speechCheck` 挂；流水线的 `speechCheck` 选项留着（出口检查的说话上下文还用它）。`language-review.test.ts` 开了 `speechCheck` 的用例挂上模块。
 - 验证：`review` 逐字不变；变异检验——App 不挂：`review` 报不一致、`app.test.ts` 话说到一半的用例红；`speechCheck` 关着也挂：`app.test.ts` 关着那条断言红。`review-unfinished-module.test.ts` 7 项通过。
+
+### 生成之后那一段，第 5 步：她想查才查（2026-11-15）
+
+- 是什么：她回复里写 `<<查：…>>` 时，按那个词查一次长期记忆，查到就带着结果重写一次；查没查到都把标记摘掉，不发出去。挂在 `pull` 位置。危机回合走不到。
+- 由子代理起草。方案原想并进 self-memory 模块，子代理指出不能并：self-memory 只在 `selfDirectedMemory` 开着时才挂，而摘标记从来不看这个开关，并进去之后关掉开关时 `<<查>>` 就会被发出去。所以单独一个模块、**总是挂**。
+- `src/modules/review-pull.ts`：`reviewPullModule({ recall })`。查记忆是模块选项（App 在开了长期记忆和 `selfDirectedMemory` 时给 `memory.recallPull`；`memory` 在解释器之后才建，查的时候现取），不放在 `ReviewCtx` 上——
+  按联系人变的只有 contact，`turn.contact` 就是它。流水线的 `pullRecall` 选项删掉。没写标记、没有查记忆、关键词为空时同步返回（同原来不 await 的几种情况）；查到之后的重写不算「采用重写」（同原来，设备指令仍是原稿的）。
+- 模拟器只摘标记（原来就没有查记忆）。
+- 验证：`review` 逐字不变；变异检验——不给查记忆、模块什么都不做，`review` 都报不一致。`review-pull-module.test.ts` 11 项（原来跳过的流水线用例接线后打开）通过。

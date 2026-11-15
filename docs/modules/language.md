@@ -95,6 +95,7 @@
 - `modules/meme-dict.ts`
 - `modules/review-finalize.ts`
 - `modules/review-unfinished.ts`
+- `modules/review-pull.ts`
 - `st/`
 
 ## 开关
