@@ -6,7 +6,7 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
-import { assessTurn, candidatePlan, cleanStages, contributeTurn, perceiveTurn, reviewStage, type CleanCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
+import { assessTurn, candidatePlan, cleanStages, contributeTurn, decorateStages, perceiveTurn, reviewStage, type CleanCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
 import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
@@ -31,9 +31,9 @@ import { describeMood, moodAt, readingActivities } from '.././life/her-days.ts';
 import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
 import { describeGrievance, grievanceNow, ignoredNow } from '.././emotion/grievance.ts';
 import { needsCareText } from '.././language/intent.ts';
-import { applyTexture, TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
+import { TEXTURE_TILDE_WINDOW } from '.././language/texture.ts';
 import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
-import { asksToExplain, ENGAGED_INTENT, maybeTypo, ODD_BODY_WORDS, RECALL_SHARE, STILTED_WORDS } from '.././language/expression.ts';
+import { asksToExplain, ENGAGED_INTENT, ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
 import { DELIBERATE_MAX_BUBBLES, deliberateTurn, type ShapePlan } from '.././language/shape.ts';
 import { describeWorld, lastMealDish, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
@@ -340,8 +340,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let deliberateNow = false;
     /** 这一轮是语义路由（ADR 0202）放进深思的：按分类多放的一小句提示（沉重的事 / 质疑 / 问他们俩），不是语义路由放进来的就没有 */
     let routedHint: string | undefined;
-    /** 这一轮发出去之前加质感用的上下文（ADR 0131）：他这一串说的话、这一轮是不是认真的回合、她最近几次回复里带了几次小黄脸 */
-    let textureNow: { said: string; serious: boolean; recentFaces: number; recentTildes: number } | undefined;
     /** 这一轮第一条要引用他的哪一句（ADR 0136，配置 quoteReply）：buildPrompt 按他没回的那一串定，紧跟着发送时现取 */
     let quoteNow: QuotePlan | undefined;
     /** 这一轮的 turn（拼提示词时建的）：生成之后审稿的模块（ADR 0336 reviewAt）要读它 */
@@ -759,8 +757,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 「/亲热」（ADR 0170）：他刚让她黏一点，接下来几条回复里放一行；每生成一条取一次
             const intimateNow = !initiate && !crisisNow ? options.intimacyLine?.() : undefined;
             if (intimateNow) log('亲热：他刚发过 /亲热，这一轮提示词里让她黏一点');
-            // 质感（ADR 0131）发出去之前用的上下文：只对男朋友档；他难过 / 生病 / 小别扭 / 危机的回合不加
-            textureNow = options.texture && contact.tier === 'boyfriend' && !thinking
+            // 质感（ADR 0131）发出去之前用的上下文：只对男朋友档；他难过 / 生病 / 小别扭 / 危机的回合不加。在这里原位算（读聊天记录、小别扭是否生效），
+            // 写进 turn.facts.texture，发出去之前由质感的模块（modules/decorate.ts）用
+            const textureNow = options.texture && contact.tier === 'boyfriend' && !thinking
                 ? {
                     said: saidNow,
                     serious: Boolean(crisisNow || grievanceActive || sulkNow || needsCareText(saidNow) || (baseIntent && /先接住他此刻的情绪/.test(baseIntent))),
@@ -776,6 +775,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(intimateNow ? { intimateLine: intimateNow } : {}),
                 // 清理时（modules/media-offers.ts 的 cleanAt）按这几样留不留表情 / 照片编号
                 ...(stickersAllowed ? { stickersAllowed: true } : {}), ...(photoNow && photoDishNow ? { photoDish: photoDishNow } : {}),
+                ...(textureNow ? { texture: textureNow } : {}),
             });
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
@@ -863,22 +863,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             chosen = undefined;
         },
         // 出口检查：重写时在后处理过的提示词末尾加一条说明，再按同样的方式后处理一次
-        // 打错字再改口（ADR 0024）：拆好条之后、发出去之前。种子只看是谁、说了什么，不看时间：同一句话结果固定
-        // （带时间时，假模型的测试里「哟，还知道回来啊」有时被打成「知到」，测试时过时不过）
-        decorate: (parts, maxBubbles) => {
-            // 危机回合不打错字（ADR 0068）
-            if (crisisNow) return parts;
-            // 质感（ADR 0131）：先加质感，再打错字（打错字认的是汉字，不碰小黄脸 / 标点）
-            let shaped = parts;
-            if (options.texture && textureNow) {
-                const textured = applyTexture(parts, { seed: `${contact.qq} ${parts.join('|')}`, said: textureNow.said, serious: textureNow.serious, recentFaces: textureNow.recentFaces, recentTildes: textureNow.recentTildes, maxBubbles });
-                shaped = textured.parts;
-                if (textured.notes.length) log(`质感：${textured.notes.join('；')}`);
-            }
-            const typo = maybeTypo(shaped, `${contact.qq} ${parts.join('|')}`, maxBubbles, options.recallOwn ? RECALL_SHARE : 0);
-            if (typo.note) log(`打错字：${typo.note}`);
-            return typo.recall ? { parts: typo.parts, recall: typo.recall } : typo.parts;
-        },
+        // 发出去之前的修饰（ADR 0336「生成之后那一段」第 11 步）：拆好条之后按修饰顺序表交给挂了 decorateAt 的模块（modules/decorate.ts：先加质感、再打错字，危机回合都不做）
+        decorate: (parts, maxBubbles) => (turnNow ? decorateStages(options.turnModules ?? [], parts, turnNow, { original: parts, maxBubbles, canRecall: Boolean(options.recallOwn), log }) : parts),
         review: async (reply, messages, reviewContext) => {
             // 审稿从选中的那一稿开始：模块只改字；重写出来的那一稿先放在一边，模块说采用了（accept）才换成选中的，危机回合（dropDevices）选中的不带设备指令
             let rewrite: Draft | undefined;

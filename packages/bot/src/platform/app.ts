@@ -59,6 +59,7 @@ import { feelingsModule } from '../modules/feelings.ts';
 import { timeNotesModule } from '../modules/time-notes.ts';
 import { mediaOffersModule } from '../modules/media-offers.ts';
 import { candidatesModule } from '../modules/candidates.ts';
+import { textureModule, typoModule } from '../modules/decorate.ts';
 import { intentLineModule } from '../modules/intent-line.ts';
 import { memeDictModule } from '../modules/meme-dict.ts';
 import { humanStateModule } from '../modules/human-state.ts';
@@ -1149,6 +1150,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         mediaOffersModule(),
         // 挑候选（ADR 0041，配置 candidates 大于 1 才挂）：他难过、说亲密话、收尾的轮次同一份提示词生成几个、按规则挑一个；说话的毛病跟着 speechCheck / tailCap
         ...(config.candidates > 1 ? [candidatesModule({ count: config.candidates, speechCheck: config.speechCheck, tailCap: config.tailCap, history: qq => history.load(qq) })] : []),
+        // 发出去之前的修饰（ADR 0336 第 11 步）：质感（ADR 0131，配置 texture）跟着开关挂，上下文由联系人流水线写进 facts；打错字再改口（ADR 0024 / 0086）总是挂
+        ...(config.texture ? [textureModule()] : []),
+        typoModule(),
         // 意图行（深思时去掉「怎么答」那一句）和「/亲热」那一行
         intentLineModule(),
         // 真人数值（ADR 0222）和人格成长层（ADR 0251）：联系人流水线开头算好写进 turn.facts（读带结算的世界账，不挪过 await），这里只放两行；没有开关（没有需要锚点 / 世界账时 facts 里没有）

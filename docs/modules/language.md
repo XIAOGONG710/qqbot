@@ -17,6 +17,7 @@
 - `language/unfinished.ts`
 - `language/candidates.ts`
 - `modules/candidates.ts`
+- `modules/decorate.ts`
 - `language/humanness.ts`
 - `language/rough-edges.ts`
 - `language/reply.ts`

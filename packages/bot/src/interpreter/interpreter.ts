@@ -35,6 +35,7 @@ import type { DevelopmentSnapshot } from '../life/development.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
 import type { ReviewOptions } from '../language/exit-check.ts';
 import type { PickRules } from '../language/candidates.ts';
+import type { TypoRecall } from '../language/expression.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -157,6 +158,9 @@ export interface TurnFacts {
     photoDish?: string;
     /** 这一轮挑候选的规则（ADR 0041，modules/candidates.ts 在 contribute 时写）：他难过、说亲密话、收尾的轮次才有；联系人流水线生成时经 candidatePlan 问 */
     pick?: PickRules;
+    /** 这一轮发出去之前加质感用的上下文（ADR 0131 / 0134）：他这一串说的话、是不是认真的回合、她最近几次回复里带了几次小黄脸 / 句尾「～」。
+     *  联系人流水线在拼段落时原位算好后写（开了 texture、男朋友档、不是只想一想才有）；modules/decorate.ts 的质感模块修饰时读 */
+    texture?: { said: string; serious: boolean; recentFaces: number; recentTildes: number };
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */
@@ -198,6 +202,11 @@ export interface Module {
      * 返回改过的稿子；要这一轮到此为止（事实检查删光了、危机回合）就返回 { text, stop: true }
      */
     reviewAt?: Partial<Record<ReviewStage, (text: string, turn: Turn, ctx: ReviewCtx) => Maybe<string | ReviewVerdict>>>;
+    /**
+     * 修饰（ADR 0336「生成之后那一段」第 11 步）：审稿完、拆好条之后、发出去之前，挂在修饰顺序表（DECORATE_STAGES）的某几个位置，同步、几条气泡进几条气泡出。
+     * 要带出「撤回改口」的打算（打错字，ADR 0086）就返回 { parts, recall }
+     */
+    decorateAt?: Partial<Record<DecorateStage, (parts: string[], turn: Turn, ctx: DecorateCtx) => string[] | Decorated>>;
     /** 定时要做的事：解释器在 startSchedules 时经执行器开计时器，stop 时关 */
     schedules?: readonly { every: number; run: () => void }[];
     /** 停下：拒绝新工作；返回等已派发的活收尾的 promise（没有就不返回） */
@@ -322,6 +331,46 @@ export function cleanStages(modules: readonly Module[], text: string, turn: Turn
 }
 
 /**
+ * 修饰的顺序（ADR 0336「生成之后那一段」第 11 步）：同 slots.ts / REVIEW_STAGES / CLEAN_STAGES，先后由这张表定。照搬迁移前联系人流水线里手写的顺序：
+ * 先加质感（ADR 0131），再打错字（ADR 0024；打错字认的是汉字，不碰小黄脸 / 标点）
+ */
+export const DECORATE_STAGES = ['texture', 'typo'] as const;
+export type DecorateStage = (typeof DECORATE_STAGES)[number];
+
+/** 修饰时联系人流水线给的东西 */
+export interface DecorateCtx {
+    /** 拆好条、还没修饰的原稿：按哈希定的修饰拿它当种子（同一句话结果固定，不随前面的修饰变） */
+    original: readonly string[];
+    /** 这一轮最多几条气泡（加一条单独的反应、补「*对的词」要有空位） */
+    maxBubbles: number;
+    /** 这个联系人发出去的消息能不能撤回（配置 selfRecall、NapCat 支持）：打错字能不能改成撤回重发 */
+    canRecall: boolean;
+    log: (line: string) => void;
+}
+
+/** 修饰的结果带「撤回改口」的打算时（回复器照它撤回打错的那条、重发对的） */
+export interface Decorated { parts: string[]; recall?: TypoRecall }
+
+/** 按修饰顺序表修饰拆好的几条：每个位置上挂了 decorateAt 的模块按注册顺序跑；同步。没有模块挂时原样返回传进来的数组；有撤回改口的打算时返回 { parts, recall } */
+export function decorateStages(modules: readonly Module[], parts: string[], turn: Turn, ctx: DecorateCtx): string[] | Decorated {
+    let shaped = parts;
+    let recall: TypoRecall | undefined;
+    for (const stage of DECORATE_STAGES) {
+        for (const module of modules) {
+            const step = module.decorateAt?.[stage];
+            if (!step) continue;
+            const out = step(shaped, turn, ctx);
+            if (Array.isArray(out)) shaped = out;
+            else {
+                shaped = out.parts;
+                if (out.recall) recall = out.recall;
+            }
+        }
+    }
+    return recall ? { parts: shaped, recall } : shaped;
+}
+
+/**
  * 审稿的顺序（ADR 0336「生成之后那一段」）：同 slots.ts，先后由这张表定，不由模块决定。照搬迁移前联系人流水线里手写的顺序：
  * 逐条事实检查 → 出口检查（危机回合走危机检查、到此为止）→ <<查>> → 形状裁剪 → 话说到一半 → 删行收尾 → 最后再查一次事实
  */
@@ -397,7 +446,7 @@ export interface Interpreter {
     readonly modules: readonly Module[];
     /** 把事件交给每个有对应处理的模块（按注册顺序）；只有一个返回 promise 时原样返回它，几个时等全部 */
     dispatch(event: BotEvent): Maybe<void>;
-    /** 实现了 perceive / assess / contribute / review / reviewAt / cleanAt / candidates 的模块（一轮回复时用） */
+    /** 实现了 perceive / assess / contribute / review / reviewAt / cleanAt / candidates / decorateAt 的模块（一轮回复时用） */
     readonly turnModules: readonly Module[];
     /** 开各模块的定时任务（重复调用不重开） */
     startSchedules(): void;
@@ -416,7 +465,7 @@ export function createInterpreter(options: { modules: readonly Module[]; exec: P
         ids.add(module.id);
     }
     const modules = [...options.modules];
-    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review || module.reviewAt || module.cleanAt || module.candidates);
+    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review || module.reviewAt || module.cleanAt || module.candidates || module.decorateAt);
     const { exec } = options;
     let timers: ReturnType<Executor['every']>[] | undefined;
     return {

@@ -41,6 +41,7 @@ import { feelingsModule } from '../modules/feelings.ts';
 import { timeNotesModule } from '../modules/time-notes.ts';
 import { mediaOffersModule } from '../modules/media-offers.ts';
 import { candidatesModule } from '../modules/candidates.ts';
+import { textureModule, typoModule } from '../modules/decorate.ts';
 import { intentLineModule } from '../modules/intent-line.ts';
 import { memoryModule } from '../modules/memory.ts';
 import { deliberateModule } from '../modules/deliberate.ts';
@@ -635,6 +636,9 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             mediaOffersModule(),
             // 挑候选（ADR 0041），同 App：--candidates 或 bot 的配置大于 1 才挂（模拟器没有 tailCap）
             ...((options.candidates ?? 1) > 1 ? [candidatesModule({ count: options.candidates!, speechCheck: options.speechCheck ?? false, history: qq => history.load(qq) })] : []),
+            // 发出去之前的修饰，同 App：质感按场景，打错字总是挂
+            ...(scenario.texture ? [textureModule()] : []),
+            typoModule(),
             intentLineModule(),
             // 时间块，同 App
             timeBlockModule({ ...(scenario.lagTail ? { lagTail: true } : {}) }),

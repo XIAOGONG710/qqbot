@@ -1012,3 +1012,15 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   而那期间他要是又发了消息，这一轮本来就要重来。
 - 删掉的接线：联系人流水线的 `candidates` 选项、闭包变量 `pick`、算规则那一段和 import。App 在 `config.candidates > 1` 时挂，模拟器在 `--candidates` / 配置大于 1 时挂；`clean-stage.test.ts` 的挑候选用例改成挂模块。
 - 验证：基线 41/41 逐字不变（全量跑一遍约 21 分钟）；变异检验——App 不挂这个模块，`candidates` 场景报不一致。`candidates-module.test.ts` 6 项、`clean-stage.test.ts`、模块总表、`app.test.ts`、审稿和模拟器相关共 357 项通过；类型检查通过。这次没有跑 bot 全量。
+
+### 生成之后那一段，第 11 步：发出去之前的修饰（2026-11-16）
+
+- 是什么：审稿完、拆好条之后、发出去之前的两步——质感（ADR 0131 / 0134，配置 `texture`：问号、感叹、句尾「～」、小黄脸，按哈希不抽随机数）和打错字再改口（ADR 0024 / 0086，能撤回时按比例改成撤回重发）。危机回合都不做。
+- 主代理直接做的。修饰顺序表 `DECORATE_STAGES`（`texture` → `typo`，照搬原来的顺序）、同步的 `Module.decorateAt`、`decorateStages()`、`DecorateCtx`（拆好条的原稿——两步的种子都用它、最多几条、能不能撤回、日志）；
+  带出「撤回改口」的打算时返回 `{ parts, recall }`。`createInterpreter` 放行只挂 `decorateAt` 的模块。
+- `src/modules/decorate.ts`：`textureModule()`（App 跟着 `config.texture` 挂、模拟器跟着场景）和 `typoModule()`（总是挂）。质感的上下文（他这一串说的话、是不是认真的回合、最近带了几次小黄脸 / 「～」）
+  仍由联系人流水线在拼段落时原位算（读聊天记录、小别扭是否生效），写进新 fact `texture`，模块只用；流水线的 `texture` 选项还留着管这一处。「能不能撤回」由流水线按 `recallOwn` 给。
+- 删掉的接线：联系人流水线 `decorate` 里那一段、闭包变量 `textureNow` 和 import；`decorate` 只剩一行调 `decorateStages`。
+- 注意：直接调联系人流水线又不挂 `typoModule` 的调用方不再打错字（现在只有 App 和模拟器两个调用方，都总是挂）。
+- 验证：基线 41/41 逐字不变；变异检验——App 不挂打错字模块，`closeness`、`watched`、`her-now` 报不一致；不挂质感模块，再加 `rich-chat` 共四个报不一致。`decorate-stage.test.ts` 7 项，
+  连同所有直接用联系人流水线或涉及质感 / 打错字的测试、模块总表共 432 项通过；类型检查通过。这次没有跑 bot 全量。
