@@ -30,6 +30,7 @@ import type { QuotePlan } from '../social/quote-reply.ts';
 import type { HumanValues } from '../human-values.ts';
 import type { DevelopmentSnapshot } from '../life/development.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
+import type { ReviewOptions } from '../language/exit-check.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
@@ -263,12 +264,19 @@ export interface ReviewCtx {
     initiating?: boolean;
     /** 固定说法、允许重复（事实检查、出口检查的重复规则不查） */
     allowRepeat?: boolean;
-    /** 审稿模块之间这一轮共用的东西（例如出口检查算好的上下文，删行收尾要用同一份） */
-    scratch: Record<string, unknown>;
+    /** 审稿模块之间这一轮共用的东西 */
+    scratch: ReviewScratch;
     log: (line: string) => void;
 }
 
 export interface ReviewVerdict { text: string; stop?: true }
+
+/** 审稿模块之间这一轮共用的东西（同 TurnFacts：写的在前、读的在后；字段随审稿模块迁出逐个加） */
+export interface ReviewScratch {
+    /** 出口检查那一刻算好的上下文（禁用词、说话的毛病——聊天记录在那一刻读、书、小黄脸……）：迁移期联系人流水线在出口检查之前写，
+     *  出口检查迁成模块后由它写；删行收尾（modules/review-finalize.ts）用同一份，不重读聊天记录 */
+    exitOptions?: ReviewOptions;
+}
 
 /**
  * 审稿顺序表上的一个位置：挂在这里的模块按注册顺序跑；返回 stop 时后面的不跑。

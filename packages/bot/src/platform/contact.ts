@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
-import { crisisFallback, faceContext, finalizeReply, reviewCrisisReply, reviewReply, type ReviewOptions } from '.././language/exit-check.ts';
+import { crisisFallback, faceContext, reviewCrisisReply, reviewReply, type ReviewOptions } from '.././language/exit-check.ts';
 import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
 import { checkFacts, type FactCheckMode, type FactRecord } from '.././language/fact-check.ts';
 import { chatCompletion, completionMaxTokens, forExtraction } from '.././language/llm.ts';
@@ -938,6 +938,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 onRewriteAccepted,
                 log,
             };
+            // 出口检查那一刻的上下文交给后面的审稿模块（删行收尾用同一份，不重读聊天记录）
+            reviewCtx.scratch.exitOptions = reviewOptions;
             let atExit = at('exit', crisisNow ? await reviewCrisisReply(factual, reviewOptions, crisisNow.level) : await reviewReply(factual, reviewOptions));
             if (atExit instanceof Promise) atExit = await atExit;
             if (atExit.stop) return atExit.text;
@@ -971,7 +973,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (atUnfinished instanceof Promise) atUnfinished = await atUnfinished;
             if (atUnfinished.stop) return atUnfinished.text;
             const finished = atUnfinished.text;
-            let atFinalize = at('finalize', finalizeReply(finished, reviewOptions));
+            // 删行收尾是解释器的模块（modules/review-finalize.ts），挂在 finalize 位置，用上面出口检查那一刻算好的同一份上下文
+            let atFinalize = at('finalize', finished);
             if (atFinalize instanceof Promise) atFinalize = await atFinalize;
             if (atFinalize.stop) return atFinalize.text;
             const final = atFinalize.text;

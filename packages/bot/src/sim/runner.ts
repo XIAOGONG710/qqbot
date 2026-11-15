@@ -30,6 +30,7 @@ import { solveFrameModule } from '../modules/solve-frame.ts';
 import { innerModule } from '../modules/inner.ts';
 import { devicesModule } from '../modules/devices.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
+import { reviewFinalizeModule } from '../modules/review-finalize.ts';
 import { timeBlockModule } from '../modules/time-block.ts';
 import { warmModule } from '../modules/warm.ts';
 import { feelingsModule } from '../modules/feelings.ts';
@@ -610,6 +611,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             lengthModule({ ...(scenario.shortReplies ? { shortReplies: true } : {}), log: message => { if (epoch === responderEpoch) log(message); } }),
             // 主动找他时计划器写的说明，同 App
             initiateNoteModule(),
+            // 生成之后的审稿：删行收尾，同 App
+            reviewFinalizeModule(),
             // 深思那一句和语义路由的方向，同 App；换掉的说法按 --deliberate-note
             deliberateModule({ ...(options.deliberateNote ? { note: options.deliberateNote } : {}) }),
             // 情绪余温和没了结的事，同 App

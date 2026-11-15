@@ -925,3 +925,12 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 子代理起草下一步时发现两处，在同一个提交里修了：`createInterpreter` 原来只放行有 perceive / assess / contribute / review 的模块，只挂了 `reviewAt` 的会被筛掉、到不了联系人流水线；
   `reviewStage` 原来只要有模块挂上就一定走异步，删行收尾这类同步的步骤会多出微任务——改成都同步时同步返回，碰到第一个异步的才转成 promise（同 `contributeTurn`）。
 - 验证：基线逐字不变（没有挂任何审稿模块）；`review-stage.test.ts`（顺序、没挂时同步、都同步时同步、中间异步、stop、只挂 `reviewAt` 的模块不被筛掉、流水线里删行收尾位置生效、事实检查位置 stop）。bot 全量 4503 过、13 跳过，红的 2 项是 DSH 那边的。
+
+### 生成之后那一段，第 2 步：删行收尾（2026-11-15）
+
+- 是什么：出口检查之后最后一道——只删行（禁用词、说话的毛病、书的进度说错、小黄脸太密……），不重写；危机回合走不到（出口检查之后就返回了）。
+- 由子代理起草（只新建文件）。删行收尾要用**出口检查那一刻算好的同一份上下文**（聊天记录在那一刻读一次），不在自己这里重读：联系人流水线在出口检查之前把它写进 `ReviewCtx.scratch.exitOptions`（新的 `ReviewScratch` 类型），
+  出口检查迁成模块之后改由它写。模块取不到时原样放过、记一句日志（接线漏了由测试发现）。
+- `src/modules/review-finalize.ts`：`reviewFinalizeModule()`，挂在 `finalize` 位置，同步。App 和模拟器都总是挂。
+- 删掉的接线：联系人流水线里 `finalizeReply(...)` 那一处和 import。直接调流水线的 `language-review.test.ts` 默认挂上这个模块。
+- 验证：基线 39/39 逐字不变；基线里没有一处发出去的话被删行收尾改过，所以「模块原样放过」基线抓不到，由 `language-review.test.ts`（重写加入禁用词仍被最终检查拦截）和 `review-finalize-module.test.ts` 管：原样放过红 6 项，不写 `scratch.exitOptions` 红 3 项。

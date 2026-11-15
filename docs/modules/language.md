@@ -93,6 +93,7 @@
 - `modules/time-notes.ts`
 - `modules/intent-line.ts`
 - `modules/meme-dict.ts`
+- `modules/review-finalize.ts`
 - `st/`
 
 ## 开关

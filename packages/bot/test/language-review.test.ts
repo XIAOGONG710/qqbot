@@ -18,6 +18,7 @@ import { deliberateLlm } from '../src/platform/config.ts';
 import { createContactResponder, type ContactPipelineOptions } from '../src/platform/contact.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { shapeModule } from '../src/modules/shape.ts';
+import { reviewFinalizeModule } from '../src/modules/review-finalize.ts';
 import { parseDeviceTokens, type DeviceProposal } from '../src/platform/device-actions.ts';
 import { parseCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
@@ -41,7 +42,7 @@ function contact(overrides: Partial<ContactPipelineOptions> = {}) {
         history: { load: () => [...rows], append: (_qq, message) => { rows.push(message); } },
         now: () => NOW, log: quiet, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
         // 意图阶梯是解释器的模块（ADR 0336），App 总是挂着它；深思按意图判断
-        turnModules: [intentModule()],
+        turnModules: [intentModule(), reviewFinalizeModule()],
         send: async (_qq, text) => { sent.push(text); return sent.length + 100; },
         generate: async () => '好呀',
         devices: {
@@ -67,7 +68,7 @@ describe('最终草稿、硬规则与设备动作', () => {
             const fixture = contact({
                 // ADR 0220 之后形状控制只在 shapeAll / 有提示 / 特定意图时生效：这里要它生效
                 // 形状是解释器的模块（ADR 0336）：挂上它，开着 shapeAll
-                ...(stage === 'shape' ? { turnModules: [intentModule(), shapeModule({ shape: true, shapeAll: true, log: quiet })] } : { speechCheck: true }),
+                ...(stage === 'shape' ? { turnModules: [intentModule(), shapeModule({ shape: true, shapeAll: true, log: quiet }), reviewFinalizeModule()] } : { speechCheck: true }),
                 generate: async () => {
                     calls++;
                     if (calls === 1) return stage === 'shape' ? '今天我有好多好多好多事情想跟你说'.repeat(10) : '我知道了\n不过你别得意';
