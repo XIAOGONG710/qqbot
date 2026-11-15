@@ -10,7 +10,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { loadOthers } from '.././social/others.ts';
@@ -2283,7 +2283,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 }
                 const sticker = contact.tier === 'boyfriend' ? sendingStickers?.resolve(text) : undefined;
                 if (sticker) {
-                    const id = await transport.sendPrivateImage!(userId, sticker.file, `[${sticker.description}]`);
+                    // sticker.file 可能只是文件名（c15a5b9e3b6e.png），直接丢给 NapCat 会找不到文件；
+                    // 已经是绝对路径（测试、别处传进来的）就原样用
+                    const file = isAbsolute(sticker.file) ? sticker.file : join(config.dataDir, 'stickers', sticker.file);
+                    const id = await transport.sendPrivateImage!(userId, file, `[${sticker.description}]`);
                     sendingStickers!.used(sticker.id);
                     return id;
                 }
