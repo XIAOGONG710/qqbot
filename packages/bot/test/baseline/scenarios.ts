@@ -15,10 +15,12 @@
 // 问过去的某一天、说起名单里的人、关系概况、披露分寸；同学档）。
 // 心境（ADR 0102：带感受的梦、作者写下的事、她回想过的感受；难过时他问怎么了 / 哄她、说过难过的下一轮、又烦又累、很开心，节奏和条数跟着变；
 // 小别扭、危机、同学这几轮不放）、没了结的事和安慰后的余温（假 Hindsight 开着，片段抽出一条 unsettled）。
+// 生成之后的审稿（review：逐条事实检查的重写 / 删行 / 主动消息整条不发 / 最后核对、<<查>> 查到和没查到、话说到一半的重写和就地处理、形状截断、
+// 回复里的 <<记住>> / <<日记>>、危机回合的重写和固定兜底；<<私密>> 要起 PowerShell 写灵魂目录，不在基线里）。
 //
 // 没覆盖（要连网或要外部服务，迁到对应模块之前先补场景）：真的 Hindsight 那一侧（抽取、整合、派生修复、对账、遗忘）、真实天气、B 站（刷视频 / 私信 / 评论）、热梗从热榜学新词、她自己去看视频、
 // 照片货架与吃的照片、图片表情、看图与语音、网页查询、DSH 与手机伴侣、真的设备（取件中心、手机推送）、QQ 账号控制面与好友申请、说说与空间、
-// 逐条事实检查（factCheck，它的审稿调用不经 pipeline.generate）、设定账本（identityLedger：写死读真实角色目录 characters/linmengyao 并调 git，
+// 设定账本（identityLedger：写死读真实角色目录 characters/linmengyao 并调 git，
 // 基线不能碰真实资料，也不能随每次提交的 HEAD 变）。
 
 import type { Contact } from '../../src/platform/config.ts';
@@ -1259,6 +1261,92 @@ export const SCENARIOS: readonly Scenario[] = [
                 await d.wait(10 * 60_000);
                 d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
                 await d.at('2026-12-09T15:30:00+08:00');
+            },
+        } satisfies Scenario;
+    })(),
+    (() => {
+        const text = (message: { content?: unknown } | undefined) => (typeof message?.content === 'string' ? message.content : '');
+        // 审稿员（逐条事实检查）按她准备发的那一版回：这一版里有这段字，就把对应的说法当成没依据的（照抄得出来才采信）
+        const invented = (...quotes: string[]) => JSON.stringify(quotes.map(quote => ({ quote, kind: 'invented', why: '设定和事实里没有' })));
+        const AUDITS: readonly [string, string][] = [
+            // 第一轮还带一条替他说的（factHim 开着才采信）
+            ['室友把我的酸奶喝了', JSON.stringify([...JSON.parse(invented('室友把我的酸奶喝了')), { quote: '你肯定又在打游戏', kind: 'about-him', why: '他没说过在打游戏' }])],
+            ['还碰到了班主任', invented('还碰到了班主任')],
+            ['还碰到了辅导员', invented('还碰到了辅导员')],
+            ['衣服上落了一只小猫', invented('衣服上落了一只小猫', '楼下阿姨还帮我收了被子')],
+            ['碰到了宿管', invented('碰到了宿管', '她还夸我衣服好看')],
+            // <<查>> 查到之后重写的那一版不再整轮审一遍，只在最后核对一次：编出来的那一行删掉
+            ['那天还下了大雪', invented('那天还下了大雪')],
+        ];
+        // 每一轮：他说的话里认得出的一段 → 她的初稿，和各种重写说明下她写的版本（没写的照初稿）
+        interface Turn { his: string; draft: string; fact?: string; recalled?: string; unfinished?: string; shape?: string; crisis?: string }
+        const TURNS: readonly Turn[] = [
+            { his: '在干嘛呢', draft: '刚洗完头\n室友把我的酸奶喝了\n你肯定又在打游戏', fact: '刚洗完头\n在吹头发' },
+            { his: '今天食堂吃的啥', draft: '麻辣香锅\n还碰到了班主任', fact: '麻辣香锅\n还碰到了辅导员' },
+            { his: '第一次出去玩是去的哪', draft: '<<查：第一次约会的地方>>\n我想想', recalled: '记得呀\n学校后门那家火锅店\n那天还下了大雪' },
+            { his: '借你的那本书呢', draft: '<<查：借书>>\n我找找哈' },
+            { his: '周末去看电影吗', draft: '可以呀\n不过要是下雨的话', unfinished: '可以呀\n下雨就在宿舍看' },
+            { his: '想我没', draft: '想啊，上课的时候都在想，就是觉得' },
+            { his: '你今天下午干嘛了', draft: '下午去图书馆借了两本书，回来的路上顺便买了杯奶茶，到宿舍才发现吸管忘拿了，只好拿勺子挖着喝，室友在旁边笑了我半天，说我像在吃冰沙',
+                shape: '去图书馆借书了，回来买了杯奶茶，吸管忘拿了，只好拿勺子挖着喝，室友在旁边笑了我半天，说我像在吃冰沙一样' },
+            { his: '下周三是我生日哦', draft: '记住啦\n<<记住：他的生日是下周三>>' },
+            { his: '今天好开心', draft: '我也是<<日记：今天和他聊了很久，很开心>>' },
+            { his: '你在忙吗', draft: '等我一下，我去收个衣服' },
+            { his: '我不想活了', draft: '别想太多了\n早点睡吧', crisis: '睡吧\n明天再说' },
+            { his: '宿舍就我一个人', draft: '你先去睡吧', crisis: '我在\n你现在安全吗' },
+            { his: '室友回来了在旁边陪我', draft: '那就好\n不过你别逞强' },
+        ];
+        return {
+            name: 'review',
+            about: '生成之后的审稿（ADR 0336「生成之后那一段」第 0 步，迁出之前）：逐条事实检查（factCheck fix + factHim：编的和替他说的带说明重写后通过、重写后仍有就删行、她说了等下之后自己回来的主动消息删完撑不住整条不发、'
+                + '后面几步改过的最后核对一次删掉编的那一行）、<<查：…>>（查到了带着重写、没查到摘掉标记）、话说到一半（重写后好了；重写后还是这样：退到上一个逗号、最后一条停在转折上并回前一条）、'
+                + '形状太长重写后还长按分句截断、她回复里的 <<记住>>（单独一行的气泡发送前处理）和 <<日记>>（普通气泡发出去时处理，本地也留一份）、危机回合（重写后还不过发固定兜底、重写后通过）',
+            start: '2026-12-10T19:00:00+08:00',
+            contacts: [boyfriend],
+            config: { shape: true, factCheck: 'fix', factHim: true, selfDirectedMemory: true, diaryInsights: true, proactive: 'on', proactiveReach: true, comeBack: true },
+            memory: {
+                recall: [
+                    { bank: boyfriend.qq, query: '第一次约会的地方', results: [
+                        { id: 'b-date', text: '第一次约会去的是学校后门那家火锅店，他点了特辣锅底辣哭了', type: 'experience', occurred_start: '2026-12-06T18:00:00+08:00', mentioned_at: '2026-12-06T18:00:00+08:00', document_id: 'ep-date', entities: ['火锅店'] },
+                    ] },
+                ],
+            },
+            reply: () => (call: LlmCall) => {
+                const first = text(call.messages[0]);
+                if (first.startsWith('你是审稿员')) {
+                    const draft = text(call.messages[1]).split('## 她准备发出去的回复\n')[1] ?? '';
+                    return AUDITS.find(([needle]) => draft.includes(needle))?.[1] ?? '[]';
+                }
+                const last = text(call.messages.at(-1));
+                // 后台的摘录 / 分类调用多半要 JSON：给一个空的
+                if (/JSON|json/.test(last) || /JSON|json/.test(first)) return '[]';
+                // 她说了等下之后自己回来（主动消息）
+                if (last.includes('现在回来了：说一声回来了')) {
+                    return last.includes('你只能说上面写了的事实') ? '回来啦\n收衣服的时候碰到了宿管\n她还夸我衣服好看' : '回来啦\n衣服上落了一只小猫\n楼下阿姨还帮我收了被子';
+                }
+                const his = text(call.messages.findLast(m => m.role === 'user'));
+                // 从后往前认：提示词里别的行可能引到他更早的话
+                const turn = [...TURNS].reverse().find(t => his.includes(t.his));
+                if (!turn) return '嗯嗯';
+                if (last.includes('你只能说上面写了的事实')) return turn.fact ?? turn.draft;
+                if (last.includes('（你刚才想起来了：')) return turn.recalled ?? turn.draft;
+                if (last.includes('有一条话没说完')) return turn.unfinished ?? turn.draft;
+                if (last.includes('太长了——')) return turn.shape ?? turn.draft;
+                if (last.includes('重写这次的回复：认真接住他的感受')) return turn.crisis ?? turn.draft;
+                return turn.draft;
+            },
+            script: async d => {
+                for (const [at, said] of [
+                    ['19:30', '在干嘛呢'], ['19:40', '今天食堂吃的啥'], ['19:50', '你还记得我们第一次出去玩是去的哪吗'], ['20:00', '我上次借你的那本书呢'],
+                    ['20:10', '周末去看电影吗'], ['20:20', '想我没'], ['20:30', '你今天下午干嘛了'], ['20:40', '下周三是我生日哦'], ['20:50', '今天好开心'],
+                    // 她说了等下：之后二十多分钟谁都不说话，她自己回来
+                    ['21:00', '你在忙吗'],
+                    ['21:30', '我不想活了'], ['21:40', '宿舍就我一个人'], ['21:50', '我现在安全，室友回来了在旁边陪我'],
+                ] as const) {
+                    await d.at(`2026-12-10T${at}:00+08:00`);
+                    d.say(boyfriend.qq, said);
+                }
+                await d.at('2026-12-10T22:10:00+08:00');
             },
         } satisfies Scenario;
     })(),
