@@ -150,3 +150,34 @@ function matchesArtifact(path, status, requireRecordedSize) {
 export function writeBackupMarker(target, name, value) {
     writeFileSync(join(target, name), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
+
+/** 状态包小于这个就不像真的：11-10 起那几份「完整」备份的 her-state.zip 只有 190 字节（认错了数据目录） */
+export const MIN_STATE_BYTES = 10_000;
+
+/**
+ * 备份健不健康（11-15）：这周三个问题（三天没备、状态包是空的、守护没起）都是过了很久才被人发现的。
+ * entries：runtime/backups 下每个日期目录 { name: 'YYYY-MM-DD', complete: 完成标记有效, stateBytes: 标记里记的状态包大小（没有就不给） }。
+ * 返回 undefined 是没问题；否则 { reason: 'none' | 'stale' | 'tiny-state', days?, last?, bytes? }。
+ */
+export function backupHealth(entries, todayName, maxAgeDays = 2) {
+    const today = parseDay(todayName);
+    if (today === undefined) return undefined;
+    const complete = entries.filter(entry => entry.complete && parseDay(entry.name) !== undefined).sort((a, b) => a.name.localeCompare(b.name));
+    const last = complete.at(-1);
+    if (!last) return { reason: 'none' };
+    const days = Math.round((today - parseDay(last.name)) / 86_400_000);
+    if (days >= maxAgeDays) return { reason: 'stale', days, last: last.name };
+    if (typeof last.stateBytes === 'number' && last.stateBytes < MIN_STATE_BYTES) return { reason: 'tiny-state', last: last.name, bytes: last.stateBytes };
+    return undefined;
+}
+
+/** 读 runtime/backups 的现状给 backupHealth 用；目录不在就是空的 */
+export function backupEntries(backupDir) {
+    let names;
+    try { names = readdirSync(backupDir); } catch { return []; }
+    return names.filter(name => parseDay(name) !== undefined).map(name => {
+        const target = join(backupDir, name);
+        const state = readMarker(join(target, COMPLETE_MARKER))?.components?.state;
+        return { name, complete: isCompleteBackup(target), ...(typeof state?.bytes === 'number' ? { stateBytes: state.bytes } : {}) };
+    });
+}

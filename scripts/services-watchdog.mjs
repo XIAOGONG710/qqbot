@@ -20,7 +20,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createNetWatch } from './net-watch.mjs';
-import { configuredDataDir } from './backup-state.mjs';
+import { backupEntries, backupHealth, configuredDataDir } from './backup-state.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const once = process.argv.includes('--once');
@@ -115,6 +115,29 @@ async function notifyMemory(kind, minutes) {
         say(result.ok ? `hindsight：已通过她的 QQ 告诉用户（${kind === 'down' ? '挂了' : '好了'}）` : `hindsight：QQ 通知没发出去（${result.reason}）`);
     } catch (error) {
         say(`hindsight：QQ 通知出错（${error instanceof Error ? error.message : String(error)}）`);
+    }
+}
+
+/** 备份不健康时告诉用户（11-15）：三天没备、状态包是空的这类事以前都是过了很久才被人发现。一天最多说一次 */
+let backupAlertedDay = '';
+async function checkBackupHealth() {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const problem = backupHealth(backupEntries(join(root, 'runtime', 'backups')), today);
+    if (!problem || backupAlertedDay === today) return;
+    backupAlertedDay = today;
+    const what = problem.reason === 'none' ? '一份完整的备份都没有'
+        : problem.reason === 'stale' ? `最近一份完整的备份是 ${problem.last}，已经 ${problem.days} 天没有新的了`
+            : `最近一份备份（${problem.last}）里她的聊天记录和状态只有 ${problem.bytes} 字节，多半没备上`;
+    say(`备份：不健康——${what}`);
+    try {
+        const { readAlertConfig, sendAlert, OPS_NOTICE_PREFIX } = await import('../packages/bot/src/ops/alert-qq.ts');
+        const config = readAlertConfig(ALERT_FILE);
+        if (!config?.services) return;
+        const result = await sendAlert({ url: 'ws://127.0.0.1:3001/', token: process.env.QQBOT_ONEBOT_TOKEN ?? '', qq: config.qq, text: `${OPS_NOTICE_PREFIX}备份有问题：${what}。她的记忆和聊天记录现在只有线上这一份，请看一下 runtime/backups 和守护日志。` });
+        say(result.ok ? '备份：已通过她的 QQ 告诉用户' : `备份：QQ 通知没发出去（${result.reason}）`);
+    } catch (error) {
+        say(`备份：QQ 通知出错（${error instanceof Error ? error.message : String(error)}）`);
     }
 }
 
@@ -294,6 +317,7 @@ async function check() {
         } catch (error) {
             say(`备份：没做成（${error instanceof Error ? error.message.split(String.fromCharCode(10))[0] : String(error)}）`);
         }
+        await checkBackupHealth();
     }
     if (existsSync(MAINTENANCE)) return;
 

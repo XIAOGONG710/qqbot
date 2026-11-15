@@ -8,6 +8,8 @@ import {
     FAILURE_MARKER,
     RETRY_DELAY_MS,
     backupDirectoriesToPrune,
+    backupEntries,
+    backupHealth,
     configuredDataDir,
     discoverStateBackup,
     isCompleteBackup,
@@ -326,5 +328,42 @@ describe('state backup follows the configured data directory', () => {
         assert.equal(configuredDataDir(root), undefined);
         koishi(root, JSON.stringify(join(root, 'runtime', 'bot-shadow')));
         assert.equal(configuredDataDir(root), 'runtime/bot-shadow');
+    });
+});
+
+describe('backup health (alert when backups silently stop or are empty)', () => {
+    const day = (name, complete = true, stateBytes) => ({ name, complete, ...(stateBytes === undefined ? {} : { stateBytes }) });
+
+    test('healthy: a complete backup from today or yesterday with a real state archive', () => {
+        assert.equal(backupHealth([day('2026-11-14', true, 31_000_000), day('2026-11-15', true, 31_200_000)], '2026-11-15'), undefined);
+        assert.equal(backupHealth([day('2026-11-14', true, 31_000_000)], '2026-11-15'), undefined);
+    });
+
+    test('11-11..11-13: no new complete backup for two days or more', () => {
+        assert.deepEqual(backupHealth([day('2026-11-09'), day('2026-11-10'), day('2026-11-12', false)], '2026-11-13'), { reason: 'stale', days: 3, last: '2026-11-10' });
+        assert.deepEqual(backupHealth([day('2026-10-31')], '2026-11-02'), { reason: 'stale', days: 2, last: '2026-10-31' });
+    });
+
+    test('11-10: the latest "complete" backup has a 190-byte state archive', () => {
+        assert.deepEqual(backupHealth([day('2026-11-10', true, 190)], '2026-11-10'), { reason: 'tiny-state', last: '2026-11-10', bytes: 190 });
+    });
+
+    test('no complete backup at all; unparsable today is not a problem report', () => {
+        assert.deepEqual(backupHealth([], '2026-11-15'), { reason: 'none' });
+        assert.deepEqual(backupHealth([day('2026-11-15', false)], '2026-11-15'), { reason: 'none' });
+        assert.equal(backupHealth([], 'today'), undefined);
+    });
+
+    test('backupEntries reads completion and the recorded state size from the markers', () => {
+        const root = fresh();
+        const good = join(root, '2026-11-15');
+        mkdirSync(good, { recursive: true });
+        writeFileSync(join(good, 'hindsight.sql'), 'database backup', 'utf8');
+        writeFileSync(join(good, 'her-state.zip'), 'state', 'utf8');
+        writeBackupMarker(good, COMPLETE_MARKER, { completed: true, components: { database: { ok: true, bytes: 15 }, state: { ok: true, source: 'runtime/bot-shadow', bytes: 5 } } });
+        mkdirSync(join(root, '2026-11-14'));
+        mkdirSync(join(root, 'not-a-day'));
+        assert.deepEqual(backupEntries(root).sort((a, b) => a.name.localeCompare(b.name)), [{ name: '2026-11-14', complete: false }, { name: '2026-11-15', complete: true, stateBytes: 5 }]);
+        assert.deepEqual(backupEntries(join(root, 'missing')), []);
     });
 });
