@@ -7,6 +7,7 @@
 ## 文件（`packages/bot/src/` 下）
 
 - `world/world.ts`
+- `world/events.ts`
 - `world/cache-freshness.ts`
 - `world/external-error.ts`
 - `world/fact-resolution.ts`
