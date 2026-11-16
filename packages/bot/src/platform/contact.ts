@@ -28,10 +28,10 @@ import { loadWorldInfo, type WorldInfoEntry } from '.././st/world-info.ts';
 import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from '.././social/reply-timing.ts';
 import type { SilenceInfo } from '.././social/silence.ts';
 import { describeMood, moodAt, readingActivities } from '.././life/her-days.ts';
-import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
+import { crisisInHistory } from '.././emotion/crisis.ts';
 import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import type { TurnWeight } from '.././language/turn-weight.ts';
-import { DELIBERATE_MAX_BUBBLES, type ShapePlan } from '.././language/shape.ts';
+import { DELIBERATE_MAX_BUBBLES } from '.././language/shape.ts';
 import { describeWorld, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
 import type { CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { dayPlan, describeSlot } from '.././life/day-plan.ts';
@@ -329,10 +329,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const everyone = [contact.qq, ...(options.contacts ?? []).map(other => other.qq).filter(qq => qq !== contact.qq)];
     const asleepAt = (time: Date) => (schedule ? saidAsleepAt(schedule, everyone.map(qq => options.history.load(qq)), time) : undefined);
     const extraFree = herSchedule ? readingActivities(character.books) : [];
-    // 这一轮是不是危机回合（ADR 0068）：buildPrompt 按他发的内容定，紧跟着的出口检查、打错字、长短都按它
-    let crisisNow: CrisisHit | undefined;
-    /** 这一轮的形状（配置 shape）：buildPrompt 按他说的长短定，紧跟着的出口检查按它强制执行；主动找他、收尾、危机回合没有 */
-    let shapeNow: ShapePlan | undefined;
     /** 这一轮是深思轮次（ADR 0151）：生成时用 options.deliberate.llm */
     let deliberateNow = false;
     /** 这一轮第一条要引用他的哪一句（ADR 0136，配置 quoteReply）：buildPrompt 按他没回的那一串定，紧跟着发送时现取 */
@@ -559,7 +555,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const assessed = assessTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             if (assessed instanceof Promise) await assessed;
-            crisisNow = turn.facts.crisis;
+            // 这一轮是不是危机回合（ADR 0068，modules/crisis.ts 定的）：下面的梦、连续性、「/亲热」、承认版的卡、兜底、最多几条都按它
+            const crisisNow = turn.facts.crisis;
             const grievance = turn.facts.grievance;
             // 他说起她身边的人（ADR 0033）是解释器的模块（modules/people-around.ts）：assess 时写进 turn.facts.aboutPeople，经 turnModules 放进 npcs 槽；下面的形状和长短读它
             const aboutPerson = Boolean(turn.facts.aboutPeople);
@@ -650,9 +647,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
                 ...(mood ? ['心情'] : []),
             ];
-            // 形状控制（ADR 0091，语言松绑 DSH 10-28、shapeAll ADR 0220）是解释器的模块（modules/shape.ts）：contribute 时算、写回 turn.facts.shape，放进 shape 槽；
-            // 下面拼完段落之后从 turn.facts 取回来，生成时调最多几条、发出去之前按它裁。这里先清掉上一轮的
-            shapeNow = undefined;
             // 别重复自己（反复说的字词、主动找他的开头、说过了的事，ADR 0098 / 0135）是解释器的模块（modules/repetition.ts），经 turnModules 放进 crutch、opener、told 槽
             // 她最近心里在想的（ADR 0101）是解释器的模块（modules/inner.ts），经 turnModules 放进 inner 槽
             // 「/亲热」（ADR 0170）：他刚让她黏一点，接下来几条回复里放一行；每生成一条取一次
@@ -710,7 +704,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const ran = contributeTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             const { afterMain, afterHistory } = ran instanceof Promise ? await ran : ran;
-            shapeNow = turn.facts.shape;
+            // 形状控制（ADR 0091，modules/shape.ts）contribute 时算好写回 turn.facts.shape：生成时按它调最多几条
+            const shapeNow = turn.facts.shape;
             quoteNow = turn.facts.quote;
             const prompt = buildPrompt({
                 character: turnCard.character,

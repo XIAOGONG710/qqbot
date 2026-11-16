@@ -1175,3 +1175,21 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 这一步之前跑的 bot 全量：4702 过、13 跳过、**0 红**（`group-affect` 修掉之后第一次全绿）。
 - 验证：基线 42/42 逐字不变；变异检验——模块里不查说话的毛病，`closeness`、`books` 报不一致；禁用词只留卡上的（去掉医书里的词和书面腔），试的四个场景（`rich-chat`、`closeness`、`books`、`intents`）**没抓到**——
   这一处由 `review-exit-module.test.ts` 新加的用例核对（禁用词的组成、聊天记录读几次、小别扭 / 固定说法 / 文字抱抱 / 图片表情 / 书的进度、写进 scratch、不重算，共 5 项）。审稿相关测试 653 项通过；类型检查通过。
+
+### 2026-11-16 这一轮做到哪了（小结）
+
+- 生成之后那一段（清理 → 挑候选 → 审稿 → 修饰 → 设备登记 → 标记）第 0–12 步全部迁完：顺序表 `CLEAN_STAGES` / `REVIEW_STAGES` / `DECORATE_STAGES` / `ABSORB_STAGES`，挑候选的 `Module.candidates`。
+  出口检查的上下文也由模块自己算了。语音那几行（用户的代码）原样留在 `absorbMarkers` 里。
+- 判断那一串（assess 之后、拼段落之前）：危机和小别扭的起因是最先 assess 的模块；`DECIDE_STAGES` = `photo` → `intent` → `feelings` → `stickers` → `deliberate` → `texture`。
+- 联系人流水线的闭包变量只剩五个：选中的那一稿 `chosen`、`deliberateNow`（生成时换模型）、`quoteNow`（发送时引用哪条）、`turnNow`、`promptSource`；`crisisNow`、`shapeNow` 变成拼提示词里的局部变量，
+  别的（`pick`、`textureNow`、`stickerContext`、`sulkNow`、`textIntimacy`、`reading`、`routedHint`）都换成了 facts。`quoteNow` 没换成读 `turnNow.facts.quote`：上一条回复的气泡还在发、下一轮已经开始拼提示词时两者不一样，不冒这个险。
+- `app.ts` 的周期计时器全部经执行器（补了停止时没取消的 `leaveTimer`）；`modules-purity.test.ts` 守着「模块不直接碰文件、进程、网络、计时器、模型、QQ」。
+- 基线 42 个场景（新加 `feelings-sources`）；bot 全量 4702 过、13 跳过、0 红。
+- 还在联系人流水线原位、没迁的（都要先想清楚再动，不是机械搬）：
+  - 记忆那一组的召回（几次 await 等 Hindsight、关系概况和印象读缓存、要点后台整理）和「他问到过去的某一天」；
+  - 连续性的取（await：上网、调模型、记「已告诉他」）；
+  - 长短要的几样（`low`、`agendaTopics`、`cue`）和这里才算的心情（`moodAt`）；聊天原文放多少（最近几天 / contextTurns）；
+  - 梦、「/亲热」、她在 QQ 上的样子、答应的事、挂着的事、她那边还没说过的事这几样「原位取」（取一次扣一条 / 读状态 / 记日志）；
+  - 真人数值和人格成长层（开头、第一次 await 之前算）。
+- 第 6 步收尾里没动的：`sim/runner.ts` 和 App 各有一份模块接线（两份的顺序和选项不完全一样，合并要逐个核对）；`features.ts` / `modules.ts` / Koishi Schema / `docs/modules/` 还不是从模块定义生成的；
+  App 里各功能的计时器还没迁成模块的 `schedules`；`bilibili/`、`social/presence.ts`、`platform/heartbeat.ts`、`platform/lock.ts` 还自己开计时器；状态文件读写和子进程还不是执行器的动作。
