@@ -62,7 +62,8 @@ export interface GroupAffect {
     note(groupId: number, appraisal: Appraisal | undefined): void;
 }
 
-export function groupAffect(dataDir: string): GroupAffect {
+/** now：清旧记录按哪个时钟算（线上不传，用墙上时间；测试的日子是写死的，传测试自己的时钟，免得日子一过记下的那条当场被清掉） */
+export function groupAffect(dataDir: string, clock: () => number = Date.now): GroupAffect {
     const dir = join(dataDir, 'groups');
     const file = (groupId: number) => join(dir, `${groupId}.affect.json`);
     const cache = new Map<number, Appraisal[]>();
@@ -76,7 +77,7 @@ export function groupAffect(dataDir: string): GroupAffect {
             try {
                 const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
                 if (Array.isArray(parsed)) {
-                    const now = Date.now();
+                    const now = clock();
                     list = parsed.filter((item): item is Appraisal => Boolean(item) && typeof item === 'object'
                         && typeof (item as Appraisal).id === 'string' && Number.isFinite((item as Appraisal).at)
                         && now - (item as Appraisal).at <= GROUP_AFFECT_KEEP_MS);
@@ -97,7 +98,7 @@ export function groupAffect(dataDir: string): GroupAffect {
             const list = load(groupId);
             if (list.some(item => item.id === appraisal.id)) return;
             list.push(appraisal);
-            const cutoff = Date.now() - GROUP_AFFECT_KEEP_MS;
+            const cutoff = clock() - GROUP_AFFECT_KEEP_MS;
             while (list.length > GROUP_AFFECT_MAX || (list[0] && list[0].at < cutoff)) list.shift();
             try {
                 mkdirSync(dirname(file(groupId)), { recursive: true });

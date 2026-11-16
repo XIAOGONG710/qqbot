@@ -29,14 +29,14 @@ describe('群里的遭遇进心境', () => {
 
     test('记下来的评估会衰减，也会落盘（重启还带着）', () => {
         const dir = tmp();
-        const store = groupAffect(dir);
+        const store = groupAffect(dir, () => NOW);
         store.note(555, groupAffectOf({ entry: { content: '@你 谢谢你', messageId: 7 }, addressed: true, at: NOW })!);
         store.note(555, groupAffectOf({ entry: { content: '@你 谢谢你', messageId: 7 }, addressed: true, at: NOW })!, );
         assert.equal(store.appraisals(555).length, 1, '同一条只记一次');
-        const felt = feelingsAt(groupAffect(dir).appraisals(555), NOW);
+        const felt = feelingsAt(groupAffect(dir, () => NOW).appraisals(555), NOW);
         assert.equal(felt[0]?.kind, 'joy');
         // 一天半以后开心散得差不多了
-        const later = feelingsAt(groupAffect(dir).appraisals(555), NOW + 36 * 3_600_000);
+        const later = feelingsAt(groupAffect(dir, () => NOW).appraisals(555), NOW + 36 * 3_600_000);
         assert.ok(!later.length || later[0]!.weight < felt[0]!.weight);
     });
 
