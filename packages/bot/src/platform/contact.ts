@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
-import { crisisFallback, faceContext, type ReviewOptions } from '.././language/exit-check.ts';
+import { crisisFallback } from '.././language/exit-check.ts';
 import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
 import { chatCompletion, completionMaxTokens, forExtraction } from '.././language/llm.ts';
 import type { Log } from './log.ts';
@@ -30,7 +30,6 @@ import type { SilenceInfo } from '.././social/silence.ts';
 import { describeMood, moodAt, readingActivities } from '.././life/her-days.ts';
 import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
 import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
-import { ENGAGED_INTENT, ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
 import type { TurnWeight } from '.././language/turn-weight.ts';
 import { DELIBERATE_MAX_BUBBLES, type ShapePlan } from '.././language/shape.ts';
 import { describeWorld, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
@@ -48,7 +47,6 @@ import type { FeelingsReport } from '../emotion/feeling-export.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
 import { type PromiseKeeper } from '.././life/promises.ts';
 import { formatDate, herDay, type ExtraFreeActivity } from '.././life/schedule.ts';
-import { speechContext, TAIL_CAPS, type BookProgressContext } from '.././language/speech-check.ts';
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
@@ -331,14 +329,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const everyone = [contact.qq, ...(options.contacts ?? []).map(other => other.qq).filter(qq => qq !== contact.qq)];
     const asleepAt = (time: Date) => (schedule ? saidAsleepAt(schedule, everyone.map(qq => options.history.load(qq)), time) : undefined);
     const extraFree = herSchedule ? readingActivities(character.books) : [];
-    // 这一轮放了「在读的书」时，出口检查拿它核对进度数字。同一个回复器一次只生成一条，review 紧跟着这一轮的 buildPrompt
-    let reading: BookProgressContext | undefined;
-    // 亲密轮次的出口检查：只在男朋友明确要抱抱、亲亲等时，拦“只能当面 / 隔空不算”把文字回应收回。
-    let textIntimacy = false;
     // 这一轮是不是危机回合（ADR 0068）：buildPrompt 按他发的内容定，紧跟着的出口检查、打错字、长短都按它
     let crisisNow: CrisisHit | undefined;
-    /** 这一轮是小别扭（不是和好）：出口检查放过「隔了很多天才来」这类带点抱怨的话（ADR 0074） */
-    let sulkNow = false;
     /** 这一轮的形状（配置 shape）：buildPrompt 按他说的长短定，紧跟着的出口检查按它强制执行；主动找他、收尾、危机回合没有 */
     let shapeNow: ShapePlan | undefined;
     /** 这一轮是深思轮次（ADR 0151）：生成时用 options.deliberate.llm */
@@ -574,7 +566,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 意图阶梯（ADR 0019 起）是解释器的模块（modules/intent.ts）：assess 时写进 turn.facts.baseIntent（照片 / 被打断改写之前的那一版）
             const baseIntent = turn.facts.baseIntent;
             // 在读的书（ADR 0015）是解释器的模块（modules/books.ts）：assess 时写进 turn.facts.books、放进 books 槽；这一轮放了书，出口检查拿进度核对
-            reading = turn.facts.books?.context;
             // 陪玩（ADR 0111）是解释器的模块（modules/together.ts）：assess 时判断、记日志，经 turnModules 放进 together 槽
             // 关系阶段（ADR 0113）是解释器的模块（modules/closeness.ts），经 turnModules 放进 closeness 槽
             // 被打断（ADR 0115）是解释器的模块（modules/interruptions.ts）：聊天正在进行时她那边恰好发生了一件小事，写进 turn.facts.interruption，放进 interrupt 槽
@@ -611,14 +602,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             decideStage(options.turnModules ?? [], 'intent', turn, decideCtx);
             const intent = turn.facts.intent;
             const grievanceActive = Boolean(turn.facts.grievanceActive);
-            sulkNow = Boolean(turn.facts.sulk);
             // 心境那一段（ADR 0102 / 0104 / 0106：她的追求 → 前一天她那边 → 感受 → 那一行、节奏 → 交给桌面上的她）是解释器的模块（modules/feelings.ts 的 decideAt.feelings）：
             // 在原位算（最终的意图、小别扭是否生效之后），按联系人给的那几样经 DecideCtx.feelings 递过去；写进 turn.facts.felt、feelingLine、paceLine，下面的 low、生成时最多几条读
             decideStage(options.turnModules ?? [], 'feelings', turn, decideCtx);
             const feltNow = turn.facts.felt ?? [];
             const feelingLine = turn.facts.feelingLine;
             const moodNow = moodShape(feltNow);
-            textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             // 连续性（ADR 0157–0163）：设定改动的背景 / QQ 以外做过的事 / 上网查到的 / 自己发现的口味 / 又见到的人；出错当没有，不挡回复
             const continuityLines = options.continuity && !crisisNow && !thinking
@@ -777,6 +766,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const onRewriteAccepted = () => { chosen = rewrite; };
             // 审稿顺序表上的位置（ADR 0336「生成之后那一段」）：挂了 reviewAt 的模块在对应的那一步之后跑；都没挂时同步返回原稿，不多等
             const reviewCtx: ReviewCtx = {
+                exit: { speechCheck: Boolean(options.speechCheck), tailCap: Boolean(options.tailCap), imageStickers: Boolean(options.stickers) }, history: () => options.history.load(contact.qq),
                 regenerate, accept: onRewriteAccepted, dropDevices: () => { chosen = chosen && { text: chosen.text }; }, scratch: {}, log, names, ...(promptSource ? { promptSource } : {}),
                 ...(reviewContext?.initiating ? { initiating: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}),
             };
@@ -786,22 +776,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (atFacts instanceof Promise) atFacts = await atFacts;
             if (atFacts.stop) return atFacts.text;
             const factual = atFacts.text;
-            const reviewOptions: ReviewOptions = {
-                // 角色卡的禁用词 + 医书里的词（“肚子坠着”之类，expression.ts 的 ODD_BODY_WORDS）：出了就让她重写
-                banned: [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS],
-                userName: contact.name,
-                ...(options.speechCheck ? { speech: { ...speechContext(options.history.load(contact.qq), options.tailCap ? { tailCaps: TAIL_CAPS } : {}), ...(sulkNow ? { allowGrievance: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}) } } : {}),
-                ...(reading ? { books: reading } : {}),
-                // 小黄脸（ADR 0051）：最近几次带得太密、他认真说事她只回表情
-                faces: faceContext(options.history.load(contact.qq), contact.tier),
-                ...(textIntimacy ? { textIntimacy: true } : {}),
-                ...(options.stickers ? { imageStickers: true } : {}),
-                regenerate,
-                onRewriteAccepted,
-                log,
-            };
-            // 出口检查那一刻的上下文交给后面的审稿模块（删行收尾用同一份，不重读聊天记录）
-            reviewCtx.scratch.exitOptions = reviewOptions;
+            // 出口检查那一刻的上下文（禁用词、说话的毛病、在读的书、小黄脸、文字抱抱、图片表情）由出口检查模块在 exit 位置自己算（modules/review-exit.ts），写进 scratch.exitOptions 给删行收尾用；
+            // 这个联系人才有的几样经 ReviewCtx.exit / history 给
             // 出口检查 / 危机检查是解释器的模块（modules/review-exit.ts），挂在 exit 位置：危机回合它换成危机检查、不登记设备指令，并到此为止（stop）
             let atExit = at('exit', factual);
             if (atExit instanceof Promise) atExit = await atExit;

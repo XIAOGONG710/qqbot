@@ -196,3 +196,73 @@ describe('联系人流水线里的出口检查', () => {
         assert.deepEqual(fixture.committed, []);
     });
 });
+
+describe('出口检查的上下文自己算（exitOptionsOf，2026-11-16）', async () => {
+    const { exitOptionsOf } = await import('../src/modules/review-exit.ts');
+    const { ODD_BODY_WORDS, STILTED_WORDS } = await import('../src/language/expression.ts');
+    const card = parseCharacterCard({ spec: 'chara_card_v2', data: { name: '小红', extensions: { qqbot: { banned: ['秘密'] } } } });
+    const ctxOf = (extra: Partial<ReviewCtx> = {}) => {
+        const reads: number[] = [];
+        const ctx: ReviewCtx = {
+            regenerate: async () => '重写', accept: () => {}, dropDevices: () => {}, scratch: {}, log: () => {},
+            exit: { speechCheck: false, tailCap: false, imageStickers: false },
+            history: () => { reads.push(1); return [] as StoredMessage[]; },
+            ...extra,
+        };
+        return { ctx, reads };
+    };
+    const turnOf = (facts: TurnFacts = {}): Turn => ({ ...turnWith(facts), card });
+
+    test('不经联系人流水线（没有 ctx.exit）：不算', () => {
+        const { ctx } = ctxOf();
+        delete ctx.exit;
+        assert.equal(exitOptionsOf(turnOf(), ctx), undefined);
+    });
+
+    test('禁用词是卡上的加医书里的词、书面腔；他的名字；重写 / 采用 / 日志就是 ctx 的', () => {
+        const { ctx, reads } = ctxOf();
+        const options = exitOptionsOf(turnOf(), ctx)!;
+        assert.deepEqual(options.banned, ['秘密', ...ODD_BODY_WORDS, ...STILTED_WORDS]);
+        assert.equal(options.userName, '阿明');
+        assert.equal(options.regenerate, ctx.regenerate);
+        assert.equal(options.onRewriteAccepted, ctx.accept);
+        assert.equal(options.log, ctx.log);
+        assert.equal(options.speech, undefined, '没开 speechCheck 不查说话的毛病');
+        assert.ok(options.faces, '小黄脸总是查');
+        assert.equal(reads.length, 1, '没开 speechCheck 时聊天记录只为小黄脸读一次');
+        assert.equal(options.textIntimacy, undefined);
+        assert.equal(options.imageStickers, undefined);
+        assert.equal(options.books, undefined);
+    });
+
+    test('开了 speechCheck：聊天记录读两次（说话的毛病、小黄脸）；小别扭生效放过带点抱怨的话，固定说法放过重复', () => {
+        const plain = ctxOf({ exit: { speechCheck: true, tailCap: false, imageStickers: false } });
+        const options = exitOptionsOf(turnOf(), plain.ctx)!;
+        assert.ok(options.speech);
+        assert.equal(plain.reads.length, 2);
+        assert.equal(options.speech.allowGrievance, undefined);
+        assert.equal(options.speech.allowRepeat, undefined);
+        const sulk = exitOptionsOf(turnOf({ sulk: true }), ctxOf({ exit: { speechCheck: true, tailCap: true, imageStickers: false }, allowRepeat: true }).ctx)!;
+        assert.equal(sulk.speech!.allowGrievance, true);
+        assert.equal(sulk.speech!.allowRepeat, true);
+    });
+
+    test('文字抱抱看最终的意图；图片表情看这个联系人有没有收藏库；在读的书的进度来自这一轮放的书', () => {
+        const books = { context: { marker: '进度' } } as unknown as NonNullable<TurnFacts['books']>;
+        const options = exitOptionsOf(turnOf({ intent: '[这一轮你想：他要 QQ 文字里的抱抱，给他]', books }), ctxOf({ exit: { speechCheck: false, tailCap: false, imageStickers: true } }).ctx)!;
+        assert.equal(options.textIntimacy, true);
+        assert.equal(options.imageStickers, true);
+        assert.equal(options.books, books.context);
+    });
+
+    test('模块在 exit 位置算好写进 scratch（删行收尾用同一份）；已经有人放好的不重算', async () => {
+        const { ctx } = ctxOf();
+        await exit('好呀', turnOf(), ctx);
+        assert.ok(ctx.scratch.exitOptions, '算好了');
+        const seeded = ctxOf();
+        const mine = { ...exitOptionsOf(turnOf(), seeded.ctx)!, banned: ['只有这个'] };
+        seeded.ctx.scratch.exitOptions = mine;
+        await exit('好呀', turnOf(), seeded.ctx);
+        assert.equal(seeded.ctx.scratch.exitOptions, mine);
+    });
+});

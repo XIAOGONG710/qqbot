@@ -481,6 +481,10 @@ export interface ReviewCtx {
     accept(): void;
     /** 这一轮不操作他的设备：草稿和重写里的设备指令都不登记（危机回合，ADR 0068 / 0148）；出口检查模块（modules/review-exit.ts）在危机回合调 */
     dropDevices(): void;
+    /** 出口检查要的、按联系人 / 配置给的几样：查不查说话的毛病（配置 speechCheck）、句尾语气词封顶（tailCap）、这个联系人有没有图片表情收藏库。联系人流水线总是给；不经流水线建的（测试）可以没有 */
+    exit?: { speechCheck: boolean; tailCap: boolean; imageStickers: boolean };
+    /** 这个联系人存下来的聊天记录，审稿的那一刻现读（说话的毛病、小黄脸带得密不密） */
+    history?: () => readonly StoredMessage[];
     /** 这一轮拼出来的提示词（ST 后处理之前，system 还是 system）：事实检查（modules/review-facts.ts）拿它当「她能依据的事实」；拼提示词没走到时没有 */
     promptSource?: readonly OpenAIMessage[];
     /** 他 / 她的名字（审稿提示词里聊天记录的称呼） */
@@ -498,7 +502,7 @@ export interface ReviewVerdict { text: string; stop?: true }
 
 /** 审稿模块之间这一轮共用的东西（同 TurnFacts：写的在前、读的在后；字段随审稿模块迁出逐个加） */
 export interface ReviewScratch {
-    /** 出口检查那一刻算好的上下文（禁用词、说话的毛病——聊天记录在那一刻读、书、小黄脸……）：联系人流水线在出口检查之前写；
+    /** 出口检查那一刻算好的上下文（禁用词、说话的毛病——聊天记录在那一刻读、书、小黄脸……）：出口检查模块在 exit 位置算好后写；
      *  出口检查（modules/review-exit.ts）和删行收尾（modules/review-finalize.ts）都用这一份，不重读聊天记录 */
     exitOptions?: ReviewOptions;
     /** 第一次事实检查（facts 位置）查完的稿子：事实检查模块写，factsFinal 只在稿子跟它不一样时再查；没查（危机、固定说法、没开）就没有 */

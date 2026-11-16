@@ -1163,3 +1163,15 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 验证：基线 42/42 逐字不变；变异检验——判断了但不写 `deliberate`，`rich-chat` 报不一致、`app.test.ts` 的深思和语义路由两条用例红。`decide-stage.test.ts` 加 5 项（共 29，含同步 / 要等分类两条路、分类出错、各种让路）；
   所有直接用联系人流水线或涉及深思的测试通过；类型检查通过。
 - 判断顺序表：`photo` → `intent` → `feelings` → `stickers` → `deliberate` → `texture`。还在流水线原位的：连续性（await、上网调模型）、长短要的几样（`low`、`agendaTopics`、`cue`）、聊天原文放多少、记忆那一组的召回。
+
+### 出口检查的上下文由出口检查模块自己算（2026-11-16）
+
+- 「生成之后那一段」第 6 步留下的尾巴：出口检查 / 删行收尾要的上下文（禁用词、他的名字、说话的毛病、在读的书的进度、小黄脸、文字抱抱、图片表情）当时仍由联系人流水线在 `exit` 之前算好、写进 `scratch.exitOptions`，
+  为此流水线留着三个闭包变量（`reading`、`textIntimacy`、`sulkNow`）。现在它们要读的都是 facts 了（`books`、`intent`、`sulk`），挪进模块。
+- `modules/review-exit.ts` 的 `exitOptionsOf(turn, ctx)`：在 `exit` 位置的开头算（和原来同一刻：事实检查之后、出口检查之前，聊天记录读法和次数一样），写进 `scratch.exitOptions`，删行收尾照旧用同一份。
+  按联系人 / 配置给的三样（`speechCheck`、`tailCap`、有没有图片表情收藏库）在 `ReviewCtx.exit`，存下来的聊天记录在 `ReviewCtx.history()`；两样都可选，不经流水线建的 `ReviewCtx`（模块单测）不用给。
+  已经有人放好 `scratch.exitOptions` 的不重算；没有 `ctx.exit` 也没人放好时照旧（平常回合原样放过、危机回合发固定兜底）。
+- 流水线：那一段和三个闭包变量删掉。只挂删行收尾、不挂出口检查的流水线不再有上下文——App 和模拟器两样都总是挂；`review-finalize-module.test.ts` 里一条这样的用例补挂了出口检查模块。
+- 这一步之前跑的 bot 全量：4702 过、13 跳过、**0 红**（`group-affect` 修掉之后第一次全绿）。
+- 验证：基线 42/42 逐字不变；变异检验——模块里不查说话的毛病，`closeness`、`books` 报不一致；禁用词只留卡上的（去掉医书里的词和书面腔），试的四个场景（`rich-chat`、`closeness`、`books`、`intents`）**没抓到**——
+  这一处由 `review-exit-module.test.ts` 新加的用例核对（禁用词的组成、聊天记录读几次、小别扭 / 固定说法 / 文字抱抱 / 图片表情 / 书的进度、写进 scratch、不重算，共 5 项）。审稿相关测试 653 项通过；类型检查通过。
