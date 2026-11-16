@@ -11,6 +11,7 @@ import argparse
 import atexit
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -135,10 +136,11 @@ def vocal_f0(wav: str) -> float:
     """人声中位 F0：用 venv 里的 librosa.pyin，取前 30 秒"""
     code = (
         "import librosa,numpy as np,sys;"
-        "y,sr=librosa.load(sys.argv[1],sr=16000,mono=True,duration=30);"
-        "f0,vf,vp=librosa.pyin(y,fmin=70,fmax=600,sr=sr);"
-        "f0=f0[~np.isnan(f0)];"
-        "print(float(np.median(f0)) if f0.size else 0.0)"
+        "y,sr=librosa.load(sys.argv[1],sr=16000,mono=True,duration=120);"
+        "w=15*sr; vals=[];"
+        "starts=list(range(0,max(1,len(y)-w+1),max(1,30*sr)))[:4];"
+        "[vals.extend([v for v in librosa.pyin(y[i:i+w],fmin=70,fmax=600,sr=sr)[0] if not np.isnan(v)]) for i in starts];"
+        "print(float(np.median(vals)) if vals else 0.0)"
     )
     res = subprocess.run([PY, "-c", code, wav], capture_output=True, text=True, timeout=600)
     return float(res.stdout.strip() or 0)
@@ -220,6 +222,8 @@ def main():
     ap.add_argument("--mix-only", action="store_true", help="跳过下载/分离/转换，只按现有 stems 重混")
     ap.add_argument("--force", action="store_true", help="已经有成品也重唱一遍")
     ap.add_argument("--keep-chunks", action="store_true", help="保留分块中间产物（排查用）")
+    ap.add_argument("--max-f0", type=float, default=280.0,
+                    help="她的正常音高上限（Hz）：源中位比这高就整首降调，默认 280")
     args = ap.parse_args()
 
     work_root = args.out
@@ -236,6 +240,14 @@ def main():
     merged = os.path.join(work, "vocals-her.wav")
     if not os.path.exists(inst):
         raise SystemExit(f"伴奏没分离出来：{inst}")
+
+    # 2026-11-15 用户定的规矩：歌比她的正常音区高就整首降调，必须符合她的声线
+    src_f0 = vocal_f0(vocals)
+    shift = args.pitch
+    if src_f0 > args.max_f0:
+        shift = int(round(12 * math.log2(args.max_f0 / src_f0)))
+        stage("transpose", f"源中位 {src_f0:.0f} Hz > {args.max_f0:.0f} → 整首降 {-shift} 个半音")
+    args.shift = shift
 
     # 同一首歌唱过就直接给成品：素材、分块都不重跑（用户再点一次不用再等 5 分钟）
     cached = os.path.join(args.out, f"{bv}-她唱的.mp3")
@@ -271,7 +283,7 @@ def main():
             try:
                 run([PY, "-m", "infer.cli", "--model", MODEL,
                      "--input", os.path.join(chunks, f), "--output", out_chunk,
-                     "--pitch", str(args.pitch), "--f0-method", "rmvpe", "--index-rate", "0"],
+                     "--pitch", str(args.shift), "--f0-method", "rmvpe", "--index-rate", "0"],
                     cwd=RVC, env=env, timeout=900)
                 break
             except subprocess.TimeoutExpired:
@@ -353,8 +365,13 @@ def mix(args, inst: str, vocals: str) -> None:
     gain = 10 ** (gain_db / 20)
     stage("mix-gain", f"人声 {lv:.1f} / 伴奏 {li:.1f} LUFS → 伴奏 {gain_db:+.1f} dB（目标低 {args.ratio} dB）")
     mp3 = os.path.join(args.out, f"{song_file_name(args)}-她唱的.mp3")
+    # 人声降了调，伴奏也要跟着降同样的半音，否则整首跑调
+    inst_chain = ""
+    if getattr(args, "shift", 0):
+        ratio = 2 ** (args.shift / 12)
+        inst_chain = f"asetrate=44100*{ratio:.6f},aresample=44100,atempo={1 / ratio:.6f},"
     filter_complex = (
-        f"[0:a]volume={gain:.4f}[i];[1:a]volume=1.0[v];"
+        f"[0:a]{inst_chain}volume={gain:.4f}[i];[1:a]volume=1.0[v];"
         "[i][v]amix=inputs=2:duration=first,loudnorm=I=-14:TP=-1.0:LRA=11"
     )
     run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-i", inst, "-i", vocals,
@@ -370,6 +387,8 @@ def finish(args, mp3, inst_gain_db=None):
         payload = {"bv": args.song_bv, "mp3": mp3, "source": getattr(args, "source_note", "")}
         if inst_gain_db is not None:
             payload["instGainDb"] = inst_gain_db
+            if getattr(args, "shift", 0):
+                payload["pitchShift"] = args.shift
         with open(args.result, "w", encoding="utf8") as fh:
             json.dump(payload, fh, ensure_ascii=False)
 
