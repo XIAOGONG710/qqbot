@@ -1193,3 +1193,11 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   - 真人数值和人格成长层（开头、第一次 await 之前算）。
 - 第 6 步收尾里没动的：`sim/runner.ts` 和 App 各有一份模块接线（两份的顺序和选项不完全一样，合并要逐个核对）；`features.ts` / `modules.ts` / Koishi Schema / `docs/modules/` 还不是从模块定义生成的；
   App 里各功能的计时器还没迁成模块的 `schedules`；`bilibili/`、`social/presence.ts`、`platform/heartbeat.ts`、`platform/lock.ts` 还自己开计时器；状态文件读写和子进程还不是执行器的动作。
+
+### 两份模块接线先守住再合（2026-11-16）
+
+- App（`app.ts` 的 `createInterpreter`）和模拟器（`sim/runner.ts` 的 `turnModules`）各手写一份模块列表：App 57 个工厂、模拟器 48 个，先后也不完全一样（先后只对「写 facts 的在前、读的在后」的几对有意义，段落的先后由槽位表定）。
+  这一轮每迁一步都要两边各接一次，漏一边不会有任何测试红。
+- 合成一份（第 6 步）要先给两边的选项找一个共同的形状，不是机械活，这一轮不做。先加 `module-wiring.test.ts` 守住：
+  只在 App 挂的 11 个、只在模拟器挂的 3 个写成清单（带原因），清单之外两边必须一样；有先后要求的几对（她此刻 → 危机 → 意图阶梯 → 被打断 / 别重复自己，形状 → 长短，热梗 → 梗百科）两边都核对。
+  只读源码里的接线，不起 App。
