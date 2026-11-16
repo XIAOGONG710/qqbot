@@ -1389,12 +1389,14 @@ describe('编排（app.ts）', () => {
         if (existsSync(queue)) assert.ok(JSON.parse(readFileSync(queue, 'utf8')).items.every((item: { id: string }) => item.id.startsWith('life:')));
     });
 
-    test('世界影子闭环（ADR 0338）：随自主生活启动但只建立内部观察基线，不发送消息', () => {
+    test('世界影子闭环（ADR 0338）：随自主生活记录初始世界快照但不发送消息', () => {
         const cfg = config({ herDays: true, schedule: true, autonomousLife: true, contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
         const { sent, logs } = setup(cfg);
         assert.ok(existsSync(join(cfg.dataDir, 'agency-shadow', 'time.json')));
+        const ledger = readFileSync(join(cfg.dataDir, 'agency-shadow', 'events.json'), 'utf8');
+        assert.match(ledger, /sandbox\.presence\.context/);
         assert.deepEqual(sent, []);
-        assert.ok(logs.every(line => !line.includes('世界影子：事件')), '首次观察只建立时间基线，不能把启动本身当作主动事件');
+        assert.ok(logs.some(line => line.includes('世界影子：事件')), '世界快照应只进入内部影子账');
     });
 
     test('世界影子把收到私聊记成事实但不落正文、不增加主动消息', async () => {

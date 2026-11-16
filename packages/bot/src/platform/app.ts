@@ -811,9 +811,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         try {
             const at = new Date(worldNow());
             const body = worldCard.herWorld?.body ? bodyAt(worldCard.herWorld.body, worldCard.schedule!, at) : undefined;
+            const currentWorld = ledgerWorld.at(worldCard.herWorld!, worldCard.schedule!, at);
+            const worldEvents = currentWorld ? agencyShadow.recordWorld(currentWorld, at) : 0;
             const result = agencyShadow.observe(at, regulationAt(needsAt(needsAnchor, ledgerWorld.events(), at), body));
-            if (result.events || result.impacts || result.drives || result.candidates) {
-                log(`世界影子：事件 ${result.events}，影响 ${result.impacts}，动机 ${result.drives}，候选 ${result.candidates}（只记录，不外发）`);
+            if (worldEvents || result.events || result.impacts || result.drives || result.candidates) {
+                log(`世界影子：事件 ${worldEvents + result.events}，影响 ${result.impacts}，动机 ${result.drives}，候选 ${result.candidates}（只记录，不外发）`);
             }
         } catch (error) {
             log(`世界影子：观察失败（${error instanceof Error ? error.message : String(error)}）`);
