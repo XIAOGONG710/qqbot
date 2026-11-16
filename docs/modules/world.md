@@ -8,6 +8,7 @@
 
 - `world/world.ts`
 - `world/events.ts`
+- `world/event-ledger.ts`
 - `world/cache-freshness.ts`
 - `world/external-error.ts`
 - `world/fact-resolution.ts`
