@@ -14,6 +14,7 @@
 - `life/money.ts`
 - `life/body.ts`
 - `life/needs.ts`
+- `life/regulation.ts`
 - `life/her-days.ts`
 - `life/day-plan.ts`
 - `life/everyday.ts`
