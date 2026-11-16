@@ -65,6 +65,36 @@ export function validShadowActivityCandidate(value: unknown): value is ShadowAct
         && timestamp(candidate.createdAt) && nonEmpty(candidate.reason) && candidate.reason.length <= 160;
 }
 
+const internalAt = (regulation: RegulationSnapshot): string | undefined => Number.isFinite(Date.parse(regulation.at)) ? regulation.at : undefined;
+const internalWindow = (at: string): string => at.slice(0, 10);
+const level = (value: number): 'high' | 'critical' => value >= 0.8 ? 'critical' : 'high';
+
+/**
+ * 把功能性调节快照转成内驱，而不是把一组数直接当作“情绪”或医学诊断。
+ *
+ * 只有明显的负荷才产生候选；有社交/认知余量不等于系统替她虚构“想聊天 / 想学习”。
+ * 同一天、同一强度档位有稳定身份，轮询不会不断制造新的内驱记录。
+ */
+export function internalDrivesAt(regulation: RegulationSnapshot): Drive[] {
+    const at = internalAt(regulation);
+    if (!at) return [];
+    const window = internalWindow(at);
+    const drives: Drive[] = [];
+    const add = (key: string, goal: string, strength: number, urgency: number) => {
+        const bucket = level(strength);
+        drives.push({
+            id: `drive:internal:${key}:${window}:${bucket}`, source: 'internal', goal, target: 'self', stateKeys: [`regulation.${key}`],
+            strength, urgency, persistence: 0.6, createdAt: at, status: 'active',
+        });
+    };
+    if (regulation.recoveryNeed >= 0.55) add('recoveryNeed', '恢复精力，降低负荷', regulation.recoveryNeed, regulation.recoveryNeed >= 0.8 ? 0.8 : 0.45);
+    if (regulation.discomfort >= 0.4) add('discomfort', '照顾身体不适', regulation.discomfort, regulation.discomfort >= 0.8 ? 0.85 : 0.5);
+    if (regulation.arousal >= 0.7) add('arousal', '缓和紧绷，整理状态', regulation.arousal, regulation.arousal >= 0.85 ? 0.75 : 0.4);
+    if (regulation.socialCapacity <= 0.35) add('socialCapacity', '保留社交容量', 1 - regulation.socialCapacity, 0.3);
+    if (regulation.cognitiveCapacity <= 0.35) add('cognitiveCapacity', '减少认知负荷', 1 - regulation.cognitiveCapacity, 0.35);
+    return drives;
+}
+
 /**
  * 影子模式只允许低风险的内部活动。恢复需求高时优先等待；否则把动机保留为“记住”。
  * 这里没有 message / search / tool / voice 等候选，确保这层不能绕过她的开口权。

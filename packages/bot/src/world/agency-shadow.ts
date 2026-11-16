@@ -4,7 +4,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readMotivationLedger, type MotivationLedger } from '../life/motivation-ledger.ts';
-import { shadowActivityFor, type Drive } from '../life/motivation.ts';
+import { internalDrivesAt, shadowActivityFor, type Drive } from '../life/motivation.ts';
 import type { RegulationSnapshot } from '../life/regulation.ts';
 import { readWorldEventLedger, type WorldEventLedger } from './event-ledger.ts';
 import { readWorldImpactLedger, type WorldImpactLedger } from './impact-ledger.ts';
@@ -77,7 +77,10 @@ export function readAgencyShadow(dataDir: string, initialAt: Date, log: (message
                 .map(event => contextImpact(event, at.toISOString()));
             const impactsAdded = impacts.append(newImpacts);
             const knownImpacts = new Set(motivations.drives().flatMap(drive => drive.impactIds ?? []));
-            const drivesAdded = motivations.appendDrives(impacts.impacts().filter(impact => !knownImpacts.has(impact.id)).map(awarenessDrive));
+            const drivesAdded = motivations.appendDrives([
+                ...impacts.impacts().filter(impact => !knownImpacts.has(impact.id)).map(awarenessDrive),
+                ...internalDrivesAt(regulation),
+            ]);
             const knownDrives = new Set(motivations.candidates().map(candidate => candidate.driveId));
             const candidates = motivations.drives().filter(drive => !knownDrives.has(drive.id))
                 .map(drive => shadowActivityFor(drive, regulation, at))
