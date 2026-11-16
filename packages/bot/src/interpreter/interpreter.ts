@@ -18,7 +18,10 @@ import type { ResponderDeps } from '../social/responder.ts';
 import type { CrisisHit } from '../emotion/crisis.ts';
 import type { Grievance } from '../emotion/grievance.ts';
 import type { Executor } from '../executor/executor.ts';
-import type { WorldNow } from '../world/world.ts';
+import type { WorldNow, WorldState } from '../world/world.ts';
+import type { Appraisal, Felt, Moment } from '../emotion/feelings.ts';
+import type { Pursuit } from '../life/pursuits.ts';
+import type { FeelingsReport } from '../emotion/feeling-export.ts';
 import type { Together } from '../language/together.ts';
 import type { Schedule, State } from '../life/schedule.ts';
 import type { Character } from '../st/card.ts';
@@ -140,6 +143,10 @@ export interface TurnFacts {
     low?: boolean;
     /** 早上那句梦（2026-10-31）：联系人流水线原位读梦（同时取梦给心境的打分）后写；App 只给男朋友档、开了 herFeelings，危机回合没有。modules/feelings.ts 放进 dreams 槽 */
     dreamLine?: string;
+    /** 梦给心境的打分（和 dreamLine 同一处读）：modules/feelings.ts 的 decideAt.feelings 算心境时加进去 */
+    dreamAppraisals?: readonly Appraisal[];
+    /** 这一轮她心里的感受（ADR 0102，分量从大到小）：modules/feelings.ts 的 decideAt.feelings 写；流水线的 low、生成时最多几条读。没开心境、不是男朋友档、危机回合没有 */
+    felt?: Felt[];
     /** 心境那一行（ADR 0102，QQ 这一句的写法：他在关心她时绷不住）：旧逻辑在小别扭是否生效之后原位算后写；男朋友档、开了 herFeelings、不是危机、小别扭没生效才有。modules/feelings.ts 放进 feeling 槽 */
     feelingLine?: string;
     /** 心境 → 说话的量（2026-10-30）：和心境那一行同一处、同样的条件；modules/feelings.ts 放进 pace 槽。生成时的最多几条还在旧逻辑 */
@@ -312,7 +319,7 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['photo', 'intent', 'stickers', 'texture'] as const;
+export const DECIDE_STAGES = ['photo', 'intent', 'feelings', 'stickers', 'texture'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
@@ -321,6 +328,29 @@ export interface DecideCtx {
     stickers?: { chance?: number; uncued?: number; onlyChance?: number };
     /** 这个联系人存下来的聊天记录（判断的那一刻现读：她最近几次回复带了几次小黄脸之类） */
     history: () => readonly StoredMessage[];
+    /** 算心境要的、按联系人给的那几样（ADR 0102 / 0104 / 0106）；条件（开没开、档位、危机）在模块里看 */
+    feelings?: {
+        /** 开了心境（配置 herFeelings） */
+        herFeelings: boolean;
+        /** 开了今天的小事（她的追求里小测那一条读它） */
+        everydayLife: boolean;
+        /** 作息（开了她自己的日子才有）：她的一天从几点算 */
+        schedule?: Schedule;
+        /** 她的追求（ADR 0104）：作者的文件加内置的两条 */
+        pursuits?: () => readonly Pursuit[];
+        /** 带结算的世界账里的事件（她的追求的进度读它） */
+        worldEvents?: () => ReturnType<NonNullable<WorldState['events']>>;
+        /** 某一刻她那边（带结算的世界账优先，没有就按卡现算）：算「前一天结束时」用 */
+        worldAt: (herWorld: NonNullable<Character['herWorld']>, schedule: Schedule, at: Date) => WorldNow | undefined;
+        /** 作者写下的事 */
+        moments?: () => readonly Moment[];
+        /** 她聊完回想记下的感受（ADR 0197） */
+        feelingReview?: () => readonly Appraisal[];
+        /** 群里的遭遇 */
+        groupMood?: () => readonly Appraisal[];
+        /** 交给桌面上的她（ADR 0197） */
+        onFeelings?: (report: FeelingsReport) => void;
+    };
     /** 照片货架（ADR 0109）：有没有这一类、列出来找审核过的那一张；没开、不是男朋友档时没有 */
     photos?: Pick<PhotoShelf, 'has' | 'list'>;
     /** 「现在的照片」的解析（ADR 0240）：只有已审核、和此刻匹配的才能发 */

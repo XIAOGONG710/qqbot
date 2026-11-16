@@ -38,12 +38,13 @@ import type { CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { dayPlan, describeSlot } from '.././life/day-plan.ts';
 import { bodyAt, describeBody, diaryBody, unwell } from '.././life/body.ts';
 import { saidAsleepAt } from '.././life/bedtime.ts';
-import { moodPaceLine, moodShape, tunedMaxBubbles } from '.././emotion/express.ts';
 import { withEveryday } from '.././life/everyday.ts';
 import { withMenu } from '.././life/menu.ts';
-import { describePursuits, pursuitViews, type Pursuit } from '.././life/pursuits.ts';
+import { moodShape, tunedMaxBubbles } from '.././emotion/express.ts';
+import type { Pursuit } from '.././life/pursuits.ts';
+import { appraisals, feelsLow, type Appraisal, type Felt, type Moment } from '.././emotion/feelings.ts';
 import type { FeelingsReport } from '../emotion/feeling-export.ts';
-import { appraisals, asksAfterHer, criedRecently, describeFeelings, FEELING_NAME, feelingsAt, feelsLow, voicedKinds, type Appraisal, type Felt, type Moment } from '.././emotion/feelings.ts';
+
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
 import { type PromiseKeeper } from '.././life/promises.ts';
 import { formatDate, herDay, type ExtraFreeActivity } from '.././life/schedule.ts';
@@ -298,7 +299,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     const decideCtx: DecideCtx = {
         ...(options.stickers ? { stickers: { ...(options.stickerChance !== undefined ? { chance: options.stickerChance } : {}), ...(options.stickerUncued ? { uncued: options.stickerUncued } : {}), ...(options.stickerOnlyChance ? { onlyChance: options.stickerOnlyChance } : {}) } } : {}),
         ...(options.photos ? { photos: options.photos } : {}),
-        history: () => options.history.load(contact.qq), ...(options.currentAiPhoto ? { currentAiPhoto: options.currentAiPhoto } : {}), log: message => log(message) };
+        history: () => options.history.load(contact.qq),
+        feelings: {
+            herFeelings: Boolean(options.herFeelings), everydayLife: Boolean(options.everydayLife), ...(options.herDays && character.schedule ? { schedule: character.schedule } : {}),
+            ...(options.pursuits ? { pursuits: options.pursuits } : {}), ...(options.worldState?.events ? { worldEvents: () => options.worldState!.events!() } : {}),
+            worldAt: (herWorld, schedule, end) => options.worldState?.at(herWorld, schedule, end) ?? worldAt(herWorld, schedule, end),
+            ...(options.moments ? { moments: options.moments } : {}), ...(options.feelingReview ? { feelingReview: options.feelingReview } : {}), ...(options.groupMood ? { groupMood: options.groupMood } : {}),
+            ...(options.onFeelings ? { onFeelings: options.onFeelings } : {}),
+        }, ...(options.currentAiPhoto ? { currentAiPhoto: options.currentAiPhoto } : {}), log: message => log(message) };
     const shelves: CleanCtx = { ...(options.stickers ? { stickers: options.stickers } : {}), ...(options.photos ? { photos: options.photos } : {}) };
     /**
      * 清理生成的一稿（ADR 0336「生成之后那一段」第 8、9 步）：先摘设备指令（ADR 0148：摘出来放进 Draft.devices，字里不留；没开设备控制也一律摘掉令牌），
@@ -590,6 +598,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她学的时候没想通的地方（2026-10-31）是解释器的模块（modules/learning-question.ts），经 turnModules 放进 question 槽
             // 命令结果和「可以跑命令」那一行（2026-10-30）是解释器的模块（modules/shell.ts），经 turnModules 放进 shell、shellIntent 槽
             const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
+            // 梦（2026-10-31）在这里原位读：那一行和它给心境的打分写进 turn.facts，心境的模块用
+            if (dreamsNow?.line) turn.facts.dreamLine = dreamsNow.line;
+            if (dreamsNow?.appraisals.length) turn.facts.dreamAppraisals = dreamsNow.appraisals;
             // 她自己最近的日子（心里的线头）、拒绝过的、评价、「你现在的生活」、首轮铺底是解释器的模块（modules/soul.ts）
             // 他的口气（2026-10-30：说话还是使唤、当程序说话、很元的问题、使唤得比说话多）是解释器的模块（modules/register.ts），经 turnModules 放进 register 槽
             // 她自己记下的东西（说话习惯、聊天回顾、日记里发现的自己、读完看完的想法、没想完的问题、她猜的事）是解释器的模块（modules/her-notes.ts）
@@ -602,44 +613,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const intent = turn.facts.intent;
             const grievanceActive = Boolean(turn.facts.grievanceActive);
             sulkNow = Boolean(turn.facts.sulk);
-            // 前一天的世界（到那天结束）：小测出分这类事第二天她还记着（ADR 0106）；只在开了心境时算
-            // 她自己的追求（ADR 0104）：进度只来自她做过的事（生活账里的摄影）和出分的小测
-            const pursuitList = options.pursuits && contact.tier === 'boyfriend' && herSchedule ? options.pursuits() : [];
-            const pursuitViewsNow = pursuitList.length && herSchedule
-                ? pursuitViews(pursuitList, { now: time, schedule: herSchedule, quizzes: Boolean(options.everydayLife), ...(character.herWorld?.everydayFrom ? { quizFrom: character.herWorld.everydayFrom } : {}), ...(options.worldState?.events ? { events: options.worldState.events() } : {}), ...(around ? { world: around } : {}) })
-                : [];
-            const pursuitLine = describePursuits(pursuitViewsNow);
-            const previousAround = options.herFeelings && herSchedule && character.herWorld && contact.tier === 'boyfriend'
-                ? (() => {
-                    const end = new Date(herDay(herSchedule, time).getTime() - 60_000);
-                    return options.worldState?.at(character.herWorld!, herSchedule, end) ?? worldAt(character.herWorld!, herSchedule, end);
-                })()
-                : undefined;
-            // 心境（ADR 0102）：事实 → 带来由的评估 → 按半衰期衰减的感受，不落盘、每一轮重算；只给男朋友档，危机回合不算；小别扭 / 和好那一轮由 0074 的态度管，不叠
-            const feltNow: Felt[] = options.herFeelings && contact.tier === 'boyfriend' && !crisisNow
-                ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), ...(previousAround ? { previousWorld: previousAround } : {}), moments: options.moments?.() ?? [], extra: [...pursuitViewsNow.flatMap(view => view.appraisals), ...(options.feelingReview?.() ?? []), ...(options.groupMood?.() ?? []), ...(dreamsNow?.appraisals ?? [])] }), time.getTime())
-                : [];
-            const hisWords = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
-            const feelingLine = feltNow.length && !grievanceActive
-                ? describeFeelings(feltNow, contact.name, { melt: asksAfterHer(hisWords), voiced: voicedKinds(chat, time.getTime()), mayCry: !criedRecently(chat, time.getTime()) })
-                : undefined;
-            // 情绪 → 行为（2026-10-30）：心境不再只是提示词里的一行装饰，它决定这一轮说多说少
+            // 心境那一段（ADR 0102 / 0104 / 0106：她的追求 → 前一天她那边 → 感受 → 那一行、节奏 → 交给桌面上的她）是解释器的模块（modules/feelings.ts 的 decideAt.feelings）：
+            // 在原位算（最终的意图、小别扭是否生效之后），按联系人给的那几样经 DecideCtx.feelings 递过去；写进 turn.facts.felt、feelingLine、paceLine，下面的 low、生成时最多几条读
+            decideStage(options.turnModules ?? [], 'feelings', turn, decideCtx);
+            const feltNow = turn.facts.felt ?? [];
+            const feelingLine = turn.facts.feelingLine;
             const moodNow = moodShape(feltNow);
-            const paceLine = feltNow.length && !grievanceActive ? moodPaceLine(moodNow) : undefined;
-            if (paceLine) log('心境：这一轮按她此刻的心情收放了说话的量（日志不记内容）');
-            // 桌面上的她读同一份（ADR 0197）：那一行按「没有人正好在关心她」重算（melt 只对 QQ 当下这一句话有意义），小别扭那一轮不交
-            if (options.onFeelings && options.herFeelings && contact.tier === 'boyfriend' && !crisisNow) {
-                const neutral = feltNow.length && !grievanceActive
-                    ? describeFeelings(feltNow, contact.name, { melt: false, voiced: voicedKinds(chat, time.getTime()), mayCry: !criedRecently(chat, time.getTime()) })
-                    : undefined;
-                try { options.onFeelings({ at: time.getTime(), felt: feltNow, line: neutral }); } catch (error) { log(`心境：没能交给桌面上的她（${error instanceof Error ? error.message : String(error)}）`); }
-            }
-            if (feelingLine) log(`心境：${feltNow.filter(item => item.level !== 'faint').slice(0, 2).map(item => `${FEELING_NAME[item.kind]}·${item.level === 'strong' ? '很重' : '明显'}（${item.source === 'world' ? '她那边的事' : item.source === 'him' ? '他的态度' : item.source === 'self' ? '她自己回想的' : '作者写下的事'}）`).join('、')}（日志不记内容）`);
-            // 心境那一行、节奏、梦那一行是解释器的模块（modules/feelings.ts）：在这里原位算（读梦、作者写下的事、回想过的感受、带结算的世界账，要等小别扭是否生效），
-            // 写进 turn.facts，经 turnModules 放进 feeling、pace、dreams 槽；onFeelings、low、最多几条、日志还读这里算的
-            Object.assign(turn.facts, {
-                ...(dreamsNow?.line ? { dreamLine: dreamsNow.line } : {}), ...(feelingLine ? { feelingLine } : {}), ...(paceLine ? { paceLine } : {}),
-            } satisfies TurnFacts);
             textIntimacy = Boolean(intent?.includes('QQ 文字里的抱抱'));
             const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
             // 连续性（ADR 0157–0163）：设定改动的背景 / QQ 以外做过的事 / 上网查到的 / 自己发现的口味 / 又见到的人；出错当没有，不挡回复
