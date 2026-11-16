@@ -10,9 +10,12 @@ import { readWorldEventLedger, type WorldEventLedger } from './event-ledger.ts';
 import { readWorldImpactLedger, type WorldImpactLedger } from './impact-ledger.ts';
 import type { WorldImpact } from './impacts.ts';
 import { readTimeObserver, type TimeObserver } from './time-observer.ts';
+import type { WorldEvent } from './events.ts';
 
 export interface AgencyShadow {
     observe(at: Date, regulation: RegulationSnapshot): { events: number; impacts: number; drives: number; candidates: number };
+    /** 只登记“收到消息”这一事实，正文仍只留在既有聊天记录中；不产生影响或活动。 */
+    recordUserMessage(qq: number, messageId: number, occurredAt: Date, observedAt: Date): number;
     events: WorldEventLedger;
     impacts: WorldImpactLedger;
     motivations: MotivationLedger;
@@ -39,6 +42,22 @@ export function readAgencyShadow(dataDir: string, initialAt: Date, log: (message
     const time: TimeObserver = readTimeObserver(join(dir, 'time.json'), initialAt, events, log);
     return {
         events, impacts, motivations,
+        recordUserMessage: (qq, messageId, occurredAt, observedAt) => {
+            if (!Number.isSafeInteger(qq) || qq <= 0 || !Number.isSafeInteger(messageId) || messageId <= 0
+                || !Number.isFinite(occurredAt.getTime()) || !Number.isFinite(observedAt.getTime())) return 0;
+            const event: WorldEvent = {
+                id: `user-message:${qq}:${messageId}`,
+                source: 'user',
+                kind: 'user.message.received',
+                occurredAt: occurredAt.toISOString(),
+                observedAt: observedAt.toISOString(),
+                status: 'active',
+                subjects: [`user:${qq}`],
+                details: { channel: 'private' },
+                confidence: 1,
+            };
+            return events.append([event]);
+        },
         observe: (at, regulation) => {
             const knownEvents = new Set(events.events().map(event => event.id));
             const eventsAdded = time.observe(at);

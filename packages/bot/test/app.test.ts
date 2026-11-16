@@ -1397,6 +1397,18 @@ describe('编排（app.ts）', () => {
         assert.ok(logs.every(line => !line.includes('世界影子：事件')), '首次观察只建立时间基线，不能把启动本身当作主动事件');
     });
 
+    test('世界影子把收到私聊记成事实但不落正文、不增加主动消息', async () => {
+        const cfg = config({ herDays: true, schedule: true, autonomousLife: true, contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
+        const { app, sent } = setup(cfg);
+        app.receive(event(10002, 77, '这句私事绝不能进世界影子'));
+        await until(() => existsSync(join(cfg.dataDir, 'agency-shadow', 'events.json')));
+        const ledger = readFileSync(join(cfg.dataDir, 'agency-shadow', 'events.json'), 'utf8');
+        assert.match(ledger, /user-message:10002:77/);
+        assert.match(ledger, /user\.message\.received/);
+        assert.doesNotMatch(ledger, /这句私事绝不能进世界影子/);
+        assert.ok(sent.length <= 1, '影子层不能额外发送消息');
+    });
+
     test('私有生活片段：控制台和 DSH 的 NOW.md 使用同一组已发生世界事实', () => {
         const clock = new VirtualClock(new Date(2026, 10, 4, 23, 0));
         const run = setup(config({

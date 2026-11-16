@@ -19,3 +19,18 @@ test('agency shadow closes the time-event chain without an external action', () 
     assert.equal(shadow.motivations.candidates().length, 3);
 });
 
+test('agency shadow records message arrival without storing content or creating a drive', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'qqbot-agency-shadow-'));
+    const at = new Date('2026-11-16T12:00:00.000Z');
+    const shadow = readAgencyShadow(dir, at);
+    assert.equal(shadow.recordUserMessage(123, 456, at, at), 1);
+    assert.equal(shadow.recordUserMessage(123, 456, at, at), 0);
+    assert.deepEqual(shadow.events.events().at(-1), {
+        id: 'user-message:123:456', source: 'user', kind: 'user.message.received',
+        occurredAt: at.toISOString(), observedAt: at.toISOString(), status: 'active',
+        subjects: ['user:123'], details: { channel: 'private' }, confidence: 1,
+    });
+    assert.deepEqual(shadow.impacts.impacts(), []);
+    assert.deepEqual(shadow.motivations.drives(), []);
+});
+

@@ -3972,6 +3972,9 @@ ${body}
         if (!text) { if (receipt) chatHistory.discardIncoming(event.user_id, receipt); return; }
         const accepted = prepareReceived(event, text, receipt);
         if (stopped || dormancy?.isDormant()) return;
+        if (agencyShadow?.recordUserMessage(event.user_id, event.message_id, new Date(accepted.time), new Date(worldNow()))) {
+            log(`[${event.user_id}] 世界影子：记录收到私聊（不记正文，不触发主动活动）`);
+        }
         // 能让她动电脑的只有他亲手打的字（ADR 0179）：用原始消息判断，不用处理后的文本——看过的图、听过的语音会被换成一段文字，和他亲手打的混在一起
         const typed = event.user_id === deviceOwner?.qq && isTypedByHim(event.message);
         if (typed) lastUserText.set(event.user_id, text); else lastUserText.delete(event.user_id);
