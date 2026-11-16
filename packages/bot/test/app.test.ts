@@ -1389,6 +1389,14 @@ describe('编排（app.ts）', () => {
         if (existsSync(queue)) assert.ok(JSON.parse(readFileSync(queue, 'utf8')).items.every((item: { id: string }) => item.id.startsWith('life:')));
     });
 
+    test('世界影子闭环（ADR 0338）：随自主生活启动但只建立内部观察基线，不发送消息', () => {
+        const cfg = config({ herDays: true, schedule: true, autonomousLife: true, contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
+        const { sent, logs } = setup(cfg);
+        assert.ok(existsSync(join(cfg.dataDir, 'agency-shadow', 'time.json')));
+        assert.deepEqual(sent, []);
+        assert.ok(logs.every(line => !line.includes('世界影子：事件')), '首次观察只建立时间基线，不能把启动本身当作主动事件');
+    });
+
     test('私有生活片段：控制台和 DSH 的 NOW.md 使用同一组已发生世界事实', () => {
         const clock = new VirtualClock(new Date(2026, 10, 4, 23, 0));
         const run = setup(config({

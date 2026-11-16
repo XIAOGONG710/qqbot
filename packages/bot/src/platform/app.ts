@@ -211,6 +211,8 @@ import { greetingOnly, markSignature, MINOR_NOTICE, minorHint, strangerGuard } f
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
+import { regulationAt } from '.././life/regulation.ts';
+import { readAgencyShadow } from '.././world/agency-shadow.ts';
 import { humanValueTrends, humanValuesAt, humanValuesFromAnchor, type HumanValues, type HumanValueTrends } from '.././human-values.ts';
 import { developmentSnapshot, developmentSummary, type DevelopmentSummary } from '.././life/development.ts';
 import { createDshLink, dshOptionsFromLlm, sanitizeDshError, type DshProbeResult, type DshState, type DshVoice } from '.././dsh-link.ts';
@@ -801,6 +803,26 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
     const lifeStartedAt = new Date(worldNow());
     const needsAnchor = lifeQueue ? loadNeedsAnchor(join(config.dataDir, 'world', 'needs-anchor.json'), lifeStartedAt, log) : undefined;
+    // ADR 0338：只读影子闭环。它只记录时间变化如何成为世界事件、影响和内部候选，
+    // 不读用户消息正文、不改提示词、不调用任何外部执行器。
+    const agencyShadow = needsAnchor && worldCard && ledgerWorld ? readAgencyShadow(config.dataDir, lifeStartedAt, log) : undefined;
+    const observeAgencyShadow = (): void => {
+        if (!agencyShadow || !needsAnchor || !worldCard || !ledgerWorld || stopped) return;
+        try {
+            const at = new Date(worldNow());
+            const body = worldCard.herWorld?.body ? bodyAt(worldCard.herWorld.body, worldCard.schedule!, at) : undefined;
+            const result = agencyShadow.observe(at, regulationAt(needsAt(needsAnchor, ledgerWorld.events(), at), body));
+            if (result.events || result.impacts || result.drives || result.candidates) {
+                log(`世界影子：事件 ${result.events}，影响 ${result.impacts}，动机 ${result.drives}，候选 ${result.candidates}（只记录，不外发）`);
+            }
+        } catch (error) {
+            log(`世界影子：观察失败（${error instanceof Error ? error.message : String(error)}）`);
+        }
+    };
+    observeAgencyShadow();
+    const agencyShadowTimer = agencyShadow ? exec.every(observeAgencyShadow, 5 * 60_000) : undefined;
+    construction.onFailure(() => { if (agencyShadowTimer) exec.cancel(agencyShadowTimer); });
+    agencyShadowTimer?.unref();
     useWorldNeeds(needsAnchor && ledgerWorld ? {
         at: time => {
             try { return needsAt(needsAnchor, ledgerWorld.events(), time); }
