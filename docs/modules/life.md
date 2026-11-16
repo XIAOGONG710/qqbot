@@ -16,6 +16,7 @@
 - `life/needs.ts`
 - `life/regulation.ts`
 - `life/motivation.ts`
+- `life/motivation-ledger.ts`
 - `life/her-days.ts`
 - `life/day-plan.ts`
 - `life/everyday.ts`

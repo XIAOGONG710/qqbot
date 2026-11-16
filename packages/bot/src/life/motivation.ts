@@ -57,6 +57,14 @@ export function validDrive(value: unknown): value is Drive {
     return drive.source === 'external' ? hasExternalOrigin : hasInternalOrigin;
 }
 
+export function validShadowActivityCandidate(value: unknown): value is ShadowActivityCandidate {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const candidate = value as Partial<ShadowActivityCandidate>;
+    return nonEmpty(candidate.id) && nonEmpty(candidate.driveId)
+        && (SHADOW_ACTIVITY_KINDS as readonly string[]).includes(candidate.kind as string)
+        && timestamp(candidate.createdAt) && nonEmpty(candidate.reason) && candidate.reason.length <= 160;
+}
+
 /**
  * 影子模式只允许低风险的内部活动。恢复需求高时优先等待；否则把动机保留为“记住”。
  * 这里没有 message / search / tool / voice 等候选，确保这层不能绕过她的开口权。

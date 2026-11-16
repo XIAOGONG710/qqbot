@@ -1,0 +1,59 @@
+// ADR 0338 的影子闭环：时间事件 → 影响 → 动机 → 内部候选。
+// 此文件绝不调用消息、搜索、设备、媒体或其他执行器。
+
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { readMotivationLedger, type MotivationLedger } from '../life/motivation-ledger.ts';
+import { shadowActivityFor, type Drive } from '../life/motivation.ts';
+import type { RegulationSnapshot } from '../life/regulation.ts';
+import { readWorldEventLedger, type WorldEventLedger } from './event-ledger.ts';
+import { readWorldImpactLedger, type WorldImpactLedger } from './impact-ledger.ts';
+import type { WorldImpact } from './impacts.ts';
+import { readTimeObserver, type TimeObserver } from './time-observer.ts';
+
+export interface AgencyShadow {
+    observe(at: Date, regulation: RegulationSnapshot): { events: number; impacts: number; drives: number; candidates: number };
+    events: WorldEventLedger;
+    impacts: WorldImpactLedger;
+    motivations: MotivationLedger;
+}
+
+function timeImpact(eventId: string, kind: string, at: string): WorldImpact {
+    const aspect = kind === 'time.dayPhase.changed' ? 'availability' : 'world-context';
+    return { id: `impact:${eventId}:self:${aspect}`, eventId, target: 'self', aspect, direction: 'uncertain', magnitude: kind === 'time.dayPhase.changed' ? 0.2 : 0.05, confidence: 1, assessedAt: at };
+}
+
+function awarenessDrive(impact: WorldImpact): Drive {
+    return {
+        id: `drive:${impact.id}:awareness`, source: 'external', goal: '保持对世界变化的了解', target: 'self', impactIds: [impact.id],
+        strength: impact.magnitude, urgency: 0, persistence: 0.35, createdAt: impact.assessedAt, status: 'active',
+    };
+}
+
+export function readAgencyShadow(dataDir: string, initialAt: Date, log: (message: string) => void = () => undefined): AgencyShadow {
+    const dir = join(dataDir, 'agency-shadow');
+    mkdirSync(dir, { recursive: true });
+    const events = readWorldEventLedger(join(dir, 'events.json'), log);
+    const impacts = readWorldImpactLedger(join(dir, 'impacts.json'), events.events, log);
+    const motivations = readMotivationLedger(join(dir, 'motivations.json'), log);
+    const time: TimeObserver = readTimeObserver(join(dir, 'time.json'), initialAt, events, log);
+    return {
+        events, impacts, motivations,
+        observe: (at, regulation) => {
+            const knownEvents = new Set(events.events().map(event => event.id));
+            const eventsAdded = time.observe(at);
+            const newImpacts = events.events().filter(event => !knownEvents.has(event.id) && event.source === 'time')
+                .map(event => timeImpact(event.id, event.kind, at.toISOString()));
+            const impactsAdded = impacts.append(newImpacts);
+            const knownImpacts = new Set(motivations.drives().flatMap(drive => drive.impactIds ?? []));
+            const drivesAdded = motivations.appendDrives(impacts.impacts().filter(impact => !knownImpacts.has(impact.id)).map(awarenessDrive));
+            const knownDrives = new Set(motivations.candidates().map(candidate => candidate.driveId));
+            const candidates = motivations.drives().filter(drive => !knownDrives.has(drive.id))
+                .map(drive => shadowActivityFor(drive, regulation, at))
+                .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== undefined);
+            const candidatesAdded = motivations.appendCandidates(candidates);
+            return { events: eventsAdded, impacts: impactsAdded, drives: drivesAdded, candidates: candidatesAdded };
+        },
+    };
+}
+
