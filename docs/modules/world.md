@@ -12,6 +12,7 @@
 - `world/impacts.ts`
 - `world/impact-ledger.ts`
 - `world/time-phases.ts`
+- `world/time-observer.ts`
 - `world/cache-freshness.ts`
 - `world/external-error.ts`
 - `world/fact-resolution.ts`

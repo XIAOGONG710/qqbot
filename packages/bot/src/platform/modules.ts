@@ -43,7 +43,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'world', name: '她的世界（世界账）',
         scope: '她那边正在发生的事：天气、节日、NPC、障碍、生活事件与选择、可重放的动作队列；世界状态是所有“她那边”的事实来源。',
-        files: ['world/world.ts', 'world/events.ts', 'world/event-ledger.ts', 'world/impacts.ts', 'world/impact-ledger.ts', 'world/time-phases.ts', 'world/cache-freshness.ts', 'world/external-error.ts', 'world/fact-resolution.ts', 'world/evidence-registry.ts', 'world/highlights.ts', 'world/weather.ts', 'world/air-quality.ts', 'world/daylight.ts', 'world/calendar.ts', 'world/transport.ts', 'world/threads.ts', 'world/festivals.ts', 'world/npc.ts', 'world/npc-asks.ts', 'world/obstacles.ts', 'world/life-events.ts', 'world/life-selector.ts', 'world/action-queue.ts', 'world/world-config.ts'],
+        files: ['world/world.ts', 'world/events.ts', 'world/event-ledger.ts', 'world/impacts.ts', 'world/impact-ledger.ts', 'world/time-phases.ts', 'world/time-observer.ts', 'world/cache-freshness.ts', 'world/external-error.ts', 'world/fact-resolution.ts', 'world/evidence-registry.ts', 'world/highlights.ts', 'world/weather.ts', 'world/air-quality.ts', 'world/daylight.ts', 'world/calendar.ts', 'world/transport.ts', 'world/threads.ts', 'world/festivals.ts', 'world/npc.ts', 'world/npc-asks.ts', 'world/obstacles.ts', 'world/life-events.ts', 'world/life-selector.ts', 'world/action-queue.ts', 'world/world-config.ts'],
         groups: ['她的日子'],
         metrics: '周报「她的日子」里的世界事件；consistency-cli（说的和世界账对不对）',
         adrs: ['0007', '0026', '0045', '0106', '0216', '0217', '0227', '0228', '0229', '0230', '0231', '0232', '0323', '0324', '0325', '0330'],
