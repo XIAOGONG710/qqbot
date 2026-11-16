@@ -11,6 +11,8 @@
 - `world/event-ledger.ts`
 - `world/impacts.ts`
 - `world/impact-ledger.ts`
+- `world/associations.ts`
+- `world/association-ledger.ts`
 - `world/time-phases.ts`
 - `world/time-observer.ts`
 - `world/world-event-observer.ts`

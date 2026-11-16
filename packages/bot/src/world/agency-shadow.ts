@@ -13,6 +13,8 @@ import { readTimeObserver, type TimeObserver } from './time-observer.ts';
 import type { WorldEvent } from './events.ts';
 import { observeWorldNow } from './world-event-observer.ts';
 import type { WorldNow } from './world.ts';
+import { associateWorldEvent } from './associations.ts';
+import { readWorldAssociationLedger, type WorldAssociationLedger } from './association-ledger.ts';
 
 export interface AgencyShadow {
     observe(at: Date, regulation: RegulationSnapshot): { events: number; impacts: number; drives: number; candidates: number };
@@ -22,6 +24,7 @@ export interface AgencyShadow {
     recordWorld(now: WorldNow, observedAt: Date): number;
     events: WorldEventLedger;
     impacts: WorldImpactLedger;
+    associations: WorldAssociationLedger;
     motivations: MotivationLedger;
 }
 
@@ -48,10 +51,11 @@ export function readAgencyShadow(dataDir: string, initialAt: Date, log: (message
     mkdirSync(dir, { recursive: true });
     const events = readWorldEventLedger(join(dir, 'events.json'), log);
     const impacts = readWorldImpactLedger(join(dir, 'impacts.json'), events.events, log);
+    const associations = readWorldAssociationLedger(join(dir, 'associations.json'), events.events, log);
     const motivations = readMotivationLedger(join(dir, 'motivations.json'), log);
     const time: TimeObserver = readTimeObserver(join(dir, 'time.json'), initialAt, events, log);
     return {
-        events, impacts, motivations,
+        events, impacts, associations, motivations,
         recordUserMessage: (qq, messageId, occurredAt, observedAt) => {
             if (!Number.isSafeInteger(qq) || qq <= 0 || !Number.isSafeInteger(messageId) || messageId <= 0
                 || !Number.isFinite(occurredAt.getTime()) || !Number.isFinite(observedAt.getTime())) return 0;
@@ -71,6 +75,8 @@ export function readAgencyShadow(dataDir: string, initialAt: Date, log: (message
         recordWorld: (now, observedAt) => events.append(observeWorldNow(now, observedAt)),
         observe: (at, regulation) => {
             const eventsAdded = time.observe(at);
+            const knownAssociations = new Set(associations.associations().map(association => association.id));
+            associations.append(events.events().flatMap(associateWorldEvent).filter(association => !knownAssociations.has(association.id)));
             const assessedEvents = new Set(impacts.impacts().map(impact => impact.eventId));
             const newImpacts = events.events().filter(event => !assessedEvents.has(event.id)
                 && (event.source === 'time' || event.source === 'world' || event.source === 'society' || event.source === 'sandbox'))
