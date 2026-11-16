@@ -17,6 +17,7 @@ import { observeWorldNow } from './world-event-observer.ts';
 import type { WorldNow } from './world.ts';
 import { associateWorldEvent } from './associations.ts';
 import { readWorldAssociationLedger, type WorldAssociationLedger } from './association-ledger.ts';
+import { externalObservationEvent, type ExternalObservation } from './external-sources.ts';
 
 export interface AgencyShadow {
     observe(at: Date, regulation: RegulationSnapshot): { events: number; impacts: number; drives: number; candidates: number };
@@ -24,6 +25,8 @@ export interface AgencyShadow {
     recordUserMessage(qq: number, messageId: number, occurredAt: Date, observedAt: Date): number;
     /** 记录已有世界快照中的结构化环境事实；不联网、不发送、不保存供应商正文。 */
     recordWorld(now: WorldNow, observedAt: Date): number;
+    /** 外部适配器只能传已清洗观察；原始供应商正文不进入影子账。 */
+    recordExternal(observation: ExternalObservation, observedAt: Date): number;
     events: WorldEventLedger;
     impacts: WorldImpactLedger;
     associations: WorldAssociationLedger;
@@ -77,6 +80,10 @@ export function readAgencyShadow(dataDir: string, initialAt: Date, log: (message
             return events.append([event]);
         },
         recordWorld: (now, observedAt) => events.append(observeWorldNow(now, observedAt)),
+        recordExternal: (observation, observedAt) => {
+            const event = externalObservationEvent(observation, observedAt);
+            return event ? events.append([event]) : 0;
+        },
         observe: (at, regulation) => {
             const eventsAdded = time.observe(at);
             const knownAssociations = new Set(associations.associations().map(association => association.id));

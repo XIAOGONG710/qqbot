@@ -63,3 +63,12 @@ test('agency shadow appends internal regulation drives without an external event
     assert.ok(shadow.motivations.candidates().every(candidate => candidate.kind === 'wait'));
 });
 
+test('agency shadow accepts only sanitized external observations', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'qqbot-agency-shadow-'));
+    const at = new Date('2026-11-16T12:00:00.000Z');
+    const shadow = readAgencyShadow(dir, at);
+    assert.equal(shadow.recordExternal({ sourceId: 'news-rss', kind: 'news', occurredAt: at, label: '公共事件更新', confidence: 0.8 }, at), 1);
+    assert.deepEqual(shadow.events.events()[0]?.details, { source: 'news-rss', label: '公共事件更新' });
+    assert.deepEqual(shadow.observe(at, calm(at)), { events: 0, impacts: 1, drives: 1, candidates: 1 });
+});
+
