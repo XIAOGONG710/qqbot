@@ -17,6 +17,8 @@
 - `life/regulation.ts`
 - `life/motivation.ts`
 - `life/motivation-ledger.ts`
+- `life/motivation-resolution.ts`
+- `life/motivation-decision-ledger.ts`
 - `life/her-days.ts`
 - `life/day-plan.ts`
 - `life/everyday.ts`

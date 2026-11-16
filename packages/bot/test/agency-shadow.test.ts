@@ -15,7 +15,7 @@ test('agency shadow closes the time-event chain without an external action', () 
     const shadow = readAgencyShadow(dir, initial);
     assert.deepEqual(shadow.observe(at, calm(at)), { events: 3, impacts: 3, drives: 3, candidates: 3 });
     assert.equal(shadow.associations.associations().length, 6);
-    assert.deepEqual(shadow.motivations.candidates().map(candidate => candidate.kind), ['remember', 'remember', 'remember']);
+    assert.deepEqual(shadow.motivations.candidates().map(candidate => candidate.kind), ['wait', 'wait', 'wait']);
     assert.equal(shadow.observe(at, calm(at)).events, 0);
     assert.equal(shadow.motivations.candidates().length, 3);
 });
@@ -48,7 +48,7 @@ test('agency shadow turns recorded world context into shadow-only motivations', 
     const shadow = readAgencyShadow(dir, at);
     assert.equal(shadow.recordWorld({ day: '2026-11-16', atSchool: true, parcels: [], homework: [], events: [] }, at), 1);
     assert.deepEqual(shadow.observe(at, calm(at)), { events: 0, impacts: 1, drives: 1, candidates: 1 });
-    assert.equal(shadow.motivations.candidates()[0]?.kind, 'remember');
+    assert.equal(shadow.motivations.candidates()[0]?.kind, 'wait');
     assert.deepEqual(shadow.events.events()[0]?.details, { day: '2026-11-16', place: 'school' });
     assert.deepEqual(shadow.associations.associations().map(association => association.lane), ['contextual', 'practical']);
 });

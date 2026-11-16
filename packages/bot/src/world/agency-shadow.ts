@@ -4,7 +4,9 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readMotivationLedger, type MotivationLedger } from '../life/motivation-ledger.ts';
-import { internalDrivesAt, shadowActivityFor, type Drive } from '../life/motivation.ts';
+import { internalDrivesAt, type Drive } from '../life/motivation.ts';
+import { resolveShadowDrives, shadowActivityForDecision } from '../life/motivation-resolution.ts';
+import { readMotivationDecisionLedger, type MotivationDecisionLedger } from '../life/motivation-decision-ledger.ts';
 import type { RegulationSnapshot } from '../life/regulation.ts';
 import { readWorldEventLedger, type WorldEventLedger } from './event-ledger.ts';
 import { readWorldImpactLedger, type WorldImpactLedger } from './impact-ledger.ts';
@@ -26,6 +28,7 @@ export interface AgencyShadow {
     impacts: WorldImpactLedger;
     associations: WorldAssociationLedger;
     motivations: MotivationLedger;
+    decisions: MotivationDecisionLedger;
 }
 
 function timeImpact(eventId: string, kind: string, at: string): WorldImpact {
@@ -53,9 +56,10 @@ export function readAgencyShadow(dataDir: string, initialAt: Date, log: (message
     const impacts = readWorldImpactLedger(join(dir, 'impacts.json'), events.events, log);
     const associations = readWorldAssociationLedger(join(dir, 'associations.json'), events.events, log);
     const motivations = readMotivationLedger(join(dir, 'motivations.json'), log);
+    const decisions = readMotivationDecisionLedger(join(dir, 'decisions.json'), () => motivations.drives().map(drive => drive.id), log);
     const time: TimeObserver = readTimeObserver(join(dir, 'time.json'), initialAt, events, log);
     return {
-        events, impacts, associations, motivations,
+        events, impacts, associations, motivations, decisions,
         recordUserMessage: (qq, messageId, occurredAt, observedAt) => {
             if (!Number.isSafeInteger(qq) || qq <= 0 || !Number.isSafeInteger(messageId) || messageId <= 0
                 || !Number.isFinite(occurredAt.getTime()) || !Number.isFinite(observedAt.getTime())) return 0;
@@ -87,9 +91,12 @@ export function readAgencyShadow(dataDir: string, initialAt: Date, log: (message
                 ...impacts.impacts().filter(impact => !knownImpacts.has(impact.id)).map(awarenessDrive),
                 ...internalDrivesAt(regulation),
             ]);
+            const knownDecisions = new Set(decisions.decisions().map(decision => decision.id));
+            decisions.append(resolveShadowDrives(motivations.drives(), regulation, at).filter(decision => !knownDecisions.has(decision.id)));
             const knownDrives = new Set(motivations.candidates().map(candidate => candidate.driveId));
-            const candidates = motivations.drives().filter(drive => !knownDrives.has(drive.id))
-                .map(drive => shadowActivityFor(drive, regulation, at))
+            const byDrive = new Map(motivations.drives().map(drive => [drive.id, drive]));
+            const candidates = decisions.decisions().filter(decision => !knownDrives.has(decision.driveId))
+                .map(decision => shadowActivityForDecision(decision, byDrive.get(decision.driveId)!, regulation, at))
                 .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== undefined);
             const candidatesAdded = motivations.appendCandidates(candidates);
             return { events: eventsAdded, impacts: impactsAdded, drives: drivesAdded, candidates: candidatesAdded };
