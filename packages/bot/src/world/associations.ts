@@ -49,6 +49,8 @@ function association(event: WorldEvent, lane: AssociationLane, focus: string): W
  * 并不表示此刻已经找到了某段回忆，更不会捏造回忆内容。
  */
 export function associateWorldEvent(event: WorldEvent): WorldAssociation[] {
+    // 私聊正文不在 WorldEvent 中。它只表明一次关系接触到达，不能直接变成关心、催促或外发理由。
+    if (event.kind === 'user.message.received') return [association(event, 'relational', '更新关系可用性')];
     if (!event.kind.startsWith('world.') && !event.kind.startsWith('sandbox.') && !event.kind.startsWith('society.') && !event.kind.startsWith('time.')) return [];
     const output = [association(event, 'contextual', '更新当前情境')];
     if (/weather|air|daylight|transport/.test(event.kind)) {

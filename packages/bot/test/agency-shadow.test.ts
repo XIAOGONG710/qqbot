@@ -33,6 +33,13 @@ test('agency shadow records message arrival without storing content or creating 
     });
     assert.deepEqual(shadow.impacts.impacts(), []);
     assert.deepEqual(shadow.motivations.drives(), []);
+    assert.deepEqual(shadow.observe(at, calm(at)), { events: 0, impacts: 0, drives: 0, candidates: 0 });
+    assert.deepEqual(shadow.associations.associations(), [{
+        id: 'association:user-message:123:456:relational', eventId: 'user-message:123:456', lane: 'relational',
+        focus: '更新关系可用性', createdAt: at.toISOString(), confidence: 1,
+    }]);
+    assert.deepEqual(shadow.impacts.impacts(), []);
+    assert.deepEqual(shadow.motivations.drives(), []);
 });
 
 test('agency shadow turns recorded world context into shadow-only motivations', () => {

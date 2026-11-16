@@ -21,3 +21,13 @@ test('associations require an event and remain idempotent', () => {
     assert.equal(appendWorldAssociations([weather], [], [...associations, ...associations]).length, 3);
     assert.throws(() => appendWorldAssociations([], [], associations), /不存在的事件/);
 });
+
+test('a user message produces only a bounded relationship trace, never a content-derived association', () => {
+    const message: WorldEvent = {
+        id: 'message:1', source: 'user', kind: 'user.message.received', occurredAt: '2026-11-16T12:00:00.000Z', observedAt: '2026-11-16T12:00:00.000Z',
+        status: 'active', subjects: ['user:123'], details: { channel: 'private' }, confidence: 1,
+    };
+    assert.deepEqual(associateWorldEvent(message), [{
+        id: 'association:message:1:relational', eventId: 'message:1', lane: 'relational', focus: '更新关系可用性', createdAt: message.observedAt, confidence: 1,
+    }]);
+});
