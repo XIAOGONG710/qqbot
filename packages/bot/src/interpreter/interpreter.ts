@@ -38,6 +38,7 @@ import type { DevelopmentSnapshot } from '../life/development.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
 import type { ReviewOptions } from '../language/exit-check.ts';
 import type { PickRules } from '../language/candidates.ts';
+import type { TurnWeight } from '../language/turn-weight.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { TypoRecall } from '../language/expression.ts';
 import type { CurrentAiPhotoResult } from '../proactive/ai-photo-requests.ts';
@@ -205,9 +206,10 @@ export interface Module {
     contribute?(turn: Turn): Maybe<readonly Piece[]>;
     review?(draft: string, turn: Turn): Maybe<string>;
     /**
-     * 判断那一串（ADR 0336「判断那一串」）：assess 之后、拼段落之前，挂在判断顺序表（DECIDE_STAGES）的某几个位置，读前面写下的事实、把自己的判断写进 turn.facts。同步
+     * 判断那一串（ADR 0336「判断那一串」）：assess 之后、拼段落之前，挂在判断顺序表（DECIDE_STAGES）的某几个位置，读前面写下的事实、把自己的判断写进 turn.facts。
+     * 一般同步；这一轮真要等外部（语义路由问小模型）时才返回 promise，流水线只在那时等
      */
-    decideAt?: Partial<Record<DecideStage, (turn: Turn, ctx: DecideCtx) => void>>;
+    decideAt?: Partial<Record<DecideStage, (turn: Turn, ctx: DecideCtx) => Maybe<void>>>;
     /**
      * 挑候选（ADR 0336「生成之后那一段」第 10 步）：这一轮要不要同一份提示词生成几个、挑一个。不挑就不返回；
      * 联系人流水线在生成时问一次，按 count 生成、各清理一次，把清理过的字交给 choose
@@ -319,13 +321,15 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['photo', 'intent', 'feelings', 'stickers', 'texture'] as const;
+export const DECIDE_STAGES = ['photo', 'intent', 'feelings', 'stickers', 'deliberate', 'texture'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
 export interface DecideCtx {
     /** 这个联系人有图片表情收藏库（ADR 0063）时才有：这一轮抽不抽的几个比例（不写用默认；uncued / onlyChance 不写就是不抽） */
     stickers?: { chance?: number; uncued?: number; onlyChance?: number };
+    /** 开了深思（配置 deliberate，ADR 0151）才有：深思用的模型名（日志里写）、语义路由的分类（配置 depthRouting，ADR 0202；一次小模型调用） */
+    deliberate?: { model: string; turnWeight?: (input: { history: ChatMessage[]; said: string }) => Promise<TurnWeight | undefined> };
     /** 这个联系人存下来的聊天记录（判断的那一刻现读：她最近几次回复带了几次小黄脸之类） */
     history: () => readonly StoredMessage[];
     /** 算心境要的、按联系人给的那几样（ADR 0102 / 0104 / 0106）；条件（开没开、档位、危机）在模块里看 */
@@ -358,9 +362,9 @@ export interface DecideCtx {
     log: (line: string) => void;
 }
 
-/** 判断顺序表上的一个位置：挂在这里的模块按注册顺序跑；同步 */
-export function decideStage(modules: readonly Module[], stage: DecideStage, turn: Turn, ctx: DecideCtx): void {
-    for (const module of modules) module.decideAt?.[stage]?.(turn, ctx);
+/** 判断顺序表上的一个位置：挂在这里的模块按注册顺序跑；都同步时同步返回，碰到第一个返回 promise 的才转成异步（同 contributeTurn） */
+export function decideStage(modules: readonly Module[], stage: DecideStage, turn: Turn, ctx: DecideCtx): Maybe<void> {
+    return eachModule(modules, module => module.decideAt?.[stage]?.(turn, ctx));
 }
 
 /** 挑候选的打算（ADR 0041）：生成几个、怎么挑。choose 拿到的是每个候选清理之后的字（顺序同生成），返回挑中的下标；日志是这个联系人的 */

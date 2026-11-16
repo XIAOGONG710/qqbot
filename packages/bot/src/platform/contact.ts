@@ -30,9 +30,9 @@ import type { SilenceInfo } from '.././social/silence.ts';
 import { describeMood, moodAt, readingActivities } from '.././life/her-days.ts';
 import { crisisInHistory, type CrisisHit } from '.././emotion/crisis.ts';
 import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
-import { asksToExplain, ENGAGED_INTENT, ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
-import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '.././language/turn-weight.ts';
-import { DELIBERATE_MAX_BUBBLES, deliberateTurn, type ShapePlan } from '.././language/shape.ts';
+import { ENGAGED_INTENT, ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
+import type { TurnWeight } from '.././language/turn-weight.ts';
+import { DELIBERATE_MAX_BUBBLES, type ShapePlan } from '.././language/shape.ts';
 import { describeWorld, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
 import type { CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { dayPlan, describeSlot } from '.././life/day-plan.ts';
@@ -300,6 +300,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         ...(options.stickers ? { stickers: { ...(options.stickerChance !== undefined ? { chance: options.stickerChance } : {}), ...(options.stickerUncued ? { uncued: options.stickerUncued } : {}), ...(options.stickerOnlyChance ? { onlyChance: options.stickerOnlyChance } : {}) } } : {}),
         ...(options.photos ? { photos: options.photos } : {}),
         history: () => options.history.load(contact.qq),
+        ...(options.deliberate ? { deliberate: { model: options.deliberate.llm.model, ...(options.turnWeight ? { turnWeight: options.turnWeight } : {}) } } : {}),
         feelings: {
             herFeelings: Boolean(options.herFeelings), everydayLife: Boolean(options.everydayLife), ...(options.herDays && character.schedule ? { schedule: character.schedule } : {}),
             ...(options.pursuits ? { pursuits: options.pursuits } : {}), ...(options.worldState?.events ? { worldEvents: () => options.worldState!.events!() } : {}),
@@ -342,8 +343,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     let shapeNow: ShapePlan | undefined;
     /** 这一轮是深思轮次（ADR 0151）：生成时用 options.deliberate.llm */
     let deliberateNow = false;
-    /** 这一轮是语义路由（ADR 0202）放进深思的：按分类多放的一小句提示（沉重的事 / 质疑 / 问他们俩），不是语义路由放进来的就没有 */
-    let routedHint: string | undefined;
     /** 这一轮第一条要引用他的哪一句（ADR 0136，配置 quoteReply）：buildPrompt 按他没回的那一串定，紧跟着发送时现取 */
     let quoteNow: QuotePlan | undefined;
     /** 这一轮的 turn（拼提示词时建的）：生成之后审稿的模块（ADR 0336 reviewAt）要读它 */
@@ -636,20 +635,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 写进 turn.facts.stickersAllowed、stickerDraw、stickerOnly，日志也在那里记；下面读
             decideStage(options.turnModules ?? [], 'stickers', turn, decideCtx);
             const stickerOnlyNow = Boolean(turn.facts.stickerOnly);
-            // 深思（ADR 0151）：他是认真在问她的轮次，不套字数和条数、换更强的模型、提示词只留一句“先想清楚”；危机 / 小别扭 / 亲近等别的意图照旧让路
-            const deliberateEligible = Boolean(options.deliberate) && !initiate && !crisisNow && !stickerOnlyNow && !photoNow && !interruption && !thinking && !grievanceActive;
-            const lexicalDeep = deliberateEligible && deliberateTurn(intent, saidNow, asksToExplain(saidNow));
-            // 语义路由（ADR 0202）：关键词没认出来的轮次问一次小模型；只在「关键词说不是、分类说值得认真」时多放行一轮，关键词认出来的照旧
-            const routed = deliberateEligible && !lexicalDeep && options.turnWeight && saidNow.trim()
-                ? await options.turnWeight({ history: chat, said: saidNow }).catch(() => undefined)
-                : undefined;
-            deliberateNow = deliberateEligible && (lexicalDeep || wantsDepth(routed));
-            routedHint = deliberateNow && !lexicalDeep && routed ? ROUTED_HINTS[routed.kind] : undefined;
-            if (deliberateNow) {
-                log(!lexicalDeep && routed
-                    ? `深思：语义路由认为他这一轮是「${KIND_LABEL[routed.kind]}」${routed.why ? `（${routed.why}）` : ''}，这一轮不套字数和条数、用 ${options.deliberate!.llm.model}、提示词只留一句“先想清楚”${routedHint ? '、再加一小句方向' : ''}`
-                    : `深思：他在认真问她，这一轮不套字数和条数、用 ${options.deliberate!.llm.model}、提示词只留一句“先想清楚”`);
-            }
+            // 深思（ADR 0151）和语义路由（ADR 0202）的判断是解释器的模块（modules/deliberate.ts 的 decideAt.deliberate）：在原位判断；要问小模型分类的轮次返回 promise（只有那时才等），
+            // 写进 turn.facts.deliberate / routedHint，日志也在那里记。生成时换模型、最多几条还读这里的 deliberateNow
+            const deliberated = decideStage(options.turnModules ?? [], 'deliberate', turn, decideCtx);
+            if (deliberated instanceof Promise) await deliberated;
+            deliberateNow = Boolean(turn.facts.deliberate);
             // 深思时那条只管“怎么答”的意图行（先直接回答 / 很大很抽象的问题）由深思那一句代替；追着要答案、说她不像真人这类纠偏的意图行保留
             // 意图行（深思时去掉「怎么答」那一句）是解释器的模块（modules/intent-line.ts），读 turn.facts.intent / deliberate
             // 引用回复（ADR 0136）是解释器的模块（modules/quote.ts）：contribute 时算、写回 turn.facts.quote，放进 quote 槽；拼完段落之后取回来，发送时引用那条。这里先清掉上一轮的
@@ -684,7 +674,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 长短不一（ADR 0024）和形状（ADR 0091）是解释器的模块（modules/length.ts、modules/shape.ts）；它们要的前面那几样在这里写进 turn.facts
             Object.assign(turn.facts, {
                 ...(cue ? { cue } : {}),
-                ...(deliberateNow ? { deliberate: true } : {}), ...(routedHint ? { routedHint } : {}), ...(low ? { low: true } : {}), agendaTopics,
+                ...(low ? { low: true } : {}), agendaTopics,
                 // 「/亲热」那一行在上面原位取（每取一次扣一条、写文件），由解释器的模块（modules/intent-line.ts）放
                 ...(intimateNow ? { intimateLine: intimateNow } : {}),
             });

@@ -17,6 +17,7 @@ import type { StoredMessage } from '../src/memory/history.ts';
 import { deliberateLlm } from '../src/platform/config.ts';
 import { createContactResponder, type ContactPipelineOptions } from '../src/platform/contact.ts';
 import { crisisModule } from '../src/modules/crisis.ts';
+import { deliberateModule } from '../src/modules/deliberate.ts';
 import { intentModule } from '../src/modules/intent.ts';
 import { shapeModule } from '../src/modules/shape.ts';
 import { reviewFinalizeModule } from '../src/modules/review-finalize.ts';
@@ -309,6 +310,7 @@ describe('当前消息与实际模型预算', () => {
             let used: LlmOptions | undefined;
             const fixture = contact({
                 deliberate: { llm: { ...pro, extraBody } },
+                turnModules: [crisisModule({ log: () => {} }), intentModule(), deliberateModule(), reviewExitModule(), reviewFinalizeModule()],
                 generate: async (_messages, _log, actual) => { used = actual; return '好呀'; },
             });
             fixture.rows.push(...Array.from({ length: 100 }, (_, i): StoredMessage => ({

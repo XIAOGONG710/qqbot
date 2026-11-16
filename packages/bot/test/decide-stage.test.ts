@@ -23,8 +23,8 @@ const ctxOf = (have: readonly string[], extra: Partial<DecideCtx> = {}) => {
 const decide = (turn: Turn, ctx: DecideCtx) => { decideStage([mediaOffersModule()], 'photo', turn, ctx); return turn.facts; };
 
 describe('判断顺序表（ADR 0336「判断那一串」）', () => {
-    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：照片 → 最终的意图 → 图片表情 → 质感的上下文', () => {
-        assert.deepEqual([...DECIDE_STAGES], ['photo', 'intent', 'stickers', 'texture']);
+    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：照片 → 最终的意图 → 心境 → 图片表情 → 深思 → 质感的上下文', () => {
+        assert.deepEqual([...DECIDE_STAGES], ['photo', 'intent', 'feelings', 'stickers', 'deliberate', 'texture']);
     });
 
     test('一个位置上按注册顺序跑，拿到同一轮和流水线给的东西；只挂 decideAt 的模块不被解释器筛掉', () => {
@@ -253,5 +253,85 @@ describe('质感的上下文（modules/decorate.ts 的 decideAt.texture）', asy
         const out = run('哈哈', {}, {}, [reply('好呀[doge]'), reply('在的～'), reply('嗯嗯')]);
         assert.equal(out!.recentFaces, 1);
         assert.equal(out!.recentTildes, 1);
+    });
+});
+
+describe('深思和语义路由的判断（modules/deliberate.ts 的 decideAt.deliberate）', async () => {
+    const { deliberateModule } = await import('../src/modules/deliberate.ts');
+    const { ROUTED_HINTS } = await import('../src/language/turn-weight.ts');
+    type Routed = { kind: 'light' | 'heavy' | 'opinion'; why?: string } | undefined;
+    const setup = (text: string, facts: Turn['facts'] = {}, given: { off?: boolean; route?: () => Promise<Routed> } = {}, extra: Partial<Turn> = {}) => {
+        const asked: string[] = [];
+        const { ctx, lines } = ctxOf([], given.off ? {} : { deliberate: {
+            model: 'fake-pro',
+            ...(given.route ? { turnWeight: (input: { said: string }) => { asked.push(input.said); return given.route!() as never; } } : {}),
+        } });
+        const turn = turnOf(text, facts, extra);
+        return { turn, lines, asked, out: decideStage([deliberateModule()], 'deliberate', turn, ctx) };
+    };
+    const EXPLAIN = '你能详细讲讲为什么会这样吗，我想听你完整的想法';
+
+    test('关键词认出来的认真问：同步定下深思，不去问分类，记一行日志', () => {
+        const s = setup(EXPLAIN, {}, { route: async () => ({ kind: 'heavy' }) });
+        assert.equal(s.out, undefined, '同步：流水线不用等');
+        assert.equal(s.turn.facts.deliberate, true);
+        assert.equal(s.turn.facts.routedHint, undefined);
+        assert.deepEqual(s.asked, []);
+        assert.deepEqual(s.lines, ['深思：他在认真问她，这一轮不套字数和条数、用 fake-pro、提示词只留一句“先想清楚”']);
+    });
+
+    test('没开深思、闲聊又没有语义路由：不深思，同步返回', () => {
+        assert.equal(setup(EXPLAIN, {}, { off: true }).turn.facts.deliberate, undefined);
+        const chat = setup('今天去图书馆了');
+        assert.equal(chat.out, undefined);
+        assert.equal(chat.turn.facts.deliberate, undefined);
+        assert.deepEqual(chat.lines, []);
+    });
+
+    test('语义路由：关键词没认出来才问一次；分类说值得认真就深思，按类别多一小句方向；说是闲聊就不深思', async () => {
+        const heavy = setup('我爸今天住院了', {}, { route: async () => ({ kind: 'heavy', why: '家人住院' }) });
+        assert.ok(heavy.out instanceof Promise, '要等分类：返回 promise');
+        assert.equal(heavy.turn.facts.deliberate, undefined, '分类回来之前还没定');
+        await heavy.out;
+        assert.deepEqual(heavy.asked, ['我爸今天住院了']);
+        assert.equal(heavy.turn.facts.deliberate, true);
+        assert.equal(heavy.turn.facts.routedHint, ROUTED_HINTS.heavy);
+        assert.deepEqual(heavy.lines, ['深思：语义路由认为他这一轮是「在说沉重的事」（家人住院），这一轮不套字数和条数、用 fake-pro、提示词只留一句“先想清楚”、再加一小句方向']);
+        const opinion = setup('你觉得我该不该换专业', {}, { route: async () => ({ kind: 'opinion' }) });
+        await opinion.out;
+        assert.deepEqual(opinion.asked, ['你觉得我该不该换专业']);
+        assert.equal(opinion.turn.facts.deliberate, true);
+        assert.equal(opinion.turn.facts.routedHint, undefined, '要她的看法：不加方向');
+        const light = setup('今天去图书馆了', {}, { route: async () => ({ kind: 'light' }) });
+        await light.out;
+        assert.deepEqual(light.asked, ['今天去图书馆了']);
+        assert.equal(light.turn.facts.deliberate, undefined);
+        assert.deepEqual(light.lines, []);
+    });
+
+    test('分类出错、没结果：当没问，不深思也不抛', async () => {
+        const failed = setup('我爸今天住院了', {}, { route: async () => { throw new Error('超时'); } });
+        await failed.out;
+        assert.equal(failed.turn.facts.deliberate, undefined);
+        const none = setup('我爸今天住院了', {}, { route: async () => undefined });
+        await none.out;
+        assert.equal(none.turn.facts.deliberate, undefined);
+    });
+
+    test('让路的轮次：危机、只发表情、发照片、被打断、只想一想、小别扭生效、主动找他——不深思，连分类都不问', () => {
+        const route = async (): Promise<Routed> => ({ kind: 'heavy' });
+        const skipped = (facts: Turn['facts'], extra: Partial<Turn> = {}) => {
+            const s = setup(EXPLAIN, facts, { route }, extra);
+            assert.equal(s.out, undefined);
+            assert.equal(s.turn.facts.deliberate, undefined);
+            assert.deepEqual(s.asked, []);
+        };
+        skipped({ crisis: { level: 'high' } as NonNullable<Turn['facts']['crisis']> });
+        skipped({ stickerOnly: true });
+        skipped({ photo: 'cat' });
+        skipped({ interruption: { text: '猫打翻了水杯', minutesAgo: 1 } });
+        skipped({ grievanceActive: true });
+        skipped({}, { thinking: true });
+        skipped({}, { initiate: { note: '想他了' } as NonNullable<Turn['initiate']> });
     });
 });

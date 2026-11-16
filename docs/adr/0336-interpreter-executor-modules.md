@@ -1150,3 +1150,16 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 验证：基线 42/42 逐字不变（含新加的 `feelings-sources`）；变异检验（在模块里）——不给追求的打分、不给前一天的世界、小别扭生效的轮次也放心境，`feelings` / `feelings-sources` 都有报不一致的。
   心境 / 追求相关测试 667 项里除 DSH 的 `group-affect` 外都通过；类型检查通过。这一步之前跑过一次 bot 全量：4695 过、13 跳过，红的只有 `group-affect`。
 - 判断顺序表现在是 `photo` → `intent` → `feelings` → `stickers` → `texture`。还在流水线原位的：连续性和深思 / 语义路由（有 await、调模型）、长短要的几样、聊天原文放多少、记忆那一组的召回。
+
+### 判断那一串：深思和语义路由（2026-11-16）
+
+- 是什么：ADR 0151——他认真在问她的轮次定成深思（危机、只发表情、发照片、被打断、只想一想、小别扭生效、主动找他的轮次让路）；ADR 0202——关键词没认出来的轮次问一次小模型分类，说值得认真的也深思，按类别多一小句方向。
+- `DECIDE_STAGES` 加 `deliberate`（图片表情之后、质感之前，原位）。`decideAt` 的处理函数可以返回 promise：`decideStage` 都同步时同步返回，碰到 promise 才转成异步；
+  流水线只在返回 promise 时等——原来也只在真去问分类时才 await。多出的微任务落在本来就异步的那条路上。
+- 挂在 `modules/deliberate.ts` 的 `decideAt.deliberate`，写 `turn.facts.deliberate` / `routedHint`（原来在拼段落前才写）和那行日志。深思用的模型名和分类函数经 `DecideCtx.deliberate`（开了深思才有）。
+  文件头原来记的「不挪进 contribute」的几条顾虑都是「挪了位置」才有的；判断在原位，先后没变。闭包变量 `routedHint` 去掉，`deliberateNow` 还在（生成时换模型、最多几条）。
+- 直接调流水线、要深思的测试要挂 `deliberateModule`（`language-review.test.ts` 的预算用例补了）。
+- 更正上一步的验证：心境那一步（`32746ee5`）提交时没跑 `decide-stage.test.ts`，里面核对顺序表的那一条当时是红的（表里多了 `feelings`，断言没跟着改）；这一步一起改对了。
+- 验证：基线 42/42 逐字不变；变异检验——判断了但不写 `deliberate`，`rich-chat` 报不一致、`app.test.ts` 的深思和语义路由两条用例红。`decide-stage.test.ts` 加 5 项（共 29，含同步 / 要等分类两条路、分类出错、各种让路）；
+  所有直接用联系人流水线或涉及深思的测试通过；类型检查通过。
+- 判断顺序表：`photo` → `intent` → `feelings` → `stickers` → `deliberate` → `texture`。还在流水线原位的：连续性（await、上网调模型）、长短要的几样（`low`、`agendaTopics`、`cue`）、聊天原文放多少、记忆那一组的召回。
