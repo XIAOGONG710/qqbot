@@ -13,6 +13,7 @@
 - `world/impact-ledger.ts`
 - `world/time-phases.ts`
 - `world/time-observer.ts`
+- `world/world-event-observer.ts`
 - `world/agency-shadow.ts`
 - `world/cache-freshness.ts`
 - `world/external-error.ts`

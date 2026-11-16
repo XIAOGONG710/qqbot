@@ -34,3 +34,13 @@ test('agency shadow records message arrival without storing content or creating 
     assert.deepEqual(shadow.motivations.drives(), []);
 });
 
+test('agency shadow turns recorded world context into shadow-only motivations', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'qqbot-agency-shadow-'));
+    const at = new Date('2026-11-16T12:00:00.000Z');
+    const shadow = readAgencyShadow(dir, at);
+    assert.equal(shadow.recordWorld({ day: '2026-11-16', atSchool: true, parcels: [], homework: [], events: [] }, at), 1);
+    assert.deepEqual(shadow.observe(at, calm(at)), { events: 0, impacts: 1, drives: 1, candidates: 1 });
+    assert.equal(shadow.motivations.candidates()[0]?.kind, 'remember');
+    assert.deepEqual(shadow.events.events()[0]?.details, { day: '2026-11-16', place: 'school' });
+});
+

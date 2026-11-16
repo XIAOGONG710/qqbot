@@ -11,11 +11,15 @@ import { readWorldImpactLedger, type WorldImpactLedger } from './impact-ledger.t
 import type { WorldImpact } from './impacts.ts';
 import { readTimeObserver, type TimeObserver } from './time-observer.ts';
 import type { WorldEvent } from './events.ts';
+import { observeWorldNow } from './world-event-observer.ts';
+import type { WorldNow } from './world.ts';
 
 export interface AgencyShadow {
     observe(at: Date, regulation: RegulationSnapshot): { events: number; impacts: number; drives: number; candidates: number };
     /** 只登记“收到消息”这一事实，正文仍只留在既有聊天记录中；不产生影响或活动。 */
     recordUserMessage(qq: number, messageId: number, occurredAt: Date, observedAt: Date): number;
+    /** 记录已有世界快照中的结构化环境事实；不联网、不发送、不保存供应商正文。 */
+    recordWorld(now: WorldNow, observedAt: Date): number;
     events: WorldEventLedger;
     impacts: WorldImpactLedger;
     motivations: MotivationLedger;
@@ -24,6 +28,12 @@ export interface AgencyShadow {
 function timeImpact(eventId: string, kind: string, at: string): WorldImpact {
     const aspect = kind === 'time.dayPhase.changed' ? 'availability' : 'world-context';
     return { id: `impact:${eventId}:self:${aspect}`, eventId, target: 'self', aspect, direction: 'uncertain', magnitude: kind === 'time.dayPhase.changed' ? 0.2 : 0.05, confidence: 1, assessedAt: at };
+}
+
+function contextImpact(event: WorldEvent, at: string): WorldImpact {
+    if (event.source === 'time') return timeImpact(event.id, event.kind, at);
+    const aspect = event.source === 'world' ? 'environment' : event.source === 'society' ? 'public-context' : 'local-context';
+    return { id: `impact:${event.id}:self:${aspect}`, eventId: event.id, target: 'self', aspect, direction: 'uncertain', magnitude: 0.1, confidence: event.confidence, assessedAt: at };
 }
 
 function awarenessDrive(impact: WorldImpact): Drive {
@@ -58,11 +68,13 @@ export function readAgencyShadow(dataDir: string, initialAt: Date, log: (message
             };
             return events.append([event]);
         },
+        recordWorld: (now, observedAt) => events.append(observeWorldNow(now, observedAt)),
         observe: (at, regulation) => {
-            const knownEvents = new Set(events.events().map(event => event.id));
             const eventsAdded = time.observe(at);
-            const newImpacts = events.events().filter(event => !knownEvents.has(event.id) && event.source === 'time')
-                .map(event => timeImpact(event.id, event.kind, at.toISOString()));
+            const assessedEvents = new Set(impacts.impacts().map(impact => impact.eventId));
+            const newImpacts = events.events().filter(event => !assessedEvents.has(event.id)
+                && (event.source === 'time' || event.source === 'world' || event.source === 'society' || event.source === 'sandbox'))
+                .map(event => contextImpact(event, at.toISOString()));
             const impactsAdded = impacts.append(newImpacts);
             const knownImpacts = new Set(motivations.drives().flatMap(drive => drive.impactIds ?? []));
             const drivesAdded = motivations.appendDrives(impacts.impacts().filter(impact => !knownImpacts.has(impact.id)).map(awarenessDrive));
