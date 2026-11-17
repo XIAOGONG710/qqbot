@@ -2,6 +2,7 @@
 // 这里只生成“阶段变化”事件，不把某个时间直接等同于主动消息。
 
 import type { WorldEvent } from './events.ts';
+import { localDate } from '../local-date.ts';
 
 export const DAY_PHASES = ['night', 'morning', 'noon', 'afternoon', 'evening', 'late-night'] as const;
 export type DayPhase = (typeof DAY_PHASES)[number];
@@ -44,10 +45,10 @@ export function timePhases(at: Date): TimePhases {
 }
 
 /** 只为实际改变的阶段生成事件；相同快照不会重复产生事件。 */
-export function timePhaseEvents(before: TimePhases, at: Date): WorldEvent[] {
+export function timePhaseEvents(before: TimePhases, at: Date, observed = at): WorldEvent[] {
     const after = timePhases(at);
     const occurredAt = at.toISOString();
-    const observedAt = occurredAt;
+    const observedAt = observed.toISOString();
     const changes: [keyof TimePhases, string, string][] = [
         ['dayPhase', before.dayPhase, after.dayPhase],
         ['weekPhase', before.weekPhase, after.weekPhase],
@@ -67,5 +68,32 @@ export function timePhaseEvents(before: TimePhases, at: Date): WorldEvent[] {
             details: { from, to },
             confidence: 1,
         }));
+}
+
+const DAY_BOUNDARY_HOURS = [0, 6, 11, 14, 18, 23] as const;
+
+/**
+ * 确定性的世界时钟可以在停机后重放：阶段变化发生在真实边界，observedAt 才是恢复后看到它的时刻。
+ * 天气、新闻等观测事实不能用这条路补造，只有纯时间可以这样恢复连续性。
+ */
+export function timePhaseTransitions(fromExclusive: Date, toInclusive: Date): WorldEvent[] {
+    if (!Number.isFinite(fromExclusive.getTime()) || !Number.isFinite(toInclusive.getTime())) throw new RangeError('世界时钟的时间不合法');
+    if (toInclusive <= fromExclusive) return [];
+    const boundaries: Date[] = [];
+    let day = localDate(fromExclusive.getFullYear(), fromExclusive.getMonth(), fromExclusive.getDate());
+    const lastDay = localDate(toInclusive.getFullYear(), toInclusive.getMonth(), toInclusive.getDate());
+    while (day <= lastDay) {
+        for (const hour of DAY_BOUNDARY_HOURS) {
+            const boundary = localDate(day.getFullYear(), day.getMonth(), day.getDate(), hour);
+            if (boundary > fromExclusive && boundary <= toInclusive) boundaries.push(boundary);
+        }
+        day = localDate(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+    }
+    let before = timePhases(fromExclusive);
+    return boundaries.flatMap(boundary => {
+        const events = timePhaseEvents(before, boundary, toInclusive);
+        before = timePhases(boundary);
+        return events;
+    });
 }
 
