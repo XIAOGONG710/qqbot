@@ -194,6 +194,7 @@ import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/d
 import { armIntimate, INTIMATE_REPLIES, takeIntimateLine } from '.././language/intimacy.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from '.././life/schedule.ts';
 import { useRealWeather, weatherFetcher, type WeatherFetcherStatus } from '.././world/weather.ts';
+import { parseWeatherObservation, readWeatherEvidenceLedger, reconciledWeather, userWeatherEvidence } from '.././world/weather-evidence.ts';
 import { airQualityFetcher, useRealAirQuality, type AirQualityFetcherStatus } from '.././world/air-quality.ts';
 import { daylightFetcher, useRealDaylight, type DaylightFetcherStatus } from '.././world/daylight.ts';
 import { calendarFetcher, useRealCalendar, type CalendarStatus } from '.././world/calendar.ts';
@@ -692,12 +693,14 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const ledgerWorld = worldCard
         ? worldState(worldCard.herWorld!, worldCard.schedule!, log, join(config.dataDir, 'world'), worldNow)
         : undefined;
-    // 真实天气（ADR 0048）：世界里的天气按卡上写的地方（weather.places：学校、家）实际的；取不到、开始取之前的日子照旧按日期生成
+    // 真实天气（ADR 0048 / 0338）：当前天气须经软件实况与现场观察裁决；取不到就保持未知，不用模拟天气冒充现实。
     const weatherPlaces = worldCard?.herWorld?.weather?.places;
     const weather = config.realWeather && worldCard && weatherPlaces
         ? weatherFetcher({ dir: join(config.dataDir, 'weather'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow })
         : undefined;
-    useRealWeather(weather);
+    const weatherEvidence = weather ? readWeatherEvidenceLedger(join(config.dataDir, 'weather', 'evidence.json'), log) : undefined;
+    const weatherReality = weather && weatherEvidence ? reconciledWeather(weather, weatherEvidence) : weather;
+    useRealWeather(weatherReality);
     const ownRealityRefresh = (
         source: { refresh(): Promise<void> } | undefined,
         refreshes: Set<Promise<void>>,
@@ -728,7 +731,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const weatherTimer = weather ? exec.every(() => void refreshWeather(), WEATHER_REFRESH_MS) : undefined;
     construction.onFailure(() => exec.cancel(weatherTimer));
     weatherTimer?.unref();
-    if (worldCard) log(`真实天气：${weather ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；取不到照旧按日期生成）`
+    if (worldCard) log(`真实天气：${weather ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；当前事实过期或冲突时保持未知）`
         : !config.realWeather ? '关（配置 realWeather: false），按日期生成' : '关（卡上没写 weather.places），按日期生成'}`);
     const airQuality = config.realAirQuality === true && worldCard && weatherPlaces ? airQualityFetcher({ dir: join(config.dataDir, 'air-quality'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
     useRealAirQuality(airQuality);
@@ -3989,6 +3992,22 @@ ${body}
         // 能让她动电脑的只有他亲手打的字（ADR 0179）：用原始消息判断，不用处理后的文本——看过的图、听过的语音会被换成一段文字，和他亲手打的混在一起
         const typed = event.user_id === deviceOwner?.qq && isTypedByHim(event.message);
         if (typed) lastUserText.set(event.user_id, text); else lastUserText.delete(event.user_id);
+        if (typed && weatherEvidence && weatherPlaces && worldCard && ledgerWorld) {
+            const parsed = parseWeatherObservation(text);
+            if (parsed) {
+                const at = new Date(accepted.time);
+                const current = ledgerWorld.at(worldCard.herWorld!, worldCard.schedule!, at);
+                const location = parsed.target === 'user' ? 'user'
+                    : parsed.target === 'school' ? weatherPlaces.school.id
+                        : parsed.target === 'home' ? weatherPlaces.home.id
+                            : current ? (current.atSchool ? weatherPlaces.school.id : weatherPlaces.home.id) : undefined;
+                const evidence = location ? userWeatherEvidence(location, parsed.condition, at) : undefined;
+                if (evidence && weatherEvidence.append(evidence)) {
+                    log(`[${event.user_id}] 天气证据：记下${parsed.target === 'user' ? '他所在地' : '她所在地'}的现场观察（有效 60 分钟，不记原话）`);
+                    planners.get(event.user_id)?.poke();
+                }
+            }
+        }
         if (event.user_id === deviceOwner?.qq && !typed && readWorkMode(config.dataDir, event.user_id) === 'work') tellOwner(NOT_TYPED_NOTICE);
         // 连续生活：他一句话会改变她的心情/关系（不挡回复）
         void noteResident({ text, from: event.user_id === deviceOwner?.qq ? 'baobao' : 'classmate' });

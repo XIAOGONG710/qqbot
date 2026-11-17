@@ -78,6 +78,10 @@ export interface DayWeather {
 
 /** 世界读真实天气的接口 */
 export interface RealWeather {
+    /** 有这个标记时，undefined 表示“现实天气暂时未知”，调用方不得退回模拟天气。 */
+    readonly authoritative?: boolean;
+    /** 权威读口可为已冻结的旧日显式保留历史模拟；当前日不得使用。 */
+    fallbackToSimulation?(date: string, until: Date): boolean;
     /** 那天（YYYY-MM-DD，日历日）到 until 为止的天气；没有数据、在开始取之前就是 undefined */
     day(place: Place, date: string, until: Date): DayWeather | undefined;
 }

@@ -6,7 +6,7 @@ import { afterEach, describe, test } from 'node:test';
 import { dayPlan } from '../src/life/day-plan.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { dayFrom, firstRealDay, mergeHours, parseOpenMeteo, useRealWeather, weatherFetcher, weatherText, type HourWeather, type RealWeather } from '../src/world/weather.ts';
-import { describeWeather, describeWorld, worldAt } from '../src/world/world.ts';
+import { describeWeather, describeWorld, simulateWorld, worldAt } from '../src/world/world.ts';
 import { syntheticCardPath, SYNTHETIC_WEATHER_PLACES } from './fixtures/card.ts';
 
 const at = (iso: string) => new Date(`${iso}+08:00`);
@@ -268,6 +268,27 @@ describe('真实天气进她的世界（ADR 0048）', () => {
         assert.match(describeWorld(now, at('2026-10-20T21:00:00'))!, /天气：现在多云，26℃（今天 15–27℃）；今天还没下过雨/);
         assert.ok(now.cat && 'fed' in now.cat.today, '没下雨，晚上下楼喂了猫');
         assert.equal(worldAt(herWorld, schedule, at('2026-10-21T21:00:00'))!.weather!.real, undefined, '没数据的日子照旧生成');
+    });
+
+    test('权威现实来源暂时未知时不退回按日期生成的假天气', () => {
+        useRealWeather({ authoritative: true, day: () => undefined });
+        const now = worldAt(herWorld, schedule, at('2026-10-20T21:00:00'))!;
+        assert.equal(now.weather, undefined);
+        assert.equal(now.weatherUnknown, true);
+        assert.match(describeWorld(now, at('2026-10-20T21:00:00'))!, /天气：暂时确认不了/);
+    });
+
+    test('权威读口只为已经冻结的旧日显式保留历史模拟', () => {
+        useRealWeather({
+            authoritative: true, day: () => undefined,
+            fallbackToSimulation: (date, until) => date < `${until.getFullYear()}-${pad(until.getMonth() + 1)}-${pad(until.getDate())}`,
+        });
+        const now = worldAt(herWorld, schedule, at('2026-10-20T21:00:00'))!;
+        assert.equal(now.weather, undefined);
+        assert.equal(now.weatherUnknown, true);
+        const yesterday = simulateWorld(herWorld, schedule, at('2026-10-20T21:00:00')).days.get('2026-10-19');
+        assert.ok(yesterday?.weather);
+        assert.equal(yesterday?.weatherUnknown, undefined);
     });
 
     test('喂猫看那个钟头：上午下过雨照样去；喂的时候在下就不去', () => {

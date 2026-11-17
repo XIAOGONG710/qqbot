@@ -186,6 +186,8 @@ export interface WorldNow {
     atSchool: boolean;
     /** 真实天气有数据的日子带 real、这一刻的天况、下过雨的钟头（ADR 0048）；没有的按日期生成 */
     weather?: DayWeather;
+    /** 权威现实来源已启用，但这一刻没有足够的新鲜证据；提示词必须明确未知，不能让模型补全天气。 */
+    weatherUnknown?: true;
     /** 当前已观测的空气质量；预报没有现成事实时不写。 */
     airQuality?: DayAirQuality;
     /** 真实日出 / 日落和当前光线阶段；取不到时不写。 */
@@ -248,6 +250,7 @@ interface DayRecord {
     date: string;
     atSchool: boolean;
     weather?: DayWeather;
+    weatherUnknown?: true;
     cat?: { fed?: Date; seen?: boolean; planned?: string; skipped?: 'rain' | 'away' | 'no_food' | 'class'; foodAfter: number };
     events: { id: string; text: string; at: Date; person?: string; feel?: EventFeel }[];
     call?: Date;
@@ -466,7 +469,14 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         const threadsOn = Boolean(world.threads) && (!world.threadsFrom || date >= world.threadsFrom);
         // 真实天气按卡上的地点（weather.places）：在学校取学校那里的，放假在家取家里的
         const place = world.weather?.places ? (atSchool ? world.weather.places.school : world.weather.places.home).id : undefined;
-        if (world.weather) record.weather = (place ? realWeather()?.day(place, date, until) : undefined) ?? weatherOn(world.weather, day);
+        if (world.weather) {
+            const reality = place ? realWeather() : undefined;
+            const observed = reality?.day(place!, date, until);
+            // 现实来源开着时，当前事实未知就保持未知；不能拿按日期生成的箱庭天气冒充现实。
+            if (observed) record.weather = observed;
+            else if (!reality?.authoritative || reality.fallbackToSimulation?.(date, until)) record.weather = weatherOn(world.weather, day);
+            else record.weatherUnknown = true;
+        }
 
         // 快递：到了驿站的，在学校、不上课时取；有时拖一天；过了最后一天没取就退回
         // 取件的时刻撞上饭点（12:20 总落在午饭里，ADR 0040 验证一节）：从 afterMealFrom 那天起吃完饭再去（ADR 0042）；之前的日子照旧，过完的日子不被新规则改写
@@ -842,6 +852,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     const places = world.weather?.places;
     const place = places ? (record.atSchool ? places.school : places.home).id : undefined;
     if (record.weather) result.weather = record.weather;
+    if (record.weatherUnknown) result.weatherUnknown = true;
     const airQuality = place ? realAirQuality()?.day(place, date, now) : undefined;
     if (airQuality) result.airQuality = airQuality;
     const daylight = place ? realDaylight()?.day(place, date, now) : undefined;
@@ -938,6 +949,7 @@ export function describeWorld(now: WorldNow, at: Date, giver?: (qq: number) => s
     const herToday = new Date(`${now.day}T00:00:00`);
     const ahead = (d: Date) => Math.round((startOfDay(d).getTime() - herToday.getTime()) / DAY_MS);
     if (now.weather) parts.push(describeWeather(now.weather));
+    else if (now.weatherUnknown) parts.push('天气：暂时确认不了');
     if (now.airQuality) parts.push(`空气：AQI ${now.airQuality.aqi}（${now.airQuality.category}），PM2.5 ${now.airQuality.pm25}，PM10 ${now.airQuality.pm10}`);
     if (now.daylight) parts.push(`日照：${now.daylight.phase}（${now.daylight.sunrise} 日出，${now.daylight.sunset} 日落）`);
     if (now.holiday) parts.push(`放假：${now.holiday.name}（${now.holiday.start} 至 ${now.holiday.end}）`);

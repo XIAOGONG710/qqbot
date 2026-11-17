@@ -60,6 +60,7 @@ const supportedProjection = (at: Date) => Number.isFinite(at.getTime()) && calen
 
 /** 这一刻在下吗：这个钟头或上一个钟头下过（实况） */
 export function rainingAt(weather: DayWeather | undefined, at: Date): boolean {
+    if (weather?.now) return /雨|雪|冰雹/.test(weather.now.text);
     const hour = at.getHours();
     return Boolean(weather?.real && weather.rainHours?.some(h => h === hour || h === hour - 1));
 }
