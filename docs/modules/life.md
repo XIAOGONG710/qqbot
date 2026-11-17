@@ -20,6 +20,7 @@
 - `life/motivation-resolution.ts`
 - `life/motivation-decision-ledger.ts`
 - `life/expression-opportunity.ts`
+- `life/expression-opportunity-ledger.ts`
 - `life/expression-judgement.ts`
 - `life/her-days.ts`
 - `life/day-plan.ts`
@@ -42,6 +43,7 @@
 - `life/leave-note.ts`
 - `life/dreams.ts`
 - `life/open-questions.ts`
+- `life/learning-questions.ts`
 - `life/her-guesses.ts`
 - `life/traces.ts`
 - `life/understanding.ts`

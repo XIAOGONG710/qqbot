@@ -17,6 +17,9 @@
 - `world/time-observer.ts`
 - `world/world-event-observer.ts`
 - `world/agency-shadow.ts`
+- `world/external-sources.ts`
+- `world/weather-evidence.ts`
+- `world/information-sources.ts`
 - `world/cache-freshness.ts`
 - `world/external-error.ts`
 - `world/fact-resolution.ts`
