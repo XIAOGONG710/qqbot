@@ -7,7 +7,7 @@ export const DRIVE_SOURCES = ['external', 'internal'] as const;
 export type DriveSource = (typeof DRIVE_SOURCES)[number];
 export const DRIVE_STATUSES = ['active', 'waiting', 'fulfilled', 'suppressed', 'expired'] as const;
 export type DriveStatus = (typeof DRIVE_STATUSES)[number];
-export const SHADOW_ACTIVITY_KINDS = ['remember', 'wait', 'observe', 'suppress'] as const;
+export const SHADOW_ACTIVITY_KINDS = ['remember', 'wait', 'observe', 'self_care', 'adjust_schedule', 'research', 'message', 'ask_permission', 'suppress'] as const;
 export type ShadowActivityKind = (typeof SHADOW_ACTIVITY_KINDS)[number];
 
 /** 一条来源明确的行动倾向；goal 只能是短标签，不能存用户原话。 */
@@ -33,7 +33,7 @@ export interface ShadowActivityCandidate {
     driveId: string;
     kind: ShadowActivityKind;
     createdAt: string;
-    /** 为什么尚不外发，供审计和模拟器解释。 */
+    /** 为什么选择或保留这个候选，供审计和模拟器解释。 */
     reason: string;
 }
 
@@ -103,6 +103,9 @@ export function shadowActivityFor(drive: Drive, regulation: RegulationSnapshot, 
     if (!validDrive(drive) || !Number.isFinite(at.getTime()) || drive.status !== 'active') return undefined;
     if (drive.expiresAt && Date.parse(drive.expiresAt) < at.getTime()) {
         return { id: `${drive.id}:expired`, driveId: drive.id, kind: 'suppress', createdAt: at.toISOString(), reason: '动机已过期，影子层不补做' };
+    }
+    if (drive.source === 'internal' && drive.stateKeys?.some(key => /regulation\.(?:recoveryNeed|discomfort)/.test(key))) {
+        return { id: `${drive.id}:self-care`, driveId: drive.id, kind: 'self_care', createdAt: at.toISOString(), reason: '身体和恢复需要优先；具体休息行动仍由生活裁判决定' };
     }
     if (regulation.recoveryNeed >= 0.7) {
         return { id: `${drive.id}:wait`, driveId: drive.id, kind: 'wait', createdAt: at.toISOString(), reason: '恢复需求高，先不把动机升级成表达' };

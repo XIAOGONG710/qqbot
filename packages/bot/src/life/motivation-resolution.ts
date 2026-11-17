@@ -31,6 +31,7 @@ export function validShadowDriveDecision(value: unknown): value is ShadowDriveDe
 
 const round = (value: number) => Math.round(Math.max(0, Math.min(1, value)) * 1000) / 1000;
 const maintenance = (drive: Drive) => drive.stateKeys?.some(key => /recoveryNeed|discomfort|cognitiveCapacity/.test(key)) ?? false;
+const commitment = (drive: Drive) => drive.eventIds?.some(id => id.startsWith('promise.')) ?? false;
 const scoreOf = (drive: Drive) => round(drive.strength * 0.55 + drive.urgency * 0.35 + drive.persistence * 0.1);
 
 /** 恢复优先、同类外部线索只聚焦一个、其余等待；这里只裁决注意力，不裁决表达。 */
@@ -45,7 +46,7 @@ export function resolveShadowDrives(drives: readonly Drive[], regulation: Regula
         let reason = '当前可保留这一项内部关注';
         if (drive.expiresAt && Date.parse(drive.expiresAt) < at.getTime()) { outcome = 'suppress'; reason = '动机已过期，不补做'; }
         else if (score < 0.2) { outcome = 'wait'; reason = '动机强度不足，先保留观察'; }
-        else if (regulation.recoveryNeed >= 0.7 && !maintenance(drive)) { outcome = 'wait'; reason = '恢复需求高，暂不分配额外注意力'; }
+        else if (regulation.recoveryNeed >= 0.7 && !maintenance(drive) && !commitment(drive)) { outcome = 'wait'; reason = '恢复需求高，暂不分配额外注意力'; }
         else if (maintenance(drive) && maintenanceFocused) { outcome = 'wait'; reason = '已有更优先的恢复类动机'; }
         else if (!maintenance(drive) && drive.source === 'external' && contextualFocused) { outcome = 'wait'; reason = '同类外部线索合并等待'; }
         if (outcome === 'focus' && maintenance(drive)) maintenanceFocused = true;

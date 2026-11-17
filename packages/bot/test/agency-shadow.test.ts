@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readAgencyShadow } from '../src/world/agency-shadow.ts';
 import type { RegulationSnapshot } from '../src/life/regulation.ts';
-import { proactiveAgency } from '../src/proactive/agency.ts';
+import { activitiesFromInnerChoice, proactiveAgency } from '../src/proactive/agency.ts';
 
 const calm = (at: Date): RegulationSnapshot => ({ at: at.toISOString(), discomfort: 0, arousal: 0.1, recoveryNeed: 0.2, socialCapacity: 0.9, cognitiveCapacity: 0.9 });
 
@@ -61,7 +61,8 @@ test('agency shadow appends internal regulation drives without an external event
     const strained: RegulationSnapshot = { at: at.toISOString(), discomfort: 0.82, arousal: 0.75, recoveryNeed: 0.9, socialCapacity: 0.2, cognitiveCapacity: 0.3 };
     assert.deepEqual(shadow.observe(at, strained), { events: 0, impacts: 0, drives: 5, candidates: 5 });
     assert.ok(shadow.motivations.drives().every(drive => drive.source === 'internal'));
-    assert.ok(shadow.motivations.candidates().every(candidate => candidate.kind === 'wait'));
+    assert.equal(shadow.motivations.candidates().filter(candidate => candidate.kind === 'self_care').length, 1);
+    assert.equal(shadow.motivations.candidates().filter(candidate => candidate.kind === 'wait').length, 4);
 });
 
 test('agency shadow accepts only sanitized external observations', () => {
@@ -77,13 +78,26 @@ test('an expression considered by the live planner is written to the same audita
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-agency-shadow-'));
     const at = new Date('2026-11-17T12:00:00.000Z');
     const shadow = readAgencyShadow(dir, at);
-    const candidate = { id: '2026-11-17:morning', occasion: 'morning' as const, day: '2026-11-17', at: at.getTime(), reason: '合成早安' };
+    const candidate = { id: '2026-11-17:inner:th-1', occasion: 'inner' as const, day: '2026-11-17', at: at.getTime(), reason: '合成念头', inner: { id: 'th-1', text: '想告诉他一件事', goes: 'tell' as const } };
     const result = proactiveAgency(candidate, calm(at), at);
     assert.ok(result.drive && result.decision && result.opportunity);
-    assert.equal(shadow.recordExpression(result.drive, result.decision, result.opportunity), true);
-    assert.equal(shadow.recordExpression(result.drive, result.decision, result.opportunity), false);
+    assert.equal(shadow.recordExpression(result.drive, result.decision, result.opportunity, result.activity), true);
+    assert.equal(shadow.recordExpression(result.drive, result.decision, result.opportunity, result.activity), false);
     assert.equal(shadow.motivations.drives()[0]?.id, result.drive.id);
     assert.equal(shadow.decisions.decisions()[0]?.driveId, result.drive.id);
     assert.equal(shadow.opportunities.opportunities()[0]?.driveId, result.drive.id);
+    assert.equal(shadow.motivations.candidates()[0]?.kind, 'message');
+});
+
+test('her inner choice records activities once without storing the lookup or plan text', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'qqbot-agency-shadow-'));
+    const at = new Date('2026-11-17T12:00:00.000Z');
+    const shadow = readAgencyShadow(dir, at);
+    const choice = activitiesFromInnerChoice({ id: 'th-42', at: at.toISOString(), text: '自己想想', goes: 'keep' }, at, '相机焦距', '看书')!;
+    assert.equal(shadow.recordActivities(choice.drive, choice.activities), true);
+    assert.equal(shadow.recordActivities(choice.drive, choice.activities), false);
+    assert.deepEqual(shadow.motivations.candidates().map(item => item.kind), ['research', 'adjust_schedule']);
+    assert.equal(JSON.stringify(shadow.motivations.drives()).includes('相机焦距'), false);
+    assert.equal(JSON.stringify(shadow.motivations.candidates()).includes('看书'), false);
 });
 

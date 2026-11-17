@@ -30,7 +30,8 @@ import {
     blockReason, candidateLabel, candidatesOn, counts, CRISIS_PAUSE_REASON, DEFAULT_NEWS_KINDS, herDay, MAX_PROACTIVE_BUBBLES, newsKindsOf, occasionNote, PENDING_REASON, planFrom, recallTopic, unansweredCount, untoldNews,
     UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type NewsKind, type ProactiveInput, type RescheduleItem, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
-import type { ProactiveAgencyResult } from './agency.ts';
+import { activitiesFromInnerChoice, type ProactiveAgencyResult } from './agency.ts';
+import type { Drive, ShadowActivityCandidate } from '../life/motivation.ts';
 import type { BodyNow } from '../life/body.ts';
 import { newObstacles, obstaclesBetween, OBSTACLE_KINDS, type ObstacleFacts, type ObstacleKind } from '.././world/obstacles.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from '../life/promises.ts';
@@ -214,6 +215,8 @@ export interface PlannerDeps {
     guessFacts?: () => { id: string; text: string } | undefined;
     /** 到点只是检查机会；真正外发前须由统一内外驱池形成表达机会。不给则保留旧行为，供迁移和模拟器显式控制。 */
     agency?: (candidate: Candidate, at: Date, context: { unansweredCount: number }) => ProactiveAgencyResult;
+    /** 内心明确选出的查资料、改安排、记着或以后联系；先审计，再交给已有的安全执行通道。 */
+    recordActivities?: (drive: Drive, activities: readonly ShadowActivityCandidate[]) => void;
 }
 
 export interface PlannerStatus {
@@ -697,6 +700,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             deps.log(`内心${tag}：想了，但不留（${rejected}）`);
             return;
         }
+        const innerChoice = activitiesFromInnerChoice(parsed.thought, new Date(started), parsed.wants, parsed.todo);
+        if (innerChoice) deps.recordActivities?.(innerChoice.drive, innerChoice.activities);
         inner = {
             ...inner, thoughts: [...inner.thoughts, parsed.thought].slice(-THOUGHTS_KEPT),
             ...(forceWatch && watched ? { reflected: [...(inner.reflected ?? []), watched.id].slice(-30) } : {}),

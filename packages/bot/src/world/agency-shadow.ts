@@ -4,7 +4,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readMotivationLedger, type MotivationLedger } from '../life/motivation-ledger.ts';
-import { internalDrivesAt, type Drive } from '../life/motivation.ts';
+import { internalDrivesAt, type Drive, type ShadowActivityCandidate } from '../life/motivation.ts';
 import { resolveShadowDrives, shadowActivityForDecision, type ShadowDriveDecision } from '../life/motivation-resolution.ts';
 import { readMotivationDecisionLedger, type MotivationDecisionLedger } from '../life/motivation-decision-ledger.ts';
 import { expressionOpportunity, type ExpressionOpportunity } from '../life/expression-opportunity.ts';
@@ -30,7 +30,9 @@ export interface AgencyShadow {
     /** 外部适配器只能传已清洗观察；原始供应商正文不进入影子账。 */
     recordExternal(observation: ExternalObservation, observedAt: Date): number;
     /** 登记真正送往主动管线的动机裁决；仍不在这里调用执行器。 */
-    recordExpression(drive: Drive, decision: ShadowDriveDecision, opportunity: ExpressionOpportunity): boolean;
+    recordExpression(drive: Drive, decision: ShadowDriveDecision, opportunity: ExpressionOpportunity, activity?: ShadowActivityCandidate): boolean;
+    /** 记录她在内心里已经明确选择的低风险活动；这里只记账，执行仍由原有权限边界负责。 */
+    recordActivities(drive: Drive, activities: readonly ShadowActivityCandidate[]): boolean;
     events: WorldEventLedger;
     impacts: WorldImpactLedger;
     associations: WorldAssociationLedger;
@@ -90,10 +92,16 @@ export function readAgencyShadow(dataDir: string, initialAt: Date, log: (message
             const event = externalObservationEvent(observation, observedAt);
             return event ? events.append([event]) : 0;
         },
-        recordExpression: (drive, decision, opportunity) => {
+        recordExpression: (drive, decision, opportunity, activity) => {
             const added = motivations.appendDrives([drive]);
             decisions.append([decision]);
             opportunities.append(opportunity);
+            if (activity) motivations.appendCandidates([activity]);
+            return added > 0;
+        },
+        recordActivities: (drive, activities) => {
+            const added = motivations.appendDrives([drive]);
+            motivations.appendCandidates(activities);
             return added > 0;
         },
         observe: (at, regulation) => {

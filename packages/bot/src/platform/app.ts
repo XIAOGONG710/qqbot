@@ -2832,9 +2832,10 @@ ${video.link}`);
                     agency: (candidate, at, context) => {
                         const bodyNow = worldCard.herWorld?.body ? bodyAt(worldCard.herWorld.body, worldCard.schedule!, at) : undefined;
                         const result = proactiveAgency(candidate, regulationAt(needsAt(needsAnchor, ledgerWorld.events(), at), bodyNow), at, context);
-                        if (result.drive && result.decision && result.opportunity) agencyShadow.recordExpression(result.drive, result.decision, result.opportunity);
+                        if (result.drive && result.decision && result.opportunity) agencyShadow.recordExpression(result.drive, result.decision, result.opportunity, result.activity);
                         return result;
                     },
+                    recordActivities: (drive, activities) => { agencyShadow.recordActivities(drive, activities); },
                 } : {}),
                 // 他最近说过想伤害自己的话：普通主动消息暂停 48 小时（ADR 0068）
                 crisisPaused: now => crisisState.pausedAt(contact.qq, now),
