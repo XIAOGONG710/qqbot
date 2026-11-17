@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { checkUrl, htmlToText, isPublicIp, keyedProvider, planExplicit, readPage, WebLookup, wikipediaProvider, type ChatLine, type Resolver } from '../src/platform/web.ts';
+import { checkUrl, htmlToText, isPublicIp, keyedProvider, planExplicit, readPage, searchCarry, WebLookup, wikipediaProvider, type ChatLine, type Resolver } from '../src/platform/web.ts';
 
 const publicResolver: Resolver = async () => ['93.184.216.34'];
 const page = (html: string, headers: Record<string, string> = {}, status = 200) => new Response(html, { status, headers: { 'content-type': 'text/html; charset=utf-8', ...headers } });
@@ -181,6 +181,33 @@ describe('WebLookup：串起来', () => {
         assert.deepEqual(planExplicit('你看看能不能搜到', '嗯嗯'), undefined);
         // 他自己的陈述不算让她搜
         assert.deepEqual(planExplicit('我刚搜到了', '蓝发鲸鱼尾巴的女仆是谁'), undefined);
+    });
+
+    test('图片后说「认一下这个」「你看看能不能搜到」：检索对象是最近图片，不是「认一下这个」', async () => {
+        const now = new Date('2026-11-15T11:28:07.000Z');
+        const image = '[图片：橙色长发的动漫少女，捧着书，白色长裙，可能是Claude的拟人形象，依据是橙白配色；上面写着：米 世]';
+        const previous = [
+            { role: 'user', content: image, time: '2026-11-15T11:27:28.000Z' },
+            { role: 'user', content: '你认一下这个', time: '2026-11-15T11:27:33.000Z' },
+        ];
+        const carry = searchCarry('你看看能不能搜到', previous, now);
+        assert.equal(carry, image);
+        const plan = planExplicit('你看看能不能搜到', carry);
+        assert.equal(plan?.kind, 'search');
+        if (plan?.kind !== 'search') return;
+        assert.match(plan.query, /Claude/);
+        assert.match(plan.query, /橙色长发/);
+        assert.doesNotMatch(plan.query, /米 世|你认一下这个/);
+        const fetched: string[] = [];
+        const fetcher = (async (url: string) => { fetched.push(String(url)); return wikiFetch(url); }) as typeof fetch;
+        const { lookup, asked } = make({ fetch: fetcher, now: () => now }, ['查到的 Claude 候选形象具有橙白配色']);
+        const line = await lookup.line('你看看能不能搜到', undefined, carry);
+        assert.match(decodeURIComponent(fetched[0]!), /Claude/);
+        assert.match(asked[0]![1]!.content, /要核对的图片线索：/);
+        assert.match(line!, /搜索候选.*对照上文图片/);
+        assert.match(line!, /不要说成自己原本认识/);
+        assert.equal(searchCarry('帮我查一下天气', previous, now), '你认一下这个');
+        assert.equal(searchCarry('你看看能不能搜到', previous, new Date('2026-11-15T12:00:00.000Z')), '你认一下这个');
     });
 
     test('自动档：小分类器认出是在问客观事实才查，认不出就不查；平常问句不触发', async () => {

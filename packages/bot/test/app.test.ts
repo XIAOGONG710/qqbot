@@ -101,7 +101,7 @@ function historyMessage(messageId: number, from: number, text: string, secondsAg
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; imageRecognition?: ImageDescriber; imageSearch?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -132,6 +132,8 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         config: cfg, transport, log: message => logs.push(message),
         ...(options.media ? { media: options.media } : {}),
         ...(options.vision ? { vision: options.vision } : {}),
+        ...(options.imageRecognition ? { imageRecognition: options.imageRecognition } : {}),
+        ...(options.imageSearch ? { imageSearch: options.imageSearch } : {}),
         ...(options.stickers ? { stickers: options.stickers } : {}),
         ...(options.photoSource ? { photoSource: options.photoSource } : {}),
         ...(options.photoRetryMs !== undefined ? { photoRetryMs: options.photoRetryMs } : {}),
@@ -1710,6 +1712,30 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         };
         return { media, calls, hold: () => { holding = true; }, release: () => { holding = false; for (const r of held.splice(0)) r(); } };
     }
+
+    test('图片 → 认一下这个 → 搜一下这个：复看原图、按原图搜图，并区分猜测和查到', async () => {
+        const cfg = config({ webLookup: 'explicit', contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
+        const prompts: string[] = [];
+        const recognitionUrls: string[] = [];
+        const searchUrls: string[] = [];
+        const run = setup(cfg, { 10002: [] }, {
+            vision: { describe: async () => '橙发少女，白黑橙长裙，拿着一本书。身份不确定。' },
+            imageRecognition: { describe: async image => { recognitionUrls.push(image.url); return '可能是 Claude 的拟人形象；只凭橙白配色和书本猜测。'; } },
+            imageSearch: { describe: async image => { searchUrls.push(image.url); return '已搜图：候选是 Claude 娘，图中的橙发、裙子和书本与结果一致。'; } },
+            generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '好'; },
+        });
+        await run.app.connected(SELF);
+        run.app.receive(mediaEvent(10002, 811, photoSegment('https://x/claude.png')));
+        await until(() => run.sent.length >= 1);
+        run.app.receive(event(10002, 812, '你认一下这个'));
+        await until(() => run.sent.length >= 2);
+        run.app.receive(event(10002, 813, '你看看能不能搜到'));
+        await until(() => run.sent.length >= 3);
+        assert.deepEqual(recognitionUrls, ['https://x/claude.png']);
+        assert.deepEqual(searchUrls, ['https://x/claude.png']);
+        assert.match(prompts.at(-2)!, /重新看了他发的原图.*可能是 Claude.*看图猜测/);
+        assert.match(prompts.at(-1)!, /用原图搜过并核对.*Claude 娘.*搜索所得的候选/);
+    });
 
     test('他发语音：转出来的字进聊天记录，照常回；重启后补回拿到同一条，不再转', async () => {
         const cfg = config();

@@ -85,6 +85,28 @@ describe('DeepSeek 看图（ADR 0055）', () => {
         assert.match(STICKER_VISION_PROMPT, /原样抄下来/);
     });
 
+    test('明确搜图时才声明 DeepSeek 网页工具；按实际工具调用区分已搜和只看图', async () => {
+        const requests: Record<string, unknown>[] = [];
+        const searched: VisionFetch = async (_url, init) => {
+            requests.push(JSON.parse(init.body));
+            return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: {
+                content: '候选是 Claude 娘，发色和衣服一致。',
+                server_tool_calls: [{ calls: [{ kind: 'image_search' }] }],
+            } }] }) };
+        };
+        assert.equal(await deepSeekImageDescriber({ ...options, webSearch: true }, searched, okDownload).describe({ url: 'https://x/a.jpg' }),
+            '已搜图：候选是 Claude 娘，发色和衣服一致。');
+        assert.deepEqual(requests[0]?.tools, [{ type: 'deepseek_web_search' }]);
+        const guessed: VisionFetch = async (_url, init) => {
+            requests.push(JSON.parse(init.body));
+            return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '可能是 Claude。' } }] }) };
+        };
+        assert.equal(await deepSeekImageDescriber({ ...options, webSearch: true }, guessed, okDownload).describe({ url: 'https://x/a.jpg' }),
+            '只看了原图，未联网搜图：可能是 Claude。');
+        await deepSeekImageDescriber(options, guessed, okDownload).describe({ url: 'https://x/a.jpg' });
+        assert.equal(requests[2]?.tools, undefined);
+    });
+
     test('按官方 Chat Completions 多模态格式发本机下载后的 data URL，复用聊天模型的 key', async () => {
         let seenUrl = '';
         let seenInit!: Parameters<VisionFetch>[1];

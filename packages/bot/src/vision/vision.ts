@@ -19,9 +19,11 @@ export interface DeepSeekVisionOptions {
     prompt?: string;
     /** 聊天看图优先于后台表情收藏；默认 chat。 */
     purpose?: ModelPurpose;
+    /** 仅在用户明确要求搜索最近图片时启用 DeepSeek 的服务端搜图。 */
+    webSearch?: boolean;
 }
 
-export const DEFAULT_VISION_PROMPT = '用一两句简短中文客观描述这张图里主要有什么。不要猜看不清的细节，不要复述这条要求。';
+export const DEFAULT_VISION_PROMPT = '用简短中文回答两项：①可见的主体、衣着、物品与文字；②若是动漫/插画角色或标志，主动判断可能对应的作品、角色、品牌或 AI 产品拟人形象，写“可能身份：…；依据：…”，并说明只是猜测。没有足够线索就写“身份不确定”。不要辨认真实人物，不要把猜测写成事实。身份结论放在前 100 字内。';
 /**
  * 表情包的意思大多在图上的字里：10-12 真图试跑里，默认提示词常写成「配中文字」「底部有中文字」，回复模型就不知道它说了什么。
  * 先抄字再说画面和情绪，14 张里 14 张都抄全了字。
@@ -178,9 +180,10 @@ export function deepSeekImageDescriber(options: DeepSeekVisionOptions, doFetch: 
                             ...references.map(reference => ({ type: 'image_url' as const, image_url: { url: reference } })),
                         ],
                     }],
-                    max_tokens: 200,
+                    max_tokens: options.webSearch ? 600 : 200,
                     stream: false,
                     thinking: { type: 'disabled' },
+                    ...(options.webSearch ? { tools: [{ type: 'deepseek_web_search' }] } : {}),
                 }),
                 signal: lifetime,
             }), lifetime, cancelBody); }
@@ -206,8 +209,14 @@ export function deepSeekImageDescriber(options: DeepSeekVisionOptions, doFetch: 
             try { json = JSON.parse(body); }
             catch { throw new Error('看图模型返回无效 JSON'); }
             const choice = stateObject(json) && Array.isArray(json.choices) ? json.choices[0] : undefined;
-            const content = stateObject(choice) && stateObject(choice.message) ? choice.message.content : undefined;
-            return typeof content === 'string' && content.trim() ? content.trim() : undefined;
+            const message = stateObject(choice) && stateObject(choice.message) ? choice.message : undefined;
+            const content = message?.content;
+            if (typeof content !== 'string' || !content.trim()) return undefined;
+            if (!options.webSearch) return content.trim();
+            const steps = message && Array.isArray(message.server_tool_calls) ? message.server_tool_calls : [];
+            const searched = steps.some(step => stateObject(step) && Array.isArray(step.calls)
+                && step.calls.some(call => stateObject(call) && (call.kind === 'image_search' || call.kind === 'deep_image_search')));
+            return `${searched ? '已搜图' : '只看了原图，未联网搜图'}：${content.trim()}`;
         } catch (error) {
             if (lifetime.aborted) throw lifetime.reason;
             if (error instanceof ModelUnreachable) throw error;
@@ -223,13 +232,14 @@ export function deepSeekImageDescriber(options: DeepSeekVisionOptions, doFetch: 
  * 两个运行入口共用：没配 vision 就完全不调外部看图接口。`prompt` 给表情包收藏用，聊天里的图片仍用默认要求。
  * 带 prompt 的默认按后台算（收藏不抢聊天）；读他刚发来的表情包（ADR 0206）是聊天路上的，传 purpose 'chat'。
  */
-export function configuredImageDescriber(config: Pick<AppConfig, 'llm' | 'vision'>, prompt?: string, purpose?: ModelPurpose): ImageDescriber | undefined {
+export function configuredImageDescriber(config: Pick<AppConfig, 'llm' | 'vision'>, prompt?: string, purpose?: ModelPurpose, search?: boolean): ImageDescriber | undefined {
     if (!config.vision) return;
     return deepSeekImageDescriber({
         baseUrl: config.vision.baseUrl ?? DEFAULTS.vision.baseUrl,
         model: config.vision.model,
         apiKey: config.llm.apiKey,
-        timeoutMs: config.vision.timeoutMs,
+        timeoutMs: search ? 45_000 : config.vision.timeoutMs,
+        ...(search ? { webSearch: true } : {}),
         purpose: purpose ?? (prompt ? 'background' : 'chat'),
         ...(prompt ? { prompt } : {}),
     }, defaultFetch, imageDownloader(Math.min(4000, config.vision.timeoutMs)));

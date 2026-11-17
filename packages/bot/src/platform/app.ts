@@ -83,7 +83,7 @@ import { experiencesFromLife, experiencesFromWatched, Tastes } from '.././life/t
 import { readLifeEvents } from '.././world/life-events.ts';
 import { Timeline, timelineAccount, timelineFromDevice } from '.././memory/timeline.ts';
 import { consumeDshTimelineInbox, consumeDshWorldInbox } from '.././memory/dsh-inbox.ts';
-import { readWebSecrets, WebLookup } from './web.ts';
+import { readWebSecrets, searchCarry, WebLookup } from './web.ts';
 import { acquireLock } from './lock.ts';
 import { unfinishedForgetJobs } from '../memory/forget-job.ts';
 import { unfinishedArchiveJobs } from '../memory/archive-job.ts';
@@ -94,7 +94,7 @@ import { describeError } from '../memory/transient-io.ts';
 import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from '.././memory/backfill.ts';
 import { quotedIds, renderForward, segmentsToText, type ForwardLookup, type GroupMessageEvent, type MessageEvent, type PokeEvent, type QuotedMessage, type QuoteLookup, type RecallEvent, type Segment } from './onebot.ts';
-import { MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
+import { isSticker, MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
 import { createHearing } from '.././vision/hearing.ts';
 import { speakViaGateway, speakViaHttp, speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
 import { matchSingRequest, singSong } from '../voice/sing.ts';
@@ -409,6 +409,9 @@ export interface AppOptions {
     media?: MediaReader;
     /** 看图（ADR 0055）：运行入口按配置建；测试也可以直接给假的 */
     vision?: ImageDescriber;
+    /** 测试可替换；运行时按当前视觉配置创建。 */
+    imageRecognition?: ImageDescriber;
+    imageSearch?: ImageDescriber;
     /** 读他发来的表情包（ADR 0206，readStickers）：表情包专用的看图要求、聊天优先级；运行入口按配置建，测试可给假的 */
     stickerReader?: ImageDescriber;
     /** 图片表情收藏（ADR 0063）；运行入口按配置建，测试可给假的。 */
@@ -487,7 +490,7 @@ export function startApp(options: AppOptions): App {
     catch (error) { construction.rollback(); throw error; }
 }
 
-function createApp({ config, transport: rawTransport, log, pipeline, media, vision, stickerReader, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
+function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
     // 碰外部的都经执行器（ADR 0336 第 3 步）：QQ 动作、调模型、时钟和计时器、设备登记（第 8 步：设备服务下面才异步起，登记时现取）
     const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}), devices: () => deviceService?.control });
     const transport = exec.qq;
@@ -1427,6 +1430,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             onDone: e => { if (!stopped && !passiveLifetime.signal.aborted) noteTimeline({ channel: 'web', kind: e.kind, summary: e.summary, ok: e.ok }); },
         })
         : undefined;
+    const recentImage = new Map<number, { url: string; at: number }>();
+    const imageRecognizer = web && (imageRecognition ?? (config.vision ? configuredImageDescriber(config,
+        '用户刚让你认这张图。请直接看原图判断动漫人物可能是谁；考虑作品角色、品牌和 AI 产品的拟人形象。只给最有依据的候选及可见依据，明确标为猜测；线索不足就说认不准。不要辨认真实人物。限 80 字。', 'chat') : undefined));
+    const imageSearcher = web && (imageSearch ?? (config.vision ? configuredImageDescriber(config,
+        '用户请你搜索这张图。请用搜图核对人物身份、画师或作品，并比对图中发色、服饰和物品。只用两句话给出候选和核对依据；对不上就说不确定，不要把搜索所得说成原本就知道。', 'chat', true) : undefined));
     const tastesLog: Log = message => { if (!stopped) log(message); };
     const tastes = config.tastes
         ? new Tastes({
@@ -1491,12 +1499,29 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 // 25 秒只限制这一轮 continuity；超时产生的孤儿任务也必须拿到取消信号，
                 // 否则它会在替代实例接管目录后继续摘录、写时间线和缓存。
                 const deadline = new AbortController();
-                const timer = exec.after(() => deadline.abort(), 25_000);
+                const carry = searchCarry(said, chatHistory.load(contact.qq), clockNow());
+                const image = recentImage.get(contact.qq);
+                const hasOriginal = image && clockNow().getTime() - image.at <= 15 * 60_000 && /^\[图片：/.test(carry ?? '');
+                const wantsImageSearch = hasOriginal && /搜|查/.test(said) && /(?:这个|这张|这幅|它|刚才那|搜到|查到)/.test(said);
+                const wantsImageRecognition = hasOriginal && /(?:认|识别|是谁|叫什么|哪个角色)/.test(said) && /(?:这个|这张|这幅|它|刚才那)/.test(said);
+                const timer = exec.after(() => deadline.abort(), wantsImageSearch ? 55_000 : 25_000);
                 timer.unref?.();
                 const signal = AbortSignal.any([passiveLifetime.signal, deadline.signal]);
                 // 上一轮他的话：像「你看看能不能搜到」这种话里没有检索对象，得靠它（2026-11-15）
-                const carry = chatHistory.load(contact.qq).filter(m => m.role === 'user' && m.content !== said).at(-1)?.content;
-                try { looked = await untilCancelled(web.line(said, signal, carry), signal); }
+                try {
+                    try {
+                        if (wantsImageSearch && imageSearcher) {
+                            const found = await untilCancelled(imageSearcher.describe({ url: image!.url, signal }), signal);
+                            if (found?.startsWith('已搜图：')) looked = `[你刚用原图搜过并核对：${found.slice(4, 450)}。这是搜索所得的候选，不是你原本认识的；只在特征对得上时说名字，否则如实说不确定。]`;
+                        } else if (wantsImageRecognition && imageRecognizer) {
+                            const guessed = await untilCancelled(imageRecognizer.describe({ url: image!.url, signal }), signal);
+                            if (guessed?.trim()) looked = `[你刚重新看了他发的原图：${guessed.slice(0, 300)}。这是看图猜测，不能装作已经确认；说不准就说不准。]`;
+                        }
+                    } catch (error) {
+                        if (!signal.aborted) log(`看原图辨认或搜图失败：${error instanceof Error ? error.name : '未知错误'}，退回文字检索`);
+                    }
+                    if (!looked && !signal.aborted) looked = await untilCancelled(web.line(said, signal, carry), signal);
+                }
                 finally { exec.cancel(timer); }
                 // deadline 只是不放 Web 资料，仍照常回复；App stop 则终止整次提示词构建，
                 // 避免孤儿 continuity 在目录租约释放后继续写日志或派模型。
@@ -3458,6 +3483,10 @@ ${body}
             void ownStickerWork(signal => collectingStickers.consider(event.message, { from: event.user_id, messageId: event.message_id }, { signal }));
         }
         const reader = readerFor(event.user_id);
+        if (imageSearcher && config.contacts.some(c => c.qq === event.user_id) && Array.isArray(event.message)) {
+            const photo = event.message.findLast(s => s.type === 'image' && !isSticker(s.data ?? {}) && typeof s.data?.url === 'string');
+            if (photo && typeof photo.data?.url === 'string') recentImage.set(event.user_id, { url: photo.data.url, at: clockNow().getTime() });
+        }
         // 引用的那一条不在记录里：先问 NapCat 再交给回复器（和读图、听语音走同一条串行的路）
         const quotesToFetch = missingQuotes(event.user_id, event.message);
         const forwardsToFetch = missingForwards(event.message);

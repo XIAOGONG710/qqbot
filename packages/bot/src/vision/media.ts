@@ -51,6 +51,8 @@ export interface MediaSources {
 export const MEDIA_TIMEOUTS = { voice: 5000, ocr: 5000, vision: 8000 };
 /** 图上的字最多放多少个（长截图几十行，太长了占提示词，也不像「扫一眼」） */
 export const OCR_MAX_CHARS = 80;
+/** 身份线索要和外观一起留下，供随后“认一下 / 搜一下这个”使用。 */
+export const VISION_MAX_CHARS = 160;
 /** 语音转出来的字最多放多少个（QQ 语音最长 60 秒，正常说话不会超） */
 export const VOICE_MAX_CHARS = 300;
 /** 一条消息里最多看几张图（每张没字的图都要等满上限、NapCat 那边留一个不回的调用） */
@@ -276,7 +278,7 @@ async function look(data: Record<string, unknown>, sources: MediaSources, log: (
         sources.vision
             ? within(inner => sources.vision!.describe({ url, ...(typeof data.file === 'string' ? { file: data.file } : {}), signal: inner }), limits.vision, signal).then(
                 text => {
-                    const description = typeof text === 'string' ? inline(text, OCR_MAX_CHARS) || undefined : undefined;
+                    const description = typeof text === 'string' ? inline(text, VISION_MAX_CHARS) || undefined : undefined;
                     // 只记字数，不记图上是什么
                     if (description) log(`看图：看图模型说了 ${description.length} 个字（${seconds(started)}）`);
                     return description;
