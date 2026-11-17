@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readAgencyShadow } from '../src/world/agency-shadow.ts';
 import type { RegulationSnapshot } from '../src/life/regulation.ts';
+import { proactiveAgency } from '../src/proactive/agency.ts';
 
 const calm = (at: Date): RegulationSnapshot => ({ at: at.toISOString(), discomfort: 0, arousal: 0.1, recoveryNeed: 0.2, socialCapacity: 0.9, cognitiveCapacity: 0.9 });
 
@@ -13,11 +14,11 @@ test('agency shadow closes the time-event chain without an external action', () 
     const initial = new Date(2026, 0, 9, 10, 0);
     const at = new Date(2026, 0, 11, 12, 0);
     const shadow = readAgencyShadow(dir, initial);
-    assert.deepEqual(shadow.observe(at, calm(at)), { events: 3, impacts: 3, drives: 3, candidates: 3 });
-    assert.equal(shadow.associations.associations().length, 6);
-    assert.deepEqual(shadow.motivations.candidates().map(candidate => candidate.kind), ['wait', 'wait', 'wait']);
+    assert.deepEqual(shadow.observe(at, calm(at)), { events: 15, impacts: 15, drives: 15, candidates: 15 });
+    assert.equal(shadow.associations.associations().length, 30);
+    assert.ok(shadow.motivations.candidates().every(candidate => candidate.kind === 'wait'));
     assert.equal(shadow.observe(at, calm(at)).events, 0);
-    assert.equal(shadow.motivations.candidates().length, 3);
+    assert.equal(shadow.motivations.candidates().length, 15);
 });
 
 test('agency shadow records message arrival without storing content or creating a drive', () => {
@@ -70,5 +71,19 @@ test('agency shadow accepts only sanitized external observations', () => {
     assert.equal(shadow.recordExternal({ sourceId: 'news-rss', kind: 'news', occurredAt: at, label: '公共事件更新', confidence: 0.8 }, at), 1);
     assert.deepEqual(shadow.events.events()[0]?.details, { source: 'news-rss', label: '公共事件更新' });
     assert.deepEqual(shadow.observe(at, calm(at)), { events: 0, impacts: 1, drives: 1, candidates: 1 });
+});
+
+test('an expression considered by the live planner is written to the same auditable ledgers', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'qqbot-agency-shadow-'));
+    const at = new Date('2026-11-17T12:00:00.000Z');
+    const shadow = readAgencyShadow(dir, at);
+    const candidate = { id: '2026-11-17:morning', occasion: 'morning' as const, day: '2026-11-17', at: at.getTime(), reason: '合成早安' };
+    const result = proactiveAgency(candidate, calm(at), at);
+    assert.ok(result.drive && result.decision && result.opportunity);
+    assert.equal(shadow.recordExpression(result.drive, result.decision, result.opportunity), true);
+    assert.equal(shadow.recordExpression(result.drive, result.decision, result.opportunity), false);
+    assert.equal(shadow.motivations.drives()[0]?.id, result.drive.id);
+    assert.equal(shadow.decisions.decisions()[0]?.driveId, result.drive.id);
+    assert.equal(shadow.opportunities.opportunities()[0]?.driveId, result.drive.id);
 });
 

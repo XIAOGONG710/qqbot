@@ -9,6 +9,7 @@
 - `proactive/proactive.ts`
 - `proactive/proactive-planner.ts`
 - `proactive/proactive-state.ts`
+- `proactive/agency.ts`
 - `proactive/inner.ts`
 - `proactive/shares.ts`
 - `proactive/follow-ups.ts`

@@ -19,3 +19,10 @@ test('low mood, discomfort, recovery, private matters and diary sources are hard
     assert.deepEqual(opportunity.blocks, ['low_mood', 'body_discomfort', 'recovery', 'private_source', 'diary_source']);
     assert.equal(expressionOpportunity({ ...decision, outcome: 'wait' }, drive, calm).eligible, false);
 });
+
+test('her own internal drive is not silenced merely because she is uncomfortable', () => {
+    const internal: Drive = { ...drive, source: 'internal', stateKeys: ['regulation.discomfort'], impactIds: undefined };
+    const opportunity = expressionOpportunity(decision, internal, { ...calm, discomfort: 0.5, recoveryNeed: 0.8 });
+    assert.deepEqual(opportunity.blocks, []);
+    assert.equal(opportunity.eligible, true);
+});

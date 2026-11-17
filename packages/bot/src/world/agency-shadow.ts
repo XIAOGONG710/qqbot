@@ -5,9 +5,9 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readMotivationLedger, type MotivationLedger } from '../life/motivation-ledger.ts';
 import { internalDrivesAt, type Drive } from '../life/motivation.ts';
-import { resolveShadowDrives, shadowActivityForDecision } from '../life/motivation-resolution.ts';
+import { resolveShadowDrives, shadowActivityForDecision, type ShadowDriveDecision } from '../life/motivation-resolution.ts';
 import { readMotivationDecisionLedger, type MotivationDecisionLedger } from '../life/motivation-decision-ledger.ts';
-import { expressionOpportunity } from '../life/expression-opportunity.ts';
+import { expressionOpportunity, type ExpressionOpportunity } from '../life/expression-opportunity.ts';
 import { readExpressionOpportunityLedger, type ExpressionOpportunityLedger } from '../life/expression-opportunity-ledger.ts';
 import type { RegulationSnapshot } from '../life/regulation.ts';
 import { readWorldEventLedger, type WorldEventLedger } from './event-ledger.ts';
@@ -29,6 +29,8 @@ export interface AgencyShadow {
     recordWorld(now: WorldNow, observedAt: Date): number;
     /** 外部适配器只能传已清洗观察；原始供应商正文不进入影子账。 */
     recordExternal(observation: ExternalObservation, observedAt: Date): number;
+    /** 登记真正送往主动管线的动机裁决；仍不在这里调用执行器。 */
+    recordExpression(drive: Drive, decision: ShadowDriveDecision, opportunity: ExpressionOpportunity): boolean;
     events: WorldEventLedger;
     impacts: WorldImpactLedger;
     associations: WorldAssociationLedger;
@@ -87,6 +89,12 @@ export function readAgencyShadow(dataDir: string, initialAt: Date, log: (message
         recordExternal: (observation, observedAt) => {
             const event = externalObservationEvent(observation, observedAt);
             return event ? events.append([event]) : 0;
+        },
+        recordExpression: (drive, decision, opportunity) => {
+            const added = motivations.appendDrives([drive]);
+            decisions.append([decision]);
+            opportunities.append(opportunity);
+            return added > 0;
         },
         observe: (at, regulation) => {
             const eventsAdded = time.observe(at);

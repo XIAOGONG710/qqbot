@@ -27,9 +27,10 @@ import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from '.././memory/ep
 import type { OpenAIMessage } from '../language/prompt.ts';
 import type { MacroNames } from '.././st/macros.ts';
 import {
-    blockReason, candidateLabel, candidatesOn, counts, CRISIS_PAUSE_REASON, DEFAULT_NEWS_KINDS, herDay, MAX_PROACTIVE_BUBBLES, newsKindsOf, occasionNote, PENDING_REASON, planFrom, recallTopic, untoldNews,
+    blockReason, candidateLabel, candidatesOn, counts, CRISIS_PAUSE_REASON, DEFAULT_NEWS_KINDS, herDay, MAX_PROACTIVE_BUBBLES, newsKindsOf, occasionNote, PENDING_REASON, planFrom, recallTopic, unansweredCount, untoldNews,
     UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type NewsKind, type ProactiveInput, type RescheduleItem, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
+import type { ProactiveAgencyResult } from './agency.ts';
 import type { BodyNow } from '../life/body.ts';
 import { newObstacles, obstaclesBetween, OBSTACLE_KINDS, type ObstacleFacts, type ObstacleKind } from '.././world/obstacles.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from '../life/promises.ts';
@@ -210,6 +211,8 @@ export interface PlannerDeps {
     reactions?: { names: readonly string[] };
     /** 她之前猜的事刚有了结果（ADR 0213，配置 herGuesses，her-guesses.ts 的 freshGuess）：想事情时还没专门想过的，这一次就想这一件 */
     guessFacts?: () => { id: string; text: string } | undefined;
+    /** 到点只是检查机会；真正外发前须由统一内外驱池形成表达机会。不给则保留旧行为，供迁移和模拟器显式控制。 */
+    agency?: (candidate: Candidate, at: Date, context: { unansweredCount: number }) => ProactiveAgencyResult;
 }
 
 export interface PlannerStatus {
@@ -522,6 +525,12 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             }
             return manual ? reason : undefined;
         }
+        const agency = !manual ? deps.agency?.(candidate, new Date(now()), { unansweredCount: unansweredCount(current) }) : undefined;
+        if (agency && !agency.eligible) {
+            record(candidate, { result: 'skipped', reason: agency.reason });
+            deps.log(`主动${tag}：${candidateLabel(candidate)}不发：${agency.reason}`);
+            return;
+        }
         // 看他的反应（ADR 0212）：他明说过不想听这一类的不发；说自己的事时给她看一行他最近的反应（手动 /主动 不看）
         const seen = deps.reactions && !manual
             ? reactionPlan(candidate, hisReactions(current.history, records, now(), deps.reactions.names), now(), deps.reactions.names)
@@ -546,7 +555,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
                 note: occasionNote(candidate, contact.name, untold, seen.seen),
                 topic: recallTopic(candidate, contact.name),
                 maxBubbles: MAX_PROACTIVE_BUBBLES,
-                ...(candidate.occasion === 'reach' || candidate.occasion === 'invite' || candidate.occasion === 'ask' || seen.canDecline ? { canDecline: true } : {}),
+                ...(agency || candidate.occasion === 'reach' || candidate.occasion === 'invite' || candidate.occasion === 'ask' || seen.canDecline ? { canDecline: true } : {}),
                 ...(candidate.news?.kind === 'cat_photo' ? { photo: 'cat' as const } : {}),
                 ...(candidate.news?.kind === 'food_photo' && candidate.news.dish ? { photo: 'food' as const, photoDish: candidate.news.dish } : {}),
                 dryRun,

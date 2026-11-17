@@ -178,6 +178,7 @@ import { detectCrisis, type CrisisLevel } from '.././emotion/crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from '.././emotion/crisis-state.ts';
 import { createPokeLimiter, POKE_BACK_COOLDOWN_MS, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, POKE_OUT_TEXT, pokeBackPlan, pokeMessage, pokeOutMessageId, quietEnoughToPoke } from '.././social/pokes.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner, type PlannerStatus } from '.././proactive/proactive-planner.ts';
+import { proactiveAgency } from '.././proactive/agency.ts';
 import { PromiseStateUnavailable } from '.././life/promise-state.ts';
 import { promiseKeeper, type Appointment } from '.././life/promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from '.././life/her-days.ts';
@@ -803,8 +804,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
     const lifeStartedAt = new Date(worldNow());
     const needsAnchor = lifeQueue ? loadNeedsAnchor(join(config.dataDir, 'world', 'needs-anchor.json'), lifeStartedAt, log) : undefined;
-    // ADR 0338：只读影子闭环。它只记录时间变化如何成为世界事件、影响和内部候选，
-    // 不读用户消息正文、不改提示词、不调用任何外部执行器。
+    // ADR 0338：世界—动机账本本身不调用执行器；计划器只读取它给出的表达机会，
+    // 最终仍由主动生成明确选择发送或“不发”。
     const agencyShadow = needsAnchor && worldCard && ledgerWorld ? readAgencyShadow(config.dataDir, lifeStartedAt, log) : undefined;
     const observeAgencyShadow = (): void => {
         if (!agencyShadow || !needsAnchor || !worldCard || !ledgerWorld || stopped) return;
@@ -2824,6 +2825,14 @@ ${video.link}`);
                 log: message => log(`[${contact.qq}] ${message}`),
                 names: { user: contact.name, char: character.name },
                 skip: replySkip(character, config.moody),
+                ...(agencyShadow && needsAnchor && ledgerWorld && worldCard ? {
+                    agency: (candidate, at, context) => {
+                        const bodyNow = worldCard.herWorld?.body ? bodyAt(worldCard.herWorld.body, worldCard.schedule!, at) : undefined;
+                        const result = proactiveAgency(candidate, regulationAt(needsAt(needsAnchor, ledgerWorld.events(), at), bodyNow), at, context);
+                        if (result.drive && result.decision && result.opportunity) agencyShadow.recordExpression(result.drive, result.decision, result.opportunity);
+                        return result;
+                    },
+                } : {}),
                 // 他最近说过想伤害自己的话：普通主动消息暂停 48 小时（ADR 0068）
                 crisisPaused: now => crisisState.pausedAt(contact.qq, now),
                 // 她跟谁说过「睡了」就不主动找人了（ADR 0042）

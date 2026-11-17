@@ -29,8 +29,9 @@ export function expressionOpportunity(decision: ShadowDriveDecision, drive: Driv
     const blocks: ExpressionBlock[] = [];
     if (decision.driveId !== drive.id || decision.outcome !== 'focus') blocks.push('not_focused');
     if (context.lowMood) blocks.push('low_mood');
-    if (regulation.discomfort >= 0.4) blocks.push('body_discomfort');
-    if (regulation.recoveryNeed >= 0.7) blocks.push('recovery');
+    // 她明确保留了“身体不舒服、痛经、真有事时可以主动找他”：身体负荷只拦外部杂事，不封死她自己的内驱。
+    if (drive.source === 'external' && regulation.discomfort >= 0.4) blocks.push('body_discomfort');
+    if (drive.source === 'external' && regulation.recoveryNeed >= 0.7) blocks.push('recovery');
     if (context.privateSource) blocks.push('private_source');
     if (context.diarySource) blocks.push('diary_source');
     const eligible = blocks.length === 0;
