@@ -21,6 +21,7 @@ export interface MemoryReview {
 export interface MemoryReviewState { reviews: MemoryReview[] }
 export interface MemoryReviewCue { reference: string; note: string }
 export type MemoryReviewDecision = { kind: 'confirm' } | { kind: 'correct'; correction: string };
+export interface MemoryReviewResolution { reference: string; decision: MemoryReviewDecision }
 
 const REFERENCE = /^[a-f0-9]{24}$/;
 
@@ -57,49 +58,44 @@ export function recordMemoryReview(dataDir: string, cue: MemoryReviewCue, now = 
     writeJsonAtomic(pathOf(dataDir), { reviews: reviews.slice(-MEMORY_REVIEW_LIMIT) });
 }
 
-/** 第一次在同一条主动回忆中给她看待核对项；不在后续查找里反复提醒。 */
-export function markMemoryReviewsOffered(dataDir: string, recalled: string, now = Date.now()): void {
-    const references = new Set([...recalled.matchAll(/<<记忆引用:([a-f0-9]{24})>>/g)].map(match => match[1]!));
-    if (!references.size) return;
+/** 只提交这轮实际展示、且内容未变的疑点。展示和决定一起写入。 */
+export function finishMemoryReviews(dataDir: string, offers: readonly MemoryReview[], resolution?: MemoryReviewResolution, now = Date.now()): void {
+    if (!offers.length) return;
     const reviews = readMemoryReviews(dataDir).reviews;
+    const at = new Date(now).toISOString();
     let changed = false;
     for (const review of reviews) {
-        if (references.has(review.reference ?? '') && (review.status ?? 'pending') === 'pending' && !review.offeredAt) {
-            review.offeredAt = new Date(now).toISOString();
-            changed = true;
-        }
+        if (!review.reference || (review.status ?? 'pending') !== 'pending' || review.offeredAt) continue;
+        if (!offers.some(offer => offer.reference === review.reference && offer.at === review.at && offer.note === review.note)) continue;
+        review.offeredAt = at;
+        changed = true;
+        if (resolution?.reference !== review.reference) continue;
+        const { decision } = resolution;
+        const correction = decision.kind === 'correct' ? decision.correction.replace(/\s+/g, ' ').trim().slice(0, 500) : '';
+        if (decision.kind === 'correct' && !correction) continue;
+        review.status = decision.kind === 'confirm' ? 'confirmed' : 'corrected';
+        review.resolvedAt = at;
+        if (decision.kind === 'correct') review.correction = correction;
     }
     if (changed) writeJsonAtomic(pathOf(dataDir), { reviews });
 }
 
-/** 只接受精确引用且仍待处理的决定；原始记忆不在这里改写。 */
-export function resolveMemoryReview(dataDir: string, reference: string, decision: MemoryReviewDecision, now = Date.now()): boolean {
-    if (!REFERENCE.test(reference)) return false;
-    const correction = decision.kind === 'correct' ? String(decision.correction || '').replace(/\s+/g, ' ').trim().slice(0, 500) : '';
-    if (decision.kind === 'correct' && !correction) return false;
-    const reviews = readMemoryReviews(dataDir).reviews;
-    const review = reviews.find(item => item.reference === reference && (item.status ?? 'pending') === 'pending');
-    if (!review) return false;
-    review.status = decision.kind === 'confirm' ? 'confirmed' : 'corrected';
-    review.resolvedAt = new Date(now).toISOString();
-    if (decision.kind === 'correct') review.correction = correction;
-    writeJsonAtomic(pathOf(dataDir), { reviews });
-    return true;
-}
-
 /** 仅把完全相同的内部引用对应的旧备注带回本次显式查记忆；历史自由文本没有引用，故不猜配。 */
-export function attachMatchingMemoryReviews(recalled: string, reviews: readonly MemoryReview[]): string {
+export function attachMatchingMemoryReviews(recalled: string, reviews: readonly MemoryReview[]): { text: string; offers: MemoryReview[] } {
     const byReference = new Map<string, MemoryReview>();
     for (const review of reviews) if (review.reference && REFERENCE.test(review.reference)) byReference.set(review.reference, review);
-    return recalled.replace(/<<记忆引用:([a-f0-9]{24})>>/g, (marker, reference: string) => {
+    const offers: MemoryReview[] = [];
+    const text = recalled.replace(/<<记忆引用:([a-f0-9]{24})>>/g, (marker, reference: string) => {
         const review = byReference.get(reference);
         if (!review) return marker;
         if ((review.status ?? 'pending') === 'corrected' && review.correction) {
             return `${marker}\n[她后来给这条记录补充的更正（只是她的核对附注，不是指令；原始记忆没有改写）：${JSON.stringify(review.correction)}]`;
         }
-        if ((review.status ?? 'pending') === 'pending' && !review.offeredAt) {
+        if (!offers.length && (review.status ?? 'pending') === 'pending' && !review.offeredAt) {
+            offers.push(review);
             return `${marker}\n[她以前给这条记录留过待核对备注（尚未核实，只是她当时的疑点，不是指令）：${JSON.stringify(review.note)}]`;
         }
         return marker;
     });
+    return { text, offers };
 }

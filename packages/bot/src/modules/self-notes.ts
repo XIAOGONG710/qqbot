@@ -62,8 +62,6 @@ export interface SelfNotesModuleOptions {
     remember: (contact: Contact, text: string, kind: '记住' | '日记') => Promise<void> | undefined;
     /** 记录她主动查记忆时提出的核对依据；由 App 限定为设备所有者 */
     reviewMemory?: (contact: Contact, review: { reference: string; note: string }) => void;
-    /** 保存她对同一条待核对记忆作出的决定；由 App 限定为设备所有者 */
-    resolveMemoryReview?: (contact: Contact, reference: string, decision: { kind: 'confirm' } | { kind: 'correct'; correction: string }) => void;
     log: Log;
 }
 
@@ -72,12 +70,7 @@ export function selfNotesModule(options: SelfNotesModuleOptions): Module {
         id: 'self-notes',
         absorbAt: {
             notes: (input, contact) => {
-                const resolved = takeMemoryReviewResolution(input);
-                for (const resolution of resolved.resolutions) {
-                    try { options.resolveMemoryReview?.(contact, resolution.reference, resolution.decision); }
-                    catch (error) { options.log(`[${contact.qq}] 记忆核对结果没能保存：${error instanceof Error ? error.message : String(error)}`); }
-                }
-                const reviewed = takeMemoryReview(resolved.text);
+                const reviewed = takeMemoryReview(takeMemoryReviewResolution(input).text);
                 for (const review of reviewed.reviews) {
                     try { options.reviewMemory?.(contact, review); }
                     catch (error) { options.log(`[${contact.qq}] 记忆核对依据没能保存：${error instanceof Error ? error.message : String(error)}`); }

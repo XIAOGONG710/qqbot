@@ -6,6 +6,8 @@
 
 import type { Module } from '../interpreter/interpreter.ts';
 import type { Contact } from '../platform/config.ts';
+import type { MemoryReview, MemoryReviewResolution } from '../memory/memory-review.ts';
+import { takeMemoryReviewResolution } from './self-notes.ts';
 
 const PULL = /<<查[：:]\s*([\s\S]*?)>>/;
 const PULL_ALL = /<<查[：:][\s\S]*?>>/g;
@@ -28,7 +30,8 @@ export interface ReviewPullOptions {
      * 按她写的词查长期记忆（App：memory.recallPull(contact, query, new Date())）；查不到返回 undefined，出错当查不到。
      * 不给就只摘标记（没开长期记忆 / selfDirectedMemory、模拟器）
      */
-    recall?: (contact: Contact, query: string) => Promise<string | undefined>;
+    recall?: (contact: Contact, query: string) => Promise<string | { text: string; offers: MemoryReview[] } | undefined>;
+    finishReview?: (contact: Contact, offers: readonly MemoryReview[], resolution?: MemoryReviewResolution) => void;
 }
 
 export function reviewPullModule(options: ReviewPullOptions = {}): Module {
@@ -45,8 +48,15 @@ export function reviewPullModule(options: ReviewPullOptions = {}): Module {
                     const recalled = await recall(turn.contact, query).catch(() => undefined);
                     let reviewed = text;
                     if (recalled) {
-                        ctx.log(`她主动查记忆：${query}（${countLines(recalled)} 条）`);
-                        reviewed = await ctx.regenerate(pullNote(recalled));
+                        const material = typeof recalled === 'string' ? recalled : recalled.text;
+                        ctx.log(`她主动查记忆：${query}（${countLines(material)} 条）`);
+                        reviewed = await ctx.regenerate(pullNote(material));
+                        if (typeof recalled !== 'string' && recalled.offers.length) {
+                            const resolution = takeMemoryReviewResolution(reviewed).resolutions[0];
+                            const matched = resolution && recalled.offers.some(offer => offer.reference === resolution.reference);
+                            try { options.finishReview?.(turn.contact, recalled.offers, matched ? resolution : undefined); }
+                            catch { ctx.log('记忆核对结果没能保存'); }
+                        }
                     }
                     return strip(reviewed);
                 })();

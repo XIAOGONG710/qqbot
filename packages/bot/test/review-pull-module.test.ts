@@ -92,6 +92,28 @@ describe('<<查>> 模块（ADR 0336）', () => {
         assert.match(withPending, /记忆核对结果：引用｜补充更正/);
     });
 
+    test('只有本轮带回疑点的重写稿能提交对应核对结果', async () => {
+        const reference = 'c'.repeat(24);
+        const other = 'd'.repeat(24);
+        const offers = [{ reference, at: '2026-11-18T12:00:00Z', note: '地点待核对' }];
+        const calls: unknown[] = [];
+        const pull = pullOf({
+            recall: async () => ({ text: `- 旧记录 <<记忆引用:${reference}>>\n[待核对备注]`, offers }),
+            finishReview: (_contact, shown, resolution) => calls.push({ shown, resolution }),
+        });
+        const marker = (ref: string) => `<<记忆核对结果：${ref}｜确认原记录>>`;
+        await pull(marker(reference), turn, ctxWith().ctx);
+        assert.deepEqual(calls, []);
+        await assert.rejects(async () => pull('<<查：地点>>', turn, ctxWith(async () => { throw new Error('重写失败'); }).ctx), /重写失败/);
+        assert.deepEqual(calls, []);
+        await pull('<<查：地点>>', turn, ctxWith(async () => marker(other)).ctx);
+        await pull('<<查：地点>>', turn, ctxWith(async () => marker(reference)).ctx);
+        assert.deepEqual(calls, [
+            { shown: offers, resolution: undefined },
+            { shown: offers, resolution: { reference, decision: { kind: 'confirm' } } },
+        ]);
+    });
+
     test('查不到：不重写，只摘标记', async () => {
         const r = recaller(undefined);
         const s = ctxWith();

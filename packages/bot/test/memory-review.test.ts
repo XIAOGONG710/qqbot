@@ -3,9 +3,31 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
-import { attachMatchingMemoryReviews, memoryReviewReference, MEMORY_REVIEW_FILE, MEMORY_REVIEW_LIMIT, readMemoryReviews, recordMemoryReview } from '../src/memory/memory-review.ts';
+import { attachMatchingMemoryReviews, finishMemoryReviews, memoryReviewReference, MEMORY_REVIEW_FILE, MEMORY_REVIEW_LIMIT, readMemoryReviews, recordMemoryReview } from '../src/memory/memory-review.ts';
 
 describe('待核对的旧记忆', () => {
+    test('只结案本轮展示且未被替换的疑点', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-review-finish-'));
+        try {
+            const reference = 'a'.repeat(24);
+            const recalled = `- 合成记录 <<记忆引用:${reference}>>`;
+            const resolution = { reference, decision: { kind: 'correct', correction: '是校门外' } } as const;
+            recordMemoryReview(dir, { reference, note: '疑点一' }, 1);
+            const previous = attachMatchingMemoryReviews(recalled, readMemoryReviews(dir).reviews).offers;
+            recordMemoryReview(dir, { reference, note: '更新后的疑点' }, 2);
+            finishMemoryReviews(dir, previous, resolution, 3);
+            assert.equal(readMemoryReviews(dir).reviews[0]?.offeredAt, undefined);
+
+            const current = attachMatchingMemoryReviews(recalled, readMemoryReviews(dir).reviews);
+            finishMemoryReviews(dir, current.offers, resolution, 4);
+            const state = readMemoryReviews(dir);
+            assert.equal(state.reviews[0]?.status, 'corrected');
+            assert.equal(state.reviews[0]?.correction, '是校门外');
+            assert.deepEqual(attachMatchingMemoryReviews(recalled, state.reviews).offers, []);
+            assert.match(attachMatchingMemoryReviews(recalled, state.reviews).text, /补充的更正.*是校门外/);
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
     test('只追加她明确给出的核对线索；不会改写原记忆；有界保存', () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-review-'));
         try {
@@ -44,8 +66,10 @@ describe('待核对的旧记忆', () => {
 
         const pending = [{ at: '2026-11-18T12:00:00Z', reference, note: '地点可能记错' }];
         const recalled = `- 10月2日（和阿明的私聊）：第一次见面在校门口 <<记忆引用:${reference}>>`;
-        assert.match(attachMatchingMemoryReviews(recalled, pending), /待核对备注.*地点可能记错/);
-        assert.equal(attachMatchingMemoryReviews(recalled, [{ at: pending[0]!.at, note: pending[0]!.note }]), recalled, '旧的自由文本记录没有引用时不猜配');
-        assert.equal(attachMatchingMemoryReviews(recalled, [{ ...pending[0]!, reference: 'b'.repeat(24) }]), recalled, '其他引用不匹配');
+        const attached = attachMatchingMemoryReviews(recalled, pending);
+        assert.match(attached.text, /待核对备注.*地点可能记错/);
+        assert.deepEqual(attached.offers, pending);
+        assert.equal(attachMatchingMemoryReviews(recalled, [{ at: pending[0]!.at, note: pending[0]!.note }]).text, recalled, '旧的自由文本记录没有引用时不猜配');
+        assert.equal(attachMatchingMemoryReviews(recalled, [{ ...pending[0]!, reference: 'b'.repeat(24) }]).text, recalled, '其他引用不匹配');
     });
 });
