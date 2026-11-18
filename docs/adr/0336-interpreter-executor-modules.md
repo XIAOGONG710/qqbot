@@ -1222,3 +1222,44 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   挂在 `modules/human-state.ts` 的 `decideAt.values`，数值的取法和世界账的事件经 `DecideCtx.values` 给（有 `humanValues` 才有，模拟器没有）。文件头记的三条顾虑都是「挪了位置」才有的，位置没变。
 - 验证：前后对照 41/41 逐字一样（`f813a3ad` 上）；`human-state-module.test.ts` 加 4 项（不给取法、没有数值不读世界账、有数值两行日志和两样 facts、投影出错）；类型检查通过。
 - 判断顺序表：`values` → `photo` → `intent` → `feelings` → `stickers` → `deliberate` → `length` → `texture`。
+
+### 判断那一串：召回（2026-11-18）
+
+- 是什么：ADR 0012 / 0016–0020 / 0177 / 0218——他的 / 公共的 / 提到的人的召回（一起等）、关系概况、工作房、群里最近的、DSH 桌面、公共记忆沿用、提到的人的介绍和印象、今天和别人聊过的，八行日志。
+  原来在 `buildPrompt` 里真人数值之后、onHerDay 和 perceive 之前，几次 await 等 Hindsight。
+- `DECIDE_STAGES` 加 `recall`。挂在记忆模块 `modules/memory.ts` 的 `decideAt.recall`（判断跟着放这几段的模块走；App 和模拟器都挂它），代码逐字搬过去；
+  长期记忆（名单里的人才给）、名单、作息、那天的感觉（开了 memoryFeelings、男朋友档才给）、群里 / DSH 桌面的取法经 `DecideCtx.recall` 给（`feltOnDay` 带缓存，留在流水线里）。
+  结果写进 `turn.facts.recall`（流水线后面拼上要点和那一天，成为 `memory`）、`cue`、`askedDay`（新）、`groupEcho`；`cue` 原来在拼段落前才写，读它的长短、形状都在 contribute，提前写不影响。
+- 第一次对照**不一致**：`memory` 场景里启动时的 11 行后台记忆请求挪到了这一轮前面。原因是微任务：召回原来内联在流水线里，现在是 async 函数，
+  `decideStage` → `eachModule` → `sequence` 又各包一层 `.then`，多了好几拍，后台那条链插到了前面。
+  修法：`decideStage` 在一个位置只挂了一个模块时（现在每个位置都是）把它返回的 promise 原样交回、不再包装，只剩流水线 await 那一拍——`memory`、`rich-chat`（深思那条异步路）、`intents` 都回到一致。
+  同一个提交里改的，没有单独提交不一致的那一版。
+- 验证（和下一步合起来跑的）：前后对照 41/41 一样（`eaa1d7c2` 上）；变异检验——不写 `cue`，`people` / `past` 报不一致（见下一节末尾）。
+  `memory-module.test.ts` 加 4 项（不给、没有长期记忆时的介绍 / 群里 / 桌面、主动找他不问群里、有长期记忆时的先后和「你」）；记忆相关测试 242 项通过；类型检查通过。
+
+### 判断那一串：assess 之前原位取的几样（2026-11-18）
+
+- 是什么：perceive 之后、assess 之前，流水线取的四样，写进 facts 给意图阶梯和放段落的模块：他问到的那一天的流水账（ADR 0032）、她在 QQ 上的样子（ADR 0083）和她答应的事（ADR 0018）、
+  挂着的事（ADR 0023）、她那边还没跟他说过的事（ADR 0057）。各一行日志。
+- `DECIDE_STAGES` 加 `recap` → `promises` → `loops` → `news`（原来的先后），各挂在读 / 放它的模块：记忆（`recap`，流水账经 `DecideCtx.recapOf` 由流水线按这一档的卡算）、
+  time-notes（`promises`：selfNote 和答应的事；selfNote 原来在流水账之前读，是 presence 的内存状态、中间没有 await，挪后一样）、warm（`loops`）、意图阶梯（`news`）。
+  承诺状态经 `DecideCtx.promises`；名单外的人不查由模块看。新 fact `recap`。
+- 验证：和上一步一起，前后对照 41/41 一样；变异检验——答应的事不写 facts，`intents` / `meetup` 报不一致（见下）。`decide-stage.test.ts` 加 3 项；相关测试 270 项（含 `sim.test.ts` 对那行日志的断言）通过。
+
+### 判断那一串：梦、连续性、「/亲热」（2026-11-18）
+
+- 是什么：剩下三样「原位取」——梦（读状态，照片之后、最终的意图之前）、连续性（ADR 0157–0163，异步：上网、调模型、记「已告诉他」，心境之后、图片表情之前）、「/亲热」那一行（ADR 0170，扣一条、写状态文件，长短之后、质感之前）。
+- `DECIDE_STAGES` 加 `dream`（心境模块）、`continuity`（连续性模块）、`intimate`（意图行模块），取法经 `DecideCtx.dreams` / `continuity` / `intimacyLine`。
+  连续性只在真去取时返回 promise；返回的是取回来那个 promise 上接的一层 `.then(写 facts, 出错处理)`，和原来的 `.catch` 一样只多一层，流水线等它的拍数不变；停下（AbortError）照旧抛出去。
+- 验证：见下一节的对照；`decide-stage.test.ts` 加 3 项（梦的条件、连续性的条件 / 取回 / 出错 / 停下、「/亲热」不扣条数的两种轮次）；相关测试 60 项通过；类型检查通过。
+
+### 判断那一串：聊天原文和记忆的收尾、清单的取（2026-11-18）
+
+- 是什么：质感之后、各模块 contribute 之前流水线剩下的两段——聊天原文放多少（ADR 0018 调整 12：开了长期记忆只放最近几天；ADR 0043：最近几轮 + 更早的要点，要点那一下会在后台起一次整理）
+  和记忆这一组的收尾（召回的结果 + 要点 + 那一天拼成 `facts.memory`）；图片表情和照片的清单（ADR 0063 / 0109 / 0240，货架条件取一次、内容再取一次）。
+- `DECIDE_STAGES` 末尾加 `context`（记忆模块）、`lists`（media-offers 模块）。原文写进新 fact `shown`，流水线拼提示词时读它（没挂记忆模块的流水线按全放、不清空——直接调流水线又不挂记忆模块的调用方，只想一想的轮次会带上原文；App 和模拟器都挂）。
+  按联系人给的经 `DecideCtx.context`（只放最近几天与否、contextTurns 的窗口和整理、名单）、`DecideCtx.lists`（两个货架的 prompt）。流水线里没人用的局部变量和 import 一并删掉。
+- 验证：前后对照 41/41 一样（第五步的输出为准）；变异检验——不写线索，`memory` 报不一致；不放表情清单，`media` 报不一致。`decide-stage.test.ts` 加 3 项；相关测试 68 项通过；类型检查通过。
+- 基线走得到的只有召回（`memory`）和清单（`media`）：答应的事、挂着的事、还没说过的事、「/亲热」、要点、连续性在基线里一直是空的（第三到六步之前就是），由单测和直接调流水线的测试兜。
+- 判断那一串到这里迁完：`buildPrompt` 里只剩建 turn、按顺序调各位置（`values` → `recall` → `recap` → `promises` → `loops` → `news` → `photo` → `dream` → `intent` → `feelings` → `continuity` → `stickers` → `deliberate` → `length` → `intimate` → `texture` → `context` → `lists`，
+  中间夹着 perceive / assess 和 onHerDay）、选卡、contribute、拼提示词和最多几条。
