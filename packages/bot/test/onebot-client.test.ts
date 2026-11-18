@@ -10,6 +10,7 @@ class FakeWebSocket {
     static sendError: Error | undefined;
     readyState = 0;
     readonly listeners = new Map<string, Listener[]>();
+    readonly sent: string[] = [];
 
     constructor(_url: string, _options?: unknown) {
         FakeWebSocket.instances.push(this);
@@ -25,8 +26,9 @@ class FakeWebSocket {
         for (const listener of this.listeners.get(name) ?? []) listener(event);
     }
 
-    send(_data: string): void {
+    send(data: string): void {
         if (FakeWebSocket.sendError) throw FakeWebSocket.sendError;
+        this.sent.push(data);
     }
     close(): void { this.emit('close', { code: 1000 }); }
 }
@@ -60,6 +62,26 @@ test('OneBot 发送阶段恰好断线时立即失败，不把调用留到超时'
     FakeWebSocket.sendError = new Error('socket closed');
     await assert.rejects(client.call('get_login_info', {}), /get_login_info 发送失败/);
     client.stop();
+});
+
+test('群点歌语音保留 record 段，只调用原群的 send_group_msg', async () => {
+    Object.defineProperty(globalThis, 'WebSocket', { configurable: true, writable: true, value: FakeWebSocket });
+    const client = new OneBotClient({ url: 'ws://127.0.0.1:3001/', onEvent: () => {}, log: () => {} });
+    client.start();
+    const socket = FakeWebSocket.instances[0]!;
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.emit('open');
+    try {
+        const message = [{ type: 'record', data: { file: 'file:///E:/synthetic%20song/clip.mp3' } }];
+        const delivered = client.sendGroupMessage(555, message);
+        const frame = JSON.parse(socket.sent.at(-1)!);
+        assert.deepEqual({ action: frame.action, params: frame.params }, {
+            action: 'send_group_msg',
+            params: { group_id: 555, message },
+        });
+        socket.emit('message', { data: JSON.stringify({ status: 'ok', retcode: 0, data: { message_id: 901 }, echo: frame.echo }) });
+        assert.equal(await delivered, 901);
+    } finally { client.stop(); }
 });
 
 test('OneBot 隔离单条事件异常，连接日志不泄露 URL 凭据', () => {
