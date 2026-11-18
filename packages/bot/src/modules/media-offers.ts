@@ -53,6 +53,19 @@ export function mediaOffersModule(): Module {
             return pieces;
         },
         decideAt: {
+            // 图片表情和照片的清单（ADR 0336「判断那一串」，2026-11-18）：联系人流水线在原位调（所有 contribute 之前）。
+            // 货架每取一次都查索引 / 文件，坏了会抛错——和原来一样条件取一次、内容再取一次；审核过的「现在的照片」用判断时备好的那份
+            lists: (turn, ctx) => {
+                const { facts } = turn;
+                const draw = facts.stickerDraw;
+                const stickers = ctx.lists?.stickers;
+                const stickerLine = draw && stickers?.(draw) ? stickers(draw)! : undefined;
+                const { photo, photoDish, photoPrompt } = facts;
+                const photos = ctx.lists?.photos;
+                const photoLine = photo && (photoPrompt ?? photos?.(photo, photoDish)) ? photoPrompt ?? photos!(photo, photoDish)! : undefined;
+                if (stickerLine) facts.stickerLine = stickerLine;
+                if (photoLine) facts.photoLine = photoLine;
+            },
             photo: (turn, ctx) => {
                 const { contact, facts, initiate, history: chat, at: time } = turn;
                 const around = facts.world;

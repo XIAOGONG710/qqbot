@@ -23,8 +23,8 @@ const ctxOf = (have: readonly string[], extra: Partial<DecideCtx> = {}) => {
 const decide = (turn: Turn, ctx: DecideCtx) => { decideStage([mediaOffersModule()], 'photo', turn, ctx); return turn.facts; };
 
 describe('判断顺序表（ADR 0336「判断那一串」）', () => {
-    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：真人数值和成长层（buildPrompt 开头）→ 召回 → 那一天 → 答应的事 → 挂着的事 → 还没说过的事 → 照片 → 梦 → 最终的意图 → 心境 → 连续性 → 图片表情 → 深思 → 长短要的两样 → 「/亲热」 → 质感的上下文', () => {
-        assert.deepEqual([...DECIDE_STAGES], ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'intimate', 'texture']);
+    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：真人数值和成长层（buildPrompt 开头）→ 召回 → 那一天 → 答应的事 → 挂着的事 → 还没说过的事 → 照片 → 梦 → 最终的意图 → 心境 → 连续性 → 图片表情 → 深思 → 长短要的两样 → 「/亲热」 → 质感的上下文 → 聊天原文和记忆的收尾 → 清单', () => {
+        assert.deepEqual([...DECIDE_STAGES], ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'intimate', 'texture', 'context', 'lists']);
     });
 
     test('一个位置上按注册顺序跑，拿到同一轮和流水线给的东西；只挂 decideAt 的模块不被解释器筛掉', () => {
@@ -483,5 +483,56 @@ describe('梦、连续性、「/亲热」的取（dream / continuity / intimate�
         const got = take(turnOf('在吗'));
         assert.equal(got.facts.intimateLine, '[他刚让你黏一点]');
         assert.deepEqual(got.lines, ['亲热：他刚发过 /亲热，这一轮提示词里让她黏一点']);
+    });
+});
+
+describe('聊天原文和记忆的收尾（memory 的 decideAt.context）、清单的取（media-offers 的 decideAt.lists）', async () => {
+    const { memoryModule } = await import('../src/modules/memory.ts');
+    const at = (minutes: number) => new Date(NOW.getTime() - minutes * 60_000).toISOString();
+    const chat: Turn['history'] = [
+        { role: 'user', content: '一', time: at(50) }, { role: 'assistant', content: '二', time: at(40) },
+        { role: 'user', content: '三', time: at(30) }, { role: 'assistant', content: '四', time: at(20) },
+        { role: 'user', content: '五', time: at(10) },
+    ];
+    const run = (extra: Partial<Turn> = {}, context?: DecideCtx['context'], facts: Turn['facts'] = {}) => {
+        const turn = turnOf('五', facts, { history: chat, ...extra });
+        const { ctx } = ctxOf([], context ? { context } : {});
+        decideStage([memoryModule()], 'context', turn, ctx);
+        return turn.facts;
+    };
+
+    test('没开长期记忆：原文全放；只想一想时清空；召回的、那一天拼成 memory，什么都没有就不写', () => {
+        assert.deepEqual(run().shown, { chat, omitted: 0 });
+        assert.deepEqual(run({ thinking: true }).shown, { chat: [], omitted: 0 });
+        assert.equal(run().memory, undefined);
+        const facts = run({}, undefined, { recall: { recalled: '[旧事]', people: ['[小周]'] }, recap: '[那天]' });
+        assert.deepEqual(facts.memory, { recalled: '[旧事]', recap: '[那天]', people: ['[小周]'] });
+    });
+
+    test('配置了最近几轮：要点整理好了就换成要点 + 最近几轮（没好就照旧，不等）', () => {
+        const summarized: unknown[] = [];
+        const window = (ready: boolean) => ({ turns: 1, step: 1, summarize: (older: readonly unknown[]) => { summarized.push(older.length); return ready ? { ready: true as const, text: '- 前面聊了一和二' } : { ready: false as const }; } }) as unknown as NonNullable<DecideCtx['context']>['window'];
+        const done = run({}, { recentOnly: true, window: window(true) });
+        assert.equal(done.memory?.summary, '- 前面聊了一和二');
+        assert.ok(done.shown!.omitted > 0);
+        assert.equal(done.shown!.chat.length + done.shown!.omitted, chat.length);
+        const waiting = run({}, { recentOnly: true, window: window(false) });
+        assert.deepEqual(waiting.shown, { chat, omitted: 0 });
+        assert.equal(waiting.memory, undefined);
+        assert.ok(summarized.length === 2);
+    });
+
+    test('清单：抽到表情 / 定了发照片时向货架取两次（条件一次、内容一次）；审核过的那张用判断时备好的', () => {
+        const calls: string[] = [];
+        const lists = { stickers: () => { calls.push('sticker'); return '[表情清单]'; }, photos: () => { calls.push('photo'); return '[照片清单]'; } };
+        const take = (facts: Turn['facts']) => { const turn = turnOf('在吗', facts); const { ctx } = ctxOf([], { lists }); decideStage([mediaOffersModule()], 'lists', turn, ctx); return turn.facts; };
+        const both = take({ stickerDraw: { text: '在吗' }, photo: 'cat' });
+        assert.deepEqual([both.stickerLine, both.photoLine], ['[表情清单]', '[照片清单]']);
+        assert.deepEqual(calls, ['sticker', 'sticker', 'photo', 'photo']);
+        calls.length = 0;
+        const reviewed = take({ photo: 'meal', photoPrompt: '[只发这一张]' });
+        assert.equal(reviewed.photoLine, '[只发这一张]');
+        assert.deepEqual(calls, []);
+        assert.equal(take({}).stickerLine, undefined);
     });
 });

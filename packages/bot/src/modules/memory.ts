@@ -36,6 +36,8 @@ import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart }
 import { feltNoteFor } from '../emotion/felt-then.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '../life/people.ts';
 import { initiateQuery, PERSON_RECALLED, secondPerson } from '../memory/long-term.ts';
+import { recentChat } from '../memory/fading.ts';
+import { turnCut } from '../language/context-window.ts';
 
 const DAY_MS = 86_400_000;
 export const countLines = (text: string) => text.split('\n').length - 1;
@@ -199,6 +201,38 @@ export function memoryModule(): Module {
                 if (!recap) return;
                 ctx.log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
                 turn.facts.recap = recap.text;
+            },
+            // 聊天原文放多少、要点，和这一组的收尾（ADR 0336「判断那一串」，2026-11-18）：联系人流水线在原位调（质感之后、清单之前），
+            // 要点那一下会在后台起一次整理（contextWindow.summarize），照旧在这里。最终的字写进 turn.facts.memory，原文写进 facts.shown
+            context(turn, ctx) {
+                const { at: time, history: chat } = turn;
+                const recentOnly = Boolean(ctx.context?.recentOnly);
+                // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
+                let shown: { chat: ChatMessage[]; omitted: number } = recentOnly ? recentChat(chat, time) : { chat: chat as ChatMessage[], omitted: 0 };
+                // ADR 0043（配置 contextTurns，默认关）：最近几轮原文 + 更早的要点，代替最近 80 条
+                let summary: string | undefined;
+                const window = ctx.context?.window;
+                if (recentOnly && window) {
+                    const lastDays = recentChat(chat, time, Infinity);
+                    const cut = turnCut(lastDays.chat, window);
+                    const state = cut > 0 ? window.summarize(lastDays.chat.slice(0, cut)) : { ready: true as const, text: undefined };
+                    // 要点还在后台整理（或整理失败）：不等它，这一轮照旧最近 80 条，什么都不丢
+                    if (state.ready) {
+                        // 要点里她的名字换成「你」，和记忆一样（ADR 0018 决策 4）
+                        summary = turn.card ? youFor(turn.card, ctx.context?.contacts ?? [])(state.text) : state.text;
+                        shown = { chat: lastDays.chat.slice(cut), omitted: lastDays.omitted + cut };
+                    }
+                }
+                // 想一想：最近的聊天换成一段“回想”放在说明里（modules/transcript.ts），原文清空
+                if (turn.thinking) shown = { chat: [], omitted: 0 };
+                turn.facts.shown = shown;
+                const { relationship, recalled, work, desktop, common, today, people = [] } = turn.facts.recall ?? {};
+                const memory: MemoryPieces = {
+                    ...(relationship ? { relationship } : {}), ...(summary ? { summary } : {}), ...(recalled ? { recalled } : {}),
+                    ...(work ? { work } : {}), ...(desktop ? { desktop } : {}), ...(common ? { common } : {}),
+                    ...(turn.facts.recap !== undefined ? { recap: turn.facts.recap } : {}), ...(today ? { today } : {}), ...(people.length ? { people } : {}),
+                };
+                if (Object.keys(memory).length) turn.facts.memory = memory;
             },
         },
         contribute(turn) {

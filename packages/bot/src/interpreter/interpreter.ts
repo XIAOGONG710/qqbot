@@ -44,6 +44,7 @@ import type { PickRules } from '../language/candidates.ts';
 import type { TurnWeight } from '../language/turn-weight.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { TypoRecall } from '../language/expression.ts';
+import type { Summarizer, TurnWindow } from '../language/context-window.ts';
 import type { CurrentAiPhotoResult } from '../proactive/ai-photo-requests.ts';
 import { assemblePrompt, type Piece } from './slots.ts';
 
@@ -164,6 +165,8 @@ export interface TurnFacts {
     askedDay?: AskedWindow;
     /** 他问到的那一天她那边的流水账（ADR 0032，modules/memory.ts 的 decideAt.recap 写）：拼进 memory.recap */
     recap?: string;
+    /** 这一轮放进提示词的聊天原文和没放的条数（modules/memory.ts 的 decideAt.context 写；只想一想时是空的） */
+    shown?: { chat: ChatMessage[]; omitted: number };
     /** 她在 QQ 上的样子（ADR 0083）：联系人流水线原位取（presence 的内存状态，后台 tick 会改，不挪过 await）后写；modules/time-notes.ts 放进 selfNote 槽 */
     selfNote?: string;
     /** 她答应过他、还没做的事那一句（ADR 0018 决策 2）：和 promised 同一处写（读承诺状态、记日志）；modules/time-notes.ts 放进 promised 槽 */
@@ -330,7 +333,7 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'intimate', 'texture'] as const;
+export const DECIDE_STAGES = ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'intimate', 'texture', 'context', 'lists'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
@@ -364,6 +367,10 @@ export interface DecideCtx {
     continuity?: (context: { contact: Contact; said: string; initiating: boolean; now: Date }) => Promise<string[]>;
     /** 「/亲热」（ADR 0170）那一行：每取一次扣一条、写状态文件 */
     intimacyLine?: () => string | undefined;
+    /** 聊天原文放多少（ADR 0018 调整 12 / ADR 0043）：开了长期记忆、名单里的人才只放最近几天（recentOnly）；配置 contextTurns 时更早的换成要点（summarize 会在后台起一次整理） */
+    context?: { recentOnly: boolean; window?: TurnWindow & { summarize: Summarizer }; /** 名单（要点里她的名字换成「你」时看有没有别的女生） */ contacts?: readonly Contact[] };
+    /** 清单的取（ADR 0063 / 0109 / 0240）：图片表情收藏库、照片货架的 prompt（每取一次都查索引 / 文件，坏了会抛错） */
+    lists?: { stickers?: (context: { text: string; only?: boolean }) => string | undefined; photos?: (kind: PhotoKind, dish?: string) => string | undefined };
     /** 这个联系人有图片表情收藏库（ADR 0063）时才有：这一轮抽不抽的几个比例（不写用默认；uncued / onlyChance 不写就是不抽） */
     stickers?: { chance?: number; uncued?: number; onlyChance?: number };
     /** 作息（开了她自己的日子才有）：今天的心情按它算 */

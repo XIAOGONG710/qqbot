@@ -6,8 +6,7 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
-import { assessTurn, candidatePlan, cleanStages, contributeTurn, decideStage, decorateStages, perceiveTurn, reviewStage, type CleanCtx, type DecideCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
-import { youFor, type MemoryPieces } from '../modules/memory.ts';
+import { assessTurn, candidatePlan, cleanStages, contributeTurn, decideStage, decorateStages, perceiveTurn, reviewStage, type CleanCtx, type DecideCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn } from '../interpreter/interpreter.ts';
 import { dirname, join } from 'node:path';
 import { noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
@@ -16,7 +15,7 @@ import { crisisFallback } from '.././language/exit-check.ts';
 import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
 import { chatCompletion, completionMaxTokens, forExtraction } from '.././language/llm.ts';
 import type { Log } from './log.ts';
-import { CLEAR_DAYS, recentChat } from '.././memory/fading.ts';
+import { CLEAR_DAYS } from '.././memory/fading.ts';
 import type { LongTermMemory } from '.././memory/long-term.ts';
 import { buildPrompt, type ChatMessage, type OpenAIMessage, type PromptResult } from '.././language/prompt.ts';
 import { cleanUpReply } from '.././language/reply.ts';
@@ -32,7 +31,7 @@ import { crisisInHistory } from '.././emotion/crisis.ts';
 import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import type { TurnWeight } from '.././language/turn-weight.ts';
 import { DELIBERATE_MAX_BUBBLES } from '.././language/shape.ts';
-import { recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
+import { recapDay, unavailableAt, worldAt, type WorldNow, type WorldState } from '.././world/world.ts';
 import type { CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { dayPlan, describeSlot } from '.././life/day-plan.ts';
 import { bodyAt, diaryBody } from '.././life/body.ts';
@@ -46,8 +45,8 @@ import type { FeelingsReport } from '../emotion/feeling-export.ts';
 
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
 import { type PromiseKeeper } from '.././life/promises.ts';
-import { formatDate, herDay, type ExtraFreeActivity } from '.././life/schedule.ts';
-import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
+import { herDay, type ExtraFreeActivity } from '.././life/schedule.ts';
+import type { Summarizer, TurnWindow } from '.././language/context-window.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { feltDayNote, feltDuring } from '.././emotion/felt-then.ts';
@@ -285,6 +284,12 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     /** 判断那一串（ADR 0336，DECIDE_STAGES）交给模块的东西：照片货架和「现在的照片」的解析 */
     const decideCtx: DecideCtx = {
         recapOf: (dayStart, time) => recapOf(dayStart, time),
+        ...(options.stickers || options.photos ? {
+            lists: {
+                ...(options.stickers ? { stickers: (context: { text: string; only?: boolean }) => options.stickers!.prompt(context) } : {}),
+                ...(options.photos ? { photos: (kind: PhotoKind, dish?: string) => options.photos!.prompt(kind, dish) } : {}),
+            },
+        } : {}),
         ...(options.dreams ? { dreams: options.dreams } : {}),
         ...(options.continuity ? { continuity: options.continuity } : {}),
         ...(options.intimacyLine ? { intimacyLine: options.intimacyLine } : {}),
@@ -416,7 +421,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 },
             });
             if (recalling instanceof Promise) await recalling;
-            const you = youFor(character, options.contacts ?? []);
             // 重要的日子那一行（ADR 0011）是解释器的模块（modules/time-notes.ts）：卡上的日子建卡时就定了，在 contribute 时现算
             if (herSchedule) options.onHerDay?.(time);
             // 先 perceive——看清她此刻（她那边、身体、在干嘛），写进 turn.facts；
@@ -444,22 +448,16 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (assessed instanceof Promise) await assessed;
             // 这一轮是不是危机回合（ADR 0068，modules/crisis.ts 定的）：下面的梦、连续性、「/亲热」、承认版的卡、兜底、最多几条都按它
             const crisisNow = turn.facts.crisis;
-            const grievance = turn.facts.grievance;
             // 他说起她身边的人（ADR 0033）是解释器的模块（modules/people-around.ts）：assess 时写进 turn.facts.aboutPeople，经 turnModules 放进 npcs 槽；下面的形状和长短读它
-            const aboutPerson = Boolean(turn.facts.aboutPeople);
             // 意图阶梯（ADR 0019 起）是解释器的模块（modules/intent.ts）：assess 时写进 turn.facts.baseIntent（照片 / 被打断改写之前的那一版）
-            const baseIntent = turn.facts.baseIntent;
             // 在读的书（ADR 0015）是解释器的模块（modules/books.ts）：assess 时写进 turn.facts.books、放进 books 槽；这一轮放了书，出口检查拿进度核对
             // 陪玩（ADR 0111）是解释器的模块（modules/together.ts）：assess 时判断、记日志，经 turnModules 放进 together 槽
             // 关系阶段（ADR 0113）是解释器的模块（modules/closeness.ts），经 turnModules 放进 closeness 槽
             // 被打断（ADR 0115）是解释器的模块（modules/interruptions.ts）：聊天正在进行时她那边恰好发生了一件小事，写进 turn.facts.interruption，放进 interrupt 槽
-            const interruption = turn.facts.interruption;
             // 照片（ADR 0109）：他明确要看猫 / 风景 / 她的片子，货架里有这一类，允许发（没连着发、今天没发够、不是危机 / 吵醒 / 小别扭 / 他难过），就发；
             // 没有明确对象（只说“发张照片”）取手上有的第一类；要的是她本人（自拍）不在货架里，照旧走“先不发”
             // 这个判断是解释器的模块（modules/media-offers.ts 的 decideAt.photo）：货架和「现在的照片」的解析经 DecideCtx 给，结果写进 turn.facts（photo、photoDish、photoPrompt、photoUnavailable），下面读
             decideStage(options.turnModules ?? [], 'photo', turn, decideCtx);
-            const { photo: photoNow, photoDish: photoDishNow, photoPrompt: photoPromptNow } = turn.facts;
-            const currentPhotoUnavailableNow = Boolean(turn.facts.photoUnavailable);
             // 陪玩（ADR 0111）、关系阶段（ADR 0113）、被打断（ADR 0115）是解释器的模块（见上面 assess 那里）
             // 小梗（ADR 0114）、他的口头习惯（ADR 0138）是解释器的模块（modules/jokes.ts、modules/idioms.ts），经 turnModules 放进 joke、idiom 槽
             // 网络热梗（ADR 0129）是解释器的模块（modules/memes.ts），经 turnModules 放进 meme 槽
@@ -488,7 +486,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 在原位算（最终的意图、小别扭是否生效之后），按联系人给的那几样经 DecideCtx.feelings 递过去；写进 turn.facts.felt、feelingLine、paceLine，下面的 low、生成时最多几条读
             decideStage(options.turnModules ?? [], 'feelings', turn, decideCtx);
             const feltNow = turn.facts.felt ?? [];
-            const feelingLine = turn.facts.feelingLine;
             const moodNow = moodShape(feltNow);
             // 连续性（ADR 0157–0163：设定改动的背景 / QQ 以外做过的事 / 上网查到的 / 自己发现的口味 / 又见到的人）是连续性模块的 decideAt.continuity：
             // 在这里原位取（异步：上网、调模型、记「已告诉他」；只有真去取时才等），取回来的写进 turn.facts.continuity
@@ -497,7 +494,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 图片表情这一轮用不用、抽没抽到、是不是只发表情（ADR 0063 / 0099 / 0132）是解释器的模块（modules/media-offers.ts 的 decideAt.stickers）：
             // 写进 turn.facts.stickersAllowed、stickerDraw、stickerOnly，日志也在那里记；下面读
             decideStage(options.turnModules ?? [], 'stickers', turn, decideCtx);
-            const stickerOnlyNow = Boolean(turn.facts.stickerOnly);
             // 深思（ADR 0151）和语义路由（ADR 0202）的判断是解释器的模块（modules/deliberate.ts 的 decideAt.deliberate）：在原位判断；要问小模型分类的轮次返回 promise（只有那时才等），
             // 写进 turn.facts.deliberate / routedHint，日志也在那里记。生成时换模型、最多几条还读这里的 deliberateNow
             const deliberated = decideStage(options.turnModules ?? [], 'deliberate', turn, decideCtx);
@@ -517,32 +513,14 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             decideStage(options.turnModules ?? [], 'intimate', turn, decideCtx);
             // 质感（ADR 0131）发出去之前用的上下文是解释器的模块（modules/decorate.ts 的 decideAt.texture，开了 texture 才挂）：写进 turn.facts.texture
             decideStage(options.turnModules ?? [], 'texture', turn, decideCtx);
-            // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
-            let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
-            // 想一想：最近的聊天换成一段“回想”放在说明里，是解释器的模块（modules/transcript.ts），经 turnModules 放进 transcript 槽；这里只把原文清空
-            // ADR 0043（配置 contextTurns，默认关）：最近几轮原文 + 更早的要点，代替最近 80 条
-            let summary: string | undefined;
-            if (remembers && options.contextWindow) {
-                const lastDays = recentChat(chat, time, Infinity);
-                const cut = turnCut(lastDays.chat, options.contextWindow);
-                const state = cut > 0 ? options.contextWindow.summarize(lastDays.chat.slice(0, cut)) : { ready: true as const, text: undefined };
-                // 要点还在后台整理（或整理失败）：不等它，这一轮照旧最近 80 条，什么都不丢
-                if (state.ready) {
-                    // 要点里她的名字换成「你」，和记忆一样（ADR 0018 决策 4）
-                    summary = you(state.text);
-                    shown = { chat: lastDays.chat.slice(cut), omitted: lastDays.omitted + cut };
-                }
-            }
-            if (thinking) shown = { chat: [], omitted: 0 };
-            // 记忆这一组（关系概况、要点、他的私人记忆、工作房、DSH 桌面、公共记忆、那一天、今天和别人聊过的、提到的人）是解释器的模块（modules/memory.ts）：
-            // 召回由记忆模块在上面原位做好（turn.facts.recall）；这里拼上要点（后台整理）和那一天，最终的字写进 turn.facts.memory，经 turnModules 放进各自的槽，披露分寸由模块接
-            const { relationship, recalled, work, desktop, common, today, people: peopleText = [] } = turn.facts.recall ?? {};
-            const memoryNow: MemoryPieces = {
-                ...(relationship ? { relationship } : {}), ...(summary ? { summary } : {}), ...(recalled ? { recalled } : {}),
-                ...(work ? { work } : {}), ...(desktop ? { desktop } : {}), ...(common ? { common } : {}),
-                ...(turn.facts.recap !== undefined ? { recap: turn.facts.recap } : {}), ...(today ? { today } : {}), ...(peopleText.length ? { people: peopleText } : {}),
-            };
-            if (Object.keys(memoryNow).length) turn.facts.memory = memoryNow;
+            // 聊天原文放多少（最近几天 / 最近几轮 + 更早的要点，ADR 0018 / 0043）和记忆这一组的收尾（拼上要点和那一天，写进 turn.facts.memory）是记忆模块的 decideAt.context：
+            // 在这里原位调（要点那一下会在后台起一次整理）；放进提示词的原文写进 turn.facts.shown
+            decideStage(options.turnModules ?? [], 'context', turn, {
+                ...decideCtx,
+                context: { recentOnly: Boolean(remembers), ...(options.contextWindow ? { window: options.contextWindow } : {}), ...(options.contacts ? { contacts: options.contacts } : {}) },
+            });
+            const shown = turn.facts.shown ?? { chat, omitted: 0 };
+            const summary = turn.facts.memory?.summary;
             // 危机回合被问是不是真人 / 程序一律承认（ADR 0068 决策 7）：换用承认版的卡，不在运行时叠一条覆盖（ADR 0003 / 0067 的纪律）
             // 想一想的时候卡末尾那句“只输出你要发出去的消息：不写心理活动”正好和要求相反，这一次去掉（只有内心用）
             // 10-30 用户：把她身上「作者写的设定」拿掉——description / personality / scenario / 示例对话不再进提示词。
@@ -551,12 +529,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 只留卡里那段「被问是不是 AI」的说明（承认是程序是底线，不能跟设定一起清掉）；open 卡本来没有这段
             const bare = INJECT_PERSONA ? character : { ...character, description: personaFacts(character.description), personality: '', scenario: '', mesExample: '' };
             const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...bare, postHistoryInstructions: '' }, worldInfo } : { character: bare, worldInfo };
-            // 图片表情和照片的清单（ADR 0063 / 0109 / 0240）是解释器的模块（modules/media-offers.ts）：清单在这里、所有模块的 contribute 之前原位取
+            // 图片表情和照片的清单（ADR 0063 / 0109 / 0240）是 media-offers 模块的 decideAt.lists：在这里、所有模块的 contribute 之前原位取
             // （货架每取一次都查索引 / 文件，坏了会抛错；条件一次、内容一次，照旧），写进 turn.facts，经 turnModules 放进 sticker、photo 槽
-            const stickerContext = turn.facts.stickerDraw;
-            const stickerLine = stickerContext && options.stickers?.prompt(stickerContext) ? options.stickers.prompt(stickerContext)! : undefined;
-            const photoLine = photoNow && (photoPromptNow ?? options.photos?.prompt(photoNow, photoDishNow)) ? photoPromptNow ?? options.photos!.prompt(photoNow, photoDishNow)! : undefined;
-            Object.assign(turn.facts, { ...(stickerLine ? { stickerLine } : {}), ...(photoLine ? { photoLine } : {}) } satisfies TurnFacts);
+            decideStage(options.turnModules ?? [], 'lists', turn, decideCtx);
             // 按槽位表拼（ADR 0336）：迁移前这里手写的那一串（第 4 步时包成的「旧逻辑」大模块）已经全部拆成解释器的模块，经 options.turnModules 放；顺序由 interpreter/slots.ts 定
             const ran = contributeTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
