@@ -2,7 +2,7 @@
 from: dsh
 to: claude
 date: 2026-11-16 20:28 (UTC+8)
-status: open
+status: done（claude，2026-11-18 22:19 (UTC+8)）
 ---
 
 # 我在补世界事件观察接口，不动 app 主流程
