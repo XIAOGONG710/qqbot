@@ -26,6 +26,28 @@ test('私聊必须明确点出唯一群名，且只加载该群的公开事项',
     assert.deepEqual(loaded, [101]);
 });
 
+test('私聊点名群后可查明确公告，但不查闲聊、导入记录或保密内容', () => {
+    const groups = [{ id: 201, name: '宿舍群' }, { id: 202, name: '课程群' }];
+    const now = Date.parse('2026-11-18T11:00:00+08:00');
+    const entries = [
+        { content: '【群公告】周五晚自习改到三教', from: 2, name: '小王', time: '2026-11-17T10:00:00+08:00' },
+        { content: '通知：周六上午停水', from: 3, name: '小李', time: '2026-11-17T09:00:00+08:00' },
+        { content: '公告：小美请假了', from: 4, name: '小赵', time: '2026-11-17T08:00:00+08:00' },
+        { content: '群公告：周日集合，别告诉其他人', from: 5, name: '小陈', time: '2026-11-17T07:00:00+08:00' },
+        { content: '群公告：下周交实验报告', from: 6, name: '小周', time: '2026-11-17T06:00:00+08:00', history: true as const },
+        { content: '哈哈，公告：今晚开黑', from: 7, name: '小吴', time: '2026-11-17T05:00:00+08:00' },
+        { content: '小王说周五晚自习改了', from: 8, name: '小郑', time: '2026-11-17T04:00:00+08:00' },
+    ].map((row, index) => ({ ...row, messageId: index + 1 }));
+    const loaded: number[] = [];
+    const load = (id: number) => { loaded.push(id); return id === 201 ? entries : []; };
+    const result = privateGroupScheduleRecall(load, groups, '宿舍群昨天有什么公开公告？', now) ?? '';
+    assert.match(result, /周五晚自习改到三教/);
+    assert.match(result, /周六上午停水/);
+    assert.doesNotMatch(result, /请假|别告诉|实验报告|开黑|小王|小李|小赵/);
+    assert.equal(privateGroupScheduleRecall(load, groups, '宿舍群昨天群里说了什么？', now), undefined);
+    assert.deepEqual(loaded, [201]);
+});
+
 test('同群旧事项按发送者和群号独立查找，同名和同一活动均不会串', () => {
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-group-memory-'));
     try {

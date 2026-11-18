@@ -6,6 +6,9 @@ const LOOKBACK_MS = 30 * 24 * 60 * 60_000;
 const QUESTION = /^(?:@你\s+)?我(之前|上次|上周|前几天|昨天)(?:在群里)?(?:说过|提过|说)(?:的)?[，,:： ]*(?:群)?(活动|集合|开会|报名|比赛|彩排|讲座|训练)(?:是)?几点(?:开始|截止|集合)?[？?。]?$/;
 const ANNOUNCEMENT = /^(?:群)?(活动|集合|开会|报名|比赛|彩排|讲座|训练)[：: ]*((?:周[一二三四五六日天]|星期[一二三四五六日天])?(?:早上|上午|中午|下午|傍晚|晚上)?(?:[01]?\d|2[0-3])[:：][0-5]\d)(?:开始|截止|集合)?[。！!]?$/;
 const PRIVATE_QUESTION = /^(之前|上次|上周|前几天|昨天|最近)?(?:在群里)?(?:说过|说的|说|公布的|公布过的|公布过|公布)?[，,:： ]*(?:(?:有什么|说过什么|说了什么)(?:公开)?(?:安排|日程|事项)?|(?:群)?(活动|集合|开会|报名|比赛|彩排|讲座|训练)(?:是)?几点(?:开始|截止|集合)?)[？?。]?$/;
+const NOTICE_QUESTION = /^(之前|上次|上周|前几天|昨天|最近)?(?:(?:在)?群里)?[，,:： ]*(?:有什么公开(?:公告|通知|安排|日程|事项)?|公开(?:说过什么|说了什么|事项|内容|安排|日程|公告|通知)|(?:群)?(?:公告|通知)(?:内容)?|(?:公布过|公布了)(?:什么|哪些)?公告)[？?。]?$/;
+const NOTICE = /^(?:【(?:群)?(?:公告|通知)】|(?:群公告|公告|通知))[：:、\s]*(.{2,160})$/;
+const NOT_PUBLIC = /私聊|私下|保密|别(?:告诉|发给|转发)|不要(?:告诉|外传|转发)|仅限(?:本人|内部)|开玩笑|哈哈|请假|生病|住院|分手|恋爱|电话|住址|身份证|成绩|家里|家庭|工资|收入|心理|病情|[😂🤣😅]/;
 
 function dateRange(askedAt: number, period: string | undefined): { start: number; end: number } {
     const date = new Date(askedAt);
@@ -25,6 +28,17 @@ function scheduleAnnouncements(entries: readonly GroupEntry[], range: { start: n
         if ((asker !== undefined && message.from !== asker) || message.mine || message.history || !Number.isFinite(time) || time < range.start || time >= range.end) return [];
         const match = ANNOUNCEMENT.exec(message.content.trim());
         return match && (!topic || match[1] === topic) ? [{ time, text: match[0] }] : [];
+    }).sort((left, right) => right.time - left.time);
+}
+
+function publicAnnouncements(entries: readonly GroupEntry[], range: { start: number; end: number }) {
+    return entries.flatMap(message => {
+        const time = Date.parse(message.time);
+        if (message.history || !Number.isFinite(time) || time < range.start || time >= range.end) return [];
+        const match = NOTICE.exec(message.content.trim());
+        const content = match?.[1]?.trim();
+        if (!content || NOT_PUBLIC.test(content)) return [];
+        return [{ time, text: content }];
     }).sort((left, right) => right.time - left.time);
 }
 
@@ -51,13 +65,20 @@ export function privateGroupScheduleRecall(
         if (!name) return [];
         const prefix = ['「' + name + '」', '“' + name + '”', name].find(value => text.startsWith(value));
         if (!prefix) return [];
-        const query = PRIVATE_QUESTION.exec(text.slice(prefix.length).replace(/^[\s，,:：]*里?[\s，,:：]*/, ''));
-        return query ? [{ group, query }] : [];
+        const suffix = text.slice(prefix.length).replace(/^[\s，,:：]*里?[\s，,:：]*/, '');
+        const query = PRIVATE_QUESTION.exec(suffix);
+        const noticeQuery = NOTICE_QUESTION.exec(suffix);
+        return query || noticeQuery ? [{ group, query, noticeQuery }] : [];
     });
     if (matches.length !== 1) return undefined;
-    const { group, query } = matches[0]!;
-    const items = scheduleAnnouncements(load(group.id), dateRange(askedAt, query[1]), query[2]).slice(0, query[2] ? 1 : 3);
+    const { group, query, noticeQuery } = matches[0]!;
+    const entries = load(group.id);
+    const range = dateRange(askedAt, query?.[1] ?? noticeQuery?.[1]);
+    const items = noticeQuery
+        ? [...scheduleAnnouncements(entries, range), ...publicAnnouncements(entries, range)]
+            .sort((left, right) => right.time - left.time).slice(0, 3)
+        : scheduleAnnouncements(entries, range, query?.[2]).slice(0, query?.[2] ? 1 : 3);
     if (!items.length) return undefined;
-    return '[指定群的公开日程：' + items.map(item => formatDate(new Date(item.time)) + ' 当时写过「' + item.text + '」').join('；')
-        + '。只用于回答这个群的提问，旧日程可能已经过期。]';
+    return '[指定群的公开消息：' + items.map(item => formatDate(new Date(item.time)) + ' 当时写过「' + item.text + '」').join('；')
+        + '。只用于回答这个群的提问；如涉及日程，可能已经过期。]';
 }

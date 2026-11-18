@@ -190,15 +190,17 @@ describe('群聊：进应用', () => {
     const until = async (done: () => boolean) => { const deadline = Date.now() + 3000; while (!done() && Date.now() < deadline) await new Promise(r => setTimeout(r, 10)); };
 
     test('私聊明确问宿舍群才把公开日程交给回复模型', async () => {
-        for (const [question, expectsRecall] of [
-            ['宿舍群昨天说活动几点开始？', true],
-            ['昨天群里说活动几点开始？', false],
+        for (const [question, expectsRecall, expectedText] of [
+            ['宿舍群昨天说活动几点开始？', true, '15:30'],
+            ['宿舍群昨天有什么公开公告？', true, '晚自习改到三教'],
+            ['昨天群里说活动几点开始？', false, '15:30'],
         ] as const) {
             const { app: a, dataDir, prompts } = app('read');
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
             try {
                 groupLog(dataDir).append(555, { time: yesterday.toISOString(), from: 30001, name: '合成群友', content: '群活动15:30开始', messageId: 6000 });
+                groupLog(dataDir).append(555, { time: yesterday.toISOString(), from: 30002, name: '另一个合成群友', content: '公告：周五晚自习改到三教', messageId: 6001 });
                 await a.connected(SELF);
                 a.receive({ post_type: 'message', message_type: 'private', sub_type: 'friend',
                     self_id: SELF, user_id: BF.qq, message_id: 6100, time: Math.floor(Date.now() / 1000),
@@ -206,7 +208,7 @@ describe('群聊：进应用', () => {
                 await until(() => prompts.some(prompt => prompt.includes(question)));
                 const prompt = prompts.find(entry => entry.includes(question));
                 assert.ok(prompt);
-                assert.equal(prompt.includes('15:30'), expectsRecall);
+                assert.equal(prompt.includes(expectedText), expectsRecall);
                 assert.doesNotMatch(prompt, /合成群友/);
             } finally { a.stop(); }
         }
