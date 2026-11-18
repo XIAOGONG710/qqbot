@@ -1263,3 +1263,18 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 基线走得到的只有召回（`memory`）和清单（`media`）：答应的事、挂着的事、还没说过的事、「/亲热」、要点、连续性在基线里一直是空的（第三到六步之前就是），由单测和直接调流水线的测试兜。
 - 判断那一串到这里迁完：`buildPrompt` 里只剩建 turn、按顺序调各位置（`values` → `recall` → `recap` → `promises` → `loops` → `news` → `photo` → `dream` → `intent` → `feelings` → `continuity` → `stickers` → `deliberate` → `length` → `intimate` → `texture` → `context` → `lists`，
   中间夹着 perceive / assess 和 onHerDay）、选卡、contribute、拼提示词和最多几条。
+
+### 第 6 步收尾：两份模块接线合成一份（2026-11-18）
+
+- 是什么：上面「两份模块接线先守住再合」记的那件事。App（`app.ts`）和模拟器（`sim/runner.ts`）各手写一份模块列表，每迁一步要两边各接一次。
+  现在都从 `platform/turn-modules.ts` 的 `buildTurnModules(deps)` 取，先后照 App 原来的先后。
+- 规则：两边都挂的模块选项必填；只在一边挂、或跟着开关挂的，给了对应字段才挂。构造时不调用 deps 里的任何函数（App 的设备服务、聊天记录、长期记忆、计划器在建解释器之后才建；模拟器的计划器在第一次建回复器之后才建），
+  会换掉的东西给取值函数。小梗、口头习惯在外面建好再放进来（App 的那两个带定时抽取和收尾）。App 照旧在最前面加「旧逻辑」那一个；模拟器照旧在 `createResponder` 里每个 epoch 重建，用按 epoch 门控的日志。
+- 四个提交：先把模拟器的先后对齐到 App（shell 挪到 her-notes 后、length 挪到 quote 前、time-block 挪到 review-pull 后、memory 挪到 warm 前、deliberate 挪到 intent-line 后；
+  每个判断位置只有一个模块、没有两个模块共用一个槽，所以唯一看得到的是同一轮的「长短」「引用回复」两行日志在 sim.log 里对调）→ 新建工厂和单测（不接入）→ App 改用工厂 → 模拟器改用工厂。
+  `module-wiring.test.ts` 改成核对两边各只调一次工厂、只在一边给的可选字段就是清单里那些（App：shell、reviewPull、selfMemory、workMode、selfNotes、soul、learningQuestion、exemplars、consent、continuity、group、humanState、memeDict；
+  模拟器：deliberateNote、solveFrame），每项带原因；`turn-modules.test.ts` 冻结全开时 59 个模块的先后、总是挂的 33 个、有先后要求的几对，并核对构造时不调用 deps。
+- 实现由子代理按主代理定的文件范围做（不提交、不跑基线），主代理逐步打补丁、跑测试、提交。
+- 验证：App 那一步前后对照 41/41 一样；模拟器那边没法用「前后各跑一遍 sim.log 对比」——同一份代码连跑两次就不一样（长短抽签按消息时间哈希，模拟器的消息时间带毫秒、随真实计时器漂），所以靠上面的分析和测试：
+  module-wiring + turn-modules 7 项，sim / quote-reply / memory-sim-lifecycle-review / restart / app 共 177 项通过；类型检查通过。
+- 还没做的（第 6 步其余）：App 里各功能的计时器迁成模块的 `schedules`；`features.ts` / `modules.ts` / Koishi Schema / `docs/modules/` 从模块定义生成；状态文件读写和子进程写成执行器的动作。
