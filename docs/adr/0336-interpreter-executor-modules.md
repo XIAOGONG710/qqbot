@@ -1317,3 +1317,14 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 差别：做梦、走开这两个原来没有 `unref`，现在由解释器 `unref`（进程有别的东西撑着，看不出来）；停下时由解释器取消，app.ts 的 `stop` 少了三行。
 - 验证：全部 41 个场景对快照逐字一致（`books` 有做梦和学习问题的模型调用，`closeness` 有走开说一声）；变异检验见提交说明。
   `built-schedules.test.ts` 核对三个模块的间隔、时机、不给不挂，以及走开说一声在没有世界账、停下、危机暂停时什么都不做。
+
+### 第 6 步：App 搭好时就开的计时器——记忆同步、NOW、outbox（2026-11-19）
+
+- 再往前三个：长期记忆同步（`MEMORY_SYNC_MS`，开了长期记忆才挂）、「她现在在干嘛」NOW.md 导出（`NOW_REFRESH_MS`，总是挂）、她留的话 outbox（30 秒，总是挂）。
+  新模块 `memory-sync` / `now-export` / `outbox` 只声明定时，挂在 `reflections` 之前：`...turnModules, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport`。
+  做的事（`syncMemory`、`exportNow`、`outboxTick`）都还在 app.ts，读的东西太多（休眠、收消息的失败处理、作息和世界、危机暂停、出口检查），这一步不搬；启动时立刻写 NOW 的那一次、连上后立刻同步的那一次都在原位。
+- 构造失败时的取消（`construction.onFailure`）不要了：`startSchedules('built')` 是构造的最后一句，之后不会再有构造失败。
+  `memory-app-construction-review.test.ts` 原来核对「构造中途失败时已开的记忆同步计时器被关掉」，现在中途失败时它还没开，改成核对没有留下开着的记忆同步计时器（释放租约、关掉记忆派发、不联网照旧）。
+- 差别：NOW 导出的计时器原来停下时没取消（只 `unref`，同一进程里插件重载会留下一个还在写 NOW.md 的旧计时器）；现在由解释器在停下时取消。行为基线停下之后不再拨时间，看不出来。
+- 现在构造时还由 App 自己开的：天气 / 空气 / 日照 / 日历 / 交通、世界影子、生活（这几个在建解释器之前）、DSH 信箱、口味（含两分钟后的一次性那一个——`schedules` 只有周期的，一次性的要另想）。
+- 验证：全部 41 个场景对快照逐字一致；变异检验见提交说明。

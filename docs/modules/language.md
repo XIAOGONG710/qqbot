@@ -84,6 +84,9 @@
 - `modules/dreams.ts`
 - `modules/leave-note.ts`
 - `modules/dsh-state.ts`
+- `modules/memory-sync.ts`
+- `modules/now-export.ts`
+- `modules/outbox.ts`
 - `modules/playful.ts`
 - `modules/exemplars.ts`
 - `modules/solve-frame.ts`

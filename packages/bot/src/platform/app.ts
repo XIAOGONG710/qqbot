@@ -23,6 +23,9 @@ import { takeMemoryReview, takeSelfNotes } from '../modules/self-notes.ts';
 import { idiomsModule } from '../modules/idioms.ts';
 import { buildTurnModules } from './turn-modules.ts';
 import { reflectionsModule } from '../modules/reflections.ts';
+import { memorySyncModule } from '../modules/memory-sync.ts';
+import { nowExportModule } from '../modules/now-export.ts';
+import { outboxModule } from '../modules/outbox.ts';
 import { dreamsModule } from '../modules/dreams.ts';
 import { leaveNoteModule } from '../modules/leave-note.ts';
 import { dshStateModule } from '../modules/dsh-state.ts';
@@ -996,6 +999,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ...(config.openQuestions ? { openQuestions: { ponder: messages => chatCompletion({ ...deliberateLlm(config.llm, config.deliberateModel), temperature: 0.9 }, messages, { log, purpose: 'background' }) } } : {}),
         ...(config.herGuesses && sharedWorld && worldCard ? { herGuesses: { worldAt: time => sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, time) } } : {}),
     });
+    // 长期记忆同步、「她现在在干嘛」导出、她留的话（ADR 0336 第 6 步）：只有定时任务，App 搭好时开，先后同原来（在她自己想一想的那几样之前）；做的事都在后面才建，到点再取
+    const memorySync = memorySyncModule(config.memory ? () => syncMemory() : undefined, MEMORY_SYNC_MS);
+    const nowExport = nowExportModule(() => exportNow(), NOW_REFRESH_MS);
+    const outbox = outboxModule(() => outboxTick());
     // 做梦那一拍、走开前说一声、DSH 状态快照（ADR 0336 第 6 步）：同样只有定时任务，App 搭好时开，先后同原来（夜里那几样之后）。
     // 心境、长期记忆、危机状态、聊天记录、导出函数都在后面才建：到点再取
     const dreams = dreamsModule(deviceOwner && config.herFeelings ? dreamJobs({
@@ -1278,7 +1285,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 recall: ({ event }) => legacy.receiveRecall(event),
                 friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
             },
-        }, ...turnModules, reflections, dreams, leaveNote, dshStateExport],
+        }, ...turnModules, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
         exec,
     });
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
@@ -1711,9 +1718,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         if (!config.selfDirectedMemory) void diaries?.catchUp(new Date(exec.now())).catch(incomingFailure);
         void promises?.sync().catch(incomingFailure);
     }
-    const memoryTimer = memory ? exec.every(syncMemory, MEMORY_SYNC_MS) : undefined;
-    construction.onFailure(() => exec.cancel(memoryTimer));
-    memoryTimer?.unref();
+    // 每 MEMORY_SYNC_MS 同步一次：由 memory-sync 模块声明（ADR 0336 第 6 步，App 搭好时开）
 
     // 「她现在在干嘛」只写一份（任务书 §2）：QQ 这边按自己的作息 + 世界 + 心境渲染 NOW.md，
     // DSH 桌面只读它（超过 30 分钟不注入）。以前这份是 her-life.mjs 自己按另一套规则写的，两边会对不上。
@@ -1742,16 +1747,15 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         }
     };
     exportNow();
-    const nowTimer = exec.every(exportNow, NOW_REFRESH_MS);
-    construction.onFailure(() => exec.cancel(nowTimer));
-    nowTimer.unref();
+    // 之后每 NOW_REFRESH_MS 再写一次：由 now-export 模块声明（ADR 0336 第 6 步，App 搭好时开）
 
     // 她自己想让他知道的事：常驻进程/她写进 OUTBOX.jsonl，这里发出去（ADR 0174：和别的主动消息守同一套规矩）
     const outboxFile = process.env.QQBOT_OUTBOX ?? join(soulDir(), 'OUTBOX.jsonl');
     const OUTBOX_BLOCKING = new Set<ExitIssue['kind']>(['banned', 'promise', 'media', 'script', 'text-intimacy']);
     let outboxBusy = false;
     let outboxBlockedBy: string | undefined;
-    const outboxTimer = exec.every(() => {
+    // 每 30 秒一拍：由 outbox 模块声明（ADR 0336 第 6 步，App 搭好时开）
+    const outboxTick = (): void => {
         const owner = deviceOwner;
         if (!owner || outboxBusy) return;
         const { character } = cardFor(owner.tier);
@@ -1777,9 +1781,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 if (result.blockedBy) log(`主动留话：先留着不发（${result.blockedBy}）`);
             }
         }).catch(error => log(`主动留话出错：${error instanceof Error ? error.message : String(error)}`)).finally(() => { outboxBusy = false; });
-    }, 30_000);
-    construction.onFailure(() => exec.cancel(outboxTimer));
-    outboxTimer.unref();
+    };
 
     // 追求（ADR 0104）：作者的文件 + 内置；开了 selfPursuits（ADR 0178）再套上她自己的决定、接上她自己加的
     const authorPursuits = pursuitsReader(config.dataDir, log);
@@ -4408,7 +4410,6 @@ ${body}
             if (readingUnlisted !== reading) readingUnlisted?.stop();
             for (const planner of planners.values()) planner.stop();
             const responderDrains = [...responders.values()].map(responder => responder.stop());
-            if (memoryTimer) exec.cancel(memoryTimer);
             if (tastesTimer) exec.cancel(tastesTimer);
             if (tastesFirst) exec.cancel(tastesFirst);
             if (followUpTimer) exec.cancel(followUpTimer);
@@ -4423,7 +4424,6 @@ ${body}
             if (calendarTimer) exec.cancel(calendarTimer);
             if (transportTimer) exec.cancel(transportTimer);
             if (dshInboxTimer) exec.cancel(dshInboxTimer);
-            exec.cancel(outboxTimer);
             exec.cancel(foodRetryTimer);
             const deviceDrain = stopDevices();
             exec.cancel(photoRetryTimer);

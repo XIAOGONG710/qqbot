@@ -36,11 +36,12 @@ test('真实App在memoryTimer之后构造EIO失败：释放租约之前关闭已
         assert.throws(() => startApp({ config, transport: { friendHistory: async () => [], sendPrivateText: async () => 1 }, log() {}, sensitive: { on: () => false, describe: () => '' },
             pipeline: { generate: async () => { assert.fail('No model dispatch in construction fixture'); } } }), /EIO/);
         assert.equal(failedReads, 1); assert.ok(memory);
-        const timer = timers.find(entry => entry.ms === MEMORY_SYNC_MS && entry.name === 'syncMemory'); assert.ok(timer);
+        // ADR 0336 第 6 步起记忆同步由 memory-sync 模块声明，构造的最后一句才开：构造中途失败时它还没开，也就没有要关的（原来开了要在回滚时关）
+        const leftOpen = timers.some(entry => entry.ms === MEMORY_SYNC_MS && !entry.cleared);
         const released = !existsSync(join(dataDir, 'bot.lock')); assert.equal(released, true);
         const release = acquireLock(join(dataDir, 'bot.lock')); release();
-        assert.deepEqual({ directoryLeaseReleased: released, memoryTimerCleared: timer.cleared, memoryDispatchClosed: !memory.derivedAvailable(), networkCalls },
-            { directoryLeaseReleased: true, memoryTimerCleared: true, memoryDispatchClosed: true, networkCalls: 0 });
+        assert.deepEqual({ directoryLeaseReleased: released, memoryTimerLeftOpen: leftOpen, memoryDispatchClosed: !memory.derivedAvailable(), networkCalls },
+            { directoryLeaseReleased: true, memoryTimerLeftOpen: false, memoryDispatchClosed: true, networkCalls: 0 });
     } finally {
         for (const { timer } of timers) originalClear(timer); await memory?.stop();
         globalThis.fetch = originalFetch; globalThis.setInterval = originalSet; globalThis.clearInterval = originalClear;
