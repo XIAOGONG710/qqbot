@@ -679,11 +679,22 @@ export const SCENARIOS: readonly Scenario[] = [
     },
     {
         name: 'self-memory',
-        about: '她自己决定记不记（selfDirectedMemory，DSH 10-30 / 10-31）：每一轮都有「记忆由你自己决定」；他说了自己做的事和一个承诺（留痕，之后几轮放「你记得他最近这些事」）、纠正她一次之后又说到同一件事（放「这件事你以前理解偏过」）；同学也纠正一次（不记、别的档位不放）；第二天她主动找他（留痕和理解偏过不放）',
+        about: '她自己决定记不记（selfDirectedMemory）：验证留痕、当轮纠正、相关话题的历史提醒，以及同学档的隔离；他回复过上一条主动消息，次日她有想分享的念头才主动找他（主动轮不放留痕和纠正提醒）',
         start: '2026-12-09T19:50:00+08:00',
         contacts: [boyfriend, classmate],
         config: { ...RICH, selfDirectedMemory: true },
-        reply: () => rotating(['嗯嗯', '真的呀', '那挺好', '好']),
+        reply: () => {
+            const fallback = rotating(['嗯嗯', '真的呀', '那挺好', '好']);
+            let thought = false;
+            return call => {
+                if (!thought && call.at >= Date.parse('2026-12-10T08:00:00+08:00')
+                    && call.messages.some(message => typeof message.content === 'string' && message.content.includes('这是你自己一个人待着的时候'))) {
+                    thought = true;
+                    return '好久没翻那卷胶片了，想挑两张跟他说说\n告诉他';
+                }
+                return fallback(call);
+            };
+        },
         script: async d => {
             await d.at('2026-12-09T20:00:00+08:00');
             d.say(boyfriend.qq, '我今天去面试了');
@@ -697,6 +708,8 @@ export const SCENARIOS: readonly Scenario[] = [
             d.say(classmate.qq, '我说的是明天的实验报告');
             await d.at('2026-12-09T21:10:00+08:00');
             d.say(boyfriend.qq, '那家面试的公司老板今天又找我了');
+            await d.at('2026-12-09T22:35:00+08:00');
+            d.say(boyfriend.qq, '看到你说的啦，明天再聊，晚安');
             await d.at('2026-12-10T12:00:00+08:00');
         },
     },
