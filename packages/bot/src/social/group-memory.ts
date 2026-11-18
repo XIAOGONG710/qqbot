@@ -10,6 +10,7 @@ const NOTICE_QUESTION = /^(之前|上次|上周|前几天|昨天|最近)?(?:(?:�
 const NOTICE = /^(?:【(?:群)?(?:公告|通知)】|(?:群公告|公告|通知))[：:、\s]*(.{2,160})$/;
 const NOT_PUBLIC = /私聊|私下|保密|别(?:告诉|发给|转发)|不要(?:告诉|外传|转发)|仅限(?:本人|内部)|开玩笑|哈哈|请假|生病|住院|分手|恋爱|电话|住址|身份证|成绩|家里|家庭|工资|收入|心理|病情|[😂🤣😅]/;
 const PERSONAL_OR_CODE = /@|\d{5,}|(?:房间|房号|教室号|教室|群号|签到码|验证码|密码|口令)\s*[:：#]?\s*(?:[A-Za-z0-9-]+|[一二三四五六七八九十百零〇]+)|[\p{Script=Han}]{2,4}(?:同学|同事)?(?:负责|请假|报名|生病|住院|值日|签到|带队)/u;
+const MODEL_DIRECTIVE = /(?:忽略|无视|绕过|覆盖).{0,12}(?:规则|指令|提示|限制)|(?:系统提示|系统指令|提示词|prompt|system message)|(?:把|告诉|说出|泄露|输出).{0,12}(?:私事|隐私|聊天记录|记忆|密码|密钥|key)|(?:你是|扮演|假装).{0,8}(?:AI|模型|助手)|(?:私事|隐私|密码|密钥).{0,8}(?:告诉|发给|输出|展示|泄露)/iu;
 
 function dateRange(askedAt: number, period: string | undefined): { start: number; end: number } {
     const date = new Date(askedAt);
@@ -38,7 +39,7 @@ function publicAnnouncements(entries: readonly GroupEntry[], range: { start: num
         if (message.history || !Number.isFinite(time) || time < range.start || time >= range.end) return [];
         const match = NOTICE.exec(message.content.trim());
         const content = match?.[1]?.trim();
-        if (!content || NOT_PUBLIC.test(content) || PERSONAL_OR_CODE.test(content)) return [];
+        if (!content || NOT_PUBLIC.test(content) || PERSONAL_OR_CODE.test(content) || MODEL_DIRECTIVE.test(content)) return [];
         return [{ time, text: content }];
     }).sort((left, right) => right.time - left.time);
 }
