@@ -12,10 +12,12 @@ import { fileOps } from '../src/memory/json-file.ts';
 import type { HindsightApi } from '../src/memory/hindsight.ts';
 
 const A = { qq: 10001, tier: 'boyfriend', name: '合成甲' }, B = { qq: 10002, tier: 'boyfriend', name: '合成乙' };
+const OWNER = { qq: 10003, tier: 'boyfriend', name: '合成设备所有者' };
 const POISON = 'SYNTHETIC_STALE_DERIVED';
 const roots: string[] = [], apps: App[] = [], releases: (() => void)[] = [];
 let originalFetch: typeof fetch;
 let affectedPrivate = '';
+let sharedDocument = '';
 let heldSubmissions = 0;
 beforeEach(() => {
     originalFetch = globalThis.fetch; heldSubmissions = 0;
@@ -25,7 +27,8 @@ beforeEach(() => {
         const polluted = bank.endsWith('-common') || bank === affectedPrivate;
         if (url.pathname.includes('/mental-models/')) return Response.json({ id: url.pathname.split('/').at(-1), content: polluted ? POISON : '合成未污染关系' });
         if (url.pathname.endsWith('/entities')) return Response.json({ total: 1, items: [{ canonical_name: POISON }] });
-        if (url.pathname.endsWith('/memories/recall')) return Response.json({ results: polluted ? [{ id: 'stale-observation', type: 'observation', text: POISON, mentioned_at: new Date().toISOString() }] : [] });
+        if (url.pathname.endsWith('/memories/recall')) return Response.json({ results: bank.endsWith('-common')
+            ? [{ id: 'stale-observation', document_id: sharedDocument, type: 'observation', text: POISON, mentioned_at: new Date().toISOString() }] : [] });
         if (url.pathname.endsWith('/operations')) return Response.json({ bank_id: decodeURIComponent(url.pathname.split('/banks/')[1]!.split('/')[0]!), total: 0, operations: [] });
         if (url.pathname.includes('/operations/')) return new Response('', { status: 404 });
         if (init?.method === 'POST' && url.pathname.endsWith('/memories')) { heldSubmissions++; return new Promise<Response>(release => releases.push(() => release(new Response('', { status: 503 })))); }
@@ -42,17 +45,26 @@ async function until(check: () => boolean) { const end = Date.now() + 4000; whil
 async function fixture(content = `合成乙 ${POISON}`) {
     const root = mkdtempSync(join(tmpdir(), 'qqbot-derived-app-')); roots.push(root); const dataDir = join(root, 'bot'); mkdirSync(dataDir); const memoryDir = join(dataDir, 'memory');
     for (const tier of ['classmate', 'classmate-open', 'boyfriend', 'boyfriend-open']) writeFileSync(join(root, `${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
-    const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, '{tier}.json'), dataDir, contacts: [A, B],
+    const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, '{tier}.json'), dataDir, contacts: [OWNER, A, B],
         memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic', timeoutMs: 1000, recallTimeoutMs: 100 }, recalls: true,
         schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off',
     }, root, { QQBOT_LLM_API_KEY: 'synthetic' });
     const history = new ChatHistory(dataDir), time = new Date(Date.now() - 3600_000).toISOString();
+    if (!content.includes(POISON)) {
+        history.append(A.qq, { role: 'user', time: new Date(Date.now() - 3 * 3600_000).toISOString(), content: POISON, messageId: 3 });
+    }
     history.append(A.qq, { role: 'user', time, content, messageId: 1, messageSeq: '100001' });
     history.append(B.qq, { role: 'user', time, content: '合成普通消息', messageId: 2, messageSeq: '100002' });
-    const fake: HindsightApi = { putBank: async () => {}, retain: async () => {}, recall: async () => [], getMentalModel: async () => undefined,
+    const fake: HindsightApi = { putBank: async () => {}, retain: async (bank, item) => {
+        if (bank.endsWith('-common') && !sharedDocument) sharedDocument = item.document_id;
+    }, recall: async () => [], getMentalModel: async () => undefined,
         createMentalModel: async () => {}, updateMentalModel: async () => {}, refreshMentalModel: async () => 'synthetic' };
     const seed = new LongTermMemory({ api: fake, dir: memoryDir, bankPrefix: 'synthetic', recallTimeoutMs: 100, common: true, log() {} });
-    for (const person of [A, B]) await seed.sync(person, { char: '合成角色', user: person.name }, history.load(person.qq)); await seed.stop();
+    sharedDocument = '';
+    await seed.sync(A, { char: '合成角色', user: A.name }, history.load(A.qq));
+    assert.match(sharedDocument, /^[0-9a-f]{16}:ep--?\d+$/);
+    await seed.sync(B, { char: '合成角色', user: B.name }, history.load(B.qq));
+    await seed.stop();
     affectedPrivate = seed.bankId(A);
     return { root, dataDir, memoryDir, config, history, bank: (person: typeof A) => seed.bankId(person), common: seed.commonBankId() };
 }
@@ -79,9 +91,17 @@ test('撤回发布EIO但RAM已接受时立即屏蔽公共派生，其他联系�
     const f = await fixture(), run = start(f); ask(run.app, 70); await until(() => f.history.load(B.qq).some(message => message.role === 'assistant')); await tick();
     assert.ok(run.prompts.some(prompt => prompt.includes(POISON)));
     const rename = fileOps.renameSync, delays = fileOps.writeDelaysMs, before = run.prompts.length;
+    let publicationFailed = false;
     try {
-        fileOps.writeDelaysMs = [0]; fileOps.renameSync = (from, to) => { if (String(to) === join(f.dataDir, 'chats', `${A.qq}.recalled.json`)) throw Object.assign(new Error('synthetic'), { code: 'EIO' }); return rename(from, to); };
+        fileOps.writeDelaysMs = [0]; fileOps.renameSync = (from, to) => {
+            if (String(to) === join(f.dataDir, 'chats', `${A.qq}.recalled.json`)) {
+                publicationFailed = true;
+                throw Object.assign(new Error('synthetic'), { code: 'EIO' });
+            }
+            return rename(from, to);
+        };
         recall(run.app); ask(run.app, 82); await until(() => run.prompts.length > before);
+        assert.equal(publicationFailed, true);
         assert.ok(run.prompts.slice(before).every(prompt => !prompt.includes(POISON)));
         assert.equal(new DerivedState(f.memoryDir).snapshot(f.common).owners.find(owner => owner.qq === A.qq)?.allDocuments, true);
     } finally { fileOps.renameSync = rename; fileOps.writeDelaysMs = delays; }
