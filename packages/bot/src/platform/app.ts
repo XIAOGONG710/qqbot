@@ -184,7 +184,7 @@ import { promiseKeeper, type Appointment } from '.././life/promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from '.././life/her-days.ts';
 import { herPlanActivities, saveHerPlan, windowAt } from '.././life/her-plans.ts';
 import { isCorrection, recordCorrection, understandingLine } from '.././life/understanding.ts';
-import { attachMatchingMemoryReviews, readMemoryReviews, recordMemoryReview } from '../memory/memory-review.ts';
+import { attachMatchingMemoryReviews, markMemoryReviewsOffered, readMemoryReviews, recordMemoryReview, resolveMemoryReview } from '../memory/memory-review.ts';
 import { recordTrace, traceOf, tracesLine } from '.././life/traces.ts';
 import { bodyAt } from '.././life/body.ts';
 import { useWorldNeeds, worldState, type WorldNow } from '.././world/world.ts';
@@ -1093,6 +1093,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.selfDirectedMemory ? { reviewMemory: (contact, cue) => {
                 if (deviceOwner && contact.qq === deviceOwner.qq && config.memory) recordMemoryReview(config.dataDir, cue, clockNow().getTime());
             } } : {}),
+            ...(config.selfDirectedMemory ? { resolveMemoryReview: (contact, reference, decision) => {
+                if (deviceOwner && contact.qq === deviceOwner.qq && config.memory) resolveMemoryReview(config.dataDir, reference, decision, clockNow().getTime());
+            } } : {}),
             log,
         }),
         // 她在本机的那一份（DSH 的灵魂目录）：心里的线头、拒绝过的、评价、「你现在的生活」、首轮铺底；只给男朋友档，每一轮现读
@@ -1243,7 +1246,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         reviewPullModule({ ...(config.memory && config.selfDirectedMemory ? { recall: async (contact: Contact, query: string) => {
             const recalled = await memory!.recallPull(contact, query, new Date(), config.contacts);
             if (!recalled || !deviceOwner || contact.qq !== deviceOwner.qq) return recalled;
-            return attachMatchingMemoryReviews(recalled, readMemoryReviews(config.dataDir).reviews);
+            const reviews = readMemoryReviews(config.dataDir).reviews;
+            const attached = attachMatchingMemoryReviews(recalled, reviews);
+            markMemoryReviewsOffered(config.dataDir, recalled, clockNow().getTime());
+            return attached;
         } } : {}) }),
         // 时间块（ADR 0004 / 0105）：每一轮「此刻」块的第一行；断网很久才回那一句跟着 lagTail。没有别的开关，不存状态
         timeBlockModule({ lagTail: config.lagTail }),
