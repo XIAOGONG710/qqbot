@@ -7,6 +7,7 @@
 ## 文件（`packages/bot/src/` 下）
 
 - `platform/app.ts`
+- `platform/turn-modules.ts`
 - `platform/main.ts`
 - `platform/work-bridge.ts`
 - `platform/instruction-source.ts`
