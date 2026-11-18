@@ -15,6 +15,7 @@
 - `proactive/follow-ups.ts`
 - `proactive/his-reactions.ts`
 - `proactive/ai-photo-requests.ts`
+- `proactive/adult-sites.ts`
 
 ## 开关
 

@@ -19,6 +19,7 @@
 - `social/group-affect.ts`
 - `social/group-impression.ts`
 - `social/group-import.ts`
+- `social/group-memory.ts`
 - `social/group-style.ts`
 - `social/async-gate.ts`
 - `social/stickers.ts`

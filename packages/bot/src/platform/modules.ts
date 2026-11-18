@@ -68,7 +68,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'proactive', name: '主动找他',
         scope: '她什么时候先开口：早安、下课、睡前、冷场、随口说件事、约他、问意见、喂完猫拍照、说了等下之后回来、没回也继续、心里的念头、待跟进的事。',
-        files: ['proactive/proactive.ts', 'proactive/proactive-planner.ts', 'proactive/proactive-state.ts', 'proactive/agency.ts', 'proactive/inner.ts', 'proactive/shares.ts', 'proactive/follow-ups.ts', 'proactive/his-reactions.ts', 'proactive/ai-photo-requests.ts'],
+        files: ['proactive/proactive.ts', 'proactive/proactive-planner.ts', 'proactive/proactive-state.ts', 'proactive/agency.ts', 'proactive/inner.ts', 'proactive/shares.ts', 'proactive/follow-ups.ts', 'proactive/his-reactions.ts', 'proactive/ai-photo-requests.ts', 'proactive/adult-sites.ts'],
         groups: ['主动找他'],
         metrics: '周报「主动性」（条数、30 分钟内他回的占比、按时机分）',
         adrs: ['0011', '0100', '0101', '0107', '0110', '0112', '0116', '0117', '0124', '0212', '0240', '0080', '0156', '0329'],
@@ -85,7 +85,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'social', name: '在 QQ 上的样子（社交）',
         scope: '什么时候看到、打字多久、一次发几条；图片表情和照片货架；戳一戳、已读、在线状态、说说、签名、“正在输入”、撤回；听语音看图。',
-        files: ['social/responder.ts', 'modules/media-offers.ts', 'social/silence.ts', 'social/outbox.ts', 'social/others.ts', 'social/reply-timing.ts', 'social/rate-limit.ts', 'social/strangers.ts', 'social/group-chat.ts', 'social/group-people.ts', 'social/group-affect.ts', 'social/group-impression.ts', 'social/group-import.ts', 'social/group-style.ts', 'social/async-gate.ts', 'social/stickers.ts', 'social/sticker-favorites.ts', 'social/sticker-sources.ts', 'social/pokes.ts', 'social/presence.ts', 'social/qzone.ts', 'social/qzone-feed.ts', 'social/qzone-feeds3.ts', 'social/qzone-remote.ts', 'social/qzone-strangers.ts', 'social/account.ts', 'social/quote-reply.ts', 'social/external-drafts.ts', 'social/external-platforms.ts', 'social/official-adapter.ts'],
+        files: ['social/responder.ts', 'modules/media-offers.ts', 'social/silence.ts', 'social/outbox.ts', 'social/others.ts', 'social/reply-timing.ts', 'social/rate-limit.ts', 'social/strangers.ts', 'social/group-chat.ts', 'social/group-people.ts', 'social/group-affect.ts', 'social/group-impression.ts', 'social/group-import.ts', 'social/group-memory.ts', 'social/group-style.ts', 'social/async-gate.ts', 'social/stickers.ts', 'social/sticker-favorites.ts', 'social/sticker-sources.ts', 'social/pokes.ts', 'social/presence.ts', 'social/qzone.ts', 'social/qzone-feed.ts', 'social/qzone-feeds3.ts', 'social/qzone-remote.ts', 'social/qzone-strangers.ts', 'social/account.ts', 'social/quote-reply.ts', 'social/external-drafts.ts', 'social/external-platforms.ts', 'social/official-adapter.ts'],
         groups: ['照片和表情', '在 QQ 上的样子'],
         metrics: '周报「说话的样子」里的延迟、「表情和语气」',
         adrs: ['0063', '0075', '0077', '0083', '0105', '0109', '0136', '0142', '0143', '0144', '0173', '0174', '0209', '0210', '0311'],
