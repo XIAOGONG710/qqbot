@@ -530,7 +530,7 @@ describe('聊天原文和记忆的收尾（memory 的 decideAt.context）、清�
         assert.deepEqual([both.stickerLine, both.photoLine], ['[表情清单]', '[照片清单]']);
         assert.deepEqual(calls, ['sticker', 'sticker', 'photo', 'photo']);
         calls.length = 0;
-        const reviewed = take({ photo: 'meal', photoPrompt: '[只发这一张]' });
+        const reviewed = take({ photo: 'food', photoPrompt: '[只发这一张]' });
         assert.equal(reviewed.photoLine, '[只发这一张]');
         assert.deepEqual(calls, []);
         assert.equal(take({}).stickerLine, undefined);
