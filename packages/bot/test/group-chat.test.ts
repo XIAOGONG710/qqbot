@@ -189,6 +189,29 @@ describe('群聊：进应用', () => {
     });
     const until = async (done: () => boolean) => { const deadline = Date.now() + 3000; while (!done() && Date.now() < deadline) await new Promise(r => setTimeout(r, 10)); };
 
+    test('私聊明确问宿舍群才把公开日程交给回复模型', async () => {
+        for (const [question, expectsRecall] of [
+            ['宿舍群昨天说活动几点开始？', true],
+            ['昨天群里说活动几点开始？', false],
+        ] as const) {
+            const { app: a, dataDir, prompts } = app('read');
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            try {
+                groupLog(dataDir).append(555, { time: yesterday.toISOString(), from: 30001, name: '合成群友', content: '群活动15:30开始', messageId: 6000 });
+                await a.connected(SELF);
+                a.receive({ post_type: 'message', message_type: 'private', sub_type: 'friend',
+                    self_id: SELF, user_id: BF.qq, message_id: 6100, time: Math.floor(Date.now() / 1000),
+                    message: [text(question)], raw_message: question, sender: { user_id: BF.qq, nickname: '合成人' } });
+                await until(() => prompts.some(prompt => prompt.includes(question)));
+                const prompt = prompts.find(entry => entry.includes(question));
+                assert.ok(prompt);
+                assert.equal(prompt.includes('15:30'), expectsRecall);
+                assert.doesNotMatch(prompt, /合成群友/);
+            } finally { a.stop(); }
+        }
+    });
+
     test('名单外的群什么都不做（不记、不说）；名单里的群平常潜水，被 @ 才说，说的进记录', async () => {
         const { app: a, sentGroup, prompts, dataDir } = app('on');
         await a.connected(SELF);

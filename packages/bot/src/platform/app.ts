@@ -114,8 +114,8 @@ import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, personaFacts, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
-import { GROUP_CONTEXT, HER_NAMES, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, recentGroupBrief, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
-import { groupScheduleRecall } from '../social/group-memory.ts';
+import { GROUP_CONTEXT, HER_NAMES, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
+import { groupScheduleRecall, privateGroupScheduleRecall } from '../social/group-memory.ts';
 import { groupPeople } from '.././social/group-people.ts';
 import { analyzeGroupStyle, renderGroupStyle } from '.././social/group-style.ts';
 import { groupAffect, groupAffectOf, mergeFelt } from '.././social/group-affect.ts';
@@ -2259,9 +2259,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
-            // 群里最近的事（2026-11-14）：他私下问「群里刚才说什么了」，她答得上；只给男朋友档
-            ...(groupLogs && contact.tier === 'boyfriend' ? {
-                groupRecent: () => recentGroupBrief((config.groups ?? []).map(item => ({ name: item.name, entries: groupLogs?.load(item.id) ?? [] })), worldNow()),
+            // 设备所有者明确问指定群时，才查该群。群底账在回复器建好后初始化。
+            ...(contact.qq === deviceOwner?.qq ? {
+                groupRecent: (question: string, at: Date) => groupLogs
+                    ? privateGroupScheduleRecall(groupLogs.load, config.groups ?? [], question, at.getTime()) : undefined,
             } : {}),
             // 群里的遭遇也进心境（2026-11-14）：有人在群里夸她、冲她发火、说想不开，私聊里她也带着
             ...(config.herFeelings && (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0 ? { groupMood: () => groupFeel?.appraisals() ?? [] } : {}),

@@ -244,8 +244,8 @@ export interface ContactPipelineOptions {
     onFeelings?: (report: FeelingsReport) => void;
     /** 她夜里回想、指出了依据的感受（ADR 0197，配置 feelingReview）：作为「别处算好的评估」进心境；要 herFeelings 开着 */
     feelingReview?: () => readonly Appraisal[];
-    /** 群里最近的事（2026-11-14）：群里的事他私下问起，她要答得上 */
-    groupRecent?: () => string | undefined;
+    /** 设备所有者在当前私聊明确问起已配置的某个群时，查该群的公开日程 */
+    groupRecent?: (question: string, at: Date) => string | undefined;
     /** 群里的遭遇（2026-11-14）：有人夸她、冲她发火、说想不开——作为额外评估进心境，要 herFeelings 开着 */
     groupMood?: () => readonly Appraisal[];
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
@@ -477,7 +477,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const work = remembers && contact.tier === 'boyfriend' ? you(await memory.recallWork(contact, chat, time)) : undefined;
             if (work) log(`召回工作记忆 ${countLines(work)} 条`);
             // 同一个她（ADR 0177）：他刚才在电脑上（DSH）和她说的，QQ 这边接着知道
-            const groupEcho = options.groupRecent?.();
+            const groupQuestion = !initiate && chat.at(-1)?.role === 'user' ? chat.at(-1)?.content : undefined;
+            const groupEcho = groupQuestion ? options.groupRecent?.(groupQuestion, time) : undefined;
             const desktop = options.desktopRecent?.(time);
             if (desktop) log(`带上他刚才在 DSH 桌面上的对话 ${(desktop.match(/ 他：/g) ?? []).length} 轮`);
             let common = freshCommon;
