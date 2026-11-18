@@ -9,7 +9,12 @@
 // 只有 contribute 写了 facts.shape 才有事做，超字数重写一次、还超就按分句截断。不存状态。
 // 行为和迁移前 contact.ts 里的逐字一样（行为基线核对）。
 
+import { catAlternative } from '../character-terms.ts';
+import { feelsLow } from '../emotion/feelings.ts';
 import type { Module } from '../interpreter/interpreter.ts';
+import { describeBody, unwell } from '../life/body.ts';
+import { moodAt } from '../life/her-days.ts';
+import { describeWorld } from '../world/world.ts';
 import { ENGAGED_INTENT } from '../language/expression.ts';
 import { describeShape, planShape, shapeReply, type ShapeShares } from '../language/shape.ts';
 import type { Log } from '../platform/log.ts';
@@ -33,6 +38,31 @@ export interface ShapeModuleOptions {
 export function shapeModule(options: ShapeModuleOptions): Module {
     return {
         id: 'shape',
+        // 形状和长短要的两样（ADR 0336「判断那一串」，decideAt.length：深思之后、质感之前，联系人流水线里的原位），和迁移前逐字一样：
+        // - low：她这会儿低落——今天的心情是「安静」、身体不舒服、心境那一行放了而且偏低、真人数值低（没劲 / 饿 / 压力大 / 心情差）：不加「话多」。
+        // - agendaTopics：带自己的事时能挑的话题——她那边那一行里还没说过的几样（按标签）、身体（没说过肚子不舒服）、心情（卡上有心情）。
+        // 今天的心情在这里现算（按日子哈希，纯函数；作息经 DecideCtx 给，没开她自己的日子就没有心情）。
+        decideAt: {
+            length: (turn, ctx) => {
+                const { facts, at: time } = turn;
+                const { world: around, body: bodyNow, humanValues } = facts;
+                const mood = ctx.schedule ? moodAt(ctx.schedule, turn.card?.moods ?? [], time, ctx.mood, { body: bodyNow, world: around }) : undefined;
+                const low = mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) || (facts.feelingLine !== undefined && feelsLow(facts.felt ?? []))
+                    || Boolean(humanValues && (humanValues.energy <= 30 || humanValues.hunger >= 82 || humanValues.stress >= 78 || humanValues.mood <= 30));
+                if (low) facts.low = true;
+                // 她这一天半里已经主动说过的事（ADR 0098，modules/repetition.ts assess 时写；危机回合不算）
+                const told = facts.told ?? [];
+                const TOLD_LABEL: Record<string, RegExp> = { 相机: /相机/, 猫: new RegExp(`${catAlternative()}猫`), 作业: /作业/, 快递: /快递/ };
+                // 世界那一行的标签（天气、猫、作业……）：行本身由她此刻的模块放；标签和“钱是谁给的”无关，这里不带称呼
+                const world = around ? describeWorld(around, time) : undefined;
+                const worldLabels = world ? world.replace(/^\[你那边（[^）]*）：/, '').replace(/\]$/, '').split('｜').map(item => item.split('：')[0]!.trim()).filter(Boolean) : [];
+                facts.agendaTopics = [
+                    ...worldLabels.filter(label => !told.some(name => TOLD_LABEL[name]?.test(label))),
+                    ...(bodyNow && describeBody(bodyNow) && !told.includes('肚子不舒服') ? ['身体'] : []),
+                    ...(mood ? ['心情'] : []),
+                ];
+            },
+        },
         reviewAt: {
             // 发出去之前按这一轮的形状裁：没形状同步原样返回（同原来不 await）
             shape(text, turn, ctx) {

@@ -321,13 +321,17 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['photo', 'intent', 'feelings', 'stickers', 'deliberate', 'texture'] as const;
+export const DECIDE_STAGES = ['photo', 'intent', 'feelings', 'stickers', 'deliberate', 'length', 'texture'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
 export interface DecideCtx {
     /** 这个联系人有图片表情收藏库（ADR 0063）时才有：这一轮抽不抽的几个比例（不写用默认；uncued / onlyChance 不写就是不抽） */
     stickers?: { chance?: number; uncued?: number; onlyChance?: number };
+    /** 作息（开了她自己的日子才有）：今天的心情按它算 */
+    schedule?: Schedule;
+    /** 指定今天的心情（只有模拟器比较不同心情时给） */
+    mood?: string;
     /** 开了深思（配置 deliberate，ADR 0151）才有：深思用的模型名（日志里写）、语义路由的分类（配置 depthRouting，ADR 0202；一次小模型调用） */
     deliberate?: { model: string; turnWeight?: (input: { history: ChatMessage[]; said: string }) => Promise<TurnWeight | undefined> };
     /** 这个联系人存下来的聊天记录（判断的那一刻现读：她最近几次回复带了几次小黄脸之类） */

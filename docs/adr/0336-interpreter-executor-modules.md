@@ -1201,3 +1201,16 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 合成一份（第 6 步）要先给两边的选项找一个共同的形状，不是机械活，这一轮不做。先加 `module-wiring.test.ts` 守住：
   只在 App 挂的 11 个、只在模拟器挂的 3 个写成清单（带原因），清单之外两边必须一样；有先后要求的几对（她此刻 → 危机 → 意图阶梯 → 被打断 / 别重复自己，形状 → 长短，热梗 → 梗百科）两边都核对。
   只读源码里的接线，不起 App。
+
+### 判断那一串：长短和形状要的两样（2026-11-18）
+
+- 是什么：ADR 0024 / 0091 / 0098——她这会儿低落不低落（`low`：今天的心情是「安静」、身体不舒服、心境那一行放了而且偏低、真人数值低；低落时不加「话多」），
+  带自己的事时能挑的话题（`agendaTopics`：她那边那一行里还没说过的几样、身体、心情）。原来联系人流水线在质感之前算，今天的心情（`moodAt`）在 assess 之前就算好了。
+- `DECIDE_STAGES` 加 `length`（深思之后、质感之前，原位）。挂在形状模块 `modules/shape.ts` 的 `decideAt.length`（模块列表里形状本来就在长短之前）；
+  今天的心情在这里现算（按日子哈希的纯函数，早算晚算一样），作息和模拟器指定的心情经 `DecideCtx.schedule` / `mood` 给。流水线里 `moodAt`、`describeBody`、`describeWorld`、`unwell`、`feelsLow`、`catAlternative` 的 import 跟着去掉。
+- 验证方式换了：dsh 11-16 起的影子循环和动机优先的主动性改了行为（结尾多了 `agency-shadow/associations.json`、主动消息的时刻），
+  只更新了 `rich-chat`、`jokes`、`proactive-day` 三个快照，在 `fafa72d0` 上不带这一步也有 38 个场景对不上快照（已留言请 dsh 确认后单独更新）。
+  所以这一步用**前后对照**：同一个提交上，不带 / 带这一步各跑一遍全部 41 个场景的实际输出，逐字比较——**41/41 一样**。
+  变异检验——`low` 永远为真、话题里多塞一样，`intents`、`register` 对不上（只把 `low` 关掉，试的五个场景没抓到：那几轮正好不加「话多」）。
+  `decide-stage.test.ts` 加 4 项；相关单测 206 项通过；类型检查通过。
+- 判断顺序表：`photo` → `intent` → `feelings` → `stickers` → `deliberate` → `length` → `texture`。

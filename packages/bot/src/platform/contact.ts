@@ -9,7 +9,7 @@ import { localDate } from '../local-date.ts';
 import { assessTurn, candidatePlan, cleanStages, contributeTurn, decideStage, decorateStages, perceiveTurn, reviewStage, type CleanCtx, type DecideCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
 import { dirname, join } from 'node:path';
-import { catAlternative, noteCharacterTerms } from '../character-terms.ts';
+import { noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
 import { crisisFallback } from '.././language/exit-check.ts';
@@ -27,21 +27,21 @@ import { postProcessPrompt } from '.././st/prompt-converters.ts';
 import { loadWorldInfo, type WorldInfoEntry } from '.././st/world-info.ts';
 import { isAckAfterClosing, moodySkip, replyDelays, whenSeen } from '.././social/reply-timing.ts';
 import type { SilenceInfo } from '.././social/silence.ts';
-import { describeMood, moodAt, readingActivities } from '.././life/her-days.ts';
+import { readingActivities } from '.././life/her-days.ts';
 import { crisisInHistory } from '.././emotion/crisis.ts';
 import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import type { TurnWeight } from '.././language/turn-weight.ts';
 import { DELIBERATE_MAX_BUBBLES } from '.././language/shape.ts';
-import { describeWorld, recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
+import { recapDay, unavailableAt, worldAt, worldNews, type WorldNow, type WorldState } from '.././world/world.ts';
 import type { CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { dayPlan, describeSlot } from '.././life/day-plan.ts';
-import { bodyAt, describeBody, diaryBody, unwell } from '.././life/body.ts';
+import { bodyAt, diaryBody } from '.././life/body.ts';
 import { saidAsleepAt } from '.././life/bedtime.ts';
 import { withEveryday } from '.././life/everyday.ts';
 import { withMenu } from '.././life/menu.ts';
 import { moodShape, tunedMaxBubbles } from '.././emotion/express.ts';
 import type { Pursuit } from '.././life/pursuits.ts';
-import { appraisals, feelsLow, type Appraisal, type Felt, type Moment } from '.././emotion/feelings.ts';
+import { appraisals, type Appraisal, type Felt, type Moment } from '.././emotion/feelings.ts';
 import type { FeelingsReport } from '../emotion/feeling-export.ts';
 
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
@@ -298,6 +298,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         ...(options.stickers ? { stickers: { ...(options.stickerChance !== undefined ? { chance: options.stickerChance } : {}), ...(options.stickerUncued ? { uncued: options.stickerUncued } : {}), ...(options.stickerOnlyChance ? { onlyChance: options.stickerOnlyChance } : {}) } } : {}),
         ...(options.photos ? { photos: options.photos } : {}),
         history: () => options.history.load(contact.qq),
+        ...(options.herDays && character.schedule ? { schedule: character.schedule } : {}), ...(options.mood !== undefined ? { mood: options.mood } : {}),
         ...(options.deliberate ? { deliberate: { model: options.deliberate.llm.model, ...(options.turnWeight ? { turnWeight: options.turnWeight } : {}) } } : {}),
         feelings: {
             herFeelings: Boolean(options.herFeelings), everydayLife: Boolean(options.everydayLife), ...(options.herDays && character.schedule ? { schedule: character.schedule } : {}),
@@ -523,8 +524,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
             const recap = day && !day.period ? recapOf(day.start, time) : undefined;
             if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
-            const body = bodyNow ? describeBody(bodyNow) : undefined;
-            const mood = herSchedule ? moodAt(herSchedule, character.moods, time, options.mood, { body: bodyNow, world: around }) : undefined;
             // 她的过去（ADR 0022）是解释器的模块（modules/past.ts），经 turnModules 放进 past 槽
             const promised = contact.tier !== UNLISTED_TIER ? options.promises?.describe(contact, chat, time) : undefined;
             if (promised) log('时间块里提醒了她答应的事');
@@ -632,22 +631,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 引用回复（ADR 0136）是解释器的模块（modules/quote.ts）：contribute 时算、写回 turn.facts.quote，放进 quote 槽；拼完段落之后取回来，发送时引用那条。这里先清掉上一轮的
             quoteNow = undefined;
             // 挑候选（ADR 0041）是解释器的模块（modules/candidates.ts）：contribute 时按最终的意图行定这一轮挑不挑、按什么规则，写进 turn.facts.pick；生成时经 candidatePlan 问
-            // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；心情安静的日子不加「话多」
-            const low = mood?.mood.name === '安静' || (bodyNow ? unwell(bodyNow) : false) || (feelingLine !== undefined && feelsLow(feltNow))
-                || Boolean(humanValues && (humanValues.energy <= 30 || humanValues.hunger >= 82 || humanValues.stress >= 78 || humanValues.mood <= 30));
-            // 形状控制开着：用具体的字数和条数代替「回短一点」的软提示；不适用的轮次（他明着让她讲、主动找他、收尾）照旧走 lengthHint
-            // 她这一天半里已经主动说过的事（ADR 0098）；带自己的事的轮次从她还没说过的事里挑一件说
-            // 说过了的事由别重复自己的模块（modules/repetition.ts）assess 时写进 turn.facts.told（危机回合不算）
-            const told = turn.facts.told ?? [];
-            const TOLD_LABEL: Record<string, RegExp> = { 相机: /相机/, 猫: new RegExp(`${catAlternative()}猫`), 作业: /作业/, 快递: /快递/ };
-            // 世界那一行的标签（天气、猫、作业……）：行本身由她此刻的模块放；标签和“钱是谁给的”无关，这里不带称呼
-            const world = around ? describeWorld(around, time) : undefined;
-            const worldLabels = world ? world.replace(/^\[你那边（[^）]*）：/, '').replace(/\]$/, '').split('｜').map(item => item.split('：')[0]!.trim()).filter(Boolean) : [];
-            const agendaTopics = [
-                ...worldLabels.filter(label => !told.some(name => TOLD_LABEL[name]?.test(label))),
-                ...(body && !told.includes('肚子不舒服') ? ['身体'] : []),
-                ...(mood ? ['心情'] : []),
-            ];
+            // 长短和形状要的两样——她这会儿低落不低落（low）、带自己的事时能挑的话题（agendaTopics）——是形状模块的 decideAt.length（modules/shape.ts），今天的心情也在那里现算
+            decideStage(options.turnModules ?? [], 'length', turn, decideCtx);
             // 别重复自己（反复说的字词、主动找他的开头、说过了的事，ADR 0098 / 0135）是解释器的模块（modules/repetition.ts），经 turnModules 放进 crutch、opener、told 槽
             // 她最近心里在想的（ADR 0101）是解释器的模块（modules/inner.ts），经 turnModules 放进 inner 槽
             // 「/亲热」（ADR 0170）：他刚让她黏一点，接下来几条回复里放一行；每生成一条取一次
@@ -658,7 +643,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 长短不一（ADR 0024）和形状（ADR 0091）是解释器的模块（modules/length.ts、modules/shape.ts）；它们要的前面那几样在这里写进 turn.facts
             Object.assign(turn.facts, {
                 ...(cue ? { cue } : {}),
-                ...(low ? { low: true } : {}), agendaTopics,
                 // 「/亲热」那一行在上面原位取（每取一次扣一条、写文件），由解释器的模块（modules/intent-line.ts）放
                 ...(intimateNow ? { intimateLine: intimateNow } : {}),
             });
