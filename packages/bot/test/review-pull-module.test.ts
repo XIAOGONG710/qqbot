@@ -74,9 +74,19 @@ describe('<<查>> 模块（ADR 0336）', () => {
         assert.deepEqual(r.calls.map(c => ({ qq: c.contact.qq, query: c.query })), [{ qq: 1, query: '第一次约会的地方' }]);
         assert.equal(r.calls[0]!.contact, turn.contact);
         assert.deepEqual(s.notes, [pullNote('[你刚才想起来的]\n- 12月6日：第一次约会去的是学校后门那家火锅店')]);
-        assert.equal(s.notes[0], '（你刚才想起来了：\n[你刚才想起来的]\n- 12月6日：第一次约会去的是学校后门那家火锅店\n用这些回答他，不要再写 <<查>> 标记。如果你确实觉得某条记忆可能记错了，不要把它当成确定事实，也不要自行改掉；先告诉他你拿不准，并请他帮你核对。把日期、来源、能辨认的原记录简述和疑点写进隐藏标记 <<记忆待核对：日期｜来源｜原记录简述｜疑点>>。只有明确有疑点时才写，不要每条都标。）');
+        assert.equal(s.notes[0], '（你刚才想起来了：\n[你刚才想起来的]\n- 12月6日：第一次约会去的是学校后门那家火锅店\n用这些回答他，不要再写 <<查>> 标记。这些记录没有可精确回连的引用；拿不准就直接说不确定，不要写待核对标记，也不要自行改动或删除旧记忆。）');
         assert.deepEqual(s.logs, ['她主动查记忆：第一次约会的地方（1 条）']);
         assert.equal(s.accepted(), 0);
+    });
+
+    test('只有有稳定引用的记录才教她写可回连的待核对标记', async () => {
+        const reference = 'c'.repeat(24);
+        const r = recaller(`- 12月6日（和阿明的私聊）：第一次约会地点 <<记忆引用:${reference}>>`);
+        const s = ctxWith();
+        await pullOf({ recall: r.recall })('<<查：第一次约会>>\n我想想', turn, s.ctx);
+        assert.match(s.notes[0]!, new RegExp(`<<记忆待核对：引用｜疑点>>`));
+        assert.match(s.notes[0]!, /引用必须照抄该条末尾的内部引用/);
+        assert.match(s.notes[0]!, /以前留的待核对备注/);
     });
 
     test('查不到：不重写，只摘标记', async () => {

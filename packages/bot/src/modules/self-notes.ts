@@ -24,11 +24,13 @@ export function takeSelfNotes(input: string): { text: string; notes: Array<{ kin
 }
 
 /** 她在主动查到的旧记忆里明确提出待核对时，摘掉隐藏标记并保留她写的依据。 */
-export function takeMemoryReview(input: string): { text: string; reviews: string[] } {
-    const reviews: string[] = [];
+export function takeMemoryReview(input: string): { text: string; reviews: Array<{ reference: string; note: string }> } {
+    const reviews: Array<{ reference: string; note: string }> = [];
     const text = input.replace(/<<记忆待核对[：:]\s*([\s\S]*?)>>/g, (_match, body: string) => {
-        const value = body.trim().replace(/\s+/g, ' ').slice(0, 500);
-        if (value) reviews.push(value);
+        const separator = body.indexOf('｜');
+        const reference = separator < 0 ? '' : body.slice(0, separator).trim();
+        const note = separator < 0 ? '' : body.slice(separator + 1).trim().replace(/\s+/g, ' ').slice(0, 500);
+        if (/^[a-f0-9]{24}$/.test(reference) && note) reviews.push({ reference, note });
         return '';
     }).replace(/\n{3,}/g, '\n\n').trim();
     return { text, reviews: reviews.slice(0, 1) };
@@ -42,7 +44,7 @@ export interface SelfNotesModuleOptions {
     /** 写进长期记忆；没开长期记忆时返回 undefined */
     remember: (contact: Contact, text: string, kind: '记住' | '日记') => Promise<void> | undefined;
     /** 记录她主动查记忆时提出的核对依据；由 App 限定为设备所有者 */
-    reviewMemory?: (contact: Contact, text: string) => void;
+    reviewMemory?: (contact: Contact, review: { reference: string; note: string }) => void;
     log: Log;
 }
 

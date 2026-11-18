@@ -184,7 +184,7 @@ import { promiseKeeper, type Appointment } from '.././life/promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from '.././life/her-days.ts';
 import { herPlanActivities, saveHerPlan, windowAt } from '.././life/her-plans.ts';
 import { isCorrection, recordCorrection, understandingLine } from '.././life/understanding.ts';
-import { recordMemoryReview } from '../memory/memory-review.ts';
+import { attachMatchingMemoryReviews, readMemoryReviews, recordMemoryReview } from '../memory/memory-review.ts';
 import { recordTrace, traceOf, tracesLine } from '.././life/traces.ts';
 import { bodyAt } from '.././life/body.ts';
 import { useWorldNeeds, worldState, type WorldNow } from '.././world/world.ts';
@@ -1090,8 +1090,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             keepPrivate: text => { appendPrivate(text); },
             ...(config.diaryInsights ? { keepDiary: (text: string) => { recordSelfDiary(config.dataDir, text, clockNow().getTime()); } } : {}),
             remember: (contact, text, kind) => memory?.rememberSelfNote(contact, text, kind),
-            ...(config.selfDirectedMemory ? { reviewMemory: (contact, text) => {
-                if (deviceOwner && contact.qq === deviceOwner.qq && config.memory) recordMemoryReview(config.dataDir, text, clockNow().getTime());
+            ...(config.selfDirectedMemory ? { reviewMemory: (contact, cue) => {
+                if (deviceOwner && contact.qq === deviceOwner.qq && config.memory) recordMemoryReview(config.dataDir, cue, clockNow().getTime());
             } } : {}),
             log,
         }),
@@ -1240,7 +1240,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 话说到一半（ADR 0141）：跟着 speechCheck，挂在 unfinished 位置
         ...(config.speechCheck ? [reviewUnfinishedModule()] : []),
         // 她想查才查（<<查：…>>）：挂在 pull 位置，总是挂（摘标记和开关无关）；开了长期记忆和 selfDirectedMemory 才真的去查。memory 在后面才建，查的时候现取
-        reviewPullModule({ ...(config.memory && config.selfDirectedMemory ? { recall: (contact: Contact, query: string) => memory!.recallPull(contact, query, new Date(), config.contacts) } : {}) }),
+        reviewPullModule({ ...(config.memory && config.selfDirectedMemory ? { recall: async (contact: Contact, query: string) => {
+            const recalled = await memory!.recallPull(contact, query, new Date(), config.contacts);
+            if (!recalled || !deviceOwner || contact.qq !== deviceOwner.qq) return recalled;
+            return attachMatchingMemoryReviews(recalled, readMemoryReviews(config.dataDir).reviews);
+        } } : {}) }),
         // 时间块（ADR 0004 / 0105）：每一轮「此刻」块的第一行；断网很久才回那一句跟着 lagTail。没有别的开关，不存状态
         timeBlockModule({ lagTail: config.lagTail }),
         // 连续性（ADR 0157–0163）：联系人流水线取回来的几行（turn.facts.continuity）照放；continuity 在解释器之后才建、取也在流水线里，所以总是挂

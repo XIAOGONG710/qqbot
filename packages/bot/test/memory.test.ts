@@ -664,11 +664,14 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             assert.match(forListener ?? '', /只能含糊·和小赵聊的/);
             assert.match(forListener ?? '', /只能含糊·你的日记/);
             assert.match(forListener ?? '', /10月3日|10月4日|10月5日/);
+            assert.doesNotMatch(forListener ?? '', /<<记忆引用:/, '其他联系人看不到主人私有的待核对引用');
             assert.doesNotMatch(forListener ?? '', /主人私聊中的记录|阿明私聊里的记录|DSH工作里的记录|来源不明的旧记录/);
 
             const forOwner = await memory.recallPull(ownerNamed, '最近的记录', new Date(now), people);
             assert.match(forOwner ?? '', /可明说·和阿明聊的/);
             assert.match(forOwner ?? '', /DSH 工作记忆/);
+            assert.match(forOwner ?? '', /\n- （来源不明）：来源不明的旧记录/);
+            assert.match(forOwner ?? '', /<<记忆引用:[a-f0-9]{24}>>/);
             assert.match(forOwner ?? '', /\n- （来源不明）：来源不明的旧记录/);
             assert.match(forOwner ?? '', /来源不明.*不代表内容是假的/);
         } finally {

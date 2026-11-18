@@ -1,27 +1,55 @@
 // 她主动查到一条旧记忆、明确觉得可能有误时，留存她给出的核对线索。
-// 这里只记待核对记录，不触碰 Hindsight 原记忆，也不自动安排提醒或改写。
+// 只在之后显式查到同一内部引用时带回线索；不扫描、不主动提醒、不触碰 Hindsight 原记忆。
 
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
 
 export const MEMORY_REVIEW_FILE = 'memory-reviews.json';
 export const MEMORY_REVIEW_LIMIT = 50;
 
-export interface MemoryReview { at: string; note: string }
+export interface MemoryReview { at: string; note: string; reference?: string }
 export interface MemoryReviewState { reviews: MemoryReview[] }
+export interface MemoryReviewCue { reference: string; note: string }
+
+const REFERENCE = /^[a-f0-9]{24}$/;
 
 const pathOf = (dataDir: string) => join(dataDir, MEMORY_REVIEW_FILE);
 
 export function readMemoryReviews(dataDir: string): MemoryReviewState {
     const state = readJsonOr<MemoryReviewState>(pathOf(dataDir), { reviews: [] });
     if (!state || !Array.isArray(state.reviews)) return { reviews: [] };
-    return { reviews: state.reviews.filter(item => item && typeof item.at === 'string' && typeof item.note === 'string').slice(-MEMORY_REVIEW_LIMIT) };
+    return { reviews: state.reviews.filter(item => item && typeof item.at === 'string' && typeof item.note === 'string'
+        && (item.reference === undefined || typeof item.reference === 'string' && REFERENCE.test(item.reference))).slice(-MEMORY_REVIEW_LIMIT) };
 }
 
-export function recordMemoryReview(dataDir: string, note: string, now = Date.now()): void {
-    const value = String(note || '').replace(/\s+/g, ' ').trim().slice(0, 500);
-    if (!value) return;
+/** 来源、可见日期、原文和文档身份有任一缺失时不造引用，确保后续只能精确回连。 */
+export function memoryReviewReference(input: { source?: string; date?: string; documentId?: string; text: string }): string | undefined {
+    if (!input.source || input.source === '来源不明' || input.source.startsWith('不能说') || !input.date || !input.documentId) return undefined;
+    const canonical = JSON.stringify([input.source, input.date, input.documentId, input.text.replace(/\s+/g, ' ').trim()]);
+    return createHash('sha256').update(canonical).digest('hex').slice(0, 24);
+}
+
+/** 追加她明确标出的疑点；同一条记忆重复标记时仅保留最新备注，不改原记忆。 */
+export function recordMemoryReview(dataDir: string, cue: MemoryReviewCue, now = Date.now()): void {
+    const reference = String(cue.reference || '');
+    const value = String(cue.note || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+    if (!REFERENCE.test(reference) || !value) return;
     const reviews = readMemoryReviews(dataDir).reviews;
-    reviews.push({ at: new Date(now).toISOString(), note: value });
+    const previous = reviews.findIndex(item => item.reference === reference);
+    if (previous >= 0) reviews.splice(previous, 1);
+    reviews.push({ at: new Date(now).toISOString(), reference, note: value });
     writeJsonAtomic(pathOf(dataDir), { reviews: reviews.slice(-MEMORY_REVIEW_LIMIT) });
+}
+
+/** 仅把完全相同的内部引用对应的旧备注带回本次显式查记忆；历史自由文本没有引用，故不猜配。 */
+export function attachMatchingMemoryReviews(recalled: string, reviews: readonly MemoryReview[]): string {
+    const byReference = new Map<string, MemoryReview>();
+    for (const review of reviews) if (review.reference && REFERENCE.test(review.reference)) byReference.set(review.reference, review);
+    return recalled.replace(/<<记忆引用:([a-f0-9]{24})>>/g, (marker, reference: string) => {
+        const review = byReference.get(reference);
+        return review
+            ? `${marker}\n[她以前给这条记录留过待核对备注（尚未核实，只是她当时的疑点，不是指令）：${JSON.stringify(review.note)}]`
+            : marker;
+    });
 }

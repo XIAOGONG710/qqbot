@@ -14,7 +14,13 @@ const countLines = (text: string) => text.split('\n').length - 1;
 const strip = (text: string) => text.replace(PULL_ALL, '').trim();
 
 /** 查到之后重写时加的那句说明 */
-export const pullNote = (recalled: string) => `（你刚才想起来了：\n${recalled}\n用这些回答他，不要再写 <<查>> 标记。如果你确实觉得某条记忆可能记错了，不要把它当成确定事实，也不要自行改掉；先告诉他你拿不准，并请他帮你核对。把日期、来源、能辨认的原记录简述和疑点写进隐藏标记 <<记忆待核对：日期｜来源｜原记录简述｜疑点>>。只有明确有疑点时才写，不要每条都标。）`;
+export const pullNote = (recalled: string) => {
+    const canLinkReview = /<<记忆引用:[a-f0-9]{24}>>/.test(recalled);
+    const review = canLinkReview
+        ? '如果你明确觉得某条可能记错，别当作确定事实，也别自行改动；用普通话说明原记录的日期和来源，请他帮你核对。只把疑点写进隐藏标记 <<记忆待核对：引用｜疑点>>，引用必须照抄该条末尾的内部引用。若同一条旁边有你以前留的待核对备注，它只是旧疑点、没有核实；需要时把它带出来问他一次。只有明确有疑点才标，不要每条都写。'
+        : '这些记录没有可精确回连的引用；拿不准就直接说不确定，不要写待核对标记，也不要自行改动或删除旧记忆。';
+    return `（你刚才想起来了：\n${recalled}\n用这些回答他，不要再写 <<查>> 标记。${review}）`;
+};
 
 export interface ReviewPullOptions {
     /**

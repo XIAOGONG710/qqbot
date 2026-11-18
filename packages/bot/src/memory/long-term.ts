@@ -23,6 +23,7 @@ import { ownNoteLabel, ownSourceLabel, sourceLabel } from '../emotion/disclosure
 import type { StoredMessage } from './history.ts';
 import { MIDNIGHT_RULE } from '../proactive/follow-ups.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { memoryReviewReference } from './memory-review.ts';
 import { stateObject, stateTimestamp } from './state-schema.ts';
 import { DerivedState, type DerivedSnapshot } from './derived-state.ts';
 import { DerivedRepair } from './derived-repair.ts';
@@ -1371,6 +1372,7 @@ export class LongTermMemory {
         const seen = new Set<string>();
         const results: RecallResult[] = [];
         const sources = new Map<RecallResult, string>();
+        const reviewReferences = new Map<RecallResult, string>();
         const commonSource = this.#commonSource(contact, people);
         for (const [index, item] of settled.entries()) {
             if (item.status !== 'fulfilled' || !item.value) continue;
@@ -1381,9 +1383,15 @@ export class LongTermMemory {
                 seen.add(result.id);
                 results.push(result);
                 const commonLabel = index === 1 ? commonSource(result) : undefined;
-                sources.set(result, index === 0 ? `和${contact.name}的私聊`
+                const source = index === 0 ? `和${contact.name}的私聊`
                     : index === 1 ? this.#isPrivateOwner(contact) && commonLabel === '不能说·来源不明' ? '来源不明' : commonLabel ?? '来源不明'
-                        : 'DSH 工作记忆');
+                        : 'DSH 工作记忆';
+                sources.set(result, source);
+                if (this.#isPrivateOwner(contact)) {
+                    const date = recallDateKey(result, now);
+                    const reference = memoryReviewReference({ source, date, documentId: result.document_id ? `${index}:${result.document_id}` : undefined, text: result.text.split(' | ')[0]! });
+                    if (reference) reviewReferences.set(result, reference);
+                }
             }
         }
         if (!results.length) return undefined;
@@ -1393,6 +1401,7 @@ export class LongTermMemory {
             now,
             fade: this.#fade([], {}),
             source: result => sources.get(result) ?? '来源不明',
+            reference: result => reviewReferences.get(result),
         });
     }
 
@@ -1716,6 +1725,20 @@ export const RECALLED_HEADER ='[你们以前聊过的事（从记忆里想起来
 /** 标了「记不太清了」时标题里加的一句（ADR 0018 决策 1） */
 export const VAGUE_NOTE = '标了「记不太清了」的只记得个大概，说的时候可以说「好像」「记不太清了」，不要补细节';
 
+/** 与 formatRecalled 的展示日期一致，作为待核对记录的内部身份组成部分。 */
+function recallDateKey(result: RecallResult, now: Date): string | undefined {
+    const valid = (iso: string | null | undefined) => {
+        const time = providerTime(iso);
+        return time === undefined ? undefined : new Date(time);
+    };
+    const planned = result.type !== 'observation' ? valid(result.occurred_start) : undefined;
+    const future = planned && planned.getTime() > now.getTime();
+    const when = future ? valid(result.mentioned_at)
+        : result.type === 'observation' ? valid(result.mentioned_at) ?? valid(result.occurred_start) : valid(result.occurred_start) ?? valid(result.mentioned_at);
+    if (!when) return undefined;
+    return `${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, '0')}-${String(when.getDate()).padStart(2, '0')}`;
+}
+
 /** 记忆变淡（ADR 0018）：他这次说的话、不算线索的名字；onFade 拿到这一次各几条（日志用） */
 export interface FadeRequest {
     heard: string;
@@ -1732,7 +1755,8 @@ export interface FadeRequest {
 export function formatRecalled(
     results: RecallResult[],
     options: {
-        header?: string; limit?: number; now?: Date; source?: (result: RecallResult) => string | undefined; fade?: FadeRequest;
+        header?: string; limit?: number; now?: Date; source?: (result: RecallResult) => string | undefined;
+        reference?: (result: RecallResult) => string | undefined; fade?: FadeRequest;
         /** 回忆带着当时的感觉（ADR 0218）：这条记忆那一天、这条的文字 → 附在括号里的一句（对不上返回 undefined） */
         felt?: (day: Date, text: string) => string | undefined;
     } = {},
@@ -1769,7 +1793,8 @@ export function formatRecalled(
         const felt = options.felt && when && !future ? options.felt(when, text) : undefined;
         const notes = [options.source?.(r), future ? `打算 ${day(future)}` : undefined, faded, felt].filter(Boolean);
         const prefix = `${when ? day(when) : ''}${notes.length ? `（${notes.join('，')}）` : ''}`;
-        return `- ${prefix ? `${prefix}：` : ''}${text.length > 200 ? `${text.slice(0, 200)}…` : text}`;
+        const reference = options.reference?.(r);
+        return `- ${prefix ? `${prefix}：` : ''}${text.length > 200 ? `${text.slice(0, 200)}…` : text}${reference ? ` <<记忆引用:${reference}>>` : ''}`;
     });
     if (lines.length === 0) return undefined;
     const header = options.header ?? RECALLED_HEADER;

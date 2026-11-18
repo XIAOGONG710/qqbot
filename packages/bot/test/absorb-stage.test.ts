@@ -40,7 +40,7 @@ describe('她自己记的（modules/self-notes.ts）', () => {
                 remembered.push([contact.qq, text, kind]);
                 return overrides.rememberFails ? Promise.reject(new Error('连不上')) : Promise.resolve();
             },
-            ...(overrides.review ? { reviewMemory: (contact: Contact, text: string) => { reviews.push([contact.qq, text]); } } : {}),
+            ...(overrides.review ? { reviewMemory: (contact: Contact, cue: { reference: string; note: string }) => { reviews.push([contact.qq, `${cue.reference}|${cue.note}`]); } } : {}),
             log: line => lines.push(line),
         });
         return { kept, diary, remembered, reviews, lines, absorb: (text: string, contact = boyfriend) => absorbStage([module], 'notes', text, contact) };
@@ -52,12 +52,13 @@ describe('她自己记的（modules/self-notes.ts）', () => {
     });
 
     test('记忆待核对标记只摘除并保存她写的线索；没有回调时也不漏到对话里', () => {
-        assert.deepEqual(takeMemoryReview('我记得不太准\n<<记忆待核对：10月2日｜和阿明聊的｜第一次见面在校门口｜我可能把地点记错了>>'), {
-            text: '我记得不太准', reviews: ['10月2日｜和阿明聊的｜第一次见面在校门口｜我可能把地点记错了'],
+        const reference = 'a'.repeat(24);
+        assert.deepEqual(takeMemoryReview(`我记得不太准\n<<记忆待核对：${reference}｜我可能把地点记错了>>`), {
+            text: '我记得不太准', reviews: [{ reference, note: '我可能把地点记错了' }],
         });
         const s = setup({ review: true });
-        assert.equal(s.absorb('我记得不太准\n<<记忆待核对：10月2日｜和阿明聊的｜见面地点｜记不清>>'), '我记得不太准');
-        assert.deepEqual(s.reviews, [[boyfriend.qq, '10月2日｜和阿明聊的｜见面地点｜记不清']]);
+        assert.equal(s.absorb(`我记得不太准\n<<记忆待核对：${reference}｜见面地点记不清>>`), '我记得不太准');
+        assert.deepEqual(s.reviews, [[boyfriend.qq, `${reference}|见面地点记不清`]]);
         assert.equal(setup().absorb('好呀\n<<记忆待核对：疑点>>'), '好呀');
     });
 
