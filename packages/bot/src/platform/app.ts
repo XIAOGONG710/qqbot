@@ -115,6 +115,7 @@ import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, personaFacts, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
 import { GROUP_CONTEXT, HER_NAMES, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, recentGroupBrief, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
+import { groupScheduleRecall } from '../social/group-memory.ts';
 import { groupPeople } from '.././social/group-people.ts';
 import { analyzeGroupStyle, renderGroupStyle } from '.././social/group-style.ts';
 import { groupAffect, groupAffectOf, mergeFelt } from '.././social/group-affect.ts';
@@ -3894,6 +3895,10 @@ ${body}
         const boyfriendHere = Boolean(bf && entries.some(e => e.from === bf.qq));
         const system = `你是${card.character.name}，在 QQ 群里和大家聊天。下面是你的设定。\n${personaFacts(card.character.description)}`;
         const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, bf)).join('\n');
+        const question = reason === 'mentioned' && extra.caller !== undefined
+            ? entries.findLast(entry => entry.messageId === extra.replyTo && entry.from === extra.caller) : undefined;
+        const recalled = question
+            ? groupScheduleRecall(groupLogs!.load, group.id, question.from, question.content, Date.parse(question.time)) : undefined;
         // 这个群里她认识谁（聊过就认得，改名也认得）；心情只说「这会儿怎么样」，不说来由（都在私聊里）
         const memory = groupPeopleBook?.render(group.id, { ...(bf ? { exclude: bf.qq } : {}), now: worldNow() });
         const roster = rosterOf(group.id);
@@ -3915,7 +3920,9 @@ ${body}
             ...(group.disguise && reason !== 'crisis' && !group.knowsBot ? { disguise: true } : {}),
             ...(group.cover ? { cover: group.cover } : {}),
         });
-        const messages = [{ role: 'system' as const, content: system }, { role: 'user' as const, content: `${transcript}\n\n${note}` }];
+        const messages = [{ role: 'system' as const, content: system }, {
+            role: 'user' as const, content: transcript + '\n\n' + (recalled ? recalled + '\n\n' : '') + note,
+        }];
         const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);
         // 这一档的禁用词（群里叫不出「宝宝」这类黏的叫法）：带了的那条不发
         const parts = groupReply(raw).filter(part => !inspectReply(part, card.character.banned).some(issue => issue.kind === 'banned'));
