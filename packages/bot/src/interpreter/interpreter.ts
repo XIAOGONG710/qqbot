@@ -330,7 +330,7 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'intent', 'feelings', 'stickers', 'deliberate', 'length', 'texture'] as const;
+export const DECIDE_STAGES = ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'intimate', 'texture'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
@@ -358,6 +358,12 @@ export interface DecideCtx {
     selfNote?: (now: number) => string | undefined;
     /** 她答应的事（ADR 0018 决策 2）、挂着的事（ADR 0023）：读承诺状态（可能读文件、记日志）；名单外的人不查由模块看 */
     promises?: Pick<PromiseKeeper, 'describe'> & Partial<Pick<PromiseKeeper, 'openLoops'>>;
+    /** 梦（2026-10-31）：那一行和它给心境的打分（读状态） */
+    dreams?: () => { appraisals: Appraisal[]; line?: string };
+    /** 连续性（ADR 0157–0163）：异步——上网、调模型、记「已告诉他」；停下时抛 AbortError */
+    continuity?: (context: { contact: Contact; said: string; initiating: boolean; now: Date }) => Promise<string[]>;
+    /** 「/亲热」（ADR 0170）那一行：每取一次扣一条、写状态文件 */
+    intimacyLine?: () => string | undefined;
     /** 这个联系人有图片表情收藏库（ADR 0063）时才有：这一轮抽不抽的几个比例（不写用默认；uncued / onlyChance 不写就是不抽） */
     stickers?: { chance?: number; uncued?: number; onlyChance?: number };
     /** 作息（开了她自己的日子才有）：今天的心情按它算 */

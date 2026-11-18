@@ -29,6 +29,13 @@ export function feelingsModule(): Module {
         // 和迁移前流水线里的逐字一样：她的追求不看开没开心境（原来就这样，读带结算的世界账的事件）；前一天她那边、感受只在开了心境、男朋友档时算，危机回合不算感受；
         // 小别扭生效的这一轮不写那一行和节奏（由 0074 的态度管），交给桌面上的她的那一行按「没有人正好在关心她」重算。
         decideAt: {
+            // 梦（2026-10-31）的读（ADR 0336「判断那一串」，2026-11-18）：联系人流水线在原来的位置调（照片判断之后、最终的意图之前）；
+            // 开了心境、男朋友档、不是危机回合才读，那一行和它给心境的打分写进 facts，下面的 feelings 用
+            dream: (turn, ctx) => {
+                const dreams = turn.contact.tier === 'boyfriend' && !turn.facts.crisis && ctx.feelings?.herFeelings ? ctx.dreams?.() : undefined;
+                if (dreams?.line) turn.facts.dreamLine = dreams.line;
+                if (dreams?.appraisals.length) turn.facts.dreamAppraisals = dreams.appraisals;
+            },
             feelings: (turn, ctx) => {
                 const given = ctx.feelings;
                 if (!given) return;

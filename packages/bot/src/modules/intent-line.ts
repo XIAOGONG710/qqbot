@@ -6,9 +6,9 @@
 //
 // 意图行是纯函数：只看 facts.intent 和 facts.deliberate。两样都是联系人流水线在拼段落之前写的（写的地方：意图在照片 / 被打断改写之后，
 // 深思在语义路由那次 await 之后，都写在同一个 Object.assign 里），之后没有模块再改，这里在 contribute 时算和迁移前原位算一样。
-// 「/亲热」那一行留在原位取：每取一次扣一条、写状态文件（intimacy.json），主动找他、危机回合不取；取到的写进 facts.intimateLine，这里只放。
+// 「/亲热」那一行在原位取（decideAt.intimate，流水线在长短之后、质感之前调）：每取一次扣一条、写状态文件（intimacy.json），主动找他、危机回合不取；取到的写进 facts.intimateLine，contribute 时放。
 // 这一行和「QQ 文字里的抱抱」那条出口检查（textIntimacy）无关，那条读的是意图。
-// 不存状态、不调模型。同步返回，不多等一个微任务（行为基线核对事件顺序）。「亲热」那行日志留在原位。
+// 不存状态、不调模型。同步返回，不多等一个微任务（行为基线核对事件顺序）。「亲热」那行日志在 decideAt.intimate 里记。
 
 import type { Module, TurnFacts } from '../interpreter/interpreter.ts';
 import type { Piece } from '../interpreter/slots.ts';
@@ -22,6 +22,15 @@ export type IntentLineFacts = Pick<TurnFacts, 'intimateLine'>;
 export function intentLineModule(): Module {
     return {
         id: 'intent-line',
+        // 「/亲热」那一行的取（ADR 0336「判断那一串」，2026-11-18）：联系人流水线在原来的位置调（长短之后、质感之前）；主动找他、危机回合不取
+        decideAt: {
+            intimate(turn, ctx) {
+                const line = !turn.initiate && !turn.facts.crisis ? ctx.intimacyLine?.() : undefined;
+                if (!line) return;
+                ctx.log('亲热：他刚发过 /亲热，这一轮提示词里让她黏一点');
+                turn.facts.intimateLine = line;
+            },
+        },
         contribute(turn) {
             const facts = turn.facts;
             const pieces: Piece[] = [];

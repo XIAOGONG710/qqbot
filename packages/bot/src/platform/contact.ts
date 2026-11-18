@@ -285,6 +285,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     /** 判断那一串（ADR 0336，DECIDE_STAGES）交给模块的东西：照片货架和「现在的照片」的解析 */
     const decideCtx: DecideCtx = {
         recapOf: (dayStart, time) => recapOf(dayStart, time),
+        ...(options.dreams ? { dreams: options.dreams } : {}),
+        ...(options.continuity ? { continuity: options.continuity } : {}),
+        ...(options.intimacyLine ? { intimacyLine: options.intimacyLine } : {}),
         ...(options.selfNote ? { selfNote: options.selfNote } : {}),
         ...(options.promises ? { promises: options.promises } : {}),
         ...(options.humanValues ? { values: { humanValues: options.humanValues, ...(options.worldState?.events ? { worldEvents: () => options.worldState!.events!() } : {}) } } : {}),
@@ -468,10 +471,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 她可以说出来（2026-11-01：偶尔告诉她「想让他听见就用语音」）是解释器的模块（modules/voice.ts），经 turnModules 放进 voice 槽
             // 她学的时候没想通的地方（2026-10-31）是解释器的模块（modules/learning-question.ts），经 turnModules 放进 question 槽
             // 命令结果和「可以跑命令」那一行（2026-10-30）是解释器的模块（modules/shell.ts），经 turnModules 放进 shell、shellIntent 槽
-            const dreamsNow = contact.tier === 'boyfriend' && !crisisNow && options.herFeelings ? options.dreams?.() : undefined;
-            // 梦（2026-10-31）在这里原位读：那一行和它给心境的打分写进 turn.facts，心境的模块用
-            if (dreamsNow?.line) turn.facts.dreamLine = dreamsNow.line;
-            if (dreamsNow?.appraisals.length) turn.facts.dreamAppraisals = dreamsNow.appraisals;
+            // 梦（2026-10-31）是心境模块的 decideAt.dream：在这里原位读（照片判断之后、最终的意图之前），那一行和它给心境的打分写进 turn.facts
+            decideStage(options.turnModules ?? [], 'dream', turn, decideCtx);
             // 她自己最近的日子（心里的线头）、拒绝过的、评价、「你现在的生活」、首轮铺底是解释器的模块（modules/soul.ts）
             // 他的口气（2026-10-30：说话还是使唤、当程序说话、很元的问题、使唤得比说话多）是解释器的模块（modules/register.ts），经 turnModules 放进 register 槽
             // 她自己记下的东西（说话习惯、聊天回顾、日记里发现的自己、读完看完的想法、没想完的问题、她猜的事）是解释器的模块（modules/her-notes.ts）
@@ -489,18 +490,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const feltNow = turn.facts.felt ?? [];
             const feelingLine = turn.facts.feelingLine;
             const moodNow = moodShape(feltNow);
-            const saidNow = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
-            // 连续性（ADR 0157–0163）：设定改动的背景 / QQ 以外做过的事 / 上网查到的 / 自己发现的口味 / 又见到的人；出错当没有，不挡回复
-            const continuityLines = options.continuity && !crisisNow && !thinking
-                ? await options.continuity({ contact, said: saidNow, initiating: Boolean(initiate), now: time }).catch(error => {
-                    if (error instanceof DOMException && error.name === 'AbortError') throw error;
-                    log(`连续性：出错，这一轮不放（${error instanceof Error ? error.message : String(error)}）`);
-                    return [] as string[];
-                })
-                : [];
-            // 连续性那几段是解释器的模块（modules/continuity.ts）：取是异步的（上网、调模型、记「已告诉他」），留在这里不挪——后面紧跟着语义路由、「/亲热」、各模块的 contribute；
-            // 取回来的写进 turn.facts，经 turnModules 放进 continuity 槽
-            if (continuityLines.length) turn.facts.continuity = continuityLines;
+            // 连续性（ADR 0157–0163：设定改动的背景 / QQ 以外做过的事 / 上网查到的 / 自己发现的口味 / 又见到的人）是连续性模块的 decideAt.continuity：
+            // 在这里原位取（异步：上网、调模型、记「已告诉他」；只有真去取时才等），取回来的写进 turn.facts.continuity
+            const continued = decideStage(options.turnModules ?? [], 'continuity', turn, decideCtx);
+            if (continued instanceof Promise) await continued;
             // 图片表情这一轮用不用、抽没抽到、是不是只发表情（ADR 0063 / 0099 / 0132）是解释器的模块（modules/media-offers.ts 的 decideAt.stickers）：
             // 写进 turn.facts.stickersAllowed、stickerDraw、stickerOnly，日志也在那里记；下面读
             decideStage(options.turnModules ?? [], 'stickers', turn, decideCtx);
@@ -520,16 +513,10 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 别重复自己（反复说的字词、主动找他的开头、说过了的事，ADR 0098 / 0135）是解释器的模块（modules/repetition.ts），经 turnModules 放进 crutch、opener、told 槽
             // 她最近心里在想的（ADR 0101）是解释器的模块（modules/inner.ts），经 turnModules 放进 inner 槽
             // 「/亲热」（ADR 0170）：他刚让她黏一点，接下来几条回复里放一行；每生成一条取一次
-            const intimateNow = !initiate && !crisisNow ? options.intimacyLine?.() : undefined;
-            if (intimateNow) log('亲热：他刚发过 /亲热，这一轮提示词里让她黏一点');
+            // 是意图行模块的 decideAt.intimate：在这里原位取（每取一次扣一条、写状态文件），写进 turn.facts.intimateLine
+            decideStage(options.turnModules ?? [], 'intimate', turn, decideCtx);
             // 质感（ADR 0131）发出去之前用的上下文是解释器的模块（modules/decorate.ts 的 decideAt.texture，开了 texture 才挂）：写进 turn.facts.texture
             decideStage(options.turnModules ?? [], 'texture', turn, decideCtx);
-            // 长短不一（ADR 0024）和形状（ADR 0091）是解释器的模块（modules/length.ts、modules/shape.ts）；它们要的前面那几样在这里写进 turn.facts
-            // （线索 cue 由记忆模块召回时写进 turn.facts）
-            Object.assign(turn.facts, {
-                // 「/亲热」那一行在上面原位取（每取一次扣一条、写文件），由解释器的模块（modules/intent-line.ts）放
-                ...(intimateNow ? { intimateLine: intimateNow } : {}),
-            });
             // 聊天原文只放最近几天的（ADR 0018 实现时的调整 12）：开了长期记忆的才这样，更早的靠记忆想；没有记忆的照旧全放
             let shown = remembers ? recentChat(chat, time) : { chat, omitted: 0 };
             // 想一想：最近的聊天换成一段“回想”放在说明里，是解释器的模块（modules/transcript.ts），经 turnModules 放进 transcript 槽；这里只把原文清空
