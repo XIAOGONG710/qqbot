@@ -699,6 +699,19 @@ describe('她自己决定记不记模块（DSH 10-30 / 10-31，ADR 0336）', () 
         // 危机、只想一想照样放
         assert.deepEqual(slots(boyfriend([said('那家公司老板')], { thinking: true, facts: { crisis: { level: 'acute' } as never } })), ['understanding', 'traces', 'selfMemory']);
     });
+
+    test('当轮纠正优先；下一条相关消息仍可得到历史提醒', () => {
+        const module = selfMemoryModule({
+            understanding: () => '[历史提醒]',
+            immediateCorrection: (contact, words) => contact.qq === 1 && words.startsWith('不是这个意思') ? '[当轮修复]' : undefined,
+            traces: () => undefined,
+        });
+        const correction = said('不是这个意思，我说的是那家公司的老板');
+        const understanding = (t: Turn) => (module.contribute!(t) as Piece[]).find(piece => piece.slot === 'understanding')?.text;
+        assert.equal(understanding(boyfriend([correction])), '[当轮修复]');
+        assert.equal(understanding(boyfriend([correction, said('那家公司的老板又找我了')])), '[历史提醒]');
+        assert.notEqual(understanding(boyfriend([correction], { contact: { qq: 2, name: '小周', tier: 'boyfriend' } })), '[当轮修复]');
+    });
 });
 
 describe('她在本机的那一份模块（DSH 灵魂目录，ADR 0336）', () => {

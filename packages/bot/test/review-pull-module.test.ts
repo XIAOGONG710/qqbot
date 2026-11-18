@@ -86,7 +86,10 @@ describe('<<查>> 模块（ADR 0336）', () => {
         await pullOf({ recall: r.recall })('<<查：第一次约会>>\n我想想', turn, s.ctx);
         assert.match(s.notes[0]!, new RegExp(`<<记忆待核对：引用｜疑点>>`));
         assert.match(s.notes[0]!, /引用必须照抄该条末尾的内部引用/);
-        assert.match(s.notes[0]!, /以前留的待核对备注/);
+        assert.doesNotMatch(s.notes[0]!, /记忆核对结果/);
+        const withPending = pullNote(`- 第一次约会地点 <<记忆引用:${reference}>>\n[她以前给这条记录留过待核对备注：地点可能记错]`);
+        assert.match(withPending, /记忆核对结果：引用｜确认原记录/);
+        assert.match(withPending, /记忆核对结果：引用｜补充更正/);
     });
 
     test('查不到：不重写，只摘标记', async () => {
