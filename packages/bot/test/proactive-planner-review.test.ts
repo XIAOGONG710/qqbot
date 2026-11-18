@@ -111,6 +111,52 @@ test('未来念头不进入当前内心prompt或重复比较，也不提前占�
     }
 });
 
+test('内心计划器按满意度和既有尝试记录决定是否读指定网页', async () => {
+    const recentAttempt = new Date(at - 3_600_000).toISOString();
+    const cases = [
+        { mode: 'on', satisfaction: 44, result: true, attempts: 1 },
+        { mode: 'on', satisfaction: 44, result: false, attempts: 1 },
+        { mode: 'on', satisfaction: 45, result: true, attempts: 0 },
+        { mode: 'on', satisfaction: 44, result: true, attempts: 0, recentAttempt },
+        { mode: 'dryRun', satisfaction: 44, result: true, attempts: 0 },
+    ] as const;
+    for (const scenario of cases) {
+        const clock = new VirtualClock(new Date(at));
+        const previous = 'recentAttempt' in scenario ? scenario.recentAttempt : undefined;
+        let visits = 0;
+        let recordedBeforeVisit: string | undefined;
+        const f = fixture({
+            mode: scenario.mode,
+            now: clock.now,
+            waitUntil: clock.waitUntil,
+            inner: true,
+            responder: { initiate: async () => ({ result: 'thought', text: '合成相机这件事情还要慢慢准备\n自己想想' }) },
+            adultSiteVisit: {
+                satisfaction: () => scenario.satisfaction,
+                visit: async () => {
+                    visits++;
+                    recordedBeforeVisit = f.read().inner.adultSiteAttemptAt;
+                    return scenario.result;
+                },
+            },
+        }, { version: 1, records: [], followUps: [], extracted: {}, inner: { thoughts: [], adultSiteAttemptAt: previous } });
+        try {
+            await new Promise(resolve => setImmediate(resolve));
+            const saved = f.read().inner;
+            assert.equal(saved.thoughts.length, 1);
+            assert.equal(visits, scenario.attempts);
+            if (visits) assert.ok(recordedBeforeVisit && Date.parse(recordedBeforeVisit) >= at);
+            else assert.equal(recordedBeforeVisit, undefined);
+            assert.equal(saved.adultSiteAttemptAt, visits ? recordedBeforeVisit : previous);
+            if (visits && scenario.result) assert.ok(Date.parse(saved.adultSiteVisitedAt) >= Date.parse(saved.adultSiteAttemptAt));
+            else assert.equal(saved.adultSiteVisitedAt, undefined);
+        } finally {
+            f.planner.stop();
+            await f.planner.running;
+        }
+    }
+});
+
 test('持续读取失败过宽限期失败关闭，恢复IO后仍需重新创建，保留磁盘去重事实', async () => {
     const original = fileOps.readFileSync; const delays = fileOps.readDelaysMs; fileOps.readDelaysMs = [0]; let current = at;
     fileOps.readFileSync = ((...args: Parameters<typeof original>) => { if (String(args[0]).endsWith('10001-boyfriend.json')) throw Object.assign(new Error('PRIVATE_PERSISTENT_READ'), { code: 'EIO' }); return (original as Function)(...args); }) as typeof original;
