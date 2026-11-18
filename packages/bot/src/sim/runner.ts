@@ -574,10 +574,10 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             registerModule(message => { if (epoch === responderEpoch) log(message); }),
             scenesModule(message => { if (epoch === responderEpoch) log(message); }),
             voiceModule(message => { if (epoch === responderEpoch) log(message); }),
-            // 模拟器不跑命令，没有命令结果；「可以跑命令」那一行照 App
-            shellModule(),
             // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取（模拟器只有这一样）
             herNotesModule({ ...(scenario.openQuestions ? { openQuestions: thoughtsReader(dataDir) } : {}), now: () => clock.now(), log: message => { if (epoch === responderEpoch) log(message); } }),
+            // 模拟器不跑命令，没有命令结果；「可以跑命令」那一行照 App
+            shellModule(),
             repetitionModule(message => { if (epoch === responderEpoch) log(message); }),
             booksModule({ herDays: options.herDays ?? false }),
             pastModule(message => { if (epoch === responderEpoch) log(message); }),
@@ -600,10 +600,10 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
                 ...(options.shapeLong ? { shapeLong: true } : {}),
                 log: message => { if (epoch === responderEpoch) log(message); },
             }),
-            // 引用回复（ADR 0136），同 App；比例按场景
-            ...(scenario.quoteReply ? [quoteModule({ history: qq => history.load(qq), ...(scenario.quoteShare !== undefined ? { share: scenario.quoteShare } : {}), log: message => { if (epoch === responderEpoch) log(message); } })] : []),
             // 长短不一（ADR 0024），同 App
             lengthModule({ ...(scenario.shortReplies ? { shortReplies: true } : {}), log: message => { if (epoch === responderEpoch) log(message); } }),
+            // 引用回复（ADR 0136），同 App；比例按场景
+            ...(scenario.quoteReply ? [quoteModule({ history: qq => history.load(qq), ...(scenario.quoteShare !== undefined ? { share: scenario.quoteShare } : {}), log: message => { if (epoch === responderEpoch) log(message); } })] : []),
             // 主动找他时计划器写的说明，同 App
             initiateNoteModule(),
             // 生成之后的审稿：删行收尾，同 App
@@ -624,12 +624,12 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             ...(options.speechCheck ? [reviewUnfinishedModule()] : []),
             // 她想查才查：模拟器没有查记忆，只摘标记（同迁移前）
             reviewPullModule(),
-            // 深思那一句和语义路由的方向，同 App；换掉的说法按 --deliberate-note
-            deliberateModule({ ...(options.deliberateNote ? { note: options.deliberateNote } : {}) }),
-            // 情绪余温和没了结的事，同 App
-            warmModule({ log: message => { if (epoch === responderEpoch) log(message); } }),
+            // 时间块，同 App
+            timeBlockModule({ ...(scenario.lagTail ? { lagTail: true } : {}) }),
             // 记忆这一组，同 App（要点只有 contextTurns 时有）
             memoryModule(),
+            // 情绪余温和没了结的事，同 App
+            warmModule({ log: message => { if (epoch === responderEpoch) log(message); } }),
             // 心境那一行、节奏、梦那一行，同 App
             feelingsModule(),
             // 时间块里的另几行、图片表情 / 照片清单、意图行和「/亲热」，同 App（模拟器没有梗百科词库，不挂）
@@ -641,8 +641,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             ...(scenario.texture ? [textureModule()] : []),
             typoModule(),
             intentLineModule(),
-            // 时间块，同 App
-            timeBlockModule({ ...(scenario.lagTail ? { lagTail: true } : {}) }),
+            // 深思那一句和语义路由的方向，同 App；换掉的说法按 --deliberate-note
+            deliberateModule({ ...(options.deliberateNote ? { note: options.deliberateNote } : {}) }),
             // 只想一想的轮次：聊天原文换成一段回想，同 App
             transcriptModule(),
             // 「做题式」写法（ADR 0146 实验）：只有 --frame solve 时挂

@@ -70,4 +70,8 @@ describe('App 和模拟器的模块接线对得上（ADR 0336 第 6 步之前的
         }
         before(app, 'memesModule', 'memeDictModule', 'App');           // 梗百科读热梗这一轮放的那个词
     });
+
+    test('两边都挂的模块，先后完全一样（合成一份接线之前先对齐到 App 的先后）', () => {
+        assert.deepEqual(sim.filter(name => app.includes(name)), app.filter(name => sim.includes(name)));
+    });
 });
