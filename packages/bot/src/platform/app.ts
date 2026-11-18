@@ -27,6 +27,7 @@ import { memorySyncModule } from '../modules/memory-sync.ts';
 import { worldUpkeepModule } from '../modules/world-upkeep.ts';
 import { dshInboxModule } from '../modules/dsh-inbox.ts';
 import { tastesModule } from '../modules/tastes.ts';
+import { followUpsModule } from '../modules/follow-ups.ts';
 import { nowExportModule } from '../modules/now-export.ts';
 import { outboxModule } from '../modules/outbox.ts';
 import { dreamsModule } from '../modules/dreams.ts';
@@ -993,6 +994,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         } } } : {}),
     });
     const dshInbox = dshInboxModule(dshEnabled && (config.timeline || sharedWorld) ? () => syncDshInboxes() : undefined);
+    // 待跟进（连上之后才有计划器）：排在所有 synced 的最前面，同迁移前
+    const followUps = followUpsModule(() => syncFollowUps(), () => planners.size > 0, MEMORY_SYNC_MS);
     const tastesJob = tastesModule(config.tastes ? () => reflectTastes() : undefined);
     // 长期记忆同步、「她现在在干嘛」导出、她留的话（ADR 0336 第 6 步）：只有定时任务，App 搭好时开，先后同原来（在她自己想一想的那几样之前）；做的事都在后面才建，到点再取
     const memorySync = memorySyncModule(config.memory ? () => syncMemory() : undefined, MEMORY_SYNC_MS);
@@ -1280,7 +1283,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 recall: ({ event }) => legacy.receiveRecall(event),
                 friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
             },
-        }, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
+        }, followUps, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
         exec,
     });
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
@@ -2575,12 +2578,8 @@ ${video.link}`);
                 ...(pipeline?.waitUntil ? { waitUntil: pipeline.waitUntil } : {}),
             }));
         }
-        if (planners.size) {
-            followUpTimer = exec.every(syncFollowUps, MEMORY_SYNC_MS);
-            followUpTimer.unref();
-        }
+        // 之后每 MEMORY_SYNC_MS 同步一次待跟进：由 follow-ups 模块声明（ADR 0336 第 6 步，连上之后开；有计划器才开）
     }
-    let followUpTimer: ReturnType<typeof setInterval> | undefined;
     function syncFollowUps(): void {
         for (const planner of planners.values()) void planner.syncFollowUps();
     }
@@ -4395,7 +4394,6 @@ ${body}
             if (readingUnlisted !== reading) readingUnlisted?.stop();
             for (const planner of planners.values()) planner.stop();
             const responderDrains = [...responders.values()].map(responder => responder.stop());
-            if (followUpTimer) exec.cancel(followUpTimer);
             const presenceDrain = presence?.stop();
             const browsingDrain = browsing?.stop();
             const repliesDrain = replies?.stop();

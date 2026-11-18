@@ -1341,3 +1341,12 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 几个模块开不开要在建解释器之前就知道：时间线、口味对象在后面才建，条件换成同义的配置项（`timeline` 只在 `config.timeline` 时建，`tastes` 只在 `config.tastes` 时建）。
 - app.ts 里剩下的 `exec.after` 都是运行中的等待、超时和重试（不是定时任务）；周期的只剩连上之后的「待跟进」同步。
 - 验证：全部 41 个场景对快照逐字一致；变异检验见提交说明。
+
+### 第 6 步：连上之后的「待跟进」同步；App 不再自己开周期计时器（2026-11-19）
+
+- 最后一个：主动消息计划器的「待跟进」同步（`MEMORY_SYNC_MS`）。计划器连上之后才建（`startPlanners`），原来建好就开计时器，比别的连上后开的计时器都早。
+  新模块 `follow-ups`：`schedules` 写成取值时现算（同 dsh 的 `media-discovery`），开的那一刻有计划器才给一项；模块挂在 `...turnModules` 之前，是 synced 里最先开的。
+  连上之后立刻同步的那一次在原位。
+- 至此 app.ts 里没有 `exec.every` 了：`executor.test.ts` 加一条防回退。剩下的 `exec.after` 都是运行中的等待、超时和重试（单次的，不是定时任务）。
+  app.ts 之外还自己开计时器的（`bilibili/`、`social/presence.ts`、`platform/heartbeat.ts`、`platform/lock.ts`）是自带循环的功能，不在这一步。
+- 验证：全部 41 个场景对快照逐字一致。

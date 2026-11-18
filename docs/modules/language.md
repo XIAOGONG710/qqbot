@@ -90,6 +90,7 @@
 - `modules/world-upkeep.ts`
 - `modules/dsh-inbox.ts`
 - `modules/tastes.ts`
+- `modules/follow-ups.ts`
 - `modules/playful.ts`
 - `modules/exemplars.ts`
 - `modules/solve-frame.ts`

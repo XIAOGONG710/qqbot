@@ -108,4 +108,11 @@ describe('计时器全部经执行器（ADR 0336 第 3 步；2026-11-16 收齐 A
         const direct = source.split('\n').map((line, i) => ({ line, n: i + 1 })).filter(({ line }) => /(?<![.\w])(setInterval|clearInterval)\(/.test(line));
         assert.deepEqual(direct.map(({ n, line }) => `${n}: ${line.trim().slice(0, 80)}`), []);
     });
+
+    test('app.ts 自己不开周期计时器（ADR 0336 第 6 步）：定时要做的事都由模块的 schedules 声明、解释器开；剩下的 exec.after 是运行中的等待、超时和重试', async () => {
+        const { readFileSync } = await import('node:fs');
+        const source = readFileSync(new URL('../src/platform/app.ts', import.meta.url), 'utf8');
+        const periodic = source.split('\n').map((line, i) => ({ line, n: i + 1 })).filter(({ line }) => /\bexec\.every\(/.test(line) && !/^\s*(\/\/|\*)/.test(line));
+        assert.deepEqual(periodic.map(({ n, line }) => `${n}: ${line.trim().slice(0, 80)}`), []);
+    });
 });
