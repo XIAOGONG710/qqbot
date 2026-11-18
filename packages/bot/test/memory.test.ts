@@ -471,6 +471,49 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
     }
     const hashOf = (memory: LongTermMemory, contact: { qq: number; tier: string }) => memory.bankId(contact).slice('linmengyao-'.length);
 
+    test('三位联系人同分钟谈同一人，私聊和公共召回保留实际说话人', async () => {
+        const people = [
+            { ...A, name: '甲同学' },
+            { ...B, name: '乙同学' },
+            { qq: 6, tier: 'classmate', name: '丙同学' },
+        ] as const;
+        const shared = '我和小林周末去图书馆';
+        let recorded: ReturnType<typeof fakeApi>['calls'];
+        const { memory, calls, cleanup } = setupCommon({
+            recall: bank => recorded.retain.flatMap((item, index) => {
+                if (recorded.banks.filter(call => call.startsWith('retain '))[index] !== `retain ${bank}`) return [];
+                const text = item.content.split('\n').find(line => line.includes('小林'));
+                return text ? [{ id: String(index), text, document_id: item.document_id!, occurred_start: item.timestamp }] : [];
+            }),
+        }, true, undefined, A);
+        recorded = calls;
+        try {
+            const [owner, second, third] = people;
+            for (const person of [owner, second]) {
+                await memory.sync(person, { user: person.name, char: '合成角色' }, [
+                    msg(0, 'user', shared, 42), msg(1, 'assistant', '好呀', 43),
+                ]);
+            }
+            await memory.sync(third, { user: third.name, char: '合成角色' }, [
+                msg(0, 'user', '小林说周末要去博物馆', 42), msg(1, 'assistant', '知道了', 43),
+            ]);
+            const common = calls.retain.filter(item => item.document_id?.includes(':'));
+            assert.equal(new Set(common.map(item => item.document_id)).size, 3);
+            for (const [index, person] of people.entries()) {
+                assert.match(common[index]!.content, new RegExp(`^和${person.name}的私聊\\n[^\\n]+\\n${person.name} `));
+            }
+
+            const ownerRecall = await memory.recallPull(owner, '小林周末去哪', new Date(now), people);
+            assert.match(ownerRecall ?? '', /和甲同学的私聊.*甲同学.*我和小林周末去图书馆/);
+            assert.match(ownerRecall ?? '', /和乙同学聊的.*乙同学.*我和小林周末去图书馆/);
+            assert.match(ownerRecall ?? '', /和丙同学聊的.*丙同学.*小林说周末要去博物馆/);
+            const thirdRecall = await memory.recallPull(third, '小林周末去哪', new Date(now), people);
+            assert.match(thirdRecall ?? '', /和丙同学的私聊.*丙同学.*小林说周末要去博物馆/);
+            assert.match(thirdRecall ?? '', /和乙同学聊的.*乙同学.*我和小林周末去图书馆/);
+            assert.doesNotMatch(thirdRecall ?? '', /甲同学/);
+        } finally { cleanup(); }
+    });
+
     test('写入：自己的 bank 之后再写一份进公共库；document_id 是哈希不带 QQ 号，原文开头写和谁的私聊；mission 只写一次', async () => {
         const { memory, calls, logs, cleanup } = setupCommon();
         try {
