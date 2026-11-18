@@ -56,6 +56,37 @@ test('私聊点名群后可查明确公告，但不查闲聊、导入记录或�
     assert.deepEqual(loaded, [201, 201]);
 });
 
+test('明确中文时间可回忆，含糊时间和缺少事项的时间不算日程', () => {
+    const groups = [{ id: 301, name: '活动群' }];
+    const now = Date.parse('2026-11-18T11:00:00+08:00');
+    const entries = [
+        '周五下午三点集合',
+        '今晚八点开会',
+        '群活动15:30开始',
+        '活动晚点开始',
+        '过会儿集合',
+        '周五三点集合',
+        '周五下午三点',
+    ].map((content, index) => ({
+        content, from: 40 + index, name: `合成成员${index}`, messageId: index + 1,
+        time: '2026-11-17T10:00:00+08:00',
+    }));
+    const load = (id: number) => id === 301 ? entries : [];
+    const meetup = privateGroupScheduleRecall(load, groups, '活动群昨天集合几点？', now) ?? '';
+    const meeting = privateGroupScheduleRecall(load, groups, '活动群昨天开会几点？', now) ?? '';
+    const activity = privateGroupScheduleRecall(load, groups, '活动群昨天活动几点开始？', now) ?? '';
+    assert.match(meetup, /周五下午三点集合/);
+    assert.match(meeting, /今晚八点开会/);
+    assert.match(activity, /15:30/);
+    for (const content of ['活动晚点开始', '过会儿集合', '周五三点集合', '周五下午三点']) {
+        const invalidOnly = privateGroupScheduleRecall(
+            () => [{ content, from: 90, name: '合成成员', messageId: 90, time: '2026-11-17T10:00:00+08:00' }],
+            groups, '活动群昨天群里说了什么？', now,
+        );
+        assert.equal(invalidOnly, undefined, content);
+    }
+});
+
 test('同群旧事项按发送者和群号独立查找，同名和同一活动均不会串', () => {
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-group-memory-'));
     try {

@@ -4,7 +4,14 @@ import { localDate } from '../local-date.ts';
 
 const LOOKBACK_MS = 30 * 24 * 60 * 60_000;
 const QUESTION = /^(?:@你\s+)?我(之前|上次|上周|前几天|昨天)(?:在群里)?(?:说过|提过|说)(?:的)?[，,:： ]*(?:群)?(活动|集合|开会|报名|比赛|彩排|讲座|训练)(?:是)?几点(?:开始|截止|集合)?[？?。]?$/;
-const ANNOUNCEMENT = /^(?:群)?(活动|集合|开会|报名|比赛|彩排|讲座|训练)[：: ]*((?:周[一二三四五六日天]|星期[一二三四五六日天])?(?:早上|上午|中午|下午|傍晚|晚上)?(?:[01]?\d|2[0-3])[:：][0-5]\d)(?:开始|截止|集合)?[。！!]?$/;
+const TOPIC_SOURCE = '(活动|集合|开会|报名|比赛|彩排|讲座|训练)';
+const DAYPART_SOURCE = '(?:凌晨|早上|上午|中午|下午|傍晚|晚上)';
+const CHINESE_TIME_PREFIX = '(?:(?:周[一二三四五六日天]|星期[一二三四五六日天])' + DAYPART_SOURCE
+    + '|(?:今天|明天|后天)' + DAYPART_SOURCE + '|(?:今晚|明晚|今夜|今早|明早)|' + DAYPART_SOURCE + ')';
+const CLOCK_SOURCE = '(?:(?:[01]?\\d|2[0-3])[:：][0-5]\\d|' + CHINESE_TIME_PREFIX
+    + '[零〇一二三四五六七八九十两\\d]+点(?:(?:[零〇一二三四五六七八九十两\\d]+分)|半)?)';
+const TOPIC_FIRST = new RegExp('^(?:群)?' + TOPIC_SOURCE + '[：: ]*(' + CLOCK_SOURCE + ')(?:开始|截止|集合)?[。！!]?$', 'u');
+const TIME_FIRST = new RegExp('^(' + CLOCK_SOURCE + ')[，,：: ]*' + TOPIC_SOURCE + '[。！!]?$', 'u');
 const PRIVATE_QUESTION = /^(之前|上次|上周|前几天|昨天|最近)?(?:在群里)?(?:说过|说的|说|公布的|公布过的|公布过|公布)?[，,:： ]*(?:(?:有什么|说过什么|说了什么)(?:公开)?(?:安排|日程|事项)?|(?:群)?(活动|集合|开会|报名|比赛|彩排|讲座|训练)(?:是)?几点(?:开始|截止|集合)?)[？?。]?$/;
 const NOTICE_QUESTION = /^(之前|上次|上周|前几天|昨天|最近)?(?:(?:在)?群里)?[，,:： ]*(?:说过什么|说了什么|有什么公开(?:公告|通知|安排|日程|事项)?|公开(?:说过什么|说了什么|事项|内容|安排|日程|公告|通知)|(?:群)?(?:公告|通知)(?:内容)?|(?:公布过|公布了)(?:什么|哪些)?公告)[？?。]?$/;
 const NOTICE = /^(?:【(?:群)?(?:公告|通知)】|(?:群公告|公告|通知))[：:、\s]*(.{2,160})$/;
@@ -24,12 +31,20 @@ function dateRange(askedAt: number, period: string | undefined): { start: number
     return { start: askedAt - LOOKBACK_MS, end: askedAt };
 }
 
+function scheduleAnnouncement(content: string): { topic: string; text: string } | undefined {
+    const text = content.trim();
+    const topicFirst = TOPIC_FIRST.exec(text);
+    if (topicFirst) return { topic: topicFirst[1]!, text: text.replace(/[。！!]$/, '') };
+    const timeFirst = TIME_FIRST.exec(text);
+    if (timeFirst) return { topic: timeFirst[2]!, text: text.replace(/[。！!]$/, '') };
+}
+
 function scheduleAnnouncements(entries: readonly GroupEntry[], range: { start: number; end: number }, topic?: string, asker?: number) {
     return entries.flatMap(message => {
         const time = Date.parse(message.time);
         if ((asker !== undefined && message.from !== asker) || message.mine || message.history || !Number.isFinite(time) || time < range.start || time >= range.end) return [];
-        const match = ANNOUNCEMENT.exec(message.content.trim());
-        return match && (!topic || match[1] === topic) ? [{ time, text: match[0] }] : [];
+        const match = scheduleAnnouncement(message.content);
+        return match && (!topic || match.topic === topic) ? [{ time, text: match.text }] : [];
     }).sort((left, right) => right.time - left.time);
 }
 
