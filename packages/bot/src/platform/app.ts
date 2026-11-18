@@ -19,62 +19,9 @@ import { chatCompletion, forExtraction } from '.././language/llm.ts';
 import { createExecutor, type ExecutorOptions } from '../executor/executor.ts';
 import { absorbStage, createInterpreter } from '../interpreter/interpreter.ts';
 import { jokesModule } from '../modules/jokes.ts';
-import { replyBasicsModule } from '../modules/reply-basics.ts';
-import { asksModule } from '../modules/asks.ts';
-import { readingModule } from '../modules/reading.ts';
-import { registerModule } from '../modules/register.ts';
-import { scenesModule } from '../modules/scenes.ts';
-import { voiceModule } from '../modules/voice.ts';
-import { shellModule } from '../modules/shell.ts';
-import { learningQuestionModule } from '../modules/learning-question.ts';
-import { workModeModule } from '../modules/work-mode.ts';
-import { selfMemoryModule } from '../modules/self-memory.ts';
-import { selfNotesModule, takeMemoryReview, takeSelfNotes } from '../modules/self-notes.ts';
-import { soulModule } from '../modules/soul.ts';
-import { herNotesModule } from '../modules/her-notes.ts';
+import { takeMemoryReview, takeSelfNotes } from '../modules/self-notes.ts';
 import { idiomsModule } from '../modules/idioms.ts';
-import { interruptionsModule } from '../modules/interruptions.ts';
-import { closenessModule } from '../modules/closeness.ts';
-import { togetherModule } from '../modules/together.ts';
-import { intentModule } from '../modules/intent.ts';
-import { herNowModule } from '../modules/her-now.ts';
-import { booksModule } from '../modules/books.ts';
-import { meetupModule } from '../modules/meetup.ts';
-import { exemplarsModule } from '../modules/exemplars.ts';
-import { practiceModule } from '../modules/practice.ts';
-import { innerModule } from '../modules/inner.ts';
-import { devicesModule } from '../modules/devices.ts';
-import { consentModule } from '../modules/consent.ts';
-import { initiateNoteModule } from '../modules/initiate-note.ts';
-import { reviewFinalizeModule } from '../modules/review-finalize.ts';
-import { reviewExitModule } from '../modules/review-exit.ts';
-import { reviewFactsModule } from '../modules/review-facts.ts';
-import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
-import { reviewPullModule } from '../modules/review-pull.ts';
-import { timeBlockModule } from '../modules/time-block.ts';
-import { continuityModule } from '../modules/continuity.ts';
-import { groupModule } from '../modules/group.ts';
-import { memoryModule } from '../modules/memory.ts';
-import { warmModule } from '../modules/warm.ts';
-import { feelingsModule } from '../modules/feelings.ts';
-import { timeNotesModule } from '../modules/time-notes.ts';
-import { mediaOffersModule } from '../modules/media-offers.ts';
-import { candidatesModule } from '../modules/candidates.ts';
-import { crisisModule } from '../modules/crisis.ts';
-import { textureModule, typoModule } from '../modules/decorate.ts';
-import { intentLineModule } from '../modules/intent-line.ts';
-import { memeDictModule } from '../modules/meme-dict.ts';
-import { humanStateModule } from '../modules/human-state.ts';
-import { deliberateModule } from '../modules/deliberate.ts';
-import { lengthModule } from '../modules/length.ts';
-import { shapeModule } from '../modules/shape.ts';
-import { quoteModule } from '../modules/quote.ts';
-import { transcriptModule } from '../modules/transcript.ts';
-import { pastModule } from '../modules/past.ts';
-import { peopleAroundModule } from '../modules/people-around.ts';
-import { repetitionModule } from '../modules/repetition.ts';
-import { memesModule } from '../modules/memes.ts';
-import { watchedModule } from '../modules/watched.ts';
+import { buildTurnModules } from './turn-modules.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
 import { Identity, realGit } from '.././memory/identity.ts';
@@ -1014,85 +961,115 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const openQuestionsNow = config.openQuestions ? thoughtsReader(config.dataDir) : undefined;
     // 她猜的事（ADR 0213）：要她那边的世界（世界账）才对得上结果
     const herGuessesNow = config.herGuesses ? guessesReader(config.dataDir) : undefined;
-    const interpreter = createInterpreter({
-        modules: [{
-            id: 'app-legacy',
-            on: {
-                connected: ({ selfId }) => legacy.connected(selfId),
-                message: ({ event }) => legacy.receive(event),
-                group: ({ event }) => legacy.receiveGroup(event),
-                poke: ({ event }) => legacy.receivePoke(event),
-                recall: ({ event }) => legacy.receiveRecall(event),
-                friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
-            },
-        },
-        // 她此刻（她那边、身体、状态行）：perceive 时看清她此刻、写进 facts（意图和旧逻辑都读），放五行。
-        // 聊天记录、答应的事在后面才建，用到时再取
-        herNowModule({
-            schedule: config.schedule, herDays: config.herDays, ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
-            ...(config.realNights ? { realNights: true } : {}), ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
-            worldState: () => sharedWorld ?? undefined, appointmentsAt: at => promises?.appointmentsAt?.(at),
-            contacts: () => config.contacts, history: qq => history.load(qq), log,
-        }),
+    // 一轮回复的模块（ADR 0336 第 6 步）：和模拟器同一份接线（platform/turn-modules.ts），先后在那里定；这里只按配置给选项。
+    // 好些东西（聊天记录、答应的事、长期记忆、设备服务、计划器……）在后面才建：这里给的都是用到时再取的函数，挂不挂只看配置
+    const turnModules = buildTurnModules({
+        log,
+        now: () => exec.now(),
+        history: qq => history.load(qq),
+        contacts: () => config.contacts,
+        worldState: () => sharedWorld ?? undefined,
+        appointmentsAt: at => promises?.appointmentsAt?.(at),
+        promises: () => promises ?? undefined,
+        schedule: config.schedule,
+        herDays: config.herDays,
         // 危机信号（ADR 0068）和小别扭 / 和好的起因（ADR 0074，配置 grievance）：assess 的最前面，意图阶梯和后面的判断都读
-        crisisModule({ grievance: config.grievance, log }),
-        // 意图阶梯（ADR 0019 起）：assess 时写这一轮的意图，排在最前（后面的模块和旧逻辑都读它）；开关是它的选项
-        intentModule({
+        grievance: config.grievance,
+        shortReplies: config.shortReplies,
+        // 时间块（ADR 0004 / 0105）：断网很久才回那一句跟着 lagTail
+        lagTail: config.lagTail,
+        // 她这几天拍照修图（配置 lifeInPrompt，要有生活执行器）
+        lifeInPrompt: Boolean(config.lifeInPrompt && lifeRunner),
+        // 意图阶梯（ADR 0019 起）：开关是它的选项
+        intent: {
             ...(config.herNo ? { refuse: true } : {}), ...(config.afterNo ? { afterNo: true } : {}), ...(config.jealousy ? { jealous: true } : {}), ...(config.curious ? { curious: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}), ...(config.pursuits ? { pursuits: true } : {}),
-        }),
-        // 接话的基本规矩（DSH 10-30 / 10-31）：他最后说的是哪句、人称、正经问就先直接答、别琢磨怎么接；每一轮都放，不存状态
-        replyBasicsModule(),
-        // 多问一句、先表态、拿不准就直说（DSH 10-31）：只给男朋友档，危机时不放；不存状态
-        asksModule(log),
-        // 先读懂他这一轮在说什么（DSH 10-30）：只给男朋友档，只想一想、危机时不放；不存状态
-        readingModule(log),
-        // 他的口气（DSH 10-30）：只给男朋友档，主动找他、只想一想、危机时不放；不存状态
-        registerModule(log),
-        // 场景应答（DSH 10-31）：他这句命中哄睡 / 报错 / 自我怀疑 / 暗号时放一句；只给男朋友档，危机时不放
-        scenesModule(log),
-        // 她可以说出来（DSH 11-01）：大约六轮一次告诉她可以发语音；只给男朋友档，危机、只想一想、主动找他时不给
-        voiceModule(log),
+        },
+        // 形状控制（ADR 0091，配置 shape 及各分项）：shapeAll（ADR 0220）App 从来没接配置，只有模拟器用；分项同给联系人流水线的（都要 shape 开着）
+        shape: {
+            shape: config.shape, shapeAgenda: config.shape && config.shapeAgenda, shapeFiller: config.shape && config.shapeFiller, shapeFeel: config.shape && config.shapeFeel,
+            shapeSplit: config.shape && config.shapeSplit, shapeAsk: config.shape && config.shapeAsk, shapeLong: config.shape && config.shapeLong,
+        },
+        // 她此刻（她那边、身体、状态行）的另几样
+        herNow: {
+            ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
+            ...(config.realNights ? { realNights: true } : {}), ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
+        },
+        // 她自己记下的东西（DSH：说话习惯、聊天回顾、日记里发现的自己、读完看完的想法、没想完的问题、她猜的事）：各自的开关开着才给读取；只给男朋友档
+        herNotes: {
+            ...(speechNotesNow ? { speechNotes: speechNotesNow } : {}),
+            ...(config.chatReview ? { chatReview: chatReviewReader(config.dataDir) } : {}),
+            ...(diaryInsightsNow ? { diaryInsights: diaryInsightsNow } : {}),
+            ...(readingTakesNow ? { readingTakes: readingTakesNow } : {}),
+            ...(openQuestionsNow ? { openQuestions: openQuestionsNow } : {}),
+            ...(herGuessesNow ? { herGuesses: herGuessesNow } : {}),
+        },
         // 她可以在这台电脑上跑命令（DSH 10-30）：上一轮的命令结果（读了就清掉）和「可以跑命令」那一行；只给男朋友档
-        // 她学的时候没想通的地方（DSH 10-31）：两天内存下的那个问题，想问就问他；只给男朋友档，危机、只想一想时不放
-        // 工作模式的三行（DSH 10-29 / 10-30）：按他现在的状态放其中一行；只给男朋友档
+        shell: {
+            noteOf: contact => {
+                const note = shellNotes.get(contact.qq);
+                if (note) shellNotes.delete(contact.qq);
+                return note;
+            },
+            // 她写的 <<执行：命令>>（2026-10-30 用户：把最高权限给她）：标记不发出去，命令后台跑，结果留给下一轮
+            commands: {
+                lookedRecently: contact => (Date.now() - (webTurns.get(contact.qq) ?? 0)) < 3 * 60_000,
+                setNote: (contact, note) => { shellNotes.set(contact.qq, note); },
+                run: command => runShell(command, { cwd: process.env.USERPROFILE }),
+                audit: run => auditShell(config.dataDir, run),
+                log,
+            },
+        },
+        // 她想查才查（<<查：…>>）：总是挂（摘标记和开关无关）；开了长期记忆和 selfDirectedMemory 才真的去查。memory 在后面才建，查的时候现取
+        reviewPull: { ...(config.memory && config.selfDirectedMemory ? { recall: async (contact: Contact, query: string) => {
+            const recalled = await memory!.recallPull(contact, query, new Date(), config.contacts);
+            if (!recalled || !deviceOwner || contact.qq !== deviceOwner.qq) return recalled;
+            return attachMatchingMemoryReviews(recalled, readMemoryReviews(config.dataDir).reviews);
+        }, finishReview: (contact, offers, resolution) => {
+            if (contact.qq !== deviceOwner?.qq) return;
+            finishMemoryReviews(config.dataDir, offers, resolution, clockNow().getTime());
+        } } : {}) },
         // 她自己决定记不记（selfDirectedMemory，DSH 10-30 / 10-31）：「记忆由你自己决定」、理解偏过、他最近的事
-        ...(config.selfDirectedMemory ? [selfMemoryModule({
+        ...(config.selfDirectedMemory ? { selfMemory: {
             understanding: hisWords => understandingLine(config.dataDir, hisWords),
             immediateCorrection: (contact, hisWords) => deviceOwner && contact.qq === deviceOwner.qq ? correctionReplyLine(hisWords) : undefined,
             traces: () => tracesLine(config.dataDir),
-        })] : []),
-        workModeModule(contact => readWorkMode(config.dataDir, contact.qq), {
+        } } : {}),
+        // 工作模式的三行（DSH 10-29 / 10-30）：按他现在的状态放其中一行；只给男朋友档
+        workMode: {
+            modeOf: contact => readWorkMode(config.dataDir, contact.qq),
             // 她回复里的 <<同意工作>> / <<拒绝工作>> / <<用电脑>>：发出去之前摘掉、改状态；动电脑的活在后台干，干完把结果单独发回去
-            setMode: (contact, mode) => setWorkMode(config.dataDir, contact.qq, mode),
-            refused: reason => addRefusal(reason),
-            taskOf: contact => lastUserText.get(contact.qq),
-            // 她自己判断这条要动电脑（2026-10-29）：当轮交给 dsh 干，干完把结果单独发回去。不落工作模式，所以他不用发 /dsh，也不用事后 /QQ 切回来
-            start: (contact, task) => {
-                const userId = contact.qq;
-                const recent = history.load(userId).slice(-10)
-                    .map(message => `${message.role === 'user' ? '他' : '我'}：${message.content}`)
-                    .join('\n');
-                void runWork(task, { context: recent })
-                    .then(async reply => {
-                        const messageId = await transport.sendPrivateText(userId, reply);
-                        // 干完的结果也进聊天记录（和 /dsh 工作模式一样，ADR 0176），活记在他自己的 bank 里
-                        history.append(userId, { time: clockNow().toISOString(), role: 'assistant', content: reply, messageId });
-                        void rememberWorkTask(task, reply, memory?.bankId(contact));
-                    })
-                    .catch(error => {
-                        log(`[${userId}] 她判断要动电脑、没干成：${error instanceof Error ? error.message : String(error)}`);
-                        // 这句也是她说的：记进聊天记录，他问「怎么没弄成」她知道（11-02「检查类似的问题」）
-                        void transport.sendPrivateText(userId, WORK_FAILED_LINE)
-                            .then(messageId => history.append(userId, { time: clockNow().toISOString(), role: 'assistant', content: WORK_FAILED_LINE, messageId }))
-                            .catch(() => {});
-                    });
+            markers: {
+                setMode: (contact, mode) => setWorkMode(config.dataDir, contact.qq, mode),
+                refused: reason => addRefusal(reason),
+                taskOf: contact => lastUserText.get(contact.qq),
+                // 她自己判断这条要动电脑（2026-10-29）：当轮交给 dsh 干，干完把结果单独发回去。不落工作模式，所以他不用发 /dsh，也不用事后 /QQ 切回来
+                start: (contact, task) => {
+                    const userId = contact.qq;
+                    const recent = history.load(userId).slice(-10)
+                        .map(message => `${message.role === 'user' ? '他' : '我'}：${message.content}`)
+                        .join('\n');
+                    void runWork(task, { context: recent })
+                        .then(async reply => {
+                            const messageId = await transport.sendPrivateText(userId, reply);
+                            // 干完的结果也进聊天记录（和 /dsh 工作模式一样，ADR 0176），活记在他自己的 bank 里
+                            history.append(userId, { time: clockNow().toISOString(), role: 'assistant', content: reply, messageId });
+                            void rememberWorkTask(task, reply, memory?.bankId(contact));
+                        })
+                        .catch(error => {
+                            log(`[${userId}] 她判断要动电脑、没干成：${error instanceof Error ? error.message : String(error)}`);
+                            // 这句也是她说的：记进聊天记录，他问「怎么没弄成」她知道（11-02「检查类似的问题」）
+                            void transport.sendPrivateText(userId, WORK_FAILED_LINE)
+                                .then(messageId => history.append(userId, { time: clockNow().toISOString(), role: 'assistant', content: WORK_FAILED_LINE, messageId }))
+                                .catch(() => {});
+                        });
+                },
+                notTyped: () => tellOwner(WANTED_BUT_NOT_TYPED_NOTICE),
+                log,
             },
-            notTyped: () => tellOwner(WANTED_BUT_NOT_TYPED_NOTICE),
-            log,
-        }),
+        },
         // 她自己记的（<<记住>> / <<日记>> / <<私密>>）：发出去之前摘掉、该记的记下；摘标记和开关无关，总是挂。memory 在后面才建，记的时候现取
-        selfNotesModule({
+        selfNotes: {
             keepPrivate: text => { appendPrivate(text); },
             ...(config.diaryInsights ? { keepDiary: (text: string) => { recordSelfDiary(config.dataDir, text, clockNow().getTime()); } } : {}),
             remember: (contact, text, kind) => memory?.rememberSelfNote(contact, text, kind),
@@ -1100,20 +1077,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 if (deviceOwner && contact.qq === deviceOwner.qq && config.memory) recordMemoryReview(config.dataDir, cue, clockNow().getTime());
             } } : {}),
             log,
-        }),
+        },
         // 她在本机的那一份（DSH 的灵魂目录）：心里的线头、拒绝过的、评价、「你现在的生活」、首轮铺底；只给男朋友档，每一轮现读
-        // 她自己记下的东西（DSH：说话习惯、聊天回顾、日记里发现的自己、读完看完的想法、没想完的问题、她猜的事）：各自的开关开着才给读取；只给男朋友档
-        herNotesModule({
-            ...(speechNotesNow ? { speechNotes: speechNotesNow } : {}),
-            ...(config.chatReview ? { chatReview: chatReviewReader(config.dataDir) } : {}),
-            ...(diaryInsightsNow ? { diaryInsights: diaryInsightsNow } : {}),
-            ...(readingTakesNow ? { readingTakes: readingTakesNow } : {}),
-            ...(openQuestionsNow ? { openQuestions: openQuestionsNow } : {}),
-            ...(herGuessesNow ? { herGuesses: herGuessesNow } : {}),
-            now: () => exec.now(),
-            log,
-        }),
-        soulModule({
+        soul: {
             selfThread: (): string | undefined => {
                 try {
                     const journal = selfThreadLine(selfThread(readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8')));
@@ -1150,45 +1116,19 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                     } catch { return undefined; }
                 },
             } : {}),
-        }),
-        learningQuestionModule(() => questionLine(loadQuestion(config.dataDir), clockNow().getTime())),
-        shellModule({
-            noteOf: contact => {
-                const note = shellNotes.get(contact.qq);
-                if (note) shellNotes.delete(contact.qq);
-                return note;
-            },
-            // 她写的 <<执行：命令>>（2026-10-30 用户：把最高权限给她）：标记不发出去，命令后台跑，结果留给下一轮
-            commands: {
-                lookedRecently: contact => (Date.now() - (webTurns.get(contact.qq) ?? 0)) < 3 * 60_000,
-                setNote: (contact, note) => { shellNotes.set(contact.qq, note); },
-                run: command => runShell(command, { cwd: process.env.USERPROFILE }),
-                audit: run => auditShell(config.dataDir, run),
-                log,
-            },
-        }),
-        // 别重复自己（反复说的字词、主动找他的开头、说过了的事）：没有开关；assess 时写说过了的事（旧逻辑的形状读它）
-        repetitionModule(log),
-        // 在读的书（ADR 0015）：跟着她自己的日子；放了书，出口检查拿进度核对
-        booksModule({ herDays: config.herDays }),
-        // 她的过去（ADR 0022）：他说到卡上自传的线索才想起，追问时沿用一会儿；没有开关（卡上有自传就有），不存状态
-        pastModule(log),
-        // 她身边的人（ADR 0033）：他说起卡上的室友、闺蜜才放那人最近两周，追问时沿用一会儿；跟着她自己的日子，不存状态。assess 时写说起了谁（旧逻辑的形状和长短读它）
-        peopleAroundModule({ herDays: config.herDays, log }),
-        // 他提到见面（ADR 0066）：男朋友说到见面又带着时间，放她那几天不方便的时段；跟着她自己的日子，不存状态
-        meetupModule({ herDays: config.herDays, worldState: () => sharedWorld ?? undefined, promises: () => promises ?? undefined, log }),
-        // 真人例子（ADR 0190，配置 exemplars）：男朋友的话和语料里哪几条像，就放真人在那几句后面怎么回的；语料上面启动时读过一次
-        ...(exemplars.length ? [exemplarsModule({ exemplars, log })] : []),
-        // 她这几天拍照修图（配置 lifeInPrompt，要有生活执行器）：卡上有相机基金的档位才放；不存状态
-        practiceModule({ lifeInPrompt: Boolean(config.lifeInPrompt && lifeRunner), herDays: config.herDays, worldState: () => sharedWorld ?? undefined }),
+        },
+        // 她学的时候没想通的地方（DSH 10-31）：两天内存下的那个问题，想问就问他；只给男朋友档，危机、只想一想时不放
+        learningQuestion: () => questionLine(loadQuestion(config.dataDir), clockNow().getTime()),
+        // 真人例子（ADR 0190，配置 exemplars）：语料上面启动时读过一次，有条目才挂
+        exemplars,
         // 她最近心里在想什么（ADR 0101，配置 innerLife）：念头是主动消息的计划器想的，计划器在后面才建，每次现取
-        ...(config.innerLife ? [innerModule({ innerLine: contact => planners.get(contact.qq)?.innerLine(), log })] : []),
+        ...(config.innerLife ? { innerLine: (contact: Contact) => planners.get(contact.qq)?.innerLine() } : {}),
         // 她能替他操作的设备的菜单（ADR 0148，配置 deviceControl）：名单里有男朋友档才有设备控制（同下面的 deviceOwner）；服务是异步起的，起来之前菜单是空串，每轮现取
         ...(config.deviceControl !== 'off' && config.contacts.some(c => c.tier === 'boyfriend')
-            ? [devicesModule({ menu: () => deviceService?.control.menu() ?? '', allowed: contact => contact.tier === 'boyfriend' })]
-            : []),
+            ? { devices: { menu: () => deviceService?.control.menu() ?? '', allowed: (contact: Contact) => contact.tier === 'boyfriend' } }
+            : {}),
         // 他的请求等她点头（2026-10-30）：他发「/看屏幕」「/摄像头」时下面的 pendingAsk 先记下来，她写 <<同意>> 才做；只给男朋友档、过期的不算，每轮现取
-        consentModule({
+        consent: {
             ask: contact => {
                 if (contact.tier !== 'boyfriend') return undefined;
                 const pending = pendingAsk.get(contact.qq);
@@ -1221,80 +1161,51 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 },
                 log,
             },
-        }),
-        // 长短不一（ADR 0024）：偶尔回句短的、偶尔话多一点；没有开关（说话更短 shortReplies 改说法），读旧逻辑写进 turn.facts 的那几样
-        // 形状控制（ADR 0091，配置 shape 及各分项）：contribute 时算出每条多长、几条，写回 turn.facts.shape；排在长短之前（长短读它），旧逻辑生成和裁剪时也读它
-        shapeModule({
-            // shapeAll（ADR 0220）App 从来没接配置，只有模拟器用；分项同下面给联系人流水线的（都要 shape 开着）
-            shape: config.shape, shapeAgenda: config.shape && config.shapeAgenda, shapeFiller: config.shape && config.shapeFiller, shapeFeel: config.shape && config.shapeFeel,
-            shapeSplit: config.shape && config.shapeSplit, shapeAsk: config.shape && config.shapeAsk, shapeLong: config.shape && config.shapeLong, log,
-        }),
-        lengthModule({ shortReplies: config.shortReplies, log }),
+        },
         // 引用回复（ADR 0136，配置 quoteReply）：contribute 时挑出要引用的那条、写回 turn.facts.quote，旧逻辑发送时引用它
-        ...(config.quoteReply ? [quoteModule({ history: qq => history.load(qq), log })] : []),
-        // 主动找他时计划器写的说明（initiate.note）；没有开关，不存状态
-        initiateNoteModule(),
-        // 生成之后的审稿（ADR 0336）：删行收尾，挂在 finalize 位置；没有开关
-        reviewFinalizeModule(),
-        // 出口检查 / 危机检查（ADR 0014 / 0068）：挂在 exit 位置，总是挂；上下文由联系人流水线写进 scratch.exitOptions，危机回合到此为止、设备指令不登记
-        reviewExitModule(),
-        // 逐条事实检查（ADR 0137 / 0203）：factCheck 是 log / fix 时挂在 facts / factsFinal；审稿经执行器，同一个模型、温度 0，日志用这个联系人的（ctx.log 已带 [QQ]）
-        ...(config.factCheck !== 'off' ? [reviewFactsModule({
+        ...(config.quoteReply ? { quote: {} } : {}),
+        // 逐条事实检查（ADR 0137 / 0203）：factCheck 是 log / fix 时挂；审稿经执行器，同一个模型、温度 0，日志用这个联系人的（ctx.log 已带 [QQ]）
+        ...(config.factCheck !== 'off' ? { factCheck: {
             mode: config.factCheck, ...(config.factHim ? { aboutHim: true } : {}),
             audit: (messages, scopedLog) => exec.llm({ purpose: 'chat', config: { ...forExtraction(config.llm), temperature: 0 }, messages }, scopedLog),
-        })] : []),
-        // 话说到一半（ADR 0141）：跟着 speechCheck，挂在 unfinished 位置
-        ...(config.speechCheck ? [reviewUnfinishedModule()] : []),
-        // 她想查才查（<<查：…>>）：挂在 pull 位置，总是挂（摘标记和开关无关）；开了长期记忆和 selfDirectedMemory 才真的去查。memory 在后面才建，查的时候现取
-        reviewPullModule({ ...(config.memory && config.selfDirectedMemory ? { recall: async (contact: Contact, query: string) => {
-            const recalled = await memory!.recallPull(contact, query, new Date(), config.contacts);
-            if (!recalled || !deviceOwner || contact.qq !== deviceOwner.qq) return recalled;
-            return attachMatchingMemoryReviews(recalled, readMemoryReviews(config.dataDir).reviews);
-        }, finishReview: (contact, offers, resolution) => {
-            if (contact.qq !== deviceOwner?.qq) return;
-            finishMemoryReviews(config.dataDir, offers, resolution, clockNow().getTime());
-        } } : {}) }),
-        // 时间块（ADR 0004 / 0105）：每一轮「此刻」块的第一行；断网很久才回那一句跟着 lagTail。没有别的开关，不存状态
-        timeBlockModule({ lagTail: config.lagTail }),
-        // 连续性（ADR 0157–0163）：联系人流水线取回来的几行（turn.facts.continuity）照放；continuity 在解释器之后才建、取也在流水线里，所以总是挂
-        continuityModule(),
-        groupModule(),
-        // 记忆这一组（ADR 0012 / 0016–0020 / 0032 / 0043 / 0176 / 0177）：联系人流水线原位召回好写进 turn.facts.memory，这里只放；没有开关（没开长期记忆、名单外、crossRecent 没开时 facts 里没有）
-        memoryModule(),
-        // 情绪余温（ADR 0028）和没了结的事（ADR 0023）：他道歉 / 安慰 / 说想她之后三轮软一点（卡上有心情才算），没了结的事读旧逻辑写的 turn.facts.unsettled；没有开关，不存状态
-        warmModule({ log }),
-        // 心境那一行、节奏、梦那一行（ADR 0102）：联系人流水线原位算好写进 turn.facts（读梦、作者写下的事、回想过的感受、带结算的世界账，要等小别扭是否生效），这里只放；没有开关（herFeelings 没开时 facts 里没有）
-        feelingsModule(),
-        // 时间块里的另几行（重要的日子 ADR 0011、她在 QQ 上的样子 ADR 0083、答应的事 ADR 0018）：日子现算，另两行由联系人流水线原位取好写进 facts
-        timeNotesModule(),
-        // 这一轮的图片表情 / 照片清单（ADR 0063 / 0109）：联系人流水线在 contribute 之前原位取好写进 facts，这里只放
-        mediaOffersModule(),
-        // 挑候选（ADR 0041，配置 candidates 大于 1 才挂）：他难过、说亲密话、收尾的轮次同一份提示词生成几个、按规则挑一个；说话的毛病跟着 speechCheck / tailCap
-        ...(config.candidates > 1 ? [candidatesModule({ count: config.candidates, speechCheck: config.speechCheck, tailCap: config.tailCap, history: qq => history.load(qq) })] : []),
-        // 发出去之前的修饰（ADR 0336 第 11 步）：质感（ADR 0131，配置 texture）跟着开关挂，上下文由联系人流水线写进 facts；打错字再改口（ADR 0024 / 0086）总是挂
-        ...(config.texture ? [textureModule()] : []),
-        typoModule(),
-        // 意图行（深思时去掉「怎么答」那一句）和「/亲热」那一行
-        intentLineModule(),
-        // 真人数值（ADR 0222）和人格成长层（ADR 0251）：联系人流水线开头算好写进 turn.facts（读带结算的世界账，不挪过 await），这里只放两行；没有开关（没有需要锚点 / 世界账时 facts 里没有）
-        humanStateModule(),
-        // 深思（ADR 0151）和语义路由（ADR 0202）：判断和分类那次模型调用留在联系人流水线原位，写进 turn.facts；这里只放两句。没有开关（deliberate 没开时 facts 里没有）
-        deliberateModule(),
-        // 只想一想的轮次：聊天原文换成一段回想；没有开关，不存状态
-        transcriptModule(),
-        // 关系阶段（ADR 0113）：只往提示词里放一行，不存状态；排在最前（日志的先后同原来：关系在小梗之前）
-        ...(config.relationship ? [closenessModule(log)] : []),
-        ...(jokes ? [jokes] : []), ...(idioms ? [idioms] : []),
-        // 陪玩（ADR 0111）：assess 时判断、记日志，放一行，不存状态；排在被打断之前（日志的先后同原来）
-        ...(config.together ? [togetherModule(log)] : []),
-        // 被打断（ADR 0115）：只往提示词里放一行，不存状态
-        ...(config.interruptions ? [interruptionsModule(log)] : []),
+        } } : {}),
+        // 话说到一半（ADR 0141）：跟着 speechCheck
+        speechCheck: config.speechCheck,
+        // 挑候选（ADR 0041，配置 candidates 大于 1 才挂）：说话的毛病跟着 speechCheck / tailCap
+        ...(config.candidates > 1 ? { candidates: { count: config.candidates, speechCheck: config.speechCheck, tailCap: config.tailCap } } : {}),
+        // 连续性（ADR 0157–0163）、群里最近的事、真人数值和人格成长层（ADR 0222 / 0251）：facts 由联系人流水线原位取，没有开关，总是挂
+        continuity: true,
+        group: true,
+        humanState: true,
+        // 发出去之前的修饰（ADR 0336 第 11 步）：质感（ADR 0131，配置 texture）跟着开关挂；打错字总是挂
+        texture: config.texture,
+        // 关系阶段（ADR 0113）、陪玩（ADR 0111）、被打断（ADR 0115）：跟着各自的开关
+        relationship: config.relationship,
+        together: config.together,
+        interruptions: config.interruptions,
+        // 小梗（ADR 0114）、口头习惯（ADR 0138）：上面建好的那两个（带定时抽取和收尾）
+        ...(jokes ? { jokes } : {}),
+        ...(idioms ? { idioms } : {}),
         // 网络热梗（ADR 0129）：每一轮从库里现读（作者可以在两轮之间改 / 删，别用改之前的快照），停下之后不再读；从热榜学新梗还在下面（要她的 B 站号）
-        ...(config.memes ? [memesModule(() => (stopped ? [] : loadMemes(memesFile, log).entries), log)] : []),
-        // 她看视频（ADR 0130）：他问起时放她真看过的两条；用的是内存里那份，她看完一个就换新的
-        ...(config.watching ? [watchedModule(() => watchedEntries, log)] : []),
-        // 梗百科（DSH 10-29）：要在热梗之后（读 facts.meme）；挂在最后，同迁移前「旧逻辑」那一行日志的先后
-        ...(memeDict ? [memeDictModule(memeDict, log)] : [])],
+        ...(config.memes ? { memes: () => (stopped ? [] : loadMemes(memesFile, log).entries) } : {}),
+        // 她看视频（ADR 0130）：他问起时放她真看过的两条；用的是内存里那份（她看完一个就换新的），每次现取
+        ...(config.watching ? { watched: () => watchedEntries } : {}),
+        // 梗百科（DSH 10-29）：要在热梗之后（读 facts.meme）
+        ...(memeDict ? { memeDict } : {}),
+    });
+    // 做判断的都经解释器（ADR 0336 第 4 步）：「旧逻辑」那一个（事件分发）在最前，后面是一轮回复的模块
+    const interpreter = createInterpreter({
+        modules: [{
+            id: 'app-legacy',
+            on: {
+                connected: ({ selfId }) => legacy.connected(selfId),
+                message: ({ event }) => legacy.receive(event),
+                group: ({ event }) => legacy.receiveGroup(event),
+                poke: ({ event }) => legacy.receivePoke(event),
+                recall: ({ event }) => legacy.receiveRecall(event),
+                friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
+            },
+        }, ...turnModules],
         exec,
     });
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
