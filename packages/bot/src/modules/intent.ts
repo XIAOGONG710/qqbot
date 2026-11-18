@@ -3,7 +3,8 @@
 //   注册在 assess 的最前面，后面的模块（被打断、小梗那几样的让路规则）和旧逻辑都读它。只想一想时不算（不是在聊天）。
 // - 不放段落：意图行由 modules/intent-line.ts 放进 intent 槽（读下面定下的 facts.intent）。
 // - 开关（会拒绝、拒绝之后、吃醋、追问、今天的小事、她的追求）是模块的选项；输入里的危机、小别扭、她那边此刻是 turn.facts 里已有的判断，
-//   她此刻在干嘛和作息、挂着的事、她答应的事、她那边还没说过的事由旧逻辑写进 turn.facts（以后各自迁成模块时改由那些模块写）。
+//   她此刻在干嘛和作息（her-now 的 perceive）、挂着的事（warm 的 decideAt.loops）、她答应的事（time-notes 的 decideAt.promises）、
+//   她那边还没说过的事（这里的 decideAt.news）都在 assess 之前写进 turn.facts。
 // 最终的意图（ADR 0336「判断那一串」第 2 步，decideAt.intent）：照片判断之后。和迁移前联系人流水线里的逐字一样：
 // - 这一轮发照片（不是主动那条——它的意图在 initiate.note 里）：意图换成「发这一类照片」那一句；发的是审核过的「现在的照片」时换成只发这一张那一句；
 // - 他要「现在」的照片但没有匹配图（facts.photoUnavailable）：换成如实说发不了那一句；
@@ -17,6 +18,8 @@ import { describeGrievance } from '../emotion/grievance.ts';
 import { describeIntent } from '../language/intent.ts';
 import { photoIntent } from '../vision/photos.ts';
 import { projectActivity } from '../life/projects.ts';
+import { formatDate, herDay } from '../life/schedule.ts';
+import { worldNews } from '../world/world.ts';
 
 export interface IntentModuleOptions {
     /** 会拒绝（ADR 0103，配置 herNo）：“他在磨她”“他在管着她”“他约她被推了”“他让她先放下手上的事” */
@@ -65,6 +68,19 @@ export function intentModule(options: IntentModuleOptions = {}): Module {
     return {
         id: 'intent',
         decideAt: {
+            // 她那边的事还没说过（ADR 0057 调整；ADR 0336「判断那一串」2026-11-18 从流水线搬来，原位：挂着的事之后、assess 之前）：
+            // 她的今天了结的、那之后她一句话都还没说过（主动那条发出去了也算说过）——这一轮顺带说。先只给男朋友档；作息经 DecideCtx.schedule（开了她自己的日子才有）
+            news: (turn, ctx) => {
+                const { contact, at: time, initiate } = turn;
+                const around = turn.facts.world;
+                const herSchedule = ctx.schedule;
+                const untold = around && herSchedule && contact.tier === 'boyfriend' && !initiate
+                    ? worldNews(around).filter(n => n.at <= time && formatDate(herDay(herSchedule, n.at)) === around.day
+                        && !turn.history.some(m => m.role === 'assistant' && m.time !== undefined && Date.parse(m.time) >= n.at.getTime())).map(n => n.what)
+                    : [];
+                if (untold.length) ctx.log(`她那边的事还没跟他说过：${untold.join('、')}`);
+                if (untold.length) turn.facts.news = untold;
+            },
             intent: (turn, ctx) => {
                 const { facts } = turn;
                 const { grievance } = facts;

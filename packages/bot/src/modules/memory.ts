@@ -189,7 +189,18 @@ export interface MemoryPieces {
 export function memoryModule(): Module {
     return {
         id: 'memory',
-        decideAt: { recall },
+        decideAt: {
+            recall,
+            // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）。
+            // 原位（perceive 之后、assess 之前）调；那天的流水账由流水线按这一档的卡算好经 DecideCtx.recapOf 给（读世界账、日记）
+            recap(turn, ctx) {
+                const day = turn.facts.askedDay;
+                const recap = day && !day.period ? ctx.recapOf?.(day.start, turn.at) : undefined;
+                if (!recap) return;
+                ctx.log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
+                turn.facts.recap = recap.text;
+            },
+        },
         contribute(turn) {
             const memory = turn.facts.memory;
             if (!memory) return [];

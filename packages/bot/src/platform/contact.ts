@@ -284,6 +284,9 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     /** 清理时交给模块的两个货架（ADR 0336 第 9 步，CleanCtx）：清单的取、聊天记录的写法也还在这里用它们 */
     /** 判断那一串（ADR 0336，DECIDE_STAGES）交给模块的东西：照片货架和「现在的照片」的解析 */
     const decideCtx: DecideCtx = {
+        recapOf: (dayStart, time) => recapOf(dayStart, time),
+        ...(options.selfNote ? { selfNote: options.selfNote } : {}),
+        ...(options.promises ? { promises: options.promises } : {}),
         ...(options.humanValues ? { values: { humanValues: options.humanValues, ...(options.worldState?.events ? { worldEvents: () => options.worldState!.events!() } : {}) } } : {}),
         ...(options.stickers ? { stickers: { ...(options.stickerChance !== undefined ? { chance: options.stickerChance } : {}), ...(options.stickerUncued ? { uncued: options.stickerUncued } : {}), ...(options.stickerOnlyChance ? { onlyChance: options.stickerOnlyChance } : {}) } } : {}),
         ...(options.photos ? { photos: options.photos } : {}),
@@ -410,7 +413,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 },
             });
             if (recalling instanceof Promise) await recalling;
-            const { cue, askedDay: day } = turn.facts;
             const you = youFor(character, options.contacts ?? []);
             // 重要的日子那一行（ADR 0011）是解释器的模块（modules/time-notes.ts）：卡上的日子建卡时就定了，在 contribute 时现算
             if (herSchedule) options.onHerDay?.(time);
@@ -422,38 +424,18 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (perceived instanceof Promise) await perceived;
             // 她此刻（她那边 ADR 0021、身体 ADR 0025、状态行 ADR 0042 等）是解释器的模块（modules/her-now.ts）：perceive 时写进 turn.facts，
             // 经 turnModules 放进 state、world、body、plans、partnerBack 槽；下面的旧逻辑读 facts
-            const { world: around, body: bodyNow } = turn.facts;
-            // 她这几天拍照修图（配置 lifeInPrompt）是解释器的模块（modules/practice.ts），经 turnModules 放进 practice 槽
-            const selfNote = options.selfNote?.(time.getTime());
-            // 他问到过去的某一天（ADR 0032）：那天她那边的事直接给，不靠日记召回（72 小时基线：问「周一快递拿了没」3/3 答还没拿，问「昨天下雨了吗」2/3 答没下）
-            const recap = day && !day.period ? recapOf(day.start, time) : undefined;
-            if (recap) log(`想起那天：${recap.day}（${recap.lines.length} 件）`);
-            // 她的过去（ADR 0022）是解释器的模块（modules/past.ts），经 turnModules 放进 past 槽
-            const promised = contact.tier !== UNLISTED_TIER ? options.promises?.describe(contact, chat, time) : undefined;
-            if (promised) log('时间块里提醒了她答应的事');
-            // 他提到见面时她那几天不方便的时段（ADR 0066 决策 2）是解释器的模块（modules/meetup.ts），经 turnModules 放进 obstacle 槽
-            // 挂着的事（ADR 0023）：等他说结果的、她问了他没答的进意图行；没了结的事实放在心情后面，只给事实
-            const loops = contact.tier !== UNLISTED_TIER ? options.promises?.openLoops?.(contact, chat, time) : undefined;
-            // 情绪余温（ADR 0028）和没了结的事（ADR 0023）是解释器的模块（modules/warm.ts）：contribute 时算，经 turnModules 放进 unsettled、warm 槽；没了结的事实由下面写进 turn.facts.unsettled
-            if (loops && (loops.waiting.length || loops.unanswered.length || loops.unsettled.length)) {
-                log(`挂着的事：等结果 ${loops.waiting.length}、没回答 ${loops.unanswered.length}、没了结 ${loops.unsettled.length}`);
-            }
-            // 她那边的事还没说过（ADR 0057 调整）：她的今天了结的、那之后她一句话都还没说过（主动那条发出去了也算说过）——这一轮顺带说。先只给男朋友档
-            const untold = around && herSchedule && contact.tier === 'boyfriend' && !initiate
-                ? worldNews(around).filter(n => n.at <= time && formatDate(herDay(herSchedule, n.at)) === around.day
-                    && !chat.some(m => m.role === 'assistant' && m.time !== undefined && Date.parse(m.time) >= n.at.getTime())).map(n => n.what)
-                : [];
-            if (untold.length) log(`她那边的事还没跟他说过：${untold.join('、')}`);
+            const { body: bodyNow } = turn.facts;
+            // assess 之前原位取的几样（ADR 0336「判断那一串」），先后照旧，写进 turn.facts 给意图阶梯和放段落的模块读：
+            // - 他问到过去的某一天（ADR 0032）那天的流水账：记忆模块的 decideAt.recap（流水账经 DecideCtx.recapOf 按这一档的卡算）
+            // - 她在 QQ 上的样子（ADR 0083）、她答应的事（ADR 0018）：time-notes 模块的 decideAt.promises
+            // - 挂着的事（ADR 0023）：等他说结果的、她问了他没答的、没了结的：warm 模块的 decideAt.loops
+            // - 她那边的事还没跟他说过（ADR 0057）：意图阶梯的 decideAt.news
+            decideStage(options.turnModules ?? [], 'recap', turn, decideCtx);
+            decideStage(options.turnModules ?? [], 'promises', turn, decideCtx);
+            decideStage(options.turnModules ?? [], 'loops', turn, decideCtx);
+            decideStage(options.turnModules ?? [], 'news', turn, decideCtx);
             // 危机信号（ADR 0068）和小别扭 / 和好的起因（ADR 0074）是解释器的模块（modules/crisis.ts）：排在 assess 的最前面，写进 turn.facts.crisis / grievance；assess 之后读回
             // 接着 assess——模块往 turn.facts 写判断，下面的旧逻辑要读（意图、被打断）；段落到最后再收。
-            // 她此刻在干嘛、作息、她答应的事、挂着的事、她那边还没说过的事还是旧逻辑算的，写进 facts 给意图阶梯（modules/intent.ts）读
-            Object.assign(turn.facts, {
-                ...(promised ? { promised: true, promisedLine: promised } : {}),
-                // 她在 QQ 上的样子（ADR 0083）、答应的事那一句由解释器的模块（modules/time-notes.ts）放；取留在上面原位（presence 的状态后台会改、答应的事读状态记日志）
-                ...(selfNote ? { selfNote } : {}),
-                ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what), unsettled: loops.unsettled.map(l => l.what) } : {}),
-                ...(untold.length ? { news: untold } : {}),
-            } satisfies TurnFacts);
             const assessed = assessTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             if (assessed instanceof Promise) await assessed;
@@ -571,7 +553,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const memoryNow: MemoryPieces = {
                 ...(relationship ? { relationship } : {}), ...(summary ? { summary } : {}), ...(recalled ? { recalled } : {}),
                 ...(work ? { work } : {}), ...(desktop ? { desktop } : {}), ...(common ? { common } : {}),
-                ...(recap ? { recap: recap.text } : {}), ...(today ? { today } : {}), ...(peopleText.length ? { people: peopleText } : {}),
+                ...(turn.facts.recap !== undefined ? { recap: turn.facts.recap } : {}), ...(today ? { today } : {}), ...(peopleText.length ? { people: peopleText } : {}),
             };
             if (Object.keys(memoryNow).length) turn.facts.memory = memoryNow;
             // 危机回合被问是不是真人 / 程序一律承认（ADR 0068 决策 7）：换用承认版的卡，不在运行时叠一条覆盖（ADR 0003 / 0067 的纪律）

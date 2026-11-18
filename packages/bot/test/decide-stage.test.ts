@@ -23,8 +23,8 @@ const ctxOf = (have: readonly string[], extra: Partial<DecideCtx> = {}) => {
 const decide = (turn: Turn, ctx: DecideCtx) => { decideStage([mediaOffersModule()], 'photo', turn, ctx); return turn.facts; };
 
 describe('判断顺序表（ADR 0336「判断那一串」）', () => {
-    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：真人数值和成长层（buildPrompt 开头）→ 召回 → 照片 → 最终的意图 → 心境 → 图片表情 → 深思 → 长短要的两样 → 质感的上下文', () => {
-        assert.deepEqual([...DECIDE_STAGES], ['values', 'recall', 'photo', 'intent', 'feelings', 'stickers', 'deliberate', 'length', 'texture']);
+    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：真人数值和成长层（buildPrompt 开头）→ 召回 → 那一天 → 答应的事 → 挂着的事 → 还没说过的事 → 照片 → 最终的意图 → 心境 → 图片表情 → 深思 → 长短要的两样 → 质感的上下文', () => {
+        assert.deepEqual([...DECIDE_STAGES], ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'intent', 'feelings', 'stickers', 'deliberate', 'length', 'texture']);
     });
 
     test('一个位置上按注册顺序跑，拿到同一轮和流水线给的东西；只挂 decideAt 的模块不被解释器筛掉', () => {
@@ -383,5 +383,54 @@ describe('长短和形状要的两样（modules/shape.ts 的 decideAt.length）'
         const cat = all.filter(label => /猫/.test(label));
         assert.ok(homework.length + cat.length > 0, '合成世界里有作业或猫，能验证去掉说过的');
         assert.deepEqual(topics({ world, told: ['作业', '猫'] }), all.filter(label => !/作业/.test(label) && !/猫/.test(label)));
+    });
+});
+
+describe('assess 之前原位取的几样（recap / promises / loops / news）', async () => {
+    const { memoryModule } = await import('../src/modules/memory.ts');
+    const { timeNotesModule } = await import('../src/modules/time-notes.ts');
+    const { warmModule } = await import('../src/modules/warm.ts');
+    const { intentModule } = await import('../src/modules/intent.ts');
+    const modules = [memoryModule(), timeNotesModule(), warmModule({ log: () => {} }), intentModule()];
+    const runAll = (turn: Turn, extra: Partial<DecideCtx>) => {
+        const { ctx, lines } = ctxOf([], extra);
+        for (const stage of ['recap', 'promises', 'loops', 'news'] as const) decideStage(modules, stage, turn, ctx);
+        return lines;
+    };
+    const loop = (what: string) => ({ what }) as never;
+    const promises = {
+        describe: () => '[你答应过他：周五一起去看电影]',
+        openLoops: () => ({ waiting: [loop('面试结果')], unanswered: [], unsettled: [loop('吵架那件事')] }),
+    } as unknown as NonNullable<DecideCtx['promises']>;
+
+    test('先后和日志照流水线原来的：那一天 → 答应的事 → 挂着的事；写进 facts', () => {
+        const turn = turnOf('周一你干嘛了', { askedDay: { start: new Date('2026-11-16T00:00:00+08:00') } as NonNullable<Turn['facts']['askedDay']> });
+        const lines = runAll(turn, {
+            recapOf: () => ({ day: '11月16日 周一', lines: ['下雨', '取快递'], text: '[那天的流水账]' }),
+            selfNote: () => '[你的签名：好困]', promises,
+        });
+        assert.deepEqual(lines, ['想起那天：11月16日 周一（2 件）', '时间块里提醒了她答应的事', '挂着的事：等结果 1、没回答 0、没了结 1']);
+        assert.equal(turn.facts.recap, '[那天的流水账]');
+        assert.equal(turn.facts.selfNote, '[你的签名：好困]');
+        assert.equal(turn.facts.promised, true);
+        assert.equal(turn.facts.promisedLine, '[你答应过他：周五一起去看电影]');
+        assert.deepEqual([turn.facts.waiting, turn.facts.unanswered, turn.facts.unsettled], [['面试结果'], [], ['吵架那件事']]);
+    });
+
+    test('问到的是一段（上周、国庆）不给那一天的流水账；名单外的人不查答应的事和挂着的事', () => {
+        let asked = 0;
+        const period = turnOf('上周干嘛了', { askedDay: { start: NOW, period: '上周' } as unknown as NonNullable<Turn['facts']['askedDay']> });
+        runAll(period, { recapOf: () => { asked++; return undefined; } });
+        assert.equal(asked, 0);
+        const stranger = turnOf('在吗', {}, { contact: { qq: 9, name: '路人', tier: 'unlisted' } as Turn['contact'] });
+        runAll(stranger, { promises: { describe: () => { throw new Error('不该查'); }, openLoops: () => { throw new Error('不该查'); } } as unknown as NonNullable<DecideCtx['promises']> });
+        assert.equal(stranger.facts.promised, undefined);
+        assert.equal(stranger.facts.waiting, undefined);
+    });
+
+    test('还没说过的事：没开她自己的日子（没给作息）或不是男朋友档时不算', () => {
+        const turn = turnOf('在吗', { world: { day: '2026-11-20' } as unknown as NonNullable<Turn['facts']['world']> });
+        runAll(turn, {});
+        assert.equal(turn.facts.news, undefined);
     });
 });

@@ -38,6 +38,7 @@ import type { DevelopmentSnapshot } from '../life/development.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
 import type { AskedWindow } from '../life/people.ts';
 import type { LongTermMemory } from '../memory/long-term.ts';
+import type { PromiseKeeper } from '../life/promises.ts';
 import type { ReviewOptions } from '../language/exit-check.ts';
 import type { PickRules } from '../language/candidates.ts';
 import type { TurnWeight } from '../language/turn-weight.ts';
@@ -161,6 +162,8 @@ export interface TurnFacts {
     recall?: Omit<MemoryPieces, 'summary' | 'recap'>;
     /** 他问到的那一天 / 那一段（ADR 0018 / 0032，decideAt.recall 写）：问到的是某一天时，流水线放那天她那边的流水账 */
     askedDay?: AskedWindow;
+    /** 他问到的那一天她那边的流水账（ADR 0032，modules/memory.ts 的 decideAt.recap 写）：拼进 memory.recap */
+    recap?: string;
     /** 她在 QQ 上的样子（ADR 0083）：联系人流水线原位取（presence 的内存状态，后台 tick 会改，不挪过 await）后写；modules/time-notes.ts 放进 selfNote 槽 */
     selfNote?: string;
     /** 她答应过他、还没做的事那一句（ADR 0018 决策 2）：和 promised 同一处写（读承诺状态、记日志）；modules/time-notes.ts 放进 promised 槽 */
@@ -327,7 +330,7 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['values', 'recall', 'photo', 'intent', 'feelings', 'stickers', 'deliberate', 'length', 'texture'] as const;
+export const DECIDE_STAGES = ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'intent', 'feelings', 'stickers', 'deliberate', 'length', 'texture'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
@@ -349,6 +352,12 @@ export interface DecideCtx {
         groupRecent?: (question: string, at: Date) => string | undefined | Promise<string | undefined>;
         desktopRecent?: (at: Date) => string | undefined;
     };
+    /** 他问到过去的某一天（ADR 0032）：那天她那边的流水账（按这一档的卡、那天的世界 / 身体 / 改了的打算 / 日记 / 感觉；只到 7 天前，没有就是 undefined） */
+    recapOf?: (dayStart: Date, time: Date) => { day: string; lines: string[]; text: string } | undefined;
+    /** 她在 QQ 上的样子（ADR 0083，presence 的内存状态） */
+    selfNote?: (now: number) => string | undefined;
+    /** 她答应的事（ADR 0018 决策 2）、挂着的事（ADR 0023）：读承诺状态（可能读文件、记日志）；名单外的人不查由模块看 */
+    promises?: Pick<PromiseKeeper, 'describe'> & Partial<Pick<PromiseKeeper, 'openLoops'>>;
     /** 这个联系人有图片表情收藏库（ADR 0063）时才有：这一轮抽不抽的几个比例（不写用默认；uncued / onlyChance 不写就是不抽） */
     stickers?: { chance?: number; uncued?: number; onlyChance?: number };
     /** 作息（开了她自己的日子才有）：今天的心情按它算 */

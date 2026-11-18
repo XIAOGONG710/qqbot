@@ -3,13 +3,15 @@
 //   只在卡上有心情（moods）时算——陌生人 / 名单外档的卡没有她自己的日子，也不会因为一句越界的「爱你」凭空亲近。
 // - unsettled（ADR 0023）：两个人说好的事没成、一件事说到一半就断了，放在心情后面一行，只给事实；
 //   他这会儿正在道歉 / 安慰（余温是 repair / comfort，同样要卡上有心情）时换成「他刚刚正在修补，别机械地继续绷着」。
-//   挂着的事是旧逻辑从答应的事（promises.openLoops，名单外档不查）取的：等结果的、没回答的进意图行（turn.facts.waiting / unanswered），
-//   没了结的写进 turn.facts.unsettled，这里只读。
+//   挂着的事从答应的事（promises.openLoops，名单外档不查）取（decideAt.loops，联系人流水线在原位调，2026-11-18）：等结果的、没回答的进意图行（turn.facts.waiting / unanswered），
+//   没了结的写进 turn.facts.unsettled，contribute 时只读。
 // warmAffect / describeWarmAffect（emotion/affect.ts）、describeUnsettled（life/open-loops.ts）一个字没改，都是纯函数、不抽随机数；
 // 读的聊天记录、卡就是构造 turn 时放进去的同一份，拼段落之前没人改，所以挪到 contribute 时算结果一样。不存状态、不调模型。
-// 日志「情绪余温：……」从原来算余温的地方挪到拼段落的时候（同一轮之内，内容不变）；「挂着的事：……」那一行还在旧逻辑里。
+// 日志「情绪余温：……」从原来算余温的地方挪到拼段落的时候（同一轮之内，内容不变）；「挂着的事：……」那一行在 decideAt.loops 里记。
 
 import type { Module } from '../interpreter/interpreter.ts';
+import type { ChatMessage } from '../language/prompt.ts';
+import { UNLISTED_TIER } from '../platform/config.ts';
 import type { Piece } from '../interpreter/slots.ts';
 import { describeWarmAffect, warmAffect } from '../emotion/affect.ts';
 import { describeUnsettled } from '../life/open-loops.ts';
@@ -23,6 +25,17 @@ export interface WarmModuleOptions {
 export function warmModule(options: WarmModuleOptions): Module {
     return {
         id: 'warm',
+        // 挂着的事的取（ADR 0336「判断那一串」，2026-11-18）：联系人流水线在原位（答应的事之后、assess 之前）调；读承诺状态，名单外的人不查
+        decideAt: {
+            loops(turn, ctx) {
+                const loops = turn.contact.tier !== UNLISTED_TIER ? ctx.promises?.openLoops?.(turn.contact, turn.history as ChatMessage[], turn.at) : undefined;
+                if (!loops) return;
+                if (loops.waiting.length || loops.unanswered.length || loops.unsettled.length) {
+                    ctx.log(`挂着的事：等结果 ${loops.waiting.length}、没回答 ${loops.unanswered.length}、没了结 ${loops.unsettled.length}`);
+                }
+                Object.assign(turn.facts, { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what), unsettled: loops.unsettled.map(l => l.what) });
+            },
+        },
         contribute(turn) {
             const affect = turn.card?.moods.length ? warmAffect(turn.history) : undefined;
             const loops = turn.facts.unsettled;
