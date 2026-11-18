@@ -80,6 +80,7 @@
 - `modules/self-memory.ts`
 - `modules/soul.ts`
 - `modules/her-notes.ts`
+- `modules/reflections.ts`
 - `modules/playful.ts`
 - `modules/exemplars.ts`
 - `modules/solve-frame.ts`

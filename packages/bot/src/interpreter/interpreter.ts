@@ -247,13 +247,27 @@ export interface Module {
      * 把自己的标记从字里摘掉、该办的事办了，返回剩下的字。同步；要等的事（写记忆、跑命令、去干活）不等它
      */
     absorbAt?: Partial<Record<AbsorbStage, (text: string, contact: Contact) => string>>;
-    /** 定时要做的事：解释器在 startSchedules 时经执行器开计时器，stop 时关 */
-    schedules?: readonly { every: number; run: () => void; runOnStart?: boolean }[];
+    /**
+     * 定时要做的事：解释器在 startSchedules 时经执行器开计时器，stop 时关。
+     * start 是什么时候开：'synced'（默认）是连上 NapCat、补完漏掉的消息之后；'built' 是 App 搭好、还没连上的时候（ADR 0336 第 6 步，原来 App 构造时就开的那些）。
+     * 同一时机的按模块注册顺序、模块内按数组顺序开——同一刻到点的计时器按开的先后触发，行为基线核对这个先后
+     */
+    schedules?: readonly ScheduleSpec[];
     /** 停下：拒绝新工作；返回等已派发的活收尾的 promise（没有就不返回） */
     stop?(): Promise<void> | undefined;
     /** 控制台状态页的补充（不含聊天内容） */
     status?(): Record<string, unknown>;
 }
+
+/** 一个定时任务（见 Module.schedules） */
+export interface ScheduleSpec {
+    every: number;
+    run: () => void;
+    /** 开计时器之前先跑一次 */
+    runOnStart?: boolean;
+    start?: ScheduleStart;
+}
+export type ScheduleStart = 'built' | 'synced';
 
 const isThenable = (value: unknown): value is PromiseLike<unknown> =>
     (typeof value === 'object' || typeof value === 'function') && value !== null && typeof (value as { then?: unknown }).then === 'function';
@@ -601,8 +615,8 @@ export interface Interpreter {
     dispatch(event: BotEvent): Maybe<void>;
     /** 实现了 perceive / assess / contribute / review / reviewAt / cleanAt / candidates / decorateAt 的模块（一轮回复时用） */
     readonly turnModules: readonly Module[];
-    /** 开各模块的定时任务（重复调用不重开） */
-    startSchedules(): void;
+    /** 开各模块在这一时机（默认 'synced'）的定时任务；同一时机重复调用不重开，停下之后不再开 */
+    startSchedules(start?: ScheduleStart): void;
     /** 停下：关定时任务，按注册顺序停各模块；返回各模块的收尾（没有的不在里面） */
     stop(): Promise<void>[];
     /** 各模块的状态补充，按注册顺序合在一起 */
@@ -620,19 +634,22 @@ export function createInterpreter(options: { modules: readonly Module[]; exec: P
     const modules = [...options.modules];
     const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review || module.reviewAt || module.cleanAt || module.candidates || module.decorateAt || module.decideAt);
     const { exec } = options;
-    let timers: ReturnType<Executor['every']>[] | undefined;
+    const timers: ReturnType<Executor['every']>[] = [];
+    const started = new Set<ScheduleStart>();
+    let stopped = false;
     return {
         modules,
         turnModules,
         hasStatus: modules.some(module => module.status),
-        startSchedules() {
-            if (timers) return;
-            const started: ReturnType<Executor['every']>[] = [];
-            timers = started;
+        startSchedules(start = 'synced') {
+            if (stopped || started.has(start)) return;
+            started.add(start);
             for (const module of modules) {
                 for (const schedule of module.schedules ?? []) {
+                    if ((schedule.start ?? 'synced') !== start) continue;
+                    // 开的时候先跑一次（dsh：动态在补完消息后立刻刷一次）；跑的时候 App 停下了就不再往下开
                     if (schedule.runOnStart) schedule.run();
-                    if (timers !== started) return;
+                    if (stopped) return;
                     const timer = exec.every(schedule.run, schedule.every);
                     timer.unref?.();
                     timers.push(timer);
@@ -640,8 +657,8 @@ export function createInterpreter(options: { modules: readonly Module[]; exec: P
             }
         },
         stop() {
-            for (const timer of timers ?? []) exec.cancel(timer);
-            timers = timers ? [] : undefined;
+            stopped = true;
+            for (const timer of timers.splice(0)) exec.cancel(timer);
             const drains: Promise<void>[] = [];
             for (const module of modules) {
                 const drain = module.stop?.();

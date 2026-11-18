@@ -22,6 +22,7 @@ import { jokesModule } from '../modules/jokes.ts';
 import { takeMemoryReview, takeSelfNotes } from '../modules/self-notes.ts';
 import { idiomsModule } from '../modules/idioms.ts';
 import { buildTurnModules } from './turn-modules.ts';
+import { reflectionsModule } from '../modules/reflections.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
 import { Identity, realGit } from '.././memory/identity.ts';
@@ -90,18 +91,17 @@ import { loadThreadsFrom } from '.././world/threads.ts';
 import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
 import { BILI_STICKER_PER_DAY, biliStickerDiscover, STICKER_UNCUED_CHANCE } from '.././language/bili-stickers.ts';
 import { pursuitsReader } from '.././life/pursuits.ts';
-import { describeForOwner, loadSelfState, reflectIfDue, selfAwareReader } from '.././life/self-pursuits.ts';
-import { describeNotesForOwner, loadNotesState, reflectIfDue as reflectSpeechNotes, speechNotesReader, speechStats } from '.././language/speech-notes.ts';
-import { reviewChatIfDue, reviewReader as chatReviewReader } from '.././language/chat-review.ts';
+import { describeForOwner, loadSelfState, selfAwareReader } from '.././life/self-pursuits.ts';
+import { describeNotesForOwner, loadNotesState, speechNotesReader, speechStats } from '.././language/speech-notes.ts';
+import { reviewReader as chatReviewReader } from '.././language/chat-review.ts';
 import { describeTrend, speechTrend } from '.././language/speech-trend.ts';
 import { FEEDBACK_NO_TURN, describeFeedbackForOwner, feedbackReceipt, lastTurn, loadFeedback, parseFeedbackCommand, recentFeedback, recordFeedback } from '.././language/speech-feedback.ts';
 import { writeFeelingsExport, type FeelingsReport } from '.././emotion/feeling-export.ts';
-import { describeFeelingsForOwner, loadReviewState, reviewIfDue, reviewReader } from '.././emotion/feeling-review.ts';
-import { bookItems, reflectIfDue as reflectTakes, takesReader, videoItems } from '.././life/reading-takes.ts';
-import { ponderIfDue, thoughtsReader } from '.././life/open-questions.ts';
-import { freshGuess, guessesReader, pendingWorld, reviewGuessesIfDue, worldFactsBetween } from '.././life/her-guesses.ts';
-import { describeInsightsForOwner, insightsReader, loadInsightsState, loadSelfDiary, recordSelfDiary, reflectIfDue as reflectInsights, writeInsightsExport } from '.././life/diary-insights.ts';
-import { substituteMacros } from '.././st/macros.ts';
+import { describeFeelingsForOwner, loadReviewState, reviewReader } from '.././emotion/feeling-review.ts';
+import { takesReader } from '.././life/reading-takes.ts';
+import { thoughtsReader } from '.././life/open-questions.ts';
+import { freshGuess, guessesReader } from '.././life/her-guesses.ts';
+import { describeInsightsForOwner, insightsReader, loadInsightsState, loadSelfDiary, recordSelfDiary, writeInsightsExport } from '.././life/diary-insights.ts';
 import { removeFaces } from '.././language/qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from '.././memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from '.././world/festivals.ts';
@@ -961,6 +961,36 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const openQuestionsNow = config.openQuestions ? thoughtsReader(config.dataDir) : undefined;
     // 她猜的事（ADR 0213）：要她那边的世界（世界账）才对得上结果
     const herGuessesNow = config.herGuesses ? guessesReader(config.dataDir) : undefined;
+    const deviceOwner = config.contacts.find(c => c.tier === 'boyfriend');
+    // 她自己想一想的那几样（ADR 0336 第 6 步）：只有定时任务，App 搭好时开；好些东西（聊天记录、时钟、追求、心境、自我认识的导出）在后面才建，这里给的都是到点再取的函数
+    const reflections = reflectionsModule({
+        owner: deviceOwner,
+        character: tier => cardFor(tier).character,
+        contacts: () => config.contacts,
+        dataDir: config.dataDir,
+        soulDir,
+        now: () => clockNow(),
+        log,
+        stopped: () => stopped,
+        generate: temperature => messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature }, messages }, log),
+        history: qq => history.load(qq),
+        ...(config.selfPursuits && config.pursuits ? { selfPursuits: { base: () => authorPursuits } } : {}),
+        ...(config.speechNotes ? { speechNotes: {
+            corpus: () => loadExemplars(join(config.dataDir, 'exemplars', 'corpus.jsonl')),
+            feedback: () => recentFeedback(loadFeedback(config.dataDir), clockNow().getTime()),
+        } } : {}),
+        ...(config.chatReview ? { chatReview: true } : {}),
+        ...(config.feelingReview && config.herFeelings ? { feelingReview: {
+            existing: () => (lastFeelings && clockNow().getTime() - lastFeelings.at <= 6 * 3_600_000
+                ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => ({ kind: item.kind, cause: item.cause }))
+                : []),
+        } } : {}),
+        ...(config.diaryInsights ? { diaryInsights: { exportInsights: () => exportInsights() } } : {}),
+        ...(config.readingTakes ? { readingTakes: { watched: () => loadWatched(watchedPath(config.dataDir), log).entries } } : {}),
+        // 没想完的问题用深思的模型；这一处原来就直接调 chatCompletion、没经执行器（照旧，收进执行器另做）
+        ...(config.openQuestions ? { openQuestions: { ponder: messages => chatCompletion({ ...deliberateLlm(config.llm, config.deliberateModel), temperature: 0.9 }, messages, { log, purpose: 'background' }) } } : {}),
+        ...(config.herGuesses && sharedWorld && worldCard ? { herGuesses: { worldAt: time => sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, time) } } : {}),
+    });
     // 一轮回复的模块（ADR 0336 第 6 步）：和模拟器同一份接线（platform/turn-modules.ts），先后在那里定；这里只按配置给选项。
     // 好些东西（聊天记录、答应的事、长期记忆、设备服务、计划器……）在后面才建：这里给的都是用到时再取的函数，挂不挂只看配置
     const turnModules = buildTurnModules({
@@ -1204,7 +1234,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 梗百科（DSH 10-29）：要在热梗之后（读 facts.meme）
         ...(memeDict ? { memeDict } : {}),
     });
-    // 做判断的都经解释器（ADR 0336 第 4 步）：「旧逻辑」那一个（事件分发）在最前，后面是一轮回复的模块
+    // 做判断的都经解释器（ADR 0336 第 4 步）：「旧逻辑」那一个（事件分发）在最前，后面是一轮回复的模块，最后是只有定时任务的
     const interpreter = createInterpreter({
         modules: [{
             id: 'app-legacy',
@@ -1216,7 +1246,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 recall: ({ event }) => legacy.receiveRecall(event),
                 friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
             },
-        }, ...turnModules],
+        }, ...turnModules, reflections],
         exec,
     });
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
@@ -1287,7 +1317,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         });
         return deviceStopDrain;
     }
-    const deviceOwner = config.contacts.find(c => c.tier === 'boyfriend');
 
     // ───────── 连续性（ADR 0157–0163）：设定账本 / 记忆账本 / 时间线 / 搜索 / 休眠 / 口味 / 认识的人 ─────────
     // 都是默认关的开关；账本和时间线只写数据目录里的小文件。出错一律只记日志，不影响聊天
@@ -1739,79 +1768,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const lastUserText = new Map<number, string>();
     const runWork = workRunner ?? runWorkTask;
 
+    // 下面这几样她自己想一想的事，定时都在 modules/reflections.ts（ADR 0336 第 6 步，App 搭好时由解释器开）；这里只留开没开的日志和自我认识那一份导出
     // 她每晚想一次要不要放下 / 改主意 / 提新的（ADR 0178）：到点才想，失败 2 小时后再试，每天最多试 3 次
-    const selfPursuitTimer = config.selfPursuits && config.pursuits && deviceOwner ? (() => {
-        const owner = deviceOwner;
-        const { character } = cardFor(owner.tier);
-        let busy = false;
-        const tick = () => {
-            if (busy || stopped) return;
-            busy = true;
-            void reflectIfDue({
-                dataDir: config.dataDir,
-                now: () => clockNow().getTime(),
-                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages }, log),
-                base: authorPursuits,
-                chat: () => history.load(owner.qq).slice(-16).map(message => ({ role: message.role, content: message.content })),
-                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
-                names: { char: character.name, user: owner.name },
-                log,
-            }).catch(error => log(`追求：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
-        };
-        const timer = exec.every(tick, 30 * 60_000);
-        timer.unref();
-        return timer;
-    })() : undefined;
     if (config.selfPursuits) log(config.pursuits && deviceOwner ? '她自己定追求：开（每晚 20 点以后想一次；/追求 随时看）' : '她自己定追求：开着，但 pursuits 没开或名单里没有男朋友档，不启动');
     // 她每晚自己总结说话习惯（ADR 0193）：22 点以后想一次，最近说话够多才想；失败 2 小时后再试，每天最多试 3 次
-    const speechNotesTimer = config.speechNotes && deviceOwner ? (() => {
-        const owner = deviceOwner;
-        const { character } = cardFor(owner.tier);
-        let busy = false;
-        const tick = () => {
-            if (busy || stopped) return;
-            busy = true;
-            void reflectSpeechNotes({
-                dataDir: config.dataDir,
-                now: () => clockNow().getTime(),
-                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages }, log),
-                history: () => history.load(owner.qq),
-                corpus: () => loadExemplars(join(config.dataDir, 'exemplars', 'corpus.jsonl')),
-                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
-                names: { char: character.name, user: owner.name },
-                // 他标过的「像真人」/「这句像 AI」（ADR 0195）：只进每晚想的这一次，不进聊天时的提示词
-                feedback: () => recentFeedback(loadFeedback(config.dataDir), clockNow().getTime()),
-                log,
-            }).catch(error => log(`说话习惯：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
-        };
-        const timer = exec.every(tick, 30 * 60_000);
-        timer.unref();
-        return timer;
-    })() : undefined;
     if (config.speechNotes) log(deviceOwner ? '她自己总结说话习惯：开（每晚 22 点以后想一次；/说话习惯 随时看）' : '她自己总结说话习惯：开着，但名单里没有男朋友档，不启动');
     // 她每天回顾聊天、找出内容上的问题、学着改（ADR 0221）：22 点以后看一次今天和他的聊天里数得出来的几处，她自己判断、记一句；私人空间
-    const chatReviewTimer = config.chatReview && deviceOwner ? (() => {
-        const owner = deviceOwner;
-        const { character } = cardFor(owner.tier);
-        let busy = false;
-        const tick = () => {
-            if (busy || stopped) return;
-            busy = true;
-            void reviewChatIfDue({
-                dataDir: config.dataDir,
-                now: () => clockNow().getTime(),
-                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.8 }, messages }, log),
-                history: () => history.load(owner.qq),
-                dayStart: at => (character.schedule ? herDay(character.schedule, new Date(at)).getTime() : new Date(new Date(at).setHours(0, 0, 0, 0)).getTime()),
-                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
-                names: { char: character.name, user: owner.name },
-                log,
-            }).catch(error => log(`聊天回顾：看的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
-        };
-        const timer = exec.every(tick, 30 * 60_000);
-        timer.unref();
-        return timer;
-    })() : undefined;
     if (config.chatReview) log(deviceOwner ? '她每天回顾聊天：开（每晚 22 点以后看一次今天和他的聊天里数得出来的几处，她自己判断、记一句；私人空间，日志只记个数）' : '她每天回顾聊天：chatReview 开着，但名单里没有男朋友档，不启动');
     // 她每晚翻自己的日记，写下对自己的认识（ADR 0194）：22 点以后想一次，日记够多、有新的才想；失败 2 小时后再试，每天最多试 3 次
     // 桌面上的她也看得到（同一个她）：写进灵魂目录的 INSIGHTS.json，桌面插件只读；每小时刷新时间戳，6 小时没刷新桌面就不用（关掉开关 / QQ 没在跑）
@@ -1820,141 +1782,15 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         catch (error) { log(`自我认识：没能写给桌面上的她（${error instanceof Error ? error.message : String(error)}）`); }
     };
     // 她聊完回想一下、记下有依据的感受（ADR 0197）：一段聊天结束半小时后想一次，聊得够多、有新聊天才想；每 10 分钟看一眼，两次尝试至少隔 1 小时，每天最多试 8 次
-    const feelingReviewTimer = config.feelingReview && config.herFeelings && deviceOwner ? (() => {
-        const owner = deviceOwner;
-        const { character } = cardFor(owner.tier);
-        let busy = false;
-        const tick = () => {
-            if (busy || stopped) return;
-            busy = true;
-            void reviewIfDue({
-                dataDir: config.dataDir,
-                soulDir: soulDir(),
-                now: () => clockNow().getTime(),
-                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages }, log),
-                history: () => history.load(owner.qq),
-                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
-                names: { char: character.name, user: owner.name },
-                others: () => config.contacts.filter(contact => contact.qq !== owner.qq).map(contact => contact.name),
-                // 心里已经有的（最近 6 小时内给他算过的明显感受）：别重复记
-                existing: () => (lastFeelings && clockNow().getTime() - lastFeelings.at <= 6 * 3_600_000
-                    ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => ({ kind: item.kind, cause: item.cause }))
-                    : []),
-                log,
-            }).catch(error => log(`心境回想：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
-        };
-        const timer = exec.every(tick, 10 * 60_000);
-        timer.unref();
-        return timer;
-    })() : undefined;
     if (config.feelingReview) log(config.herFeelings && deviceOwner ? '她聊完回想一下、记下有依据的感受：开（一段聊天结束半小时后想一次；/心境 随时看）' : '她聊完回想一下：feelingReview 开着，但 herFeelings 没开或名单里没有男朋友档，不启动');
-    const diaryInsightsTimer = config.diaryInsights && deviceOwner ? (() => {
-        const owner = deviceOwner;
-        const { character } = cardFor(owner.tier);
-        let busy = false;
-        const tick = () => {
-            if (busy || stopped) return;
-            busy = true;
-            void reflectInsights({
-                dataDir: config.dataDir,
-                soulDir: soulDir(),
-                now: () => clockNow().getTime(),
-                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages }, log),
-                history: () => history.load(owner.qq),
-                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
-                names: { char: character.name, user: owner.name },
-                others: () => config.contacts.filter(contact => contact.qq !== owner.qq).map(contact => contact.name),
-                log,
-            }).catch(error => log(`自我认识：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; exportInsights(); });
-        };
-        exportInsights();
-        const timer = exec.every(tick, 30 * 60_000);
-        timer.unref();
-        return timer;
-    })() : undefined;
+    if (config.diaryInsights && deviceOwner) exportInsights();
     if (config.diaryInsights) log(deviceOwner ? '她翻自己的日记写对自己的认识：开（每晚 22 点以后想一次；/自我认识 随时看）' : '她翻自己的日记写对自己的认识：开着，但名单里没有男朋友档，不启动');
     // 她读完 / 看完之后自己想的（ADR 0204）：22 点以后想一次；今天读到哪儿 / 看了什么视频，有话想说才写一句；私人空间，没有命令念给他
-    const readingTakesTimer = config.readingTakes && deviceOwner ? (() => {
-        const owner = deviceOwner;
-        const { character } = cardFor(owner.tier);
-        let busy = false;
-        const tick = () => {
-            if (busy || stopped) return;
-            busy = true;
-            void reflectTakes({
-                dataDir: config.dataDir,
-                now: () => clockNow().getTime(),
-                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages }, log),
-                items: () => {
-                    const now = clockNow();
-                    return [
-                        ...(character.schedule ? bookItems(character.schedule, character.books, now) : []),
-                        ...videoItems(loadWatched(watchedPath(config.dataDir), log).entries, now),
-                    ];
-                },
-                history: () => history.load(owner.qq),
-                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
-                names: { char: character.name, user: owner.name },
-                others: () => config.contacts.filter(contact => contact.qq !== owner.qq).map(contact => contact.name),
-                log,
-            }).catch(error => log(`读完看完的想法：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
-        };
-        const timer = exec.every(tick, 30 * 60_000);
-        timer.unref();
-        return timer;
-    })() : undefined;
     if (config.readingTakes) log(deviceOwner ? '她读完看完之后自己想的：开（每晚 22 点以后想一次，有话想说才写；私人空间，没有命令念给他）' : '她读完看完之后自己想的：readingTakes 开着，但名单里没有男朋友档，不起作用');
     if (config.hisReactions) log(`看他的反应：${config.proactive === 'off' ? '开着，但主动消息（proactive）关着，不起作用' : '开（只男朋友档；她主动说自己的事时提示词多一行他三周内对各类事的反应，说什么她自己拿捏；他明说过不想听的那一类照片 / 小事 7 天内不发）'}`);
     // 她没想完的问题（ADR 0207）：22 点以后想一次；他问过、她答「不知道」的，让她自己想（deliberateModel，开思考），想出什么写什么；私人空间，没有命令念给他
-    const openQuestionsTimer = config.openQuestions && deviceOwner ? (() => {
-        const owner = deviceOwner;
-        const { character } = cardFor(owner.tier);
-        let busy = false;
-        const tick = () => {
-            if (busy || stopped) return;
-            busy = true;
-            void ponderIfDue({
-                dataDir: config.dataDir,
-                now: () => clockNow().getTime(),
-                generate: messages => chatCompletion({ ...deliberateLlm(config.llm, config.deliberateModel), temperature: 0.9 }, messages, { log, purpose: 'background' }),
-                history: () => history.load(owner.qq),
-                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
-                names: { char: character.name, user: owner.name },
-                others: () => config.contacts.filter(contact => contact.qq !== owner.qq).map(contact => contact.name),
-                log,
-            }).catch(error => log(`没想完的问题：想的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
-        };
-        const timer = exec.every(tick, 30 * 60_000);
-        timer.unref();
-        return timer;
-    })() : undefined;
     if (config.openQuestions) log(deviceOwner ? '她没想完的问题：开（他问了她答不上来的，每晚 22 点以后她自己想一遍；私人空间，没有命令念给他）' : '她没想完的问题：openQuestions 开着，但名单里没有男朋友档，不起作用');
     // 她猜的事和后来的结果（ADR 0213）：22 点以后对一次；白天她像在猜结果的几句给她挑，挂着的对照世界账里这几天真实发生的事；私人空间，没有命令念给他
-    const herGuessesTimer = config.herGuesses && deviceOwner && sharedWorld && worldCard ? (() => {
-        const owner = deviceOwner;
-        const { character } = cardFor(owner.tier);
-        const world = worldCard;
-        let busy = false;
-        const tick = () => {
-            if (busy || stopped) return;
-            busy = true;
-            void reviewGuessesIfDue({
-                dataDir: config.dataDir,
-                now: () => clockNow().getTime(),
-                generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.7 }, messages }, log),
-                history: () => history.load(owner.qq),
-                world: (from, to) => worldFactsBetween(time => sharedWorld.at(world.herWorld!, world.schedule!, time), from, to),
-                pending: at => pendingWorld(sharedWorld.at(world.herWorld!, world.schedule!, new Date(at))),
-                persona: () => substituteMacros(character.description, { user: owner.name, char: character.name }).slice(0, 700),
-                names: { char: character.name, user: owner.name },
-                others: () => config.contacts.filter(contact => contact.qq !== owner.qq).map(contact => contact.name),
-                log,
-            }).catch(error => log(`她猜的事：对的时候出错（${error instanceof Error ? error.message : String(error)}）`)).finally(() => { busy = false; });
-        };
-        const timer = exec.every(tick, 30 * 60_000);
-        timer.unref();
-        return timer;
-    })() : undefined;
     if (config.herGuesses) log(!deviceOwner ? '她猜的事：herGuesses 开着，但名单里没有男朋友档，不起作用' : !(sharedWorld && worldCard) ? '她猜的事：herGuesses 开着，但没有她那边的世界（世界账），对不上结果，不起作用' : `她猜的事：开（白天留意她像在猜结果的话，每晚 22 点以后她自己挑哪句算数、对照世界账看对没对；私人空间，没有命令念给他${config.innerLife ? '；刚对上的那件她下次一个人想事情时会想到' : ''}）`);
     if (config.silenceNotice) log(deviceOwner ? '没回时告诉他原因：开（随正常回复解释，不另发通知）' : '没回时告诉他原因：开着，但名单里没有男朋友档，不解释');
 
@@ -4662,14 +4498,6 @@ ${body}
             if (transportTimer) exec.cancel(transportTimer);
             if (dshInboxTimer) exec.cancel(dshInboxTimer);
             if (dshStateTimer) exec.cancel(dshStateTimer);
-            if (selfPursuitTimer) exec.cancel(selfPursuitTimer);
-            if (speechNotesTimer) exec.cancel(speechNotesTimer);
-            if (chatReviewTimer) exec.cancel(chatReviewTimer);
-            if (diaryInsightsTimer) exec.cancel(diaryInsightsTimer);
-            if (readingTakesTimer) exec.cancel(readingTakesTimer);
-            if (openQuestionsTimer) exec.cancel(openQuestionsTimer);
-            if (herGuessesTimer) exec.cancel(herGuessesTimer);
-            if (feelingReviewTimer) exec.cancel(feelingReviewTimer);
             exec.cancel(outboxTimer);
             exec.cancel(foodRetryTimer);
             const deviceDrain = stopDevices();
@@ -4788,6 +4616,8 @@ ${body}
             };
         },
     };
+    // App 搭好了：开各模块「搭好就开」的定时任务（原来在构造时开的那些，ADR 0336 第 6 步；同一刻到点的按这里开的先后触发）
+    interpreter.startSchedules('built');
     // 对外的入口都经解释器分发（ADR 0336 第 4 步）；停止、状态、手机伴侣、外部草稿不是事件，照旧直接给
     return {
         connected: selfId => interpreter.dispatch({ kind: 'connected', selfId }) ?? Promise.resolve(),

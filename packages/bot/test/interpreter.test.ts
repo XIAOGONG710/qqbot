@@ -154,6 +154,26 @@ describe('解释器骨架（ADR 0336）', () => {
         interpreter.startSchedules();
         assert.deepEqual(opened, [60_000], '停下之后不再开');
     });
+
+    test('定时任务分两个时机开（ADR 0336 第 6 步）：built 在 App 搭好时、synced（默认）在连上之后；同一时机按模块注册顺序、模块内按数组顺序', () => {
+        const opened: string[] = [];
+        const fake = { every: (fn: () => void) => { fn(); return { unref() { return this; } } as unknown as ReturnType<typeof setInterval>; }, cancel: () => {} };
+        const interpreter = createInterpreter({ exec: fake, modules: [
+            { id: 'a', schedules: [{ every: 1, run: () => opened.push('a1'), start: 'built' }, { every: 1, run: () => opened.push('a2') }, { every: 1, run: () => opened.push('a3'), start: 'built' }] },
+            { id: 'b', schedules: [{ every: 1, run: () => opened.push('b1'), start: 'synced' }, { every: 1, run: () => opened.push('b2'), start: 'built' }] },
+        ] });
+        interpreter.startSchedules('built');
+        assert.deepEqual(opened, ['a1', 'a3', 'b2']);
+        interpreter.startSchedules('built');
+        interpreter.startSchedules();
+        interpreter.startSchedules('synced');
+        assert.deepEqual(opened, ['a1', 'a3', 'b2', 'a2', 'b1']);
+        interpreter.stop();
+        const late = createInterpreter({ exec: fake, modules: [{ id: 'c', schedules: [{ every: 1, run: () => opened.push('c') }] }] });
+        late.stop();
+        late.startSchedules();
+        assert.deepEqual(opened, ['a1', 'a3', 'b2', 'a2', 'b1'], '停下之后哪个时机都不再开');
+    });
 });
 
 describe('小梗模块（ADR 0114 / 0336）', () => {
