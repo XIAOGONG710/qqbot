@@ -226,7 +226,7 @@ export const SCENARIOS: readonly Scenario[] = [
     },
     {
         name: 'proactive-day',
-        about: '本地功能全开、男朋友档：一整天没人说话，她自己过日子、按时机主动找他；晚上他回了一句',
+        about: '本地功能全开、男朋友档：一整天没人说话，她自己过日子、按动机决定是否主动找他；晚上他回了一句',
         start: '2026-11-16T06:30:00+08:00',
         contacts: [boyfriend],
         config: RICH,
