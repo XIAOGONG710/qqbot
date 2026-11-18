@@ -14,18 +14,20 @@ export const SING_CLIP_SECONDS = 60;
 
 /** 从他的话里取「唱什么」：BV 或歌名；不是这个意思就 undefined */
 export function matchSingRequest(text: string): string | undefined {
-    const t = text.trim();
-    const bv = /(BV[0-9A-Za-z]{10})/i.exec(t)?.[1];
-    if (bv) return bv;
-    // 《歌名》
-    const quoted = /《([^》]{1,30})》/.exec(t)?.[1]?.trim();
-    if (quoted && /唱/.test(t)) return quoted;
-    // 「唱 稻香」「在唱首心似烟火呗」「给我唱一首 稻香」——句尾的语气词要剥掉
-    const raw = /(?:唱|翻唱)(?:一?首|一下|个)?[\s:：]*([^\s，。！？、,.!?]{2,15})/u.exec(t)?.[1];
-    if (!raw) return undefined;
-    const title = raw.replace(/[呗吧啊嘛呀哦啦呢]+$/u, '').trim();
-    if (title.length < 2 || title.startsWith('歌')) return undefined; // 「唱歌好听」不算点歌
-    return title;
+    const request = text.trim().replace(/^(?:宝宝|瑶瑶|梦瑶)[，,\s]+/u, '');
+    const content = /^(?:(?:我)?想听|来一?首|(?:可以|能不能|能)?(?:给我|帮我|你|再|在)*(?:翻唱|唱)(?:一?首|一下|个)?)[\s:：]*(.+)$/u.exec(request)?.[1]?.trim();
+    if (!content) return undefined;
+    const quoted = /^《([^《》\n]{1,30})》\s*[呗吧啊嘛呀哦啦呢吗]*[。！？!?]?$/.exec(content)?.[1]?.trim();
+    if (quoted) return quoted;
+    const reference = singVideoReference(content.replace(/\s+[呗吧啊嘛呀哦啦呢吗]+[。！？!?]?$/, ''));
+    if (reference) return reference;
+    const title = content.replace(/[呗吧啊嘛呀哦啦呢吗。！？!?]+$/u, '').trim();
+    if (/^(?:一下|一听|你|歌|听|这首|那首)|意见|建议|想法|说话|怎么想|故事|解释/u.test(title)) return undefined;
+    return /^[\p{L}\p{N}·]{2,15}$/u.test(title) ? title : undefined;
+}
+
+export function singVideoReference(text: string): string | undefined {
+    return /^(?:https?:\/\/(?:www\.)?bilibili\.com\/video\/)?(BV[0-9A-Za-z]{10})(?:[/?#]\S*)?$/i.exec(text.trim())?.[1];
 }
 
 export interface SingOptions {

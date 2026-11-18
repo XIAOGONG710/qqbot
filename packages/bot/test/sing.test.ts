@@ -9,14 +9,23 @@ describe('唱歌触发（2026-11-14）', () => {
         assert.equal(matchSingRequest('给我唱：BV1hW4y1Y7dG 吧'), 'BV1hW4y1Y7dG');
     });
 
-    test('直接贴链接也认', () => {
-        assert.equal(matchSingRequest('https://www.bilibili.com/video/BV1hW4y1Y7dG/?x=1'), 'BV1hW4y1Y7dG');
+    test('直接贴链接不算点歌，明确让她唱才认', () => {
+        const link = 'https://www.bilibili.com/video/BV1hW4y1Y7dG/?x=1';
+        assert.equal(matchSingRequest(link), undefined);
+        assert.equal(matchSingRequest('唱 ' + link), 'BV1hW4y1Y7dG');
     });
 
     test('歌名：书名号或「唱 」开头', () => {
         assert.equal(matchSingRequest('唱 稻香'), '稻香');
         assert.equal(matchSingRequest('给我唱一首 稻香'), '稻香');
         assert.equal(matchSingRequest('唱《晴天》'), '晴天');
+    });
+
+    test('「我想听《X》」「来首 X」也认', () => {
+        assert.equal(matchSingRequest('宝宝，我想听《海屿你》'), '海屿你');
+        assert.equal(matchSingRequest('想听海屿你'), '海屿你');
+        assert.equal(matchSingRequest('来一首 晴天'), '晴天');
+        assert.equal(matchSingRequest('我想听你说话'), undefined);
     });
 
     test('日常说法也认（2026-11-14 实测他这么说的）', () => {
@@ -30,5 +39,9 @@ describe('唱歌触发（2026-11-14）', () => {
         assert.equal(matchSingRequest('唱歌好听'), undefined);
         assert.equal(matchSingRequest('唱吧'), undefined);
         assert.equal(matchSingRequest('唱歌'), undefined);
+        assert.equal(matchSingRequest('我刚读完《三体》'), undefined);
+        assert.equal(matchSingRequest('你看过《流浪地球》吗'), undefined);
+        assert.equal(matchSingRequest('我想听一下你的意见'), undefined);
+        assert.equal(matchSingRequest('我想听你的看法'), undefined);
     });
 });

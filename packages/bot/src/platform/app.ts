@@ -11,7 +11,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { loadOthers } from '.././social/others.ts';
 import { createAccount, friendRequestVerdict } from '.././social/account.ts';
@@ -46,7 +46,7 @@ import { quotedIds, renderForward, segmentsToText, type ForwardLookup, type Grou
 import { isSticker, MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
 import { createHearing } from '.././vision/hearing.ts';
 import { speakViaGateway, speakViaHttp, speakViaWorker, startVoiceWorker, takeVoiceLines } from '.././vision/voice-out.ts';
-import { matchSingRequest, singSong } from '../voice/sing.ts';
+import { matchSingRequest, singSong, singVideoReference } from '../voice/sing.ts';
 
 /** 唱歌这条链路的回执也是她说的：短、口语，别像系统提示（2026-11-14 用户要求） */
 const SING_LINES = {
@@ -350,6 +350,7 @@ export interface HerDayStatus {
 const HEALTH_PROBE_MS = 60_000;
 
 export interface AppOptions {
+    sing?: typeof singSong;
     config: AppConfig;
     transport: Transport;
     log: Log;
@@ -440,7 +441,7 @@ export function startApp(options: AppOptions): App {
     catch (error) { construction.rollback(); throw error; }
 }
 
-function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, foodSource, photoRetryMs, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
+function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, foodSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
     // 碰外部的都经执行器（ADR 0336 第 3 步）：QQ 动作、调模型、时钟和计时器、设备登记（第 8 步：设备服务下面才异步起，登记时现取）
     const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}), devices: () => deviceService?.control });
     const transport = exec.qq;
@@ -2995,6 +2996,10 @@ ${body}
         }, 1000);
         incomingRetryTimer.unref?.();
     }
+    let privateSongReference: { song: string; at: number } | undefined;
+    const groupSongRequests = new Map<number, { song: string; at: number }>();
+    const songRequestLifetime = 5 * 60_000;
+
     function onMessage(event: MessageEvent): void {
         if (!validIncomingEvent(event)) { log('收到的私聊来源身份无效，已忽略'); return; }
         const reservation = { id: bufferedIncoming.get(event), owned: false };
@@ -3163,16 +3168,24 @@ ${body}
             if (dormancy && plain === '/唤醒') { void wakeUp(); return; }
             // 「唱 BVxxxx」（2026-11-14）：他要她唱一首。后台跑 scripts/sing.py（约 5 分钟），
             // 出结果发整首语音条；不占她这一轮的回复，也不进提示词。
-            const singBv = plain ? matchSingRequest(plain) : undefined;
+            const priorSong = privateSongReference;
+            const reference = plain ? singVideoReference(plain) : undefined;
+            const at = worldNow();
+            privateSongReference = reference ? { song: reference, at } : undefined;
+            const singBv = !dormancy?.isDormant() && plain
+                ? matchSingRequest(plain) ?? (priorSong && at - priorSong.at <= songRequestLifetime
+                    && /^(?:(?:我)?想听|(?:给我)?唱(?:一下)?)?这首[吧呀啊。！？!?]*$/.test(plain) ? priorSong.song : undefined)
+                : undefined;
             if (singBv) {
                 tellOwner(pickLine(SING_LINES.start));
                 log(`[${event.user_id}] 唱歌：开始 ${singBv}`);
-                void singSong(singBv, {
+                void sing(singBv, {
                     root: repoRoot,
                     python: join(repoRoot, 'runtime', 'gpt-sovits', '.venv', 'Scripts', 'python.exe'),
                     ffmpeg: process.env.QQBOT_FFMPEG ?? 'ffmpeg',
                     log,
                 }).then(async result => {
+                    if (stopped || dormancy?.isDormant()) return;
                     if (result.error || !result.mp3) {
                         tellOwner(result.error === 'busy'
                             ? pickLine(SING_LINES.busy)
@@ -3189,7 +3202,7 @@ ${body}
                         } catch (error) {
                             log(`[${event.user_id}] 唱歌：整首没发出去（${error instanceof Error ? error.message : String(error)}），改发片段`);
                         }
-                        if (!sent && result.clip) {
+                        if (!sent && result.clip && !stopped && !dormancy?.isDormant()) {
                             try {
                                 await transport.sendPrivateVoice(event.user_id, result.clip);
                                 sent = true;
@@ -3529,6 +3542,45 @@ ${body}
         const herNames = herGroupNames.get(group.id);
         const reason = speakReason(event.message, text, event.user_id, event.message_id,
             { selfId: selfIdKnown, ...(bf ? { boyfriend: bf } : {}), boyfriendNames: bfNames, herMessageIds: herIds, topicToday, overheardToday, ...(herNames ? { herNames } : {}) });
+        if (config.groupChat === 'on' && bf?.qq === event.user_id && transport.sendGroupText && transport.sendGroupMessage
+            && Array.isArray(event.message) && event.message.some(segment => segment.type === 'at' && Number(segment.data.qq) === selfIdKnown)) {
+            const plain = plainTextOf(event.message.filter(segment => segment.type === 'text'))?.trim() ?? '';
+            const pending = groupSongRequests.get(group.id);
+            const at = worldNow();
+            const confirmed = pending && at - pending.at <= songRequestLifetime
+                && /^(?:好[的呀啊]?|可以|唱吧|唱这首|就这首)[。！？!?]*$/.test(plain);
+            const song = confirmed ? pending.song : matchSingRequest(plain);
+            if (song) {
+                groupLogs.append(group.id, { time: new Date(at).toISOString(), from: event.user_id, name: senderName, content: text, messageId: event.message_id });
+                const failure = '这首没能发出来，晚点再试吧。';
+                const tell = (line: string) => sendOwnedNotice(() => transport.sendGroupText!(group.id, line), () => {},
+                    () => log('群里点歌：回执没发出去'));
+                if (!confirmed) {
+                    groupSongRequests.set(group.id, { song, at });
+                    void tell('要我唱《' + song + '》吗？要的话再 @ 我说「唱吧」。');
+                    return;
+                }
+                groupSongRequests.delete(group.id);
+                void sing(song, {
+                    root: repoRoot,
+                    python: join(repoRoot, 'runtime', 'gpt-sovits', '.venv', 'Scripts', 'python.exe'),
+                    ffmpeg: process.env.QQBOT_FFMPEG ?? 'ffmpeg',
+                    log,
+                }).then(async result => {
+                    if (stopped || dormancy?.isDormant()) return;
+                    for (const file of [result.mp3, result.clip]) {
+                        if (stopped || dormancy?.isDormant()) return;
+                        if (result.error || !file) continue;
+                        let sent = false;
+                        await sendOwnedNotice(() => transport.sendGroupMessage!(group.id, [{ type: 'record', data: { file: pathToFileURL(file).href } }]),
+                            () => { sent = true; }, () => log('群里点歌：语音没发出去'));
+                        if (sent) return;
+                    }
+                    await tell(result.error === 'busy' ? pickLine(SING_LINES.busy) : failure);
+                }).catch(() => { if (!stopped && !dormancy?.isDormant()) void tell(failure); });
+                return;
+            }
+        }
         const queue = groupQueue.get(group.id) ?? [];
         queue.push({
             event, text, ...(reason ? { reason } : {}),

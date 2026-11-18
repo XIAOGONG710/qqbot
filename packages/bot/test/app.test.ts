@@ -14,7 +14,7 @@ import type { ImageDescriber, MEDIA_TIMEOUTS, MediaReader } from '../src/vision/
 import type { AppConfig } from '../src/platform/config.ts';
 import { ChatHistory } from '../src/memory/history.ts';
 import { fileOps } from '../src/memory/json-file.ts';
-import type { MessageEvent, PokeEvent } from '../src/platform/onebot.ts';
+import type { GroupMessageEvent, MessageEvent, PokeEvent } from '../src/platform/onebot.ts';
 import { POKE_BACK_DELAY_MS, POKE_OUT_TEXT, pokeBackPlan } from '../src/social/pokes.ts';
 import { noteFromInfo, recordSilence } from '../src/social/silence.ts';
 import { pokeOutPlan } from '../src/social/presence.ts';
@@ -123,7 +123,7 @@ test('silenceNotice：自然问才解释小事，私密原因不进入正常回�
     }
 });
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; foodSource?: FoodSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; imageRecognition?: ImageDescriber; imageSearch?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { sing?: AppOptions['sing']; photoSource?: PhotoSource; foodSource?: FoodSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; imageRecognition?: ImageDescriber; imageSearch?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -158,6 +158,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.imageSearch ? { imageSearch: options.imageSearch } : {}),
         ...(options.stickers ? { stickers: options.stickers } : {}),
         ...(options.photoSource ? { photoSource: options.photoSource } : {}),
+        ...(options.sing ? { sing: options.sing } : {}),
         ...(options.foodSource ? { foodSource: options.foodSource } : {}),
         ...(options.photoRetryMs !== undefined ? { photoRetryMs: options.photoRetryMs } : {}),
         ...(options.stickerChance !== undefined ? { stickerChance: options.stickerChance } : {}),
@@ -711,6 +712,58 @@ describe('编排（app.ts）', () => {
             assert.ok(logs.every(line => !line.includes('PRIVATE_PHOTO_INDEX_FAILURE')));
             assert.ok(logs.every(line => !/回复失败/.test(line)));
         } finally { fileOps.renameSync = originalRename; }
+    });
+
+    test('点歌：群里必须真 @ 并在同群确认，成品只回原会话', async () => {
+        const qq = 10001;
+        const cfg = config({ contacts: [{ qq, name: '合成人', tier: 'boyfriend' }], groupChat: 'on',
+            groups: [{ id: 555, name: '合成群甲' }, { id: 556, name: '合成群乙' }] });
+        const songs: string[] = [], groupText: [number, string][] = [], groupAudio: [number, string][] = [], privateAudio: [number, string][] = [];
+        const full = join(cfg.dataDir, 'whole.mp3'), clip = join(cfg.dataDir, 'clip.mp3');
+        const run = setup(cfg, { [qq]: [] }, {
+            sing: async song => { songs.push(song); return { mp3: full, clip }; },
+            extra: {
+                sendGroupText: async (group, line) => { groupText.push([group, line]); return 900; },
+                sendGroupMessage: async (group, segments) => {
+                    const record = segments.find(segment => segment.type === 'record');
+                    if (record) {
+                        groupAudio.push([group, String(record.data.file)]);
+                        if (record.data.file === pathToFileURL(full).href) throw new Error('synthetic full length failure');
+                    }
+                    return 901;
+                },
+                sendPrivateVoice: async (user, file) => { privateAudio.push([user, file]); return 902; },
+            },
+        });
+        const sendGroup = (group: number, id: number, text: string, at: boolean) => run.app.receiveGroup({
+            ...event(qq, id, text), message_type: 'group', sub_type: 'normal', group_id: group,
+            message: [...(at ? [{ type: 'at', data: { qq: String(SELF) } }] : [{ type: 'reply', data: { id: '900' } }]),
+                { type: 'text', data: { text } }],
+        } as GroupMessageEvent);
+        await run.app.connected(SELF);
+        sendGroup(555, 1101, '我想听《海屿你》', false);
+        sendGroup(555, 1102, '我刚读完《三体》', true);
+        assert.deepEqual(groupText, []);
+        assert.deepEqual(songs, []);
+        sendGroup(555, 1103, '我想听《海屿你》', true);
+        assert.match(groupText[0]?.[1] ?? '', /要我唱《海屿你》吗/);
+        assert.deepEqual(songs, []);
+        sendGroup(556, 1104, '唱吧', true);
+        sendGroup(555, 1105, '唱吧', false);
+        assert.deepEqual(songs, []);
+        sendGroup(555, 1106, '唱吧', true);
+        sendGroup(555, 1106, '唱吧', true);
+        await until(() => groupAudio.length === 2);
+        assert.deepEqual(songs, ['海屿你']);
+        assert.deepEqual(groupAudio, [[555, pathToFileURL(full).href], [555, pathToFileURL(clip).href]]);
+        assert.deepEqual(privateAudio, []);
+
+        run.app.receive(event(qq, 1107, 'https://www.bilibili.com/video/BV1hW4y1Y7dG/'));
+        assert.deepEqual(songs, ['海屿你']);
+        run.app.receive(event(qq, 1108, '这首'));
+        await until(() => privateAudio.length === 1);
+        assert.deepEqual(songs, ['海屿你', 'BV1hW4y1Y7dG']);
+        assert.deepEqual(privateAudio, [[qq, full]]);
     });
 
     test('货架发现：每次补完先扫，周期只注册一次，停止后不再扫描', async t => {
