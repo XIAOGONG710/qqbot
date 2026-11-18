@@ -1350,3 +1350,17 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 至此 app.ts 里没有 `exec.every` 了：`executor.test.ts` 加一条防回退。剩下的 `exec.after` 都是运行中的等待、超时和重试（单次的，不是定时任务）。
   app.ts 之外还自己开计时器的（`bilibili/`、`social/presence.ts`、`platform/heartbeat.ts`、`platform/lock.ts`）是自带循环的功能，不在这一步。
 - 验证：全部 41 个场景对快照逐字一致。
+
+### 第 6 步：状态文件和子进程经执行器（2026-11-19）
+
+- 执行器加两类动作，都先给 `observe` 看一眼再做：
+  - `file`（`exec.files`）：读（utf8 文本）、写、追加、删（`force`）、在不在、列目录、建目录（`recursive`）。同步调 node:fs 的同名函数，参数同原来，同步返回、同步抛错。
+    真的那一份是 `realFiles`；`startApp` 建数据目录时执行器还没建，直接用它。测试可以经 `ExecutorOptions.files` 整个换掉。
+  - `process`（`exec.process`）：她写的命令（shell-tool 的 `runShell`）、交给常驻的她干活（work-bridge 的 `runWorkTask`；App 的 `workRunner` 现在经 `ExecutorOptions.processes.work` 给）、
+    查仓库的 HEAD（identity 的 `realGit(...).head()`，休眠用）。原样调原来的函数、原样返回同一个 promise，异步的登记为进行中。
+- app.ts 里 25 处直接的文件操作全部换成 `exec.files`；不再 import `realGit` / `runShell`，`runWork` 经 `exec.process.work`。
+  例外：语音那几行（`emoRef` 读参考音频的 `existsSync` / `readFileSync`）——语音是用户本人在做，代理不碰；防回退测试里列明这三行。
+- 不在这一步：各功能自己的存储（`life/`、`memory/`、`language/` 下的各种 store、`json-file.ts`）仍直接读写文件；设备服务、B 站扫码、语音、灵魂目录的评价（`soul-rating.ts` 的 powershell）仍自己起子进程。
+  模块目录本来就不碰（`modules-purity.test.ts`）；这一步只让 App 自己不再绕过执行器。
+- 防回退：`executor.test.ts`——app.ts 除语音那三行外不直接碰文件；不 import `node:child_process`、不直接调 `runShell` / `realGit` / `runWorkTask`。
+- 验证：只换文件那一半时全部 41 个场景对快照逐字一致；连同子进程一起再跑一遍，见提交说明。

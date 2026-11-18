@@ -8,7 +8,8 @@
 // 他发的语音、图片（ADR 0052）：入口给了 NapCat 的语音转文字、OCR（AppOptions.media）就先听一听、看一看再进聊天记录（media.ts），
 // 每人的消息按收到的顺序一条条进；读的时候不卡别人，读不出来、超时照旧「[语音]」「[图片]」。
 
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+// 碰文件都经执行器（exec.files，ADR 0336 第 6 步）；只剩语音那几行（用户本人在做，代理不碰）还直接读
+import { existsSync, readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -16,7 +17,7 @@ import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, UNLIS
 import { loadOthers } from '.././social/others.ts';
 import { createAccount, friendRequestVerdict } from '.././social/account.ts';
 import { chatCompletion, forExtraction } from '.././language/llm.ts';
-import { createExecutor, type ExecutorOptions } from '../executor/executor.ts';
+import { createExecutor, realFiles, type ExecutorOptions } from '../executor/executor.ts';
 import { absorbStage, createInterpreter } from '../interpreter/interpreter.ts';
 import { jokesModule } from '../modules/jokes.ts';
 import { takeMemoryReview, takeSelfNotes } from '../modules/self-notes.ts';
@@ -36,7 +37,7 @@ import { dshStateModule } from '../modules/dsh-state.ts';
 import { dreamJobs } from '../life/dream-jobs.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
-import { Identity, realGit } from '.././memory/identity.ts';
+import { Identity } from '.././memory/identity.ts';
 import { auditedApi, memoryLedger, summarize as summarizeMemoryLedger } from '.././memory/memory-audit.ts';
 import { experiencesFromLife, experiencesFromWatched, Tastes } from '.././life/tastes.ts';
 import { readLifeEvents } from '.././world/life-events.ts';
@@ -188,7 +189,7 @@ import { MAX_QUEUED_PER_CLIENT } from '@qqbot/mobile-companion/runtime';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { journalOn, selfThread, selfThreadLine } from '.././language/self-thread.ts';
 import { leaveAnnouncer } from '.././life/leave-note.ts';
-import { auditShell, runShell } from './shell-tool.ts';
+import { auditShell } from './shell-tool.ts';
 import { dreamAppraisals, dreamNoteLine, latestDream } from '.././life/dreams.ts';
 import { loadQuestion, questionLine } from '.././life/learning-questions.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
@@ -439,7 +440,7 @@ function appConstruction(release: () => void, log: Log) {
 }
 
 export function startApp(options: AppOptions): App {
-    mkdirSync(options.config.dataDir, { recursive: true });
+    realFiles.mkdir(options.config.dataDir);
     const release = acquireLock(join(options.config.dataDir, 'bot.lock'));
     const construction = appConstruction(release, options.log);
     try {
@@ -454,7 +455,7 @@ export function startApp(options: AppOptions): App {
 
 function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, foodSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
     // 碰外部的都经执行器（ADR 0336 第 3 步）：QQ 动作、调模型、时钟和计时器、设备登记（第 8 步：设备服务下面才异步起，登记时现取）
-    const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}), devices: () => deviceService?.control });
+    const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}), ...(workRunner ? { processes: { work: workRunner } } : {}), devices: () => deviceService?.control });
     const transport = exec.qq;
     let stopped = false;
     construction.onFailure(() => { stopped = true; });
@@ -575,7 +576,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     });
     log(`DSH 顾问：${dshEnabled ? '开（显式 /dsh ask 或 /dsh probe）' : '关'}`);
     // 关着的时候不留上次开着时的完整提示词
-    if (!sensitive.on()) rmSync(join(config.dataDir, 'last-prompt.json'), { force: true });
+    if (!sensitive.on()) exec.files.remove(join(config.dataDir, 'last-prompt.json'));
     // 以后要加的人：<dataDir>/others.json，不改代码就能加；重复 QQ 自动跳过
     const extraContacts = loadOthers(config.dataDir, config.contacts, log);
     if (extraContacts.length) {
@@ -591,7 +592,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         log(`[${userId}] ${what}失败（之后不再记）：${error instanceof Error ? error.message : String(error)}`);
     };
     // 补充的日常小事（ADR 0106）：第一次开的时候定下“从哪天起”（第二天）并存起来，以后重启读同一个；她已经过完的日子不改写
-    mkdirSync(join(config.dataDir, 'world'), { recursive: true });
+    exec.files.mkdir(join(config.dataDir, 'world'));
     const everydayFrom = config.everydayLife ? loadEverydayFrom(join(config.dataDir, 'world', 'everyday-from.json'), new Date(), log) : undefined;
     // 每顿吃什么（ADR 0125）：同样第一次开的时候定下“从哪天起”
     // 她那边的事有后续（ADR 0216）：要日常小事和小起伏都开着（后续接在小起伏后面）
@@ -615,7 +616,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 专有名字（ADR 0335）：城市名只写在前几档的卡上；名单里只有低档位时，也从最亲那一档的卡上记下（读不了就算了，照旧用卡上有的）
     try {
         const openest = config.characterCard.replaceAll('{tier}', 'boyfriend');
-        if (existsSync(openest)) noteCharacterTerms(loadCharacterCard(openest).herWorld);
+        if (exec.files.exists(openest)) noteCharacterTerms(loadCharacterCard(openest).herWorld);
     } catch { /* 那张卡真用到时 loadTierCard 会报错 */ }
     // 承认版的卡（ADR 0067）：危机回合用（ADR 0068 决策 7）；本来就用承认版的、名单外的没有；文件缺了就不换（那一轮靠意图行里的承认说法）
     const openCards = new Map<string, TierCard | undefined>();
@@ -1093,7 +1094,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             commands: {
                 lookedRecently: contact => (Date.now() - (webTurns.get(contact.qq) ?? 0)) < 3 * 60_000,
                 setNote: (contact, note) => { shellNotes.set(contact.qq, note); },
-                run: command => runShell(command, { cwd: process.env.USERPROFILE }),
+                run: command => exec.process.shell(command, { cwd: process.env.USERPROFILE }),
                 audit: run => auditShell(config.dataDir, run),
                 log,
             },
@@ -1160,10 +1161,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         soul: {
             selfThread: (): string | undefined => {
                 try {
-                    const journal = selfThreadLine(selfThread(readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8')));
+                    const journal = selfThreadLine(selfThread(exec.files.read(join(soulDir(), 'JOURNAL.md'))));
                     let doing: string | undefined;
                     try {
-                        const life = JSON.parse(readFileSync(join(soulDir(), 'LIFE.json'), 'utf8')) as { events?: { text?: string }[] };
+                        const life = JSON.parse(exec.files.read(join(soulDir(), 'LIFE.json'))) as { events?: { text?: string }[] };
                         const own = (life.events ?? []).map(e => String(e.text ?? '')).filter(t => t && !t.includes('跟我说') && !t.startsWith('新的一天')).slice(-2);
                         if (own.length) doing = `[你这两天自己在做的：${own.map(t => t.replace(/^我在/, '')).join('；').slice(0, 80)}]`;
                     } catch { /* 没有 LIFE.json 就只有日记那一段 */ }
@@ -1178,7 +1179,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 再注入一次就是重复，所以带 generated-at 的版本不再往回读（任务书 §2）。
             life: () => {
                 try {
-                    const text = readFileSync(join(soulDir(), 'NOW.md'), 'utf8').trim();
+                    const text = exec.files.read(join(soulDir(), 'NOW.md')).trim();
                     return text.includes('generated-at:') ? undefined : text;
                 } catch { return undefined; }
             },
@@ -1189,7 +1190,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                         // 刚收的这条已经进聊天记录了，算间隔要拿它之前的那条（5 分钟内的都当成本轮）
                         const cutoff = Date.now() - 5 * 60_000;
                         const older = history.load(contact.qq).filter(message => Date.parse(message.time) < cutoff);
-                        const journal = readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8');
+                        const journal = exec.files.read(join(soulDir(), 'JOURNAL.md'));
                         return wakeBackfill({ lastAt: older.at(-1)?.time, now: Date.now(), journal, log });
                     } catch { return undefined; }
                 },
@@ -1455,7 +1456,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const reflectTastes = () => { if (!stopped) void tastes?.reflect().catch(error => tastesLog(`口味：出错（${error instanceof Error ? error.message : String(error)}）`)); };
     // 回头看一天最多一次（tastes.ts 里有间隔）：每小时来看一眼要不要看，启动两分钟后先看一次——由 tastes 模块声明（ADR 0336 第 6 步，App 搭好时开）
     const acquaintances = config.acquaintances ? new Acquaintances({ dataDir: config.dataDir, now: clockNow, log }) : undefined;
-    const dormancy = config.dormancy && deviceOwner ? new Dormancy({ dataDir: config.dataDir, repoRoot, now: clockNow, gitHead: () => realGit(repoRoot).head(), log }) : undefined;
+    const dormancy = config.dormancy && deviceOwner ? new Dormancy({ dataDir: config.dataDir, repoRoot, now: clockNow, gitHead: () => exec.process.gitHead(repoRoot), log }) : undefined;
     if (config.dormancy && !deviceOwner) log('休眠：开着，但名单里没有男朋友档的联系人，不启动');
     if (dormancy?.isDormant()) log(`休眠：${dormancy.status()}`);
     const decorateAccounts = (source: () => Promise<BiliAccount | undefined>): (() => Promise<BiliAccount | undefined>) => (!timeline && !acquaintances ? source : async () => {
@@ -1788,7 +1789,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
 
     /** 他这一条原本说的话：她写 `<<用电脑>>` 时，要拿它去干活（标记发出去之前就得留住） */
     const lastUserText = new Map<number, string>();
-    const runWork = workRunner ?? runWorkTask;
+    const runWork: typeof runWorkTask = (task, options) => exec.process.work(task, options);
 
     // 下面这几样她自己想一想的事，定时都在 modules/reflections.ts（ADR 0336 第 6 步，App 搭好时由解释器开）；这里只留开没开的日志和自我认识那一份导出
     // 她每晚想一次要不要放下 / 改主意 / 提新的（ADR 0178）：到点才想，失败 2 小时后再试，每天最多试 3 次
@@ -1825,7 +1826,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     function contextWindowFor(contact: Contact): Pick<ContactPipelineOptions, 'contextWindow'> {
         if (!config.contextTurns || !memory || (config.contextContacts.length && !config.contextContacts.includes(contact.qq))) return {};
         const dir = join(config.dataDir, 'context');
-        mkdirSync(dir, { recursive: true });
+        exec.files.mkdir(dir);
         const summarize = contextSummarizer({
             names: { user: contact.name, char: cardFor(contact.tier).character.name },
             generate: messages => {
@@ -1970,7 +1971,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 ...(config.diaryLookback && contact.tier === 'boyfriend' ? {
                     diaryOn: (date: string): string | undefined => {
                         let journal = '';
-                        try { journal = readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8'); } catch { /* 还没有日记 */ }
+                        try { journal = exec.files.read(join(soulDir(), 'JOURNAL.md')); } catch { /* 还没有日记 */ }
                         return journalOn(journal, loadSelfDiary(config.dataDir), date);
                     },
                 } : {}),
@@ -2158,7 +2159,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // last-prompt.json 记录的是后处理之后、实际发给模型的消息（要 QQBOT_SENSITIVE_LOGS 开着才写，见 docs）
             onPrompt: prompt => {
                 if (!sensitive.on()) return;
-                writeFileSync(join(config.dataDir, 'last-prompt.json'), JSON.stringify({ qq: contact.qq, ...prompt }, null, 2));
+                exec.files.write(join(config.dataDir, 'last-prompt.json'), JSON.stringify({ qq: contact.qq, ...prompt }, null, 2));
             },
             turnModules: interpreter.turnModules,
             ...pipeline,
@@ -2610,8 +2611,8 @@ ${video.link}`);
         if (config.weeklyReport) {
             try {
                 const dir = join(config.dataDir, 'reports');
-                const latest = existsSync(dir) ? readdirSync(dir).filter(f => /^weekly-\d{4}-\d{2}-\d{2}\.md$/.test(f)).sort().at(-1) : undefined;
-                if (latest) extras.report = { name: latest, text: readFileSync(join(dir, latest), 'utf8').slice(0, 4000) };
+                const latest = exec.files.exists(dir) ? exec.files.list(dir).filter(f => /^weekly-\d{4}-\d{2}-\d{2}\.md$/.test(f)).sort().at(-1) : undefined;
+                if (latest) extras.report = { name: latest, text: exec.files.read(join(dir, latest)).slice(0, 4000) };
             } catch { /* 读不到就不显示 */ }
         }
         return extras;
@@ -2671,8 +2672,8 @@ ${video.link}`);
                 now: () => nowDate, fetch: biliFetch, signal: passiveLifetime.signal, log: message => { if (!stopped) log(message); },
                 draft: (title, body) => {
                     if (stopped || passiveLifetime.signal.aborted) return;
-                    mkdirSync(join(config.dataDir, 'presence'), { recursive: true });
-                    appendFileSync(join(config.dataDir, 'presence', 'drafts.md'), `## ${title}
+                    exec.files.mkdir(join(config.dataDir, 'presence'));
+                    exec.files.append(join(config.dataDir, 'presence', 'drafts.md'), `## ${title}
 
 ${body}
 
@@ -3312,7 +3313,7 @@ ${body}
         if (hit) return hit.length ? hit : undefined;
         try {
             const file = join(config.dataDir, 'groups', `${groupId}.members.json`);
-            const list = JSON.parse(readFileSync(file, 'utf8')) as { name?: unknown }[];
+            const list = JSON.parse(exec.files.read(file)) as { name?: unknown }[];
             const names = list.map(item => String(item?.name ?? '').replace(/\s+/g, ' ').trim()).filter(name => name.length >= 1).slice(0, 60);
             groupRosters.set(groupId, names);
             return names.length ? names : undefined;
@@ -3320,9 +3321,9 @@ ${body}
     }
     /** 上次读到的名字存下来（她的 QQ 昵称是「繁星」，NapCat 这次读不到时别把认识的名字忘了） */
     const groupNamesFile = join(config.dataDir, 'groups', 'self-names.json');
-    if (groupsOn && existsSync(groupNamesFile)) {
+    if (groupsOn && exec.files.exists(groupNamesFile)) {
         try {
-            const saved = JSON.parse(readFileSync(groupNamesFile, 'utf8')) as Record<string, unknown>;
+            const saved = JSON.parse(exec.files.read(groupNamesFile)) as Record<string, unknown>;
             for (const [id, names] of Object.entries(saved)) {
                 const groupId = Number(id);
                 if (Number.isSafeInteger(groupId) && Array.isArray(names)) {
@@ -3334,8 +3335,8 @@ ${body}
     }
     function saveGroupNames(): void {
         try {
-            mkdirSync(dirname(groupNamesFile), { recursive: true });
-            writeFileSync(groupNamesFile, JSON.stringify(Object.fromEntries(herGroupNames)));
+            exec.files.mkdir(dirname(groupNamesFile));
+            exec.files.write(groupNamesFile, JSON.stringify(Object.fromEntries(herGroupNames)));
         } catch { /* 写不进去只是下次重启要重新读 */ }
     }
     /** 连上之后读一次：她自己的 QQ 昵称 + 每个群里的群名片；读不到的群用 QQ 昵称兜底 */
@@ -3614,8 +3615,8 @@ ${body}
         if (!parts.length) { log(`[群 ${group.id}] 看了一眼，没说话（${reason}）`); return; }
         if (config.groupChat === 'dryRun' || !transport.sendGroupText) {
             const dir = join(config.dataDir, 'groups');
-            mkdirSync(dir, { recursive: true });
-            appendFileSync(join(dir, 'drafts.md'), `- ${new Date(worldNow()).toLocaleString('zh-CN')} 群「${group.name}」（${reason}）：${parts.join(' / ')}\n`);
+            exec.files.mkdir(dir);
+            exec.files.append(join(dir, 'drafts.md'), `- ${new Date(worldNow()).toLocaleString('zh-CN')} 群「${group.name}」（${reason}）：${parts.join(' / ')}\n`);
             log(`[群 ${group.id}] 试运行：写了 ${parts.length} 条草稿，没发（${reason}）`);
             return;
         }
@@ -3878,7 +3879,7 @@ ${body}
         try {
             const state = dshState();
             if (state) writeDshState(dshStateFile, state, worldNow());
-            else rmSync(dshStateFile, { force: true });
+            else exec.files.remove(dshStateFile);
         } catch (error) {
             log(`DSH：状态快照没写出去（${error instanceof Error ? error.message : String(error)}）`);
         }
@@ -3887,7 +3888,7 @@ ${body}
     if (dshEnabled) {
         exportDshState();
     } else {
-        rmSync(dshStateFile, { force: true });
+        exec.files.remove(dshStateFile);
     }
 
     const dshRecentTurns = () => {
@@ -4213,7 +4214,7 @@ ${body}
             call: transport.callAction,
             now: () => Date.now(),
             log,
-            audit: entry => { try { appendFileSync(join(config.dataDir, 'account-audit.jsonl'), `${JSON.stringify(entry)}
+            audit: entry => { try { exec.files.append(join(config.dataDir, 'account-audit.jsonl'), `${JSON.stringify(entry)}
 `); } catch { /* 审计写不进去不影响动作 */ } },
         })
         : undefined;

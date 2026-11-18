@@ -6,8 +6,12 @@
 // - 模型调用：有测试替身（AppOptions.pipeline.generate）时按原来的参数调替身，否则调 chatCompletion。
 // - 计时器：调用时取全局的 setTimeout / setInterval（假时钟替换全局后同样生效），原样返回句柄。
 // - 设备登记（device，ADR 0336「生成之后那一段」第 8 步）：同步交给设备控制的 commit，和原来直接调一样。
+// - 状态文件（file，ADR 0336 第 6 步）：同步调 node:fs 的同名函数、参数同原来（读 utf8、删 force、建目录 recursive），同步返回、同步抛错。
+// - 子进程（process，ADR 0336 第 6 步）：她的命令（shell-tool 的 runShell）、交给常驻的她干活（work-bridge 的 runWorkTask）、查仓库的 HEAD（identity 的 realGit）；
+//   调原来的函数、参数原样，异步的原样返回同一个 promise（登记进行中）。
 // 正在进行的动作和周期计时器都登记在这里，供以后的统一停止（ADR 0336 第 4 节）使用；这一步还不改变 App 的停止流程。
 
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { chatCompletion, type LlmOptions } from '../language/llm.ts';
 import type { ModelPurpose } from '../language/model-guard.ts';
 import type { OpenAIMessage } from '../language/prompt.ts';
@@ -15,6 +19,9 @@ import type { Log } from '../platform/log.ts';
 import type { Transport } from '../platform/app.ts';
 import type { AppConfig } from '../platform/config.ts';
 import type { DeviceControl, ParsedTokens } from '../platform/device-actions.ts';
+import { realGit } from '../memory/identity.ts';
+import { runShell, type ShellRun } from '../platform/shell-tool.ts';
+import { runWorkTask } from '../platform/work-bridge.ts';
 
 /** QQ（NapCat / OneBot）这一侧能做的事：Transport 上的方法名 */
 export type QqMethod = keyof Transport;
@@ -39,7 +46,50 @@ export interface LlmAction {
  */
 export interface DeviceAction { kind: 'device'; parsed: ParsedTokens }
 
-export type Action = QqAction | LlmAction | DeviceAction;
+/**
+ * 一次状态文件操作（ADR 0336 第 6 步）：读（utf8 文本）、写、追加、删（不存在也不算错）、在不在、列目录、建目录（连同上级）。
+ * 都是同步的，和原来直接调 node:fs 一样；写进来的是 App 自己的数据目录和灵魂目录里的小文件
+ */
+export type FileAction =
+    | { kind: 'file'; op: 'read' | 'remove' | 'exists' | 'list' | 'mkdir'; path: string }
+    | { kind: 'file'; op: 'write' | 'append'; path: string; text: string };
+
+/** 和 node:fs 同步函数一一对应的那几样（App 经执行器碰文件时用） */
+export interface Files {
+    read(path: string): string;
+    write(path: string, text: string): void;
+    append(path: string, text: string): void;
+    remove(path: string): void;
+    exists(path: string): boolean;
+    list(dir: string): string[];
+    mkdir(dir: string): void;
+}
+
+/** 真的文件操作：执行器用它；App 建执行器之前（startApp 建数据目录）也直接用它 */
+export const realFiles: Files = {
+    read: path => readFileSync(path, 'utf8'),
+    write: (path, text) => writeFileSync(path, text),
+    append: (path, text) => appendFileSync(path, text),
+    remove: path => rmSync(path, { force: true }),
+    exists: path => existsSync(path),
+    list: dir => readdirSync(dir),
+    mkdir: dir => { mkdirSync(dir, { recursive: true }); },
+};
+
+/** 一次子进程（ADR 0336 第 6 步）：跑她写的命令、交给常驻的她干活、查仓库现在的提交 */
+export type ProcessAction =
+    | { kind: 'process'; program: 'shell'; command: string; options: Parameters<typeof runShell>[1] }
+    | { kind: 'process'; program: 'work'; task: string; options: Parameters<typeof runWorkTask>[1] }
+    | { kind: 'process'; program: 'git-head'; repoRoot: string };
+
+/** 起子进程的那几样（测试可换） */
+export interface Processes {
+    shell: typeof runShell;
+    work: typeof runWorkTask;
+    gitHead: (repoRoot: string) => string | undefined;
+}
+
+export type Action = QqAction | LlmAction | DeviceAction | FileAction | ProcessAction;
 
 /** 测试替身：换掉真的模型调用（同 ContactPipelineOptions.generate 的签名） */
 export type Generate = (messages: OpenAIMessage[], log: Log, use?: AppConfig['llm']) => Promise<string>;
@@ -56,6 +106,10 @@ export interface ExecutorOptions {
     observe?: (action: Action) => void;
     /** 设备控制（ADR 0148）：服务是异步起的，登记时现取；没有（没开、还没起来）就什么都不做 */
     devices?: () => Pick<DeviceControl, 'commit'> | undefined;
+    /** 测试：换掉真的文件操作 */
+    files?: Files;
+    /** 测试：换掉起子进程的那几样（App 的 workRunner 也从这里给） */
+    processes?: Partial<Processes>;
 }
 
 type Timer = ReturnType<typeof setTimeout>;
@@ -65,8 +119,14 @@ export interface Executor {
     run(action: QqAction): unknown;
     run(action: LlmAction, log: Log): Promise<string>;
     run(action: DeviceAction): void;
+    run(action: FileAction): string | string[] | boolean | void;
+    run(action: ProcessAction): Promise<ShellRun> | Promise<string> | string | undefined;
     /** 和 Transport 同形状：每个方法调用都变成一个 QQ 动作；底层没有的可选方法这里也没有 */
     readonly qq: Transport;
+    /** 碰状态文件：每个方法都变成一个文件动作 */
+    readonly files: Files;
+    /** 起子进程：每个方法都变成一个子进程动作 */
+    readonly process: Processes;
     /** 调模型 */
     llm(action: Omit<LlmAction, 'kind'>, log: Log): Promise<string>;
     now(): number;
@@ -130,6 +190,33 @@ export function createExecutor(options: ExecutorOptions): Executor {
         return track(result);
     }
 
+    /** 同步做文件操作（和原来直接调 node:fs 一样：同步做完、同步抛错） */
+    const disk = options.files ?? realFiles;
+    function runFile(action: FileAction): string | string[] | boolean | void {
+        look(action);
+        switch (action.op) {
+            case 'read': return disk.read(action.path);
+            case 'write': return disk.write(action.path, action.text);
+            case 'append': return disk.append(action.path, action.text);
+            case 'remove': return disk.remove(action.path);
+            case 'exists': return disk.exists(action.path);
+            case 'list': return disk.list(action.path);
+            case 'mkdir': return disk.mkdir(action.path);
+        }
+    }
+
+    const programs: Processes = {
+        shell: options.processes?.shell ?? runShell,
+        work: options.processes?.work ?? runWorkTask,
+        gitHead: options.processes?.gitHead ?? (repoRoot => realGit(repoRoot).head()),
+    };
+    function runProcess(action: ProcessAction): Promise<ShellRun> | Promise<string> | string | undefined {
+        look(action);
+        if (action.program === 'shell') return track(programs.shell(action.command, action.options));
+        if (action.program === 'work') return track(programs.work(action.task, action.options));
+        return programs.gitHead(action.repoRoot);
+    }
+
     /** 同步交给设备控制（和原来直接调 commit 一样：同步做完、同步抛错） */
     function runDevice(action: DeviceAction): void {
         look(action);
@@ -139,6 +226,8 @@ export function createExecutor(options: ExecutorOptions): Executor {
     function run(action: QqAction): unknown;
     function run(action: LlmAction, log: Log): Promise<string>;
     function run(action: DeviceAction): void;
+    function run(action: FileAction): string | string[] | boolean | void;
+    function run(action: ProcessAction): Promise<ShellRun> | Promise<string> | string | undefined;
     function run(action: Action, log?: Log): unknown {
         if (action.kind === 'qq') return runQq(action);
         if (action.kind === 'llm') {
@@ -146,6 +235,8 @@ export function createExecutor(options: ExecutorOptions): Executor {
             return runLlm(action, log);
         }
         if (action.kind === 'device') return runDevice(action);
+        if (action.kind === 'file') return runFile(action);
+        if (action.kind === 'process') return runProcess(action);
         throw new Error(`不认识的动作 ${(action as { kind: string }).kind}`);
     }
 
@@ -155,6 +246,20 @@ export function createExecutor(options: ExecutorOptions): Executor {
     return {
         run,
         qq: qq as unknown as Transport,
+        process: {
+            shell: (command, options) => runProcess({ kind: 'process', program: 'shell', command, options }) as Promise<ShellRun>,
+            work: (task, options) => runProcess({ kind: 'process', program: 'work', task, options }) as Promise<string>,
+            gitHead: repoRoot => runProcess({ kind: 'process', program: 'git-head', repoRoot }) as string | undefined,
+        },
+        files: {
+            read: path => runFile({ kind: 'file', op: 'read', path }) as string,
+            write: (path, text) => { runFile({ kind: 'file', op: 'write', path, text }); },
+            append: (path, text) => { runFile({ kind: 'file', op: 'append', path, text }); },
+            remove: path => { runFile({ kind: 'file', op: 'remove', path }); },
+            exists: path => runFile({ kind: 'file', op: 'exists', path }) as boolean,
+            list: dir => runFile({ kind: 'file', op: 'list', path: dir }) as string[],
+            mkdir: dir => { runFile({ kind: 'file', op: 'mkdir', path: dir }); },
+        },
         llm: (action, log) => runLlm({ kind: 'llm', ...action }, log),
         now: () => now(),
         // 一次性计时器原样交给 setTimeout（不包一层：已有测试按回调认计时器；触发后这里也无从得知，登记了只会越积越多）

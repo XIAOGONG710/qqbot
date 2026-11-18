@@ -116,3 +116,83 @@ describe('计时器全部经执行器（ADR 0336 第 3 步；2026-11-16 收齐 A
         assert.deepEqual(periodic.map(({ n, line }) => `${n}: ${line.trim().slice(0, 80)}`), []);
     });
 });
+
+describe('状态文件经执行器（ADR 0336 第 6 步）', () => {
+    test('exec.files 的每个方法都是一个文件动作：先给观察者看，再同步做；真的那一份读 utf8、删不存在的不报错、建目录连上级', async () => {
+        const { mkdtempSync, rmSync } = await import('node:fs');
+        const { tmpdir } = await import('node:os');
+        const { join } = await import('node:path');
+        const dir = mkdtempSync(join(tmpdir(), 'exec-files-'));
+        try {
+            const seen: string[] = [];
+            const exec = createExecutor({ transport: {} as Transport, observe: action => { if (action.kind === 'file') seen.push(`${action.op} ${action.path.slice(dir.length).split(String.fromCharCode(92)).join('/')}`); } });
+            const sub = join(dir, 'a', 'b');
+            exec.files.mkdir(sub);
+            exec.files.write(join(sub, 'x.txt'), '你好');
+            exec.files.append(join(sub, 'x.txt'), '！');
+            assert.equal(exec.files.read(join(sub, 'x.txt')), '你好！');
+            assert.deepEqual(exec.files.list(sub), ['x.txt']);
+            assert.equal(exec.files.exists(join(sub, 'x.txt')), true);
+            exec.files.remove(join(sub, 'x.txt'));
+            exec.files.remove(join(sub, 'x.txt'));
+            assert.equal(exec.files.exists(join(sub, 'x.txt')), false);
+            assert.throws(() => exec.files.read(join(sub, 'x.txt')), /ENOENT/, '读不到照样同步抛');
+            assert.deepEqual(seen, ['mkdir /a/b', 'write /a/b/x.txt', 'append /a/b/x.txt', 'read /a/b/x.txt', 'list /a/b', 'exists /a/b/x.txt', 'remove /a/b/x.txt', 'remove /a/b/x.txt', 'exists /a/b/x.txt', 'read /a/b/x.txt']);
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
+    test('测试可以换掉真的文件操作；run 也接文件动作', () => {
+        const store = new Map<string, string>();
+        const exec = createExecutor({ transport: {} as Transport, files: {
+            read: path => store.get(path) ?? '', write: (path, text) => { store.set(path, text); }, append: (path, text) => { store.set(path, (store.get(path) ?? '') + text); },
+            remove: path => { store.delete(path); }, exists: path => store.has(path), list: () => [...store.keys()], mkdir: () => {},
+        } });
+        exec.run({ kind: 'file', op: 'write', path: 'p', text: '1' });
+        exec.files.append('p', '2');
+        assert.equal(exec.run({ kind: 'file', op: 'read', path: 'p' }), '12');
+    });
+
+    test('app.ts 不直接碰文件：都走 exec.files（只剩语音那几行——用户本人在做，代理不碰）', async () => {
+        const { readFileSync } = await import('node:fs');
+        const source = readFileSync(new URL('../src/platform/app.ts', import.meta.url), 'utf8');
+        const direct = source.split('\n').map((line, i) => ({ line, n: i + 1 }))
+            .filter(({ line }) => /(?<![.\w])(readFileSync|writeFileSync|appendFileSync|rmSync|mkdirSync|existsSync|readdirSync|renameSync|unlinkSync)\(/.test(line))
+            .map(({ line }) => line.trim());
+        assert.deepEqual(direct, [
+            'if (!voiceRefsDir || !existsSync(voiceRefsDir)) return undefined;',
+            'if (!existsSync(wav) || !existsSync(txt)) return undefined;',
+            "return { refAudio: wav, refText: readFileSync(txt, 'utf8').trim() };",
+        ]);
+    });
+});
+
+describe('子进程经执行器（ADR 0336 第 6 步）', () => {
+    test('她的命令、交给常驻的她干活、查 HEAD 都是子进程动作：先给观察者看，原样转给原来的函数、原样返回同一个 promise', async () => {
+        const seen: string[] = [];
+        const shellResult = Promise.resolve({ command: 'dir', code: 0, output: 'ok', timedOut: false } as never);
+        const workResult = Promise.resolve('干完了');
+        const calls: unknown[] = [];
+        const exec = createExecutor({ transport: {} as Transport, observe: action => { if (action.kind === 'process') seen.push(action.program); }, processes: {
+            shell: (command, options) => { calls.push(['shell', command, options]); return shellResult; },
+            work: (task, options) => { calls.push(['work', task, options]); return workResult; },
+            gitHead: repoRoot => { calls.push(['git', repoRoot]); return 'abc123'; },
+        } });
+        assert.equal(exec.process.shell('dir', { cwd: 'C:/' }), shellResult);
+        assert.equal(exec.process.work('整理桌面', { context: '最近' }), workResult);
+        assert.equal(exec.process.gitHead('/repo'), 'abc123');
+        assert.equal(exec.inFlight, 2, '两个异步的登记为进行中');
+        await Promise.all([shellResult, workResult]);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(exec.inFlight, 0);
+        assert.deepEqual(seen, ['shell', 'work', 'git-head']);
+        assert.deepEqual(calls, [['shell', 'dir', { cwd: 'C:/' }], ['work', '整理桌面', { context: '最近' }], ['git', '/repo']]);
+    });
+
+    test('app.ts 不直接起子进程：她的命令、干活、查 HEAD 都走 exec.process', async () => {
+        const { readFileSync } = await import('node:fs');
+        const source = readFileSync(new URL('../src/platform/app.ts', import.meta.url), 'utf8');
+        const code = source.split('\n').filter(line => !/^\s*(\/\/|\*)/.test(line)).join('\n');
+        assert.doesNotMatch(code, /from 'node:child_process'/);
+        assert.doesNotMatch(code, /(?<![.\w])(runShell|realGit|runWorkTask)\(/);
+    });
+});
