@@ -131,7 +131,7 @@
 | `tailCap` | 句尾「吧」「呢」封顶（压回真人的水平） | [ADR 0146](../adr/0146-human-videos.md) |
 | `interruptions` | 被第三方打断 | [ADR 0115](../adr/0115-interruptions.md) |
 | `together` | 陪玩状态 | [ADR 0111](../adr/0111-together.md) |
-| `silenceNotice` | 没回时告诉他原因（作息 / 她的决定 / 故障） | [ADR 0173](../adr/0173-silence-reasons.md) |
+| `silenceNotice` | 没回时在正常聊天里酌情解释 | [ADR 0173](../adr/0173-silence-reasons.md) |
 | `speechNotes` | 她每晚自己总结说话习惯（「我发现……」，挑几条放进提示词；他可以用 /像AI /像真人 标她说的话给她看；/说话趋势 按周看她说话的数字） | [ADR 0193](../adr/0193-nightly-speech-notes.md) |
 | `exemplars` | 看真人怎么回（从已批准的真人语料挑几条当口气参考） | [ADR 0190](../adr/0190-learn-from-real-chat.md) |
 | `jealousy` | 吃醋（最轻一档） | [ADR 0123](../adr/0123-jealousy.md) |

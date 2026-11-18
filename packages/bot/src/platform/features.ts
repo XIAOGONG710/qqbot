@@ -39,7 +39,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'tailCap', label: '句尾「吧」「呢」封顶（压回真人的水平）', group: '说话', adr: '0146' },
     { key: 'interruptions', label: '被第三方打断', group: '说话', adr: '0115' },
     { key: 'together', label: '陪玩状态', group: '说话', adr: '0111' },
-    { key: 'silenceNotice', label: '没回时告诉他原因（作息 / 她的决定 / 故障）', group: '说话', adr: '0173' },
+    { key: 'silenceNotice', label: '没回时在正常聊天里酌情解释', group: '说话', adr: '0173' },
     { key: 'crossRecent', label: 'QQ 和 DSH 桌面互读最近几轮（同一个她）', group: '记忆和安全', adr: '0177' },
     { key: 'selfPursuits', label: '她自己定追求（每晚想一次，自己放下 / 提新的）', group: '她的日子', adr: '0178' },
     { key: 'speechNotes', label: '她每晚自己总结说话习惯（「我发现……」，挑几条放进提示词；他可以用 /像AI /像真人 标她说的话给她看；/说话趋势 按周看她说话的数字）', group: '说话', adr: '0193' },

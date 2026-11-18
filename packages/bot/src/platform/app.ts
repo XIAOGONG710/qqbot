@@ -125,7 +125,7 @@ import { feelingsAt } from '.././emotion/feelings.ts';
 import { currentTierHistory, TierRecord } from '.././memory/tier-record.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
 import { arrivedWhileAsleep, pick } from '.././social/reply-timing.ts';
-import { answerWhy, createSilenceWatcher, noteFromInfo, recordSilence, type SilenceInfo } from '.././social/silence.ts';
+import { noteFromInfo, recentSilence, recordSilence, silenceReplyCue, type SilenceInfo } from '.././social/silence.ts';
 import { drainOutbox } from '.././social/outbox.ts';
 import { revokeOwnerBank, writeOwnerBank } from '.././memory/owner-bank.ts';
 import { desktopBlock, desktopRecentPath } from '.././memory/cross-recent.ts';
@@ -1505,10 +1505,14 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         promise.then(value => finish(value), () => finish(undefined));
     });
     /** 给每个联系人流水线的一组“连续性”提示词行（ADR 0157–0163）：只给男朋友档 */
-    const continuity: ContactPipelineOptions['continuity'] | undefined = identity || timeline || web || tastes || acquaintances
+    const continuity: ContactPipelineOptions['continuity'] | undefined = identity || timeline || web || tastes || acquaintances || config.silenceNotice
         ? async ({ contact, said, initiating, now }) => {
             if (contact.tier !== 'boyfriend') return [];
             const lines: string[] = [];
+            if (config.silenceNotice && !initiating && contact.qq === deviceOwner?.qq) {
+                const cue = silenceReplyCue(said, history.load(contact.qq), recentSilence(config.dataDir, contact.qq), now.getTime());
+                if (cue) lines.push(cue);
+            }
             const note = contact.knowsBot ? identity?.promptLine() : undefined;
             if (note) { lines.push(note); identity!.markTold(); }
             let looked: string | undefined;
@@ -1813,13 +1817,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const lastUserText = new Map<number, string>();
     const runWork = workRunner ?? runWorkTask;
 
-    // 没回时告诉他原因（ADR 0173）：他连着发了几条都没回、过了一会儿，用「（」开头的运维提示说一次；他也可以随时发 /为什么 问
-    const silenceDeps = (owner: Contact) => ({
-        dataDir: config.dataDir, qq: owner.qq, now: () => clockNow().getTime(),
-        history: () => history.load(owner.qq),
-        status: () => responders.get(owner.qq)?.status() ?? { phase: 'idle', failures: 0 },
-        external: () => ({ dormant: Boolean(dormancy?.isDormant()), working: readWorkMode(config.dataDir, owner.qq) === 'work' }),
-    });
     // 她每晚想一次要不要放下 / 改主意 / 提新的（ADR 0178）：到点才想，失败 2 小时后再试，每天最多试 3 次
     const selfPursuitTimer = config.selfPursuits && config.pursuits && deviceOwner ? (() => {
         const owner = deviceOwner;
@@ -2037,13 +2034,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         return timer;
     })() : undefined;
     if (config.herGuesses) log(!deviceOwner ? '她猜的事：herGuesses 开着，但名单里没有男朋友档，不起作用' : !(sharedWorld && worldCard) ? '她猜的事：herGuesses 开着，但没有她那边的世界（世界账），对不上结果，不起作用' : `她猜的事：开（白天留意她像在猜结果的话，每晚 22 点以后她自己挑哪句算数、对照世界账看对没对；私人空间，没有命令念给他${config.innerLife ? '；刚对上的那件她下次一个人想事情时会想到' : ''}）`);
-    const silenceTimer = config.silenceNotice && deviceOwner ? (() => {
-        const watcher = createSilenceWatcher({ ...silenceDeps(deviceOwner), tell: text => tellOwner(text), log });
-        const timer = exec.every(() => { try { watcher.tick(); } catch (error) { log(`没回的原因没能告诉他（${error instanceof Error ? error.message : String(error)}）`); } }, 60_000);
-        timer.unref();
-        return timer;
-    })() : undefined;
-    if (config.silenceNotice) log(deviceOwner ? '没回时告诉他原因：开（连着 2 条以上、第一条过 8 分钟还没回就说一次；/为什么 随时问）' : '没回时告诉他原因：开着，但名单里没有男朋友档，不通知');
+    if (config.silenceNotice) log(deviceOwner ? '没回时告诉他原因：开（随正常回复解释，不另发通知）' : '没回时告诉他原因：开着，但名单里没有男朋友档，不解释');
 
     /** 名单外临时建了回复器的好友（状态页要显示称呼和档位） */
     const unlisted = new Map<number, Contact>();
@@ -2205,7 +2196,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 } : {}),
             } : {}),
             // 他的消息没有马上回的每一个原因逐条记账（ADR 0173）：只是旁观，记不进去也不影响回复
-            ...(config.silenceNotice ? { onSilence: (info: SilenceInfo) => { try { recordSilence(config.dataDir, contact.qq, noteFromInfo(info, clockNow().getTime())); } catch (error) { log(`没回的原因记不进账（${error instanceof Error ? error.message : String(error)}）`); } } } : {}),
+            ...(config.silenceNotice && contact.qq === deviceOwner?.qq ? { onSilence: (info: SilenceInfo) => { try { recordSilence(config.dataDir, contact.qq, noteFromInfo(info, clockNow().getTime())); } catch (error) { log(`没回的原因记不进账（${error instanceof Error ? error.message : String(error)}）`); } } } : {}),
             llm: config.llm,
             prompt: config.prompt,
             schedule: config.schedule,
@@ -3381,8 +3372,6 @@ ${body}
                 tellOwner([identity?.status(), memoryLedgerNow ? summarizeMemoryLedger(memoryLedgerNow) : undefined, dormancy?.status()].filter(Boolean).join('\n\n'));
                 return;
             }
-            // 「/为什么」：她为什么没回（ADR 0173）；放在这里是因为这条命令不能算进「没回的消息」里
-            if (config.silenceNotice && plain === '/为什么') { tellOwner(answerWhy(silenceDeps(deviceOwner))); return; }
             // 她的私人空间（ADR 0200）：下面 /追求 /说话习惯 /心境 /自我认识 这四条要 ownerPeek 开着才念；没开，回一句固定的话，不进聊天记录、不交给她
             if (peekRefused(plain, config)) { tellOwner(PEEK_OFF_NOTICE); return; }
             // 「/追求」：她现在在追什么、放下过什么、想过没成什么（ADR 0178）；只能看，不能改
@@ -4792,7 +4781,6 @@ ${body}
             if (memesTimer) exec.cancel(memesTimer);
             if (watchingTimer) exec.cancel(watchingTimer);
             if (feedTimer) exec.cancel(feedTimer);
-            if (silenceTimer) exec.cancel(silenceTimer);
             if (selfPursuitTimer) exec.cancel(selfPursuitTimer);
             if (speechNotesTimer) exec.cancel(speechNotesTimer);
             if (chatReviewTimer) exec.cancel(chatReviewTimer);

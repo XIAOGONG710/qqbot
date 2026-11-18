@@ -16,6 +16,7 @@ import { ChatHistory } from '../src/memory/history.ts';
 import { fileOps } from '../src/memory/json-file.ts';
 import type { MessageEvent, PokeEvent } from '../src/platform/onebot.ts';
 import { POKE_BACK_DELAY_MS, POKE_OUT_TEXT, pokeBackPlan } from '../src/social/pokes.ts';
+import { noteFromInfo, recordSilence } from '../src/social/silence.ts';
 import { pokeOutPlan } from '../src/social/presence.ts';
 import type { ProactiveRecord } from '../src/proactive/proactive.ts';
 import { stateAt } from '../src/life/schedule.ts';
@@ -100,6 +101,27 @@ function event(userId: number, messageId: number, text: string, nickname?: strin
 function historyMessage(messageId: number, from: number, text: string, secondsAgo: number): HistoryMessage {
     return { message_id: messageId, time: nowSec() - secondsAgo, sender: { user_id: from }, message: [{ type: 'text', data: { text } }] };
 }
+
+test('silenceNotice：自然问才解释小事，私密原因不进入正常回复的提示', async () => {
+    for (const enabled of [true, false]) {
+        const qq = 10002;
+        const cfg = config({ silenceNotice: enabled, contacts: [{ qq, name: '宝宝', tier: 'boyfriend' }] });
+        const earlier = (nowSec() - 60) * 1000;
+        new ChatHistory(cfg.dataDir).append(qq, { role: 'user', content: '嗯嗯', time: new Date(earlier).toISOString(), messageId: 920 });
+        recordSilence(cfg.dataDir, qq, noteFromInfo({ phase: 'skipped', reason: '这是不能告诉他的合成原因' }, earlier + 1000));
+        const prompts: string[] = [];
+        const run = setup(cfg, { [qq]: [] }, { generate: messages => {
+            prompts.push(messages.map(message => message.content).join('\n'));
+            return '没啥';
+        } });
+        await run.app.connected(SELF);
+        run.app.receive(event(qq, 921, '刚才怎么没回？'));
+        await until(() => run.sent.length === 1);
+        assert.equal(/你自己选择没接话/.test(prompts.at(-1) ?? ''), enabled);
+        assert.doesNotMatch(prompts.at(-1) ?? '', /不能告诉他的合成原因/);
+        assert.deepEqual(run.sent, [`${qq}:没啥`]);
+    }
+});
 
 function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; imageRecognition?: ImageDescriber; imageSearch?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
