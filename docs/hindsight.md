@@ -1,5 +1,13 @@
 # Hindsight（长期记忆服务）
 
+## 恢复演练（2026-11-18）
+
+使用 `runtime/backups/2026-11-18` 的完整备份，分别验证：
+
+- 文件恢复通过（8.8 秒）：`her-state.zip` 解压到演练目录并校验了 180 个状态文件，演练脚本随后清理了本次解压目录。
+- 数据库恢复通过（约 16 秒，含隔离实例启动及核验，不含初始化和停机）：把 `hindsight.sql` 导入独立 PostgreSQL 实例的新空库，恢复了 25 张业务表。按 SQL 备份中的数据行核对：`banks` 3 / 3，`memory_units` 3761 / 3761（恢复 / 备份）。
+- 隔离实例只监听 `127.0.0.1:55433`，核验后已停止。未连接线上数据库，未操作线上服务、状态目录或旧目录。
+
 按 [ADR 0004](adr/0004-time-scheduling-memory.md) 决策 3，bot 的长期记忆用 [Hindsight](https://github.com/vectorize-io/hindsight)（MIT）。
 服务装在 `runtime/hindsight/`（不入库），只监听本机；bot 通过 HTTP 调用（`packages/bot/src/memory/`）。
 
