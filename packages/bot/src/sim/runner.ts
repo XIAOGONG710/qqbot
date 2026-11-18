@@ -9,52 +9,8 @@ import type { BotConfig, Contact } from '../platform/config.ts';
 import { createContactResponder, replySkip, type ContactPipelineOptions, type TierCard } from '../platform/contact.ts';
 import { jokesTurnModule } from '../modules/jokes.ts';
 import { idiomsTurnModule } from '../modules/idioms.ts';
-import { interruptionsModule } from '../modules/interruptions.ts';
-import { closenessModule } from '../modules/closeness.ts';
-import { togetherModule } from '../modules/together.ts';
-import { replyBasicsModule } from '../modules/reply-basics.ts';
-import { asksModule } from '../modules/asks.ts';
-import { readingModule } from '../modules/reading.ts';
-import { registerModule } from '../modules/register.ts';
-import { scenesModule } from '../modules/scenes.ts';
-import { voiceModule } from '../modules/voice.ts';
-import { shellModule } from '../modules/shell.ts';
-import { herNotesModule } from '../modules/her-notes.ts';
-import { intentModule } from '../modules/intent.ts';
-import { herNowModule } from '../modules/her-now.ts';
-import { booksModule } from '../modules/books.ts';
-import { meetupModule } from '../modules/meetup.ts';
-import { practiceModule } from '../modules/practice.ts';
-import { pastModule } from '../modules/past.ts';
-import { solveFrameModule } from '../modules/solve-frame.ts';
-import { innerModule } from '../modules/inner.ts';
-import { devicesModule } from '../modules/devices.ts';
-import { initiateNoteModule } from '../modules/initiate-note.ts';
-import { reviewFinalizeModule } from '../modules/review-finalize.ts';
-import { reviewExitModule } from '../modules/review-exit.ts';
-import { reviewFactsModule } from '../modules/review-facts.ts';
-import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
-import { reviewPullModule } from '../modules/review-pull.ts';
-import { timeBlockModule } from '../modules/time-block.ts';
-import { warmModule } from '../modules/warm.ts';
-import { feelingsModule } from '../modules/feelings.ts';
-import { timeNotesModule } from '../modules/time-notes.ts';
-import { mediaOffersModule } from '../modules/media-offers.ts';
-import { candidatesModule } from '../modules/candidates.ts';
-import { crisisModule } from '../modules/crisis.ts';
-import { textureModule, typoModule } from '../modules/decorate.ts';
-import { intentLineModule } from '../modules/intent-line.ts';
-import { memoryModule } from '../modules/memory.ts';
-import { deliberateModule } from '../modules/deliberate.ts';
-import { lengthModule } from '../modules/length.ts';
-import { shapeModule } from '../modules/shape.ts';
-import { quoteModule } from '../modules/quote.ts';
+import { buildTurnModules } from '../platform/turn-modules.ts';
 import type { DeviceControl } from '../platform/device-actions.ts';
-import { transcriptModule } from '../modules/transcript.ts';
-import { peopleAroundModule } from '../modules/people-around.ts';
-import { repetitionModule } from '../modules/repetition.ts';
-import { memesModule } from '../modules/memes.ts';
-import { watchedModule } from '../modules/watched.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../platform/sensitive.ts';
 import { withFestivalActivities, withFestivals } from '../world/festivals.ts';
 import { photoAllowance, photoShelf } from '../vision/photos.ts';
@@ -552,43 +508,29 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
         ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
         ...(scenario.quoteReply ? { quoteReply: true } : {}),
-        // 做判断的模块（ADR 0336），顺序同 App：意图阶梯总在最前；小梗（ADR 0114）直接给场景里写好的梗，不抽
-        turnModules: [
-            // 她此刻（她那边、身体、状态行）：开关同上面给流水线的；世界账、答应的事、聊天记录重启后会换新的，用到时再取
-            herNowModule({
-                schedule: scenario.schedule, herDays: options.herDays ?? false, ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}),
-                worldState: () => sharedWorld ?? undefined, appointmentsAt: at => promises?.appointmentsAt?.(at),
-                contacts: () => [contact, ...others], history: qq => history.load(qq),
-                log: message => { if (epoch === responderEpoch) log(message); },
-            }),
-            // 危机信号和小别扭的起因，同 App：排在意图阶梯前面
-            crisisModule({ ...(scenario.grievance ? { grievance: true } : {}), log: message => { if (epoch === responderEpoch) log(message); } }),
-            intentModule({
+        // 做判断的模块（ADR 0336）：和 App 同一份接线（platform/turn-modules.ts），先后在那里定；这里按场景和命令行给选项。
+        // 世界账、答应的事、聊天记录、计划器重启后会换新的，都给用到时再取的函数；日志只记当前这个回复器的（重建之后旧的不再写 sim.log）
+        turnModules: buildTurnModules({
+            log: message => { if (epoch === responderEpoch) log(message); },
+            now: () => clock.now(),
+            history: qq => history.load(qq),
+            contacts: () => [contact, ...others],
+            worldState: () => sharedWorld ?? undefined,
+            appointmentsAt: at => promises?.appointmentsAt?.(at),
+            promises: () => promises ?? undefined,
+            // 开关同上面给流水线的
+            schedule: scenario.schedule,
+            herDays: options.herDays ?? false,
+            grievance: Boolean(scenario.grievance),
+            shortReplies: Boolean(scenario.shortReplies),
+            lagTail: Boolean(scenario.lagTail),
+            lifeInPrompt: Boolean(scenario.lifeInPrompt && scenario.autonomous),
+            intent: {
                 ...(scenario.herNo ? { refuse: true } : {}), ...(scenario.afterNo ? { afterNo: true } : {}), ...(scenario.jealousy ? { jealous: true } : {}), ...(scenario.curious ? { curious: true } : {}),
                 ...(scenario.everydayLife ? { everydayLife: true } : {}), ...(scenario.pursuits ? { pursuits: true } : {}),
-            }),
-            // 接话的基本规矩（DSH 10-30 / 10-31）：每一轮都放，同 App
-            replyBasicsModule(),
-            asksModule(message => { if (epoch === responderEpoch) log(message); }),
-            readingModule(message => { if (epoch === responderEpoch) log(message); }),
-            registerModule(message => { if (epoch === responderEpoch) log(message); }),
-            scenesModule(message => { if (epoch === responderEpoch) log(message); }),
-            voiceModule(message => { if (epoch === responderEpoch) log(message); }),
-            // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取（模拟器只有这一样）
-            herNotesModule({ ...(scenario.openQuestions ? { openQuestions: thoughtsReader(dataDir) } : {}), now: () => clock.now(), log: message => { if (epoch === responderEpoch) log(message); } }),
-            // 模拟器不跑命令，没有命令结果；「可以跑命令」那一行照 App
-            shellModule(),
-            repetitionModule(message => { if (epoch === responderEpoch) log(message); }),
-            booksModule({ herDays: options.herDays ?? false }),
-            pastModule(message => { if (epoch === responderEpoch) log(message); }),
-            peopleAroundModule({ herDays: options.herDays ?? false, log: message => { if (epoch === responderEpoch) log(message); } }),
-            meetupModule({ herDays: options.herDays ?? false, worldState: () => sharedWorld ?? undefined, promises: () => promises ?? undefined, log: message => { if (epoch === responderEpoch) log(message); } }),
-            practiceModule({ lifeInPrompt: Boolean(scenario.lifeInPrompt && scenario.autonomous), herDays: options.herDays ?? false, worldState: () => sharedWorld ?? undefined }),
-            // 她最近心里在想什么（ADR 0101）：计划器在后面才建，每次现取
-            ...(scenario.innerLife ? [innerModule({ innerLine: () => planner?.innerLine(), log: message => { if (epoch === responderEpoch) log(message); } })] : []),
-            ...(options.devices ? [devicesModule({ menu: () => options.devices!.menu(), allowed: () => true })] : []),
-            // 形状控制（ADR 0091），同 App，排在长短之前；开关和分项同迁移前给联系人流水线的
-            shapeModule({
+            },
+            // 形状控制（ADR 0091）：开关和分项同迁移前给联系人流水线的
+            shape: {
                 ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda || scenario.shapeFiller || options.shapeFiller || scenario.shapeFeel || options.shapeFeel || scenario.shapeSplit || options.shapeSplit || options.shapeAsk || options.shapeLong ? { shape: true } : {}),
                 ...(scenario.shapeAgenda || options.shapeAgenda ? { shapeAgenda: true } : {}),
                 ...(scenario.shapeFiller || options.shapeFiller ? { shapeFiller: true } : {}),
@@ -598,20 +540,20 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
                 ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
                 ...(options.shapeAsk ? { shapeAsk: true } : {}),
                 ...(options.shapeLong ? { shapeLong: true } : {}),
-                log: message => { if (epoch === responderEpoch) log(message); },
-            }),
-            // 长短不一（ADR 0024），同 App
-            lengthModule({ ...(scenario.shortReplies ? { shortReplies: true } : {}), log: message => { if (epoch === responderEpoch) log(message); } }),
-            // 引用回复（ADR 0136），同 App；比例按场景
-            ...(scenario.quoteReply ? [quoteModule({ history: qq => history.load(qq), ...(scenario.quoteShare !== undefined ? { share: scenario.quoteShare } : {}), log: message => { if (epoch === responderEpoch) log(message); } })] : []),
-            // 主动找他时计划器写的说明，同 App
-            initiateNoteModule(),
-            // 生成之后的审稿：删行收尾，同 App
-            reviewFinalizeModule(),
-            // 出口检查 / 危机检查，同 App
-            reviewExitModule(),
-            // 逐条事实检查，同 App：审稿走场景自己的模型（假模型也行），每次的记录进这一步，报告里看得到
-            ...((options.factCheck ?? scenario.factCheck) !== 'off' ? [reviewFactsModule({
+            },
+            herNow: { ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}) },
+            // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取（模拟器只有这一样）
+            herNotes: { ...(scenario.openQuestions ? { openQuestions: thoughtsReader(dataDir) } : {}) },
+            // 模拟器不跑命令（不给 shell，「可以跑命令」那一行照 App）；她想查才查也只摘标记（不给 reviewPull）
+            // 深思那一句换掉的说法按 --deliberate-note
+            ...(options.deliberateNote ? { deliberateNote: options.deliberateNote } : {}),
+            // 她最近心里在想什么（ADR 0101）：计划器在后面才建，每次现取
+            ...(scenario.innerLife ? { innerLine: () => planner?.innerLine() } : {}),
+            ...(options.devices ? { devices: { menu: () => options.devices!.menu(), allowed: () => true } } : {}),
+            // 引用回复（ADR 0136）：比例按场景
+            ...(scenario.quoteReply ? { quote: { ...(scenario.quoteShare !== undefined ? { share: scenario.quoteShare } : {}) } } : {}),
+            // 逐条事实检查：审稿走场景自己的模型（假模型也行），每次的记录进这一步，报告里看得到
+            ...((options.factCheck ?? scenario.factCheck) !== 'off' ? { factCheck: {
                 mode: (options.factCheck ?? scenario.factCheck) as 'log' | 'fix', ...(options.factHim ? { aboutHim: true } : {}),
                 audit: messages => {
                     if (epoch !== responderEpoch) return Promise.reject(new Error('模拟回复器已停止'));
@@ -619,44 +561,26 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
                     return options.generate ? options.generate(messages, scoped) : chatCompletion({ ...forExtraction(options.llm), temperature: 0 }, messages, { log: scoped });
                 },
                 onRecord: record => { if (epoch === responderEpoch) (current.facts ??= []).push(record); },
-            })] : []),
-            // 话说到一半，同 App（跟着 speechCheck）
-            ...(options.speechCheck ? [reviewUnfinishedModule()] : []),
-            // 她想查才查：模拟器没有查记忆，只摘标记（同迁移前）
-            reviewPullModule(),
-            // 时间块，同 App
-            timeBlockModule({ ...(scenario.lagTail ? { lagTail: true } : {}) }),
-            // 记忆这一组，同 App（要点只有 contextTurns 时有）
-            memoryModule(),
-            // 情绪余温和没了结的事，同 App
-            warmModule({ log: message => { if (epoch === responderEpoch) log(message); } }),
-            // 心境那一行、节奏、梦那一行，同 App
-            feelingsModule(),
-            // 时间块里的另几行、图片表情 / 照片清单、意图行和「/亲热」，同 App（模拟器没有梗百科词库，不挂）
-            timeNotesModule(),
-            mediaOffersModule(),
-            // 挑候选（ADR 0041），同 App：--candidates 或 bot 的配置大于 1 才挂（模拟器没有 tailCap）
-            ...((options.candidates ?? 1) > 1 ? [candidatesModule({ count: options.candidates!, speechCheck: options.speechCheck ?? false, history: qq => history.load(qq) })] : []),
-            // 发出去之前的修饰，同 App：质感按场景，打错字总是挂
-            ...(scenario.texture ? [textureModule()] : []),
-            typoModule(),
-            intentLineModule(),
-            // 深思那一句和语义路由的方向，同 App；换掉的说法按 --deliberate-note
-            deliberateModule({ ...(options.deliberateNote ? { note: options.deliberateNote } : {}) }),
-            // 只想一想的轮次：聊天原文换成一段回想，同 App
-            transcriptModule(),
+            } } : {}),
+            // 话说到一半（跟着 speechCheck）
+            speechCheck: Boolean(options.speechCheck),
+            // 挑候选（ADR 0041）：--candidates 或 bot 的配置大于 1 才挂（模拟器没有 tailCap）
+            ...((options.candidates ?? 1) > 1 ? { candidates: { count: options.candidates!, speechCheck: options.speechCheck ?? false } } : {}),
+            // 质感按场景（打错字总是挂）；模拟器不取连续性、群里的事、真人数值，也没有梗百科词库，不挂
+            texture: Boolean(scenario.texture),
             // 「做题式」写法（ADR 0146 实验）：只有 --frame solve 时挂
-            ...(options.replyFrame === 'solve' ? [solveFrameModule()] : []),
-            ...(scenario.relationship ? [closenessModule(message => { if (epoch === responderEpoch) log(message); })] : []),
-            ...(scenario.jokes?.length ? [jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); })] : []),
-            ...(scenario.idioms?.length ? [idiomsTurnModule(() => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), message => { if (epoch === responderEpoch) log(message); }, scenario.idiomShare)] : []),
-            ...(scenario.together ? [togetherModule(message => { if (epoch === responderEpoch) log(message); })] : []),
-            ...(scenario.interruptions ? [interruptionsModule(message => { if (epoch === responderEpoch) log(message); })] : []),
+            solveFrame: options.replyFrame === 'solve',
+            relationship: Boolean(scenario.relationship),
+            // 小梗（ADR 0114）、口头习惯（ADR 0138）：直接给场景里写好的，不抽
+            ...(scenario.jokes?.length ? { jokes: jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); }) } : {}),
+            ...(scenario.idioms?.length ? { idioms: idiomsTurnModule(() => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), message => { if (epoch === responderEpoch) log(message); }, scenario.idiomShare) } : {}),
+            together: Boolean(scenario.together),
+            interruptions: Boolean(scenario.interruptions),
             // 网络热梗（ADR 0129）：直接给场景里写好的梗，当作今天刚在榜上，不学
-            ...(scenario.memes?.length ? [memesModule(() => { const day = formatDate(new Date(clock.now())); return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); }, message => { if (epoch === responderEpoch) log(message); })] : []),
+            ...(scenario.memes?.length ? { memes: () => { const day = formatDate(new Date(clock.now())); return scenario.memes!.map(m => ({ term: m.term, meaning: m.meaning, example: '', confidence: 'mid' as const, firstSeen: day, lastSeen: day, seen: 1 })); } } : {}),
             // 她看视频（ADR 0130）：直接给场景里写好的，当作今天刚看过，不去看
-            ...(scenario.watched?.length ? [watchedModule(() => { const day = formatDate(new Date(clock.now())); return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); }, message => { if (epoch === responderEpoch) log(message); })] : []),
-        ],
+            ...(scenario.watched?.length ? { watched: () => { const day = formatDate(new Date(clock.now())); return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),
+        }),
         ...(scenario.memoryFeelings && scenario.herFeelings ? { memoryFeelings: true } : {}),
         ...(scenario.lagTail ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),
