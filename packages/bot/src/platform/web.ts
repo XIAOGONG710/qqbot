@@ -239,7 +239,11 @@ const EXPLICIT = /^(?:宝宝|瑶瑶|梦瑶)?[\s,，]*(?:那|你|麻烦|帮我|�
 export type LookupPlan = { kind: 'read'; url: string } | { kind: 'search'; query: string; explicit: boolean };
 
 /** 只看他这一轮说的话：有链接就读；明说「搜 / 查」就搜（去掉触发词当关键词）。auto 档的分类器在 WebLookup 里 */
-const ASK_RESCUE = /(?:你|帮我|给我|看看|试试看|试看)?\s*(?:能不能|可不可以|能否|能|会)?\s*(?:搜到|查到|搜搜看|找找看|搜索|搜一下|找一下)/;
+const ASK_RESCUE = /^(?:(?:你|帮我|给我|看看|试试看|试看|能不能|可不可以|能否)\s*)+(?:能\s*)?(?:搜到|查到|搜搜看|查查看)(?:吗|嘛|吧)?$/;
+const SEARCH_CHAT = /搜到|查到|搜了|查了|没搜|没查|搜索|找一下|找找看/;
+const PRIVATE_TOPIC = /土豆|(?:我|你|咱俩|我们|咱们)(?:自己|俩|拍的|住哪|在哪住|的?(?:家里|宿舍|照片|手机号|身份证|存档|聊天记录|私事))|(?:私人|私聊|聊天)(?:照片|记录|存档)|(?:上次|刚才)那张照片/;
+const PLOT_TOPIC = /剧情|剧透|结局|后续情节|这[部集]剧|这部(?:电影|番|动漫)|那部剧|烂尾|编剧|主角.*(?:死|黑化)/;
+const DEICTIC = /^(?:这个|那个|这张|那张|这幅|那幅|它|刚才那(?:个|张|幅)?)(?:吗|吧)?$/;
 const stripTrigger = (t: string) => t
     .replace(/^(?:宝宝|瑶瑶|梦瑶)?[\s,，]*/, '')
     .replace(/^(?:那|你|麻烦|帮我|帮忙|给我|去|再|先|能不能|可以|要不|快|看看|试试)*/, '')
@@ -261,18 +265,23 @@ export function planExplicit(said: string, context?: string): LookupPlan | undef
         if (!match) continue;
         const clean = (t: string) => t.replace(/[~～啊呀吧嘛呢]+$/g, '').replace(/^(?:一下|看看|看|下)+/, '').trim();
         const query = clean(clause.slice(match[0].length)) || clean(clauses[i + 1] ?? '');
-        if (query.length >= 2) return { kind: 'search', query: clip(query, 60), explicit: true };
+        if (query.length >= 2 && !DEICTIC.test(query)) return { kind: 'search', query: clip(query, 60), explicit: true };
         // 「你看看能不能搜到」这种：话里没有检索对象，用上一轮他说的事（2026-11-15）
         const carry = carryQuery(context ?? '');
         return carry ? { kind: 'search', query: clip(carry, 60), explicit: true } : undefined;
     }
     // 不是「搜一下 X」而是「能搜到吗 / 搜搜看」：同样退回上一轮
     // 「我刚搜到了」这种是他的陈述，不是让她去搜
-    if (!/^(?:我|刚|已经|上次)/.test(said.trim()) && ASK_RESCUE.test(said)) {
+    if (clauses.length === 1 && ASK_RESCUE.test(clauses[0]!)) {
         const carry = carryQuery(context ?? '');
         if (carry) return { kind: 'search', query: clip(carry, 60), explicit: true };
     }
     return undefined;
+}
+
+export function searchNeedsClarification(said: string, plan: LookupPlan | undefined, context?: string): boolean {
+    return plan?.kind === 'search' && (PRIVATE_TOPIC.test(said) || PRIVATE_TOPIC.test(plan.query)
+        || (context !== undefined && !planExplicit(said) && PRIVATE_TOPIC.test(context)));
 }
 
 /** 上一轮他的话里能被搜的部分：取第一个够长的分句（不剥前缀，别再吃掉「那」这种词） */
@@ -296,7 +305,7 @@ function carryQuery(context: string): string | undefined {
 export function searchCarry(said: string, previous: readonly { role: string; content: string; time: string }[], now: Date): string | undefined {
     const user = previous.filter(m => m.role === 'user' && m.content !== said);
     const last = user.at(-1)?.content;
-    const refersToImage = /搜|查/.test(said) && (/(?:这个|这张|这幅|它|刚才那)/.test(said)
+    const refersToImage = /搜|查/.test(said) && !planExplicit(said) && (/(?:这个|这张|这幅|它|刚才那)/.test(said)
         || /(?:搜|查)(?:到|出来|一下)?[？?]?\s*$/.test(said));
     if (!refersToImage || !Number.isFinite(now.getTime())) return last;
     const image = user.findLast(m => /^\[图片：/.test(m.content)
@@ -331,7 +340,7 @@ const EXTRACT_SYSTEM = `你是资料摘录员。下面是他的问题和一份�
 const REFINE_SYSTEM = `你在帮查资料的人改搜索词。下面是他的问题、上次用的词，以及搜回来的标题和摘要。给一个更可能搜到答案的中文搜索词：优先抓标题里出现过的专有名词、人名、作品名，2 到 14 个字，只输出这个词，不要解释。想不出来就原样输出上次的词。`;
 
 const CLASSIFY_SYSTEM = `你判断一句中文聊天是不是在问一个「需要上网查才能答准」的客观事实（某个事物是什么、谁、哪年、多少、怎么做、最新消息……）。
-闲聊、情绪、关于「我们俩」或「你自己」的话、让对方做决定的话，都不是。是就输出一行 JSON：{"search":"2 到 12 个字的搜索关键词"}；不是就输出：{"search":null}。只输出这一行。`;
+闲聊、情绪、私事、关于「我们俩」或「你自己」的话、让对方做决定的话、吐槽影视剧情或讨论可能剧透的内容，都不是。是就输出一行 JSON：{"search":"2 到 12 个字的搜索关键词"}；不是就输出：{"search":null}。只输出这一行。`;
 
 export class WebLookup {
     readonly #options: WebLookupOptions;
@@ -364,12 +373,14 @@ export class WebLookup {
         const explicit = planExplicit(said, context);
         if (explicit || this.#options.mode !== 'auto') return explicit;
         const text = said.trim();
+        if (PRIVATE_TOPIC.test(text) || PLOT_TOPIC.test(text) || SEARCH_CHAT.test(text)) return undefined;
         if (text.length < 6 || !/[？?]|是什么|是谁|多少|哪年|怎么|为什么|什么时候|有没有|推荐/.test(text)) return undefined;
         try {
             const raw = await this.#options.ask([{ role: 'system', content: CLASSIFY_SYSTEM }, { role: 'user', content: clip(text, 120) }]);
             if (signal?.aborted) return undefined;
             const query = (JSON.parse(/\{[\s\S]*\}/.exec(raw)?.[0] ?? '{}') as { search?: unknown }).search;
-            return typeof query === 'string' && query.trim().length >= 2 ? { kind: 'search', query: clip(query.trim(), 30), explicit: false } : undefined;
+            return typeof query === 'string' && query.trim().length >= 2 && !PRIVATE_TOPIC.test(query) && !PLOT_TOPIC.test(query)
+                ? { kind: 'search', query: clip(query.trim(), 30), explicit: false } : undefined;
         } catch { return undefined; }
     }
 
@@ -379,6 +390,7 @@ export class WebLookup {
         const plan = await this.#plan(said, signal, context);
         if (signal?.aborted) return undefined;
         if (!plan) return undefined;
+        if (searchNeedsClarification(said, plan, context)) return '[这次没上网搜：这可能涉及你们的私事。先自然问清楚他想查的是哪项公开信息，别把私人内容当成搜索词。]';
         const now = this.#options.now?.() ?? new Date();
         let key = plan.kind === 'read' ? plan.url : plan.query;
         const hit = this.#cache.get(key);
@@ -406,7 +418,7 @@ export class WebLookup {
         // 预算：多一次搜索、最多多一次小模型调用；当天额度不够就不查
         if (!facts && plan.kind === 'search' && this.#usedToday(now) < (this.#options.dailyLimit ?? DAILY_LIMIT)) {
             const better = await this.#refine(question, material.text, used, signal);
-            if (better && !signal?.aborted) {
+            if (better && !PRIVATE_TOPIC.test(better) && (explicit || !PLOT_TOPIC.test(better)) && !signal?.aborted) {
                 this.#use(now);
                 const again = await this.#gather({ kind: 'search', query: better, explicit: plan.explicit }, signal);
                 if (again.ok) {
@@ -441,7 +453,7 @@ export class WebLookup {
     async look(query: string): Promise<string[] | undefined> {
         if (!this.enabled) return undefined;
         const q = clip(String(query || '').trim(), 30);
-        if (q.length < 2) return undefined;
+        if (q.length < 2 || PRIVATE_TOPIC.test(q) || PLOT_TOPIC.test(q)) return undefined;
         const now = this.#options.now?.() ?? new Date();
         if (this.#usedToday(now) >= (this.#options.dailyLimit ?? DAILY_LIMIT)) {
             this.#options.log?.('上网：今天的额度用完了，她自己想查的这次先不查');

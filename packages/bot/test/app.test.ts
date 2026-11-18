@@ -1735,6 +1735,9 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         assert.deepEqual(searchUrls, ['https://x/claude.png']);
         assert.match(prompts.at(-2)!, /重新看了他发的原图.*可能是 Claude.*看图猜测/);
         assert.match(prompts.at(-1)!, /用原图搜过并核对.*Claude 娘.*搜索所得的候选/);
+        run.app.receive(event(10002, 814, '这个我也没搜到'));
+        await until(() => run.sent.length >= 4);
+        assert.deepEqual(searchUrls, ['https://x/claude.png'], '陈述句不能触发近期原图搜索');
     });
 
     test('他发语音：转出来的字进聊天记录，照常回；重启后补回拿到同一条，不再转', async () => {

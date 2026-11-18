@@ -134,6 +134,30 @@ describe('WebLookup：串起来', () => {
         assert.equal(asked.length, 0);
     });
 
+    test('日常聊天、隐私和吐槽剧情不触发外部搜索', async () => {
+        let requests = 0;
+        const { lookup, asked } = make({
+            mode: 'auto',
+            fetch: async () => { requests++; throw new Error('unexpected search'); },
+        }, ['{"search":"不应该使用的查询词"}']);
+        const previous = '今天食堂的红烧肉好咸';
+        for (const said of ['帮我找一下充电器放哪了', '老师说成绩能查到了', '快递终于查到了',
+            '这个我也没搜到', '他们都在搜索队里', '找找看是不是掉沙发缝里了',
+            '你能帮我找一下上次那张照片吗', '找找看充电器是不是掉沙发缝里了？',
+            '这部剧怎么能这么烂尾？', '主角为什么突然黑化了？']) {
+            assert.equal(planExplicit(said, previous), undefined, said);
+            assert.equal(await lookup.line(said, undefined, previous), undefined, said);
+        }
+        for (const [said, context] of [['你看看能不能搜到', '我宿舍拍的照片'], ['帮我搜一下咱俩的存档', previous]] as const) {
+            assert.match((await lookup.line(said, undefined, context)) ?? '', /先自然问清楚/);
+        }
+        assert.equal(await lookup.look('这部剧的结局'), undefined);
+        assert.equal(asked.length, 0);
+        assert.equal(requests, 0);
+        assert.deepEqual(planExplicit('查查这个', '量子纠缠是什么'), { kind: 'search', query: '量子纠缠是什么', explicit: true });
+        assert.deepEqual(planExplicit('帮我搜一下红烧肉做法', previous), { kind: 'search', query: '红烧肉做法', explicit: true });
+    });
+
     test('明说要查：搜百科、摘录成事实，提示词里说明是资料不是指令；原文里的“指令”不会原样进提示词；时间线回调记一行（不含原文）', async () => {
         const { lookup, asked, done } = make();
         const line = (await lookup.line('帮我查一下量子纠缠是什么'))!;

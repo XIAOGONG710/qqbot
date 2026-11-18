@@ -83,7 +83,7 @@ import { experiencesFromLife, experiencesFromWatched, Tastes } from '.././life/t
 import { readLifeEvents } from '.././world/life-events.ts';
 import { Timeline, timelineAccount, timelineFromDevice } from '.././memory/timeline.ts';
 import { consumeDshTimelineInbox, consumeDshWorldInbox } from '.././memory/dsh-inbox.ts';
-import { readWebSecrets, searchCarry, WebLookup } from './web.ts';
+import { planExplicit, readWebSecrets, searchCarry, searchNeedsClarification, WebLookup } from './web.ts';
 import { readAdultSite } from '../proactive/adult-sites.ts';
 import { acquireLock } from './lock.ts';
 import { unfinishedForgetJobs } from '../memory/forget-job.ts';
@@ -1519,7 +1519,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 const carry = searchCarry(said, chatHistory.load(contact.qq), clockNow());
                 const image = recentImage.get(contact.qq);
                 const hasOriginal = image && clockNow().getTime() - image.at <= 15 * 60_000 && /^\[图片：/.test(carry ?? '');
-                const wantsImageSearch = hasOriginal && /搜|查/.test(said) && /(?:这个|这张|这幅|它|刚才那|搜到|查到)/.test(said);
+                const imagePlan = hasOriginal ? planExplicit(said, carry) : undefined;
+                const wantsImageSearch = hasOriginal && !planExplicit(said) && imagePlan?.kind === 'search' && !searchNeedsClarification(said, imagePlan, carry);
                 const wantsImageRecognition = hasOriginal && /(?:认|识别|是谁|叫什么|哪个角色)/.test(said) && /(?:这个|这张|这幅|它|刚才那)/.test(said);
                 const timer = exec.after(() => deadline.abort(), wantsImageSearch ? 55_000 : 25_000);
                 timer.unref?.();
