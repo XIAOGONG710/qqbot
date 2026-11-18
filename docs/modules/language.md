@@ -87,6 +87,9 @@
 - `modules/memory-sync.ts`
 - `modules/now-export.ts`
 - `modules/outbox.ts`
+- `modules/world-upkeep.ts`
+- `modules/dsh-inbox.ts`
+- `modules/tastes.ts`
 - `modules/playful.ts`
 - `modules/exemplars.ts`
 - `modules/solve-frame.ts`

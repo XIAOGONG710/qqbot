@@ -24,6 +24,9 @@ import { idiomsModule } from '../modules/idioms.ts';
 import { buildTurnModules } from './turn-modules.ts';
 import { reflectionsModule } from '../modules/reflections.ts';
 import { memorySyncModule } from '../modules/memory-sync.ts';
+import { worldUpkeepModule } from '../modules/world-upkeep.ts';
+import { dshInboxModule } from '../modules/dsh-inbox.ts';
+import { tastesModule } from '../modules/tastes.ts';
 import { nowExportModule } from '../modules/now-export.ts';
 import { outboxModule } from '../modules/outbox.ts';
 import { dreamsModule } from '../modules/dreams.ts';
@@ -689,9 +692,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             if (failures.length) throw new AggregateError(failures.map(result => result.reason), '天气刷新停止收尾未确认');
         }) : undefined;
     });
-    const weatherTimer = weather ? exec.every(() => void refreshWeather(), WEATHER_REFRESH_MS) : undefined;
-    construction.onFailure(() => exec.cancel(weatherTimer));
-    weatherTimer?.unref();
     if (worldCard) log(`真实天气：${weather ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；当前事实过期或冲突时保持未知）`
         : !config.realWeather ? '关（配置 realWeather: false），按日期生成' : '关（卡上没写 weather.places），按日期生成'}`);
     const airQuality = config.realAirQuality === true && worldCard && weatherPlaces ? airQualityFetcher({ dir: join(config.dataDir, 'air-quality'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
@@ -706,9 +706,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             if (failures.length) throw new AggregateError(failures.map(result => result.reason), '空气质量刷新停止收尾未确认');
         }) : undefined;
     });
-    const airQualityTimer = airQuality ? exec.every(() => void refreshAirQuality(), AIR_QUALITY_REFRESH_MS) : undefined;
-    construction.onFailure(() => { if (airQualityTimer) exec.cancel(airQualityTimer); });
-    airQualityTimer?.unref();
     if (worldCard) log(`真实空气质量：${airQuality ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}当前观测，每 ${AIR_QUALITY_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realAirQuality !== true ? '关（配置 realAirQuality: false）' : '关（卡上没写 weather.places）')}`);
     const daylight = config.realDaylight === true && worldCard && weatherPlaces ? daylightFetcher({ dir: join(config.dataDir, 'daylight'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
     useRealDaylight(daylight);
@@ -722,9 +719,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             if (failures.length) throw new AggregateError(failures.map(result => result.reason), '日照刷新停止收尾未确认');
         }) : undefined;
     });
-    const daylightTimer = daylight ? exec.every(() => void refreshDaylight(), DAYLIGHT_REFRESH_MS) : undefined;
-    construction.onFailure(() => { if (daylightTimer) exec.cancel(daylightTimer); });
-    daylightTimer?.unref();
     if (worldCard) log(`真实日照：${daylight ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}日出日落，每 ${DAYLIGHT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realDaylight !== true ? '关（配置 realDaylight: false）' : '关（卡上没写 weather.places）')}`);
     const calendar = config.realCalendar === true && worldCard ? calendarFetcher({ dir: join(config.dataDir, 'calendar'), log, now: worldNow }) : undefined;
     useRealCalendar(calendar);
@@ -738,9 +732,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             if (failures.length) throw new AggregateError(failures.map(result => result.reason), '法定日历刷新停止收尾未确认');
         }) : undefined;
     });
-    const calendarTimer = calendar ? exec.every(() => void refreshCalendar(), CALENDAR_REFRESH_MS) : undefined;
-    construction.onFailure(() => { if (calendarTimer) exec.cancel(calendarTimer); });
-    calendarTimer?.unref();
     if (worldCard) log(`现实法定日历：${calendar ? `开（当前年和下一年，每 ${CALENDAR_REFRESH_MS / 60_000} 小时取一次；取不到不写进世界）` : '关（配置 realCalendar: false）'}`);
     const transportConfig = config.realTransport ?? DEFAULTS.realTransport;
     const worldTransport = transportConfig.enabled && worldCard && weatherPlaces ? transportFetcher({
@@ -760,9 +751,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             if (failures.length) throw new AggregateError(failures.map(result => result.reason), '现实交通刷新停止收尾未确认');
         }) : undefined;
     });
-    const transportTimer = worldTransport ? exec.every(() => void refreshTransport(), TRANSPORT_REFRESH_MS) : undefined;
-    construction.onFailure(() => { if (transportTimer) exec.cancel(transportTimer); });
-    transportTimer?.unref();
     if (worldCard) log(`现实交通：${worldTransport ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}，每 ${TRANSPORT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (!transportConfig.enabled ? '关（配置 realTransport.enabled: false）' : '关（卡上没写 weather.places）')}`);
     // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
     const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
@@ -787,9 +775,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         }
     };
     observeAgencyShadow();
-    const agencyShadowTimer = agencyShadow ? exec.every(observeAgencyShadow, 5 * 60_000) : undefined;
-    construction.onFailure(() => { if (agencyShadowTimer) exec.cancel(agencyShadowTimer); });
-    agencyShadowTimer?.unref();
     useWorldNeeds(needsAnchor && ledgerWorld ? {
         at: time => {
             try { return needsAt(needsAnchor, ledgerWorld.events(), time); }
@@ -891,12 +876,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     if (config.projectChoice) log(`项目选择：${lifeRunner ? '开（ADR 0056：三天内作业可接管空闲安排，状态行与行动账共用）' : '配置开了，但生活执行器没开，不生效'}`);
     // 没人找她的时候也每 ${LIFE_TICK_MS / 60_000} 分钟推一次，过完的时段尽快落账
     scanAiPhotoWorld?.();
-    const lifeTimer = lifeRunner || observeAiPhotoWorld ? exec.every(() => {
-        sharedWorld?.events();
-        scanAiPhotoWorld?.();
-    }, LIFE_TICK_MS) : undefined;
-    lifeTimer?.unref();
-    construction.onFailure(() => exec.cancel(lifeTimer));
     const noteMoodAndBooks = herDaysCard ? herDayLogger(
         herDaysCard.schedule!, herDaysCard.moods, herDaysCard.books, log, undefined,
         now => ({
@@ -999,6 +978,22 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ...(config.openQuestions ? { openQuestions: { ponder: messages => chatCompletion({ ...deliberateLlm(config.llm, config.deliberateModel), temperature: 0.9 }, messages, { log, purpose: 'background' }) } } : {}),
         ...(config.herGuesses && sharedWorld && worldCard ? { herGuesses: { worldAt: time => sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, time) } } : {}),
     });
+    // 她那边的世界的后台维护、DSH 收件箱、口味（ADR 0336 第 6 步）：只有定时任务，App 搭好时开，先后同原来（排在所有 built 的最前面）。
+    // 取数器、世界影子、生活执行器都在上面建好了；收件箱、口味在后面才建，到点再取
+    const worldUpkeep = worldUpkeepModule({
+        ...(weather ? { weather: { every: WEATHER_REFRESH_MS, run: () => void refreshWeather() } } : {}),
+        ...(airQuality ? { airQuality: { every: AIR_QUALITY_REFRESH_MS, run: () => void refreshAirQuality() } } : {}),
+        ...(daylight ? { daylight: { every: DAYLIGHT_REFRESH_MS, run: () => void refreshDaylight() } } : {}),
+        ...(calendar ? { calendar: { every: CALENDAR_REFRESH_MS, run: () => void refreshCalendar() } } : {}),
+        ...(worldTransport ? { transport: { every: TRANSPORT_REFRESH_MS, run: () => void refreshTransport() } } : {}),
+        ...(agencyShadow ? { agencyShadow: { every: 5 * 60_000, run: observeAgencyShadow } } : {}),
+        ...(lifeRunner || observeAiPhotoWorld ? { life: { every: LIFE_TICK_MS, run: () => {
+            sharedWorld?.events();
+            scanAiPhotoWorld?.();
+        } } } : {}),
+    });
+    const dshInbox = dshInboxModule(dshEnabled && (config.timeline || sharedWorld) ? () => syncDshInboxes() : undefined);
+    const tastesJob = tastesModule(config.tastes ? () => reflectTastes() : undefined);
     // 长期记忆同步、「她现在在干嘛」导出、她留的话（ADR 0336 第 6 步）：只有定时任务，App 搭好时开，先后同原来（在她自己想一想的那几样之前）；做的事都在后面才建，到点再取
     const memorySync = memorySyncModule(config.memory ? () => syncMemory() : undefined, MEMORY_SYNC_MS);
     const nowExport = nowExportModule(() => exportNow(), NOW_REFRESH_MS);
@@ -1285,7 +1280,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 recall: ({ event }) => legacy.receiveRecall(event),
                 friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
             },
-        }, ...turnModules, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
+        }, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
         exec,
     });
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
@@ -1369,7 +1364,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         try { timeline?.record(entry); } catch (error) { log(`时间线：写不进去（${error instanceof Error ? error.message : String(error)}）`); }
     };
     // DSH 只追加脱敏收件箱；QQ 开着 DSH 时用同一条时间线 / 世界账落地，关掉时不启动同步定时器。
-    let dshInboxTimer: ReturnType<typeof setInterval> | undefined;
     const syncDshInboxes = (): void => {
         if (!dshEnabled) return;
         const now = new Date(worldNow());
@@ -1394,11 +1388,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             log(`DSH：收件箱同步失败（${error instanceof Error ? error.message : String(error)}）`);
         }
     };
-    if (dshEnabled && (timeline || sharedWorld)) {
-        syncDshInboxes();
-        dshInboxTimer = exec.every(syncDshInboxes, 30_000);
-        dshInboxTimer.unref();
-    }
+    // 之后每 30 秒再收一次：由 dsh-inbox 模块声明（ADR 0336 第 6 步，App 搭好时开）
+    if (dshEnabled && (timeline || sharedWorld)) syncDshInboxes();
     const identity = config.identityLedger ? new Identity({ repoRoot, dataDir: config.dataDir, now: clockNow, log }) : undefined;
     if (identity) {
         try {
@@ -1459,13 +1450,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         : undefined;
     construction.onFailure(() => tastes?.stop());
     const reflectTastes = () => { if (!stopped) void tastes?.reflect().catch(error => tastesLog(`口味：出错（${error instanceof Error ? error.message : String(error)}）`)); };
-    // 回头看一天最多一次（tastes.ts 里有间隔）：每小时来看一眼要不要看，启动两分钟后先看一次
-    const tastesTimer = tastes ? exec.every(reflectTastes, 3_600_000) : undefined;
-    construction.onFailure(() => exec.cancel(tastesTimer));
-    tastesTimer?.unref();
-    const tastesFirst = tastes ? exec.after(reflectTastes, 120_000) : undefined;
-    construction.onFailure(() => exec.cancel(tastesFirst));
-    tastesFirst?.unref();
+    // 回头看一天最多一次（tastes.ts 里有间隔）：每小时来看一眼要不要看，启动两分钟后先看一次——由 tastes 模块声明（ADR 0336 第 6 步，App 搭好时开）
     const acquaintances = config.acquaintances ? new Acquaintances({ dataDir: config.dataDir, now: clockNow, log }) : undefined;
     const dormancy = config.dormancy && deviceOwner ? new Dormancy({ dataDir: config.dataDir, repoRoot, now: clockNow, gitHead: () => realGit(repoRoot).head(), log }) : undefined;
     if (config.dormancy && !deviceOwner) log('休眠：开着，但名单里没有男朋友档的联系人，不启动');
@@ -4410,20 +4395,11 @@ ${body}
             if (readingUnlisted !== reading) readingUnlisted?.stop();
             for (const planner of planners.values()) planner.stop();
             const responderDrains = [...responders.values()].map(responder => responder.stop());
-            if (tastesTimer) exec.cancel(tastesTimer);
-            if (tastesFirst) exec.cancel(tastesFirst);
             if (followUpTimer) exec.cancel(followUpTimer);
             const presenceDrain = presence?.stop();
             const browsingDrain = browsing?.stop();
             const repliesDrain = replies?.stop();
             const riskDrain = risk?.stop();
-            if (lifeTimer) exec.cancel(lifeTimer);
-            if (weatherTimer) exec.cancel(weatherTimer);
-            if (airQualityTimer) exec.cancel(airQualityTimer);
-            if (daylightTimer) exec.cancel(daylightTimer);
-            if (calendarTimer) exec.cancel(calendarTimer);
-            if (transportTimer) exec.cancel(transportTimer);
-            if (dshInboxTimer) exec.cancel(dshInboxTimer);
             exec.cancel(foodRetryTimer);
             const deviceDrain = stopDevices();
             exec.cancel(photoRetryTimer);

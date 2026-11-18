@@ -265,6 +265,8 @@ export interface ScheduleSpec {
     run: () => void;
     /** 开计时器之前先跑一次 */
     runOnStart?: boolean;
+    /** 只跑一次：开了之后过 every 毫秒跑一次就完（一次性计时器，经执行器的 after；比如口味启动两分钟后先看一次） */
+    once?: boolean;
     start?: ScheduleStart;
 }
 export type ScheduleStart = 'built' | 'synced';
@@ -625,7 +627,7 @@ export interface Interpreter {
     readonly hasStatus: boolean;
 }
 
-export function createInterpreter(options: { modules: readonly Module[]; exec: Pick<Executor, 'every' | 'cancel'> }): Interpreter {
+export function createInterpreter(options: { modules: readonly Module[]; exec: Pick<Executor, 'every' | 'cancel'> & Partial<Pick<Executor, 'after'>> }): Interpreter {
     const ids = new Set<string>();
     for (const module of options.modules) {
         if (ids.has(module.id)) throw new Error(`模块 id 重复：${module.id}`);
@@ -650,7 +652,8 @@ export function createInterpreter(options: { modules: readonly Module[]; exec: P
                     // 开的时候先跑一次（dsh：动态在补完消息后立刻刷一次）；跑的时候 App 停下了就不再往下开
                     if (schedule.runOnStart) schedule.run();
                     if (stopped) return;
-                    const timer = exec.every(schedule.run, schedule.every);
+                    if (schedule.once && !exec.after) throw new Error(`模块 ${module.id} 要一次性的定时任务，执行器没给 after`);
+                    const timer = schedule.once ? exec.after!(schedule.run, schedule.every) : exec.every(schedule.run, schedule.every);
                     timer.unref?.();
                     timers.push(timer);
                 }

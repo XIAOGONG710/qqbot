@@ -155,6 +155,20 @@ describe('解释器骨架（ADR 0336）', () => {
         assert.deepEqual(opened, [60_000], '停下之后不再开');
     });
 
+    test('一次性的定时任务经执行器的 after 开、停下时一样取消；执行器没给 after 就报错', () => {
+        const opened: string[] = [];
+        let cancelled = 0;
+        const handle = { unref() { return this; } } as unknown as ReturnType<typeof setInterval>;
+        const fake = { every: (_fn: () => void, ms?: number) => { opened.push(`every ${ms}`); return handle; }, after: (_fn: () => void, ms?: number) => { opened.push(`after ${ms}`); return handle as unknown as ReturnType<typeof setTimeout>; }, cancel: () => { cancelled++; } };
+        const interpreter = createInterpreter({ exec: fake, modules: [{ id: 'tastes', schedules: [{ every: 3_600_000, run: () => {}, start: 'built' }, { every: 120_000, run: () => {}, start: 'built', once: true }] }] });
+        interpreter.startSchedules('built');
+        assert.deepEqual(opened, ['every 3600000', 'after 120000']);
+        interpreter.stop();
+        assert.equal(cancelled, 2);
+        const noAfter = createInterpreter({ exec: { every: fake.every, cancel: fake.cancel }, modules: [{ id: 'x', schedules: [{ every: 1, run: () => {}, once: true }] }] });
+        assert.throws(() => noAfter.startSchedules(), /after/);
+    });
+
     test('定时任务分两个时机开（ADR 0336 第 6 步）：built 在 App 搭好时、synced（默认）在连上之后；同一时机按模块注册顺序、模块内按数组顺序', () => {
         const opened: string[] = [];
         const fake = { every: (fn: () => void) => { fn(); return { unref() { return this; } } as unknown as ReturnType<typeof setInterval>; }, cancel: () => {} };
