@@ -7,7 +7,7 @@ import { localDate } from '../local-date.ts';
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
 import { assessTurn, candidatePlan, cleanStages, contributeTurn, decideStage, decorateStages, perceiveTurn, reviewStage, type CleanCtx, type DecideCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
-import type { MemoryPieces } from '../modules/memory.ts';
+import { youFor, type MemoryPieces } from '../modules/memory.ts';
 import { dirname, join } from 'node:path';
 import { noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
@@ -16,8 +16,8 @@ import { crisisFallback } from '.././language/exit-check.ts';
 import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
 import { chatCompletion, completionMaxTokens, forExtraction } from '.././language/llm.ts';
 import type { Log } from './log.ts';
-import { CLEAR_DAYS, recentChat, type FadeStats } from '.././memory/fading.ts';
-import { initiateQuery, PERSON_RECALLED, secondPerson, type LongTermMemory } from '.././memory/long-term.ts';
+import { CLEAR_DAYS, recentChat } from '.././memory/fading.ts';
+import type { LongTermMemory } from '.././memory/long-term.ts';
 import { buildPrompt, type ChatMessage, type OpenAIMessage, type PromptResult } from '.././language/prompt.ts';
 import { cleanUpReply } from '.././language/reply.ts';
 import { stripDeviceTokens, type DeviceControl } from './device-actions.ts';
@@ -50,13 +50,12 @@ import { formatDate, herDay, type ExtraFreeActivity } from '.././life/schedule.t
 import { turnCut, type Summarizer, type TurnWindow } from '.././language/context-window.ts';
 import { estimateTokens } from '.././language/tokens.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
-import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts';
+import { feltDayNote, feltDuring } from '.././emotion/felt-then.ts';
 import { lastNight, withLastNight } from '.././life/nights.ts';
 import type { HumanValues } from '.././human-values.ts';
 import type { PhotoKind, PhotoShelf } from '.././vision/photos.ts';
 import type { StickerShelf } from '.././social/stickers.ts';
 
-const DAY_MS = 86_400_000;
 
 /**
  * 他最后一条消息在这个时间内，才算“他刚说的”。主动找他时他常常几小时没说话（ADR 0100「没回也继续」），
@@ -81,15 +80,6 @@ export function personaFacts(description: string | undefined): string {
     return parts.filter(part => PERSONA_FACT_SECTIONS.some(head => part.startsWith(`【${head}】`))).join('');
 }
 
-
-/** 召回整理出来的一段有几条（第一行是标题） */
-const countLines = (text: string) => text.split('\n').length - 1;
-
-/** 记忆变淡（ADR 0018）各几条，写日志用：「记个大概 2，一提想起 1，想不起来 3」，都是 0 就是空的 */
-const fadeParts = (stats: FadeStats | undefined) => (stats
-    ? ([['记个大概', stats.vague], ['一提想起', stats.recognized], ['想不起来', stats.forgotten], ['同一件事多的', stats.repeated ?? 0]] as const).filter(([, n]) => n).map(([label, n]) => `${label} ${n}`)
-    : []);
-const fadeNote = (stats: FadeStats | undefined) => (fadeParts(stats).length ? `（${fadeParts(stats).join('，')}）` : '');
 
 export interface TierCard {
     character: Character;
@@ -406,100 +396,27 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 真人数值（ADR 0222）和人格成长层（ADR 0251）是 human-state 模块的 decideAt.values：在这里、第一次 await 之前原位算（理由见 modules/human-state.ts 文件头），
             // 写进 turn.facts.humanValues / development，两行日志也在那里记
             decideStage(options.turnModules ?? [], 'values', turn, decideCtx);
-            // 长期记忆只给名单里的人；主动找他时没有「他这次说的」：查想知道的事 + 最后两句，带前 3 天到后 2 天的时间窗（ADR 0012 决策 1 第 7 条）
+            // 长期记忆只给名单里的人（ADR 0012）
             const remembers = memory && contact.tier !== UNLISTED_TIER;
-            const recallOptions = initiate
-                ? { query: initiateQuery(chat, initiate.topic), window: { start: new Date(time.getTime() - 3 * DAY_MS), end: new Date(time.getTime() + 2 * DAY_MS) } }
-                : {};
-            // 她认识的人（ADR 0016）：提到的人查他自己的 bank。公共记忆有线索才查（ADR 0017）：提到了写了介绍的人、公共库里的人和事，
-            // 或者问她过去的事；主动找他时不查（没有「他这次说的」）
-            const people = mentionedPeople(chat, contact, options.contacts ?? []);
-            const holidays = holidayWords(character.schedule);
-            const entities = remembers && !initiate ? await memory.commonEntities() : [];
-            const cueIn = (said: Readonly<typeof chat>) => {
-                const named = mentionedPeople(said, contact, options.contacts ?? []);
-                return named.length ? named.map(person => person.name).join('、') : commonCue(said, contact, entities, character.name, holidays);
-            };
-            const cue = !remembers || initiate ? undefined : cueIn(chat);
-            // 问「今天」「昨天」按她的一天算（ADR 0018 决策 4）；问「上周」「国庆」时是那一周、那个假期（决策 3）。
-            // 线索正好是假期的名字（「国庆」也是公共库里的实体）时同样带那个假期的时间窗（第三批：「那国庆呢」想起的是周记）
-            // 线索是公共库里的人和事、同时又在问她过去的某天（「周一你那快递拿了没」）时也带那天的时间窗（ADR 0032）
-            const windowOf = (said: Readonly<typeof chat>, cue: string | undefined, at: Date) =>
-                (cue === ASKS_PAST || (cue !== undefined && (holidays.includes(cue) || asksPast(said, holidays)))
-                    ? askedWindow(said, at, schedule ?? herSchedule ?? character.schedule) : undefined);
-            const day = windowOf(chat, cue, time);
-            // 记忆里她的名字换成「你」（ADR 0018 决策 4）；那一行里的「她」也是她，除非还提到别的女生（她的朋友、名单里的闺蜜和女生朋友）
-            const women = [
-                ...(character.herWorld?.people ?? []).map(person => person.name),
-                ...(options.contacts ?? []).filter(c => c.tier === 'bestie' || c.tier === 'girl_friend').map(c => c.name),
-            ];
-            const you = (text: string | undefined) => text && secondPerson(text, character.name, women);
-            // 记忆会变淡（ADR 0018）：她和名单里的称呼不算「一提就想起」的线索；各几条记下来写日志（0 是他的，1 是公共的，之后是提起的人）
-            const ignore = [character.name, contact.name, ...(options.contacts ?? []).map(c => c.name)];
-            const faded: (FadeStats | undefined)[] = [];
-            const fade = (i: number) => ({ ignore, onFade: (stats: FadeStats) => { faded[i] = stats; } });
-            // 回忆带着当时的感觉（ADR 0218）：召回的和他的记忆，那天她心里对得上的那种感觉；主动找他时不附
-            const feltForRecall = options.memoryFeelings && contact.tier === 'boyfriend' && !initiate
-                ? (when: Date, text: string) => feltNoteFor(feltOnDay(new Date(when.getFullYear(), when.getMonth(), when.getDate())), text)
-                : undefined;
-            // 她今天跟别人聊过的也是她的生活（ADR 0020）：只在亲密联系人开启新一段对话、或她主动找他时想起。
-            // 本轮已有明确公共记忆线索时不另查，避免把同一件事放两遍。
-            const todayOthers = remembers && !cue && isClose(contact.tier) && (Boolean(initiate) || startsConversation(chat))
-                ? memory.othersToday(contact, time, options.contacts ?? [], todayStart(schedule ?? herSchedule ?? character.schedule, time))
-                : undefined;
-            // 按那一轮他说的话想公共记忆：线索是问她过去的事时不限人和事，提到名单里的人时是这几个人，否则是那个人和事
-            const recallCommon = (said: Readonly<typeof chat>, cue: string, at: Date) => {
-                const named = mentionedPeople(said, contact, options.contacts ?? []);
-                return memory!.recallCommon(contact, said, at, options.contacts ?? [contact], windowOf(said, cue, at), fade(1),
-                    cue === ASKS_PAST ? [] : named.length ? named.map(p => p.name) : [cue]);
-            };
-            const [recalled, freshCommon, ...aboutPeople] = (await Promise.all([
-                remembers ? memory.recall(contact, chat, time, { ...recallOptions, ...fade(0), ...(feltForRecall ? { felt: feltForRecall } : {}) }) : undefined,
-                remembers && cue ? recallCommon(chat, cue, time) : undefined,
-                ...people.map((person, i) => (remembers && memory.canRecallContactMemory(person, contact)
-                    ? memory.recall(person, chat, time, {
-                        ...recallOptions, ...fade(i + 2), limit: PERSON_RECALLED,
-                        header: `[关于${person.name}的旧事（${sourceLabel(person, contact)}；从记忆里想起来的，只作参考）]`,
-                    }, contact)
-                    : undefined)),
-            ])).map(you);
-            const relationship = remembers ? you(memory.relationship(contact)) : undefined;
-            if (recalled || faded[0]?.forgotten) log(`召回长期记忆 ${recalled ? countLines(recalled) : 0} 条${fadeNote(faded[0])}`);
-            // 工作房每轮都查：他问“今天帮我干了什么”时不一定有公共记忆线索
-            const work = remembers && contact.tier === 'boyfriend' ? you(await memory.recallWork(contact, chat, time)) : undefined;
-            if (work) log(`召回工作记忆 ${countLines(work)} 条`);
-            // 同一个她（ADR 0177）：他刚才在电脑上（DSH）和她说的，QQ 这边接着知道
-            const groupQuestion = !initiate && chat.at(-1)?.role === 'user' ? chat.at(-1)?.content : undefined;
-            const groupEcho = groupQuestion ? await options.groupRecent?.(groupQuestion, time) : undefined;
-            const desktop = options.desktopRecent?.(time);
-            if (desktop) log(`带上他刚才在 DSH 桌面上的对话 ${(desktop.match(/ 他：/g) ?? []).length} 轮`);
-            let common = freshCommon;
-            const commonNote = [`线索：${cue}`, fadeParts(faded[1]).join('，')].filter(Boolean).join('；');
-            if (common) {
-                log(`召回公共记忆 ${countLines(common)} 条（${commonNote}）`);
-            } else if (cue) {
-                log(`公共记忆没想起什么（${commonNote}）`);
-            } else if (remembers && !initiate) {
-                // 刚才那一轮想起过、还在脑子里：照那一轮的话、那一轮的时刻再想一次，和当时想起的一样
-                const earlier = lingering(chat, time.getTime(), cueIn);
-                common = earlier ? you(await recallCommon(earlier.upTo, earlier.found, new Date(earlier.at))) : undefined;
-                if (common) log(`公共记忆沿用刚才想起的 ${countLines(common)} 条`);
-            }
-            if (people.length) {
-                log(`提起了 ${people.map((person, i) => `${person.name}：介绍${aboutPeople[i] ? ` + 召回 ${countLines(aboutPeople[i])} 条${fadeNote(faded[i + 2])}` : ''}`).join('；')}`);
-            }
-            // 她对他的印象（ADR 0017）放在介绍下面、他的私人记忆上面
-            const impressions = people.map(person => (remembers ? you(memory.impression(person, contact)) : undefined));
-            if (impressions.some(Boolean)) log(`有印象：${people.filter((_, i) => impressions[i]).map(person => person.name).join('、')}`);
-            const peopleText = people.map((person, i) => describePerson(person, impressions[i], aboutPeople[i]));
-            const today = common ? undefined : you(await todayOthers);
-            if (today) log(`今天和别人聊过的 ${countLines(today)} 条（新一段对话，有由头可以含糊提一件）`);
+            // 召回（他的 / 公共的 / 提到的人的、工作房、DSH 桌面、群里最近的、今天和别人聊过的）是记忆模块的 decideAt.recall（modules/memory.ts）：
+            // 在这里原位调（几次 await 等 Hindsight、日志的先后都照旧），写进 turn.facts.recall / cue / askedDay / groupEcho
+            const recalling = decideStage(options.turnModules ?? [], 'recall', turn, {
+                ...decideCtx,
+                recall: {
+                    ...(remembers ? { memory } : {}), ...(options.contacts ? { contacts: options.contacts } : {}),
+                    ...((schedule ?? herSchedule ?? character.schedule) ? { schedule: schedule ?? herSchedule ?? character.schedule } : {}),
+                    ...(options.memoryFeelings && contact.tier === 'boyfriend' ? { feltOnDay } : {}),
+                    ...(options.groupRecent ? { groupRecent: options.groupRecent } : {}), ...(options.desktopRecent ? { desktopRecent: options.desktopRecent } : {}),
+                },
+            });
+            if (recalling instanceof Promise) await recalling;
+            const { cue, askedDay: day } = turn.facts;
+            const you = youFor(character, options.contacts ?? []);
             // 重要的日子那一行（ADR 0011）是解释器的模块（modules/time-notes.ts）：卡上的日子建卡时就定了，在 contribute 时现算
             if (herSchedule) options.onHerDay?.(time);
             // 先 perceive——看清她此刻（她那边、身体、在干嘛），写进 turn.facts；
             // 下面的旧逻辑和后面的 assess 都读。旧逻辑算的判断在 assess 之前写进同一个 turn
             turnNow = turn;
-            if (groupEcho) turn.facts.groupEcho = groupEcho;
             const perceived = perceiveTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             if (perceived instanceof Promise) await perceived;
@@ -626,8 +543,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 质感（ADR 0131）发出去之前用的上下文是解释器的模块（modules/decorate.ts 的 decideAt.texture，开了 texture 才挂）：写进 turn.facts.texture
             decideStage(options.turnModules ?? [], 'texture', turn, decideCtx);
             // 长短不一（ADR 0024）和形状（ADR 0091）是解释器的模块（modules/length.ts、modules/shape.ts）；它们要的前面那几样在这里写进 turn.facts
+            // （线索 cue 由记忆模块召回时写进 turn.facts）
             Object.assign(turn.facts, {
-                ...(cue ? { cue } : {}),
                 // 「/亲热」那一行在上面原位取（每取一次扣一条、写文件），由解释器的模块（modules/intent-line.ts）放
                 ...(intimateNow ? { intimateLine: intimateNow } : {}),
             });
@@ -649,7 +566,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             }
             if (thinking) shown = { chat: [], omitted: 0 };
             // 记忆这一组（关系概况、要点、他的私人记忆、工作房、DSH 桌面、公共记忆、那一天、今天和别人聊过的、提到的人）是解释器的模块（modules/memory.ts）：
-            // 召回留在上面原位（几次 await 等 Hindsight、关系概况和印象读缓存后台重读、要点后台整理），最终的字写进 turn.facts.memory，经 turnModules 放进各自的槽，披露分寸由模块接
+            // 召回由记忆模块在上面原位做好（turn.facts.recall）；这里拼上要点（后台整理）和那一天，最终的字写进 turn.facts.memory，经 turnModules 放进各自的槽，披露分寸由模块接
+            const { relationship, recalled, work, desktop, common, today, people: peopleText = [] } = turn.facts.recall ?? {};
             const memoryNow: MemoryPieces = {
                 ...(relationship ? { relationship } : {}), ...(summary ? { summary } : {}), ...(recalled ? { recalled } : {}),
                 ...(work ? { work } : {}), ...(desktop ? { desktop } : {}), ...(common ? { common } : {}),

@@ -36,6 +36,8 @@ import type { QuotePlan } from '../social/quote-reply.ts';
 import type { HumanValues } from '../human-values.ts';
 import type { DevelopmentSnapshot } from '../life/development.ts';
 import type { MemoryPieces } from '../modules/memory.ts';
+import type { AskedWindow } from '../life/people.ts';
+import type { LongTermMemory } from '../memory/long-term.ts';
 import type { ReviewOptions } from '../language/exit-check.ts';
 import type { PickRules } from '../language/candidates.ts';
 import type { TurnWeight } from '../language/turn-weight.ts';
@@ -155,6 +157,10 @@ export interface TurnFacts {
     /** 记忆这一组（ADR 0012 / 0016–0020 / 0032 / 0043 / 0176 / 0177）：联系人流水线原位召回 / 读好的几段（她的名字已换成「你」；召回的 await、关系概况和印象读缓存后台重读、要点的后台整理、召回日志都留在原位），
      *  modules/memory.ts 照原样放进各自的槽，有 common / today / people 时接 disclosure。没有的不写（desktop 不要长期记忆，跟着 crossRecent） */
     memory?: MemoryPieces;
+    /** 召回的结果（modules/memory.ts 的 decideAt.recall 写；她的名字已换成「你」）：流水线后面拼上要点和那一天，成为 memory */
+    recall?: Omit<MemoryPieces, 'summary' | 'recap'>;
+    /** 他问到的那一天 / 那一段（ADR 0018 / 0032，decideAt.recall 写）：问到的是某一天时，流水线放那天她那边的流水账 */
+    askedDay?: AskedWindow;
     /** 她在 QQ 上的样子（ADR 0083）：联系人流水线原位取（presence 的内存状态，后台 tick 会改，不挪过 await）后写；modules/time-notes.ts 放进 selfNote 槽 */
     selfNote?: string;
     /** 她答应过他、还没做的事那一句（ADR 0018 决策 2）：和 promised 同一处写（读承诺状态、记日志）；modules/time-notes.ts 放进 promised 槽 */
@@ -321,7 +327,7 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['values', 'photo', 'intent', 'feelings', 'stickers', 'deliberate', 'length', 'texture'] as const;
+export const DECIDE_STAGES = ['values', 'recall', 'photo', 'intent', 'feelings', 'stickers', 'deliberate', 'length', 'texture'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
@@ -330,6 +336,18 @@ export interface DecideCtx {
     values?: {
         humanValues: (context: { contact: Contact; history: Turn['history']; at: Date }) => HumanValues | undefined;
         worldEvents?: () => ReturnType<NonNullable<WorldState['events']>>;
+    };
+    /** 召回要的（ADR 0012 / 0016–0020 / 0177 / 0218）：长期记忆（开了、名单里的人才有）、名单、她的一天按哪份作息算、那天的感觉、群里 / DSH 桌面上最近的 */
+    recall?: {
+        memory?: LongTermMemory;
+        /** 名单（不给时按空名单；公共记忆按「名单 ?? 只有他」查） */
+        contacts?: readonly Contact[];
+        schedule?: Schedule;
+        /** 某天她心里有依据的感觉（开了 memoryFeelings、男朋友档才给） */
+        feltOnDay?: (dayStart: Date) => Felt[];
+        /** 设备所有者在当前私聊明确问起已配置的某个群时，按需查该群公开日程或公告（可能要等） */
+        groupRecent?: (question: string, at: Date) => string | undefined | Promise<string | undefined>;
+        desktopRecent?: (at: Date) => string | undefined;
     };
     /** 这个联系人有图片表情收藏库（ADR 0063）时才有：这一轮抽不抽的几个比例（不写用默认；uncued / onlyChance 不写就是不抽） */
     stickers?: { chance?: number; uncued?: number; onlyChance?: number };
@@ -373,7 +391,11 @@ export interface DecideCtx {
 
 /** 判断顺序表上的一个位置：挂在这里的模块按注册顺序跑；都同步时同步返回，碰到第一个返回 promise 的才转成异步（同 contributeTurn） */
 export function decideStage(modules: readonly Module[], stage: DecideStage, turn: Turn, ctx: DecideCtx): Maybe<void> {
-    return eachModule(modules, module => module.decideAt?.[stage]?.(turn, ctx));
+    const mine = modules.filter(module => module.decideAt?.[stage]);
+    // 只有一个模块挂在这里（现在每个位置都是）：它返回的 promise 原样交回，不再包 .then——召回那一串原来内联在流水线里，
+    // 每多包一层就多一拍微任务，后台记忆任务的日志就会插到这一轮前面（行为基线 memory 场景核对，2026-11-18）
+    if (mine.length === 1) return mine[0]!.decideAt![stage]!(turn, ctx);
+    return eachModule(mine, module => module.decideAt?.[stage]?.(turn, ctx));
 }
 
 /** 挑候选的打算（ADR 0041）：生成几个、怎么挑。choose 拿到的是每个候选清理之后的字（顺序同生成），返回挑中的下标；日志是这个联系人的 */

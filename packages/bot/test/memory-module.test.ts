@@ -130,3 +130,66 @@ describe('记忆模块（ADR 0336）', () => {
         assert.equal(checked, 2 << keys.length);
     });
 });
+
+describe('召回（memoryModule 的 decideAt.recall，联系人流水线原位调）', async () => {
+    const { decideStage } = await import('../src/interpreter/interpreter.ts');
+    const { loadTierCard } = await import('../src/platform/contact.ts');
+    const { syntheticCardPattern } = await import('./fixtures/card.ts');
+    const card = loadTierCard(syntheticCardPattern, 'boyfriend').character;
+    const at = new Date('2026-12-08T19:00:00+08:00');
+    const run = async (said: string, recall: NonNullable<Parameters<typeof decideStage>[3]['recall']> | undefined, patch: Partial<Turn> = {}) => {
+        const lines: string[] = [];
+        const turn: Turn = { contact: boyfriend, at, history: [{ role: 'user', content: said, time: at.toISOString() }], thinking: false, card, facts: {}, ...patch };
+        await decideStage([memoryModule()], 'recall', turn, { history: () => [], log: line => lines.push(line), ...(recall ? { recall } : {}) });
+        return { facts: turn.facts, lines };
+    };
+
+    test('流水线没给召回要的（不经流水线建的轮次）：什么都不写', async () => {
+        const { facts, lines } = await run('在干嘛', undefined);
+        assert.deepEqual(facts, {});
+        assert.deepEqual(lines, []);
+    });
+
+    test('没有长期记忆：提到名单里的人照样有介绍；没有线索；群里那一句按他最后说的取、DSH 桌面那段照放、各记一行', async () => {
+        const asked: unknown[] = [];
+        const { facts, lines } = await run('小周今天怎么样', {
+            contacts: [boyfriend, { ...classmate, intro: '同班同学，实验课和她一组' }],
+            groupRecent: (question, when) => { asked.push([question, when]); return '[群里刚才]'; },
+            desktopRecent: () => '18:30 他：帮我把发票整理一下\n18:31 你：好',
+        });
+        assert.deepEqual(asked, [['小周今天怎么样', at]]);
+        assert.equal(facts.cue, undefined);
+        assert.equal(facts.groupEcho, '[群里刚才]');
+        assert.equal(facts.recall?.people?.length, 1);
+        assert.match(facts.recall!.people![0]!, /小周/);
+        assert.ok(facts.recall?.desktop);
+        assert.deepEqual(lines, ['带上他刚才在 DSH 桌面上的对话 1 轮', '提起了 小周：介绍']);
+    });
+
+    test('主动找他时不问群里（没有「他这次说的」）', async () => {
+        let asked = 0;
+        const { facts } = await run('在干嘛', { groupRecent: () => { asked++; return 'x'; } }, { initiate: { note: '想他了', topic: '' } as NonNullable<Turn['initiate']> });
+        assert.equal(asked, 0);
+        assert.equal(facts.groupEcho, undefined);
+    });
+
+    test('有长期记忆：他的记忆、关系概况、工作房按原来的先后取，她的名字换成「你」，记日志', async () => {
+        const calls: string[] = [];
+        const memory = {
+            commonEntities: async () => { calls.push('entities'); return []; },
+            recall: async () => { calls.push('recall'); return `[旧事]\n- ${card.name}说过考试`; },
+            canRecallContactMemory: () => false,
+            relationship: () => { calls.push('relationship'); return '[关系]\n在一起一年多'; },
+            recallWork: async () => { calls.push('work'); return undefined; },
+            impression: () => undefined,
+            othersToday: async () => { calls.push('today'); return undefined; },
+            recallCommon: async () => { calls.push('common'); return undefined; },
+        } as unknown as NonNullable<NonNullable<Parameters<typeof decideStage>[3]['recall']>['memory']>;
+        const { facts, lines } = await run('在干嘛', { memory, contacts: [boyfriend] });
+        assert.deepEqual(calls.slice(0, 4), ['entities', 'today', 'recall', 'relationship']);
+        assert.ok(calls.includes('work'));
+        assert.equal(facts.recall?.recalled, '[旧事]\n- 你说过考试');
+        assert.equal(facts.recall?.relationship, '[关系]\n在一起一年多');
+        assert.equal(lines[0], '召回长期记忆 1 条');
+    });
+});
