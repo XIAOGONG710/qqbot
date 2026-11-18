@@ -11,16 +11,46 @@
 //   成长快照的反思（reflectionLessons）不按时刻过滤事件，多一条失败 / 中断的事件，「生活脉络」那一行就多一句。行为基线的假时钟在 await 里不走，抓不到这种差别。
 // - 「数值：……」「人格成长层：……」这两行日志原来排在召回日志之前，挪过去先后就变了。
 // 所以按方案的退路：旧逻辑原位算、写 facts；describeHumanState / describeDevelopment 是纯函数（只读数值、快照和档位），挪到 contribute 时算结果一样。
-// 不存状态、不调模型、不记日志。旧逻辑算 low（不加「话多」）时照旧读它自己算的数值。
+// 不存状态、不调模型。low（不加「话多」）由形状模块的 decideAt.length 从 facts 读数值。
 
+//
+// 2026-11-18（ADR 0336「判断那一串」）：算也挪进来了，但位置不变——`decideAt.values` 由联系人流水线在 buildPrompt 开头、第一次 await 之前原位调
+// （turn 提前在那里建好），上面三条顾虑都不碰。数值的取法和世界账的事件经 DecideCtx.values 给；那两行日志照旧。
+
+import type { DevelopmentSnapshot } from '../life/development.ts';
 import type { Module } from '../interpreter/interpreter.ts';
 import type { Piece } from '../interpreter/slots.ts';
-import { describeHumanState } from '../human-values.ts';
-import { describeDevelopment } from '../life/development.ts';
+import { describeHumanState, describeHumanValues } from '../human-values.ts';
+import { auditDevelopment, describeDevelopment, developmentSnapshot, developmentSummary } from '../life/development.ts';
 
 export function humanStateModule(): Module {
     return {
         id: 'human-state',
+        decideAt: {
+            values(turn, ctx) {
+                if (!ctx.values) return;
+                const { at: time, history: chat } = turn;
+                const humanValues = ctx.values.humanValues({ contact: turn.contact, history: chat, at: time });
+                if (humanValues) ctx.log(describeHumanValues(humanValues));
+                let development: DevelopmentSnapshot | undefined;
+                if (humanValues) {
+                    try {
+                        const events = ctx.values.worldEvents?.() ?? [];
+                        development = developmentSnapshot({ at: time, values: humanValues, history: chat, events });
+                        const audit = auditDevelopment(development, events);
+                        if (audit.length) ctx.log(`人格成长层：自检未通过（${audit.join('；')}）`);
+                        else {
+                            const summary = developmentSummary(development);
+                            ctx.log(`人格成长层：人生线 ${summary.activeLifeArcs}，关系 ${summary.relationshipStage}，自主 ${summary.autonomyMode}，创作草稿 ${summary.creativeDrafts}`);
+                        }
+                    } catch (error) {
+                        ctx.log(`人格成长层：投影失败（${error instanceof Error ? error.message : String(error)}）`);
+                    }
+                }
+                if (humanValues) turn.facts.humanValues = humanValues;
+                if (development) turn.facts.development = development;
+            },
+        },
         contribute(turn) {
             if (turn.thinking) return [];
             const { facts } = turn;

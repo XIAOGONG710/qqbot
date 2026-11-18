@@ -321,11 +321,16 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['photo', 'intent', 'feelings', 'stickers', 'deliberate', 'length', 'texture'] as const;
+export const DECIDE_STAGES = ['values', 'photo', 'intent', 'feelings', 'stickers', 'deliberate', 'length', 'texture'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
 export interface DecideCtx {
+    /** 有真人数值（ADR 0222，App 在有需要锚点时才给）才有：这一刻的数值、算人格成长层（ADR 0251）要的世界账事件 */
+    values?: {
+        humanValues: (context: { contact: Contact; history: Turn['history']; at: Date }) => HumanValues | undefined;
+        worldEvents?: () => ReturnType<NonNullable<WorldState['events']>>;
+    };
     /** 这个联系人有图片表情收藏库（ADR 0063）时才有：这一轮抽不抽的几个比例（不写用默认；uncued / onlyChance 不写就是不抽） */
     stickers?: { chance?: number; uncued?: number; onlyChance?: number };
     /** 作息（开了她自己的日子才有）：今天的心情按它算 */

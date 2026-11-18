@@ -52,8 +52,7 @@ import { estimateTokens } from '.././language/tokens.ts';
 import { selfThreadLine } from '.././language/self-thread.ts';
 import { feltDayNote, feltDuring, feltNoteFor } from '.././emotion/felt-then.ts';
 import { lastNight, withLastNight } from '.././life/nights.ts';
-import { describeHumanValues, type HumanValues } from '.././human-values.ts';
-import { auditDevelopment, developmentSnapshot, developmentSummary, type DevelopmentSnapshot } from '.././life/development.ts';
+import type { HumanValues } from '.././human-values.ts';
 import type { PhotoKind, PhotoShelf } from '.././vision/photos.ts';
 import type { StickerShelf } from '.././social/stickers.ts';
 
@@ -295,6 +294,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
     /** 清理时交给模块的两个货架（ADR 0336 第 9 步，CleanCtx）：清单的取、聊天记录的写法也还在这里用它们 */
     /** 判断那一串（ADR 0336，DECIDE_STAGES）交给模块的东西：照片货架和「现在的照片」的解析 */
     const decideCtx: DecideCtx = {
+        ...(options.humanValues ? { values: { humanValues: options.humanValues, ...(options.worldState?.events ? { worldEvents: () => options.worldState!.events!() } : {}) } } : {}),
         ...(options.stickers ? { stickers: { ...(options.stickerChance !== undefined ? { chance: options.stickerChance } : {}), ...(options.stickerUncued ? { uncued: options.stickerUncued } : {}), ...(options.stickerOnlyChance ? { onlyChance: options.stickerOnlyChance } : {}) } } : {}),
         ...(options.photos ? { photos: options.photos } : {}),
         history: () => options.history.load(contact.qq),
@@ -396,25 +396,16 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         buildPrompt: async (chat, { woken, initiate, offlineSince }) => {
             chosen = undefined;
             const time = new Date(now());
-            const humanValues = options.humanValues?.({ contact, history: chat, at: time });
-            if (humanValues) log(describeHumanValues(humanValues));
-            let development: DevelopmentSnapshot | undefined;
-            if (humanValues) {
-                try {
-                    const events = options.worldState?.events?.() ?? [];
-                    development = developmentSnapshot({ at: time, values: humanValues, history: chat, events });
-                    const audit = auditDevelopment(development, events);
-                    if (audit.length) log(`人格成长层：自检未通过（${audit.join('；')}）`);
-                    else {
-                        const summary = developmentSummary(development);
-                        log(`人格成长层：人生线 ${summary.activeLifeArcs}，关系 ${summary.relationshipStage}，自主 ${summary.autonomyMode}，创作草稿 ${summary.creativeDrafts}`);
-                    }
-                } catch (error) {
-                    log(`人格成长层：投影失败（${error instanceof Error ? error.message : String(error)}）`);
-                }
-            }
             // 只想一想（ADR 0101 内心）：不是在聊天，不要意图行、形状、字数提示、表情；聊天记录当成“回想”放进说明里，不当成要接着回的对话
             const thinking = Boolean(initiate?.think);
+            // 这一轮交给解释器的模块（ADR 0336）：turn 在开头就建好（只是一个对象），判断那一串从这里开始；交给别处用的 turnNow 照旧在 perceive 之前才换
+            const turn: Turn = {
+                contact, at: time, history: chat, thinking, card: character, facts: {},
+                ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
+            };
+            // 真人数值（ADR 0222）和人格成长层（ADR 0251）是 human-state 模块的 decideAt.values：在这里、第一次 await 之前原位算（理由见 modules/human-state.ts 文件头），
+            // 写进 turn.facts.humanValues / development，两行日志也在那里记
+            decideStage(options.turnModules ?? [], 'values', turn, decideCtx);
             // 长期记忆只给名单里的人；主动找他时没有「他这次说的」：查想知道的事 + 最后两句，带前 3 天到后 2 天的时间窗（ADR 0012 决策 1 第 7 条）
             const remembers = memory && contact.tier !== UNLISTED_TIER;
             const recallOptions = initiate
@@ -505,12 +496,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             if (today) log(`今天和别人聊过的 ${countLines(today)} 条（新一段对话，有由头可以含糊提一件）`);
             // 重要的日子那一行（ADR 0011）是解释器的模块（modules/time-notes.ts）：卡上的日子建卡时就定了，在 contribute 时现算
             if (herSchedule) options.onHerDay?.(time);
-            // 这一轮交给解释器的模块（ADR 0336）：在这里建 turn、先 perceive——看清她此刻（她那边、身体、在干嘛），写进 turn.facts；
+            // 先 perceive——看清她此刻（她那边、身体、在干嘛），写进 turn.facts；
             // 下面的旧逻辑和后面的 assess 都读。旧逻辑算的判断在 assess 之前写进同一个 turn
-            const turn: Turn = {
-                contact, at: time, history: chat, thinking, card: character, facts: {},
-                ...(initiate ? { initiate } : {}), ...(woken !== undefined ? { woken } : {}), ...(offlineSince !== undefined ? { offlineSince } : {}),
-            };
             turnNow = turn;
             if (groupEcho) turn.facts.groupEcho = groupEcho;
             const perceived = perceiveTurn(options.turnModules ?? [], turn);
@@ -549,8 +536,6 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 ...(selfNote ? { selfNote } : {}),
                 ...(loops ? { waiting: loops.waiting.map(l => l.what), unanswered: loops.unanswered.map(l => l.what), unsettled: loops.unsettled.map(l => l.what) } : {}),
                 ...(untold.length ? { news: untold } : {}),
-                // 真人数值和人格成长层在上面开头算好（不挪过 await），那两行由解释器的模块（modules/human-state.ts）放
-                ...(humanValues ? { humanValues } : {}), ...(development ? { development } : {}),
             } satisfies TurnFacts);
             const assessed = assessTurn(options.turnModules ?? [], turn);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）

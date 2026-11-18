@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { describeHumanState, type HumanValues } from '../src/human-values.ts';
 import type { Tier } from '../src/platform/config.ts';
-import { contributeTurn, type Turn, type TurnFacts } from '../src/interpreter/interpreter.ts';
+import { contributeTurn, decideStage, type DecideCtx, type Turn, type TurnFacts } from '../src/interpreter/interpreter.ts';
 import type { Piece } from '../src/interpreter/slots.ts';
-import { describeDevelopment, type DevelopmentSnapshot } from '../src/life/development.ts';
+import { describeDevelopment, developmentSnapshot, type DevelopmentSnapshot } from '../src/life/development.ts';
+import { describeHumanValues } from '../src/human-values.ts';
 import { humanStateModule } from '../src/modules/human-state.ts';
 
 // 真人数值（ADR 0222）和人格成长层（ADR 0251）迁成模块（ADR 0336）：行为基线里 29 个场景两行都有，
@@ -76,5 +77,45 @@ describe('真人数值和人格成长层模块（ADR 0222 / 0251 / 0336）', () 
         const assembled = contributeTurn([others, humanStateModule()], turnOf({ humanValues: tired, development: snapshot }));
         assert.ok(!(assembled instanceof Promise));
         assert.deepEqual(assembled.afterHistory, [['[身体]', describeHumanState(tired, 'boyfriend'), describeDevelopment(snapshot), '[没了结]'].join('\n')]);
+    });
+
+    describe('算（decideAt.values，联系人流水线在 buildPrompt 开头原位调）', () => {
+        const decide = (values: DecideCtx['values'], history: Turn['history'] = []) => {
+            const lines: string[] = [];
+            const turn = turnOf({}, { history });
+            decideStage([humanStateModule()], 'values', turn, { history: () => [], log: line => lines.push(line), ...(values ? { values } : {}) });
+            return { facts: turn.facts, lines };
+        };
+
+        test('没给数值的取法（模拟器、没有锚点）：什么都不写、不记日志', () => {
+            const { facts, lines } = decide(undefined);
+            assert.deepEqual(facts, {});
+            assert.deepEqual(lines, []);
+        });
+
+        test('取法拿到这一轮的联系人、聊天记录和时刻；没有数值时不读世界账、不算成长层', () => {
+            const seen: unknown[] = [];
+            const history: Turn['history'] = [{ role: 'user', content: '在吗', time: at.toISOString() }];
+            const { facts, lines } = decide({ humanValues: context => { seen.push(context); return undefined; }, worldEvents: () => { throw new Error('不该读世界账'); } }, history);
+            assert.deepEqual(seen, [{ contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, history, at }]);
+            assert.deepEqual(facts, {});
+            assert.deepEqual(lines, []);
+        });
+
+        test('有数值：先记数值那一行，再按世界账的事件算成长层、记摘要；两样写进 facts', () => {
+            const { facts, lines } = decide({ humanValues: () => tired, worldEvents: () => [] });
+            assert.equal(facts.humanValues, tired);
+            assert.deepEqual(facts.development, developmentSnapshot({ at, values: tired, history: [], events: [] }));
+            assert.equal(lines[0], describeHumanValues(tired));
+            assert.match(lines[1]!, /^人格成长层：人生线 \d+，关系 /);
+            assert.equal(lines.length, 2);
+        });
+
+        test('成长层投影出错：记一行、不写成长层，数值照写', () => {
+            const { facts, lines } = decide({ humanValues: () => tired, worldEvents: () => { throw new Error('账坏了'); } });
+            assert.equal(facts.humanValues, tired);
+            assert.equal(facts.development, undefined);
+            assert.deepEqual(lines.slice(1), ['人格成长层：投影失败（账坏了）']);
+        });
     });
 });

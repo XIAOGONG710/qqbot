@@ -23,8 +23,8 @@ const ctxOf = (have: readonly string[], extra: Partial<DecideCtx> = {}) => {
 const decide = (turn: Turn, ctx: DecideCtx) => { decideStage([mediaOffersModule()], 'photo', turn, ctx); return turn.facts; };
 
 describe('判断顺序表（ADR 0336「判断那一串」）', () => {
-    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：照片 → 最终的意图 → 心境 → 图片表情 → 深思 → 长短要的两样 → 质感的上下文', () => {
-        assert.deepEqual([...DECIDE_STAGES], ['photo', 'intent', 'feelings', 'stickers', 'deliberate', 'length', 'texture']);
+    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：真人数值和成长层（buildPrompt 开头）→ 照片 → 最终的意图 → 心境 → 图片表情 → 深思 → 长短要的两样 → 质感的上下文', () => {
+        assert.deepEqual([...DECIDE_STAGES], ['values', 'photo', 'intent', 'feelings', 'stickers', 'deliberate', 'length', 'texture']);
     });
 
     test('一个位置上按注册顺序跑，拿到同一轮和流水线给的东西；只挂 decideAt 的模块不被解释器筛掉', () => {

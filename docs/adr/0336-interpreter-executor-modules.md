@@ -1214,3 +1214,11 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   变异检验——`low` 永远为真、话题里多塞一样，`intents`、`register` 对不上（只把 `low` 关掉，试的五个场景没抓到：那几轮正好不加「话多」）。
   `decide-stage.test.ts` 加 4 项；相关单测 206 项通过；类型检查通过。
 - 判断顺序表：`photo` → `intent` → `feelings` → `stickers` → `deliberate` → `length` → `texture`。
+
+### 判断那一串：真人数值和人格成长层（2026-11-18）
+
+- 是什么：ADR 0222 / 0251——这一刻的数值（`options.humanValues`）、按世界账的事件投影的成长快照和自检，两行日志。原来在 `buildPrompt` 开头、第一次 await 之前算。
+- `DECIDE_STAGES` 最前面加 `values`。联系人流水线把 `turn` 提前到 `buildPrompt` 开头建（只是一个对象；交给审稿用的 `turnNow` 照旧在 perceive 之前才换），在原位调 `decideStage('values')`。
+  挂在 `modules/human-state.ts` 的 `decideAt.values`，数值的取法和世界账的事件经 `DecideCtx.values` 给（有 `humanValues` 才有，模拟器没有）。文件头记的三条顾虑都是「挪了位置」才有的，位置没变。
+- 验证：前后对照 41/41 逐字一样（`f813a3ad` 上）；`human-state-module.test.ts` 加 4 项（不给取法、没有数值不读世界账、有数值两行日志和两样 facts、投影出错）；类型检查通过。
+- 判断顺序表：`values` → `photo` → `intent` → `feelings` → `stickers` → `deliberate` → `length` → `texture`。
