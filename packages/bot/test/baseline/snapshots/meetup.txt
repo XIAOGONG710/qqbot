@@ -1398,6 +1398,883 @@
 @ 2026-11-10 21:20:00.000 停止
 
 # 数据目录
+== agency-shadow/associations.json
+{
+  "version": 1,
+  "associations": [
+    {
+      "id": "association:sandbox-presence:2026-11-10:school:contextual",
+      "eventId": "sandbox-presence:2026-11-10:school",
+      "lane": "contextual",
+      "focus": "更新当前情境",
+      "createdAt": "2026-11-10T10:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-presence:2026-11-10:school:practical",
+      "eventId": "sandbox-presence:2026-11-10:school",
+      "lane": "practical",
+      "focus": "评估当前活动空间",
+      "createdAt": "2026-11-10T10:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-weather:2026-11-10:2026-11-10T18:wet:range:contextual",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T18:wet:range",
+      "lane": "contextual",
+      "focus": "更新当前情境",
+      "createdAt": "2026-11-10T10:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-weather:2026-11-10:2026-11-10T18:wet:range:episodic",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T18:wet:range",
+      "lane": "episodic",
+      "focus": "按需检索相关经历",
+      "createdAt": "2026-11-10T10:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-weather:2026-11-10:2026-11-10T18:wet:range:practical",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T18:wet:range",
+      "lane": "practical",
+      "focus": "评估环境对安排的影响",
+      "createdAt": "2026-11-10T10:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1000:relational",
+      "eventId": "user-message:10001:1000",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T10:30:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1001:relational",
+      "eventId": "user-message:10001:1001",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T10:40:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1002:relational",
+      "eventId": "user-message:10001:1002",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T10:45:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-weather:2026-11-10:2026-11-10T19:wet:range:contextual",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T19:wet:range",
+      "lane": "contextual",
+      "focus": "更新当前情境",
+      "createdAt": "2026-11-10T11:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-weather:2026-11-10:2026-11-10T19:wet:range:episodic",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T19:wet:range",
+      "lane": "episodic",
+      "focus": "按需检索相关经历",
+      "createdAt": "2026-11-10T11:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-weather:2026-11-10:2026-11-10T19:wet:range:practical",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T19:wet:range",
+      "lane": "practical",
+      "focus": "评估环境对安排的影响",
+      "createdAt": "2026-11-10T11:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1003:relational",
+      "eventId": "user-message:10001:1003",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T11:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10002:1004:relational",
+      "eventId": "user-message:10002:1004",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T11:30:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1005:relational",
+      "eventId": "user-message:10001:1005",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T11:40:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1006:relational",
+      "eventId": "user-message:10001:1006",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T11:45:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1007:relational",
+      "eventId": "user-message:10001:1007",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T11:50:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1008:relational",
+      "eventId": "user-message:10001:1008",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T11:55:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-weather:2026-11-10:2026-11-10T20:wet:range:contextual",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T20:wet:range",
+      "lane": "contextual",
+      "focus": "更新当前情境",
+      "createdAt": "2026-11-10T12:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-weather:2026-11-10:2026-11-10T20:wet:range:episodic",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T20:wet:range",
+      "lane": "episodic",
+      "focus": "按需检索相关经历",
+      "createdAt": "2026-11-10T12:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-weather:2026-11-10:2026-11-10T20:wet:range:practical",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T20:wet:range",
+      "lane": "practical",
+      "focus": "评估环境对安排的影响",
+      "createdAt": "2026-11-10T12:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1009:relational",
+      "eventId": "user-message:10001:1009",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T12:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1010:relational",
+      "eventId": "user-message:10001:1010",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T12:05:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1011:relational",
+      "eventId": "user-message:10001:1011",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T12:10:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1012:relational",
+      "eventId": "user-message:10001:1012",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T12:20:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1013:relational",
+      "eventId": "user-message:10001:1013",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T12:40:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:user-message:10001:1014:relational",
+      "eventId": "user-message:10001:1014",
+      "lane": "relational",
+      "focus": "更新关系可用性",
+      "createdAt": "2026-11-10T12:50:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-weather:2026-11-10:2026-11-10T21:wet:range:contextual",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T21:wet:range",
+      "lane": "contextual",
+      "focus": "更新当前情境",
+      "createdAt": "2026-11-10T13:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-weather:2026-11-10:2026-11-10T21:wet:range:episodic",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T21:wet:range",
+      "lane": "episodic",
+      "focus": "按需检索相关经历",
+      "createdAt": "2026-11-10T13:00:00.000Z",
+      "confidence": 1
+    },
+    {
+      "id": "association:sandbox-weather:2026-11-10:2026-11-10T21:wet:range:practical",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T21:wet:range",
+      "lane": "practical",
+      "focus": "评估环境对安排的影响",
+      "createdAt": "2026-11-10T13:00:00.000Z",
+      "confidence": 1
+    }
+  ]
+}
+== agency-shadow/decisions.json
+{
+  "version": 1,
+  "decisions": [
+    {
+      "id": "decision:drive:impact:sandbox-presence:2026-11-10:school:self:local-context:awareness",
+      "driveId": "drive:impact:sandbox-presence:2026-11-10:school:self:local-context:awareness",
+      "outcome": "wait",
+      "score": 0.09,
+      "decidedAt": "2026-11-10T10:00:00.000Z",
+      "reason": "动机强度不足，先保留观察"
+    },
+    {
+      "id": "decision:drive:impact:sandbox-weather:2026-11-10:2026-11-10T18:wet:range:self:local-context:awareness",
+      "driveId": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T18:wet:range:self:local-context:awareness",
+      "outcome": "wait",
+      "score": 0.09,
+      "decidedAt": "2026-11-10T10:00:00.000Z",
+      "reason": "动机强度不足，先保留观察"
+    },
+    {
+      "id": "decision:drive:impact:sandbox-weather:2026-11-10:2026-11-10T19:wet:range:self:local-context:awareness",
+      "driveId": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T19:wet:range:self:local-context:awareness",
+      "outcome": "wait",
+      "score": 0.09,
+      "decidedAt": "2026-11-10T11:00:00.000Z",
+      "reason": "动机强度不足，先保留观察"
+    },
+    {
+      "id": "decision:drive:proactive:2026-11-10:back:1794308451133",
+      "driveId": "drive:proactive:2026-11-10:back:1794308451133",
+      "outcome": "focus",
+      "score": 0.781,
+      "decidedAt": "2026-11-10T11:11:39.191Z",
+      "reason": "当前可保留这一项内部关注"
+    },
+    {
+      "id": "decision:drive:impact:sandbox-weather:2026-11-10:2026-11-10T20:wet:range:self:local-context:awareness",
+      "driveId": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T20:wet:range:self:local-context:awareness",
+      "outcome": "wait",
+      "score": 0.09,
+      "decidedAt": "2026-11-10T12:00:00.000Z",
+      "reason": "动机强度不足，先保留观察"
+    },
+    {
+      "id": "decision:drive:impact:sandbox-weather:2026-11-10:2026-11-10T21:wet:range:self:local-context:awareness",
+      "driveId": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T21:wet:range:self:local-context:awareness",
+      "outcome": "wait",
+      "score": 0.09,
+      "decidedAt": "2026-11-10T13:00:00.000Z",
+      "reason": "动机强度不足，先保留观察"
+    }
+  ]
+}
+== agency-shadow/events.json
+{
+  "version": 1,
+  "events": [
+    {
+      "id": "sandbox-presence:2026-11-10:school",
+      "source": "sandbox",
+      "kind": "sandbox.presence.context",
+      "occurredAt": "2026-11-10T10:00:00.000Z",
+      "observedAt": "2026-11-10T10:00:00.000Z",
+      "status": "active",
+      "subjects": [
+        "self",
+        "space:current"
+      ],
+      "details": {
+        "day": "2026-11-10",
+        "place": "school"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "sandbox-weather:2026-11-10:2026-11-10T18:wet:range",
+      "source": "sandbox",
+      "kind": "sandbox.weather.projected",
+      "occurredAt": "2026-11-10T10:00:00.000Z",
+      "observedAt": "2026-11-10T10:00:00.000Z",
+      "status": "active",
+      "subjects": [
+        "self",
+        "space:current"
+      ],
+      "details": {
+        "day": "2026-11-10",
+        "source": "simulated",
+        "raining": true,
+        "low": 2,
+        "high": 8,
+        "condition": "range"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1000",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T10:30:00.000Z",
+      "observedAt": "2026-11-10T10:30:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1001",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T10:40:00.000Z",
+      "observedAt": "2026-11-10T10:40:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1002",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T10:45:00.000Z",
+      "observedAt": "2026-11-10T10:45:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "sandbox-weather:2026-11-10:2026-11-10T19:wet:range",
+      "source": "sandbox",
+      "kind": "sandbox.weather.projected",
+      "occurredAt": "2026-11-10T11:00:00.000Z",
+      "observedAt": "2026-11-10T11:00:00.000Z",
+      "status": "active",
+      "subjects": [
+        "self",
+        "space:current"
+      ],
+      "details": {
+        "day": "2026-11-10",
+        "source": "simulated",
+        "raining": true,
+        "low": 2,
+        "high": 8,
+        "condition": "range"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1003",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T11:00:00.000Z",
+      "observedAt": "2026-11-10T11:00:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10002:1004",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T11:30:00.000Z",
+      "observedAt": "2026-11-10T11:30:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10002"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1005",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T11:40:00.000Z",
+      "observedAt": "2026-11-10T11:40:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1006",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T11:45:00.000Z",
+      "observedAt": "2026-11-10T11:45:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1007",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T11:50:00.000Z",
+      "observedAt": "2026-11-10T11:50:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1008",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T11:55:00.000Z",
+      "observedAt": "2026-11-10T11:55:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "sandbox-weather:2026-11-10:2026-11-10T20:wet:range",
+      "source": "sandbox",
+      "kind": "sandbox.weather.projected",
+      "occurredAt": "2026-11-10T12:00:00.000Z",
+      "observedAt": "2026-11-10T12:00:00.000Z",
+      "status": "active",
+      "subjects": [
+        "self",
+        "space:current"
+      ],
+      "details": {
+        "day": "2026-11-10",
+        "source": "simulated",
+        "raining": true,
+        "low": 2,
+        "high": 8,
+        "condition": "range"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1009",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T12:00:00.000Z",
+      "observedAt": "2026-11-10T12:00:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1010",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T12:05:00.000Z",
+      "observedAt": "2026-11-10T12:05:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1011",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T12:10:00.000Z",
+      "observedAt": "2026-11-10T12:10:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1012",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T12:20:00.000Z",
+      "observedAt": "2026-11-10T12:20:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1013",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T12:40:00.000Z",
+      "observedAt": "2026-11-10T12:40:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "user-message:10001:1014",
+      "source": "user",
+      "kind": "user.message.received",
+      "occurredAt": "2026-11-10T12:50:00.000Z",
+      "observedAt": "2026-11-10T12:50:00.000Z",
+      "status": "active",
+      "subjects": [
+        "user:10001"
+      ],
+      "details": {
+        "channel": "private"
+      },
+      "confidence": 1
+    },
+    {
+      "id": "sandbox-weather:2026-11-10:2026-11-10T21:wet:range",
+      "source": "sandbox",
+      "kind": "sandbox.weather.projected",
+      "occurredAt": "2026-11-10T13:00:00.000Z",
+      "observedAt": "2026-11-10T13:00:00.000Z",
+      "status": "active",
+      "subjects": [
+        "self",
+        "space:current"
+      ],
+      "details": {
+        "day": "2026-11-10",
+        "source": "simulated",
+        "raining": true,
+        "low": 2,
+        "high": 8,
+        "condition": "range"
+      },
+      "confidence": 1
+    }
+  ]
+}
+== agency-shadow/impacts.json
+{
+  "version": 1,
+  "impacts": [
+    {
+      "id": "impact:sandbox-presence:2026-11-10:school:self:local-context",
+      "eventId": "sandbox-presence:2026-11-10:school",
+      "target": "self",
+      "aspect": "local-context",
+      "direction": "uncertain",
+      "magnitude": 0.1,
+      "confidence": 1,
+      "assessedAt": "2026-11-10T10:00:00.000Z"
+    },
+    {
+      "id": "impact:sandbox-weather:2026-11-10:2026-11-10T18:wet:range:self:local-context",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T18:wet:range",
+      "target": "self",
+      "aspect": "local-context",
+      "direction": "uncertain",
+      "magnitude": 0.1,
+      "confidence": 1,
+      "assessedAt": "2026-11-10T10:00:00.000Z"
+    },
+    {
+      "id": "impact:sandbox-weather:2026-11-10:2026-11-10T19:wet:range:self:local-context",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T19:wet:range",
+      "target": "self",
+      "aspect": "local-context",
+      "direction": "uncertain",
+      "magnitude": 0.1,
+      "confidence": 1,
+      "assessedAt": "2026-11-10T11:00:00.000Z"
+    },
+    {
+      "id": "impact:sandbox-weather:2026-11-10:2026-11-10T20:wet:range:self:local-context",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T20:wet:range",
+      "target": "self",
+      "aspect": "local-context",
+      "direction": "uncertain",
+      "magnitude": 0.1,
+      "confidence": 1,
+      "assessedAt": "2026-11-10T12:00:00.000Z"
+    },
+    {
+      "id": "impact:sandbox-weather:2026-11-10:2026-11-10T21:wet:range:self:local-context",
+      "eventId": "sandbox-weather:2026-11-10:2026-11-10T21:wet:range",
+      "target": "self",
+      "aspect": "local-context",
+      "direction": "uncertain",
+      "magnitude": 0.1,
+      "confidence": 1,
+      "assessedAt": "2026-11-10T13:00:00.000Z"
+    }
+  ]
+}
+== agency-shadow/motivations.json
+{
+  "version": 1,
+  "drives": [
+    {
+      "id": "drive:impact:sandbox-presence:2026-11-10:school:self:local-context:awareness",
+      "source": "external",
+      "goal": "保持对世界变化的了解",
+      "target": "self",
+      "impactIds": [
+        "impact:sandbox-presence:2026-11-10:school:self:local-context"
+      ],
+      "strength": 0.1,
+      "urgency": 0,
+      "persistence": 0.35,
+      "createdAt": "2026-11-10T10:00:00.000Z",
+      "status": "active"
+    },
+    {
+      "id": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T18:wet:range:self:local-context:awareness",
+      "source": "external",
+      "goal": "保持对世界变化的了解",
+      "target": "self",
+      "impactIds": [
+        "impact:sandbox-weather:2026-11-10:2026-11-10T18:wet:range:self:local-context"
+      ],
+      "strength": 0.1,
+      "urgency": 0,
+      "persistence": 0.35,
+      "createdAt": "2026-11-10T10:00:00.000Z",
+      "status": "active"
+    },
+    {
+      "id": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T19:wet:range:self:local-context:awareness",
+      "source": "external",
+      "goal": "保持对世界变化的了解",
+      "target": "self",
+      "impactIds": [
+        "impact:sandbox-weather:2026-11-10:2026-11-10T19:wet:range:self:local-context"
+      ],
+      "strength": 0.1,
+      "urgency": 0,
+      "persistence": 0.35,
+      "createdAt": "2026-11-10T11:00:00.000Z",
+      "status": "active"
+    },
+    {
+      "id": "drive:proactive:2026-11-10:back:1794308451133",
+      "source": "external",
+      "goal": "兑现自己说过会回来的承诺",
+      "target": "self",
+      "eventIds": [
+        "promise.2026-11-10:back:1794308451133"
+      ],
+      "strength": 0.82,
+      "urgency": 0.7,
+      "persistence": 0.85,
+      "createdAt": "2026-11-10T11:11:39.191Z",
+      "status": "active"
+    },
+    {
+      "id": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T20:wet:range:self:local-context:awareness",
+      "source": "external",
+      "goal": "保持对世界变化的了解",
+      "target": "self",
+      "impactIds": [
+        "impact:sandbox-weather:2026-11-10:2026-11-10T20:wet:range:self:local-context"
+      ],
+      "strength": 0.1,
+      "urgency": 0,
+      "persistence": 0.35,
+      "createdAt": "2026-11-10T12:00:00.000Z",
+      "status": "active"
+    },
+    {
+      "id": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T21:wet:range:self:local-context:awareness",
+      "source": "external",
+      "goal": "保持对世界变化的了解",
+      "target": "self",
+      "impactIds": [
+        "impact:sandbox-weather:2026-11-10:2026-11-10T21:wet:range:self:local-context"
+      ],
+      "strength": 0.1,
+      "urgency": 0,
+      "persistence": 0.35,
+      "createdAt": "2026-11-10T13:00:00.000Z",
+      "status": "active"
+    }
+  ],
+  "candidates": [
+    {
+      "id": "drive:impact:sandbox-presence:2026-11-10:school:self:local-context:awareness:wait",
+      "driveId": "drive:impact:sandbox-presence:2026-11-10:school:self:local-context:awareness",
+      "kind": "wait",
+      "createdAt": "2026-11-10T10:00:00.000Z",
+      "reason": "动机强度不足，先保留观察"
+    },
+    {
+      "id": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T18:wet:range:self:local-context:awareness:wait",
+      "driveId": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T18:wet:range:self:local-context:awareness",
+      "kind": "wait",
+      "createdAt": "2026-11-10T10:00:00.000Z",
+      "reason": "动机强度不足，先保留观察"
+    },
+    {
+      "id": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T19:wet:range:self:local-context:awareness:wait",
+      "driveId": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T19:wet:range:self:local-context:awareness",
+      "kind": "wait",
+      "createdAt": "2026-11-10T11:00:00.000Z",
+      "reason": "动机强度不足，先保留观察"
+    },
+    {
+      "id": "drive:proactive:2026-11-10:back:1794308451133:activity:message",
+      "driveId": "drive:proactive:2026-11-10:back:1794308451133",
+      "kind": "message",
+      "createdAt": "2026-11-10T11:11:39.191Z",
+      "reason": "动机形成表达选项，交给她决定说或不说"
+    },
+    {
+      "id": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T20:wet:range:self:local-context:awareness:wait",
+      "driveId": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T20:wet:range:self:local-context:awareness",
+      "kind": "wait",
+      "createdAt": "2026-11-10T12:00:00.000Z",
+      "reason": "动机强度不足，先保留观察"
+    },
+    {
+      "id": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T21:wet:range:self:local-context:awareness:wait",
+      "driveId": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T21:wet:range:self:local-context:awareness",
+      "kind": "wait",
+      "createdAt": "2026-11-10T13:00:00.000Z",
+      "reason": "动机强度不足，先保留观察"
+    }
+  ]
+}
+== agency-shadow/opportunities.json
+{
+  "version": 1,
+  "opportunities": [
+    {
+      "driveId": "drive:impact:sandbox-presence:2026-11-10:school:self:local-context:awareness",
+      "eligible": false,
+      "blocks": [
+        "not_focused"
+      ],
+      "reason": "当前不应推动她开口"
+    },
+    {
+      "driveId": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T18:wet:range:self:local-context:awareness",
+      "eligible": false,
+      "blocks": [
+        "not_focused"
+      ],
+      "reason": "当前不应推动她开口"
+    },
+    {
+      "driveId": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T19:wet:range:self:local-context:awareness",
+      "eligible": false,
+      "blocks": [
+        "not_focused"
+      ],
+      "reason": "当前不应推动她开口"
+    },
+    {
+      "driveId": "drive:proactive:2026-11-10:back:1794308451133",
+      "eligible": true,
+      "blocks": [],
+      "reason": "可交给她当下判断是否开口"
+    },
+    {
+      "driveId": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T20:wet:range:self:local-context:awareness",
+      "eligible": false,
+      "blocks": [
+        "not_focused"
+      ],
+      "reason": "当前不应推动她开口"
+    },
+    {
+      "driveId": "drive:impact:sandbox-weather:2026-11-10:2026-11-10T21:wet:range:self:local-context:awareness",
+      "eligible": false,
+      "blocks": [
+        "not_focused"
+      ],
+      "reason": "当前不应推动她开口"
+    }
+  ]
+}
+== agency-shadow/time.json
+{
+  "version": 2,
+  "phases": {
+    "dayPhase": "evening",
+    "weekPhase": "weekday",
+    "monthPhase": "early",
+    "season": "autumn"
+  },
+  "observedAt": "2026-11-10T13:20:00.000Z"
+}
 == bot.coordination.sqlite
 
 == chats/10001.jsonl
