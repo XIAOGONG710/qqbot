@@ -156,8 +156,8 @@ import { feedFactEntry, feedOnce, feedPath, loadFeed } from '.././bilibili/feed-
 import { fetchDanmaku, fetchStoryboard, fetchView } from '.././bilibili/bilibili-view.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from '.././language/together.ts';
-import { FOOD_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, PHOTO_DISCOVERY_INTERVAL_MS, PHOTO_HISTORY_PREFIX, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
-import { STICKER_DISCOVERY_INTERVAL_MS, STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
+import { photoAllowance, photoShelf, PHOTO_HISTORY_PREFIX, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
+import { STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
 import { SlidingWindowRateLimiter } from '.././social/rate-limit.ts';
 import { greetingOnly, markSignature, MINOR_NOTICE, minorHint, strangerGuard } from '.././social/strangers.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
@@ -971,6 +971,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         worldState: () => sharedWorld ?? undefined,
         appointmentsAt: at => promises?.appointmentsAt?.(at),
         promises: () => promises ?? undefined,
+        mediaDiscovery: () => ({
+            ...(photos ? { photos: discoverPhotos } : {}),
+            ...(photos && foodSource && config.foodPhotos ? { food: discoverFoodPhotos } : {}),
+            ...(collectingStickers ? { stickers: discoverStickers } : {}),
+        }),
         schedule: config.schedule,
         herDays: config.herDays,
         // 危机信号（ADR 0068）和小别扭 / 和好的起因（ADR 0074，配置 grievance）：assess 的最前面，意图阶梯和后面的判断都读
@@ -2873,9 +2878,6 @@ ${video.link}`);
     }
 
     let stopDrain: Promise<void> | undefined;
-    let stickerDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
-    let photoDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
-    let foodDiscoveryTimer: ReturnType<typeof setInterval> | undefined;
     let foodRetryTimer: ReturnType<typeof setTimeout> | undefined;
     let foodRetries = 0;
     // 周报（ADR 0118）：每小时看一眼，周日 21:30 以后这周的还没有就写一份；出错只记日志
@@ -4523,18 +4525,6 @@ ${body}
                     }
                     // 各模块的定时任务（小梗、口头习惯每 6 小时……）：只开一次
                     interpreter.startSchedules();
-                    if (photos && !photoDiscoveryTimer) {
-                        photoDiscoveryTimer = exec.every(discoverPhotos, PHOTO_DISCOVERY_INTERVAL_MS);
-                        photoDiscoveryTimer.unref();
-                    }
-                    if (photos && foodSource && config.foodPhotos && !foodDiscoveryTimer) {
-                        foodDiscoveryTimer = exec.every(discoverFoodPhotos, FOOD_DISCOVERY_INTERVAL_MS);
-                        foodDiscoveryTimer.unref();
-                    }
-                    if (collectingStickers && !stickerDiscoveryTimer) {
-                        stickerDiscoveryTimer = exec.every(discoverStickers, STICKER_DISCOVERY_INTERVAL_MS);
-                        stickerDiscoveryTimer.unref();
-                    }
                 }
             }
         },
@@ -4687,8 +4677,6 @@ ${body}
             if (transportTimer) exec.cancel(transportTimer);
             if (dshInboxTimer) exec.cancel(dshInboxTimer);
             if (dshStateTimer) exec.cancel(dshStateTimer);
-            if (stickerDiscoveryTimer) exec.cancel(stickerDiscoveryTimer);
-            if (photoDiscoveryTimer) exec.cancel(photoDiscoveryTimer);
             if (memesTimer) exec.cancel(memesTimer);
             if (watchingTimer) exec.cancel(watchingTimer);
             if (feedTimer) exec.cancel(feedTimer);
@@ -4701,7 +4689,6 @@ ${body}
             if (herGuessesTimer) exec.cancel(herGuessesTimer);
             if (feelingReviewTimer) exec.cancel(feelingReviewTimer);
             exec.cancel(outboxTimer);
-            if (foodDiscoveryTimer) exec.cancel(foodDiscoveryTimer);
             exec.cancel(foodRetryTimer);
             const deviceDrain = stopDevices();
             if (weeklyTimer) exec.cancel(weeklyTimer);

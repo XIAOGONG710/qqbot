@@ -31,9 +31,9 @@
 
 import type { Module, TurnFacts } from '../interpreter/interpreter.ts';
 import type { Piece } from '../interpreter/slots.ts';
-import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, STICKER_TURN_CHANCE, stripStickerArtifacts } from '../social/stickers.ts';
+import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, STICKER_DISCOVERY_INTERVAL_MS, STICKER_TURN_CHANCE, stripStickerArtifacts } from '../social/stickers.ts';
 import { isExplicitCurrentPhotoRequest } from '../proactive/ai-photo-requests.ts';
-import { photoAllowance, photoWanted, PHOTO_KINDS, stripPhotoArtifacts } from '../vision/photos.ts';
+import { FOOD_DISCOVERY_INTERVAL_MS, PHOTO_DISCOVERY_INTERVAL_MS, photoAllowance, photoWanted, PHOTO_KINDS, stripPhotoArtifacts } from '../vision/photos.ts';
 import { lastMealDish } from '../world/world.ts';
 
 /** 这几样由联系人流水线写进 turn.facts，这里只读（字段说明见 interpreter.ts 的 TurnFacts） */
@@ -41,6 +41,22 @@ export type MediaOffersFacts = Pick<TurnFacts, 'stickerLine' | 'photoLine'>;
 
 /** 只发表情那一行（stickers.ts 的 EXACT_TOKEN） */
 const STICKER_ONLY_LINE = /^<sticker:[a-f0-9]{12}>$/i;
+
+type MediaDiscovery = Partial<Record<'photos' | 'food' | 'stickers', () => void>>;
+
+export function mediaDiscoveryModule(discovery: () => MediaDiscovery): Module {
+    return {
+        id: 'media-discovery',
+        get schedules() {
+            const tasks = discovery();
+            return [
+                ...(tasks.photos ? [{ every: PHOTO_DISCOVERY_INTERVAL_MS, run: tasks.photos }] : []),
+                ...(tasks.food ? [{ every: FOOD_DISCOVERY_INTERVAL_MS, run: tasks.food }] : []),
+                ...(tasks.stickers ? [{ every: STICKER_DISCOVERY_INTERVAL_MS, run: tasks.stickers }] : []),
+            ];
+        },
+    };
+}
 
 export function mediaOffersModule(): Module {
     return {

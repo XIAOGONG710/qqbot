@@ -1278,3 +1278,7 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 验证：App 那一步前后对照 41/41 一样；模拟器那边没法用「前后各跑一遍 sim.log 对比」——同一份代码连跑两次就不一样（长短抽签按消息时间哈希，模拟器的消息时间带毫秒、随真实计时器漂），所以靠上面的分析和测试：
   module-wiring + turn-modules 7 项，sim / quote-reply / memory-sim-lifecycle-review / restart / app 共 177 项通过；类型检查通过。
 - 还没做的（第 6 步其余）：App 里各功能的计时器迁成模块的 `schedules`；`features.ts` / `modules.ts` / Koishi Schema / `docs/modules/` 从模块定义生成；状态文件读写和子进程写成执行器的动作。
+
+### 第 6 步：货架的周期发现
+
+照片、食物照片、图片表情的周期发现由 `media-discovery` 声明，仍在首次补回结束后、已有模块的周期任务之后注册一次，由解释器在停机时取消。每次补回结束的立即扫描和单次重试仍在原位，开关、发现条件和周期不变；模拟器不注册货架发现任务。

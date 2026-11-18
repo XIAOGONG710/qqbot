@@ -26,8 +26,8 @@ import { maybeTypo, RECALL_SHARE } from '../src/language/expression.ts';
 import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
-import type { StickerEntry, StickerShelf } from '../src/social/stickers.ts';
-import { photoAllowance, photoShelf, type PhotoSource } from '../src/vision/photos.ts';
+import { STICKER_DISCOVERY_INTERVAL_MS, type StickerEntry, type StickerShelf } from '../src/social/stickers.ts';
+import { FOOD_DISCOVERY_INTERVAL_MS, FOOD_MISS_RETRY_MS, PHOTO_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, type FoodSource, type PhotoSource } from '../src/vision/photos.ts';
 import { CRISIS_FALLBACK } from '../src/language/exit-check.ts';
 import { CRISIS_MARK } from '../src/language/intent.ts';
 import { createDeviceControl } from '../src/platform/device-actions.ts';
@@ -123,7 +123,7 @@ test('silenceNotice：自然问才解释小事，私密原因不进入正常回�
     }
 });
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; imageRecognition?: ImageDescriber; imageSearch?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { photoSource?: PhotoSource; foodSource?: FoodSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; imageRecognition?: ImageDescriber; imageSearch?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -158,6 +158,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.imageSearch ? { imageSearch: options.imageSearch } : {}),
         ...(options.stickers ? { stickers: options.stickers } : {}),
         ...(options.photoSource ? { photoSource: options.photoSource } : {}),
+        ...(options.foodSource ? { foodSource: options.foodSource } : {}),
         ...(options.photoRetryMs !== undefined ? { photoRetryMs: options.photoRetryMs } : {}),
         ...(options.stickerChance !== undefined ? { stickerChance: options.stickerChance } : {}),
         ...(options.stickerOnlyChance !== undefined ? { stickerOnlyChance: options.stickerOnlyChance } : {}),
@@ -710,6 +711,79 @@ describe('编排（app.ts）', () => {
             assert.ok(logs.every(line => !line.includes('PRIVATE_PHOTO_INDEX_FAILURE')));
             assert.ok(logs.every(line => !/回复失败/.test(line)));
         } finally { fileOps.renameSync = originalRename; }
+    });
+
+    test('货架发现：每次补完先扫，周期只注册一次，停止后不再扫描', async t => {
+        const start = new Date(2026, 10, 18, 6);
+        t.mock.timers.enable({ apis: ['Date'], now: start });
+        const periods = [PHOTO_DISCOVERY_INTERVAL_MS, FOOD_DISCOVERY_INTERVAL_MS, STICKER_DISCOVERY_INTERVAL_MS];
+        const registrations: number[] = [];
+        const active = new Map<ReturnType<typeof setInterval>, () => void>();
+        let photoScans = 0, stickerScans = 0;
+        const foodSearches: string[] = [];
+        const schedule = globalThis.setInterval;
+        const cancel = globalThis.clearInterval;
+        t.mock.method(globalThis, 'setInterval', (run: () => void, period: number) => {
+            const timer = schedule(run, period);
+            if (periods.includes(period)) {
+                registrations.push(period);
+                active.set(timer, run);
+            }
+            return timer;
+        });
+        t.mock.method(globalThis, 'clearInterval', (timer: ReturnType<typeof setInterval>) => { active.delete(timer); cancel(timer); });
+        const photos: PhotoSource = {
+            search: async (kind, offset) => { if (kind === 'cat' && offset === 0) photoScans++; return []; },
+            download: async () => { throw new Error('unexpected download'); },
+            judge: async () => { throw new Error('unexpected photo judgment'); },
+        };
+        const foodSource: FoodSource = { ...photos, search: async dish => { foodSearches.push(dish); return []; } };
+        const stickers: StickerShelf = {
+            consider: async () => undefined, discover: async () => { stickerScans++; },
+            prompt: () => undefined, clean: text => text, resolve: () => undefined,
+            history: text => text, used: () => undefined, status: () => ({ count: 0 }),
+        };
+        let releaseHistory!: () => void;
+        const holdHistory = new Promise<void>(resolve => { releaseHistory = resolve; });
+        const cfg = config({ photos: true, foodPhotos: true, menu: true, stickers: 'collect',
+            contacts: [{ qq: 10001, name: '合成人甲', tier: 'boyfriend' }] });
+        const { app, asked, sent, images } = setup(cfg, { 10001: [] }, { photoSource: photos, foodSource, stickers, holdHistory });
+        const counts = () => [photoScans, stickerScans, foodSearches.length];
+        const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+        const connected = app.connected(SELF);
+        try {
+            await until(() => asked.length === 1);
+            const duplicate = app.connected(SELF);
+            assert.deepEqual(counts(), [0, 0, 0]);
+            assert.deepEqual(registrations, []);
+            releaseHistory();
+            await Promise.all([connected, duplicate]);
+            await settle();
+            const firstFood = foodSearches.slice();
+            assert.ok(firstFood.length > 0);
+            assert.deepEqual(counts(), [1, 1, firstFood.length]);
+            assert.deepEqual(registrations, periods);
+
+            t.mock.timers.setTime(start.getTime() + FOOD_MISS_RETRY_MS);
+            await app.connected(SELF);
+            await settle();
+            assert.deepEqual(counts(), [2, 2, firstFood.length * 2]);
+            assert.deepEqual(registrations, periods);
+
+            t.mock.timers.setTime(start.getTime() + 2 * FOOD_MISS_RETRY_MS);
+            for (const run of active.values()) run();
+            await settle();
+            assert.deepEqual(counts(), [3, 3, firstFood.length * 3]);
+
+            await app.stop();
+            assert.equal(active.size, 0);
+            await app.connected(SELF);
+            for (const run of active.values()) run();
+            await settle();
+            assert.deepEqual(counts(), [3, 3, firstFood.length * 3]);
+            assert.deepEqual(sent, []);
+            assert.deepEqual(images, []);
+        } finally { releaseHistory(); await connected; await app.stop(); }
     });
 
     test('照片货架：第一次找被限流（429）→ 过一会儿自己再来一次，最多 PHOTO_RETRY_MAX 次；找到就不再重试', async () => {

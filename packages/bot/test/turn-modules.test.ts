@@ -66,6 +66,18 @@ describe('模块接线（ADR 0336 第 6 步）', () => {
         assert.deepEqual(calls, []);
     });
 
+    test('货架发现不改变回复模块先后，定时任务排在已有模块之后', () => {
+        const withoutDiscovery = buildTurnModules(full());
+        let lookups = 0;
+        const photos = () => {};
+        const modules = buildTurnModules({ ...full(), mediaDiscovery: () => { lookups++; return { photos }; } });
+        assert.deepEqual(ids(modules), [...ids(withoutDiscovery), 'media-discovery']);
+        assert.equal(lookups, 0);
+        const discovery = modules.at(-1)!;
+        assert.equal(discovery.schedules?.length, 1);
+        assert.equal(lookups, 1);
+    });
+
     test('只给必填的：只挂总是挂的那些，先后不变', () => {
         calls.length = 0;
         assert.deepEqual(ids(buildTurnModules(base())), [

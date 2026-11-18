@@ -32,7 +32,7 @@ import { intentModule, type IntentModuleOptions } from '../modules/intent.ts';
 import { interruptionsModule } from '../modules/interruptions.ts';
 import { learningQuestionModule } from '../modules/learning-question.ts';
 import { lengthModule } from '../modules/length.ts';
-import { mediaOffersModule } from '../modules/media-offers.ts';
+import { mediaDiscoveryModule, mediaOffersModule } from '../modules/media-offers.ts';
 import { meetupModule, type MeetupModuleOptions } from '../modules/meetup.ts';
 import { memeDictModule } from '../modules/meme-dict.ts';
 import { memesModule } from '../modules/memes.ts';
@@ -116,6 +116,7 @@ export interface TurnModuleDeps {
     consent?: ConsentModuleOptions;
     quote?: Pick<QuoteModuleOptions, 'share'>;
     factCheck?: ReviewFactsOptions;
+    mediaDiscovery?: Parameters<typeof mediaDiscoveryModule>[0];
     /** 话说到一半（配置 speechCheck） */
     speechCheck?: boolean;
     /** 挑候选：count 大于 1 时才给 */
@@ -202,5 +203,6 @@ export function buildTurnModules(d: TurnModuleDeps): Module[] {
         ...(d.memes ? [memesModule(d.memes, log)] : []),
         ...(d.watched ? [watchedModule(d.watched, log)] : []),
         ...(d.memeDict ? [memeDictModule(d.memeDict, log)] : []),
+        ...(d.mediaDiscovery ? [mediaDiscoveryModule(d.mediaDiscovery)] : []),
     ];
 }

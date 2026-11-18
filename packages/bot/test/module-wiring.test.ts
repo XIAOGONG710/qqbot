@@ -42,6 +42,7 @@ const APP_ONLY: Record<string, string> = {
     group: '群聊（模拟器只有私聊）',
     humanState: '真人数值和人格成长层（模拟器不算，facts 里没有）',
     memeDict: '梗百科词库（模拟器没有词库）',
+    mediaDiscovery: '货架周期发现：模拟器不扫描外部来源',
 };
 /** 只有模拟器给的，和为什么 */
 const SIM_ONLY: Record<string, string> = {
