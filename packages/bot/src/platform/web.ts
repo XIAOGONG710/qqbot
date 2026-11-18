@@ -97,17 +97,21 @@ export interface PageDeps {
     resolve?: Resolver;
     signal?: AbortSignal;
     allowedOrigin?: string;
+    allowedPath?: string;
+    pickLink?: (html: string, page: URL) => string | undefined;
 }
 
-export type PageResult = { ok: true; url: string; title: string; text: string } | { ok: false; reason: string };
+export type PageResult = { ok: true; url: string; title: string; text: string; nextLink?: string } | { ok: false; reason: string };
 
 /** 读一个公开网页：每一跳重定向都重新检查地址 */
 export async function readPage(raw: string, deps: PageDeps): Promise<PageResult> {
     let current = raw;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
         if (deps.signal?.aborted) return { ok: false, reason: '已取消' };
-        if (deps.allowedOrigin && URL.parse(current)?.origin !== deps.allowedOrigin) {
-            return { ok: false, reason: '网址不在指定站点内' };
+        if (deps.allowedOrigin || deps.allowedPath) {
+            const url = URL.parse(current);
+            if (deps.allowedOrigin && url?.origin !== deps.allowedOrigin) return { ok: false, reason: '网址不在指定站点内' };
+            if (deps.allowedPath && url?.pathname !== deps.allowedPath) return { ok: false, reason: '网址不在指定页面内' };
         }
         const checked = await checkUrl(current, deps.resolve);
         if (deps.signal?.aborted) return { ok: false, reason: '已取消' };
@@ -135,7 +139,8 @@ export async function readPage(raw: string, deps: PageDeps): Promise<PageResult>
         try { html = new TextDecoder(charset).decode(bytes); } catch { html = new TextDecoder('utf-8').decode(bytes); }
         const { title, text } = type.includes('html') ? htmlToText(html) : { title: '', text: html };
         if (text.trim().length < 20) return { ok: false, reason: '网页里没有读到正文（可能要登录或靠脚本显示）' };
-        return { ok: true, url: checked.url.toString(), title: clip(title, 60), text: text.slice(0, READ_MAX_CHARS) };
+        const nextLink = type.includes('html') ? deps.pickLink?.(html, checked.url) : undefined;
+        return { ok: true, url: checked.url.toString(), title: clip(title, 60), text: text.slice(0, READ_MAX_CHARS), ...(nextLink ? { nextLink } : {}) };
     }
     return { ok: false, reason: '重定向太多' };
 }

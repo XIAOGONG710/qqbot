@@ -83,7 +83,8 @@ import { experiencesFromLife, experiencesFromWatched, Tastes } from '.././life/t
 import { readLifeEvents } from '.././world/life-events.ts';
 import { Timeline, timelineAccount, timelineFromDevice } from '.././memory/timeline.ts';
 import { consumeDshTimelineInbox, consumeDshWorldInbox } from '.././memory/dsh-inbox.ts';
-import { readPage, readWebSecrets, searchCarry, WebLookup } from './web.ts';
+import { readWebSecrets, searchCarry, WebLookup } from './web.ts';
+import { readAdultSite } from '../proactive/adult-sites.ts';
 import { acquireLock } from './lock.ts';
 import { unfinishedForgetJobs } from '../memory/forget-job.ts';
 import { unfinishedArchiveJobs } from '../memory/archive-job.ts';
@@ -2852,7 +2853,7 @@ ${video.link}`);
                         visit: async signal => {
                             const urls = config.adultSiteUrls!;
                             const url = new URL(urls[Math.floor(Math.random() * urls.length)]!);
-                            return (await readPage(url.href, { fetch, signal, allowedOrigin: url.origin })).ok;
+                            return readAdultSite(url, { fetch, signal });
                         },
                     },
                 } : {}),

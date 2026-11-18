@@ -1,6 +1,42 @@
-// 成人网站访问只使用用户填入的 HTTPS 页面，选址不由模型或搜索服务决定。
+// 成人网站访问从用户填入的 HTTPS 页面开始，站内作品链接只认已知的格式。
+import { readPage, type PageDeps } from '../platform/web.ts';
+
 export const ADULT_SITE_SATISFACTION_THRESHOLD = 45;
 const ATTEMPT_INTERVAL_MS = 24 * 60 * 60_000;
+const STORY_PATHS = new Map([
+    ['www.literotica.com', /^\/s\/[a-z0-9-]+\/?$/i],
+    ['storiesonline.net', /^\/s\/\d+(?:\/[a-z0-9-]+)?\/?$/i],
+    ['www.lushstories.com', /^\/stories\/[a-z0-9-]+\/[a-z0-9-]+\/?$/i],
+]);
+
+function firstStoryLink(html: string, page: URL, storyPath: RegExp): string | undefined {
+    const body = html.replace(/<!--[\s\S]*?-->|<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
+    for (const anchor of body.matchAll(/<a\s+[^>]*>/gi)) {
+        const href = /\s+href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\x60]+))/i.exec(anchor[0]);
+        const address = href?.[1] ?? href?.[2] ?? href?.[3];
+        if (!address) continue;
+        const url = URL.parse(address, page.href);
+        if (!url || url.origin !== page.origin || url.username || url.password || !storyPath.test(url.pathname)) continue;
+        return new URL(url.pathname, page.origin).href;
+    }
+}
+
+export async function readAdultSite(entry: URL, deps: Pick<PageDeps, 'fetch' | 'resolve' | 'signal'>): Promise<boolean> {
+    const read = { ...deps, allowedOrigin: entry.origin };
+    const storyPath = STORY_PATHS.get(entry.hostname);
+    if (!storyPath) return (await readPage(entry.href, read)).ok;
+
+    let story = entry;
+    if (!storyPath.test(entry.pathname)) {
+        const directory = entry.hostname === 'www.literotica.com' && /^\/stories\/?$/.test(entry.pathname)
+            ? new URL('/new/stories', entry.origin) : entry;
+        const listing = await readPage(directory.href, { ...read, pickLink: (html, page) => firstStoryLink(html, page, storyPath) });
+        if (!listing.ok || !listing.nextLink || deps.signal?.aborted) return false;
+        story = new URL(listing.nextLink);
+    }
+    const page = await readPage(story.href, { ...read, allowedPath: story.pathname });
+    return page.ok && !/to read the complete story you need to be logged in/i.test(page.text);
+}
 
 export function adultSiteUrls(value: unknown): string[] {
     if (value === undefined) return [];
