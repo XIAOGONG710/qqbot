@@ -44,8 +44,11 @@ test('私聊点名群后可查明确公告，但不查闲聊、导入记录或�
     assert.match(result, /周五晚自习改到三教/);
     assert.match(result, /周六上午停水/);
     assert.doesNotMatch(result, /请假|别告诉|实验报告|开黑|小王|小李|小赵/);
-    assert.equal(privateGroupScheduleRecall(load, groups, '宿舍群昨天群里说了什么？', now), undefined);
-    assert.deepEqual(loaded, [201]);
+    const broadNamed = privateGroupScheduleRecall(load, groups, '宿舍群昨天群里说了什么？', now) ?? '';
+    assert.match(broadNamed, /周五晚自习改到三教/);
+    assert.doesNotMatch(broadNamed, /请假|别告诉|实验报告|开黑|小王|小李|小赵/);
+    assert.equal(privateGroupScheduleRecall(load, groups, '昨天群里说了什么？', now), undefined);
+    assert.deepEqual(loaded, [201, 201]);
 });
 
 test('同群旧事项按发送者和群号独立查找，同名和同一活动均不会串', () => {

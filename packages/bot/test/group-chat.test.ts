@@ -193,6 +193,7 @@ describe('群聊：进应用', () => {
         for (const [question, expectsRecall, expectedText] of [
             ['宿舍群昨天说活动几点开始？', true, '15:30'],
             ['宿舍群昨天有什么公开公告？', true, '晚自习改到三教'],
+            ['宿舍群昨天群里说了什么？', true, '晚自习改到三教'],
             ['昨天群里说活动几点开始？', false, '15:30'],
         ] as const) {
             const { app: a, dataDir, prompts } = app('read');
