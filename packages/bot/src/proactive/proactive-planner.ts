@@ -31,6 +31,7 @@ import {
     UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type NewsKind, type ProactiveInput, type RescheduleItem, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import { activitiesFromInnerChoice, type ProactiveAgencyResult } from './agency.ts';
+import { adultSiteVisitDue } from './adult-sites.ts';
 import type { Drive, ShadowActivityCandidate } from '../life/motivation.ts';
 import type { BodyNow } from '../life/body.ts';
 import { newObstacles, obstaclesBetween, OBSTACLE_KINDS, type ObstacleFacts, type ObstacleKind } from '.././world/obstacles.ts';
@@ -196,6 +197,10 @@ export interface PlannerDeps {
     crisisPaused?: (now: number) => boolean;
     /** 内心（ADR 0101，配置 innerLife）：每隔一阵她自己想一想，念头存在状态文件里；想告诉他 / 想问他的变成“心里惦记”的主动消息 */
     inner?: boolean;
+    adultSiteVisit?: {
+        satisfaction: (at: Date) => number | undefined;
+        visit: (signal: AbortSignal) => Promise<boolean>;
+    };
     /**
      * 她自己想弄明白一件事（ADR 0180，配置 webLookup 开着）：念头里写了「想查：关键词」就调它真去查，
      * 返回摘出来的几条事实；没查成返回 undefined（她照实说不知道）
@@ -659,6 +664,24 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
 
     const GOES_LABEL = { tell: '想告诉他', ask: '想问他', keep: '自己想想' } as const;
 
+    async function visitAdultSiteIfDue(): Promise<void> {
+        const visit = deps.adultSiteVisit;
+        if (!visit || deps.mode !== 'on' || stopped) return;
+        const at = now();
+        if (thinkAsleep(at) || deps.crisisPaused?.(at)) return;
+        if (!adultSiteVisitDue(visit.satisfaction(new Date(at)), inner.adultSiteAttemptAt, at)) return;
+        // 先记尝试，再发请求，重启或站点打不开也遵守同一个间隔。
+        inner = { ...inner, adultSiteAttemptAt: new Date(at).toISOString() };
+        if (!save()) return;
+        const result = await owned(() => visit.visit(lifecycle.signal).catch(() => false));
+        if (result.cancelled || stopped) return;
+        if (result.value) {
+            inner = { ...inner, adultSiteVisitedAt: new Date(now()).toISOString() };
+            save();
+        }
+        deps.log(result.value ? '内心：已读取指定网页' : '内心：指定网页未读到正文');
+    }
+
     /** 想一次：借回复器的主动通道生成（带着她的时间、状态、心情、世界、记忆和最近的聊天），不发送；留下的念头存进状态文件 */
     async function think(): Promise<void> {
         const started = now();
@@ -728,6 +751,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
         }
         save();
         deps.log(`内心${tag}：${logBody(parsed.thought.text)}（${GOES_LABEL[parsed.thought.goes]}）`);
+        await visitAdultSiteIfDue();
     }
 
     function usedToday(): number {

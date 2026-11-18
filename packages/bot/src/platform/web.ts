@@ -92,7 +92,12 @@ export function htmlToText(html: string): { title: string; text: string } {
     return { title: decode(title).replace(/\s+/g, ' ').trim(), text };
 }
 
-export interface PageDeps { fetch: typeof fetch; resolve?: Resolver; signal?: AbortSignal }
+export interface PageDeps {
+    fetch: typeof fetch;
+    resolve?: Resolver;
+    signal?: AbortSignal;
+    allowedOrigin?: string;
+}
 
 export type PageResult = { ok: true; url: string; title: string; text: string } | { ok: false; reason: string };
 
@@ -101,6 +106,9 @@ export async function readPage(raw: string, deps: PageDeps): Promise<PageResult>
     let current = raw;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
         if (deps.signal?.aborted) return { ok: false, reason: '已取消' };
+        if (deps.allowedOrigin && URL.parse(current)?.origin !== deps.allowedOrigin) {
+            return { ok: false, reason: '网址不在指定站点内' };
+        }
         const checked = await checkUrl(current, deps.resolve);
         if (deps.signal?.aborted) return { ok: false, reason: '已取消' };
         if (!checked.ok) return { ok: false, reason: checked.reason };

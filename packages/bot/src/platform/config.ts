@@ -5,6 +5,7 @@
 // Koishi 插件（ADR 0008）没有 onebot 一节（连接归 adapter-onebot），其余部分和 config.json 同形，走同一个 parseAppConfig。
 
 import { WEB_MODES, type WebMode } from './web.ts';
+import { adultSiteUrls } from '../proactive/adult-sites.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { MEDIA_TIMEOUTS } from '.././vision/media.ts';
@@ -112,6 +113,7 @@ export const DEFAULTS = {
     deviceApps: [] as readonly string[],
     factCheck: 'off' as FactCheckMode,
     innerLife: false,
+    adultSiteUrls: [] as readonly string[],
     herFeelings: false,
     herNo: false,
     /** 拒绝之后（ADR 0214）：他又提同一类请求、上次她推了他只回「行吧」就不吭声 / 她被磨着勉强答应了，给她一句方向（要不要还是她定，变的是说法）；什么都不存 */
@@ -491,6 +493,8 @@ export interface AppConfig {
      * 最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事。默认关
      */
     innerLife: boolean;
+    /** 只访问用户明确填写的成人站点页面。空列表关闭。 */
+    adultSiteUrls?: readonly string[];
     /**
      * 心境（ADR 0102）：她那边的事（闺蜜病了、作业快到期、买到相机）、他的态度（哄她、说他不舒服、晾着她）、作者写进 moments.json 的事，在她心里留下带来由的感受
      * （开心 / 难过 / 担心 / 烦……），会累积、会慢慢散，表现在语气上，难过得很时会忍不住哭。不存“她现在难过 N 分”，每一轮从事实重算。只给男朋友档，危机回合不放。默认关
@@ -962,6 +966,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         deviceApps: deviceApps(file.deviceApps),
         factCheck: oneOf(file.factCheck, 'factCheck', FACT_CHECK_MODES, DEFAULTS.factCheck),
         innerLife: bool(file, 'innerLife', '', DEFAULTS.innerLife),
+        adultSiteUrls: adultSiteUrls(file.adultSiteUrls),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),
         afterNo: bool(file, 'afterNo', '', DEFAULTS.afterNo),

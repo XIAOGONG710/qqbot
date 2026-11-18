@@ -40,6 +40,21 @@ describe('读网页', () => {
         assert.equal(text, '标题\n第一段 内容<b>\n第二段中文');
     });
 
+    test('指定站点允许站内重定向，禁止向其他公开站点发请求', async () => {
+        let requests = 0;
+        const result = await readPage('https://example.com/start', {
+            allowedOrigin: 'https://example.com',
+            resolve: publicResolver,
+            fetch: async () => {
+                requests++;
+                const location = requests === 1 ? '/next' : 'https://other.example/end';
+                return new Response(null, { status: 302, headers: { location } });
+            },
+        });
+        assert.equal(requests, 2);
+        assert.deepEqual(result, { ok: false, reason: '网址不在指定站点内' });
+    });
+
     test('正常页面读到正文；重定向每一跳都重新检查：跳到内网的被拦', async () => {
         const ok = await readPage('https://example.com/a', { resolve: publicResolver, fetch: (async () => page('<title>T</title><p>这是一段足够长的正文内容，用来测试读取。</p>')) as typeof fetch });
         assert.deepEqual([ok.ok, ok.ok && ok.title], [true, 'T']);

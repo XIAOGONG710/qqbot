@@ -40,6 +40,8 @@ export interface InnerLookup {
 
 export interface InnerState {
     thoughts: InnerThought[];
+    adultSiteAttemptAt?: string;
+    adultSiteVisitedAt?: string;
     /** 上一次想的时刻（想砸了、想不出来的也算，免得一直重试） */
     lastThinkAt?: string;
     /** 已经专门想过的 B 站视频（ADR 0130）：每看完一个新的，下一次想事情就专门想这一件，想完记在这里，不会反复想 */
@@ -291,5 +293,7 @@ export function validInnerState(value: unknown): value is InnerState {
     if (value.doubtedOn !== undefined && !(typeof value.doubtedOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.doubtedOn))) return false;
     if (value.learned !== undefined && !(Array.isArray(value.learned) && value.learned.every(item => isObject(item) && typeof item.id === 'string' && isTime(item.at)
         && typeof item.query === 'string' && Array.isArray(item.facts) && item.facts.length > 0 && item.facts.every(fact => typeof fact === 'string')))) return false;
-    return value.lastThinkAt === undefined || isTime(value.lastThinkAt);
+    return (value.lastThinkAt === undefined || isTime(value.lastThinkAt))
+        && (value.adultSiteAttemptAt === undefined || isTime(value.adultSiteAttemptAt))
+        && (value.adultSiteVisitedAt === undefined || isTime(value.adultSiteVisitedAt));
 }

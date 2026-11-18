@@ -83,7 +83,7 @@ import { experiencesFromLife, experiencesFromWatched, Tastes } from '.././life/t
 import { readLifeEvents } from '.././world/life-events.ts';
 import { Timeline, timelineAccount, timelineFromDevice } from '.././memory/timeline.ts';
 import { consumeDshTimelineInbox, consumeDshWorldInbox } from '.././memory/dsh-inbox.ts';
-import { readWebSecrets, searchCarry, WebLookup } from './web.ts';
+import { readPage, readWebSecrets, searchCarry, WebLookup } from './web.ts';
 import { acquireLock } from './lock.ts';
 import { unfinishedForgetJobs } from '../memory/forget-job.ts';
 import { unfinishedArchiveJobs } from '../memory/archive-job.ts';
@@ -2843,6 +2843,19 @@ ${video.link}`);
                 ...(config.together && contact.tier === 'boyfriend' ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
                 ...(photos && (config.photoShares || config.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
                 ...(config.innerLife ? { inner: true } : {}),
+                ...(config.innerLife && contact.qq === deviceOwner?.qq && config.adultSiteUrls?.length && needsAnchor ? {
+                    adultSiteVisit: {
+                        satisfaction: at => humanValuesFromAnchor({
+                            at, anchor: needsAnchor, tier: contact.tier,
+                            history: history.load(contact.qq).slice(-24), events: ledgerWorld?.events() ?? [],
+                        }).satisfaction,
+                        visit: async signal => {
+                            const urls = config.adultSiteUrls!;
+                            const url = new URL(urls[Math.floor(Math.random() * urls.length)]!);
+                            return (await readPage(url.href, { fetch, signal, allowedOrigin: url.origin })).ok;
+                        },
+                    },
+                } : {}),
                 // 她自己想弄明白一件事（ADR 0180）：内心冒出来的「想查：关键词」真去查一次，查到的进聊天提示词
                 ...(config.innerLife && web ? { look: (query: string) => web.look(query) } : {}),
                 // 她自己决定今天想干什么（ADR 0182）：写进这一天的打算，状态行和「你今天的打算」都用它

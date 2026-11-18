@@ -206,6 +206,7 @@ export interface Config {
     deviceApps: string[];
     factCheck: FactCheckMode;
     innerLife: boolean;
+    adultSiteUrls: string[];
     herFeelings: boolean;
     herNo: boolean;
     afterNo: boolean;
@@ -455,6 +456,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**逐条事实检查**（ADR 0137）：她最容易露馅的是编——事实里只有“猫今天没下楼”，她写“猫一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。回复发出去之前让模型当审稿员，把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。off 不查；log 只查、只在日志里记（敏感调试关着时只记条数），回复照发——先看误报多不多；fix 有问题就带说明重写一次，重写后再查，还有就删那几行。危机回合不查，查不成一律照发。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
             .description('**内心**（ADR 0101，要「主动消息」开着）：每隔一阵（醒着时约一个半到两个半小时，聊完一段后也会想一想）她自己安静地想一想，写下一两句心里的话存起来（只记感受和想法，不记新发生的事）；想告诉他 / 想问他的念头过一会儿会变成“心里惦记”的主动消息（一天最多 2 条），最近的几个念头也放进聊天提示词，让她前后是同一个在想事情的人。默认关。'),
+        adultSiteUrls: Schema.array(Schema.string()).default([...DEFAULTS.adultSiteUrls])
+            .description('成人网站访问。填写允许访问的 HTTPS 网页地址，留空关闭。需要内心、主动消息和自主生活。'),
         herFeelings: Schema.boolean().default(DEFAULTS.herFeelings)
             .description('**心境**（ADR 0102，只给男朋友档）：她那边的事（闺蜜病了、作业快到期、买到相机）、他的态度（哄她、说他不舒服、她难过时晾了她很久）、作者写进 runtime 数据目录 moments.json 的事，在她心里留下带来由的感受——开心、难过、担心、烦——会累积、会慢慢散，表现在语气上；难过得很的时候可能忍不住哭，被他一问更容易绷不住。不存分数，每一轮从事实重算；危机回合、小别扭那一轮不放。默认关。'),
         afterNo: Schema.boolean().default(DEFAULTS.afterNo)
@@ -816,6 +819,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.deviceApps !== undefined ? { deviceApps: config.deviceApps } : {}),
         ...(config.factCheck !== undefined ? { factCheck: config.factCheck } : {}),
         ...(config.innerLife !== undefined ? { innerLife: config.innerLife } : {}),
+        ...(config.adultSiteUrls !== undefined ? { adultSiteUrls: config.adultSiteUrls } : {}),
         ...(config.herFeelings !== undefined ? { herFeelings: config.herFeelings } : {}),
         ...(config.herNo !== undefined ? { herNo: config.herNo } : {}),
         ...(config.afterNo !== undefined ? { afterNo: config.afterNo } : {}),
