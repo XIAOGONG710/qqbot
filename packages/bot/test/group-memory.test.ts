@@ -87,6 +87,33 @@ test('明确中文时间可回忆，含糊时间和缺少事项的时间不算�
     }
 });
 
+test('明确的同事项更正覆盖旧日程；不相关事项保留，群内回忆仍按本人发言归属', () => {
+    const groups = [{ id: 401, name: '活动群' }];
+    const now = Date.parse('2026-11-18T11:00:00+08:00');
+    const entries = [
+        { content: '群活动15:30开始', from: 1, time: '2026-11-17T09:00:00+08:00' },
+        { content: '通知：活动改到16:00', from: 2, time: '2026-11-17T10:00:00+08:00' },
+        { content: '群比赛14:00开始', from: 3, time: '2026-11-17T11:00:00+08:00' },
+        { content: '公告：比赛改为17:00', from: 4, time: '2026-11-17T12:00:00+08:00' },
+        { content: '群集合19:00', from: 1, time: '2026-11-17T13:00:00+08:00' },
+        { content: '通知：集合取消', from: 5, time: '2026-11-17T14:00:00+08:00' },
+    ].map((row, index) => ({ ...row, name: `合成成员${row.from}`, messageId: index + 1 }));
+    const load = (id: number) => id === 401 ? entries : [];
+    const activity = privateGroupScheduleRecall(load, groups, '活动群昨天活动几点？', now) ?? '';
+    assert.match(activity, /活动改到16:00/);
+    assert.doesNotMatch(activity, /15:30/);
+    const broad = privateGroupScheduleRecall(load, groups, '活动群昨天群里说了什么？', now) ?? '';
+    assert.match(broad, /活动改到16:00/);
+    assert.match(broad, /比赛改为17:00/);
+    assert.doesNotMatch(broad, /活动15:30|比赛14:00/);
+    const cancelled = privateGroupScheduleRecall(load, groups, '活动群昨天集合几点？', now) ?? '';
+    assert.match(cancelled, /集合取消/);
+    assert.doesNotMatch(cancelled, /19:00/);
+    const own = groupScheduleRecall(load, 401, 1, '@你 我昨天说活动几点开始？', now) ?? '';
+    assert.match(own, /15:30/);
+    assert.doesNotMatch(own, /16:00/);
+});
+
 test('同群旧事项按发送者和群号独立查找，同名和同一活动均不会串', () => {
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-group-memory-'));
     try {

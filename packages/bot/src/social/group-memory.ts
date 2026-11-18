@@ -5,6 +5,7 @@ import { localDate } from '../local-date.ts';
 const LOOKBACK_MS = 30 * 24 * 60 * 60_000;
 const QUESTION = /^(?:@你\s+)?我(之前|上次|上周|前几天|昨天)(?:在群里)?(?:说过|提过|说)(?:的)?[，,:： ]*(?:群)?(活动|集合|开会|报名|比赛|彩排|讲座|训练)(?:是)?几点(?:开始|截止|集合)?[？?。]?$/;
 const TOPIC_SOURCE = '(活动|集合|开会|报名|比赛|彩排|讲座|训练)';
+const CORRECTION = /^(活动|集合|开会|报名|比赛|彩排|讲座|训练)(?:时间|安排)?\s*(?:取消(?:了)?|(?:改到|改为|改成|延期到|提前到)\s*\S.{0,70})$/u;
 const DAYPART_SOURCE = '(?:凌晨|早上|上午|中午|下午|傍晚|晚上)';
 const CHINESE_TIME_PREFIX = '(?:(?:周[一二三四五六日天]|星期[一二三四五六日天])' + DAYPART_SOURCE
     + '|(?:今天|明天|后天)' + DAYPART_SOURCE + '|(?:今晚|明晚|今夜|今早|明早)|' + DAYPART_SOURCE + ')';
@@ -31,6 +32,8 @@ function dateRange(askedAt: number, period: string | undefined): { start: number
     return { start: askedAt - LOOKBACK_MS, end: askedAt };
 }
 
+type RecallItem = { time: number; text: string; topic?: string; correction?: true };
+
 function scheduleAnnouncement(content: string): { topic: string; text: string } | undefined {
     const text = content.trim();
     const topicFirst = TOPIC_FIRST.exec(text);
@@ -39,24 +42,29 @@ function scheduleAnnouncement(content: string): { topic: string; text: string } 
     if (timeFirst) return { topic: timeFirst[2]!, text: text.replace(/[。！!]$/, '') };
 }
 
-function scheduleAnnouncements(entries: readonly GroupEntry[], range: { start: number; end: number }, topic?: string, asker?: number) {
+function scheduleAnnouncements(entries: readonly GroupEntry[], range: { start: number; end: number }, topic?: string, asker?: number): RecallItem[] {
     return entries.flatMap(message => {
         const time = Date.parse(message.time);
         if ((asker !== undefined && message.from !== asker) || message.mine || message.history || !Number.isFinite(time) || time < range.start || time >= range.end) return [];
         const match = scheduleAnnouncement(message.content);
-        return match && (!topic || match.topic === topic) ? [{ time, text: match.text }] : [];
+        return match && (!topic || match.topic === topic) ? [{ time, text: match.text, topic: match.topic }] : [];
     }).sort((left, right) => right.time - left.time);
 }
 
-function publicAnnouncements(entries: readonly GroupEntry[], range: { start: number; end: number }) {
+function publicAnnouncements(entries: readonly GroupEntry[], range: { start: number; end: number }, asker?: number): RecallItem[] {
     return entries.flatMap(message => {
         const time = Date.parse(message.time);
-        if (message.history || !Number.isFinite(time) || time < range.start || time >= range.end) return [];
+        if ((asker !== undefined && message.from !== asker) || message.history || !Number.isFinite(time) || time < range.start || time >= range.end) return [];
         const match = NOTICE.exec(message.content.trim());
         const content = match?.[1]?.trim();
         if (!content || NOT_PUBLIC.test(content) || PERSONAL_OR_CODE.test(content) || MODEL_DIRECTIVE.test(content)) return [];
-        return [{ time, text: content }];
+        const correction = CORRECTION.exec(content);
+        return correction ? [{ time, text: content, topic: correction[1]!, correction: true as const }] : [{ time, text: content }];
     }).sort((left, right) => right.time - left.time);
+}
+
+function removeSuperseded(items: RecallItem[]): RecallItem[] {
+    return items.filter(item => !items.some(later => later.correction && later.topic === item.topic && later.time > item.time));
 }
 
 /** 只查当前群里提问人亲自发出的公开日程文本。 */
@@ -65,7 +73,13 @@ export function groupScheduleRecall(
 ): string | undefined {
     const query = QUESTION.exec(question.trim());
     if (!query || !Number.isFinite(askedAt)) return undefined;
-    const item = scheduleAnnouncements(load(groupId), dateRange(askedAt, query[1]), query[2], asker)[0];
+    const entries = load(groupId);
+    const range = dateRange(askedAt, query[1]);
+    const items = removeSuperseded([
+        ...scheduleAnnouncements(entries, range, query[2], asker),
+        ...publicAnnouncements(entries, range, asker).filter(item => item.correction && item.topic === query[2]),
+    ]);
+    const item = items[0];
     if (item) return '[同群旧消息：当前提问人曾于 ' + formatDate(new Date(item.time))
         + ' 在本群写过「' + item.text + '」。这是当时的说法，不代表日程现在仍有效。只用它回答这次提问。]';
 }
@@ -92,9 +106,12 @@ export function privateGroupScheduleRecall(
     const entries = load(group.id);
     const range = dateRange(askedAt, query?.[1] ?? noticeQuery?.[1]);
     const items = noticeQuery
-        ? [...scheduleAnnouncements(entries, range), ...publicAnnouncements(entries, range)]
+        ? removeSuperseded([...scheduleAnnouncements(entries, range), ...publicAnnouncements(entries, range)])
             .sort((left, right) => right.time - left.time).slice(0, 3)
-        : scheduleAnnouncements(entries, range, query?.[2]).slice(0, query?.[2] ? 1 : 3);
+        : removeSuperseded([
+            ...scheduleAnnouncements(entries, range, query?.[2]),
+            ...publicAnnouncements(entries, range).filter(item => item.correction && item.topic === query?.[2]),
+        ]).slice(0, query?.[2] ? 1 : 3);
     if (!items.length) return undefined;
     return '[指定群的公开消息：' + items.map(item => formatDate(new Date(item.time)) + ' 当时写过「' + item.text + '」').join('；')
         + '。只用于回答这个群的提问；如涉及日程，可能已经过期。]';
