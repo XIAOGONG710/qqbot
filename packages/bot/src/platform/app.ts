@@ -183,7 +183,7 @@ import { PromiseStateUnavailable } from '.././life/promise-state.ts';
 import { promiseKeeper, type Appointment } from '.././life/promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from '.././life/her-days.ts';
 import { herPlanActivities, saveHerPlan, windowAt } from '.././life/her-plans.ts';
-import { isCorrection, recordCorrection, understandingLine } from '.././life/understanding.ts';
+import { correctionReplyLine, isCorrection, recordCorrection, understandingLine } from '.././life/understanding.ts';
 import { attachMatchingMemoryReviews, markMemoryReviewsOffered, readMemoryReviews, recordMemoryReview, resolveMemoryReview } from '../memory/memory-review.ts';
 import { recordTrace, traceOf, tracesLine } from '.././life/traces.ts';
 import { bodyAt } from '.././life/body.ts';
@@ -1055,7 +1055,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 她学的时候没想通的地方（DSH 10-31）：两天内存下的那个问题，想问就问他；只给男朋友档，危机、只想一想时不放
         // 工作模式的三行（DSH 10-29 / 10-30）：按他现在的状态放其中一行；只给男朋友档
         // 她自己决定记不记（selfDirectedMemory，DSH 10-30 / 10-31）：「记忆由你自己决定」、理解偏过、他最近的事
-        ...(config.selfDirectedMemory ? [selfMemoryModule({ understanding: hisWords => understandingLine(config.dataDir, hisWords), traces: () => tracesLine(config.dataDir) })] : []),
+        ...(config.selfDirectedMemory ? [selfMemoryModule({
+            understanding: hisWords => understandingLine(config.dataDir, hisWords),
+            immediateCorrection: (contact, hisWords) => deviceOwner && contact.qq === deviceOwner.qq ? correctionReplyLine(hisWords) : undefined,
+            traces: () => tracesLine(config.dataDir),
+        })] : []),
         workModeModule(contact => readWorkMode(config.dataDir, contact.qq), {
             // 她回复里的 <<同意工作>> / <<拒绝工作>> / <<用电脑>>：发出去之前摘掉、改状态；动电脑的活在后台干，干完把结果单独发回去
             setMode: (contact, mode) => setWorkMode(config.dataDir, contact.qq, mode),
