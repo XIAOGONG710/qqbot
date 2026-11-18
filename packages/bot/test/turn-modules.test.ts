@@ -78,6 +78,18 @@ describe('模块接线（ADR 0336 第 6 步）', () => {
         assert.equal(lookups, 1);
     });
 
+    test('补回后的周期任务先于已有模块注册，构造时不执行', () => {
+        calls.length = 0;
+        const withoutJobs = buildTurnModules(full());
+        const modules = buildTurnModules({ ...full(), syncedJobs: {
+            weeklyReport: trap('weekly'), watching: trap('watching'), feed: trap('feed'), memes: trap('memes'),
+        } });
+        assert.deepEqual(ids(modules), ['synced-jobs', ...ids(withoutJobs)]);
+        assert.deepEqual(modules[0]?.schedules?.map(({ every, runOnStart }) => [every, Boolean(runOnStart)]),
+            [[60 * 60_000, false], [30 * 60_000, false], [30 * 60_000, true], [30 * 60_000, false]]);
+        assert.deepEqual(calls, []);
+    });
+
     test('只给必填的：只挂总是挂的那些，先后不变', () => {
         calls.length = 0;
         assert.deepEqual(ids(buildTurnModules(base())), [

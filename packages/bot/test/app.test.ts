@@ -786,6 +786,87 @@ describe('编排（app.ts）', () => {
         } finally { releaseHistory(); await connected; await app.stop(); }
     });
 
+    test('补回后的周期任务：追更、热梗和周报重连先查，B 站动态只在首次注册时先查', async t => {
+        const hour = 60 * 60_000, week = 7 * 24 * hour;
+        const start = new Date('2026-11-22T22:00:00+08:00');
+        const clock = new VirtualClock(start);
+        const registrations: number[] = [];
+        const active = new Map<ReturnType<typeof setInterval>, () => void>();
+        const schedule = globalThis.setInterval, cancel = globalThis.clearInterval;
+        t.mock.method(globalThis, 'setInterval', (run: () => void, period: number) => {
+            const timer = schedule(run, period);
+            if (period === hour || period === hour / 2) {
+                registrations.push(period);
+                active.set(timer, run);
+            }
+            return timer;
+        });
+        t.mock.method(globalThis, 'clearInterval', (timer: ReturnType<typeof setInterval>) => { active.delete(timer); cancel(timer); });
+        let feeds = 0, memeLists = 0;
+        t.mock.method(globalThis, 'fetch', async (url: string) => {
+            const parsed = new URL(url);
+            if (parsed.pathname.endsWith('/popular') && parsed.searchParams.get('pn') === '1') memeLists++;
+            return Response.json({});
+        });
+        const response = (data: unknown) => ({ ok: true, status: 200, text: async () => JSON.stringify(data) });
+        const bilibiliRequest: BiliRequest = async (url, init) => {
+            assert.notEqual(init.method, 'POST');
+            if (url.includes('/nav')) return response({ code: 0, data: { isLogin: true, mid: 123, uname: '合成账号',
+                wbi_img: { img_url: `https://synthetic.invalid/${'a'.repeat(32)}.png`, sub_url: `https://synthetic.invalid/${'b'.repeat(32)}.png` },
+            } });
+            assert.match(url, /\/search\/type/);
+            return response({ code: 0, data: { result: [] } });
+        };
+        const bilibiliFetch: BiliFetch = async url => {
+            assert.match(url, /\/nav/);
+            feeds++;
+            return { ok: false, status: 503, text: async () => '' };
+        };
+        const cfg = config({ weeklyReport: true, watching: true, memes: true, biliFeed: 'on', bilibiliAccount: true,
+            contacts: [{ qq: 10001, name: '合成人甲', tier: 'boyfriend' }] });
+        const cred = credentialPath(cfg.dataDir);
+        mkdirSync(dirname(cred), { recursive: true });
+        saveCredential(cred, { sessdata: 'synthetic', biliJct: 'synthetic', dedeUserId: '123', buvid3: 'synthetic', savedAt: start.toISOString() });
+        let releaseHistory!: () => void;
+        const holdHistory = new Promise<void>(resolve => { releaseHistory = resolve; });
+        const { app, asked, logs, sent } = setup(cfg, { 10001: [] }, { clock, bilibiliRequest, bilibiliFetch, holdHistory });
+        const counts = () => [memeLists, logs.filter(line => line.includes('今天没找到合适的')).length,
+            feeds, logs.filter(line => line.includes('周报：写好了')).length];
+        const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+        const connected = app.connected(SELF);
+        try {
+            await until(() => asked.length === 1);
+            const duplicate = app.connected(SELF);
+            assert.deepEqual(counts(), [0, 0, 0, 0]);
+            assert.deepEqual(registrations, []);
+            releaseHistory();
+            await Promise.all([connected, duplicate]);
+            await settle();
+            assert.deepEqual(counts(), [1, 1, 1, 1]);
+            const periods = [hour, hour / 2, hour / 2, hour / 2];
+            assert.deepEqual(registrations, periods);
+
+            clock.advanceTo(start.getTime() + week);
+            await app.connected(SELF);
+            await settle();
+            assert.deepEqual(counts(), [2, 2, 1, 2]);
+            assert.deepEqual(registrations, periods);
+
+            clock.advanceTo(start.getTime() + 2 * week);
+            for (const run of active.values()) run();
+            await settle();
+            assert.deepEqual(counts(), [3, 3, 2, 3]);
+
+            await app.stop();
+            assert.equal(active.size, 0);
+            clock.advanceTo(start.getTime() + 3 * week);
+            await app.connected(SELF);
+            await settle();
+            assert.deepEqual(counts(), [3, 3, 2, 3]);
+            assert.deepEqual(sent, []);
+        } finally { releaseHistory(); await connected; await app.stop(); }
+    });
+
     test('照片货架：第一次找被限流（429）→ 过一会儿自己再来一次，最多 PHOTO_RETRY_MAX 次；找到就不再重试', async () => {
         const cfg = config({ photos: true, contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }] });
         let searches = 0;

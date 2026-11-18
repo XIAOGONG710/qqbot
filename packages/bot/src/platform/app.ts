@@ -976,6 +976,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(photos && foodSource && config.foodPhotos ? { food: discoverFoodPhotos } : {}),
             ...(collectingStickers ? { stickers: discoverStickers } : {}),
         }),
+        syncedJobs: {
+            ...(config.weeklyReport ? { weeklyReport: () => checkWeeklyReport() } : {}),
+            ...(config.watching ? { watching: () => { void watchJob(); } } : {}),
+            ...(config.biliFeed && config.biliFeed !== 'off' ? { feed: () => { void feedJob(); } } : {}),
+            ...(config.memes ? { memes: () => { void refreshMemeJob(); } } : {}),
+        },
         schedule: config.schedule,
         herDays: config.herDays,
         // 危机信号（ADR 0068）和小别扭 / 和好的起因（ADR 0074，配置 grievance）：assess 的最前面，意图阶梯和后面的判断都读
@@ -2881,7 +2887,6 @@ ${video.link}`);
     let foodRetryTimer: ReturnType<typeof setTimeout> | undefined;
     let foodRetries = 0;
     // 周报（ADR 0118）：每小时看一眼，周日 21:30 以后这周的还没有就写一份；出错只记日志
-    let weeklyTimer: ReturnType<typeof setInterval> | undefined;
     const checkWeeklyReport = () => {
         if (!config.weeklyReport || stopped) return;
         const reportsDir = join(config.dataDir, 'reports');
@@ -2910,8 +2915,6 @@ ${video.link}`);
         }
         return extras;
     };
-    let memesTimer: ReturnType<typeof setInterval> | undefined;
-    let watchingTimer: ReturnType<typeof setInterval> | undefined;
     let watchingRunning = false;
     let memesRunning = false;
     // 她自己看一个视频（ADR 0130）：每天一次，14 点以后；30 分钟看一眼该不该看；要她的 B 站号
@@ -2948,7 +2951,6 @@ ${video.link}`);
         }, () => { watchingRunning = false; });
     };
     // 她每天刷一小会儿 B 站推荐（ADR 0168）：14 点后一天一次；30 分钟看一眼该不该刷；只读、只记账
-    let feedTimer: ReturnType<typeof setInterval> | undefined;
     let feedRunning = false;
     const feedJob = (): Promise<void> => {
         const mode = config.biliFeed;
@@ -4506,23 +4508,6 @@ ${body}
                     // 补完漏掉的消息之后：各模块连上后要做一次的事（小梗抽一次、口头习惯学一次……，ADR 0336）
                     void interpreter.dispatch({ kind: 'synced' });
                     checkWeeklyReport();
-                    if (config.weeklyReport && !weeklyTimer) {
-                        weeklyTimer = exec.every(checkWeeklyReport, 60 * 60_000);
-                        weeklyTimer.unref();
-                    }
-                    if (config.watching && !watchingTimer) {
-                        watchingTimer = exec.every(() => void watchJob(), 30 * 60_000);
-                        watchingTimer.unref();
-                    }
-                    if (config.biliFeed && config.biliFeed !== 'off' && !feedTimer) {
-                        void feedJob();
-                        feedTimer = exec.every(() => void feedJob(), 30 * 60_000);
-                        feedTimer.unref();
-                    }
-                    if (config.memes && !memesTimer) {
-                        memesTimer = exec.every(() => void refreshMemeJob(), 30 * 60_000);
-                        memesTimer.unref();
-                    }
                     // 各模块的定时任务（小梗、口头习惯每 6 小时……）：只开一次
                     interpreter.startSchedules();
                 }
@@ -4677,9 +4662,6 @@ ${body}
             if (transportTimer) exec.cancel(transportTimer);
             if (dshInboxTimer) exec.cancel(dshInboxTimer);
             if (dshStateTimer) exec.cancel(dshStateTimer);
-            if (memesTimer) exec.cancel(memesTimer);
-            if (watchingTimer) exec.cancel(watchingTimer);
-            if (feedTimer) exec.cancel(feedTimer);
             if (selfPursuitTimer) exec.cancel(selfPursuitTimer);
             if (speechNotesTimer) exec.cancel(speechNotesTimer);
             if (chatReviewTimer) exec.cancel(chatReviewTimer);
@@ -4691,7 +4673,6 @@ ${body}
             exec.cancel(outboxTimer);
             exec.cancel(foodRetryTimer);
             const deviceDrain = stopDevices();
-            if (weeklyTimer) exec.cancel(weeklyTimer);
             exec.cancel(photoRetryTimer);
             useRealWeather(undefined);
             useRealAirQuality(undefined);

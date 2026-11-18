@@ -8,6 +8,7 @@
 
 - `platform/app.ts`
 - `platform/turn-modules.ts`
+- `modules/synced-jobs.ts`
 - `platform/main.ts`
 - `platform/work-bridge.ts`
 - `platform/instruction-source.ts`

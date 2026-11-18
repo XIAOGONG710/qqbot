@@ -248,7 +248,7 @@ export interface Module {
      */
     absorbAt?: Partial<Record<AbsorbStage, (text: string, contact: Contact) => string>>;
     /** 定时要做的事：解释器在 startSchedules 时经执行器开计时器，stop 时关 */
-    schedules?: readonly { every: number; run: () => void }[];
+    schedules?: readonly { every: number; run: () => void; runOnStart?: boolean }[];
     /** 停下：拒绝新工作；返回等已派发的活收尾的 promise（没有就不返回） */
     stop?(): Promise<void> | undefined;
     /** 控制台状态页的补充（不含聊天内容） */
@@ -627,9 +627,12 @@ export function createInterpreter(options: { modules: readonly Module[]; exec: P
         hasStatus: modules.some(module => module.status),
         startSchedules() {
             if (timers) return;
-            timers = [];
+            const started: ReturnType<Executor['every']>[] = [];
+            timers = started;
             for (const module of modules) {
                 for (const schedule of module.schedules ?? []) {
+                    if (schedule.runOnStart) schedule.run();
+                    if (timers !== started) return;
                     const timer = exec.every(schedule.run, schedule.every);
                     timer.unref?.();
                     timers.push(timer);

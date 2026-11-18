@@ -33,6 +33,7 @@ import { interruptionsModule } from '../modules/interruptions.ts';
 import { learningQuestionModule } from '../modules/learning-question.ts';
 import { lengthModule } from '../modules/length.ts';
 import { mediaDiscoveryModule, mediaOffersModule } from '../modules/media-offers.ts';
+import { syncedJobsModule } from '../modules/synced-jobs.ts';
 import { meetupModule, type MeetupModuleOptions } from '../modules/meetup.ts';
 import { memeDictModule } from '../modules/meme-dict.ts';
 import { memesModule } from '../modules/memes.ts';
@@ -117,6 +118,7 @@ export interface TurnModuleDeps {
     quote?: Pick<QuoteModuleOptions, 'share'>;
     factCheck?: ReviewFactsOptions;
     mediaDiscovery?: Parameters<typeof mediaDiscoveryModule>[0];
+    syncedJobs?: Parameters<typeof syncedJobsModule>[0];
     /** 话说到一半（配置 speechCheck） */
     speechCheck?: boolean;
     /** 挑候选：count 大于 1 时才给 */
@@ -141,6 +143,7 @@ export interface TurnModuleDeps {
 export function buildTurnModules(d: TurnModuleDeps): Module[] {
     const { log, herDays } = d;
     return [
+        ...(d.syncedJobs ? [syncedJobsModule(d.syncedJobs)] : []),
         herNowModule({
             schedule: d.schedule, herDays, ...d.herNow,
             worldState: d.worldState, appointmentsAt: d.appointmentsAt, contacts: d.contacts, history: d.history, log,

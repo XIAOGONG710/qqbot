@@ -115,6 +115,23 @@ describe('解释器骨架（ADR 0336）', () => {
         assert.throws(() => createInterpreter({ exec, modules: [{ id: 'a' }, { id: 'a' }] }), /重复/);
     });
 
+    test('首跑在自己的周期注册前且只跑一次', () => {
+        const steps: string[] = [];
+        const fake = { every: (_run: () => void, ms: number) => {
+            steps.push(`注册 ${ms}`);
+            return { unref() { return this; } } as unknown as ReturnType<typeof setInterval>;
+        }, cancel: () => {} };
+        const interpreter = createInterpreter({ exec: fake, modules: [{ id: 'jobs', schedules: [
+            { every: 60_000, run: () => steps.push('非首跑') },
+            { every: 30_000, run: () => steps.push('首跑'), runOnStart: true },
+        ] }] });
+        interpreter.startSchedules();
+        interpreter.startSchedules();
+        interpreter.stop();
+        interpreter.startSchedules();
+        assert.deepEqual(steps, ['注册 60000', '首跑', '注册 30000']);
+    });
+
     test('定时任务经执行器开、只开一次，stop 时关；stop 按注册顺序收各模块的收尾；状态按顺序合并', () => {
         const opened: number[] = [];
         let cancelled = 0;
