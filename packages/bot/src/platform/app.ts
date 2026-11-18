@@ -115,7 +115,7 @@ import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, personaFacts, replySkip, type ContactPipelineOptions, type TierCard } from './contact.ts';
 import { GROUP_CONTEXT, HER_NAMES, groupLine, groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type SpeakReason } from '.././social/group-chat.ts';
-import { groupScheduleRecall, privateGroupScheduleRecall } from '../social/group-memory.ts';
+import { groupScheduleRecall, privateGroupBulletinRecall, privateGroupBulletinTarget, privateGroupScheduleRecall } from '../social/group-memory.ts';
 import { groupPeople } from '.././social/group-people.ts';
 import { analyzeGroupStyle, renderGroupStyle } from '.././social/group-style.ts';
 import { groupAffect, groupAffectOf, mergeFelt } from '.././social/group-affect.ts';
@@ -2261,8 +2261,35 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
             // 设备所有者明确问指定群时，才查该群。群底账在回复器建好后初始化。
             ...(contact.qq === deviceOwner?.qq ? {
-                groupRecent: (question: string, at: Date) => groupLogs
-                    ? privateGroupScheduleRecall(groupLogs.load, config.groups ?? [], question, at.getTime()) : undefined,
+                groupRecent: async (question: string, at: Date) => {
+                    const groups = config.groups ?? [];
+                    const local = groupLogs ? privateGroupScheduleRecall(groupLogs.load, groups, question, at.getTime()) : undefined;
+                    const groupId = privateGroupBulletinTarget(groups, question);
+                    if (groupId === undefined) return local;
+                    if (!transport.callAction) return [local, '[指定群的 QQ 公告栏暂时读不到（接口不可用 / 无权限），请如实说明。]'].filter(Boolean).join('\n');
+                    let timeout: ReturnType<typeof setTimeout> | undefined;
+                    try {
+                        const response = await Promise.race([
+                            transport.callAction('_get_group_notice', { group_id: String(groupId) }),
+                            new Promise<never>((_, reject) => {
+                                timeout = setTimeout(() => reject(new Error('读取群公告超时')), 3_000);
+                                timeout.unref?.();
+                            }),
+                        ]);
+                        const bulletin = privateGroupBulletinRecall(groups, question, response, at.getTime());
+                        const statusNote = bulletin?.status === 'empty' ? '公告栏为空。'
+                            : bulletin?.status === 'no-match' ? '这段时间没有匹配的公告。'
+                                : bulletin?.status === 'filtered' ? '公告内容涉及个人信息或不适合转述，我没有提供。'
+                                    : bulletin?.status === 'invalid' || !bulletin ? '公告接口返回无法识别的内容。' : undefined;
+                        const note = bulletin?.status === 'ok' ? bulletin.context : `[指定群的 QQ 公告栏：${statusNote}请如实说明，不猜测或补写。]`;
+                        return [local, note].filter(Boolean).join('\n');
+                    } catch (error) {
+                        log(`指定群公告读取失败（群 ${groupId}）：${error instanceof Error ? error.message : '接口异常'}`);
+                        return [local, '[指定群的 QQ 公告栏暂时读不到，请如实说明。]'].filter(Boolean).join('\n');
+                    } finally {
+                        if (timeout) clearTimeout(timeout);
+                    }
+                },
             } : {}),
             // 群里的遭遇也进心境（2026-11-14）：有人在群里夸她、冲她发火、说想不开，私聊里她也带着
             ...(config.herFeelings && (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0 ? { groupMood: () => groupFeel?.appraisals() ?? [] } : {}),
