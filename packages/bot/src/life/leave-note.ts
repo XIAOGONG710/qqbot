@@ -9,6 +9,8 @@
 //   · 危机、她主动不说话的时候不说；
 //   · 一天最多 3 次（说多了就成了报备，不是她）。
 import type { WorldNow } from '../world/world.ts';
+import type { StoredMessage } from '../memory/history.ts';
+import type { OpenAIMessage } from '../language/prompt.ts';
 import { busySpans } from '../world/life-selector.ts';
 
 /** 离开时看不了消息、值得说一声的时段（名字要能直接接在「我去……」后面） */
@@ -75,4 +77,70 @@ export function announcePrompt(span: AwaySpan, userName: string): { system: stri
 /** 模型没接上时的兜底：一句短的、像人说的话 */
 export function announceFallback(span: AwaySpan): string {
     return `我去${span.text}了，一会儿回来`;
+}
+
+/** 走开前说一声这件事要读写的东西（App 给；聊天记录是全量的那一份，不分档） */
+export interface LeaveAnnouncerDeps {
+    /** 男朋友档的那一位 */
+    owner: { qq: number; name: string } | undefined;
+    /** 她那边的世界（世界账）在某一刻的样子；没有世界账不给（那就从不说） */
+    worldAt?: (at: Date) => WorldNow | undefined;
+    /** 他最近说过想伤害自己的话：普通主动消息暂停 */
+    paused: (qq: number, now: number) => boolean;
+    history: (qq: number) => StoredMessage[];
+    append: (qq: number, message: StoredMessage) => void;
+    send: (qq: number, text: string) => Promise<unknown>;
+    /** 后台模型调用（聊天的配置、温度 0.9） */
+    generate: (messages: OpenAIMessage[]) => Promise<string>;
+    log: (message: string) => void;
+    stopped: () => boolean;
+}
+
+/**
+ * 她去洗澡 / 上课之前说一声（2026-10-30 用户：聊着聊着就去洗澡了，都不说一声）：原来是 app.ts 里的 checkLeave 加一个每 3 分钟的计时器，
+ * ADR 0336 第 6 步逐字搬到这里（闭包里取的换成 deps），定时由 modules/leave-note.ts 声明。说过哪几段、今天说了几次只在内存里（重启清空，靠查聊天记录兜底）
+ */
+export function leaveAnnouncer(deps: LeaveAnnouncerDeps): { check(): Promise<void> } {
+    const { owner } = deps;
+    const announcedLeaves: number[] = [];
+    let leaveDay = '';
+    let leaveCount = 0;
+    async function checkLeave(): Promise<void> {
+        if (deps.stopped() || !deps.worldAt || !owner) return;
+        if (deps.paused(owner.qq, Date.now())) return;
+        const at = new Date();
+        const span = awayNow(deps.worldAt(at), at);
+        const history = deps.history(owner.qq);
+        const lastAt = Date.parse(history.at(-1)?.time ?? '');
+        const day = at.toISOString().slice(0, 10);
+        if (day !== leaveDay) { leaveDay = day; leaveCount = 0; }
+        if (!shouldAnnounce({ span, lastMessageAt: Number.isFinite(lastAt) ? lastAt : undefined, at: at.getTime(), announcedStarts: announcedLeaves, saidToday: leaveCount })) return;
+        // 10-30：announcedLeaves 只在内存里，插件一重载就清空——同一次洗澡又说一遍
+        //（23:14 / 23:20 / 23:29 三次，每次都在一次「已就绪」之后）。
+        // 改成查聊天记录：这一段开始之后她说过这件事，就不再发。
+        if (history.some(m => m.role === 'assistant' && Date.parse(m.time) >= span!.start && m.content.includes(span!.text))) {
+            announcedLeaves.push(span!.start);
+            return;
+        }
+        announcedLeaves.push(span!.start);
+        leaveCount += 1;
+        let line = '';
+        try {
+            const prompt = announcePrompt(span!, owner.name);
+            const generated = await deps.generate([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
+            const rawLine = String(generated ?? '');
+            line = rawLine.split(/\r?\n/).map(part => part.trim()).filter(Boolean)[0] ?? '';
+        } catch (error) {
+            deps.log(`走开说一声：没想出来（${error instanceof Error ? error.message : String(error)}），用兜底那句`);
+        }
+        if (!line || [...line].length > 24) line = announceFallback(span!);
+        try {
+            await deps.send(owner.qq, line);
+            deps.append(owner.qq, { role: 'assistant', content: line, time: at.toISOString(), messageId: 0 } as never);
+            deps.log(`她说了一声要去${span!.text}（${[...line].length} 字）`);
+        } catch (error) {
+            deps.log(`走开说一声：没发出去（${error instanceof Error ? error.message : String(error)}）`);
+        }
+    }
+    return { check: checkLeave };
 }

@@ -42,6 +42,7 @@
 - `life/now-export.ts`
 - `life/leave-note.ts`
 - `life/dreams.ts`
+- `life/dream-jobs.ts`
 - `life/open-questions.ts`
 - `life/learning-questions.ts`
 - `life/her-guesses.ts`

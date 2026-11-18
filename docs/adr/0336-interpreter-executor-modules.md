@@ -1304,3 +1304,16 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   没想完的问题原来就直接调 `chatCompletion`（没经执行器），照旧由 App 给这个函数；收进执行器另做。「开没开」那几行日志照旧在原位。
 - 验证：同一提交上全部 41 个场景对快照（dsh 2aeb843e 刷新后 main 是 41/41 一致）逐字一致；变异检验——不给心境回想，`feelings` 场景 10:40 那次 0.9 温度的模型调用没了，报出不一致。
   解释器加了两个时机的单测，`reflections-module.test.ts` 核对先后、间隔、时机、没有男朋友档不挂、停下不起新拍、上一拍没想完跳过。
+
+### 第 6 步：App 搭好时就开的计时器——做梦、走开说一声、DSH 状态（2026-11-19）
+
+- 接着上一节从后往前迁，构造时登记的最后三个：做梦那一拍（30 分钟）、走开前说一声（3 分钟）、DSH 状态快照（`NOW_REFRESH_MS`）。
+  模块挂在 `reflections` 之后，先后同原来：`...turnModules, reflections, dreams, leaveNote, dshStateExport`。现在构造时还由 App 自己开的，只剩 `outbox` 及它前面那些。
+- 做梦：原来 app.ts 里四个函数（做梦、午睡的小梦、一个月的回看、学习问题）逐字搬到 `src/life/dream-jobs.ts`（`dreamJobs(deps).tick`，同一拍里四件一起起、不等前一件，同原来）；
+  闭包里取的换成 deps（卡、时钟、模型调用、最近一次心境、写长期记忆、世界账）。`src/modules/dreams.ts` 只声明定时；条件（男朋友档、herFeelings）由 App 决定给不给 tick。
+- 走开说一声：`checkLeave` 和它在内存里记的「说过哪几段、今天说了几次」逐字搬到 `src/life/leave-note.ts` 的 `leaveAnnouncer`；`src/modules/leave-note.ts` 只声明定时；
+  条件（主动消息没关、男朋友档、有生活执行器）照旧。它原来就读全量聊天记录（不分档）、`Date.now()`，照旧。
+- DSH 状态：摘要怎么算、启动时立刻写的那一次都留在 app.ts；`src/modules/dsh-state.ts` 只声明之后每 `NOW_REFRESH_MS` 再写。
+- 差别：做梦、走开这两个原来没有 `unref`，现在由解释器 `unref`（进程有别的东西撑着，看不出来）；停下时由解释器取消，app.ts 的 `stop` 少了三行。
+- 验证：全部 41 个场景对快照逐字一致（`books` 有做梦和学习问题的模型调用，`closeness` 有走开说一声）；变异检验见提交说明。
+  `built-schedules.test.ts` 核对三个模块的间隔、时机、不给不挂，以及走开说一声在没有世界账、停下、危机暂停时什么都不做。

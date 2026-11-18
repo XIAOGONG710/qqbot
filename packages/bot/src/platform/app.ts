@@ -23,6 +23,10 @@ import { takeMemoryReview, takeSelfNotes } from '../modules/self-notes.ts';
 import { idiomsModule } from '../modules/idioms.ts';
 import { buildTurnModules } from './turn-modules.ts';
 import { reflectionsModule } from '../modules/reflections.ts';
+import { dreamsModule } from '../modules/dreams.ts';
+import { leaveNoteModule } from '../modules/leave-note.ts';
+import { dshStateModule } from '../modules/dsh-state.ts';
+import { dreamJobs } from '../life/dream-jobs.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
 import { Identity, realGit } from '.././memory/identity.ts';
@@ -176,10 +180,10 @@ import { PHOTO_REVIEW_MAX_THUMBNAIL_BYTES } from '@qqbot/mobile-companion/photo-
 import { MAX_QUEUED_PER_CLIENT } from '@qqbot/mobile-companion/runtime';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { journalOn, selfThread, selfThreadLine } from '.././language/self-thread.ts';
-import { announceFallback, announcePrompt, awayNow, shouldAnnounce } from '.././life/leave-note.ts';
+import { leaveAnnouncer } from '.././life/leave-note.ts';
 import { auditShell, runShell } from './shell-tool.ts';
-import { appendDream, dreamAppraisals, dreamNoteLine, dreamPrompt, hasDream, inSleepHours, lastInsightAt, latestDream, monthlyInsightPrompt, napPrompt, onlyFragment, recentDreams, saveInsight } from '.././life/dreams.ts';
-import { loadQuestion, questionLine, questionPrompt, saveQuestion } from '.././life/learning-questions.ts';
+import { dreamAppraisals, dreamNoteLine, latestDream } from '.././life/dreams.ts';
+import { loadQuestion, questionLine } from '.././life/learning-questions.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
 import { loadExemplars } from '.././language/exemplars.ts';
 import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
@@ -992,6 +996,33 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ...(config.openQuestions ? { openQuestions: { ponder: messages => chatCompletion({ ...deliberateLlm(config.llm, config.deliberateModel), temperature: 0.9 }, messages, { log, purpose: 'background' }) } } : {}),
         ...(config.herGuesses && sharedWorld && worldCard ? { herGuesses: { worldAt: time => sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, time) } } : {}),
     });
+    // 做梦那一拍、走开前说一声、DSH 状态快照（ADR 0336 第 6 步）：同样只有定时任务，App 搭好时开，先后同原来（夜里那几样之后）。
+    // 心境、长期记忆、危机状态、聊天记录、导出函数都在后面才建：到点再取
+    const dreams = dreamsModule(deviceOwner && config.herFeelings ? dreamJobs({
+        owner: deviceOwner,
+        character: tier => cardFor(tier).character,
+        dataDir: config.dataDir,
+        soulDir,
+        now: () => clockNow(),
+        log,
+        stopped: () => stopped,
+        generate: temperature => messages => exec.llm({ purpose: 'background', config: { ...forExtraction(config.llm), temperature }, messages }, log),
+        lastFeelings: () => lastFeelings,
+        rememberSelfNote: (contact, text, kind) => memory?.rememberSelfNote(contact, text, kind),
+        ...(sharedWorld && worldCard?.herWorld && worldCard.schedule ? { worldAt: (at: Date) => sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, at) } : {}),
+    }).tick : undefined);
+    const leaveNote = leaveNoteModule(config.proactive !== 'off' && deviceOwner && lifeRunner ? leaveAnnouncer({
+        owner: deviceOwner,
+        ...(sharedWorld && worldCard?.herWorld && worldCard.schedule ? { worldAt: (at: Date) => sharedWorld.at(worldCard.herWorld!, worldCard.schedule!, at) } : {}),
+        paused: (qq, now) => crisisState.pausedAt(qq, now),
+        history: qq => chatHistory.load(qq),
+        append: (qq, message) => chatHistory.append(qq, message),
+        send: (qq, text) => transport.sendPrivateText(qq, text),
+        generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages }, log),
+        log,
+        stopped: () => stopped,
+    }).check : undefined);
+    const dshStateExport = dshStateModule(dshEnabled ? () => exportDshState() : undefined, NOW_REFRESH_MS);
     // 一轮回复的模块（ADR 0336 第 6 步）：和模拟器同一份接线（platform/turn-modules.ts），先后在那里定；这里只按配置给选项。
     // 好些东西（聊天记录、答应的事、长期记忆、设备服务、计划器……）在后面才建：这里给的都是用到时再取的函数，挂不挂只看配置
     const turnModules = buildTurnModules({
@@ -1247,7 +1278,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 recall: ({ event }) => legacy.receiveRecall(event),
                 friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
             },
-        }, ...turnModules, reflections],
+        }, ...turnModules, reflections, dreams, leaveNote, dshStateExport],
         exec,
     });
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
@@ -2153,164 +2184,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 她去洗澡 / 上课之前说一声（2026-10-30 用户：聊着聊着就去洗澡了，都不说一声）
     /** 她刚跑过的命令结果：下一轮提示词给她看一眼就清掉（max 权限，但结果要回到她脑子里） */
     const shellNotes = new Map<number, string>();
-    // 做梦（2026-10-31）：她睡着的那几小时里，把白天的东西糊成一团；一晚一个，存 dreams/DREAMS.jsonl
-    const dreamTimer = deviceOwner && config.herFeelings ? exec.every(() => { void makeDream(); void makeNapDream(); void makeMonthlyInsight(); void makeLearningQuestion(); }, 30 * 60_000) : undefined;
+    // 做梦（2026-10-31）：她睡着的那几小时里，把白天的东西糊成一团；一晚一个，存 dreams/DREAMS.jsonl。
+    // 那四件事在 life/dream-jobs.ts，每 30 分钟一拍由 dreams 模块声明（ADR 0336 第 6 步，App 搭好时开）
 
-    /** 她学说话/翻日记时没想通的地方，挑一个留到聊天里问他（2026-10-31） */
-    async function makeLearningQuestion(): Promise<void> {
-        if (stopped || !deviceOwner) return;
-        const at = clockNow();
-        if (at.getHours() < 20) return;
-        const fresh = loadQuestion(config.dataDir);
-        if (fresh && at.getTime() - fresh.at < 20 * 3_600_000) return;
-        try {
-            let notes = '';
-            try {
-                const state = loadNotesState(config.dataDir);
-                notes = state.notes.map(note => note.text).slice(-8).join('；');
-            } catch { /* 没笔记就只用日记 */ }
-            let journal = '';
-            try { journal = readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8').slice(-800); } catch { /* 没日记 */ }
-            const books = cardFor(deviceOwner.tier).character.books?.map(book => book.title).join('、') ?? '';
-            const prompt = questionPrompt({ notes, journal, books, name: cardFor(deviceOwner.tier).character.name });
-            const raw = await exec.llm({ purpose: 'background', config: { ...forExtraction(config.llm), temperature: 0.8 }, messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }] }, log);
-            const text = String(raw ?? '').trim();
-            if (!text || /^SKIP$/i.test(text)) { log('学习问题：这次没想出来'); return; }
-            const firstLine = text.split(String.fromCharCode(10)).map(part => part.trim()).filter(Boolean)[0] ?? text;
-            saveQuestion(config.dataDir, { at: at.getTime(), question: firstLine.slice(0, 120), from: notes ? '说话笔记' : '日记' });
-            log('学习问题：留了一个，想找机会问他');
-        } catch (error) {
-            log(`学习问题：出错（${error instanceof Error ? error.message : String(error)}）`);
-        }
-    }
-
-
-    /** 午睡打盹的小梦（2026-10-31 她说「午后小睡那个也开吧」）：一天最多一个，不每天都有 */
-    async function makeNapDream(): Promise<void> {
-        if (stopped || !deviceOwner) return;
-        const at = clockNow();
-        const hour = at.getHours();
-        const date = at.toISOString().slice(0, 10);
-        if (hour < 13 || hour > 15 || hasDream(`${date}-nap`, config.dataDir)) return;
-        // 一周里大概两三天会打盹（按日期定，不随机漂）
-        const seed = `${date}-nap`;
-        let hash = 0x811c9dc5;
-        for (const char of seed) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193) >>> 0; }
-        if (hash % 100 >= 45) return;
-        try {
-            const own = readLifeEvents(join(config.dataDir, 'world', 'events.json'), () => undefined)
-                .map(event => String((event as { text?: string }).text ?? ''))
-                .filter(text => text && !text.includes('跟我说')).slice(-5);
-            const fell = lastFeelings ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => `${item.cause}（${item.kind}）`) : [];
-            const prompt = napPrompt({ events: own, feelings: fell, name: cardFor(deviceOwner.tier).character.name });
-            const raw = await exec.llm({ purpose: 'background', config: { ...forExtraction(config.llm), temperature: 0.95 }, messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }] }, log);
-            const dream = String(raw ?? '').trim();
-            if (!dream) return;
-            appendDream(config.dataDir, { date: `${date}-nap`, dream: dream.slice(0, 300), at: at.getTime(), fragment: true, nap: true });
-            log(`做梦：午睡打了个盹（${[...dream].length} 字）`);
-        } catch (error) {
-            log(`做梦：午睡那个没成（${error instanceof Error ? error.message : String(error)}）`);
-        }
-    }
-
-    /** 一个月回头看看自己常梦见什么（她说「我也有点想知道自己到底老在怕什么」） */
-    async function makeMonthlyInsight(): Promise<void> {
-        if (stopped || !deviceOwner) return;
-        const now = clockNow().getTime();
-        if (now - lastInsightAt(config.dataDir) < 25 * 86_400_000) return;
-        const dreams = recentDreams(config.dataDir, 31);
-        if (dreams.length < 5) return;
-        try {
-            const prompt = monthlyInsightPrompt(dreams, cardFor(deviceOwner.tier).character.name);
-            const raw = await exec.llm({ purpose: 'background', config: { ...forExtraction(config.llm), temperature: 0.8 }, messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }] }, log);
-            const text = String(raw ?? '').trim();
-            if (!text) return;
-            saveInsight(config.dataDir, text.slice(0, 400), now);
-            void memory?.rememberSelfNote(deviceOwner, text.slice(0, 400), '记住').catch(error => log(`做梦：这段回看没写进记忆（${error instanceof Error ? error.message : String(error)}）`));
-            log('做梦：这个月的梦回看了一遍（1 段）');
-        } catch (error) {
-            log(`做梦：回看出错（${error instanceof Error ? error.message : String(error)}）`);
-        }
-    }
-    async function makeDream(): Promise<void> {
-        if (stopped || !deviceOwner) return;
-        const at = clockNow();
-        const date = at.toISOString().slice(0, 10);
-        if (!inSleepHours(at.getHours()) || hasDream(date, config.dataDir)) return;
-        try {
-            const events = sharedWorld && worldCard?.herWorld && worldCard.schedule
-                ? (sharedWorld.at(worldCard.herWorld, worldCard.schedule, at) ? [] : [])
-                : [];
-            // 白天的事：她自己写的事件（不含「跟我说」）+ 日记尾巴
-            const own = readLifeEvents(join(config.dataDir, 'world', 'events.json'), () => undefined)
-                .map(event => String((event as { text?: string }).text ?? ''))
-                .filter(text => text && !text.includes('跟我说'))
-                .slice(-8);
-            let journal = '';
-            try { journal = readFileSync(join(soulDir(), 'JOURNAL.md'), 'utf8').slice(-400); } catch { /* 没日记就算了 */ }
-            const fell = lastFeelings ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => `${item.cause}（${item.kind}）`) : [];
-            const previous = recentDreams(config.dataDir, 3).map(item => item.dream);
-            const prompt = dreamPrompt({ events: [...own, ...events], feelings: fell, journal, name: cardFor(deviceOwner.tier).character.name, previous });
-            const raw = await exec.llm({ purpose: 'background', config: { ...forExtraction(config.llm), temperature: 0.95 }, messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }] }, log);
-            const text = String(raw ?? '');
-            const match = text.match(/\{[\s\S]*\}/);
-            const parsed = match ? JSON.parse(match[0]) as { dream?: string; feel?: { kind?: string; strength?: number; why?: string } } : { dream: text.trim() };
-            const dream = String(parsed.dream ?? '').trim();
-            if (!dream) { log('做梦：没写出来，明晚再说'); return; }
-            appendDream(config.dataDir, {
-                date, dream: dream.slice(0, 600), at: at.getTime(),
-                fragment: onlyFragment(date),
-                ...(parsed.feel?.kind ? { feel: { kind: parsed.feel.kind as never, strength: (parsed.feel.strength === 2 || parsed.feel.strength === 3 ? parsed.feel.strength : 1) as never, ...(parsed.feel.why ? { why: String(parsed.feel.why).slice(0, 80) } : {}) } } : {}),
-            });
-            log(`做梦：1 条（${[...dream].length} 字）`);
-        } catch (error) {
-            log(`做梦：出错（${error instanceof Error ? error.message : String(error)}）`);
-        }
-    }
     /** 这一轮提示词里放了网上的内容（防注入第一道：这种回合不执行她写的命令） */
     const webTurns = new Map<number, number>();
-    const announcedLeaves: number[] = [];
-    let leaveDay = '';
-    let leaveCount = 0;
-    const leaveTimer = (config.proactive !== 'off' && deviceOwner && lifeRunner) ? exec.every(() => { void checkLeave(); }, 3 * 60_000) : undefined;
-    async function checkLeave(): Promise<void> {
-        if (stopped || !sharedWorld || !worldCard?.herWorld || !worldCard.schedule || !deviceOwner) return;
-        const owner = deviceOwner;
-        if (crisisState.pausedAt(owner.qq, Date.now())) return;
-        const at = new Date();
-        const span = awayNow(sharedWorld.at(worldCard.herWorld, worldCard.schedule, at), at);
-        const history = chatHistory.load(owner.qq);
-        const lastAt = Date.parse(history.at(-1)?.time ?? '');
-        const day = at.toISOString().slice(0, 10);
-        if (day !== leaveDay) { leaveDay = day; leaveCount = 0; }
-        if (!shouldAnnounce({ span, lastMessageAt: Number.isFinite(lastAt) ? lastAt : undefined, at: at.getTime(), announcedStarts: announcedLeaves, saidToday: leaveCount })) return;
-        // 10-30：announcedLeaves 只在内存里，插件一重载就清空——同一次洗澡又说一遍
-        //（23:14 / 23:20 / 23:29 三次，每次都在一次「已就绪」之后）。
-        // 改成查聊天记录：这一段开始之后她说过这件事，就不再发。
-        if (history.some(m => m.role === 'assistant' && Date.parse(m.time) >= span!.start && m.content.includes(span!.text))) {
-            announcedLeaves.push(span!.start);
-            return;
-        }
-        announcedLeaves.push(span!.start);
-        leaveCount += 1;
-        let line = '';
-        try {
-            const prompt = announcePrompt(span!, owner.name);
-            const generated = await exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }] }, log);
-            const rawLine = String(generated ?? '');
-            line = rawLine.split(/\r?\n/).map(part => part.trim()).filter(Boolean)[0] ?? '';
-        } catch (error) {
-            log(`走开说一声：没想出来（${error instanceof Error ? error.message : String(error)}），用兜底那句`);
-        }
-        if (!line || [...line].length > 24) line = announceFallback(span!);
-        try {
-            await transport.sendPrivateText(owner.qq, line);
-            chatHistory.append(owner.qq, { role: 'assistant', content: line, time: at.toISOString(), messageId: 0 } as never);
-            log(`她说了一声要去${span!.text}（${[...line].length} 字）`);
-        } catch (error) {
-            log(`走开说一声：没发出去（${error instanceof Error ? error.message : String(error)}）`);
-        }
-    }
     const crisisState = createCrisisState(config.dataDir, log);
     let crisisSaveTimer: ReturnType<typeof setTimeout> | undefined;
     let crisisSaveDelay = 1000;
@@ -4019,11 +3897,9 @@ ${body}
             log(`DSH：状态快照没写出去（${error instanceof Error ? error.message : String(error)}）`);
         }
     };
-    let dshStateTimer: ReturnType<typeof setInterval> | undefined;
+    // 之后每 NOW_REFRESH_MS 再写一次：由 dsh-state 模块声明（ADR 0336 第 6 步，App 搭好时开）
     if (dshEnabled) {
         exportDshState();
-        dshStateTimer = exec.every(exportDshState, NOW_REFRESH_MS);
-        dshStateTimer.unref();
     } else {
         rmSync(dshStateFile, { force: true });
     }
@@ -4541,15 +4417,12 @@ ${body}
             const repliesDrain = replies?.stop();
             const riskDrain = risk?.stop();
             if (lifeTimer) exec.cancel(lifeTimer);
-            if (dreamTimer) exec.cancel(dreamTimer);
-            if (leaveTimer) exec.cancel(leaveTimer);
             if (weatherTimer) exec.cancel(weatherTimer);
             if (airQualityTimer) exec.cancel(airQualityTimer);
             if (daylightTimer) exec.cancel(daylightTimer);
             if (calendarTimer) exec.cancel(calendarTimer);
             if (transportTimer) exec.cancel(transportTimer);
             if (dshInboxTimer) exec.cancel(dshInboxTimer);
-            if (dshStateTimer) exec.cancel(dshStateTimer);
             exec.cancel(outboxTimer);
             exec.cancel(foodRetryTimer);
             const deviceDrain = stopDevices();

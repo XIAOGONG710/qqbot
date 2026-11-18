@@ -81,6 +81,9 @@
 - `modules/soul.ts`
 - `modules/her-notes.ts`
 - `modules/reflections.ts`
+- `modules/dreams.ts`
+- `modules/leave-note.ts`
+- `modules/dsh-state.ts`
 - `modules/playful.ts`
 - `modules/exemplars.ts`
 - `modules/solve-frame.ts`
