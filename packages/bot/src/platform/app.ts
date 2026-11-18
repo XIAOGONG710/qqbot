@@ -1236,7 +1236,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 话说到一半（ADR 0141）：跟着 speechCheck，挂在 unfinished 位置
         ...(config.speechCheck ? [reviewUnfinishedModule()] : []),
         // 她想查才查（<<查：…>>）：挂在 pull 位置，总是挂（摘标记和开关无关）；开了长期记忆和 selfDirectedMemory 才真的去查。memory 在后面才建，查的时候现取
-        reviewPullModule({ ...(config.memory && config.selfDirectedMemory ? { recall: (contact: Contact, query: string) => memory!.recallPull(contact, query, new Date()) } : {}) }),
+        reviewPullModule({ ...(config.memory && config.selfDirectedMemory ? { recall: (contact: Contact, query: string) => memory!.recallPull(contact, query, new Date(), config.contacts) } : {}) }),
         // 时间块（ADR 0004 / 0105）：每一轮「此刻」块的第一行；断网很久才回那一句跟着 lagTail。没有别的开关，不存状态
         timeBlockModule({ lagTail: config.lagTail }),
         // 连续性（ADR 0157–0163）：联系人流水线取回来的几行（turn.facts.continuity）照放；continuity 在解释器之后才建、取也在流水线里，所以总是挂

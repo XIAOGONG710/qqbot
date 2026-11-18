@@ -637,6 +637,45 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
         }
     });
 
+    test('主动查记忆显示来源和日期；主人能看到来源不明，其他联系人仍被私聊隔离', async () => {
+        const ownerNamed = { ...A, name: '阿明' };
+        const listener = { ...B, name: '小李' };
+        const other = { qq: 6, tier: 'classmate', name: '小赵' };
+        const ownerHash = createHashForTest(A.qq, A.tier);
+        const listenerHash = createHashForTest(B.qq, B.tier);
+        const otherHash = createHashForTest(other.qq, other.tier);
+        const { memory, cleanup } = setupCommon({ recall: bank => {
+            if (bank === 'linmengyao-common') return [
+                { id: 'owner-common', text: '主人私聊中的记录', document_id: `${ownerHash}:ep-${T0}`, occurred_start: '2026-10-02T00:00:00.000Z' },
+                { id: 'other-common', text: '小赵曾说的记录', document_id: `${otherHash}:ep-${T0 + 1}`, occurred_start: '2026-10-03T00:00:00.000Z' },
+                { id: 'diary-common', text: '她日记中的记录', document_id: 'diary:2026-10-04', occurred_start: '2026-10-04T00:00:00.000Z' },
+                { id: 'unknown-common', text: '来源不明的旧记录', document_id: 'legacy:old-entry' },
+            ];
+            if (bank === `linmengyao-${ownerHash}`) return [{ id: 'owner-own', text: '阿明私聊里的记录', document_id: `ep-${T0}`, occurred_start: '2026-10-02T00:00:00.000Z' }];
+            if (bank === `linmengyao-${listenerHash}`) return [{ id: 'listener-own', text: '小李私聊里的记录', document_id: `ep-${T0 + 2}`, occurred_start: '2026-10-05T00:00:00.000Z' }];
+            return [{ id: 'dsh-work', text: 'DSH工作里的记录', document_id: 'task:1', occurred_start: '2026-10-06T00:00:00.000Z' }];
+        } }, true, undefined, A);
+        try {
+            await memory.sync(A, names, [msg(0, 'user', '我今天有个安排')]);
+            await memory.sync(B, gege, history);
+            const people = [ownerNamed, listener, other];
+            const forListener = await memory.recallPull(listener, '最近的记录', new Date(now), people);
+            assert.match(forListener ?? '', /和小李的私聊/);
+            assert.match(forListener ?? '', /只能含糊·和小赵聊的/);
+            assert.match(forListener ?? '', /只能含糊·你的日记/);
+            assert.match(forListener ?? '', /10月3日|10月4日|10月5日/);
+            assert.doesNotMatch(forListener ?? '', /主人私聊中的记录|阿明私聊里的记录|DSH工作里的记录|来源不明的旧记录/);
+
+            const forOwner = await memory.recallPull(ownerNamed, '最近的记录', new Date(now), people);
+            assert.match(forOwner ?? '', /可明说·和阿明聊的/);
+            assert.match(forOwner ?? '', /DSH 工作记忆/);
+            assert.match(forOwner ?? '', /\n- （来源不明）：来源不明的旧记录/);
+            assert.match(forOwner ?? '', /来源不明.*不代表内容是假的/);
+        } finally {
+            cleanup();
+        }
+    });
+
     test('公共记忆的线索是人和事时：带着它的排在前面（ADR 0018 第一批，说起杭州）', async () => {
         const probe = setupCommon();
         const gegeDoc = `${hashOf(probe.memory, B)}:ep-9`;

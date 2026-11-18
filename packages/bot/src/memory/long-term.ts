@@ -1356,7 +1356,7 @@ export class LongTermMemory {
     }
 
     /** 她想查才查（回复里的 <<查：…>>）：按她给的词，把三个库都查一遍 */
-    async recallPull(contact: NamedContact, query: string, now: Date): Promise<string | undefined> {
+    async recallPull(contact: NamedContact, query: string, now: Date, people: readonly NamedContact[] = []): Promise<string | undefined> {
         const q = query.trim().slice(-MAX_QUERY_CHARS);
         if (!q) return undefined;
         const request: RecallRequest = {
@@ -1370,6 +1370,8 @@ export class LongTermMemory {
         const settled = await Promise.allSettled(banks.map(bank => this.#recall(bank, request, `[${contact.qq}] 主动查记忆失败：${bank}`)));
         const seen = new Set<string>();
         const results: RecallResult[] = [];
+        const sources = new Map<RecallResult, string>();
+        const commonSource = this.#commonSource(contact, people);
         for (const [index, item] of settled.entries()) {
             if (item.status !== 'fulfilled' || !item.value) continue;
             for (const result of item.value) {
@@ -1378,14 +1380,19 @@ export class LongTermMemory {
                 if (seen.has(result.id)) continue;
                 seen.add(result.id);
                 results.push(result);
+                const commonLabel = index === 1 ? commonSource(result) : undefined;
+                sources.set(result, index === 0 ? `和${contact.name}的私聊`
+                    : index === 1 ? this.#isPrivateOwner(contact) && commonLabel === '不能说·来源不明' ? '来源不明' : commonLabel ?? '来源不明'
+                        : 'DSH 工作记忆');
             }
         }
         if (!results.length) return undefined;
         return formatRecalled(results, {
-            header: `[你刚才想起来的（他问的事，从记忆里查到的）]`,
+            header: `[你刚才想起来的（他问的事，从记忆里查到的；“来源不明”只表示暂时对不上出处，不代表内容是假的，把它当作待核对的线索。先承认不确定；涉及别人隐私时不透露细节。只有当前问题确实需要时才核对，不逐条追问；核实纠正时记下具体依据，不因此否定其他旧记忆）]`,
             limit: 6,
             now,
             fade: this.#fade([], {}),
+            source: result => sources.get(result) ?? '来源不明',
         });
     }
 
