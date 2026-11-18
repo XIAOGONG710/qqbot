@@ -464,11 +464,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             const [recalled, freshCommon, ...aboutPeople] = (await Promise.all([
                 remembers ? memory.recall(contact, chat, time, { ...recallOptions, ...fade(0), ...(feltForRecall ? { felt: feltForRecall } : {}) }) : undefined,
                 remembers && cue ? recallCommon(chat, cue, time) : undefined,
-                ...people.map((person, i) => (remembers
+                ...people.map((person, i) => (remembers && memory.canRecallContactMemory(person, contact)
                     ? memory.recall(person, chat, time, {
                         ...recallOptions, ...fade(i + 2), limit: PERSON_RECALLED,
                         header: `[关于${person.name}的旧事（${sourceLabel(person, contact)}；从记忆里想起来的，只作参考）]`,
-                    })
+                    }, contact)
                     : undefined)),
             ])).map(you);
             const relationship = remembers ? you(memory.relationship(contact)) : undefined;
@@ -496,7 +496,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
                 log(`提起了 ${people.map((person, i) => `${person.name}：介绍${aboutPeople[i] ? ` + 召回 ${countLines(aboutPeople[i])} 条${fadeNote(faded[i + 2])}` : ''}`).join('；')}`);
             }
             // 她对他的印象（ADR 0017）放在介绍下面、他的私人记忆上面
-            const impressions = people.map(person => (remembers ? you(memory.impression(person)) : undefined));
+            const impressions = people.map(person => (remembers ? you(memory.impression(person, contact)) : undefined));
             if (impressions.some(Boolean)) log(`有印象：${people.filter((_, i) => impressions[i]).map(person => person.name).join('、')}`);
             const peopleText = people.map((person, i) => describePerson(person, impressions[i], aboutPeople[i]));
             const today = common ? undefined : you(await todayOthers);

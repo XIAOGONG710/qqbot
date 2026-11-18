@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -17,6 +18,7 @@ const MIN = 60_000;
 const T0 = new Date('2026-10-01T20:00:00').getTime();
 const msg = (minute: number, role: 'user' | 'assistant', content: string, messageId = minute): StoredMessage =>
     ({ time: new Date(T0 + minute * MIN).toISOString(), role, content, messageId });
+const createHashForTest = (qq: number, tier: string) => createHash('sha256').update(`qqbot:${qq}-${tier}`).digest('hex').slice(0, 16);
 
 // ---------- 对照 hindsight-api 0.10.2 的 OpenAPI 核对请求体 ----------
 
@@ -57,7 +59,7 @@ function check(value: unknown, schema: Schema, path = '$'): string[] {
 const root = (name: keyof typeof openapi.roots): Schema => ({ $ref: `#/components/schemas/${openapi.roots[name]}` });
 
 /** 假的 Hindsight：记下请求，可以让某次调用失败 */
-function fakeApi(options: { failRetain?: number; recall?: RecallResult[] | Error; mentalModel?: MentalModel } = {}) {
+function fakeApi(options: { failRetain?: number; recall?: RecallResult[] | Error | ((bank: string) => RecallResult[]); mentalModel?: MentalModel } = {}) {
     const calls = { banks: [] as string[], putBank: [] as unknown[], retain: [] as MemoryItem[], recall: [] as RecallRequest[], createMentalModel: [] as unknown[], updateMentalModel: [] as unknown[], refreshMentalModel: 0, getMentalModel: 0 };
     let retains = 0;
     const api: HindsightApi = {
@@ -72,6 +74,7 @@ function fakeApi(options: { failRetain?: number; recall?: RecallResult[] | Error
             calls.banks.push(`recall ${bank}`);
             calls.recall.push(request);
             if (options.recall instanceof Error) throw options.recall;
+            if (typeof options.recall === 'function') return options.recall(bank);
             return options.recall ?? [];
         },
         getMentalModel: async () => { calls.getMentalModel++; return options.mentalModel; },
@@ -460,10 +463,10 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
     const history = [msg(0, 'user', '今天加班'), msg(1, 'assistant', '辛苦')];
     const now = T0 + 24 * 60 * MIN;
 
-    function setupCommon(options: Parameters<typeof fakeApi>[0] = {}, common = true, dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-'))) {
+    function setupCommon(options: Parameters<typeof fakeApi>[0] = {}, common = true, dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-')), privateContact?: { qq: number; tier: string }) {
         const logs: string[] = [];
         const { api, calls } = fakeApi(options);
-        const memory = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: m => logs.push(m), now: () => now, common });
+        const memory = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: m => logs.push(m), now: () => now, common, ...(privateContact ? { privateContact } : {}) });
         return { memory, calls, logs, dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
     }
     const hashOf = (memory: LongTermMemory, contact: { qq: number; tier: string }) => memory.bankId(contact).slice('linmengyao-'.length);
@@ -584,6 +587,51 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
 
             assert.equal(await memory.recallCommon({ ...S, name: '路人' }, chat, new Date(now), []), undefined);
             assert.equal(calls.recall.length, 1, '陌生人档不查');
+        } finally {
+            cleanup();
+        }
+    });
+
+    test('主人的私聊来源不进入其他联系人的召回、人物印象或主动查记忆', async () => {
+        const privateHashProbe = setupCommon();
+        const privateHash = hashOf(privateHashProbe.memory, A);
+        privateHashProbe.cleanup();
+        const ownerNamed = { ...A, name: '阿明' };
+        const C = { qq: 4, tier: 'bestie', name: '小苏' };
+        const privateFact: RecallResult = { id: 'private-owner', text: '主人私聊里的合成隐私', document_id: `${privateHash}:ep-${T0}` };
+        const historicalPrivateFact: RecallResult = { id: 'private-owner-old-tier', text: '主人旧档位里的合成隐私', document_id: `${createHashForTest(A.qq, 'classmate')}:ep-${T0 - 1}` };
+        const otherFact: RecallResult = { id: 'other-contact', text: '同学说过的合成事实', document_id: `${createHashForTest(5, 'classmate')}:ep-${T0}` };
+        const diary: RecallResult = { id: 'diary', text: '她自己的合成日记事实', document_id: 'diary:2026-10-02' };
+        const unknownFact: RecallResult = { id: 'unknown-source', text: '来源不明的合成内容', document_id: 'legacy:ep-unknown' };
+        const { memory, calls, cleanup } = setupCommon({
+            recall: bank => bank === 'linmengyao-common' ? [privateFact, historicalPrivateFact, otherFact, diary, unknownFact]
+                : bank === `linmengyao-${createHashForTest(5, 'classmate')}` || bank === `linmengyao-${createHashForTest(4, 'bestie')}` ? []
+                    : [{ id: 'private-work', text: '主人 DSH 私有工作记忆' }],
+            mentalModel: { id: 'person-model', content: '可能含有主人私聊内容的摘要' },
+        }, true, undefined, A);
+        try {
+            await memory.sync({ qq: 5, tier: 'classmate' }, { user: '小李', char: '林梦瑶' }, history);
+            const chat = [{ role: 'user' as const, content: '最近有什么事', time: new Date(now).toISOString() }];
+            const common = await memory.recallCommon(C, chat, new Date(now), [ownerNamed, { qq: 5, tier: 'classmate', name: '小李' }, C]);
+            assert.doesNotMatch(common ?? '', /主人私聊里的合成隐私|主人旧档位里的合成隐私|来源不明的合成内容/);
+            assert.match(common ?? '', /同学说过的合成事实/);
+            assert.match(common ?? '', /她自己的合成日记事实/);
+
+            const beforePrivateRecall = calls.banks.length;
+            assert.equal(await memory.recall(A, chat, new Date(now), { query: '合成隐私' }, C), undefined);
+            assert.equal(calls.banks.length, beforePrivateRecall, '不能为其他联系人读取主人的私有 bank');
+            assert.equal(memory.canRecallContactMemory(A, C), false);
+            const beforeModelReads = calls.getMentalModel;
+            assert.equal(memory.impression({ qq: 5, tier: 'classmate', name: '小李' }, C), undefined, '共享人物摘要可能混入主人私聊，其他联系人不读取');
+            assert.equal(calls.getMentalModel, beforeModelReads, '拒绝访问时不读取人物摘要');
+
+            const pulled = await memory.recallPull(C, '合成隐私', new Date(now));
+            assert.doesNotMatch(pulled ?? '', /主人私聊里的合成隐私|主人旧档位里的合成隐私|主人 DSH 私有工作记忆|来源不明的合成内容/);
+            assert.match(pulled ?? '', /她自己的合成日记事实/, '她自己写的日记仍按原策略共享');
+
+            const beforeToday = calls.banks.length;
+            assert.equal(await memory.othersToday(C, new Date(now), [ownerNamed, C], new Date(now - 60_000)), undefined);
+            assert.equal(calls.banks.length, beforeToday, '今日他人回顾也不把主人私聊纳入候选');
         } finally {
             cleanup();
         }

@@ -1585,6 +1585,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             recallTimeoutMs: config.memory.recallTimeoutMs,
             log,
             common: true,
+            ...(deviceOwner ? { privateContact: deviceOwner } : {}),
             reconcile: config.memoryReconcile,
         })
         : undefined;

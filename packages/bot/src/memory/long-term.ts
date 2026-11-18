@@ -394,6 +394,8 @@ export interface LongTermMemoryOptions {
     now?: () => number;
     /** 公共记忆库（ADR 0016）：名单里除陌生人档以外的人都写、都召回；默认否 */
     common?: boolean;
+    /** 设备所有者的私聊不得作为其他联系人的记忆来源。 */
+    privateContact?: MemoryContact;
     /** 记忆对账（ADR 0201）：隔一阵读一次 Hindsight 里的文档，进度里记着写过、实际没有的重新排队写；默认否 */
     reconcile?: boolean;
 }
@@ -769,6 +771,10 @@ export class LongTermMemory {
 
     bankId(contact: MemoryContact): string {
         return `${this.#options.bankPrefix}-${this.#hash(contact)}`;
+    }
+
+    canRecallContactMemory(owner: MemoryContact, listener: MemoryContact): boolean {
+        return !this.#isPrivateOwner(owner) || this.#isPrivateOwner(listener);
     }
 
     /** 公共记忆库的 bank（ADR 0016）；没开也照样算出来（模拟器跑完要删） */
@@ -1254,8 +1260,9 @@ export class LongTermMemory {
     async recall(
         contact: MemoryContact, chat: ChatMessage[], now: Date,
         options: { query?: string; window?: { start: Date; end: Date }; header?: string; limit?: number; felt?: (day: Date, text: string) => string | undefined } & FadeOptions = {},
+        listener: MemoryContact = contact,
     ): Promise<string | undefined> {
-        if (this.#stopped) return undefined;
+        if (this.#stopped || !this.canRecallContactMemory(contact, listener)) return undefined;
         const state = this.#readable(`[${contact.qq}] 记忆召回`, () => this.#load(contact));
         if (!state?.bankConfigured) return undefined;
         const query = options.query ?? recallQuery(chat);
@@ -1310,7 +1317,9 @@ export class LongTermMemory {
         const about = (r: RecallResult) => focus.some(name => r.entities?.includes(name) || r.text.includes(name));
         const results = focus.length ? [...inWindow].sort((a, b) => Number(about(b)) - Number(about(a))) : inWindow;
         const own = `${this.#hash(contact)}:`;
-        return this.#formatDerived(stored.bankId, results.filter(r => !r.document_id?.startsWith(own)), {
+        return this.#formatDerived(stored.bankId, results.filter(r => !r.document_id?.startsWith(own)
+            && (this.#isPrivateOwner(contact) || !this.#options.privateContact
+                || this.#isKnownCommonDocument(r.document_id) && !this.#isPrivateOwnerDocument(r.document_id))), {
             header: `[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和${contact.name}聊的，用不上就别提）]`,
             limit: SHARED_RECALLED,
             now,
@@ -1361,9 +1370,11 @@ export class LongTermMemory {
         const settled = await Promise.allSettled(banks.map(bank => this.#recall(bank, request, `[${contact.qq}] 主动查记忆失败：${bank}`)));
         const seen = new Set<string>();
         const results: RecallResult[] = [];
-        for (const item of settled) {
+        for (const [index, item] of settled.entries()) {
             if (item.status !== 'fulfilled' || !item.value) continue;
             for (const result of item.value) {
+                if (!this.#isPrivateOwner(contact) && (index === 2 || index === 1
+                    && (result.type === 'observation' || !this.#isKnownCommonDocument(result.document_id) || this.#isPrivateOwnerDocument(result.document_id)))) continue;
                 if (seen.has(result.id)) continue;
                 seen.add(result.id);
                 results.push(result);
@@ -1401,7 +1412,9 @@ export class LongTermMemory {
         const stored = this.#readable('她今天跟别人聊过的', () => readCommonMemoryState(join(this.#options.dir, 'common.json'), message => this.#options.log(message)));
         if (stored?.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
         const own = this.#hash(contact);
-        const owners = new Set(people.map(person => this.#hash(person)).filter(hash => hash !== own));
+        const privateHashes = new Set(this.#privateOwnerHashes());
+        const owners = new Set(people.map(person => this.#hash(person)).filter(hash => hash !== own
+            && !(privateHashes.has(hash) && !this.#isPrivateOwner(contact))));
         if (owners.size === 0) return undefined;
         const end = new Date(now.getTime() + 60_000);
         const otherNames = people.filter(person => owners.has(this.#hash(person))).map(person => person.name).join('、');
@@ -1499,8 +1512,9 @@ export class LongTermMemory {
     /**
      * 她对这个人的印象（ADR 0017，公共库里的「她眼中的他」）：返回缓存，过期了在后台重新读；没开公共库、还没建、内容为空都是 undefined
      */
-    impression(person: NamedContact): string | undefined {
-        if (this.#stopped || !this.#options.common || !knowsPeople(person.tier)) return undefined;
+    impression(person: NamedContact, listener?: MemoryContact): string | undefined {
+        if (this.#stopped || !this.#options.common || !knowsPeople(person.tier)
+            || (listener !== undefined && this.#options.privateContact !== undefined && !this.#isPrivateOwner(listener))) return undefined;
         const snapshot = this.#derivedSnapshot(this.commonBankId());
         if (!snapshot || snapshot.dirty || this.#writtenBlocked(this.commonBankId()) || !this.#readable(`[${person.qq}] 对人的印象`, () => this.#load(person))?.personModel) return undefined;
         const generation = snapshot.generation;
@@ -1555,6 +1569,26 @@ export class LongTermMemory {
     /** bank ID、公共库的 document_id 用的：不含原始 QQ 号 */
     #hash(contact: MemoryContact): string {
         return createHash('sha256').update(`qqbot:${this.#key(contact)}`).digest('hex').slice(0, 16);
+    }
+
+    #isPrivateOwner(contact: MemoryContact): boolean {
+        const owner = this.#options.privateContact;
+        return Boolean(owner && owner.qq === contact.qq);
+    }
+
+    #privateOwnerHashes(): string[] {
+        const owner = this.#options.privateContact;
+        if (!owner) return [];
+        return [...new Set(['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger', 'unlisted', owner.tier]
+            .map(tier => this.#hash({ qq: owner.qq, tier })))];
+    }
+
+    #isPrivateOwnerDocument(id: string | null | undefined): boolean {
+        return Boolean(id && this.#privateOwnerHashes().some(hash => id.startsWith(`${hash}:`) || id.startsWith(`self:${hash}:`) || id.startsWith(`diary-self:${hash}:`)));
+    }
+
+    #isKnownCommonDocument(id: string | null | undefined): boolean {
+        return Boolean(id && (/^(?:diary|week|phase):/.test(id) || SELF_NOTE_ID.test(id) || /^[0-9a-f]{16}:ep--?\d+$/.test(id)));
     }
 
     #path(contact: MemoryContact): string {
