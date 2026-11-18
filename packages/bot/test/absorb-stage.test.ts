@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { ABSORB_STAGES, absorbStage, type Module } from '../src/interpreter/interpreter.ts';
 import { consentModule } from '../src/modules/consent.ts';
-import { selfNotesModule, takeSelfNotes } from '../src/modules/self-notes.ts';
+import { selfNotesModule, takeMemoryReview, takeSelfNotes } from '../src/modules/self-notes.ts';
 import { shellModule } from '../src/modules/shell.ts';
 import { workModeModule, type WorkMarkerHooks } from '../src/modules/work-mode.ts';
 import type { Contact } from '../src/platform/config.ts';
@@ -29,8 +29,9 @@ describe('标记处理顺序表（ADR 0336 第 12 步）', () => {
 });
 
 describe('她自己记的（modules/self-notes.ts）', () => {
-    const setup = (overrides: { diary?: boolean; diaryThrows?: boolean; memory?: boolean; rememberFails?: boolean } = {}) => {
+    const setup = (overrides: { diary?: boolean; diaryThrows?: boolean; memory?: boolean; rememberFails?: boolean; review?: boolean } = {}) => {
         const kept: string[] = [], diary: string[] = [], remembered: [number, string, string][] = [], lines: string[] = [];
+        const reviews: [number, string][] = [];
         const module = selfNotesModule({
             keepPrivate: text => { kept.push(text); },
             ...(overrides.diary ? { keepDiary: (text: string) => { if (overrides.diaryThrows) throw new Error('盘满了'); diary.push(text); } } : {}),
@@ -39,14 +40,25 @@ describe('她自己记的（modules/self-notes.ts）', () => {
                 remembered.push([contact.qq, text, kind]);
                 return overrides.rememberFails ? Promise.reject(new Error('连不上')) : Promise.resolve();
             },
+            ...(overrides.review ? { reviewMemory: (contact: Contact, text: string) => { reviews.push([contact.qq, text]); } } : {}),
             log: line => lines.push(line),
         });
-        return { kept, diary, remembered, lines, absorb: (text: string, contact = boyfriend) => absorbStage([module], 'notes', text, contact) };
+        return { kept, diary, remembered, reviews, lines, absorb: (text: string, contact = boyfriend) => absorbStage([module], 'notes', text, contact) };
     };
 
     test('takeSelfNotes：三种标记都摘，全角半角冒号都认，空的不算，多出来的空行收掉', () => {
         assert.deepEqual(takeSelfNotes('好呀\n<<记住：他周五考试>>\n\n\n<<日记: 今天很开心>><<私密：>>\n晚安'),
             { text: '好呀\n\n晚安', notes: [{ kind: '记住', text: '他周五考试' }, { kind: '日记', text: '今天很开心' }] });
+    });
+
+    test('记忆待核对标记只摘除并保存她写的线索；没有回调时也不漏到对话里', () => {
+        assert.deepEqual(takeMemoryReview('我记得不太准\n<<记忆待核对：10月2日｜和阿明聊的｜第一次见面在校门口｜我可能把地点记错了>>'), {
+            text: '我记得不太准', reviews: ['10月2日｜和阿明聊的｜第一次见面在校门口｜我可能把地点记错了'],
+        });
+        const s = setup({ review: true });
+        assert.equal(s.absorb('我记得不太准\n<<记忆待核对：10月2日｜和阿明聊的｜见面地点｜记不清>>'), '我记得不太准');
+        assert.deepEqual(s.reviews, [[boyfriend.qq, '10月2日｜和阿明聊的｜见面地点｜记不清']]);
+        assert.equal(setup().absorb('好呀\n<<记忆待核对：疑点>>'), '好呀');
     });
 
     test('私密只进她自己的地方，不进记忆、不进本地日记', () => {

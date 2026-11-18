@@ -74,7 +74,7 @@ describe('<<查>> 模块（ADR 0336）', () => {
         assert.deepEqual(r.calls.map(c => ({ qq: c.contact.qq, query: c.query })), [{ qq: 1, query: '第一次约会的地方' }]);
         assert.equal(r.calls[0]!.contact, turn.contact);
         assert.deepEqual(s.notes, [pullNote('[你刚才想起来的]\n- 12月6日：第一次约会去的是学校后门那家火锅店')]);
-        assert.equal(s.notes[0], '（你刚才想起来了：\n[你刚才想起来的]\n- 12月6日：第一次约会去的是学校后门那家火锅店\n用这些回答他，不要再写 <<查>> 标记。）');
+        assert.equal(s.notes[0], '（你刚才想起来了：\n[你刚才想起来的]\n- 12月6日：第一次约会去的是学校后门那家火锅店\n用这些回答他，不要再写 <<查>> 标记。如果你确实觉得某条记忆可能记错了，不要把它当成确定事实，也不要自行改掉；先告诉他你拿不准，并请他帮你核对。把日期、来源、能辨认的原记录简述和疑点写进隐藏标记 <<记忆待核对：日期｜来源｜原记录简述｜疑点>>。只有明确有疑点时才写，不要每条都标。）');
         assert.deepEqual(s.logs, ['她主动查记忆：第一次约会的地方（1 条）']);
         assert.equal(s.accepted(), 0);
     });

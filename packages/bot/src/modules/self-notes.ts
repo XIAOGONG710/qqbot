@@ -23,6 +23,17 @@ export function takeSelfNotes(input: string): { text: string; notes: Array<{ kin
     return { text, notes };
 }
 
+/** 她在主动查到的旧记忆里明确提出待核对时，摘掉隐藏标记并保留她写的依据。 */
+export function takeMemoryReview(input: string): { text: string; reviews: string[] } {
+    const reviews: string[] = [];
+    const text = input.replace(/<<记忆待核对[：:]\s*([\s\S]*?)>>/g, (_match, body: string) => {
+        const value = body.trim().replace(/\s+/g, ' ').slice(0, 500);
+        if (value) reviews.push(value);
+        return '';
+    }).replace(/\n{3,}/g, '\n\n').trim();
+    return { text, reviews: reviews.slice(0, 1) };
+}
+
 export interface SelfNotesModuleOptions {
     /** 私密的话写进她自己的地方 */
     keepPrivate: (text: string) => void;
@@ -30,6 +41,8 @@ export interface SelfNotesModuleOptions {
     keepDiary?: (text: string) => void;
     /** 写进长期记忆；没开长期记忆时返回 undefined */
     remember: (contact: Contact, text: string, kind: '记住' | '日记') => Promise<void> | undefined;
+    /** 记录她主动查记忆时提出的核对依据；由 App 限定为设备所有者 */
+    reviewMemory?: (contact: Contact, text: string) => void;
     log: Log;
 }
 
@@ -38,7 +51,12 @@ export function selfNotesModule(options: SelfNotesModuleOptions): Module {
         id: 'self-notes',
         absorbAt: {
             notes: (input, contact) => {
-                const taken = takeSelfNotes(input);
+                const reviewed = takeMemoryReview(input);
+                for (const review of reviewed.reviews) {
+                    try { options.reviewMemory?.(contact, review); }
+                    catch (error) { options.log(`[${contact.qq}] 记忆核对依据没能保存：${error instanceof Error ? error.message : String(error)}`); }
+                }
+                const taken = takeSelfNotes(reviewed.text);
                 for (const note of taken.notes) {
                     if (note.kind === '私密') {
                         options.keepPrivate(note.text);

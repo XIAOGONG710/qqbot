@@ -14,7 +14,7 @@ const countLines = (text: string) => text.split('\n').length - 1;
 const strip = (text: string) => text.replace(PULL_ALL, '').trim();
 
 /** 查到之后重写时加的那句说明 */
-export const pullNote = (recalled: string) => `（你刚才想起来了：\n${recalled}\n用这些回答他，不要再写 <<查>> 标记。）`;
+export const pullNote = (recalled: string) => `（你刚才想起来了：\n${recalled}\n用这些回答他，不要再写 <<查>> 标记。如果你确实觉得某条记忆可能记错了，不要把它当成确定事实，也不要自行改掉；先告诉他你拿不准，并请他帮你核对。把日期、来源、能辨认的原记录简述和疑点写进隐藏标记 <<记忆待核对：日期｜来源｜原记录简述｜疑点>>。只有明确有疑点时才写，不要每条都标。）`;
 
 export interface ReviewPullOptions {
     /**

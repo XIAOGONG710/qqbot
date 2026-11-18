@@ -29,7 +29,7 @@ import { shellModule } from '../modules/shell.ts';
 import { learningQuestionModule } from '../modules/learning-question.ts';
 import { workModeModule } from '../modules/work-mode.ts';
 import { selfMemoryModule } from '../modules/self-memory.ts';
-import { selfNotesModule, takeSelfNotes } from '../modules/self-notes.ts';
+import { selfNotesModule, takeMemoryReview, takeSelfNotes } from '../modules/self-notes.ts';
 import { soulModule } from '../modules/soul.ts';
 import { herNotesModule } from '../modules/her-notes.ts';
 import { idiomsModule } from '../modules/idioms.ts';
@@ -184,6 +184,7 @@ import { promiseKeeper, type Appointment } from '.././life/promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from '.././life/her-days.ts';
 import { herPlanActivities, saveHerPlan, windowAt } from '.././life/her-plans.ts';
 import { isCorrection, recordCorrection, understandingLine } from '.././life/understanding.ts';
+import { recordMemoryReview } from '../memory/memory-review.ts';
 import { recordTrace, traceOf, tracesLine } from '.././life/traces.ts';
 import { bodyAt } from '.././life/body.ts';
 import { useWorldNeeds, worldState, type WorldNow } from '.././world/world.ts';
@@ -1089,6 +1090,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             keepPrivate: text => { appendPrivate(text); },
             ...(config.diaryInsights ? { keepDiary: (text: string) => { recordSelfDiary(config.dataDir, text, clockNow().getTime()); } } : {}),
             remember: (contact, text, kind) => memory?.rememberSelfNote(contact, text, kind),
+            ...(config.selfDirectedMemory ? { reviewMemory: (contact, text) => {
+                if (deviceOwner && contact.qq === deviceOwner.qq && config.memory) recordMemoryReview(config.dataDir, text, clockNow().getTime());
+            } } : {}),
             log,
         }),
         // 她在本机的那一份（DSH 的灵魂目录）：心里的线头、拒绝过的、评价、「你现在的生活」、首轮铺底；只给男朋友档，每一轮现读
@@ -2059,7 +2063,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
 
     /** 存进聊天记录的版本：所有内部标记都剥掉，免得下一轮她又在历史里看见自己写标记 */
     function historyText(sent: string): string {
-        return stripInternalMarkers(takeSelfNotes(sent).text)
+        return stripInternalMarkers(takeMemoryReview(takeSelfNotes(sent).text).text)
             .replace(/<<查[：:][\s\S]*?>>/g, '')
             .replace(/<<同意工作>>/g, '')
             .replace(/<<拒绝工作[：:][\s\S]*?>>/g, '')
