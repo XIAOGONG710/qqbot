@@ -64,7 +64,24 @@ function publicAnnouncements(entries: readonly GroupEntry[], range: { start: num
 }
 
 function removeSuperseded(items: RecallItem[]): RecallItem[] {
-    return items.filter(item => !items.some(later => later.correction && later.topic === item.topic && later.time > item.time));
+    const removed = new Set<RecallItem>();
+    const topics = new Set(items.flatMap(item => item.topic ? [item.topic] : []));
+    for (const topic of topics) {
+        const schedules = items.filter(item => item.topic === topic && !item.correction);
+        if (schedules.length !== 1) continue;
+        const schedule = schedules[0]!;
+        const corrections = items.filter(item => item.topic === topic && item.correction && item.time > schedule.time);
+        if (!corrections.length) continue;
+        const latest = corrections.reduce((current, item) => item.time > current.time ? item : current);
+        removed.add(schedule);
+        for (const correction of corrections) if (correction !== latest) removed.add(correction);
+    }
+    return items.filter(item => !removed.has(item));
+}
+
+function ambiguousCorrection(items: readonly RecallItem[], topic?: string): boolean {
+    return items.some(correction => correction.correction && correction.topic && (!topic || correction.topic === topic)
+        && items.filter(item => !item.correction && item.topic === correction.topic).length > 1);
 }
 
 /** 只查当前群里提问人亲自发出的公开日程文本。 */
@@ -79,9 +96,13 @@ export function groupScheduleRecall(
         ...scheduleAnnouncements(entries, range, query[2], asker),
         ...publicAnnouncements(entries, range, asker).filter(item => item.correction && item.topic === query[2]),
     ]);
-    const item = items[0];
-    if (item) return '[同群旧消息：当前提问人曾于 ' + formatDate(new Date(item.time))
-        + ' 在本群写过「' + item.text + '」。这是当时的说法，不代表日程现在仍有效。只用它回答这次提问。]';
+    items.sort((left, right) => right.time - left.time);
+    const ambiguous = ambiguousCorrection(items, query[2]);
+    const selected = ambiguous ? items.slice(0, 3) : items.slice(0, 1);
+    if (selected.length) return '[同群旧消息：当前提问人曾在本群写过'
+        + selected.map(item => '（' + formatDate(new Date(item.time)) + '）「' + item.text + '」').join('；')
+        + '。' + (ambiguous ? '同类事项有多条，无法确认是否同一件，未合并，请按发送时间区分。' : '这是当时的说法，不代表日程现在仍有效。')
+        + '只用它回答这次提问。]';
 }
 
 /** 设备所有者明确问一个已配置群时，只抽取该群的公开日程。 */
@@ -111,8 +132,15 @@ export function privateGroupScheduleRecall(
         : removeSuperseded([
             ...scheduleAnnouncements(entries, range, query?.[2]),
             ...publicAnnouncements(entries, range).filter(item => item.correction && item.topic === query?.[2]),
-        ]).slice(0, query?.[2] ? 1 : 3);
+        ]).sort((left, right) => right.time - left.time).slice(0, query?.[2]
+            ? (ambiguousCorrection([
+                ...scheduleAnnouncements(entries, range, query[2]),
+                ...publicAnnouncements(entries, range).filter(item => item.correction && item.topic === query[2]),
+            ], query[2]) ? 3 : 1)
+            : 3);
     if (!items.length) return undefined;
+    const ambiguous = !noticeQuery && ambiguousCorrection(items, query?.[2]);
     return '[指定群的公开消息：' + items.map(item => formatDate(new Date(item.time)) + ' 当时写过「' + item.text + '」').join('；')
-        + '。只用于回答这个群的提问；如涉及日程，可能已经过期。]';
+        + '。只用于回答这个群的提问；'
+        + (ambiguous ? '同类事项有多条，无法确认是否同一件，未合并，请按发送时间区分。' : '如涉及日程，可能已经过期。') + ']';
 }

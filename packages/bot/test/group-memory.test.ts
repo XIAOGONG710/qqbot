@@ -102,6 +102,15 @@ test('明确的同事项更正覆盖旧日程；不相关事项保留，群内�
     const activity = privateGroupScheduleRecall(load, groups, '活动群昨天活动几点？', now) ?? '';
     assert.match(activity, /活动改到16:00/);
     assert.doesNotMatch(activity, /15:30/);
+    const ambiguousEntries = [...entries, {
+        content: '群活动19:30开始', from: 6, name: '另一合成成员', messageId: 7,
+        time: '2026-11-17T08:00:00+08:00',
+    }];
+    const ambiguous = privateGroupScheduleRecall(() => ambiguousEntries, groups, '活动群昨天活动几点？', now) ?? '';
+    assert.match(ambiguous, /15:30/);
+    assert.match(ambiguous, /19:30/);
+    assert.match(ambiguous, /16:00/);
+    assert.match(ambiguous, /无法确认是否同一件/);
     const broad = privateGroupScheduleRecall(load, groups, '活动群昨天群里说了什么？', now) ?? '';
     assert.match(broad, /活动改到16:00/);
     assert.match(broad, /比赛改为17:00/);
