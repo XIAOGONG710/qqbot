@@ -1470,3 +1470,9 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 同理还有 `/亲热`（ADR 0170）、`/好` `/一般` `/差`（给回复打分）、`/主动`（ADR 0156）：判断写在同一个「只认男朋友档的他、只认纯文字」的条件下、排在保留名单之后，也都走不到，一并删掉
   （`memory-app-direct-text-owner-review.test.ts` 里 `/主动` 那条早已因此 skip）。注意：打分是 `ratingSummary()`（SOUL 能不能改）唯一的来源，10-31 起就没有新分数进来；这次不改它，留给用户定。
 - 验证（第二批）：41 个场景对快照逐字一致；`app.test.ts`、`memory-app-direct-text-owner-review.test.ts` 和亲密 / SOUL 相关测试通过（187 个，1 个原本就 skip）。
+
+### 第 6 步：app.ts 只剩装配——「/dsh ask」排队（2026-11-19）
+
+- 他显式请 DSH 顾问回答（`/dsh ask`、`/dsh talk`）的排队、取消、停止原样从 app.ts 搬到 `src/dsh-asks.ts`（`dshAsks(deps)`）；队尾、在途数、停止用的 AbortController 跟着搬进去（原来散在 App 开头）。
+  App 只留：建它、`askDsh` 这个名字（指令处理里调）、在原位登记停法（`lifetime.own('dsh-asks')`）。DSH 的状态、最近几轮、语气档案仍由 App 算好传进去。
+- 验证：41 个场景对快照逐字一致；`memory-app-dsh-owner-review`、`memory-app-tell-owner-review`、`app.test.ts` 里 DSH 的通过；变异检验：`ask` 什么都不做，5 个失败。

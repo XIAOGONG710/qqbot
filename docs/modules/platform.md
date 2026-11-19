@@ -45,6 +45,7 @@
 - `executor/`
 - `interpreter/`
 - `dsh-link.ts`
+- `dsh-asks.ts`
 - `dsh-continuity.ts`
 - `dsh-state-export.ts`
 - `mobile-companion-dsh.ts`

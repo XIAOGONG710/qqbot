@@ -179,6 +179,7 @@ import { humanValueTrends, humanValuesAt, humanValuesFromAnchor, type HumanValue
 import { developmentSnapshot, developmentSummary, type DevelopmentSummary } from '.././life/development.ts';
 import { createDshLink, dshOptionsFromLlm, sanitizeDshError, type DshProbeResult, type DshState, type DshVoice } from '.././dsh-link.ts';
 import { DshConversationContext } from '.././dsh-continuity.ts';
+import { dshAsks } from '.././dsh-asks.ts';
 import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
 import { writeDshState } from '.././dsh-state-export.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
@@ -554,9 +555,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         log: message => log(`入口：${message}`),
     });
     let dshProbe: DshProbeResult | undefined;
-    let dshAskTail: Promise<void> = Promise.resolve();
-    let dshAskPending = 0;
-    const dshAskLifetime = new AbortController();
     const dshConversation = new DshConversationContext({
         file: join(config.dataDir, 'memory', 'dsh-recent.json'),
         log: message => log(`DSH：${message}`),
@@ -3278,41 +3276,10 @@ ${body}
         });
     }
 
-    const askDsh = (question: string): void => {
-        const askedAt = worldNow();
-        dshAskPending++;
-        dshAskTail = dshAskTail.then(async () => {
-            if (stopped || dshAskLifetime.signal.aborted) return;
-            try {
-                const continuity = dshRecentTurns();
-                const request = Promise.resolve(dshLink.advise({ question, state: dshState(), recentTurns: continuity, voice: dshVoice() }))
-                    .then(reply => ({ kind: 'reply' as const, reply }), error => ({ kind: 'error' as const, error }));
-                let onAbort: (() => void) | undefined;
-                const cancelled = new Promise<{ kind: 'cancelled' }>(resolve => {
-                    if (dshAskLifetime.signal.aborted) resolve({ kind: 'cancelled' });
-                    else {
-                        onAbort = () => resolve({ kind: 'cancelled' });
-                        dshAskLifetime.signal.addEventListener('abort', onAbort, { once: true });
-                    }
-                });
-                const outcome = await Promise.race([request, cancelled]);
-                if (onAbort) dshAskLifetime.signal.removeEventListener('abort', onAbort);
-                if (outcome.kind === 'cancelled' || stopped || dshAskLifetime.signal.aborted) return;
-                if (outcome.kind === 'error') throw outcome.error;
-                const reply = outcome.reply;
-                const text = reply.trim() || '我刚才没整理好，你再问我一次。';
-                dshConversation.commit(question, text, askedAt, worldNow());
-                tellOwner(text);
-            } catch (error) {
-                if (!stopped && !dshAskLifetime.signal.aborted) tellOwner(`（DSH 咨询失败：${sanitizeDshError(error)}）`);
-            }
-        }).finally(() => { dshAskPending--; });
-    };
-    const stopDshAsks = (): Promise<void> | undefined => {
-        dshAskLifetime.abort();
-        return dshAskPending ? dshAskTail : undefined;
-    };
-    lifetime.own('dsh-asks', stopDshAsks);
+    // 「/dsh ask」「/dsh talk」：在 dsh-asks.ts（ADR 0336 第 6 步）
+    const dshAskQueue = dshAsks({ stopped: () => stopped, now: worldNow, link: dshLink, state: dshState, recentTurns: dshRecentTurns, voice: dshVoice, conversation: dshConversation, tellOwner });
+    const askDsh = dshAskQueue.ask;
+    lifetime.own('dsh-asks', () => dshAskQueue.stop());
 
     // 「/休眠」「/唤醒」（ADR 0161）：在 memory/dormancy-commands.ts（ADR 0336 第 6 步）
     const dormancyCommandsNow = dormancyCommands({
