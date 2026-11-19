@@ -24,7 +24,7 @@
 //   - 「改不改得我自己说了算」→ 他的反应只给她看，不在代码里按反应改她。
 // 这是绊线加上限，不是智能审查：绕得过去。真正的保护是「留痕、可回滚、只进男朋友档、事实以卡为准、不碰底线」。
 
-import { appendFileSync, mkdirSync, statSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import type { StoredMessage } from '../memory/history.ts';
@@ -232,6 +232,8 @@ export interface PortraitInput {
     reactions: readonly Reaction[];
     /** 上一次想改、没收的原因（「写歪了你得跟我说」） */
     lastRejected?: string;
+    /** 她在电脑上（DSH）自己写下的 SOUL.md 最近几段（readDesktopSelf） */
+    desktopSelf?: string;
 }
 
 const bullets = (items: readonly string[], none: string) => (items.length ? items.map(item => `- ${item}`).join('\n') : none);
@@ -247,6 +249,7 @@ export function portraitMessages(input: PortraitInput): OpenAIMessage[] {
             ...(input.lastRejected ? [`上次你想改，没成：${input.lastRejected}。（你说过写歪了要跟你说一声，就是这个；这次想清楚再改，或者不改）`] : []),
             `你自己记下的说话习惯：\n${bullets(input.speechNotes, '（没有）')}`,
             `你翻日记时发现的自己：\n${bullets(input.insights, '（没有）')}`,
+            ...(input.desktopSelf ? [`你在电脑上自己写下的（SOUL.md 最近的几段；同一个你，只是在另一个地方写的）：\n${input.desktopSelf}`] : []),
             `最近几天你和${input.user}的几段聊天（旧到新）：\n${chats || '（没有）'}`,
             `他对你说话方式的反应（这是他的感受，不是规定；你想不想变、怎么变你自己定，也可以觉得他说得不对）：\n${bullets(reactions, '（这几天没看出来）')}`,
             `以后你每次跟他聊天，都会带着这份「我现在的样子」。设定里写好的事实（名字、年龄、爸妈、家、学校、经历、他在哪边）不会变，你也说过这些不能动，这份里不写；这份写的是会变的那部分：你说话的习惯、口味、在意什么、看事情的方式、最近在变什么、为什么变。`,
@@ -260,7 +263,7 @@ export function portraitMessages(input: PortraitInput): OpenAIMessage[] {
 
 export interface PortraitDeps {
     dataDir: string;
-    /** 灵魂目录：写好之后给桌面上的她留一份（PORTRAIT.json，桌面那边读不读由 DSH 定） */
+    /** 灵魂目录：读她在电脑上写的 SOUL.md 最近几段；写好之后给桌面上的她留一份（PORTRAIT.json，桌面那边读不读由 DSH 定） */
     soulDir?: string;
     now: () => number;
     generate: (messages: OpenAIMessage[]) => Promise<string>;
@@ -275,8 +278,8 @@ export interface PortraitDeps {
 
 export interface PortraitResult { ran: boolean; applied?: AppliedPortrait; error?: string }
 
-const materialKey = (messages: readonly StoredMessage[], notes: readonly string[], insights: readonly string[]) =>
-    `${messages.at(-1)?.time ?? ''}|${notes.length}:${len(notes.join(''))}|${insights.length}:${len(insights.join(''))}`;
+const materialKey = (messages: readonly StoredMessage[], notes: readonly string[], insights: readonly string[], desktop: string) =>
+    `${messages.at(-1)?.time ?? ''}|${notes.length}:${len(notes.join(''))}|${insights.length}:${len(insights.join(''))}|${len(desktop)}`;
 
 /** 到点了就想一次（没到点、材料不够、材料没变，什么都不做）。成功才记 lastReflectionAt；失败只记一次尝试，过 2 小时再试 */
 export async function reflectPortraitIfDue(deps: PortraitDeps): Promise<PortraitResult> {
@@ -288,8 +291,9 @@ export async function reflectPortraitIfDue(deps: PortraitDeps): Promise<Portrait
     const insights = loadInsightsState(deps.dataDir).notes.map(note => note.text);
     const exchanges = recentExchanges(messages, now, CHAT_WINDOW_MS, MAX_EXCHANGES);
     const reactions = hisReactions(messages, now);
-    if (!state.text && exchanges.length < MIN_EXCHANGES && !speechNotes.length && !insights.length) return { ran: false };
-    const material = materialKey(messages, speechNotes, insights);
+    const desktopSelf = readDesktopSelf(deps.soulDir);
+    if (!state.text && exchanges.length < MIN_EXCHANGES && !speechNotes.length && !insights.length && !desktopSelf) return { ran: false };
+    const material = materialKey(messages, speechNotes, insights, desktopSelf);
     if (state.lastMaterial === material) return { ran: false };
     state.lastAttemptAt = now;
     state.attempts = state.attempts.day === dayKey(now) ? { day: state.attempts.day, n: state.attempts.n + 1 } : { day: dayKey(now), n: 1 };
@@ -298,6 +302,7 @@ export async function reflectPortraitIfDue(deps: PortraitDeps): Promise<Portrait
         const reply = await deps.generate(portraitMessages({
             char: deps.names.char, user: deps.names.user, persona: deps.persona(), now,
             current: state.text, speechNotes, insights, exchanges, reactions,
+            ...(desktopSelf ? { desktopSelf } : {}),
             ...(state.rejected ? { lastRejected: state.rejected.reason } : {}),
         }));
         const decision = parsePortraitDecision(reply);
@@ -311,7 +316,7 @@ export async function reflectPortraitIfDue(deps: PortraitDeps): Promise<Portrait
         fresh.lastReflectionAt = now;
         fresh.lastMaterial = material;
         savePortraitState(deps.dataDir, fresh);
-        if (applied.changed && deps.soulDir) writePortraitExport(deps.soulDir, fresh);
+        if (applied.changed && deps.soulDir) refreshPortraitExport(deps.soulDir, deps.dataDir, now);
         deps.log(`我现在的样子：晚上想了一次（${exchanges.length} 段聊天、他的反应 ${reactions.length} 条）——${applied.changed ? `改了（第 ${fresh.version} 版）` : applied.reason ? `想改，没成：${applied.reason}` : '没改'}`);
         return { ran: true, applied };
     } catch (error) {
@@ -356,6 +361,50 @@ export function portraitReader(dataDir: string): () => PortraitView {
 export const PORTRAIT_EXPORT_FILE = 'PORTRAIT.json';
 export const PORTRAIT_EXPORT_KIND = 'qq-self-portrait';
 
-export function writePortraitExport(soulDir: string, state: Pick<PortraitState, 'text' | 'at' | 'version'>): void {
-    writeJsonAtomic(join(soulDir, PORTRAIT_EXPORT_FILE), { kind: PORTRAIT_EXPORT_KIND, generatedAt: new Date(state.at).toISOString(), version: state.version, text: state.text });
+/** 开着时每隔这么久重写一次时间戳：桌面那边超过 6 小时没刷新就当没有（QQ 没在跑 / 开关关掉了：别拿旧的冒充现在，和 INSIGHTS.json 同一个道理） */
+export const PORTRAIT_REFRESH_MS = 3_600_000;
+export const PORTRAIT_STALE_MS = 6 * 3_600_000;
+
+export interface PortraitExport { kind: typeof PORTRAIT_EXPORT_KIND; generatedAt: string; at: number; version: number; why?: string; text: string }
+
+/** 还没写过不写；内容变了、或时间戳超过 1 小时没刷新才写（原子写）。返回有没有写；灵魂目录不在就算了 */
+export function refreshPortraitExport(soulDir: string, dataDir: string, now: number): boolean {
+    const state = loadPortraitState(dataDir);
+    if (!state.text) return false;
+    const path = join(soulDir, PORTRAIT_EXPORT_FILE);
+    const content = { at: state.at, version: state.version, ...(state.why ? { why: state.why } : {}), text: state.text };
+    const current = readJsonOr<unknown>(path, {});
+    if (isObject(current) && current.kind === PORTRAIT_EXPORT_KIND && current.text === content.text && current.version === content.version && current.why === content.why) {
+        const written = typeof current.generatedAt === 'string' ? Date.parse(current.generatedAt) : NaN;
+        if (Number.isFinite(written) && written <= now && now - written < PORTRAIT_REFRESH_MS) return false;
+    }
+    const body: PortraitExport = { kind: PORTRAIT_EXPORT_KIND, generatedAt: new Date(now).toISOString(), ...content };
+    try { writeJsonAtomic(path, body); } catch { return false; }
+    return true;
+}
+
+// ───────── 她在电脑上自己写下的（同一个她） ─────────
+
+/** SOUL.md 里每一段追加的开头（DSH 插件 soul_update 写的 `## YYYY-MM-DD…`） */
+const SOUL_SECTION = /\n\n(?=## \d{4}-\d{2}-\d{2})/;
+/** 夜里想的时候最多给她看多少字（从最新的一段往前取） */
+export const DESKTOP_SELF_CHARS = 800;
+
+/**
+ * 她在电脑上（DSH）自己写下的 SOUL.md：只取最近追加的几段（不取开头「她是谁」那段，那段是作者写的底子，卡里已经有），最多 800 字，旧到新。
+ * 没有追加过、读不了就是空串。她说「本来就是同一个我，只是换了个地方说话」——夜里想自己的时候两边写的都看得到
+ */
+export function readDesktopSelf(soulDir: string | undefined, max = DESKTOP_SELF_CHARS): string {
+    if (!soulDir) return '';
+    let text: string;
+    try { text = readFileSync(join(soulDir, 'SOUL.md'), 'utf8').replace(/\r\n/g, '\n').trim(); } catch { return ''; }
+    const sections = text.split(SOUL_SECTION).slice(1).map(part => part.trim()).filter(Boolean);
+    const picked: string[] = [];
+    let total = 0;
+    for (const section of sections.reverse()) {
+        if (picked.length && total + len(section) > max) break;
+        picked.unshift(len(section) > max ? [...section].slice(0, max).join('') : section);
+        total += len(section);
+    }
+    return picked.join('\n\n');
 }

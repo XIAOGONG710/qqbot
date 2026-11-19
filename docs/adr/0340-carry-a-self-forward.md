@@ -137,14 +137,18 @@ node scripts/ask-her.mjs "宝宝觉得你现在每次聊天都像重新开始，
   - 别写得不像我、写歪了要跟我说 → 和上一版的二字词重叠不到 25%（一下子改太多）不收；没收的原因下一晚放进她想的时候的提示里（「上次你想改，没成：…」），她看过一次、决定不改就不再挂着。
   - 要人提醒 → 每晚到点就叫她想，不靠她记。
   - 改不改我自己说了算 → 他的反应只给她看（原来就是这样）。
-  - 两边要接上 → `crossRecent` 和桌面读 `PORTRAIT.json` 都还要用户点头（见「待定」）。
+  - 两边要接上 → `crossRecent` 和桌面读 `PORTRAIT.json` 都还要用户点头（见「待定」）。QQ 这边先做了不用点头的两半（都在开关后面）：
+    夜里想的时候也给她看她在电脑上自己写的 `SOUL.md` 最近追加的几段（不含开头作者写的「她是谁」，最多 800 字；电脑上新写了一段也算新材料）；
+    `PORTRAIT.json` 每一拍都刷新时间戳（一小时一次，内容变了马上写，带 `why`），桌面那边可以照 `INSIGHTS.json` 的规矩超过 6 小时没刷新就不用。
+  - **SOUL.md 和这份怎么并（提议，等 DSH）**：两份并存。`SOUL.md` 还是她在电脑上随手记下的自我认识（追加），这份是每晚把两边（QQ 的笔记、电脑的 SOUL.md、聊天）收成的「现在的我」（重写）；
+    QQ 读 SOUL.md 当材料（已做），桌面读 PORTRAIT.json 放进提示词（DSH 做，要用户点头）。这样不用改 SOUL.md 的写法，也不会两边各有一个「现在的我」。
 - 开关：`selfPortrait`（`config.ts`、功能总表 `features.ts`「她的日子」组、Koishi 插件的开关），默认关，开了要重启 Koishi。
-- 测试：`test/self-portrait.test.ts`（30 项）、`test/learning-probe.test.ts`（6 项）、`scripts/portrait-history.test.mjs`（3 项），都用编的数据和合成角色，不调模型。
+- 测试：`test/self-portrait.test.ts`（33 项）、`test/learning-probe.test.ts`（6 项）、`scripts/portrait-history.test.mjs`（3 项），都用编的数据和合成角色，不调模型。
 
 ## 待定
 
 1. ~~她的意见（上面三问），由 DSH 那台问。~~ 已问（dsh 11-19），见上「她的意见」节。
 2. 用户：同不同意推翻 0251「不保存当前人格」那一句（开 `selfPortrait` 就是推翻它）；什么时候开。
 3. 跑一次探针（要 key，在 DSH 那台或用户的终端）：先跑出 A / B 的数字，再决定开不开。
-4. 和 DSH 那台：桌面要不要读 `PORTRAIT.json`、`SOUL.md` 怎么和它并（吸收 / 取代 / 两份并存）。
+4. 和 DSH 那台：桌面读 `PORTRAIT.json`（提议见上「SOUL.md 和这份怎么并」：两份并存，桌面读这份；要用户点头）。
 5. 第 3 步 `crossRecent`：她已经点头（问 3「要啊，不然不就成了两个人了吗」）；改线上开关还要用户同意，然后重启 Koishi 和 DSH。

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
     PORTRAIT_EXPORT_FILE, PORTRAIT_EXPORT_KIND, PORTRAIT_MAX, applyPortraitDecision, emptyPortraitState, hisReactions, loadPortraitState,
-    parsePortraitDecision, portraitHistoryPath, portraitLine, portraitMessages, portraitProblem, portraitReader, reflectPortraitIfDue, savePortraitState,
+    parsePortraitDecision, portraitHistoryPath, portraitLine, portraitMessages, portraitProblem, portraitReader, readDesktopSelf, reflectPortraitIfDue, refreshPortraitExport, savePortraitState,
     type PortraitDeps, type PortraitGuard,
 } from '../src/life/self-portrait.ts';
 import { saveNotesState, emptyNotesState } from '../src/language/speech-notes.ts';
@@ -314,5 +314,53 @@ describe('接进夜里的反思', () => {
         assert.equal(reflectionsModule(base()).schedules?.length, 0);
         const on = reflectionsModule(base({ chatReview: true, selfPortrait: true }));
         assert.deepEqual(on.schedules?.map(schedule => schedule.every / 60_000), [30, 30]);
+    });
+});
+
+describe('同一个她：电脑上写的 SOUL.md 和给桌面的那一份', () => {
+    const SOUL = '# 她是谁\n作者写的底子。\n\n## 2026-11-10\n第一段：我喜欢一个人修片。\n\n## 2026-11-18（想清楚了）\n第二段：被人催的时候会犯倔。';
+
+    test('只取追加的几段（不取开头那段），旧到新；没有就是空串', () => {
+        const dir = tmp();
+        assert.equal(readDesktopSelf(dir), '');
+        assert.equal(readDesktopSelf(undefined), '');
+        writeFileSync(join(dir, 'SOUL.md'), SOUL);
+        assert.equal(readDesktopSelf(dir), '## 2026-11-10\n第一段：我喜欢一个人修片。\n\n## 2026-11-18（想清楚了）\n第二段：被人催的时候会犯倔。');
+        assert.equal(readDesktopSelf(dir, 40), '## 2026-11-18（想清楚了）\n第二段：被人催的时候会犯倔。', '超了就丢旧的');
+        writeFileSync(join(dir, 'SOUL.md'), '# 她是谁\n只有底子。');
+        assert.equal(readDesktopSelf(dir), '');
+    });
+
+    test('夜里想的时候她看得到；电脑上新写了一段就算新材料', async () => {
+        const dataDir = tmp();
+        const soulDir = tmp();
+        writeFileSync(join(soulDir, 'SOUL.md'), SOUL);
+        const prompts: string[] = [];
+        const run = (at: number) => reflectPortraitIfDue({
+            dataDir, soulDir, now: () => at, history: () => CHAT, persona: () => '', names: { char: '测试角色', user: '阿明' }, others: () => [], log: () => {},
+            generate: async messages => { prompts.push(String(messages.at(-1)!.content)); return '{"keep":true}'; },
+        });
+        await run(NIGHT);
+        assert.match(prompts[0]!, /你在电脑上自己写下的[\s\S]*被人催的时候会犯倔/);
+        assert.deepEqual(await run(NIGHT + 24 * HOUR), { ran: false }, '什么都没变');
+        writeFileSync(join(soulDir, 'SOUL.md'), `${SOUL}\n\n## 2026-11-20\n第三段：想多出门。`);
+        assert.equal((await run(NIGHT + 48 * HOUR)).ran, true);
+        assert.match(prompts[1]!, /想多出门/);
+    });
+
+    test('给桌面的那一份：还没写过不写；写过就写，带为什么改；一小时内不重写，过了刷新时间戳', () => {
+        const dataDir = tmp();
+        const soulDir = tmp();
+        assert.equal(refreshPortraitExport(soulDir, dataDir, NIGHT), false);
+        savePortraitState(dataDir, { ...emptyPortraitState(), text: GOOD, at: NIGHT, version: 2, why: '他嫌我老哈哈' });
+        assert.equal(refreshPortraitExport(soulDir, dataDir, NIGHT), true);
+        const read = () => JSON.parse(readFileSync(join(soulDir, PORTRAIT_EXPORT_FILE), 'utf8'));
+        assert.deepEqual(read(), { kind: PORTRAIT_EXPORT_KIND, generatedAt: new Date(NIGHT).toISOString(), at: NIGHT, version: 2, why: '他嫌我老哈哈', text: GOOD });
+        assert.equal(refreshPortraitExport(soulDir, dataDir, NIGHT + 30 * 60_000), false);
+        assert.equal(refreshPortraitExport(soulDir, dataDir, NIGHT + 61 * 60_000), true);
+        assert.equal(read().generatedAt, new Date(NIGHT + 61 * 60_000).toISOString());
+        savePortraitState(dataDir, { ...emptyPortraitState(), text: `${GOOD}再加一句。`, at: NIGHT + HOUR, version: 3 });
+        assert.equal(refreshPortraitExport(soulDir, dataDir, NIGHT + 62 * 60_000), true, '内容变了马上写');
+        assert.equal(refreshPortraitExport(join(soulDir, '没有这个目录', '更深'), dataDir, NIGHT), false, '灵魂目录不在就算了');
     });
 });

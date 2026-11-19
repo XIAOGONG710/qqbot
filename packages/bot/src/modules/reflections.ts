@@ -5,7 +5,7 @@
 // - 心境回想（ADR 0197）：一段聊天结束半小时后回想、记下有依据的感受；每 10 分钟看一眼（其余每 30 分钟）。
 // - 自我认识（ADR 0194）：22 点以后翻日记写对自己的认识；每次想完（不管想没想出来）都给桌面上的她写一份。
 // - 读完看完的想法（ADR 0204）、没想完的问题（ADR 0207，用深思的模型）、她猜的事（ADR 0213，要她那边的世界）。
-// - 我现在的样子（ADR 0340）：22 点以后把上面这些和最近的聊天整份重写成一份，排在最后。
+// - 我现在的样子（ADR 0340）：22 点以后把上面这些、她在电脑上写的 SOUL.md 和最近的聊天整份重写成一份，排在最后；每一拍之后给桌面刷新一份 PORTRAIT.json。
 // 到没到点、够不够、想几次都在各自的 reflectIfDue / reviewIfDue 里；这里只是接线：一样一个定时任务，上一次没想完就跳过这一拍，停下之后不再想。
 //
 // 定时（start: 'built'）：和迁移前一样在 App 搭好时就开、不等连上 NapCat；先后也照旧（追求、说话习惯、聊天回顾、心境回想、自我认识、读完看完、没想完的问题、她猜的事）——
@@ -28,7 +28,7 @@ import { reviewIfDue as reviewFeelings } from '../emotion/feeling-review.ts';
 import { reflectIfDue as reflectInsights } from '../life/diary-insights.ts';
 import { bookItems, reflectIfDue as reflectTakes, videoItems } from '../life/reading-takes.ts';
 import { ponderIfDue } from '../life/open-questions.ts';
-import { reflectPortraitIfDue } from '../life/self-portrait.ts';
+import { reflectPortraitIfDue, refreshPortraitExport } from '../life/self-portrait.ts';
 import { pendingWorld, reviewGuessesIfDue, worldFactsBetween } from '../life/her-guesses.ts';
 import { herDay } from '../life/schedule.ts';
 import type { Watched } from '../language/watching.ts';
@@ -146,6 +146,6 @@ export function reflectionsModule(options: ReflectionsOptions): Module {
     }), '她猜的事：对的时候出错');
     if (options.selfPortrait) every(30 * 60_000, () => reflectPortraitIfDue({
         dataDir, soulDir: options.soulDir(), now, generate: options.generate(0.9), history, persona, names: names(), others, log,
-    }), '我现在的样子：想的时候出错');
+    }), '我现在的样子：想的时候出错', () => { refreshPortraitExport(options.soulDir(), dataDir, now()); });
     return { id: 'reflections', schedules };
 }
