@@ -39,6 +39,7 @@
 - `platform/passive-reads.ts`
 - `platform/quoted-context.ts`
 - `platform/owner-commands.ts`
+- `platform/incoming.ts`
 - `platform/sensitive.ts`
 - `platform/web.ts`
 - `platform/consent.ts`

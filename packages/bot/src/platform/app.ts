@@ -50,7 +50,6 @@ import { unfinishedArchiveJobs } from '../memory/archive-job.ts';
 import type { Log } from './log.ts';
 import { appLifetime, type Lifetime } from './lifetime.ts';
 import { ChatHistory, sourceMessageSeq, type StoredMessage } from '.././memory/history.ts';
-import { stateTimestamp } from '../memory/state-schema.ts';
 import { describeError } from '../memory/transient-io.ts';
 import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
 import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from '.././memory/backfill.ts';
@@ -166,6 +165,7 @@ import { passiveJobs } from '.././bilibili/passive-jobs.ts';
 import { passiveReads } from './passive-reads.ts';
 import { quotedContext } from './quoted-context.ts';
 import { ownerCommands } from './owner-commands.ts';
+import { incomingReceipts } from './incoming.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { photoShelf, PHOTO_HISTORY_PREFIX, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
 import { STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
@@ -2211,58 +2211,13 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         },
         sendOwnedNotice, log,
     };
-    const activeIncoming = new Map<string, number>();
-    const claimIncoming = (id: string) => activeIncoming.set(id, (activeIncoming.get(id) ?? 0) + 1);
-    const releaseIncoming = (id: string) => { const count = activeIncoming.get(id) ?? 0; if (count > 1) activeIncoming.set(id, count - 1); else activeIncoming.delete(id); };
-    const bufferedIncoming = new WeakMap<MessageEvent, string>();
-    const bufferedIncomingIds = new Set<string>();
-    let incomingRetryTimer: ReturnType<typeof setTimeout> | undefined;
-    lifetime.own('incoming', () => {
-        exec.cancel(incomingRetryTimer);
-        try { chatHistory.flushIncoming(); } catch (error) { log(`停止时入站状态仍未确认持久（${describeError(error)}）`); }
+    // 入站收据：收到的私聊先记一笔、读完才进聊天记录，中途断了下次补上；失败后台重试（ADR 0336 第 6 步搬到 incoming.ts）。停法照旧在这里登记
+    const incoming = incomingReceipts({
+        config, stopped: () => stopped, syncing: () => syncing, exec, chatHistory, history, tierRecord, dormancy, responders, readerFor,
+        quoteLookup: qq => quoteLookup(qq), forwardLookup: qq => forwardLookup(qq), markCrisis, syncRecalledMemory, deviceOwner, plainTextOf, inbox, log,
     });
-    let incomingRetryRunning = false;
-    let incomingRetryLogged = false;
-
-    const eventIdentity = (event: MessageEvent) => ({ role: 'user' as const, time: new Date(event.time * 1000).toISOString(), messageSeq: sourceMessageSeq(event.real_seq) });
-    function validIncomingEvent(event: MessageEvent): boolean {
-        if (!Number.isSafeInteger(event.user_id) || event.user_id <= 0 || !Number.isSafeInteger(event.message_id) || event.message_id < 0
-            || !Number.isSafeInteger(event.time)) return false;
-        const at = new Date(event.time * 1000);
-        return Number.isFinite(at.getTime()) && stateTimestamp(at.toISOString());
-    }
-    const tracksIncoming = (qq: number) => config.recalls && config.contacts.some(contact => contact.qq === qq);
-    function stageEvent(event: MessageEvent): string | undefined {
-        return tracksIncoming(event.user_id) ? chatHistory.stageIncoming(event.user_id, {
-            source: { ...eventIdentity(event), messageId: event.message_id }, message: event.message,
-        }) : undefined;
-    }
-    function incomingFailure(error: unknown): void {
-        if (!incomingRetryLogged) { log(`入站处理未完成，保留已知状态并重试（${describeError(error)}）`); incomingRetryLogged = true; }
-        scheduleIncomingRetry();
-    }
-    function scheduleIncomingRetry(): void {
-        if (stopped || incomingRetryTimer) return;
-        incomingRetryTimer = exec.after(() => {
-            incomingRetryTimer = undefined;
-            if (stopped || syncing || incomingRetryRunning) { if (!stopped) scheduleIncomingRetry(); return; }
-            incomingRetryRunning = true;
-            void (async () => {
-                let failed = false;
-                for (const contact of config.contacts) {
-                    if (stopped) return;
-                    try {
-                        chatHistory.flushIncoming(contact.qq);
-                        const count = await queueIncomingRecovery(contact.qq);
-                        syncRecalledMemory(contact.qq);
-                        if (count && !dormancy?.isDormant() && shouldCatchUp(history.load(contact.qq), new Date())) responders.get(contact.qq)?.catchUp();
-                    } catch (error) { failed = true; incomingFailure(error); }
-                }
-                if (!failed) incomingRetryLogged = false;
-            })().catch(incomingFailure).finally(() => { incomingRetryRunning = false; });
-        }, 1000);
-        incomingRetryTimer.unref?.();
-    }
+    lifetime.own('incoming', () => incoming.stop());
+    const { activeIncoming, claimIncoming, releaseIncoming, bufferedIncoming, bufferedIncomingIds, eventIdentity, validIncomingEvent, tracksIncoming, stageEvent, incomingFailure, prepareReceived, recoverIncoming, queueIncomingRecovery } = incoming;
     let privateSongReference: { song: string; at: number } | undefined;
     const groupSongRequests = new Map<number, { song: string; at: number }>();
     const songRequestLifetime = 5 * 60_000;
@@ -2487,59 +2442,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         plainTextOf, singBusyLine: () => pickLine(SING_LINES.busy),
     });
 
-    function prepareReceived(event: MessageEvent, text: string, receipt?: string): StoredMessage {
-        const decoded: StoredMessage = { ...eventIdentity(event), messageId: event.message_id, content: text };
-        return receipt ? chatHistory.prepareIncoming(event.user_id, receipt, decoded, content => Boolean(detectCrisis(content))) : decoded;
-    }
-    /** Recovery never reruns an interrupted operational command or device action. */
-    function interruptedCommand(qq: number, message: Segment[] | string): boolean {
-        if (qq !== deviceOwner?.qq) return false;
-        const plain = plainTextOf(message)?.trim();
-        return Boolean(plain && (/^\/(?:dsh|休眠|屏幕|摄像头|设备)(?:\s|$)/.test(plain)
-            || ['/设定', '/唤醒', '/主动', '批准', '拒绝'].includes(plain)));
-    }
-    async function recoverIncoming(qq: number): Promise<number> {
-        if (!tracksIncoming(qq) || stopped || dormancy?.isDormant()) return 0;
-        let added = 0;
-        const since = tierRecord.since(qq);
-        for (const entry of chatHistory.pendingIncoming(qq)) {
-            if (stopped || dormancy?.isDormant()) break;
-            if (activeIncoming.has(entry.id) || bufferedIncomingIds.has(entry.id)) continue;
-            // A tier boundary limits disclosure, not ownership of old private data.
-            if (since && Date.parse(entry.source.time) < since.getTime()) continue;
-            claimIncoming(entry.id);
-            try {
-                let decoded = entry.prepared;
-                if (!decoded) {
-                    // Restoring a receipt is not authority to repeat an operational command.
-                    if (!entry.withdrawn && interruptedCommand(qq, entry.message)) continue;
-                    const reader = readerFor(qq);
-                    const message = reader?.needs(entry.message)
-                        ? await reader.read(entry.message, entry.source.messageId!, message => log(`[${qq}] ${message}`), { ...entry.source, peer: qq }).catch(() => entry.message)
-                        : entry.message;
-                    if (stopped) break;
-                    const text = segmentsToText(message, quoteLookup(qq), forwardLookup(qq)).trim();
-                    if (!text) { chatHistory.discardIncoming(qq, entry.id); continue; }
-                    decoded = { ...entry.source, role: 'user', content: text };
-                }
-                const accepted = chatHistory.prepareIncoming(qq, entry.id, decoded, content => Boolean(detectCrisis(content)));
-                if (stopped || dormancy?.isDormant()) break;
-                history.append(qq, accepted);
-                const hit = detectCrisis(accepted.content);
-                if (hit) markCrisis(qq, Date.parse(accepted.time), hit.level);
-                added++;
-            } finally { releaseIncoming(entry.id); }
-        }
-        if (added) syncRecalledMemory(qq);
-        return added;
-    }
-    function queueIncomingRecovery(qq: number): Promise<number> {
-        const work = (inbox.get(qq) ?? Promise.resolve()).then(() => recoverIncoming(qq));
-        const owned = work.then(() => undefined, () => undefined);
-        inbox.set(qq, owned);
-        void owned.then(() => { if (inbox.get(qq) === owned) inbox.delete(qq); });
-        return work;
-    }
 
     function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string, receipt?: string): void {
         const text = segmentsToText(message, quoteLookup(event.user_id), forwardLookup(event.user_id)).trim();

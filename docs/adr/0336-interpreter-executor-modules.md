@@ -1537,3 +1537,11 @@ app.ts 从 4068 行到 3317 行。照「原样搬、依赖交进去」能拆的�
   分三段，App 照原来的先后调：`early`（`/dsh` 子命令、不用了的指令、`/设定`、`/休眠`、`/唤醒`）→ App 里的唱歌（语音那一块，用户自己的代码，不动）→ 休眠中不回 → `workMode`（`/dsh`、`/工作`、`/QQ`、`/模式`）→ `device`（设备命令）。
   指令收敛的留用表（KEEP）现在只在这一个文件里。手机伴侣、最近一次 DSH 探针的结果改成现取 / 回写。
 - 验证：带这些指令的 15 个测试文件通过；变异检验：三段一律不处理，25 个失败。41 个场景和前后几步一起跑。
+
+### 第 6 步：app.ts 只剩装配——入站收据（2026-11-19 晚）
+
+- 私聊的入站收据那一套原样从 app.ts 搬到 `src/platform/incoming.ts`（`incomingReceipts(deps)`）：收到先记一笔、读完才进记录（`stageEvent` / `prepareReceived`）、占用计数（`claimIncoming` / `releaseIncoming`）、
+  补回期间攒着的收据、失败后台重试（`incomingFailure` / `scheduleIncomingRetry`）、从收据补上（`recoverIncoming` / `queueIncomingRecovery`，命令和设备动作不重跑）。
+  停法照旧在 App 原位登记（`lifetime.own('incoming')`）；停没停、在不在补回改成现取；每人一条的队（`inbox`）收消息那边也用，照旧由 App 建好交进去。
+- 收消息（`onMessage` / `processMessage` / `deliver`）、补回（`syncMissed`）和连上时的那一串仍在 App，下一步再看。
+- 验证：碰到入站、撤回、补回的 114 个测试文件 1389 个用例通过；变异检验：从收据补上什么都不做，7 个失败。41 个场景和前一步一起跑。
