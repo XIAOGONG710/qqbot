@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { DEFAULTS, parseAppConfig } from '../../bot/src/platform/config.ts';
-import { FACT_CHECK, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
+import { FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
 import { canonicalTimeZone } from '../../bot/src/platform/time-zone.ts';
 import { Config, migrateThinking, mountMobileCompanion, thinkingBody, toAppConfigInput } from '../src/index.ts';
 import type { CompanionWebSocketLike } from '@qqbot/mobile-companion/websocket';
@@ -44,6 +44,19 @@ const before0009AsJson = {
 };
 
 describe('插件配置（控制台表单 → config.json 的形状 → parseAppConfig）', () => {
+    test('festivals 使用模块说明，保留三档和保存键', () => {
+        const field = Config.list?.find(group => group.dict?.festivals)?.dict?.festivals;
+        assert.equal(field?.meta.description, `**${FESTIVALS.label}**（ADR ${FESTIVALS.adr}）：${FESTIVALS.description}`);
+        assert.equal(DEFAULTS.festivals, 'off');
+        const save = (value: object) => Config.simplify(Config(value as never));
+        const omitted = save(minimal);
+        for (const mode of ['off', 'notes', 'greet'] as const) {
+            const written = save({ ...minimal, festivals: mode });
+            assert.deepEqual(written, mode === 'off' ? omitted : { ...omitted, festivals: mode });
+            assert.equal(fromKoishi(written).festivals, mode);
+        }
+    });
+
     test('factCheck 使用模块说明，保留三档和保存键', () => {
         const field = Config.list?.find(group => group.dict?.factCheck)?.dict?.factCheck;
         assert.equal(field?.meta.description, `**${FACT_CHECK.label}**（ADR ${FACT_CHECK.adr}）：${FACT_CHECK.description}`);

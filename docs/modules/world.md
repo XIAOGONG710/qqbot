@@ -73,7 +73,7 @@
 | `ownerPeek` | 他能不能用 /追求 /说话习惯 /心境 /自我认识 看她自己总结 / 回想出来的东西（默认不能：她的私人空间） | [ADR 0200](../adr/0200-private-space.md) |
 | `grievance` | 小别扭 / 和好 | [ADR 0074](../adr/0074-small-grievance.md) |
 | `npcAsks` | 闺蜜约人 / 改约 | [ADR 0061](../adr/0061-friends-ask-and-back-out.md) |
-| `festivals` | 公共节日（模式） | [ADR 0076](../adr/0076-festivals-and-winter-break.md) |
+| `festivals` | 公共节日（模式）：off 关闭；notes 让她知道今天或快到的节日，时间块可提前几天提醒；greet 还会在新年零点、除夕、平安夜、情人节、元宵、520、七夕、端午、中秋，通过「重要的日子」时机主动说一句。默认关。 | [ADR 0076](../adr/0076-festivals-and-winter-break.md) |
 
 ## 看它有没有变好
 

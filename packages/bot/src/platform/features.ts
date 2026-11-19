@@ -6,7 +6,7 @@
 // 还没搬过去的直接写完整的配置页说明 detail。这里照样是唯一的总表。
 // 纯数据 + 几个函数，没有副作用；不放任何密钥或聊天内容。
 
-import { FACT_CHECK, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
+import { FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
 
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
@@ -166,9 +166,7 @@ export const FEATURES: readonly FeatureDef[] = [
         detail: '**有起因的小别扭与和好**（ADR 0074）：男朋友档，他隔了 3 天以上才来、这几天她发的一直没回时，她回来的头一两轮淡一点、点一句，他一解释 / 道歉 / 哄就软下来。只由这一个具体事件触发，一次只有一档，不存跨天的情绪，每轮从聊天记录的时间重算。默认关' },
     { key: 'npcAsks', label: '闺蜜约人 / 改约', group: '她的日子', adr: '0061',
         detail: '**闺蜜的约**（ADR 0061）：室友和闺蜜会约她（一起吃饭、去图书馆、微信视频），有时迟到、改到晚一点、临时取消；她按自己的课、身体、作业答应或推掉。进她的一天（状态行）和「你那边」。只给看得到这两个人的档位。默认关' },
-    { key: 'festivals', label: '公共节日', group: '她的日子', adr: '0076', kind: 'mode',
-        detail: '**公共节日**（ADR 0076）：她知道今天是平安夜、除夕、情人节……（时间块提前几天提醒）；选「主动说」时再在新年零点、除夕、平安夜、情人节、元宵、520、七夕、端午、中秋由「重要的日子」时机带一句。默认关',
-        modeLabels: { off: '关', notes: '只让她知道今天 / 快到的是什么节', greet: '知道，并在新年零点、除夕、平安夜、情人节等主动说一句' } },
+    FESTIVALS,
     // 主动找他
     PROACTIVE,
     { key: 'proactiveReach', label: '没回也继续 / 催他', group: '主动找他', adr: '0100',

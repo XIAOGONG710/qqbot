@@ -9,6 +9,7 @@ import type { GroupChatMode, StickerMode } from './config.ts';
 import type { WebMode } from './web.ts';
 import type { ProactiveMode } from '../proactive/proactive.ts';
 import type { FactCheckMode } from '../language/fact-check.ts';
+import type { FestivalMode } from '../world/festivals.ts';
 
 export interface ModuleDef {
     id: string;
@@ -100,6 +101,16 @@ export const FACT_CHECK = {
     description: '发送前，对照设定、本轮事实和聊天记录，逐条检查她对自己和身边世界的具体说法。off 不查；log 只记录问题，回复照发（敏感调试关着时只记条数）；fix 先带说明重写一次，再查，仍有问题就删掉对应行。危机回合不查，查不成照发。默认关。',
     modeLabels: { off: '关', log: '只查、只记日志，回复照发', fix: '查到就重写' },
 } as const satisfies FeatureDef & { modeLabels: Record<FactCheckMode, string> };
+
+export const FESTIVALS = {
+    key: 'festivals',
+    label: '公共节日',
+    group: '她的日子',
+    adr: '0076',
+    kind: 'mode',
+    description: 'off 关闭；notes 让她知道今天或快到的节日，时间块可提前几天提醒；greet 还会在新年零点、除夕、平安夜、情人节、元宵、520、七夕、端午、中秋，通过「重要的日子」时机主动说一句。默认关。',
+    modeLabels: { off: '关', notes: '只让她知道今天 / 快到的是什么节', greet: '知道，并在新年零点、除夕、平安夜、情人节等主动说一句' },
+} as const satisfies FeatureDef & { modeLabels: Record<FestivalMode, string> };
 
 export const MODULES: readonly ModuleDef[] = [
     {
