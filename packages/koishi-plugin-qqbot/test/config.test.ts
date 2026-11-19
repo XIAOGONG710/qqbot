@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { DEFAULTS, parseAppConfig } from '../../bot/src/platform/config.ts';
-import { BILIBILI, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
+import { BILI_FEED, BILIBILI, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
 import { canonicalTimeZone } from '../../bot/src/platform/time-zone.ts';
 import { Config, migrateThinking, mountMobileCompanion, thinkingBody, toAppConfigInput } from '../src/index.ts';
 import type { CompanionWebSocketLike } from '@qqbot/mobile-companion/websocket';
@@ -44,6 +44,19 @@ const before0009AsJson = {
 };
 
 describe('插件配置（控制台表单 → config.json 的形状 → parseAppConfig）', () => {
+    test('biliFeed 使用模块说明，保留三档和保存键', () => {
+        const field = Config.list?.find(group => group.dict?.biliFeed)?.dict?.biliFeed;
+        assert.equal(field?.meta.description, `**${BILI_FEED.label}**（ADR ${BILI_FEED.adr}）：${BILI_FEED.description}`);
+        assert.equal(DEFAULTS.biliFeed, 'off');
+        const save = (value: object) => Config.simplify(Config(value as never));
+        const omitted = save(minimal);
+        for (const mode of ['off', 'dryRun', 'on'] as const) {
+            const written = save({ ...minimal, biliFeed: mode });
+            assert.deepEqual(written, mode === 'off' ? omitted : { ...omitted, biliFeed: mode });
+            assert.equal(fromKoishi(written).biliFeed, mode);
+        }
+    });
+
     test('bilibili 使用模块说明，保留三档和保存键', () => {
         const field = Config.list?.find(group => group.dict?.bilibili)?.dict?.bilibili;
         assert.equal(field?.meta.description, `**${BILIBILI.label}**（ADR ${BILIBILI.adr}）：${BILIBILI.description}`);

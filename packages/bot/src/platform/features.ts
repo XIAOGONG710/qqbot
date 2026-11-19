@@ -6,7 +6,7 @@
 // 还没搬过去的直接写完整的配置页说明 detail。这里照样是唯一的总表。
 // 纯数据 + 几个函数，没有副作用；不放任何密钥或聊天内容。
 
-import { BILIBILI, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
+import { BILI_FEED, BILIBILI, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
 
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
@@ -205,9 +205,7 @@ export const FEATURES: readonly FeatureDef[] = [
     BILIBILI,
     { key: 'bilibiliAccount', label: '她自己的 B 站账号', group: 'B 站', adr: '0089',
         detail: '**她的 B 站号**（ADR 0089）：用她自己的 B 站号（数据目录 secrets/bilibili.json，先在命令行跑 `npm run bilibili-login -w @qqbot/bot` 扫码）按口味搜视频（三花猫、王者荣耀、宿舍日常……每天换一个词）并读字幕，分享时她知道视频里讲了什么；前三个候选里挑第一个有字幕的。只读，不在 B 站发任何东西。要上面「刷 B 站」也开着。凭证失效会在日志里说，重新扫码后重启。默认关' },
-    { key: 'biliFeed', label: '自己刷 B 站推荐（记下刷到的）', group: 'B 站', adr: '0168', kind: 'mode',
-        detail: '**自己刷 B 站推荐**（ADR 0168）：14 点后一天一次，拿一页推荐、按口味排一次「刷」（停 / 划走），只记刷到的标题和停留秒数；不播放、不点赞、不评论。选「只写草稿」时草稿存 presence/drafts.md。默认关',
-        modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' } },
+    BILI_FEED,
     { key: 'bilibiliDm', label: 'B 站私信', group: 'B 站', adr: '0089', kind: 'mode',
         detail: '**在 B 站给他发私信**（ADR 0089）：她刷到视频后，把链接加一两句话私信到他的 B 站（用下面的 uid），QQ 上只说一句叫他去看私信，不再在 QQ 上发链接。私信里的话和聊天一样用男朋友档的卡写。他要先关注她的号，不然 B 站会限制或拒绝；私信发不出去就退回在 QQ 上直接发链接，连着失败 2 次到重启前不再试私信。要「她的 B 站号」开着。选「只写草稿」时私信和 QQ 提醒都存在 presence/drafts.md。默认关',
         modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' } },

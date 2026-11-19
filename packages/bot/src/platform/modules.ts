@@ -123,6 +123,16 @@ export const BILIBILI = {
     modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' },
 } as const satisfies FeatureDef & { modeLabels: Record<PresenceMode, string> };
 
+export const BILI_FEED = {
+    key: 'biliFeed',
+    label: '自己刷 B 站推荐（记下刷到的）',
+    group: 'B 站',
+    adr: '0168',
+    kind: 'mode',
+    description: '14 点后一天一次，取一页推荐，按口味决定停留还是划走，只记刷到的标题和停留秒数；不播放、不点赞、不评论。试运行只写草稿到 presence/drafts.md，默认关。',
+    modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' },
+} as const satisfies FeatureDef & { modeLabels: Record<PresenceMode, string> };
+
 export const MODULES: readonly ModuleDef[] = [
     {
         id: 'language', name: '说话（语言）',
