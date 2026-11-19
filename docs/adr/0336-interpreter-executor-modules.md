@@ -1425,3 +1425,10 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - App 的 `receiveFriendRequest`（ADR 0142：名单内同意、名单外驳回或留给人）原样搬成解释器的模块 `friend-requests`（`src/modules/friend-requests.ts`），接 `friendRequest` 事件，挂在群聊入口后面；
   「旧逻辑」不再转好友申请，`legacy` 的类型去掉 `receiveFriendRequest`。账号控制面在 App 里建得比解释器晚，模块拿取它的函数；回执照旧经 App 的 `sendOwnedNotice`（停止时等它）。
 - 验证：41 个场景对快照逐字一致；`memory-app-friend-request-owner-review.test.ts`、`app.test.ts` 通过；变异检验：模块一律不处理，6 个失败。
+
+### 第 6 步：app.ts 只剩装配——戳（2026-11-19）
+
+- App 的 `receivePoke`（名单里的人、没睡着没在上课、5 分钟里没戳太多就当成一条消息交给私聊那边，顺便戳回去）原样搬成解释器的模块 `pokes`（`src/modules/pokes.ts`），接 `poke` 事件，挂在好友申请后面；
+  「旧逻辑」不再转戳，`legacy` 的类型去掉 `receivePoke`。限流、戳回去的冷却、补回状态在 App 里建得比解释器晚，模块拿取它们的函数。
+- 戳回去之前的等待仍由 App 经执行器开计时器（`later`，停止时照旧由 `lifetime.own('pokes')` 取消），模块目录不碰计时器。
+- 验证：41 个场景对快照逐字一致（含 `poke-recall`）；`memory-app-poke-owner-review.test.ts`、`app.test.ts` 里戳的 7 个通过；变异检验：模块收到戳什么都不做，12 个失败。

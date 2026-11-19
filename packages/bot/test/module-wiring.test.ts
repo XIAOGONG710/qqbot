@@ -62,7 +62,7 @@ describe('一轮回复的模块接线只有一份（ADR 0336 第 6 步）', () =
     });
 
     test('App：「旧逻辑」那一个在解释器的最前面，然后是群聊的入口，后面是 buildTurnModules 的结果，最后是只有定时任务的（不进一轮回复）', () => {
-        assert.match(appWiring, /modules: \[\{\n\s+id: 'app-legacy',[\s\S]*\}, groupRoomEntry, friendRequests, followUps, \.\.\.turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport\],$/);
+        assert.match(appWiring, /modules: \[\{\n\s+id: 'app-legacy',[\s\S]*\}, groupRoomEntry, friendRequests, pokes, followUps, \.\.\.turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport\],$/);
     });
 
     test('只在一边给的可选项就是清单里那些（新加的可选项两边都给，或者写进清单说明原因）', () => {

@@ -81,6 +81,7 @@ import { groupPeople } from '.././social/group-people.ts';
 import { groupRoom } from '.././social/group-room.ts';
 import { groupRoomModule } from '../modules/group-room.ts';
 import { friendRequestsModule } from '../modules/friend-requests.ts';
+import { pokesModule, type PokeDeps } from '../modules/pokes.ts';
 import { groupAffect } from '.././social/group-affect.ts';
 import { currentTierHistory, TierRecord } from '.././memory/tier-record.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
@@ -137,7 +138,7 @@ import { createReplyWatcher, type ReplyOptions, type ReplyWatcher } from '.././b
 import { createRiskMonitor, type RiskMonitor } from '.././bilibili/bilibili-risk.ts';
 import { detectCrisis, type CrisisLevel } from '.././emotion/crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from '.././emotion/crisis-state.ts';
-import { createPokeLimiter, POKE_BACK_COOLDOWN_MS, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, POKE_OUT_TEXT, pokeBackPlan, pokeMessage, pokeOutMessageId, quietEnoughToPoke } from '.././social/pokes.ts';
+import { createPokeLimiter, POKE_OUT_TEXT, pokeOutMessageId, quietEnoughToPoke } from '.././social/pokes.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner, type PlannerStatus } from '.././proactive/proactive-planner.ts';
 import { proactiveAgency } from '.././proactive/agency.ts';
 import { PromiseStateUnavailable } from '.././life/promise-state.ts';
@@ -960,6 +961,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const groupRoomEntry = groupRoomModule(() => groupChat);
     // 好友申请（ADR 0142）：账号控制面在下面才建，事件来了再取
     const friendRequests = friendRequestsModule({ config, stopped: () => stopped, account: () => account, sendOwnedNotice, log });
+    // 他戳她（限流、戳回去的冷却在下面才建，事件来了再取）
+    const pokes = pokesModule(() => pokeDeps);
     const followUps = followUpsModule(() => syncFollowUps(), () => planners.size > 0, MEMORY_SYNC_MS);
     const tastesJob = tastesModule(config.tastes ? () => reflectTastes() : undefined);
     // 长期记忆同步、「她现在在干嘛」导出、她留的话（ADR 0336 第 6 步）：只有定时任务，App 搭好时开，先后同原来（在她自己想一想的那几样之前）；做的事都在后面才建，到点再取
@@ -1243,10 +1246,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             on: {
                 connected: ({ selfId }) => legacy.connected(selfId),
                 message: ({ event }) => legacy.receive(event),
-                poke: ({ event }) => legacy.receivePoke(event),
                 recall: ({ event }) => legacy.receiveRecall(event),
             },
-        }, groupRoomEntry, friendRequests, followUps, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
+        }, groupRoomEntry, friendRequests, pokes, followUps, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
         exec,
     });
     // 解释器接手各模块的停（关定时任务、拒新工作；小梗、口头习惯的收尾在里面）
@@ -2783,6 +2785,19 @@ ${body}
     const lastPokeBack = new Map<number, number>();
     const pokeTimers = new Set<ReturnType<typeof setTimeout>>();
     lifetime.own('pokes', () => { for (const timer of pokeTimers) exec.cancel(timer); pokeTimers.clear(); });
+    const pokeDeps: PokeDeps = {
+        config, stopped: () => stopped, syncing: () => syncing, now: worldNow,
+        scheduleOf: tier => cardFor(tier).character.schedule, bedtimes,
+        limiter: pokeLimiter, lastPokeBack,
+        onMessage: event => onMessage(event),
+        pokeFriend: transport.pokeFriend ? qq => transport.pokeFriend!(qq) : undefined,
+        later: (run, delayMs) => {
+            const timer = exec.after(() => { pokeTimers.delete(timer); run(); }, delayMs);
+            timer.unref?.();
+            pokeTimers.add(timer);
+        },
+        sendOwnedNotice, log,
+    };
     const activeIncoming = new Map<string, number>();
     const claimIncoming = (id: string) => activeIncoming.set(id, (activeIncoming.get(id) ?? 0) + 1);
     const releaseIncoming = (id: string) => { const count = activeIncoming.get(id) ?? 0; if (count > 1) activeIncoming.set(id, count - 1); else activeIncoming.delete(id); };
@@ -3816,8 +3831,8 @@ ${body}
     if ((config.qqFriendGate ?? 'off') !== 'off' && accountMode !== 'on') log('好友申请：要 qqControl 设为 on 才处理，现在没生效');
     else if ((config.qqFriendGate ?? 'off') !== 'off') log(`好友申请：${config.qqFriendGate === 'all' ? '名单内同意、名单外驳回' : '只自动同意名单内的'}（名单 ${(config.qqAllowFriends ?? []).join('、') || '空'}）`);
 
-    // 群消息、好友申请不经这里：解释器直接交给 group-room / friend-requests 模块（ADR 0336 第 6 步）
-    const legacy: Omit<App, 'receiveGroup' | 'receiveFriendRequest'> = {
+    // 群消息、好友申请、戳不经这里：解释器直接交给 group-room / friend-requests / pokes 模块（ADR 0336 第 6 步）
+    const legacy: Omit<App, 'receiveGroup' | 'receiveFriendRequest' | 'receivePoke'> = {
         async connected(selfId) {
             if (stopped) return;
             // Koishi / NapCat 可能在同一次重连期间重复发出 ready。共用正在进行的补回，
@@ -3873,44 +3888,6 @@ ${body}
             }
             else onMessage(event);
         },
-        receivePoke(event) {
-            if (stopped || syncing || !config.pokes) return;
-            const contact = config.contacts.find(c => c.qq === event.user_id);
-            if (!contact) return;
-            const now = worldNow();
-            if (now - event.time * 1000 > POKE_MAX_AGE_MS) return;
-            // 睡着、在上课时的戳不算：她看不到手机，起床、下课后回一句「戳我干嘛」是怪的（消息才会等到起床后看到）
-            const schedule = config.schedule ? cardFor(contact.tier).character.schedule : undefined;
-            if (schedule) {
-                const kind = stateAt(schedule, new Date(now)).activity.kind;
-                if (kind === 'sleep' || kind === 'class' || asleepSince(schedule, bedtimes(schedule, now), new Date(now))) {
-                    log(`[${contact.qq}] 戳了她一下，她在${kind === 'class' ? '上课' : '睡觉'}，不理`);
-                    return;
-                }
-            }
-            if (!pokeLimiter.take(contact.qq, now)) {
-                log(`[${contact.qq}] 戳了她一下，5 分钟里已经戳过 ${POKE_MAX_IN_WINDOW} 下，不理`);
-                return;
-            }
-            log(`[${contact.qq}] 戳了她一下`);
-            onMessage(pokeMessage(event));
-            // 她也戳回去一下（比文字回复早一点）；失败只记一行，不影响回复
-            const back = config.pokeBack && transport.pokeFriend ? pokeBackPlan(contact.qq, event.time) : undefined;
-            const lastBack = lastPokeBack.get(contact.qq);
-            if (back && (lastBack === undefined || now - lastBack >= POKE_BACK_COOLDOWN_MS)) {
-                lastPokeBack.set(contact.qq, now);
-                const timer = exec.after(() => {
-                    pokeTimers.delete(timer);
-                    if (stopped) return;
-                    sendOwnedNotice(() => transport.pokeFriend!(contact.qq),
-                        () => log(`[${contact.qq}] 戳回去了`),
-                        error => log(`[${contact.qq}] 戳回去失败：${error instanceof Error ? error.message : String(error)}`));
-                }, back.delayMs);
-                timer.unref?.();
-                pokeTimers.add(timer);
-            }
-        },
-
         receiveRecall(event) {
             if (stopped || !config.recalls) return;
             const contact = config.contacts.find(c => c.qq === event.user_id);
