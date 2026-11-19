@@ -58,7 +58,7 @@
 | `onlineStatus` | 在线状态 | [ADR 0083](../adr/0083-presence.md) |
 | `profileLikes` | 资料卡点赞 | [ADR 0083](../adr/0083-presence.md) |
 | `signature` | 个性签名（模式）：隔 3–5 天换一条（节日当天是祝福，下雨天有雨天的；NapCat 的 set_self_longnick）。选「只写草稿」时草稿存在数据目录的 presence/drafts.md 里，不真改。默认关。 | [ADR 0083](../adr/0083-presence.md) |
-| `qzone` | 说说（模式） | [ADR 0083](../adr/0083-presence.md) |
+| `qzone` | 说说（模式）：一周两三条，模仿「空友爱看」里常见的那种——随手一两句，有图就围着图写（图放在数据目录的 presence/photos/ 里，需要开「看懂图片内容」）。用最低隐私档的卡来写并过禁用词；选「只写草稿」时存在 presence/drafts.md 里，不真发。默认关。 | [ADR 0083](../adr/0083-presence.md) |
 | `qzoneBrowse` | 自己翻空间动态（模式） | [ADR 0142](../adr/0142-qq-account-control.md) |
 | `qzonePeek` | 刷好友动态（看名单里好友发的说说）（模式） | [ADR 0145](../adr/0145-qzone-friends-feed.md) |
 | `qzoneStrangers` | 刷陌生人的空间（学人怎么说话）（模式） | [ADR 0144](../adr/0144-qzone-strangers.md) |

@@ -173,6 +173,16 @@ export const SIGNATURE = {
     modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' },
 } as const satisfies FeatureDef & { modeLabels: Record<PresenceMode, string> };
 
+export const QZONE = {
+    key: 'qzone',
+    label: '说说',
+    group: '在 QQ 上的样子',
+    adr: '0083',
+    kind: 'mode',
+    description: '一周两三条，模仿「空友爱看」里常见的那种——随手一两句，有图就围着图写（图放在数据目录的 presence/photos/ 里，需要开「看懂图片内容」）。用最低隐私档的卡来写并过禁用词；选「只写草稿」时存在 presence/drafts.md 里，不真发。默认关。',
+    modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' },
+} as const satisfies FeatureDef & { modeLabels: Record<PresenceMode, string> };
+
 export const MODULES: readonly ModuleDef[] = [
     {
         id: 'language', name: '说话（语言）',
