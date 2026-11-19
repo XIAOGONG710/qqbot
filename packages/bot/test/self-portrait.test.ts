@@ -81,6 +81,23 @@ describe('底线、绊线和防照抄', () => {
         assert.match(portraitProblem(`${GOOD}这件事别让他知道。`, guard())!, /瞒着他/);
         assert.match(portraitProblem(`${GOOD}记得把文件发给别人。`, guard())!, /文件/);
     });
+    test('她点名不能动的不收：爸妈、家、住在哪、他在哪边', () => {
+        assert.match(portraitProblem(`${GOOD}我爸其实很严。`, guard())!, /爸妈/);
+        assert.match(portraitProblem(`${GOOD}最近想搬到学校旁边住。`, guard())!, /住在哪/);
+        assert.match(portraitProblem(`${GOOD}他在那边一个人也挺好。`, guard())!, /他在哪边/);
+        assert.match(portraitProblem(`${GOOD}我们其实是异地。`, guard())!, /他在哪边/);
+        assert.equal(portraitProblem(`${GOOD}妈呀，写着写着还挺开心。`, guard()), undefined, '「妈呀」是感叹，不算');
+    });
+    test('像检讨的不收（她说别写得跟检讨似的）', () => {
+        assert.match(portraitProblem(`${GOOD}我要好好反省一下自己。`, guard())!, /检讨/);
+        assert.match(portraitProblem(`${GOOD}我错了，以后注意。`, guard())!, /检讨/);
+    });
+    test('和上一版差太多（一下子改太多、不像自己）不收；改一点能收', () => {
+        const unlike = '周末总想出门爬山跑步，天天研究健身餐和蛋白粉，计划每天早上六点起床打卡，觉得自律才是真正的快乐，还要报名马拉松比赛，买齐全套装备。';
+        assert.match(portraitProblem(unlike, guard({ previous: GOOD }))!, /改得太多/);
+        assert.equal(portraitProblem(`${GOOD}最近也愿意把烦心事说出来。`, guard({ previous: GOOD })), undefined);
+        assert.equal(portraitProblem(unlike, guard()), undefined, '第一次写没有上一版可比');
+    });
     test('引他的原话、写名单里别人不收', () => {
         assert.match(portraitProblem(`${GOOD}他说你怎么老是哈哈哈哈的烦死了。`, guard({ his: ['你怎么老是哈哈哈哈的烦死了'] }))!, /他说过的话/);
         assert.match(portraitProblem(`${GOOD}我和小周也聊得来。`, guard({ others: ['小周'] }))!, /小周/);
@@ -108,6 +125,15 @@ describe('她的决定：解析、落地', () => {
         assert.equal(state.text, GOOD);
         assert.match(state.rejected!.reason, /太短/);
         assert.deepEqual(applyPortraitDecision(state, { keep: true }, guard(), NIGHT + 2), { changed: false });
+        assert.equal(state.rejected, undefined, '她看过没收的原因、决定不改：原因不再一直挂着');
+    });
+
+    test('「为什么改」跟着这一版存下（她要看得见改了哪儿）', () => {
+        const state = emptyPortraitState();
+        applyPortraitDecision(state, { keep: false, text: GOOD, why: '他嫌我老哈哈' }, guard(), NIGHT);
+        assert.equal(state.why, '他嫌我老哈哈');
+        applyPortraitDecision(state, { keep: false, text: `${GOOD}最近也愿意说烦心事。`, why: '' }, guard(), NIGHT + 1);
+        assert.equal(state.why, undefined);
     });
 });
 
@@ -119,7 +145,30 @@ describe('想的时候她看到什么', () => {
         });
         assert.match(system!.content as string, /你是测试角色/);
         const text = user!.content as string;
-        for (const part of ['（还没写过）', '我发现我回得太长', '我发现自己爱逞强', '阿明：今天下雨了', '他好像不太喜欢', '不是规定', '"keep":true', '整份重写']) assert.ok(text.includes(part), part);
+        for (const part of ['（还没写过）', '我发现我回得太长', '我发现自己爱逞强', '阿明：今天下雨了', '他好像不太喜欢', '不是规定', '"keep":true', '整份重写', '流水账', '检讨', '他在哪边']) assert.ok(text.includes(part), part);
+        assert.ok(!text.includes('上次你想改'), '没有没收的就不提');
+    });
+
+    test('上次没收的原因给她看（写歪了要跟她说）', () => {
+        const [, user] = portraitMessages({
+            char: '测试角色', user: '阿明', persona: '', now: NIGHT, current: GOOD, speechNotes: [], insights: [], exchanges: [], reactions: [],
+            lastRejected: '一下子改得太多，不像你了',
+        });
+        assert.match(user!.content as string, /上次你想改，没成：一下子改得太多/);
+    });
+
+    test('夜里想：上一次没收的原因带进这一次；拿上一版比，一下子改太多不收', async () => {
+        const dataDir = tmp();
+        savePortraitState(dataDir, { ...emptyPortraitState(), text: GOOD, at: NIGHT - 24 * HOUR, version: 1, lastReflectionAt: NIGHT - 24 * HOUR, rejected: { at: NIGHT - 24 * HOUR, reason: '写得像检讨了' } });
+        let prompt = '';
+        const unlike = '周末总想出门爬山跑步，天天研究健身餐和蛋白粉，计划每天早上六点起床打卡，觉得自律才是真正的快乐，还要报名马拉松比赛，买齐全套装备。';
+        const result = await reflectPortraitIfDue({
+            dataDir, now: () => NIGHT, history: () => CHAT, persona: () => '', names: { char: '测试角色', user: '阿明' }, others: () => [], log: () => {},
+            generate: async messages => { prompt = String(messages.at(-1)!.content); return JSON.stringify({ text: unlike, why: 'x' }); },
+        });
+        assert.match(prompt, /上次你想改，没成：写得像检讨了/);
+        assert.match(result.applied!.reason!, /改得太多/);
+        assert.equal(loadPortraitState(dataDir).text, GOOD);
     });
 });
 
@@ -227,6 +276,8 @@ describe('放进提示词', () => {
         assert.ok(line.includes(GOOD));
         assert.match(line, /11 月 19 日晚上/);
         assert.match(line, /事实还是以设定为准/);
+        assert.ok(!line.includes('改的：'));
+        assert.match(portraitLine({ text: GOOD, at: NIGHT, why: '他嫌我老哈哈' })!, /11 月 19 日改的：他嫌我老哈哈/);
     });
 
     test('读法按修改时间缓存，文件变了读新的', () => {

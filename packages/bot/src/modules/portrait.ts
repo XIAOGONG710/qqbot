@@ -4,11 +4,11 @@
 // 不存状态、不调模型；夜里想、写文件的那一半在 reflections 模块里。
 
 import type { Module } from '../interpreter/interpreter.ts';
-import { portraitLine, type PortraitState } from '../life/self-portrait.ts';
+import { portraitLine, type PortraitView } from '../life/self-portrait.ts';
 import type { Log } from '../platform/log.ts';
 
 export interface PortraitModuleOptions {
-    portrait: () => Pick<PortraitState, 'text' | 'at'>;
+    portrait: () => PortraitView;
     log: Log;
 }
 
