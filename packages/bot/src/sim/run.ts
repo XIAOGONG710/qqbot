@@ -1,8 +1,10 @@
-// 模拟器入口（ADR 0005）：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N]
+// 模拟器入口（ADR 0005）：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录或含 {tier} 的卡文件>] [--model <名>] [--thinking off|high|max] [--pin-examples on|off] [--tag <名字>] [--parallel N]
 // 用 runtime/bot/config.json 的模型、提示词、记忆和角色卡配置（key 同 bot，从 QQBOT_LLM_API_KEY 读），
 // 每个场景跑 --runs 次（不带记忆的并行；带记忆的默认一次一个，免得挤爆和线上共用的 Postgres；--parallel 改），每次的数据和报告在 runtime/sim/<时间>/<场景>/r<n>/，Hindsight 用临时 bank，跑完删掉。
 // 不碰 bot 的聊天记录、锁和 bank，bot 运行中也可以跑。
 // --card：用这个目录里的卡（文件名同配置里的，A/B 用临时目录；改 characters/*/st/ 等于直接上线，ADR 0019）；
+//   也可以直接给一个含 {tier} 的卡文件路径（以 .json 结尾），比如合成角色 packages/bot/test/fixtures/synthetic-character/st/synthetic-{tier}.json（ADR 0333）；
+// --model <名>：这次模拟整场换聊天模型（同一个接口和 key），比模型用；--thinking off|high|max：思考关 / 开（开时 token 和超时放到同深思轮次，ADR 0151）；
 // --pin-examples：只对这次模拟改示例常驻（ADR 0019 决策 6），其余同配置。
 // --context-turns N：开了记忆时原始聊天只放最近 N 轮、更早的整理成要点，代替最近 80 条（ADR 0043 离线实验，线上没有这个开关）；--context-step K：切口每 K 轮挪一次，默认 4。
 
@@ -57,6 +59,7 @@ const factOption = option('--fact');
 const frameOption = option('--frame');
 const temperatureOption = option('--temperature');
 const thinkingOption = option('--thinking');
+const modelOption = option('--model');
 const cardDir = option('--card');
 const pinExamples = option('--pin-examples');
 const tag = option('--tag');
@@ -73,13 +76,13 @@ if (factOption !== undefined && !['off', 'log', 'fix'].includes(factOption)) {
     console.error('--fact 应为 off / log / fix');
     process.exit(2);
 }
-if ((frameOption !== undefined && frameOption !== 'solve') || (thinkingOption !== undefined && thinkingOption !== 'off') || (temperatureOption !== undefined && !(Number(temperatureOption) >= 0 && Number(temperatureOption) <= 2))) {
-    console.error('--frame 只认 solve；--thinking 只认 off；--temperature 要在 0 到 2 之间');
+if ((frameOption !== undefined && frameOption !== 'solve') || (thinkingOption !== undefined && !['off', 'high', 'max'].includes(thinkingOption)) || (modelOption !== undefined && !/^[A-Za-z0-9._:-]{1,60}$/.test(modelOption)) || (temperatureOption !== undefined && !(Number(temperatureOption) >= 0 && Number(temperatureOption) <= 2))) {
+    console.error('--frame 只认 solve；--thinking 只认 off / high / max；--model 是模型名（字母、数字和 . _ : -）；--temperature 要在 0 到 2 之间');
     process.exit(2);
 }
 if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))
     || (contextTurns && ![contextTurns.turns, contextTurns.step].every(n => Number.isInteger(n) && n >= 1))) {
-    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录>] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--shape] [--agenda] [--filler] [--feel] [--split] [--fact off|log|fix] [--context-turns N [--context-step K]]');
+    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录或含 {tier} 的卡文件>] [--model <名>] [--thinking off|high|max] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--shape] [--agenda] [--filler] [--feel] [--split] [--fact off|log|fix] [--context-turns N [--context-step K]]');
     process.exit(2);
 }
 
@@ -98,12 +101,17 @@ const config = {
     llm: {
         ...loaded.llm,
         ...(temperatureOption !== undefined ? { temperature: Number(temperatureOption) } : {}),
+        ...(modelOption !== undefined ? { model: modelOption } : {}),
         ...(thinkingOption === 'off' ? { extraBody: { ...extraWithoutEffort, thinking: { type: 'disabled' } } } : {}),
+        ...(thinkingOption === 'high' || thinkingOption === 'max'
+            ? { maxTokens: Math.max(loaded.llm.maxTokens, 4000), timeoutMs: Math.max(loaded.llm.timeoutMs, 180_000), extraBody: { ...extraWithoutEffort, thinking: { type: 'enabled' }, reasoning_effort: thinkingOption } }
+            : {}),
     },
-    ...(cardDir ? { characterCard: join(resolve(process.env.INIT_CWD ?? process.cwd(), cardDir), basename(loaded.characterCard)) } : {}),
+    ...(cardDir ? { characterCard: cardDir.endsWith('.json') ? resolve(process.env.INIT_CWD ?? process.cwd(), cardDir) : join(resolve(process.env.INIT_CWD ?? process.cwd(), cardDir), basename(loaded.characterCard)) } : {}),
     ...(pinExamples ? { prompt: { ...loaded.prompt, pinExamples: pinExamples === 'on' } } : {}),
 };
 if (contextTurns) console.log(`上下文：最近 ${contextTurns.turns} 轮原文 + 更早的要点（切口每 ${contextTurns.step} 轮挪一次）`);
+if (modelOption !== undefined || thinkingOption !== undefined) console.log(`模型：${config.llm.model}；思考：${thinkingOption ?? '同配置'}`);
 if (cardDir || pinExamples) console.log(`卡：${config.characterCard}；示例常驻：${config.prompt.pinExamples ? '开' : '关'}`);
 const hindsight = config.memory && !noMemory ? new HindsightClient(config.memory.baseUrl, config.memory.timeoutMs) : undefined;
 const now = new Date();
