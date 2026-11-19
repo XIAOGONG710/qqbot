@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node src/platform/main.ts",
     "sim": "node src/sim/run.ts",
+    "sim:group": "node src/sim/group.ts",
     "privacy-audit": "node src/memory/privacy-audit.ts",
     "privacy-forget": "node src/memory/privacy-forget.ts",
     "heartbeat-watch": "node src/ops/heartbeat-watch-cli.ts",
