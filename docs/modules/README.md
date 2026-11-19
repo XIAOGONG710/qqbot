@@ -21,7 +21,7 @@
 ## 加一个新功能时
 
 1. 找它属于哪个模块（拿不准就看它改的是“她怎么说”还是“她什么时候说”还是“她过着什么日子”）；新文件加进 `platform/modules.ts` 的 `files`；
-2. 在 `platform/features.ts` 登记它的开关（`dashboard.test.ts` 会核对没有漏掉的）；
+2. 在 `platform/features.ts` 登记它的开关，连同配置页说明 `detail`（几档的还有 `choices`），Koishi 插件里加一行 `toggle('键')` / `choice('键')`（`dashboard.test.ts`、`feature-schema.test.ts` 会核对）；
 3. 写 ADR，写测试，真模型模拟；周报里能看到它有没有在发生（日志计数）；
 4. 重新生成这份文档。
 
@@ -31,5 +31,5 @@
 
 ## 接下来
 
-这里的模块总表仍是文档清单。按 [ADR 0336](../adr/0336-interpreter-executor-modules.md)，运行时正在改成「一个解释器、一个执行器，其余都是解释器的模块」：
-每个模块自带配置段、状态槽、定时任务和提示词贡献，副作用一律经执行器。迁移完成后这份清单改为从模块定义生成。
+按 [ADR 0336](../adr/0336-interpreter-executor-modules.md)，运行时是「一个解释器、一个执行器，其余都是解释器的模块」：一轮回复的模块、定时任务都经解释器，副作用经执行器。
+每个开关只在 `platform/features.ts` 定义一次：状态页、这里的开关表、Koishi 配置页的说明和下拉选项都从它生成；文件归属、职责和指标在 `platform/modules.ts`。
