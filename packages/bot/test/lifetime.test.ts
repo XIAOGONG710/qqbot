@@ -68,7 +68,7 @@ describe('统一停止的登记表', () => {
         lifetime.own('a', () => { ran.push('a'); });
         lifetime.commit();
         lifetime.rollback();
-        assert.deepEqual(ran, []);
+        assert.equal(ran.length, 0);
         lifetime.stop(); lifetime.stop();
         lifetime.own('b', () => { ran.push('b'); });
         lifetime.stop();
