@@ -15,7 +15,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { loadOthers } from '.././social/others.ts';
-import { createAccount, friendRequestVerdict } from '.././social/account.ts';
+import { createAccount } from '.././social/account.ts';
 import { chatCompletion, forExtraction } from '.././language/llm.ts';
 import { createExecutor, realFiles, type ExecutorOptions } from '../executor/executor.ts';
 import { absorbStage, createInterpreter } from '../interpreter/interpreter.ts';
@@ -80,6 +80,7 @@ import { privateGroupBulletinRecall, privateGroupBulletinTarget, privateGroupSch
 import { groupPeople } from '.././social/group-people.ts';
 import { groupRoom } from '.././social/group-room.ts';
 import { groupRoomModule } from '../modules/group-room.ts';
+import { friendRequestsModule } from '../modules/friend-requests.ts';
 import { groupAffect } from '.././social/group-affect.ts';
 import { currentTierHistory, TierRecord } from '.././memory/tier-record.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
@@ -957,6 +958,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 待跟进（连上之后才有计划器）：排在所有 synced 的最前面，同迁移前
     // 群消息的入口（ADR 0336 第 6 步）：群里那一摊在下面才建，事件来了再取
     const groupRoomEntry = groupRoomModule(() => groupChat);
+    // 好友申请（ADR 0142）：账号控制面在下面才建，事件来了再取
+    const friendRequests = friendRequestsModule({ config, stopped: () => stopped, account: () => account, sendOwnedNotice, log });
     const followUps = followUpsModule(() => syncFollowUps(), () => planners.size > 0, MEMORY_SYNC_MS);
     const tastesJob = tastesModule(config.tastes ? () => reflectTastes() : undefined);
     // 长期记忆同步、「她现在在干嘛」导出、她留的话（ADR 0336 第 6 步）：只有定时任务，App 搭好时开，先后同原来（在她自己想一想的那几样之前）；做的事都在后面才建，到点再取
@@ -1242,9 +1245,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 message: ({ event }) => legacy.receive(event),
                 poke: ({ event }) => legacy.receivePoke(event),
                 recall: ({ event }) => legacy.receiveRecall(event),
-                friendRequest: ({ request }) => legacy.receiveFriendRequest(request),
             },
-        }, groupRoomEntry, followUps, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
+        }, groupRoomEntry, friendRequests, followUps, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
         exec,
     });
     // 解释器接手各模块的停（关定时任务、拒新工作；小梗、口头习惯的收尾在里面）
@@ -3814,8 +3816,8 @@ ${body}
     if ((config.qqFriendGate ?? 'off') !== 'off' && accountMode !== 'on') log('好友申请：要 qqControl 设为 on 才处理，现在没生效');
     else if ((config.qqFriendGate ?? 'off') !== 'off') log(`好友申请：${config.qqFriendGate === 'all' ? '名单内同意、名单外驳回' : '只自动同意名单内的'}（名单 ${(config.qqAllowFriends ?? []).join('、') || '空'}）`);
 
-    // 群消息不经这里：解释器直接交给 group-room 模块（ADR 0336 第 6 步）
-    const legacy: Omit<App, 'receiveGroup'> = {
+    // 群消息、好友申请不经这里：解释器直接交给 group-room / friend-requests 模块（ADR 0336 第 6 步）
+    const legacy: Omit<App, 'receiveGroup' | 'receiveFriendRequest'> = {
         async connected(selfId) {
             if (stopped) return;
             // Koishi / NapCat 可能在同一次重连期间重复发出 ready。共用正在进行的补回，
@@ -3932,19 +3934,6 @@ ${body}
         },
         mobileCompanion: () => mobileCompanion,
         externalDrafts: () => externalDraftStore,
-        receiveFriendRequest({ userId, flag }) {
-            if (stopped) return;
-            const gate = config.qqFriendGate ?? 'off';
-            if (!account || gate === 'off') return;
-            const verdict = friendRequestVerdict(gate, config.qqAllowFriends ?? [], userId);
-            if (verdict === 'ignore') {
-                log(`[好友申请] ${userId} 不在名单里，留着给你处理`);
-                return;
-            }
-            void sendOwnedNotice(() => account.run('set_friend_add_request', { flag, approve: verdict === 'accept' }),
-                () => log(`[好友申请] ${userId} ${verdict === 'accept' ? '同意' : '驳回'}`),
-                error => log(`[好友申请] ${userId} 处理失败：${error instanceof Error ? error.message : String(error)}`));
-        },
         stop() {
             if (stopped) return stopDrain;
             // 每项的停法在建它的地方登记（lifetime.own），先后按 STOP_ORDER

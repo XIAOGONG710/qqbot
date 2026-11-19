@@ -1419,3 +1419,9 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   解释器建得比群聊那一摊早，模块拿的是取它的函数（事件都在 App 搭好之后才来）。连上之后读名字那一次仍由 App 在原位调 `groupChat.syncNames()`。
 - 攒批的等待、分条发送之间的停顿、戳之前的等待仍直接用计时器（同原来；搬到模块目录外，模块目录照旧不碰计时器），收进执行器另做。
 - 验证：行为基线没有群聊场景，靠 `group-chat.test.ts` 的 36 个用例（其中 20 多个起整个 App）；变异检验：模块收到群消息什么都不做，14 个失败。41 个场景对快照逐字一致（App 的构造动过）。
+
+### 第 6 步：app.ts 只剩装配——好友申请（2026-11-19）
+
+- App 的 `receiveFriendRequest`（ADR 0142：名单内同意、名单外驳回或留给人）原样搬成解释器的模块 `friend-requests`（`src/modules/friend-requests.ts`），接 `friendRequest` 事件，挂在群聊入口后面；
+  「旧逻辑」不再转好友申请，`legacy` 的类型去掉 `receiveFriendRequest`。账号控制面在 App 里建得比解释器晚，模块拿取它的函数；回执照旧经 App 的 `sendOwnedNotice`（停止时等它）。
+- 验证：41 个场景对快照逐字一致；`memory-app-friend-request-owner-review.test.ts`、`app.test.ts` 通过；变异检验：模块一律不处理，6 个失败。
