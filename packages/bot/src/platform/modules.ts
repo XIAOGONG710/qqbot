@@ -8,6 +8,7 @@ import type { FeatureDef, FeatureGroup } from './features.ts';
 import type { GroupChatMode, StickerMode } from './config.ts';
 import type { WebMode } from './web.ts';
 import type { ProactiveMode } from '../proactive/proactive.ts';
+import type { FactCheckMode } from '../language/fact-check.ts';
 
 export interface ModuleDef {
     id: string;
@@ -89,6 +90,16 @@ export const STICKERS = {
     description: '第一阶段只处理男朋友档。先用「只收藏核对」观察描述；完成真图核对和 NapCat 真发预检后，再选「收藏并发送」。需要打开「看懂图片内容」，默认关。',
     modeLabels: { off: '关', collect: '只收藏核对（不发）', send: '收藏并发送' },
 } as const satisfies FeatureDef & { modeLabels: Record<StickerMode, string> };
+
+export const FACT_CHECK = {
+    key: 'factCheck',
+    label: '逐条事实检查（编的说法 / 对不上事实）',
+    group: '说话',
+    adr: '0137',
+    kind: 'mode',
+    description: '发送前，对照设定、本轮事实和聊天记录，逐条检查她对自己和身边世界的具体说法。off 不查；log 只记录问题，回复照发（敏感调试关着时只记条数）；fix 先带说明重写一次，再查，仍有问题就删掉对应行。危机回合不查，查不成照发。默认关。',
+    modeLabels: { off: '关', log: '只查、只记日志，回复照发', fix: '查到就重写' },
+} as const satisfies FeatureDef & { modeLabels: Record<FactCheckMode, string> };
 
 export const MODULES: readonly ModuleDef[] = [
     {

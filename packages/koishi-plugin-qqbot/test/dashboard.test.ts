@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
-import { GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
+import { FACT_CHECK, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
 import { aiPhotoRuntimeRows, attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, lifeTrend, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText, timeZoneLine } from '../client/dashboard.js';
 
@@ -87,6 +87,16 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
             assert.equal(item.on, mode !== 'off');
             assert.equal(item.mode, mode === 'off' ? undefined : mode);
             assert.ok(featureTitle(item).includes(STICKERS.description));
+        }
+    });
+
+    test('factCheck 三档的面板说明共用模块定义', () => {
+        for (const mode of ['off', 'log', 'fix'] as const) {
+            const item = featureStatuses({ factCheck: mode }).find(feature => feature.key === 'factCheck')!;
+            assert.equal(item.label, FACT_CHECK.label);
+            assert.equal(item.on, mode !== 'off');
+            assert.equal(item.mode, mode === 'off' ? undefined : mode);
+            assert.ok(featureTitle(item).includes(FACT_CHECK.description));
         }
     });
 

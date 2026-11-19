@@ -6,7 +6,7 @@
 // 还没搬过去的直接写完整的配置页说明 detail。这里照样是唯一的总表。
 // 纯数据 + 几个函数，没有副作用；不放任何密钥或聊天内容。
 
-import { GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
+import { FACT_CHECK, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
 
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
@@ -71,9 +71,7 @@ export const FEATURES: readonly FeatureDef[] = [
         detail: '**看心情不回**（ADR 0013）：正聊着、对方一串只回了「哈哈」「嗯」这类反应时，偶尔不回（男朋友档约 15%，越疏越多，最多 35%）。隔一分钟以上再来一条一定回；问句、图片、晚安都照样回。要开着作息' },
     { key: 'speechCheck', label: '说话的毛病（出口检查）', group: '说话', adr: '0014',
         detail: '**说话的毛病**（ADR 0014）：发出去之前查助手腔、算账（「这会儿才想起来找我」）、怪对方没说、和她最近几次回复重复。开头重复的「行，」这类语气词直接去掉；别的带说明重写一次，命中时这一轮晚几秒' },
-    { key: 'factCheck', label: '逐条事实检查（编的说法 / 对不上事实）', group: '说话', adr: '0137', kind: 'mode',
-        detail: '**逐条事实检查**（ADR 0137）：她最容易露馅的是编——事实里只有“猫今天没下楼”，她写“猫一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。回复发出去之前让模型当审稿员，把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。off 不查；log 只查、只在日志里记（敏感调试关着时只记条数），回复照发——先看误报多不多；fix 有问题就带说明重写一次，重写后再查，还有就删那几行。危机回合不查，查不成一律照发。',
-        modeLabels: { off: '关', log: '只查、只记日志，回复照发', fix: '查到就重写' } },
+    FACT_CHECK,
     { key: 'relationship', label: '关系阶段（聊得多了更放得开）', group: '说话', adr: '0113',
         detail: '**关系阶段**（ADR 0113）：角色卡写着她“相处越久越敢说心里话”。最近 30 天里有 14 天以上真聊过（他那天至少说了 3 条），她会更放得开一点：想他直接说、心里的事愿意往外倒一点，仍然是她、不黏人。聊得少时保持现在的样子（只向上变，不会因为他忙而变冷）；不存分数，窗口是滑动的。只对男朋友档。默认关。' },
     { key: 'jokes', label: '小梗回头提', group: '说话', adr: '0114',
