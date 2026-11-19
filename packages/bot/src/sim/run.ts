@@ -1,9 +1,10 @@
-// 模拟器入口（ADR 0005）：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录或含 {tier} 的卡文件>] [--model <名>] [--thinking off|high|max] [--pin-examples on|off] [--tag <名字>] [--parallel N]
+// 模拟器入口（ADR 0005）：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录或含 {tier} 的卡文件>] [--model <名>] [--thinking off|high|max] [--own-voice] [--pin-examples on|off] [--tag <名字>] [--parallel N]
 // 用 runtime/bot/config.json 的模型、提示词、记忆和角色卡配置（key 同 bot，从 QQBOT_LLM_API_KEY 读），
 // 每个场景跑 --runs 次（不带记忆的并行；带记忆的默认一次一个，免得挤爆和线上共用的 Postgres；--parallel 改），每次的数据和报告在 runtime/sim/<时间>/<场景>/r<n>/，Hindsight 用临时 bank，跑完删掉。
 // 不碰 bot 的聊天记录、锁和 bank，bot 运行中也可以跑。
 // --card：用这个目录里的卡（文件名同配置里的，A/B 用临时目录；改 characters/*/st/ 等于直接上线，ADR 0019）；
 //   也可以直接给一个含 {tier} 的卡文件路径（以 .json 结尾），比如合成角色 packages/bot/test/fixtures/synthetic-character/st/synthetic-{tier}.json（ADR 0333）；
+// --own-voice：「别主动说」那几处换成「想说就说」（language/own-voice.ts），和不带的一批比；
 // --model <名>：这次模拟整场换聊天模型（同一个接口和 key），比模型用；--thinking off|high|max：思考关 / 开（开时 token 和超时放到同深思轮次，ADR 0151）；
 // --pin-examples：只对这次模拟改示例常驻（ADR 0019 决策 6），其余同配置。
 // --context-turns N：开了记忆时原始聊天只放最近 N 轮、更早的整理成要点，代替最近 80 条（ADR 0043 离线实验，线上没有这个开关）；--context-step K：切口每 K 轮挪一次，默认 4。
@@ -18,6 +19,7 @@ import { HindsightClient } from '../memory/hindsight.ts';
 import { checkSummary, exitSummary, renderReport } from './report.ts';
 import { runScenario } from './runner.ts';
 import { loadScenario } from './scenario.ts';
+import { useOwnVoice } from '../language/own-voice.ts';
 
 // 模拟器自己控制并发（--parallel），不受线上那套并发 / 日额度限制（ADR 0070 第 7 项）
 unlimitedModelGuard();
@@ -60,6 +62,8 @@ const frameOption = option('--frame');
 const temperatureOption = option('--temperature');
 const thinkingOption = option('--thinking');
 const modelOption = option('--model');
+// 「她自己的话」（language/own-voice.ts）：把「别主动说」那几处换成「想说就说」，和不带的一批比
+const ownVoiceOn = flag('--own-voice');
 const cardDir = option('--card');
 const pinExamples = option('--pin-examples');
 const tag = option('--tag');
@@ -82,7 +86,7 @@ if ((frameOption !== undefined && frameOption !== 'solve') || (thinkingOption !=
 }
 if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))
     || (contextTurns && ![contextTurns.turns, contextTurns.step].every(n => Number.isInteger(n) && n >= 1))) {
-    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录或含 {tier} 的卡文件>] [--model <名>] [--thinking off|high|max] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--shape] [--agenda] [--filler] [--feel] [--split] [--fact off|log|fix] [--context-turns N [--context-step K]]');
+    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录或含 {tier} 的卡文件>] [--model <名>] [--thinking off|high|max] [--own-voice] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--shape] [--agenda] [--filler] [--feel] [--split] [--fact off|log|fix] [--context-turns N [--context-step K]]');
     process.exit(2);
 }
 
@@ -111,6 +115,8 @@ const config = {
     ...(pinExamples ? { prompt: { ...loaded.prompt, pinExamples: pinExamples === 'on' } } : {}),
 };
 if (contextTurns) console.log(`上下文：最近 ${contextTurns.turns} 轮原文 + 更早的要点（切口每 ${contextTurns.step} 轮挪一次）`);
+useOwnVoice(ownVoiceOn);
+if (ownVoiceOn) console.log('她自己的话：开（「别主动说」那几处换成「想说就说」）');
 if (modelOption !== undefined || thinkingOption !== undefined) console.log(`模型：${config.llm.model}；思考：${thinkingOption ?? '同配置'}`);
 if (cardDir || pinExamples) console.log(`卡：${config.characterCard}；示例常驻：${config.prompt.pinExamples ? '开' : '关'}`);
 const hindsight = config.memory && !noMemory ? new HindsightClient(config.memory.baseUrl, config.memory.timeoutMs) : undefined;

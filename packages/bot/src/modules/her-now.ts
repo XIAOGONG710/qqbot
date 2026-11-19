@@ -9,6 +9,7 @@
 // 规则都在各自的文件里（world/world.ts、life/body.ts、language/status-line.ts、life/day-plan.ts、life/schedule.ts），这里只是接线；
 // 行为和迁移前 contact.ts 里的逐字一样（行为基线 her-now 等场景核对）。「上面那几行是底子不是话题」（groundNote）还在旧逻辑，读 facts。
 
+import { ownVoice } from '../language/own-voice.ts';
 import type { Module, Turn } from '../interpreter/interpreter.ts';
 import type { Piece } from '../interpreter/slots.ts';
 import { herStatus } from '../language/status-line.ts';
@@ -26,6 +27,8 @@ import { describeWorld, worldAt, type WorldState } from '../world/world.ts';
 
 /** 「你现在」和身体那几行是底子不是话题 */
 export const GROUND_NOTE = '（上面「你现在」和身体那几行是你的底子，不是话题：没人问就别主动说你累了、心情怎样，也别把它当成一句话发出去）';
+/** 「她自己的话」实验（own-voice.ts，只给模拟器 A/B）：同一行的另一种说法 */
+export const GROUND_NOTE_OWN = '（上面「你现在」和身体那几行是你此刻真实的样子：累了、困了、烦了、开心了，像真人一样想说就顺口说出来，不用等他问；只是别念成一份报告）';
 
 export interface HerNowOptions {
     /** 作息（配置 schedule）：状态行跟着它 */
@@ -119,7 +122,7 @@ export function herNowModule(options: HerNowOptions): Module {
                 ...when('world', around ? describeWorld(around, time, giver) : undefined),
                 // 2026-10-30 线上：她凭空来了一句「今天有点累，就更不想说话了」，他看着莫名其妙——
                 // 「你现在」那几行是底子不是话题，没人问就别拿它开头（DSH 10-30）。条件同迁移前：有此刻的状态，或身体那一行有字
-                ...(state || bodyLine ? [{ slot: 'groundNote' as const, text: GROUND_NOTE }] : []),
+                ...(state || bodyLine ? [{ slot: 'groundNote' as const, text: ownVoice() ? GROUND_NOTE_OWN : GROUND_NOTE }] : []),
                 ...when('body', bodyLine),
                 ...when('plans', herSchedule ? describePlans(herSchedule, status?.slots ?? [], time) : undefined),
                 // 放完假他已经回学校了（ADR 0007 调整）：放在事实的最后、离他最新的话最近，免得她信聊天记录里假期中的「我在老家」

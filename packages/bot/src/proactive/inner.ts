@@ -7,6 +7,7 @@
 // 聊天时最近的几个念头也会放进提示词，让她前后是同一个在想事情的人。念头只记感受和想法，不记新发生的事（不编事实）。
 // 纯函数 + 状态校验；什么时候想、调模型、存盘在 proactive-planner.ts。
 
+import { ownVoice } from '../language/own-voice.ts';
 import { stiltedHit } from '../language/expression.ts';
 import { stateTimestamp } from '../memory/state-schema.ts';
 
@@ -259,7 +260,10 @@ export function innerLine(thoughts: readonly InnerThought[], now: number): strin
     const recent = thoughts.filter(t => now - Date.parse(t.at) < INNER_LINE_WINDOW_MS && Date.parse(t.at) <= now)
         .sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).slice(-INNER_LINE_MAX);
     if (!recent.length) return undefined;
-    return `[你这几个钟头心里在想（是你自己的小心思，不是发生过的事，不用照着念；话题接得上、他问起时才自然带一句，接不上就别硬说）：${recent.map(t => `「${t.text}」`).join('')}]`;
+    const said = recent.map(t => `「${t.text}」`).join('');
+    // 「她自己的话」实验（own-voice.ts，只给模拟器 A/B）：开着时不再叫她「接不上就别硬说」
+    if (ownVoice()) return `[你这几个钟头心里一直在想（是你自己的心思，不是发生过的事）：${said}。这是你心里装着的事，想说就说出来，不用等他问，也不用等话题正好接得上；用你自己的话说，别照着念]`;
+    return `[你这几个钟头心里在想（是你自己的小心思，不是发生过的事，不用照着念；话题接得上、他问起时才自然带一句，接不上就别硬说）：${said}]`;
 }
 
 /** 她自己上网查到的（ADR 0180）：她好奇才查的，不是他让查的；明说是网上看到的，别当成自己经历过的事 */

@@ -1,6 +1,7 @@
 // 当天这一层的「这一轮你想」（ADR 0019 决策 2）。
 // 只按眼前已有线索给一个方向，不抽签、不额外调模型，也不把它写成能照抄的台词。
 
+import { ownVoice } from './own-voice.ts';
 import { afterNoIntent, lastNo } from './after-no.ts';
 import { CURIOUS_INTENT, curiousTurn } from './curious.ts';
 import { describeGrievance, type Grievance } from '.././emotion/grievance.ts';
@@ -422,7 +423,7 @@ export function describeIntent(context: IntentContext): string | undefined {
     const news = context.news?.length && !needsCare(context.history) ? context.news : undefined;
     if (news) return `[这一轮你想：先回他刚说的；你今天${news.join('、')}，还没跟他说过，接着就说这件（看「你那边」那一行，没写的细节不编）]`;
     if (context.dayThings && !needsCare(context.history) && asksAboutHerDay(context.history)) return ABOUT_DAY_INTENT;
-    if (asksQuestion(context.history)) return '[这一轮你想：先直接回答他刚问的，不另起话题]';
+    if (asksQuestion(context.history)) return ownVoice() ? '[这一轮你想：先直接回答他刚问的；答完你自己有想说的事、此刻的心情，也可以接着说]' : '[这一轮你想：先直接回答他刚问的，不另起话题]';
     if (needsCare(context.history)) return '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够；他认真难过、生病或很累时，第一句先安慰或问怎么了，不先损他；他是撒娇式的呜呜、要哭了，就直接哄（叠词哄：同一个词连说几遍，或者抱抱），别反问他哭什么；不转去讲你自己的事，不硬开新话题]';
     if (isRelationshipBid(context.history)) return '[这一轮你想：只接他刚说的你们两个人的事，一两句就够；不转去讲猫、书或手头的进度]';
     // 追问（ADR 0126）：原来这一句写着“别急着追问细节，真要问也只问一两个字”，她就只会问一两个字的小问题

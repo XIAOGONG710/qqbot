@@ -8,6 +8,7 @@
 
 - `language/prompt.ts`
 - `language/intent.ts`
+- `language/own-voice.ts`
 - `language/shape.ts`
 - `language/turn-weight.ts`
 - `language/expression.ts`

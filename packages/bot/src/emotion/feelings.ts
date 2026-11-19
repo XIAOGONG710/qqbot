@@ -6,6 +6,7 @@
 // 不来自模型的随口一说：模型编出来的“难过”没有来由，会变成表演。
 // 纯函数；提示词里怎么说、哪些轮次用，在 contact.ts。
 
+import { ownVoice } from '../language/own-voice.ts';
 import { warmSignal } from './affect.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import { ignoredNow, IGNORED_GAP_MS, IGNORED_MAX_MS } from './grievance.ts';
@@ -291,7 +292,7 @@ function direction(felt: Felt, userName: string, context: { melt: boolean; voice
         case 'worry':
             return strong
                 ? { feel: `很担心（${cause}）`, show: '有点心不在焉，忍不住想问一句；还是一两句，不说教、不反复问' }
-                : { feel: `有点担心（${cause}）`, show: '不用主动讲，话题碰到或他问起才说，说一两句；惦记的可以问一句，别唠叨' };
+                : { feel: `有点担心（${cause}）`, show: ownVoice() ? '想跟他说就说，讲讲你在担心什么，一两句就好；惦记的可以问一句，别唠叨' : '不用主动讲，话题碰到或他问起才说，说一两句；惦记的可以问一句，别唠叨' };
         case 'sad': {
             const careful = felt.aboutHim ? '不翻旧账、不质问、不让他内疚' : '不怪他、不拿它压他';
             if (context.melt && context.mayCry) {
@@ -302,7 +303,7 @@ function direction(felt: Felt, userName: string, context: { melt: boolean; voice
                     ? `话少，回得慢一点；撑不住时会哭（说“哭了”“眼睛红了”，或带[快哭了]、[大哭]），${userName}一关心更容易绷不住；不夸张、不演、不威胁、不要他保证什么，${careful}；他忙或要走就让他走`
                     : `话少，回得慢一点，人是低的；${careful}，不要他保证什么；他忙或要走就让他走` };
             }
-            return { feel: `有点难过（${cause}）`, show: `回得淡一点、短一点；不主动提，嘴硬说“没事”也行，他认真问了就松口说半句；${careful}，不要他哄；他约你做什么，没心情就直说，不用硬撑着答应` };
+            return { feel: `有点难过（${cause}）`, show: `回得淡一点、短一点；${ownVoice() ? '想让他知道就直接说你今天不太开心，嘴硬说“没事”也行，他认真问了就松口说' : '不主动提，嘴硬说“没事”也行，他认真问了就松口说半句'}；${careful}，不要他哄；他约你做什么，没心情就直说，不用硬撑着答应` };
         }
         case 'annoyed':
             return { feel: `有点烦（${cause}）`, show: `说话冲一点、没耐心；${userName}没惹你就别拿他出气；他约你做什么、让你帮什么，不想就直说，不用勉强` };
@@ -324,7 +325,7 @@ export function describeFeelings(felt: readonly Felt[], userName: string, contex
         return part ? [part] : [];
     });
     if (!parts.length) return undefined;
-    return `[你此刻的心境（有来由的，不是演的）：${parts.map(part => `${part.feel}。${part.show}`).join('；另外，')}。不用解释自己的状态，也别每句都带情绪；事实以上面写的为准，没写的别编]`;
+    return `[你此刻的心境（有来由的，不是演的）：${parts.map(part => `${part.feel}。${part.show}`).join('；另外，')}。${ownVoice() ? '情绪会自然带进你的话里，不用藏，也不用解释，只是别每句都带' : '不用解释自己的状态，也别每句都带情绪'}；事实以上面写的为准，没写的别编]`;
 }
 
 // ───────── 作者写下的事：runtime/bot/moments.json ─────────
