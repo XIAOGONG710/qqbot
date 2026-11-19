@@ -163,6 +163,16 @@ export const BILIBILI_COMMENT = {
     modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' },
 } as const satisfies FeatureDef & { modeLabels: Record<PresenceMode, string> };
 
+export const SIGNATURE = {
+    key: 'signature',
+    label: '个性签名',
+    group: '在 QQ 上的样子',
+    adr: '0083',
+    kind: 'mode',
+    description: '隔 3–5 天换一条（节日当天是祝福，下雨天有雨天的；NapCat 的 set_self_longnick）。选「只写草稿」时草稿存在数据目录的 presence/drafts.md 里，不真改。默认关。',
+    modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' },
+} as const satisfies FeatureDef & { modeLabels: Record<PresenceMode, string> };
+
 export const MODULES: readonly ModuleDef[] = [
     {
         id: 'language', name: '说话（语言）',

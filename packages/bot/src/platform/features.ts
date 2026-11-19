@@ -6,7 +6,7 @@
 // 还没搬过去的直接写完整的配置页说明 detail。这里照样是唯一的总表。
 // 纯数据 + 几个函数，没有副作用；不放任何密钥或聊天内容。
 
-import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
+import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
 
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
@@ -226,9 +226,7 @@ export const FEATURES: readonly FeatureDef[] = [
         detail: '**在线状态**（ADR 0083）：按她的作息，睡着或说过睡了「睡觉中」、上课「学习中」、在听歌「听歌中」、其余「在线」（NapCat 的 set_online_status）；状态变了至少隔 10 分钟才改。不用「离开」：QQ 的「离开」会给每个来消息的人自动回一句预设的话（10-20 实测）。对外可见。默认关' },
     { key: 'profileLikes', label: '资料卡点赞', group: '在 QQ 上的样子', adr: '0083',
         detail: '**资料卡点赞**（ADR 0083）：约 80% 的日子，中午到晚上某个时刻给男朋友档的人点 1–5 个赞（NapCat 的 send_like）；睡着、上课时不点。他会收到通知。默认关' },
-    { key: 'signature', label: '个性签名', group: '在 QQ 上的样子', adr: '0083', kind: 'mode',
-        detail: '**个性签名**（ADR 0083）：隔 3–5 天换一条（节日当天是祝福，下雨天有雨天的；NapCat 的 set_self_longnick）。选「只写草稿」时草稿存在数据目录的 presence/drafts.md 里，不真改。默认关',
-        modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' } },
+    SIGNATURE,
     { key: 'qzone', label: '说说', group: '在 QQ 上的样子', adr: '0083', kind: 'mode',
         detail: '**QQ 空间说说**（ADR 0083）：一周两三条，模仿「空友爱看」里常见的那种——随手一两句，有图就围着图写（图放在数据目录的 presence/photos/ 里，需要开「看懂图片内容」）。用最低隐私档的卡来写并过禁用词；选「只写草稿」时存在 presence/drafts.md 里，不真发。默认关',
         modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' } },

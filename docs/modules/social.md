@@ -57,7 +57,7 @@
 | `reactions` | 表情回应 | [ADR 0083](../adr/0083-presence.md) |
 | `onlineStatus` | 在线状态 | [ADR 0083](../adr/0083-presence.md) |
 | `profileLikes` | 资料卡点赞 | [ADR 0083](../adr/0083-presence.md) |
-| `signature` | 个性签名（模式） | [ADR 0083](../adr/0083-presence.md) |
+| `signature` | 个性签名（模式）：隔 3–5 天换一条（节日当天是祝福，下雨天有雨天的；NapCat 的 set_self_longnick）。选「只写草稿」时草稿存在数据目录的 presence/drafts.md 里，不真改。默认关。 | [ADR 0083](../adr/0083-presence.md) |
 | `qzone` | 说说（模式） | [ADR 0083](../adr/0083-presence.md) |
 | `qzoneBrowse` | 自己翻空间动态（模式） | [ADR 0142](../adr/0142-qq-account-control.md) |
 | `qzonePeek` | 刷好友动态（看名单里好友发的说说）（模式） | [ADR 0145](../adr/0145-qzone-friends-feed.md) |
