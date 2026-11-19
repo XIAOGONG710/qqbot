@@ -35,7 +35,7 @@
 | `bilibili` | 刷 B 站发给他（模式）：从 B 站热门榜按口味挑视频，读过热评后，把感受和原链接发给男朋友档的人。一周最多 3 个，工作日晚上或周末下午到晚上才考虑发；睡着、上课或正聊着时不发。只读 B 站公开接口，不登录，也不在 B 站发内容。试运行只写草稿到 presence/drafts.md，默认关。 | [ADR 0084](../adr/0084-bilibili-browsing.md) |
 | `bilibiliAccount` | 她自己的 B 站账号 | [ADR 0089](../adr/0089-bilibili-account.md) |
 | `biliFeed` | 自己刷 B 站推荐（记下刷到的）（模式）：14 点后一天一次，取一页推荐，按口味决定停留还是划走，只记刷到的标题和停留秒数；不播放、不点赞、不评论。试运行只写草稿到 presence/drafts.md，默认关。 | [ADR 0168](../adr/0168-bili-parity.md) |
-| `bilibiliDm` | B 站私信（模式） | [ADR 0089](../adr/0089-bilibili-account.md) |
+| `bilibiliDm` | B 站私信（模式）：她刷到视频后，把链接加一两句话私信到他的 B 站（用下面的 uid），QQ 上只说一句叫他去看私信，不再在 QQ 上发链接。私信里的话和聊天一样用男朋友档的卡写。他要先关注她的号，不然 B 站会限制或拒绝；私信发不出去就退回在 QQ 上直接发链接，连着失败 2 次到重启前不再试私信。要「她的 B 站号」开着。选「只写草稿」时私信和 QQ 提醒都存在 presence/drafts.md。默认关。 | [ADR 0089](../adr/0089-bilibili-account.md) |
 | `bilibiliReplies` | 回复 B 站评论（模式） | [ADR 0090](../adr/0090-bilibili-replies.md) |
 | `bilibiliComment` | 话题评论（模式） | [ADR 0092](../adr/0092-bilibili-topic-comments.md) |
 
