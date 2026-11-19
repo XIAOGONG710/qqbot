@@ -106,17 +106,16 @@ import { loadThreadsFrom } from '.././world/threads.ts';
 import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
 import { BILI_STICKER_PER_DAY, biliStickerDiscover, STICKER_UNCUED_CHANCE } from '.././language/bili-stickers.ts';
 import { pursuitsReader } from '.././life/pursuits.ts';
-import { describeForOwner, loadSelfState, selfAwareReader } from '.././life/self-pursuits.ts';
-import { describeNotesForOwner, loadNotesState, speechNotesReader, speechStats } from '.././language/speech-notes.ts';
+import { selfAwareReader } from '.././life/self-pursuits.ts';
+import { speechNotesReader } from '.././language/speech-notes.ts';
 import { reviewReader as chatReviewReader } from '.././language/chat-review.ts';
-import { describeTrend, speechTrend } from '.././language/speech-trend.ts';
-import { FEEDBACK_NO_TURN, describeFeedbackForOwner, feedbackReceipt, lastTurn, loadFeedback, parseFeedbackCommand, recentFeedback, recordFeedback } from '.././language/speech-feedback.ts';
+import { loadFeedback, recentFeedback } from '.././language/speech-feedback.ts';
 import { writeFeelingsExport, type FeelingsReport } from '.././emotion/feeling-export.ts';
-import { describeFeelingsForOwner, loadReviewState, reviewReader } from '.././emotion/feeling-review.ts';
+import { reviewReader } from '.././emotion/feeling-review.ts';
 import { takesReader } from '.././life/reading-takes.ts';
 import { thoughtsReader } from '.././life/open-questions.ts';
 import { freshGuess, guessesReader } from '.././life/her-guesses.ts';
-import { describeInsightsForOwner, insightsReader, loadInsightsState, loadSelfDiary, recordSelfDiary, writeInsightsExport } from '.././life/diary-insights.ts';
+import { insightsReader, loadInsightsState, loadSelfDiary, recordSelfDiary, writeInsightsExport } from '.././life/diary-insights.ts';
 import { removeFaces } from '.././language/qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from '.././memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from '.././world/festivals.ts';
@@ -195,7 +194,6 @@ import { openMemeDict } from '.././language/meme-dict.ts';
 import { loadExemplars } from '.././language/exemplars.ts';
 import { activityWithChat, NOW_REFRESH_MS, renderNow, writeNow } from '.././life/now-export.ts';
 import { askExpired, askLine } from './consent.ts';
-import { PEEK_OFF_NOTICE, peekRefused } from './private-space.ts';
 import { createTurnWeigher, WEIGH_TIMEOUT_MS } from '.././language/turn-weight.ts';
 import { externalPlatformMode, type ExternalPlatformMode } from '../social/external-platforms.ts';
 import { createExternalDraftStore, type ExternalDraftStore, type ExternalDraftSummary } from '../social/external-drafts.ts';
@@ -2745,42 +2743,6 @@ ${body}
                 tellOwner([identity?.status(), memoryLedgerNow ? summarizeMemoryLedger(memoryLedgerNow) : undefined, dormancy?.status()].filter(Boolean).join('\n\n'));
                 return;
             }
-            // 她的私人空间（ADR 0200）：下面 /追求 /说话习惯 /心境 /自我认识 这四条要 ownerPeek 开着才念；没开，回一句固定的话，不进聊天记录、不交给她
-            if (peekRefused(plain, config)) { tellOwner(PEEK_OFF_NOTICE); return; }
-            // 「/追求」：她现在在追什么、放下过什么、想过没成什么（ADR 0178）；只能看，不能改
-            if (config.selfPursuits && config.pursuits && plain === '/追求') { tellOwner(describeForOwner(pursuitsNow(), loadSelfState(config.dataDir), clockNow().getTime())); return; }
-            // 「/说话习惯」：她自己总结的说话习惯、放下过什么、想写没成什么（ADR 0193）；只能看，不能改
-            if (config.speechNotes && plain === '/说话习惯') {
-                const now = clockNow().getTime();
-                tellOwner(describeNotesForOwner(loadNotesState(config.dataDir), now, describeFeedbackForOwner(loadFeedback(config.dataDir), now)));
-                return;
-            }
-            // 「/说话趋势」：她说话的样子按周看，放上真人语料的同一组数字；从聊天记录里数，不存状态，只是监测（ADR 0196）
-            if (config.speechNotes && plain === '/说话趋势') {
-                const corpus = loadExemplars(join(config.dataDir, 'exemplars', 'corpus.jsonl'));
-                tellOwner(describeTrend(speechTrend(history.load(deviceOwner.qq), clockNow().getTime()), speechStats(corpus.map(item => item.replied))));
-                return;
-            }
-            // 「/像AI」「/像真人」（可以跟一句理由）：把她最近那一次说的话连着他前面的话存下来，每晚想说话习惯时她会看到（ADR 0195，随 speechNotes）
-            const feedbackCommand = config.speechNotes ? parseFeedbackCommand(plain) : undefined;
-            if (feedbackCommand) {
-                const now = clockNow().getTime();
-                const turn = lastTurn(history.load(deviceOwner.qq), now);
-                if (!turn) { tellOwner(FEEDBACK_NO_TURN); return; }
-                try {
-                    const total = recordFeedback(config.dataDir, { at: now, label: feedbackCommand.label, his: turn.his, hers: turn.hers, ...(feedbackCommand.why ? { why: feedbackCommand.why } : {}) });
-                    tellOwner(feedbackReceipt(feedbackCommand.label, turn.hers, total));
-                    log(`说话习惯：他把她最近一次说的话标成「${feedbackCommand.label === 'human' ? '像真人' : '这句像 AI'}」（日志不记内容）`);
-                } catch (error) {
-                    tellOwner('（没记下来，等下再试一次。）');
-                    log(`说话习惯：标记没写进去（${error instanceof Error ? error.message : String(error)}）`);
-                }
-                return;
-            }
-            // 「/心境」：她此刻的心境和来由、夜里自己回想记下的（带依据）、放下的、想记没成的（ADR 0197）；只能看，不能改
-            if (config.herFeelings && plain === '/心境') { tellOwner(describeFeelingsForOwner(lastFeelings, loadReviewState(config.dataDir), clockNow().getTime(), Boolean(config.feelingReview))); return; }
-            // 「/自我认识」：她翻日记时发现的自己、放下过什么、想写没成什么（ADR 0194）；只能看，不能改
-            if (config.diaryInsights && plain === '/自我认识') { tellOwner(describeInsightsForOwner(loadInsightsState(config.dataDir), clockNow().getTime())); return; }
             if (dormancy && plain && /^\/休眠(?:\s|$)/.test(plain)) { void dormancyCommandsNow.handle(plain.replace(/^\/休眠\s*/, '')); return; }
             if (dormancy && plain === '/唤醒') { void dormancyCommandsNow.wakeUp(); return; }
             // 「唱 BVxxxx」（2026-11-14）：他要她唱一首。后台跑 scripts/sing.py（约 5 分钟），
