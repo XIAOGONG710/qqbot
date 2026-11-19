@@ -193,6 +193,16 @@ export const QZONE_BROWSE = {
     modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' },
 } as const satisfies FeatureDef & { modeLabels: Record<PresenceMode, string> };
 
+export const QZONE_PEEK = {
+    key: 'qzonePeek',
+    label: '刷好友动态（看名单里好友发的说说）',
+    group: '在 QQ 上的样子',
+    adr: '0145',
+    kind: 'mode',
+    description: '用她自己的登录态（NapCat 的 get_cookies）读她自己的好友动态页，挑出名单里好友 3 天内新发的说说（不进对方空间、不留访客记录），10:00–22:00、每 4 小时最多一次；摘成一行带时间进提示词，6 小时内她可以自己提起。名单是下面「允许动作的好友」；读不到（登录态过期 / 断网 / 风控）6 小时后再试。默认关。',
+    modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' },
+} as const satisfies FeatureDef & { modeLabels: Record<PresenceMode, string> };
+
 export const MODULES: readonly ModuleDef[] = [
     {
         id: 'language', name: '说话（语言）',

@@ -6,7 +6,7 @@
 // 还没搬过去的直接写完整的配置页说明 detail。这里照样是唯一的总表。
 // 纯数据 + 几个函数，没有副作用；不放任何密钥或聊天内容。
 
-import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, SHORT_REPLIES, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
+import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, QZONE_PEEK, SHORT_REPLIES, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
 
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
@@ -229,9 +229,7 @@ export const FEATURES: readonly FeatureDef[] = [
     SIGNATURE,
     QZONE,
     QZONE_BROWSE,
-    { key: 'qzonePeek', label: '刷好友动态（看名单里好友发的说说）', group: '在 QQ 上的样子', adr: '0145', kind: 'mode',
-        detail: '**刷好友动态**（ADR 0145）：用她自己的登录态（NapCat 的 get_cookies）读她自己的好友动态页，挑出名单里好友 3 天内新发的说说（不进对方空间、不留访客记录），10:00–22:00、每 4 小时最多一次；摘成一行带时间进提示词，6 小时内她可以自己提起。名单是下面「允许动作的好友」；读不到（登录态过期 / 断网 / 风控）6 小时后再试。默认关',
-        modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' } },
+    QZONE_PEEK,
     { key: 'qzoneStrangers', label: '刷陌生人的空间（学人怎么说话）', group: '在 QQ 上的样子', adr: '0144', kind: 'mode',
         detail: '**刷陌生人的空间**（ADR 0144）：用她的登录态读平台推的陌生人说说（「空友爱看」那种流），09:00–23:00、每 3 小时最多一次；只读不互动。摘一句进提示词，样本（只有正文，没有名字和号）留在 presence/strangers.jsonl。接口名没有公开文档，读不到只记一行。默认关',
         modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' } },

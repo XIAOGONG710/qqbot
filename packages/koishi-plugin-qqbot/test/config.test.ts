@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { DEFAULTS, parseAppConfig } from '../../bot/src/platform/config.ts';
-import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, SHORT_REPLIES, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
+import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, QZONE_PEEK, SHORT_REPLIES, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
 import { canonicalTimeZone } from '../../bot/src/platform/time-zone.ts';
 import { Config, migrateThinking, mountMobileCompanion, thinkingBody, toAppConfigInput } from '../src/index.ts';
 import type { CompanionWebSocketLike } from '@qqbot/mobile-companion/websocket';
@@ -44,6 +44,19 @@ const before0009AsJson = {
 };
 
 describe('插件配置（控制台表单 → config.json 的形状 → parseAppConfig）', () => {
+    test('qzonePeek 使用模块说明，保留三档和保存键', () => {
+        const field = Config.list?.find(group => group.dict?.qzonePeek)?.dict?.qzonePeek;
+        assert.equal(field?.meta.description, `**${QZONE_PEEK.label}**（ADR ${QZONE_PEEK.adr}）：${QZONE_PEEK.description}`);
+        assert.equal(DEFAULTS.qzonePeek, 'off');
+        const save = (value: object) => Config.simplify(Config(value as never));
+        const omitted = save(minimal);
+        for (const mode of ['off', 'dryRun', 'on'] as const) {
+            const written = save({ ...minimal, qzonePeek: mode });
+            assert.deepEqual(written, mode === 'off' ? omitted : { ...omitted, qzonePeek: mode });
+            assert.equal(fromKoishi(written).qzonePeek, mode);
+        }
+    });
+
     test('qzoneBrowse 使用模块说明，保留三档和保存键', () => {
         const field = Config.list?.find(group => group.dict?.qzoneBrowse)?.dict?.qzoneBrowse;
         assert.equal(field?.meta.description, `**${QZONE_BROWSE.label}**（ADR ${QZONE_BROWSE.adr}）：${QZONE_BROWSE.description}`);
