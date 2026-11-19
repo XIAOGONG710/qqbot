@@ -4,7 +4,9 @@
 - 起因：10-31 指令收敛、11-19 删掉 app.ts 里走不到的指令分支（cf6c3336、1926d502）之后，一批库函数没了调用方。
 - 方法：按词边界逐个搜索导出名，再全仓搜一遍排除 `node_modules`；`git log -S` 查最后一个调用方什么时候没的。抽查 8 条（`addSoulRating` `FEEDBACK_NO_TURN` `sizeOf` `contrastHit` `characterTerms` `canPublishExternal` `dshStateFresh` `TRACES_WINDOW_MS`）确认只在定义它的文件里出现。
 - 盲点：不同文件里同名的导出会互相遮住，只会漏报，不会误报。
-- **这次一个都没删**：B 组和 `addSoulRating` 跟用户 11-19 定的「`ownerPeek` 开关留着、SOUL 打分先不动」相关；其余删不删也等用户或另一台定。删的时候连同只测它的测试一起删，跑基线确认不变。
+- **同日稍后删了 A 组（除 `addSoulRating` `dshStateFresh`）和 D 组**（用户：「先多开几个子代理，把你手头上的活先完成」）：连同只为它们存在的私有辅助、import 和只测它们的测试用例；41 个基线场景逐字不变，全量测试通过。
+  B 组和 `addSoulRating` 跟用户 11-19 定的「`ownerPeek` 开关留着、SOUL 打分先不动」相关，没删；C、E 组是做好还没接线的功能，没删；`dshStateFresh` 可能给 DSH 那边读，没删。
+- 删完新冒出来的：`social/external-platforms.ts` 的 `externalPlatformCapability` 没人调了；`interpreter.ts` 里 `Module` 的 `review?` 字段没有模块实现（只剩 `createInterpreter` 筛选时读它，要改线上代码，没动）。
 - 不在清单里的：只在本文件里用、只是多写了 `export` 的（约 365 个，抽查过是真在用）；只被 scripts 或 Koishi 插件用的（是活的）。
 
 ## A. 哪里都没人用（src、测试、脚本都没有，本文件里也没用）

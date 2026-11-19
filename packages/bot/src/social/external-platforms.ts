@@ -65,8 +65,3 @@ export function externalPlatformCapability(platform: ExternalPlatform): External
 export function externalPlatformMode(value: unknown): ExternalPlatformMode {
     return value === 'draft' || value === 'authorized' || value === 'off' ? value : 'off';
 }
-
-/** 授权发布前的统一门槛：必须显式授权，且调用方仍应继续执行白名单和确认。 */
-export function canPublishExternal(platform: ExternalPlatform, mode: unknown, authorized: boolean): boolean {
-    return externalPlatformCapability(platform).draft && externalPlatformMode(mode) === 'authorized' && authorized;
-}

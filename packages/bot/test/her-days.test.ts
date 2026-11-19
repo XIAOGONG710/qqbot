@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 import type { BotConfig } from '../src/platform/config.ts';
 import { loadTierCard } from '../src/platform/contact.ts';
 import {
-    availableBookNodes, bookMention, bookProgressAt, bookProgressOn, describeBooks, describeHerDaySummary, describeMood, herDayLogger,
+    availableBookNodes, bookMention, bookProgressAt, bookProgressOn, describeBooks, describeHerDaySummary, herDayLogger,
     moodAt, moodDayConditions, parseBooks, parseMoods, readingActivities, readingActivity, readingSection, unreadBookTopics, type DailyMood,
 } from '../src/life/her-days.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -175,8 +175,6 @@ describe('在读的书（ADR 0015）', () => {
     test('心情行换称呼；日志摘要按她的一天只写一次；模拟器能指定心情', () => {
         const choice = moodAt(schedule, card.moods, at('2026-10-14T19:00:00'), '开心')!;
         assert.equal(choice.mood.name, '开心');
-        // 合成卡的心情说法里没有 {{user}}，换称呼用同一条心情改一句说法来测
-        assert.equal(describeMood({ ...choice, mood: { ...choice.mood, style: '今天有点想{{user}}' } }, '宝宝'), '[你今天的心情：开心（说不上为什么，今天就是这样）。今天有点想宝宝]');
         assert.equal(moodAt(schedule, card.moods, at('2026-10-14T19:00:00'), '不存在'), undefined);
         assert.match(describeHerDaySummary(schedule, card.moods, card.books, at('2026-10-06T19:00:00'))!,
             /^今天（10-06）：心情 .+（.+）；在读 雾港旧事 第 64 章、纸飞机物语 第 30 话（放下了）$/);

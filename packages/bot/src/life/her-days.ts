@@ -117,11 +117,6 @@ function groundedMood({ body, world }: MoodContext, now: Date): { reason: string
     return undefined;
 }
 
-/** 放在状态行下面的每日心情；只写今天怎么说，不写禁令。时间块不走宏替换，{{user}} 在这里换成称呼 */
-export function describeMood(choice: MoodChoice, userName: string): string {
-    return `[你今天的心情：${choice.mood.name}（${choice.reason}）。${choice.mood.style.replaceAll('{{user}}', userName)}]`;
-}
-
 export interface BookProgress {
     amount: number;
     unit: string;

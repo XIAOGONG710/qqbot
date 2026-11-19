@@ -137,7 +137,3 @@ export function feedDigest(feed: QzoneFeed | undefined, limit = 3, prefix = '你
     if (!quotes.length) return undefined;
     return `${prefix}${quotes.join('、')}（这一页一共 ${feed.items.length} 条）`;
 }
-
-/** 点赞 / 评论的动作名候选（和读一样，按版本试）；账号层会再过一遍闸 */
-export const QZONE_LIKE_ACTIONS = ['like_qzone_msg', 'set_qzone_like'] as const;
-export const QZONE_COMMENT_ACTIONS = ['comment_qzone_msg', 'send_qzone_comment'] as const;

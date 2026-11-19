@@ -19,8 +19,6 @@ import { FEELING_NAME, feelingsAt, type Appraisal, type Felt, type FeelingKind }
 const NEGATIVE: ReadonlySet<FeelingKind> = new Set(['sad', 'annoyed', 'worry']);
 /** 记忆和感觉的来由至少共有几个有意义的二字词才算同一件事（护栏 3） */
 export const FELT_MIN_SHARED = 2;
-/** 那天的感觉按那天晚上这个时刻算（一天的事都发生了，还没散） */
-export const FELT_AT_HOUR = 21;
 
 /** 拿掉因为他而难过 / 烦 / 担心的那几条 */
 export function withoutGrudges(list: readonly Appraisal[]): Appraisal[] {

@@ -56,9 +56,6 @@ const where = new Map<string, { list: 'main' | 'history' | 'now'; index: number 
     ...NOW_SLOTS.map((slot, index) => [slot, { list: 'now' as const, index }] as const),
 ]);
 
-/** 槽名只能出现在一处（slots.test.ts 也核对） */
-export const ALL_SLOTS: readonly Slot[] = [...AFTER_MAIN_SLOTS, ...AFTER_HISTORY_SLOTS, ...NOW_SLOTS];
-
 /** 按槽位表把段落排好、拼成 buildPrompt 要的 afterMain / afterHistory；没有「此刻」行时不加那条消息 */
 export function assemblePrompt(pieces: readonly Piece[]): { afterMain: string[]; afterHistory: string[] } {
     type Placed = { index: number; order: number; text: string };

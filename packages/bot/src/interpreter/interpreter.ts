@@ -322,19 +322,6 @@ export function contributeTurn(modules: readonly Module[], turn: Turn): Maybe<As
     return isThenable(collected) ? Promise.resolve(collected).then(assemblePrompt) : assemblePrompt(collected);
 }
 
-/** 一轮回复的前三个阶段连着做：所有模块先 perceive、再 assess、再 contribute。
- * 旧逻辑要在阶段之间读模块写下的事实时，分开调 perceiveTurn / assessTurn / contributeTurn（contact.ts） */
-export function runTurn(modules: readonly Module[], turn: Turn): Maybe<Assembled> {
-    const perceived = perceiveTurn(modules, turn);
-    if (isThenable(perceived)) return Promise.resolve(perceived).then(() => runAfterPerceive(modules, turn));
-    return runAfterPerceive(modules, turn);
-}
-
-function runAfterPerceive(modules: readonly Module[], turn: Turn): Maybe<Assembled> {
-    const assessed = assessTurn(modules, turn);
-    return isThenable(assessed) ? Promise.resolve(assessed).then(() => contributeTurn(modules, turn)) : contributeTurn(modules, turn);
-}
-
 /**
  * 一稿（ADR 0336「生成之后那一段」第 8 步）：要发出去的字和它带的设备指令（ADR 0148）分开。联系人流水线清理时把指令从字里摘出来放进 devices；
  * 审稿模块只改字，设备指令跟着「选中的那一稿」走（采用了重写 accept 就换成重写稿的，危机回合 dropDevices 就不带），发送前只登记选中那一稿的
@@ -604,11 +591,6 @@ export function reviewStage(modules: readonly Module[], stage: ReviewStage, draf
         text = taken;
     }
     return { text };
-}
-
-/** 第四个阶段：草稿按模块顺序逐个 review */
-export function reviewTurn(modules: readonly Module[], draft: string, turn: Turn): Maybe<string> {
-    return sequence(modules, (module, text) => module.review ? module.review(text, turn) : text, draft);
 }
 
 export interface Interpreter {

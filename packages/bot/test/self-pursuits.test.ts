@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { mergePursuits, pursuitsPath, pursuitsReader, pursuitViews, describePursuits, type Pursuit } from '../src/life/pursuits.ts';
+import { mergePursuits, pursuitsPath, pursuitsReader } from '../src/life/pursuits.ts';
 import {
     applyDecision, describeForOwner, emptySelfState, KEEP_NOTES, loadSelfState, MAX_ATTEMPTS_PER_DAY, MAX_SELF_ACTIVE, parseDecision, PROPOSAL_COOLDOWN_MS,
     proposalProblem, reflectIfDue, reflectionDue, reflectionMessages, saveSelfState, selfAwareReader, STATUS_COOLDOWN_MS, withSelf, type Decision,
@@ -118,8 +118,6 @@ describe('她的想法落地：放下 / 暂停 / 恢复 / 记进度 / 提新的'
         assert.equal(applied.lines.length, 2, '不存在的略过');
         const list = withSelf(base, state);
         assert.equal(list.find(item => item.id === 'courses')!.notes!.at(-1)!.text, '晚上刷了两套题，还是怕期末');
-        const facts = { now: new Date(NIGHT), schedule: {} as never, quizzes: false };
-        assert.match(describePursuits(pursuitViews(list, facts))!, /别挂科——.*；你自己最近记的：晚上刷了两套题，还是怕期末/);
         const dir = tmp();
         saveSelfState(dir, state);
         assert.deepEqual(loadSelfState(dir).notes.camera, state.notes.camera, '落盘后读得回来');
@@ -261,15 +259,6 @@ describe('读法：作者的 + 她的决定 + 她自己加的', () => {
         next.pursuits[0] = { ...next.pursuits[0]!, status: 'dropped' };
         saveSelfState(dir, next);
         assert.equal(read().find(item => item.id === 'self-1')!.status, 'dropped');
-    });
-
-    test('进提示词的话：她自己定的那条带上她自己记的最近一句；还没记过就是她想的第一步', () => {
-        const mine: Pursuit = { id: 'self-1', title: '学吉他', why: '想会弹一首歌', status: 'active', source: 'self', proposedAt: NIGHT, firstStep: '先学三个和弦' };
-        const facts = { now: new Date(NIGHT), schedule: {} as never, quizzes: false };
-        assert.match(describePursuits(pursuitViews([mine], facts))!, /学吉他——想会弹一首歌；你想的第一步：先学三个和弦/);
-        const text = describePursuits(pursuitViews([{ ...mine, notes: [{ at: NIGHT, text: '今天手指磨得疼，但弹出了 C 和弦' }] }], facts))!;
-        assert.match(text, /你自己最近记的：今天手指磨得疼，但弹出了 C 和弦/);
-        assert.doesNotMatch(text, /第一步/);
     });
 
     test('状态文件读坏了：当她还没想过，不抛错', () => {

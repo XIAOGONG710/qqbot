@@ -11,7 +11,7 @@ import { describeIntent, dropsHerThing, holdPursuitIntent } from '../src/languag
 import type { LifeEvent } from '../src/world/life-events.ts';
 import { PHOTOGRAPHY_PROJECT_ID } from '../src/life/projects.ts';
 import {
-    BUILTIN_PURSUITS, CAMERA_STALL_DAYS, CAMERA_STEP_COUNT, cameraSteps, CAMERA_THRESHOLDS, cameraProgress, describePursuits, mergePursuits, pursuitViews, pursuitsReader, quizRecord, validPursuits,
+    BUILTIN_PURSUITS, CAMERA_STALL_DAYS, CAMERA_STEP_COUNT, cameraSteps, CAMERA_THRESHOLDS, cameraProgress, mergePursuits, pursuitViews, pursuitsReader, quizRecord, validPursuits,
     type Pursuit, type PursuitFacts,
 } from '../src/life/pursuits.ts';
 import type { WorldNow } from '../src/world/world.ts';
@@ -132,18 +132,6 @@ describe('作者的文件', () => {
         assert.equal(read().length, 3, '沿用上一次');
         read();
         assert.equal(logs.length, 1);
-    });
-});
-
-describe('提示词里的一小段', () => {
-    test('她自己想做成的事，不是任务；不用主动提；没写的进展别编；没有就没有', () => {
-        assert.equal(describePursuits([]), undefined);
-        const line = describePursuits(pursuitViews(mergePursuits([]), facts({ events: sessions(3), world: world() })))!;
-        assert.match(line, /^\[你自己想做成的事（是你的追求，不是任务；不用主动提/);
-        assert.match(line, /①别挂科/);
-        assert.match(line, /②用新相机拍出自己满意的东西/);
-        assert.match(line, /没写的进展别编/);
-        assert.doesNotMatch(line, /[「“]/, '不给台词');
     });
 });
 

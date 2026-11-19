@@ -14,7 +14,6 @@ import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts'
 
 export const TRACES_FILE = 'traces.json'
 export const TRACES_KEPT = 60
-export const TRACES_WINDOW_MS = 60 * 86_400_000
 /** 进提示词的：最近这么久之内的、最多几条 */
 export const TRACES_LINE_WINDOW_MS = 3 * 86_400_000
 export const TRACES_LINE_MAX = 4

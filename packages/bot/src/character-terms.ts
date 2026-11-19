@@ -27,10 +27,6 @@ export function noteCharacterTerms(world: { cat?: { name: string }; weather?: { 
     useCharacterTerms({ ...(world.cat?.name ?? current.cat ? { cat: world.cat?.name ?? current.cat } : {}), cities: places ? [places.school.name, places.home.name] : current.cities, ...(home ? { home } : {}) });
 }
 
-export function characterTerms(): CharacterTerms {
-    return current;
-}
-
 /** 猫的名字；没有就叫「猫」 */
 export function catName(): string {
     return current.cat ?? '猫';

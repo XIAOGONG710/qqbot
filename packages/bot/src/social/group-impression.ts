@@ -6,7 +6,7 @@
 //
 // 不写的事：不写群里别人的八卦、不写她和他之间的事（那些在私聊里，不进群）。
 
-import { GROUP_PEOPLE_LINES, type GroupPerson } from './group-people.ts';
+import type { GroupPerson } from './group-people.ts';
 
 /** 至少说过这么多句才值得总结 */
 export const IMPRESSION_MIN_MSGS = 5;
@@ -58,9 +58,4 @@ export function impressionCandidate(people: readonly GroupPerson[], spoke: Reado
     return people
         .filter(person => spoke.has(person.qq) && impressionDue(person, now))
         .sort((a, b) => Number(Boolean(a.impression)) - Number(Boolean(b.impression)) || b.msgs - a.msgs)[0];
-}
-
-/** 印象里要带上几句原话才能写；没有原话就不写 */
-export function impressionInput(person: GroupPerson): GroupPerson['said'] {
-    return person.said.slice(-GROUP_PEOPLE_LINES);
 }

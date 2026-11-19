@@ -10,7 +10,6 @@
 // - 叮嘱重复（10-09）：同一段聊天（隔 45 分钟以上算新的一段）里已经叮嘱过他早点睡 / 吃饭 / 穿衣，这句又叮嘱同一类；他最近一句自己提到这件事的不算。
 
 import type { StoredMessage } from '../memory/history.ts';
-import { homeAlternative } from '../character-terms.ts';
 import { EPISODE_GAP_MS } from '.././memory/episodes.ts';
 import type { BookProgress, ReadingBook } from '../life/her-days.ts';
 import { hasTail, tailParticle, TAIL_PARTICLES } from './rough-edges.ts';
@@ -217,38 +216,6 @@ const BLAME = new RegExp([
     '你倒好(?!意思)',
     '(?<!别)留我一个人',
 ].join('|'));
-
-/** 「你」开头的这一小句不是问句 */
-const NOT_QUESTION = '(?![^，,。！？!?]*(?:吗|呢|么|[?？]))';
-/** 对照的酸话（F 组）：反话的「你倒是…」、自带委屈的说法单独就算 */
-/** 家所在的城市从卡上读（ADR 0335） */
-const contrastAlone = () => new RegExp([
-    `你倒是(?:回(?:家|去${homeAlternative()}|老家)|玩|在家|舒服|潇洒|爽|开心|过得|自在)`,
-    '没(?:带|算|给|留)我(?:的)?(?:份儿?|一份)',
-    '(?:啃|吃)(?:食堂)?剩(?:菜|饭)',
-    '喝西北风',
-    `咱俩${CLAUSE}{0,8}(?:不一样|天差地别)`,
-].join('|'));
-/** 说他舒服（反话）：和她这头的强、弱说法都能配 */
-const HIS_EASE = new RegExp(`你${NOT_QUESTION}${CLAUSE}{0,8}(?:舒服|舒坦|爽|潇洒|逍遥|滋润|快活)`);
-/** 他那头（在家、回去、玩）：只和她这头的强说法配 */
-const hisSide = () => new RegExp(`你${NOT_QUESTION}${CLAUSE}{0,8}(?:回家|在家|家里${homeAlternative().replace('|', '|回')}|那边|那头|那儿|玩|爬山|海边|吃香的|大餐|开心|乐呵|舒服|舒坦|爽|潇洒)`);
-/** 她这头，自带委屈 */
-const MY_SIDE_STRONG = /留我一个人|就剩我一个|就我一个人?|我一个人(?:在|蹲|守|留|待)|留守|啃食堂|发霉|苦哈哈/;
-/** 她这头，只是地点 */
-const MY_SIDE_WEAK = /我(?:在)?(?:这边|这头|这儿|这里)/;
-
-/** 这一行的对照酸话：命中的那一段（他那头），没有返回 null */
-export function contrastHit(text: string): RegExpExecArray | null {
-    const alone = contrastAlone().exec(text);
-    if (alone) return alone;
-    const strong = MY_SIDE_STRONG.exec(text);
-    const ease = HIS_EASE.exec(text);
-    if (ease && (strong ?? MY_SIDE_WEAK.exec(text))) return ease;
-    const side = hisSide().exec(text);
-    if (side && strong) return side;
-    return null;
-}
 
 const PUNCT = '，,。.！!？?、~～…：:；;“”"\'（）()\\s';
 const SPLIT = new RegExp(`[${PUNCT}]`);

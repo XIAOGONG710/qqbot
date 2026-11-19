@@ -123,8 +123,6 @@ export function feedbackReceipt(label: FeedbackLabel, hers: readonly string[], t
     return `（记下了：她刚才的「${shown}」标成「${label === 'human' ? '像真人' : '这句像 AI'}」。每晚她想说话习惯的时候会看到——是你的感受，不是规定，变不变她自己定。现在一共记着 ${total} 条。）`;
 }
 
-export const FEEDBACK_NO_TURN = '（她最近 12 小时里没有说过话，没有可标的。）';
-
 export function describeFeedbackForOwner(entries: readonly FeedbackEntry[], now: number): string {
     const fresh = entries.filter(entry => entry.at >= now - FEEDBACK_WINDOW_MS && entry.at <= now + 60_000);
     return `他标过的（最近 14 天）：像真人 ${fresh.filter(entry => entry.label === 'human').length} 次、这句像 AI ${fresh.filter(entry => entry.label === 'ai').length} 次。`;

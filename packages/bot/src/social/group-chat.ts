@@ -270,31 +270,3 @@ export function groupLog(dataDir: string): { load(groupId: number): GroupEntry[]
         has: (groupId, messageId) => load(groupId).some(e => e.messageId === messageId),
     };
 }
-
-/**
- * 群里最近发生的事（2026-11-14 用户：群里的事私下问她，她得知道）。
- * 只取最近一段时间里每个群的几条，给她在私聊里当「你也在场」的记忆；不搬全文、不报流水账。
- */
-export function recentGroupBrief(
-    groups: readonly { name: string; entries: readonly GroupEntry[] }[],
-    now: number,
-    options: { hours?: number; perGroup?: number; maxChars?: number } = {},
-): string | undefined {
-    const hours = options.hours ?? 24;
-    const perGroup = options.perGroup ?? 5;
-    const since = now - hours * 3_600_000;
-    const parts: string[] = [];
-    for (const group of groups) {
-        const recent = group.entries.filter(entry => {
-            const at = Date.parse(entry.time);
-            return Number.isFinite(at) && at >= since;
-        });
-        if (!recent.length) continue;
-        const picks = recent.slice(-perGroup).map(entry => `${entry.mine ? '你' : entry.name}：${[...entry.content].slice(0, 40).join('')}`);
-        parts.push(`「${group.name}」：${picks.join('；')}`);
-    }
-    if (!parts.length) return undefined;
-    const max = options.maxChars ?? 500;
-    const text = `[群里最近的事（你都在场，问他时照这个说，别报流水账）：${parts.join(' ')}]`;
-    return [...text].length > max ? `${[...text].slice(0, max).join('')}…]` : text;
-}

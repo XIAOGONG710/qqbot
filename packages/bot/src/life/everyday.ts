@@ -195,9 +195,6 @@ export const DRAMA_EVENT_DEFS: readonly Def[] = [
     { id: 'drama_overheard', text: '在食堂听见隔壁桌说她“挺冷的”，愣了下，也没回头', window: 'afternoon', chance: 0.09, when: 'any', group: 'drama', feel: { kind: 'sad', strength: 2 } },
 ];
 
-/** 起伏这一层的开关由调用方决定（配置 worldDrama）；没开就还是原来那批平的小事 */
-export const DRAMA_EVENT_DEFS_FOR_TESTS = DRAMA_EVENT_DEFS;
-
 export const EVERYDAY_EVENT_DEFS: readonly Def[] = DEFS;
 
 /** 档位名去掉承认版的后缀（boyfriend-open → boyfriend） */

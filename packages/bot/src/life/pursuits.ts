@@ -217,9 +217,3 @@ export function pursuitViews(list: readonly Pursuit[], facts: PursuitFacts): Pur
         return [own(customView(item, facts.now))];
     });
 }
-
-/** 时间块里的一段：她自己想做成的事，不是任务；不用主动提，话题碰到或他问起才说 */
-export function describePursuits(views: readonly PursuitView[]): string | undefined {
-    if (!views.length) return undefined;
-    return `[你自己想做成的事（是你的追求，不是任务；不用主动提，话题碰到或他问起才带一句，带点真的感觉；事实以这里写的为准，没写的进展别编）：${views.map((view, index) => `${'①②③④⑤'[index] ?? index + 1}${view.text}`).join('；')}]`;
-}

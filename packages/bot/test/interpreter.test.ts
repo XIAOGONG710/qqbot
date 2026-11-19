@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { assessTurn, contributeTurn, createInterpreter, perceiveTurn, reviewTurn, runTurn, type Module, type Turn } from '../src/interpreter/interpreter.ts';
-import { AFTER_HISTORY_SLOTS, AFTER_MAIN_SLOTS, ALL_SLOTS, assemblePrompt, NOW_SLOTS, type Piece } from '../src/interpreter/slots.ts';
+import { assessTurn, contributeTurn, createInterpreter, perceiveTurn, type Module, type Turn } from '../src/interpreter/interpreter.ts';
+import { AFTER_HISTORY_SLOTS, AFTER_MAIN_SLOTS, assemblePrompt, NOW_SLOTS, type Piece } from '../src/interpreter/slots.ts';
 import type { MessageEvent } from '../src/platform/onebot.ts';
 import { createExecutor } from '../src/executor/executor.ts';
 import { jokesTurnModule } from '../src/modules/jokes.ts';
@@ -52,8 +52,8 @@ const message = { post_type: 'message', message_type: 'private', sub_type: 'frie
 
 describe('提示词槽位表（ADR 0336）', () => {
     test('每个槽名只出现一次', () => {
-        assert.equal(new Set(ALL_SLOTS).size, ALL_SLOTS.length);
-        assert.equal(ALL_SLOTS.length, AFTER_MAIN_SLOTS.length + AFTER_HISTORY_SLOTS.length + NOW_SLOTS.length);
+        const all = [...AFTER_MAIN_SLOTS, ...AFTER_HISTORY_SLOTS, ...NOW_SLOTS];
+        assert.equal(new Set(all).size, all.length);
     });
 
     test('按表排序：消息槽各一条，「此刻」行拼成最后一条；同槽按给出的顺序', () => {
@@ -68,32 +68,6 @@ describe('提示词槽位表（ADR 0336）', () => {
 });
 
 describe('解释器骨架（ADR 0336）', () => {
-    test('一轮回复：先全部 assess 再全部 contribute；都同步时同步返回', () => {
-        const order: string[] = [];
-        const a: Module = { id: 'a', assess: () => { order.push('a.assess'); }, contribute: () => { order.push('a.contribute'); return [{ slot: 'intent', text: 'A' }]; } };
-        const b: Module = { id: 'b', assess: () => { order.push('b.assess'); }, contribute: () => { order.push('b.contribute'); return [{ slot: 'time', text: 'B' }]; } };
-        const result = runTurn([a, b], turn);
-        assert.ok(!(result instanceof Promise));
-        assert.deepEqual(result, { afterMain: [], afterHistory: ['B\nA'] });
-        assert.deepEqual(order, ['a.assess', 'b.assess', 'a.contribute', 'b.contribute']);
-    });
-
-    test('有异步钩子时整轮变成 promise，顺序不变', async () => {
-        const order: string[] = [];
-        const a: Module = { id: 'a', assess: async () => { await null; order.push('a'); } };
-        const b: Module = { id: 'b', assess: () => { order.push('b'); }, contribute: async () => [{ slot: 'time', text: 'T' }] };
-        const result = runTurn([a, b], turn);
-        assert.ok(result instanceof Promise);
-        assert.deepEqual(await result, { afterMain: [], afterHistory: ['T'] });
-        assert.deepEqual(order, ['a', 'b']);
-    });
-
-    test('review 按模块顺序逐个改草稿', async () => {
-        const modules: Module[] = [{ id: 'x', review: draft => `${draft}1` }, { id: 'y' }, { id: 'z', review: async draft => `${draft}2` }];
-        assert.equal(reviewTurn([modules[0]!, modules[1]!], '稿', turn), '稿1');
-        assert.equal(await reviewTurn(modules, '稿', turn), '稿12');
-    });
-
     test('分发：按注册顺序；只有一个返回 promise 时原样返回它；没有处理的事件返回 undefined', async () => {
         const seen: string[] = [];
         const pending = Promise.resolve();
@@ -255,22 +229,6 @@ describe('分开的两个阶段（ADR 0336）', () => {
         const t: Turn = { ...turn, facts: {} };
         assert.equal(perceiveTurn([judges, sees], t), undefined);
         assert.deepEqual(calls, ['sees.perceive']);
-        // runTurn 也是：注册在后面的模块的 perceive 照样排在前面的 assess 之前
-        const u: Turn = { ...turn, facts: {} };
-        calls.length = 0;
-        assert.deepEqual(runTurn([judges, sees], u), { afterMain: [], afterHistory: [] });
-        assert.deepEqual(calls, ['sees.perceive', 'judges.assess:有作息']);
-    });
-    test('有异步的 perceive 时返回 promise；runTurn 等它之后才 assess', async () => {
-        const calls: string[] = [];
-        const t: Turn = { ...turn, facts: {} };
-        const result = runTurn([
-            { id: 'a', perceive: async () => { await null; calls.push('a.perceive'); } },
-            { id: 'b', assess: () => { calls.push('b.assess'); }, contribute: () => [{ slot: 'time', text: 'T' }] },
-        ], t);
-        assert.ok(result instanceof Promise);
-        assert.deepEqual(await result, { afterMain: [], afterHistory: ['T'] });
-        assert.deepEqual(calls, ['a.perceive', 'b.assess']);
     });
     test('只实现 perceive 的模块也算一轮回复的模块', () => {
         const interpreter = createInterpreter({ exec, modules: [{ id: 'p', perceive: () => {} }, { id: 'events', on: { connected: () => {} } }] });

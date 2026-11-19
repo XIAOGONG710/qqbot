@@ -11,7 +11,7 @@
 // 封存里不放的：secrets/（密钥和登录凭证）、logs/（日志）——封存目录不应该成为第二个存放凭证的地方。
 
 import { randomUUID } from 'node:crypto';
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { sha256 } from './ledger.ts';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
@@ -242,8 +242,6 @@ export class Dormancy {
         return `她在休眠（${new Date(s.since).toLocaleString('zh-CN')} 起），封存在 ${s.archive}。发「/唤醒」叫醒她。`;
     }
 }
-
-export const sizeOf = (dir: string): number => walk(dir).reduce((total, file) => total + statSync(file).size, 0);
 
 /** 商量时给她的说明（不是通知，是商量） */
 export const proposeNote = (reason: string | undefined) =>
