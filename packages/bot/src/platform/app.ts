@@ -178,11 +178,11 @@ import { regulationAt } from '.././life/regulation.ts';
 import { readAgencyShadow } from '.././world/agency-shadow.ts';
 import { humanValueTrends, humanValuesAt, humanValuesFromAnchor, type HumanValues, type HumanValueTrends } from '.././human-values.ts';
 import { developmentSnapshot, developmentSummary, type DevelopmentSummary } from '.././life/development.ts';
-import { createDshLink, dshOptionsFromLlm, sanitizeDshError, type DshProbeResult, type DshState, type DshVoice } from '.././dsh-link.ts';
+import { createDshLink, dshOptionsFromLlm, sanitizeDshError, type DshProbeResult, type DshVoice } from '.././dsh-link.ts';
 import { DshConversationContext } from '.././dsh-continuity.ts';
 import { dshAsks } from '.././dsh-asks.ts';
 import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
-import { writeDshState } from '.././dsh-state-export.ts';
+import { dshStateSource } from '.././dsh-state.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
 import { PHOTO_REVIEW_MAX_THUMBNAIL_BYTES } from '@qqbot/mobile-companion/photo-review';
 import { MAX_QUEUED_PER_CLIENT } from '@qqbot/mobile-companion/runtime';
@@ -2724,65 +2724,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             error => log(`提示没发出去（${error instanceof Error ? error.message : String(error)}）`));
     };
 
-    /** DSH 咨询只拿脱敏状态摘要，不带完整聊天记录。 */
-    const dshState = (): DshState | undefined => {
-        if (!needsAnchor) return undefined;
-        const at = new Date(worldNow());
-        try {
-            const events = sharedWorld?.events?.() ?? [];
-            const needs = needsAt(needsAnchor, events, at);
-            // 只在本地用最近一小段 QQ 记录计算关系数值；传给 DSH 的仍然只有数值和事件类型，不外发原文。
-            const recentHistory = deviceOwner ? history.load(deviceOwner.qq).slice(-24) : [];
-            const values = humanValuesAt({ at, needs, history: recentHistory, tier: deviceOwner?.tier ?? 'boyfriend', events });
-            const development = developmentSummary(developmentSnapshot({ at, values, history: recentHistory, events }));
-            const anchorAt = Date.parse(needsAnchor.at);
-            const previousAt = new Date(Math.max(anchorAt, at.getTime() - 60 * 60_000));
-            const previous = humanValuesAt({
-                at: previousAt,
-                needs: needsAt(needsAnchor, events, previousAt),
-                history: recentHistory,
-                tier: deviceOwner?.tier ?? 'boyfriend',
-                events,
-            });
-            const photoStatus = aiPhotoDrafts.status();
-            const latestPhoto = aiPhotoDrafts.list().at(-1);
-            return {
-                at: at.toISOString(),
-                tier: deviceOwner?.tier ?? 'boyfriend',
-                needs: { energy: needs.energy, hunger: needs.hunger, stress: needs.stress },
-                values: {
-                    energy: values.energy, hunger: values.hunger, stress: values.stress, mood: values.mood,
-                    health: values.health, loneliness: values.loneliness, motivation: values.motivation,
-                    boredom: values.boredom, socialBattery: values.socialBattery,
-                },
-                relationship: values.relationship,
-                development,
-                trends: humanValueTrends(values, previous, Math.max(1, Math.round((at.getTime() - previousAt.getTime()) / 60_000))),
-                recentEvents: events.slice(-8).map(event => event.kind),
-                photoDrafts: {
-                    pending: photoStatus.pending,
-                    approved: photoStatus.approved,
-                    rejected: photoStatus.rejected,
-                    ...(latestPhoto ? { lastKind: latestPhoto.kind, lastStatus: latestPhoto.status } : {}),
-                },
-            };
-        } catch (error) {
-            log(`DSH：读取状态摘要失败（${error instanceof Error ? error.message : String(error)}）`);
-            return undefined;
-        }
-    };
-
+    // 给 DSH 的脱敏状态摘要（不带聊天原文）和灵魂目录里的 STATE.json：在 dsh-state.ts（ADR 0336 第 6 步）
     const dshStateFile = join(soulDir(), 'STATE.json');
-    const exportDshState = (): void => {
-        if (!dshEnabled) return;
-        try {
-            const state = dshState();
-            if (state) writeDshState(dshStateFile, state, worldNow());
-            else exec.files.remove(dshStateFile);
-        } catch (error) {
-            log(`DSH：状态快照没写出去（${error instanceof Error ? error.message : String(error)}）`);
-        }
-    };
+    const { dshState, exportDshState } = dshStateSource({ dshEnabled, needsAnchor, sharedWorld, deviceOwner, history, aiPhotoDrafts, worldNow, exec, dshStateFile, log });
     // 之后每 NOW_REFRESH_MS 再写一次：由 dsh-state 模块声明（ADR 0336 第 6 步，App 搭好时开）
     if (dshEnabled) {
         exportDshState();

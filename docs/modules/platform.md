@@ -51,6 +51,7 @@
 - `dsh-asks.ts`
 - `dsh-continuity.ts`
 - `dsh-state-export.ts`
+- `dsh-state.ts`
 - `mobile-companion-dsh.ts`
 - `ops/`
 - `sim/`
