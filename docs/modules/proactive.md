@@ -8,6 +8,7 @@
 
 - `proactive/proactive.ts`
 - `proactive/proactive-planner.ts`
+- `proactive/planner-host.ts`
 - `proactive/proactive-state.ts`
 - `proactive/agency.ts`
 - `proactive/inner.ts`
