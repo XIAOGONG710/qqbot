@@ -32,7 +32,7 @@
 | `foodPhotos` | 吃的照片（这一顿拍给他看） | [ADR 0128](../adr/0128-food-photos.md) |
 | `photos` | 照片货架（网上找高清图） | [ADR 0109](../adr/0109-photo-shelf.md) |
 | `aiPhotos` | AI 生活照草稿（人工审核后才可用） | [ADR 0240](../adr/0240-world-and-qq-ai-photo-requests.md) |
-| `stickers` | 图片表情（模式） | [ADR 0063](../adr/0063-image-stickers.md) |
+| `stickers` | 图片表情（模式）：第一阶段只处理男朋友档。先用「只收藏核对」观察描述；完成真图核对和 NapCat 真发预检后，再选「收藏并发送」。需要打开「看懂图片内容」，默认关。 | [ADR 0063](../adr/0063-image-stickers.md) |
 | `media` | 听语音、看图 | [ADR 0052](../adr/0052-voice-and-images.md) |
 
 ## 看它有没有变好

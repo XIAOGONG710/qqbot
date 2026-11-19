@@ -5,7 +5,7 @@
 // 目录整理已完成；后续的模块配置段与提示词贡献计划见 docs/modules/README.md「接下来」。
 
 import type { FeatureDef, FeatureGroup } from './features.ts';
-import type { GroupChatMode } from './config.ts';
+import type { GroupChatMode, StickerMode } from './config.ts';
 import type { WebMode } from './web.ts';
 import type { ProactiveMode } from '../proactive/proactive.ts';
 
@@ -79,6 +79,16 @@ export const PROACTIVE = {
     description: '关掉后不会主动联系。开启时，她在有动机且时机合适时才考虑先开口。需要启用作息，只对允许主动联系的档位生效（目前是男朋友档）。试运行照常判断和生成，只写日志，不发送。',
     modeLabels: { off: '关', dryRun: '试运行（只写日志不发）', on: '开' },
 } as const satisfies FeatureDef & { modeLabels: Record<ProactiveMode, string> };
+
+export const STICKERS = {
+    key: 'stickers',
+    label: '图片表情',
+    group: '照片和表情',
+    adr: '0063',
+    kind: 'mode',
+    description: '第一阶段只处理男朋友档。先用「只收藏核对」观察描述；完成真图核对和 NapCat 真发预检后，再选「收藏并发送」。需要打开「看懂图片内容」，默认关。',
+    modeLabels: { off: '关', collect: '只收藏核对（不发）', send: '收藏并发送' },
+} as const satisfies FeatureDef & { modeLabels: Record<StickerMode, string> };
 
 export const MODULES: readonly ModuleDef[] = [
     {

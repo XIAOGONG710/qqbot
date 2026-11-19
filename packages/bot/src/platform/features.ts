@@ -6,7 +6,7 @@
 // 还没搬过去的直接写完整的配置页说明 detail。这里照样是唯一的总表。
 // 纯数据 + 几个函数，没有副作用；不放任何密钥或聊天内容。
 
-import { GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
+import { GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
 
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
@@ -202,9 +202,7 @@ export const FEATURES: readonly FeatureDef[] = [
         detail: '**照片货架**（ADR 0109）：他要看楼下的流浪猫 / 天空时，货架里有就发一张高清照片（只对男朋友档）。照片由她自己从网上找：Wikimedia Commons 里 CC0 / 公有领域的原图（不用署名），看图模型逐张把关——有人脸、有水印 / 文字 / 相框、不清晰、不是三花猫 / 天空的都不收；猫只收同一只（同一个系列）。需要「看图」开着才会去找；货架空着这个开关什么都不做。她本人的自拍、吃的不在里面。默认关。' },
     { key: 'aiPhotos', label: 'AI 生活照草稿（人工审核后才可用）', group: '照片和表情', adr: '0240', hint: '关闭后不会从世界事件或“现在的照片”请求生成草稿',
         detail: '**AI 生活照草稿**（ADR 0240）：世界事件或明确索要“现在的照片”时尝试生成不露脸的猫、饭、书桌或窗景；必须另配生图服务和看图审查。只进入待审核区，不自动通过、不自动发送。默认关。' },
-    { key: 'stickers', label: '图片表情', group: '照片和表情', adr: '0063', kind: 'mode',
-        detail: '**图片表情**（ADR 0063）：第一阶段只处理男朋友档。先用“只收藏核对”观察描述；完成真图核对和 NapCat 真发预检后，才可选“收藏并发送”。需要打开“看懂图片内容”；默认关',
-        modeLabels: { off: '关', collect: '只收藏核对（不发）', send: '收藏并发送' } },
+    STICKERS,
     { key: 'media', label: '听语音、看图', group: '照片和表情', adr: '0052',
         detail: '**听语音、看图上的字**（ADR 0052）：他发的语音用 QQ 自带的语音转文字，照片、截图用 NapCat 的 OCR 取上面的字（只有 Windows），她就着内容回，听完语音才回。转不出来、没字、超时（5 秒）照旧只知道是语音、图片；表情包照旧用名字' },
     // B 站
