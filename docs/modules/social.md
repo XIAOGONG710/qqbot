@@ -14,6 +14,7 @@
 - `social/reply-timing.ts`
 - `social/rate-limit.ts`
 - `social/strangers.ts`
+- `social/private-admission.ts`
 - `social/group-chat.ts`
 - `social/group-room.ts`
 - `social/group-people.ts`

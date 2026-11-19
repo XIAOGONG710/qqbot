@@ -166,11 +166,10 @@ import { quotedContext } from './quoted-context.ts';
 import { ownerCommands } from './owner-commands.ts';
 import { incomingReceipts } from './incoming.ts';
 import { missedMessages } from './missed-messages.ts';
+import { privateAdmission } from '.././social/private-admission.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { photoShelf, PHOTO_HISTORY_PREFIX, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
 import { STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
-import { SlidingWindowRateLimiter } from '.././social/rate-limit.ts';
-import { greetingOnly, markSignature, MINOR_NOTICE, minorHint, strangerGuard } from '.././social/strangers.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
@@ -2173,27 +2172,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
 
     /** 每人一条：要听、要看的消息读完才进聊天记录，后面来的排在它后面（顺序不乱；读是一收到就开始读，不排队） */
     const inbox = new Map<number, Promise<void>>();
-    const unlistedLimiter = new SlidingWindowRateLimiter();
-    /** 陌生人私聊的规矩（ADR 0209）：签名写明是 AI 才回、每天上限、只打招呼先不回、未成年人不陪 */
-    const strangers = config.unlistedFriends ? strangerGuard(config.dataDir, log) : undefined;
-    /** 个性签名里写明她是 AI（用户 11-02：陌生人从签名知道，聊天里不主动说）：每次连上都查一遍，没有就补「（AI）」；改不了就一直不回陌生人 */
-    async function ensureAiSignature(selfId: number): Promise<void> {
-        if (!strangers) return;
-        if (!transport.setSignature) { log('陌生人：这条 QQ 通道改不了个性签名，签名没法写明她是 AI，所以不回陌生人（ADR 0209）'); return; }
-        let current = '';
-        try {
-            const info = await transport.callAction?.('get_stranger_info', { user_id: selfId, no_cache: true }) as { long_nick?: string; longNick?: string } | undefined;
-            current = info?.long_nick ?? info?.longNick ?? '';
-        } catch (error) { log(`陌生人：读不到现在的个性签名（${error instanceof Error ? error.message : String(error)}），按空的补`); }
-        const next = markSignature(current);
-        try {
-            if (next !== current.replace(/\s+/g, ' ').trim()) await transport.setSignature(next);
-            strangers.markSigned(worldNow());
-            log(`陌生人：个性签名写明了她是 AI（${next === current.replace(/\s+/g, ' ').trim() ? '本来就写着' : '补上了「（AI）」'}）`);
-        } catch (error) {
-            log(`陌生人：个性签名没改成（${error instanceof Error ? error.message : String(error)}），先不回陌生人`);
-        }
-    }
+    // 谁的私聊她回、陌生人的规矩和个性签名（ADR 0209）：在 social/private-admission.ts（ADR 0336 第 6 步）
+    const admission = privateAdmission({ config, transport, responders, unlisted, createResponder: contact => createContactResponder(contact), tierRecord, history, unlistedName, worldNow, log });
+    const { strangers, ensureAiSignature } = admission;
     const pokeLimiter = createPokeLimiter();
     const lastPokeBack = new Map<number, number>();
     const pokeTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -2239,64 +2220,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         const sourceIdentity = eventIdentity(event);
         // 补回或入口重投的同一条消息不消耗限额，也不重复处理。
         if (chatHistory.hasMessage(event.user_id, event.message_id, sourceIdentity)) return;
-        // 陌生人（ADR 0209）：签名还没写明是 AI 的时候不回；看出是未成年人的号不再回
-        const isStranger = !config.contacts.some(c => c.qq === event.user_id);
-        if (isStranger && config.unlistedFriends && strangers) {
-            if (!strangers.signed()) { log(`忽略 QQ ${event.user_id} 的私聊（个性签名还没写明她是 AI，先不回陌生人）`); return; }
-            if (strangers.isMinor(event.user_id)) { log(`忽略 QQ ${event.user_id} 的私聊（之前看出是未成年人，不再回）`); return; }
-        }
-        let responder = responders.get(event.user_id);
-        if (!responder) {
-            if (!config.unlistedFriends) {
-                log(`忽略 QQ ${event.user_id} 的私聊（不在名单）`);
-                return;
-            }
-            const decision = unlistedLimiter.take(event.user_id);
-            if (!decision.allowed) {
-                log(`忽略 QQ ${event.user_id} 的私聊（名单外好友${decision.scope === 'contact' ? '个人' : '全局'}限流；约 ${Math.ceil(decision.retryAfterMs / 60_000)} 分钟后恢复）`);
-                return;
-            }
-            // 名单外的好友：{{user}} 用对方的 QQ 昵称
-            const contact: Contact = { qq: event.user_id, name: unlistedName(event.sender.nickname), tier: UNLISTED_TIER };
-            // 换档时间取这条消息的 QQ 时间（秒）：取现在的话，这条消息的时间比换档时间早不到一秒，会被当成换档前的消息挡掉
-            const warning = tierRecord.update(contact.qq, contact.tier, new Date(event.time * 1000));
-            if (warning) log(warning);
-            log(`QQ ${contact.qq}（${contact.name}）不在名单，按 ${UNLISTED_TIER} 档回复`);
-            responder = createContactResponder(contact);
-            responders.set(contact.qq, responder);
-            unlisted.set(contact.qq, contact);
-        } else if (unlisted.has(event.user_id)) {
-            const decision = unlistedLimiter.take(event.user_id);
-            if (!decision.allowed) {
-                log(`忽略 QQ ${event.user_id} 的私聊（名单外好友${decision.scope === 'contact' ? '个人' : '全局'}限流；约 ${Math.ceil(decision.retryAfterMs / 60_000)} 分钟后恢复）`);
-                return;
-            }
-        }
-        // 陌生人（ADR 0209）：未成年人照实说一句、之后不回；只打了招呼的先不回（她本人：「就一句"在吗"那种，我基本不回」）；每天上限
-        if (isStranger && strangers && unlisted.has(event.user_id)) {
-            const qq = event.user_id;
-            const plain = segmentsToText(event.message).trim();
-            const said = { time: new Date(event.time * 1000).toISOString(), role: 'user' as const, content: plain || '[消息]', messageId: event.message_id };
-            if (minorHint(plain)) {
-                strangers.markMinor(qq);
-                history.append(qq, said);
-                log(`陌生人 ${qq} 说了自己是未成年人：照实说一句她是 AI、不陪未成年人聊天，之后不再回`);
-                void transport.sendPrivateText(qq, MINOR_NOTICE)
-                    .then(messageId => history.append(qq, { time: new Date(worldNow()).toISOString(), role: 'assistant', content: MINOR_NOTICE, messageId }))
-                    .catch(error => log(`陌生人 ${qq}：那句没发出去：${error instanceof Error ? error.message : String(error)}`));
-                return;
-            }
-            const stored = history.load(qq);
-            const lastHers = stored.findLastIndex(m => m.role === 'assistant');
-            const waiting = stored.slice(lastHers + 1).filter(m => m.role === 'user').map(m => m.content);
-            if (greetingOnly([...waiting, plain])) {
-                history.append(qq, said);
-                log(`陌生人 ${qq} 只打了个招呼，先不回，等他说点什么`);
-                return;
-            }
-            const daily = strangers.take(qq, worldNow());
-            if (!daily.allowed) { log(`忽略 QQ ${qq} 的私聊（${daily.reason}）`); return; }
-        }
+        // 这条私聊回不回（名单、名单外限流、陌生人的规矩 ADR 0209）：在 social/private-admission.ts（ADR 0336 第 6 步）
+        const responder = admission.admit(event);
+        if (!responder) return;
         // 他对她的话回「假」/「像」：记下来就算处理完，不进聊天记录、不交给回复器、不触发主动计划（ADR 0073）
         const feedbackContact = feedback ? config.contacts.find(c => c.qq === event.user_id && canGiveFeedback(c)) : undefined;
         if (feedback && feedbackContact
