@@ -135,7 +135,7 @@ import { aiPhotoReferenceStore } from '.././vision/ai-photo-references.ts';
 import { aiPhotoReviewModelFromImageDescriber, createAiPhotoVisualReviewer, qualityCheckedAiPhotoGenerator } from '.././vision/ai-photo-quality-adapter.ts';
 import { aiPhotoRequestService, defaultAiPhotoStateFile, requestCurrentAiPhoto, type AiPhotoRequestService } from '.././proactive/ai-photo-requests.ts';
 import { detectCrisis, type CrisisLevel } from '.././emotion/crisis.ts';
-import { createCrisisState, CRISIS_PAUSE_MS } from '.././emotion/crisis-state.ts';
+import { createCrisisState, crisisMarks, CRISIS_PAUSE_MS } from '.././emotion/crisis-state.ts';
 import { createPokeLimiter } from '.././social/pokes.ts';
 import { plannerHost } from '.././proactive/planner-host.ts';
 import { type PlannerStatus } from '.././proactive/proactive-planner.ts';
@@ -2058,37 +2058,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     /** 这一轮提示词里放了网上的内容（防注入第一道：这种回合不执行她写的命令） */
     const webTurns = new Map<number, number>();
     const crisisState = createCrisisState(config.dataDir, log);
-    let crisisSaveTimer: ReturnType<typeof setTimeout> | undefined;
-    lifetime.own('crisis', () => {
-        exec.cancel(crisisSaveTimer);
-        // A safety observation can be newer than crisis.json when the
-        // background retry timer has not fired yet.  Normal shutdown is
-        // the last in-process chance to publish that already-observed
-        // fact before releasing the directory lease.
-        try { crisisState.flush(); }
-        catch { try { log('停止时危机状态仍未确认持久；保留原文件和失败关闭边界，未记录原文'); } catch { /* diagnostics cannot change shutdown */ } }
-    });
-    let crisisSaveDelay = 1000;
-    function retryCrisisSave(): void {
-        if (stopped || crisisSaveTimer) return;
-        crisisSaveTimer = exec.after(() => {
-            crisisSaveTimer = undefined;
-            if (stopped) return;
-            try { crisisState.flush(); crisisSaveDelay = 1000; }
-            catch { crisisSaveDelay = Math.min(crisisSaveDelay * 2, 60_000); retryCrisisSave(); }
-        }, crisisSaveDelay);
-        crisisSaveTimer.unref();
-    }
-    function markCrisis(qq: number, at: number, level: CrisisLevel): void {
-        if (stopped) return;
-        try {
-            crisisState.mark(qq, at, level);
-            exec.cancel(crisisSaveTimer); crisisSaveTimer = undefined; crisisSaveDelay = 1000;
-        } catch {
-            if (!crisisSaveTimer) log('危机状态暂未保存；已观察信号仍暂停普通主动消息，后台重试（不记原文）');
-            retryCrisisSave();
-        }
-    }
+    // 记危机信号、没存进去就后台重试、停止时最后存一次：在 emotion/crisis-state.ts（ADR 0336 第 6 步）；停法照旧在这里登记
+    const crisisMarker = crisisMarks({ crisisState, exec, stopped: () => stopped, log });
+    lifetime.own('crisis', () => crisisMarker.stop());
+    const markCrisis = crisisMarker.mark;
 
     // 存在感（ADR 0083）：在 social/presence-owner.ts（ADR 0336 第 6 步）；停法照旧在这里登记
     const herPresence = presenceOwner({ config, log, worldNow, cardFor, worldCard, bedtimes, exec, chatHistory, transport, vision, rainyAt, dormancy, crisisState });

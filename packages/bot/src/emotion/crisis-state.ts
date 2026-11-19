@@ -5,6 +5,7 @@ import type { CrisisLevel } from './crisis.ts';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { stateTimestamp } from '../memory/state-schema.ts';
 import { TransientStateError } from '../memory/transient-io.ts';
+import type { Executor } from '../executor/executor.ts';
 
 export const CRISIS_PAUSE_MS = 48 * 3_600_000;
 
@@ -94,4 +95,48 @@ export function createCrisisState(dataDir: string, log: (message: string) => voi
             return now - last.at < CRISIS_PAUSE_MS;
         },
     };
+}
+
+/**
+ * 记一次危机信号，没存进去就在后台重试（间隔翻倍，最长一分钟）；停止时最后再存一次。
+ * 原来在 app.ts（markCrisis / retryCrisisSave 和停止时那一段），ADR 0336 第 6 步原样搬到这里；停法仍由 App 在原位登记（lifetime.own('crisis')）。
+ */
+export function crisisMarks({ crisisState, exec, stopped, log }: {
+    crisisState: CrisisState;
+    exec: Pick<Executor, 'after' | 'cancel'>;
+    stopped: () => boolean;
+    log: (message: string) => void;
+}): { mark(qq: number, at: number, level: CrisisLevel): void; stop(): void } {
+    let crisisSaveTimer: ReturnType<Executor['after']> | undefined;
+    const stop = () => {
+        exec.cancel(crisisSaveTimer);
+        // A safety observation can be newer than crisis.json when the
+        // background retry timer has not fired yet.  Normal shutdown is
+        // the last in-process chance to publish that already-observed
+        // fact before releasing the directory lease.
+        try { crisisState.flush(); }
+        catch { try { log('停止时危机状态仍未确认持久；保留原文件和失败关闭边界，未记录原文'); } catch { /* diagnostics cannot change shutdown */ } }
+    };
+    let crisisSaveDelay = 1000;
+    function retryCrisisSave(): void {
+        if (stopped() || crisisSaveTimer) return;
+        crisisSaveTimer = exec.after(() => {
+            crisisSaveTimer = undefined;
+            if (stopped()) return;
+            try { crisisState.flush(); crisisSaveDelay = 1000; }
+            catch { crisisSaveDelay = Math.min(crisisSaveDelay * 2, 60_000); retryCrisisSave(); }
+        }, crisisSaveDelay);
+        crisisSaveTimer.unref();
+    }
+    function markCrisis(qq: number, at: number, level: CrisisLevel): void {
+        if (stopped()) return;
+        try {
+            crisisState.mark(qq, at, level);
+            exec.cancel(crisisSaveTimer); crisisSaveTimer = undefined; crisisSaveDelay = 1000;
+        } catch {
+            if (!crisisSaveTimer) log('危机状态暂未保存；已观察信号仍暂停普通主动消息，后台重试（不记原文）');
+            retryCrisisSave();
+        }
+    }
+    return { mark: markCrisis, stop };
 }
