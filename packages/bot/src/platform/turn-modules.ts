@@ -23,6 +23,7 @@ import { exemplarsModule, type ExemplarsModuleOptions } from '../modules/exempla
 import { feelingsModule } from '../modules/feelings.ts';
 import { groupModule } from '../modules/group.ts';
 import { herNotesModule, type HerNotesOptions } from '../modules/her-notes.ts';
+import { portraitModule, type PortraitModuleOptions } from '../modules/portrait.ts';
 import { herNowModule, type HerNowOptions } from '../modules/her-now.ts';
 import { humanStateModule } from '../modules/human-state.ts';
 import { initiateNoteModule } from '../modules/initiate-note.ts';
@@ -97,6 +98,8 @@ export interface TurnModuleDeps {
     herNow?: Pick<HerNowOptions, 'projectChoice' | 'realNights' | 'herPlan'>;
     /** 她自己记下的东西：各样的读取函数，配置没开的不给 */
     herNotes?: Omit<HerNotesOptions, 'now' | 'log'>;
+    /** 「我现在的样子」（ADR 0340）：配置 selfPortrait 开着才给 */
+    portrait?: PortraitModuleOptions['portrait'];
     /** 命令结果和 <<执行>>（App 给；模拟器不跑命令，不给） */
     shell?: ShellModuleOptions;
     /** <<查>> 真的去查（App 开了长期记忆和 selfDirectedMemory 才给） */
@@ -160,6 +163,7 @@ export function buildTurnModules(d: TurnModuleDeps): Module[] {
         ...(d.workMode ? [workModeModule(d.workMode.modeOf, d.workMode.markers)] : []),
         ...(d.selfNotes ? [selfNotesModule(d.selfNotes)] : []),
         herNotesModule({ ...d.herNotes, now: d.now, log }),
+        ...(d.portrait ? [portraitModule({ portrait: d.portrait, log })] : []),
         ...(d.soul ? [soulModule(d.soul)] : []),
         ...(d.learningQuestion ? [learningQuestionModule(d.learningQuestion)] : []),
         shellModule(d.shell),

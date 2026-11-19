@@ -28,6 +28,8 @@
 - `life/menu.ts`
 - `life/diary.ts`
 - `life/diary-insights.ts`
+- `life/self-portrait.ts`
+- `modules/portrait.ts`
 - `life/reading-takes.ts`
 - `life/biography.ts`
 - `life/bedtime.ts`
@@ -68,6 +70,7 @@
 | `acquaintances` | 认识的人（B 站上再见到认得） | [ADR 0163](../adr/0163-acquaintances.md) |
 | `selfPursuits` | 她自己定追求（每晚想一次，自己放下 / 提新的） | [ADR 0178](../adr/0178-self-set-pursuits.md) |
 | `diaryInsights` | 她每晚翻自己的日记，写下对自己的认识（「我发现自己……」，要有两天以上的依据） | [ADR 0194](../adr/0194-diary-insights.md) |
+| `selfPortrait` | 她带着往前走的「我现在的样子」（每晚自己整份重写，每次聊天都带着） | [ADR 0340](../adr/0340-carry-a-self-forward.md) |
 | `herDays` | 每日心情、在读的书 | [ADR 0015](../adr/0015-her-own-days.md) |
 | `schedule` | 作息 | [ADR 0007](../adr/0007-schedule-and-reply-timing.md) |
 | `autonomousLife` | 没人聊天时她一件件过日子 | [ADR 0040](../adr/0040-rule-life-selector.md) |
@@ -101,4 +104,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0178](../adr/0178-self-set-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)、[ADR 0194](../adr/0194-diary-insights.md)、[ADR 0204](../adr/0204-reading-takes.md)、[ADR 0213](../adr/0213-her-guesses.md)、[ADR 0219](../adr/0219-real-nights.md)、[ADR 0222](../adr/0222-human-values.md)、[ADR 0233](../adr/0233-environment-action-policy.md)、[ADR 0251](../adr/0251-personhood-development.md)、[ADR 0313](../adr/0313-diary-prepared-retention-and-sources.md)、[ADR 0314](../adr/0314-completed-authored-source-validation.md)、[ADR 0318](../adr/0318-authored-intent-source-coverage.md)、[ADR 0322](../adr/0322-life-review-fixes.md)、[ADR 0325](../adr/0325-local-calendar-boundaries.md)、[ADR 0330](../adr/0330-promise-source-effects-and-world-identity.md)、[ADR 0332](../adr/0332-diary-civil-targets.md)
+[ADR 0015](../adr/0015-her-own-days.md)、[ADR 0040](../adr/0040-rule-life-selector.md)、[ADR 0045](../adr/0045-continuous-needs.md)、[ADR 0104](../adr/0104-pursuits.md)、[ADR 0178](../adr/0178-self-set-pursuits.md)、[ADR 0106](../adr/0106-everyday-life.md)、[ADR 0162](../adr/0162-tastes.md)、[ADR 0163](../adr/0163-acquaintances.md)、[ADR 0194](../adr/0194-diary-insights.md)、[ADR 0204](../adr/0204-reading-takes.md)、[ADR 0213](../adr/0213-her-guesses.md)、[ADR 0219](../adr/0219-real-nights.md)、[ADR 0222](../adr/0222-human-values.md)、[ADR 0233](../adr/0233-environment-action-policy.md)、[ADR 0251](../adr/0251-personhood-development.md)、[ADR 0313](../adr/0313-diary-prepared-retention-and-sources.md)、[ADR 0314](../adr/0314-completed-authored-source-validation.md)、[ADR 0318](../adr/0318-authored-intent-source-coverage.md)、[ADR 0322](../adr/0322-life-review-fixes.md)、[ADR 0325](../adr/0325-local-calendar-boundaries.md)、[ADR 0330](../adr/0330-promise-source-effects-and-world-identity.md)、[ADR 0332](../adr/0332-diary-civil-targets.md)、[ADR 0340](../adr/0340-carry-a-self-forward.md)

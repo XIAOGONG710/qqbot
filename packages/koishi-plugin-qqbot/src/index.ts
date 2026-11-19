@@ -284,6 +284,7 @@ export interface Config {
     selfPursuits: boolean;
     speechNotes: boolean;
     diaryInsights: boolean;
+    selfPortrait: boolean;
     feelingReview: boolean;
     ownerPeek: boolean;
     memoryReconcile: boolean;
@@ -513,6 +514,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         exemplars: toggle('exemplars'),
         speechNotes: toggle('speechNotes'),
         diaryInsights: toggle('diaryInsights'),
+        selfPortrait: toggle('selfPortrait'),
         feelingReview: toggle('feelingReview'),
         ownerPeek: toggle('ownerPeek'),
         memoryReconcile: toggle('memoryReconcile'),
@@ -777,6 +779,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.speechNotes !== undefined ? { speechNotes: config.speechNotes } : {}),
         ...(config.exemplars !== undefined ? { exemplars: config.exemplars } : {}),
         ...(config.diaryInsights !== undefined ? { diaryInsights: config.diaryInsights } : {}),
+        ...(config.selfPortrait !== undefined ? { selfPortrait: config.selfPortrait } : {}),
         ...(config.feelingReview !== undefined ? { feelingReview: config.feelingReview } : {}),
         ...(config.ownerPeek !== undefined ? { ownerPeek: config.ownerPeek } : {}),
         ...(config.memoryReconcile !== undefined ? { memoryReconcile: config.memoryReconcile } : {}),

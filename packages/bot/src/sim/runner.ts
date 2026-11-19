@@ -19,6 +19,7 @@ import { STICKER_ONLY_SHARE, stickerShelf } from '../social/stickers.ts';
 import { MEET_MINUTES, promiseKeeper } from '../life/promises.ts';
 import { writeJsonAtomic } from '../memory/json-file.ts';
 import { ponderIfDue, thoughtsReader } from '../life/open-questions.ts';
+import { portraitReader } from '../life/self-portrait.ts';
 import { substituteMacros } from '../st/macros.ts';
 import { ChatHistory, type StoredMessage } from '../memory/history.ts';
 import type { FactRecord } from '../language/fact-check.ts';
@@ -544,6 +545,7 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             herNow: { ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}) },
             // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取（模拟器只有这一样）
             herNotes: { ...(scenario.openQuestions ? { openQuestions: thoughtsReader(dataDir) } : {}) },
+            ...(scenario.selfPortrait ? { portrait: portraitReader(dataDir) } : {}),
             // 模拟器不跑命令（不给 shell，「可以跑命令」那一行照 App）；她想查才查也只摘标记（不给 reviewPull）
             // 深思那一句换掉的说法按 --deliberate-note
             ...(options.deliberateNote ? { deliberateNote: options.deliberateNote } : {}),

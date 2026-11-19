@@ -114,6 +114,7 @@ import { takesReader } from '.././life/reading-takes.ts';
 import { thoughtsReader } from '.././life/open-questions.ts';
 import { guessesReader } from '.././life/her-guesses.ts';
 import { insightsReader, loadInsightsState, loadSelfDiary, recordSelfDiary, writeInsightsExport } from '.././life/diary-insights.ts';
+import { portraitReader } from '../life/self-portrait.ts';
 import { removeFaces } from '.././language/qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from '.././memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from '.././world/festivals.ts';
@@ -902,6 +903,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 : []),
         } } : {}),
         ...(config.diaryInsights ? { diaryInsights: { exportInsights: () => exportInsights() } } : {}),
+        ...(config.selfPortrait ? { selfPortrait: true } : {}),
         ...(config.readingTakes ? { readingTakes: { watched: () => loadWatched(watchedPath(config.dataDir), log).entries } } : {}),
         // 没想完的问题用深思的模型；这一处原来就直接调 chatCompletion、没经执行器（照旧，收进执行器另做）
         ...(config.openQuestions ? { openQuestions: { ponder: messages => chatCompletion({ ...deliberateLlm(config.llm, config.deliberateModel), temperature: 0.9 }, messages, { log, purpose: 'background' }) } } : {}),
@@ -1018,6 +1020,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(openQuestionsNow ? { openQuestions: openQuestionsNow } : {}),
             ...(herGuessesNow ? { herGuesses: herGuessesNow } : {}),
         },
+        // 「我现在的样子」（ADR 0340，默认关）：她每晚自己整份重写的那一份，每轮整份放进男朋友档的提示词
+        ...(config.selfPortrait ? { portrait: portraitReader(config.dataDir) } : {}),
         // 她可以在这台电脑上跑命令（DSH 10-30）：上一轮的命令结果（读了就清掉）和「可以跑命令」那一行；只给男朋友档
         shell: {
             noteOf: contact => {
@@ -1673,6 +1677,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     if (config.feelingReview) log(config.herFeelings && deviceOwner ? '她聊完回想一下、记下有依据的感受：开（一段聊天结束半小时后想一次；/心境 随时看）' : '她聊完回想一下：feelingReview 开着，但 herFeelings 没开或名单里没有男朋友档，不启动');
     if (config.diaryInsights && deviceOwner) exportInsights();
     if (config.diaryInsights) log(deviceOwner ? '她翻自己的日记写对自己的认识：开（每晚 22 点以后想一次；/自我认识 随时看）' : '她翻自己的日记写对自己的认识：开着，但名单里没有男朋友档，不启动');
+    if (config.selfPortrait) log(deviceOwner ? '「我现在的样子」：开（每晚 22 点以后她自己整份重写一次，每轮整份带上）' : '「我现在的样子」：开着，但名单里没有男朋友档，不启动');
     // 她读完 / 看完之后自己想的（ADR 0204）：22 点以后想一次；今天读到哪儿 / 看了什么视频，有话想说才写一句；私人空间，没有命令念给他
     if (config.readingTakes) log(deviceOwner ? '她读完看完之后自己想的：开（每晚 22 点以后想一次，有话想说才写；私人空间，没有命令念给他）' : '她读完看完之后自己想的：readingTakes 开着，但名单里没有男朋友档，不起作用');
     if (config.hisReactions) log(`看他的反应：${config.proactive === 'off' ? '开着，但主动消息（proactive）关着，不起作用' : '开（只男朋友档；她主动说自己的事时提示词多一行他三周内对各类事的反应，说什么她自己拿捏；他明说过不想听的那一类照片 / 小事 7 天内不发）'}`);

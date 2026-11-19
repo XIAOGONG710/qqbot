@@ -7,7 +7,10 @@
 // 同一个槽里有几段时，按模块注册顺序、同一模块按给出的顺序排。
 
 /** main 之后、不常变的（长期记忆里的关系概况）；同 ST 的 After Main Prompt */
-export const AFTER_MAIN_SLOTS = ['relationship'] as const;
+export const AFTER_MAIN_SLOTS = [
+    'relationship',
+    'portrait', // 她自己写的「我现在的样子」（ADR 0340）：会变的那部分，紧跟在卡和关系概况后面
+] as const;
 
 /** 聊天记录之后的独立消息，按这个顺序；最后固定是「此刻」块（NOW_SLOTS 拼成的一条） */
 export const AFTER_HISTORY_SLOTS = [

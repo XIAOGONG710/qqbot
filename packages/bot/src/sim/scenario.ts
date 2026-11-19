@@ -260,6 +260,8 @@ export interface Scenario {
     shapeAll: boolean;
     /** 默认 false：她没想完的问题（ADR 0207，配置 openQuestions）；只对男朋友档有效。要配 { "ponder": true } 步骤让她夜里想一遍（先 advance 到 22 点以后） */
     openQuestions: boolean;
+    /** 默认 false：「我现在的样子」（ADR 0340，配置 selfPortrait）；只对男朋友档有效。读数据目录里的 self-portrait.json（模拟用的，场景要先放好；没有就什么都不放） */
+    selfPortrait: boolean;
     /** 默认 false：回复延迟的长尾（ADR 0105，配置 lagTail） */
     lagTail: boolean;
     /** 默认 false：她每天碰到的小事 + 小测（ADR 0106，配置 everydayLife） */
@@ -475,6 +477,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         memoryFeelings: s.memoryFeelings === true,
         shapeAll: s.shapeAll === true,
         openQuestions: s.openQuestions === true,
+        selfPortrait: s.selfPortrait === true,
         lagTail: s.lagTail === true,
         everydayLife: s.everydayLife === true,
         pursuits: s.pursuits === true,
