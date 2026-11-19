@@ -122,7 +122,7 @@ import { withFestivalActivities, withFestivals } from '.././world/festivals.ts';
 import { type ProactiveMode } from '.././proactive/proactive.ts';
 import { reactionEmoji, type PresenceTransport } from '.././social/presence.ts';
 import { presenceOwner } from '.././social/presence-owner.ts';
-import { fetchHotComments, type BiliFetch } from '.././bilibili/bilibili.ts';
+import { type BiliFetch } from '.././bilibili/bilibili.ts';
 import type { BiliAccount, BiliRequest } from '.././bilibili/bilibili-account.ts';
 import { bilibiliOwners } from '.././bilibili/owners.ts';
 import { stripDeviceTokens } from './device-actions.ts';
@@ -161,10 +161,10 @@ import { daylightFetcher, useRealDaylight, type DaylightFetcherStatus } from '..
 import { calendarFetcher, useRealCalendar, type CalendarStatus } from '.././world/calendar.ts';
 import { transportFetcher, useRealTransport, type TransportFetcherStatus } from '.././world/transport.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
-import { fetchLists, gatherEvidence, loadMemes, memesPath, refreshDue, refreshMemes } from '.././language/memes.ts';
-import { loadWatched, watchedPath, watchOne, type Watched } from '.././language/watching.ts';
-import { feedOnce } from '.././bilibili/feed-browsing.ts';
-import { fetchDanmaku, fetchStoryboard, fetchView } from '.././bilibili/bilibili-view.ts';
+import { loadMemes, memesPath } from '.././language/memes.ts';
+import { loadWatched, watchedPath, type Watched } from '.././language/watching.ts';
+import { passiveJobs } from '.././bilibili/passive-jobs.ts';
+import { passiveReads } from './passive-reads.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { photoShelf, PHOTO_HISTORY_PREFIX, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
 import { STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
@@ -447,42 +447,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const transport = exec.qq;
     let stopped = false;
     lifetime.own('stopped', () => { stopped = true; });
-    // Watching and feed are pure background reads. Own the complete local
-    // chain before its first dispatch, independently of account mutations.
-    const passiveLifetime = new AbortController(), passiveJobs = new Set<Promise<void>>();
-    let passiveDrain: Promise<void> | undefined;
-    const passiveRead = async <T>(run: () => Promise<T>): Promise<T> => {
-        const signal = passiveLifetime.signal; signal.throwIfAborted();
-        let abort!: () => void;
-        const cancelled = new Promise<never>((_, reject) => { abort = () => reject(signal.reason); signal.addEventListener('abort', abort, { once: true }); });
-        try { const value = await Promise.race([Promise.resolve().then(() => { signal.throwIfAborted(); return run(); }), cancelled]); signal.throwIfAborted(); return value; }
-        finally { signal.removeEventListener('abort', abort); }
-    };
-    const passiveFetch = (raw: BiliFetch): BiliFetch => async (url, init) => {
-        const response = await passiveRead(() => raw(url, { ...init, signal: AbortSignal.any([passiveLifetime.signal, init.signal]) }));
-        return new Proxy(response, { get(target, property) {
-            if (property === 'text') return () => passiveRead(() => target.text());
-            return Reflect.get(target, property, target) as unknown;
-        } });
-    };
-    const passiveSleep = (ms: number) => new Promise<void>((resolve, reject) => {
-        const signal = passiveLifetime.signal; if (signal.aborted) { reject(signal.reason); return; }
-        const abort = () => { exec.cancel(timer); reject(signal.reason); };
-        const timer = exec.after(() => { signal.removeEventListener('abort', abort); resolve(); }, ms);
-        signal.addEventListener('abort', abort, { once: true });
-    });
-    const ownPassiveRead = (work: () => Promise<void>, done: () => void): Promise<void> => {
-        if (stopped || passiveLifetime.signal.aborted) { done(); return Promise.resolve(); }
-        const task = Promise.resolve().then(() => { if (!stopped && !passiveLifetime.signal.aborted) return work(); }).finally(() => { done(); passiveJobs.delete(task); });
-        passiveJobs.add(task); return task;
-    };
-    const stopPassiveReads = () => {
-        if (passiveLifetime.signal.aborted) return passiveDrain;
-        passiveLifetime.abort();
-        if (passiveJobs.size) passiveDrain = Promise.allSettled([...passiveJobs]).then(() => {});
-        return passiveDrain;
-    };
-    lifetime.own('passive-reads', stopPassiveReads);
+    // 纯后台的读（看视频、刷推荐、学热梗、查东西）：在 passive-reads.ts（ADR 0336 第 6 步）；停法照旧在这里登记
+    const passive = passiveReads({ stopped: () => stopped, exec });
+    const passiveLifetime = passive.lifetime;
+    lifetime.own('passive-reads', () => passive.stop());
     // The injected shelf may be shared. Own only calls initiated by this App;
     // their promises include already-dispatched favorite mutations and receipts.
     const stickerLifetime = new AbortController(), stickerJobs = new Set<Promise<void>>();
@@ -2191,114 +2159,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         }
         return extras;
     };
-    let watchingRunning = false;
-    let memesRunning = false;
-    // 她自己看一个视频（ADR 0130）：每天一次，14 点以后；30 分钟看一眼该不该看；要她的 B 站号
-    const watchJob = (): Promise<void> => {
-        if (!config.watching || stopped || watchingRunning) return Promise.resolve();
-        const source = bilibiliAccountSource();
-        if (!source) return Promise.resolve();
-        const nowDate = new Date(exec.now());
-        if (nowDate.getHours() < 14) return Promise.resolve();
-        watchingRunning = true;
-        return ownPassiveRead(async () => {
-        try {
-            const account = await passiveRead(source);
-            if (!account) return;
-            const signal = passiveLifetime.signal, scoped: Log = message => { if (!stopped && !signal.aborted) log(message); };
-            const biliFetch = passiveFetch(bilibiliFetch ?? ((url, init) => fetch(url, init)));
-            // view / 弹幕 的 fetch 形状不强制 signal，补一个
-            const viewFetch = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal }) =>
-                biliFetch(url, { headers: init.headers, signal: init.signal ?? new AbortController().signal });
-            await watchOne({
-                path: watchedFile, now: () => nowDate, log: scoped, signal,
-                search: keyword => account.search(keyword, undefined, signal), subtitle: video => account.subtitle(video, signal), hotComments: aid => fetchHotComments(biliFetch, aid, 3),
-                // 章节 + 弹幕高能（ADR 0168）：只读公开接口，读不到不影响「看过」
-                view: async video => { try { return await fetchView(viewFetch, video.bvid); } catch { return undefined; } },
-                danmaku: async cid => fetchDanmaku(viewFetch, cid),
-                storyboard: async (bvid, cid) => (await fetchStoryboard(viewFetch, bvid, cid))?.urls ?? [],
-                ...(vision ? { describeImage: async (url: string) => { try { return await vision.describe({ url, signal }); } catch { return undefined; } } } : {}),
-                sleep: passiveSleep,
-            });
-            if (!stopped && !signal.aborted) watchedEntries = loadWatched(watchedFile, scoped).entries;
-        } catch (error) {
-            if (!stopped) log(`她看视频：这一轮出错（${error instanceof Error ? error.message : String(error)}）`);
-        }
-        }, () => { watchingRunning = false; });
-    };
-    // 她每天刷一小会儿 B 站推荐（ADR 0168）：14 点后一天一次；30 分钟看一眼该不该刷；只读、只记账
-    let feedRunning = false;
-    const feedJob = (): Promise<void> => {
-        const mode = config.biliFeed;
-        if (!mode || mode === 'off' || stopped || feedRunning) return Promise.resolve();
-        const rawFetch = passiveFetch(bilibiliFetch ?? ((url, init) => fetch(url, init)));
-        // feed 模块的 fetch 形状不强制 signal（只读、单次请求），这里补一个
-        const biliFetch = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal }) =>
-            rawFetch(url, { headers: init.headers, signal: init.signal ?? new AbortController().signal });
-        const nowDate = new Date(exec.now());
-        const schedule = worldCard?.schedule;
-        const extraFree = config.herDays && worldCard ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [];
-        feedRunning = true;
-        return ownPassiveRead(async () => {
-        try {
-            await feedOnce({
-                mode, path: join(config.dataDir, 'watching', 'feed.json'),
-                now: () => nowDate, fetch: biliFetch, signal: passiveLifetime.signal, log: message => { if (!stopped) log(message); },
-                draft: (title, body) => {
-                    if (stopped || passiveLifetime.signal.aborted) return;
-                    exec.files.mkdir(join(config.dataDir, 'presence'));
-                    exec.files.append(join(config.dataDir, 'presence', 'drafts.md'), `## ${title}
-
-${body}
-
-`);
-                },
-                ...(schedule ? {
-                    awake: (date: Date) => {
-                        const kind = stateAt(schedule, date, extraFree).activity.kind;
-                        return (kind === 'free' || kind === 'between') && !asleepSince(schedule, bedtimes(schedule, date.getTime()), date);
-                    },
-                } : {}),
-            });
-        } catch (error) {
-            if (!stopped) log(`刷 B 站：这一轮出错（${error instanceof Error ? error.message : String(error)}）`);
-        }
-        }, () => { feedRunning = false; });
-    };
-
-    // 网络热梗（ADR 0129）：每 12 小时一次（30 分钟看一眼该不该刷）；要她的 B 站号，没有就不学，只用库里已有的
-    const refreshMemeJob = (): Promise<void> => {
-        if (!config.memes || stopped || memesRunning) return Promise.resolve();
-        const source = bilibiliAccountSource();
-        if (!source) return Promise.resolve();
-        const nowDate = new Date(exec.now());
-        try {
-            if (stopped || !refreshDue(loadMemes(memesFile, log), nowDate)) return Promise.resolve();
-        } catch (error) {
-            if (!stopped) log(`网络热梗：本轮保留原库并跳过刷新（${error instanceof Error ? error.message : String(error)}）`);
-            return Promise.resolve();
-        }
-        memesRunning = true;
-        return ownPassiveRead(async () => {
-        const signal = passiveLifetime.signal, scoped: Log = message => { if (!stopped && !signal.aborted) log(message); };
-        try {
-            const account = await passiveRead(source);
-            if (!account) { scoped('网络热梗：她的 B 站号这会儿打不开，下次再学'); return; }
-            const biliFetch = passiveFetch(bilibiliFetch ?? ((url, init) => fetch(url, init)));
-            await refreshMemes({
-                path: memesFile, now: () => nowDate, log: scoped, signal,
-                fetchLists: () => fetchLists((url, init) => fetch(url, init) as never, scoped, signal),
-                ask: prompt => (exec.llm({ purpose: 'background', config: forExtraction(config.llm), messages: [{ role: 'user', content: prompt }] }, scoped)),
-                gather: term => gatherEvidence(term, {
-                    signal, search: keyword => account.search(keyword, undefined, signal), subtitle: video => account.subtitle(video, signal), hotComments: aid => fetchHotComments(biliFetch, aid, 3),
-                    sleep: passiveSleep,
-                }),
-            });
-        } catch (error) {
-            scoped(`网络热梗：这一轮出错（${error instanceof Error ? error.message : String(error)}）`);
-        }
-        }, () => { memesRunning = false; });
-    };
+    // 她在 B 站只读的三件事（看视频、刷推荐、学热梗）：在 bilibili/passive-jobs.ts（ADR 0336 第 6 步）；看完视频更新的「看过的」交回这里
+    const { watchJob, feedJob, refreshMemeJob } = passiveJobs({
+        config, stopped: () => stopped, log, exec, passive, bilibiliAccountSource, bilibiliFetch, vision, worldCard, bedtimes,
+        watchedFile, setWatched: entries => { watchedEntries = entries; }, memesFile,
+    });
     // 照片货架的发现与重试（ADR 0110 / 0128）：在 vision/photo-discovery.ts（ADR 0336 第 6 步）；两个重试计时器的停法照旧在这里登记
     const shelfDiscovery = photoShelfDiscovery({
         photos, hasFoodSource: Boolean(foodSource), config, stopped: () => stopped,

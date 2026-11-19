@@ -27,6 +27,7 @@
 - `bilibili/bilibili-replies.ts`
 - `bilibili/bilibili-risk.ts`
 - `bilibili/owners.ts`
+- `bilibili/passive-jobs.ts`
 
 ## 开关
 

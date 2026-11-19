@@ -1496,3 +1496,11 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   计划器表由它持有，App 拿 `planners` 去戳、同步待跟进、看状态、醒来后戳一下；停法在原位登记（`lifetime.own('planners')`），`startPlanners` 这个名字留着（第一次补回完调）。
 - 依赖多（二十几样：世界、需要、天气、查东西、答应的事、危机暂停……），都是 App 里在这之前就建好的常量，原样交进去。
 - 验证：41 个场景对快照逐字一致；`app.test.ts` 里主动的 12 个通过；整套（除基线外 526 个文件）通过（起初直接 `node --test` 跑、没带 `test/time-zone-setup.ts`，在 Asia/Tokyo 的机器上世界 / 生活一类 99 个错一小时；按 `npm test` 的方式固定时区后那 34 个文件 447 个全过）；变异检验：`start` 什么都不做，3 个失败。
+
+### 第 6 步：app.ts 只剩装配——被动读取和 B 站只读的三件事（2026-11-19）
+
+- 纯后台读的那组工具（停时一起取消的 AbortController、`passiveRead` / `passiveFetch` / `passiveSleep` / `ownPassiveRead`、停止收尾）原样从 app.ts 开头搬到 `src/platform/passive-reads.ts`（`passiveReads(deps)`）；
+  停法在原位登记（`lifetime.own('passive-reads')`），App 里查东西那几处还用它的 `lifetime.signal`。
+- 用这组工具的三件事——她自己看视频（ADR 0130）、刷推荐（ADR 0168）、学热梗（ADR 0129）——原样搬到 `src/bilibili/passive-jobs.ts`（`passiveJobs(deps)`），函数体逐字不动；
+  「停没停」改成现取，看完视频更新的「看过的」经 `setWatched` 交回 App（计划器、提示词读它）。什么时候叫（补回之后的模块、醒来）不动。
+- 两样一起提交、一起验证（第二样离不开第一样）：41 个场景对快照逐字一致；看视频 / 刷推荐 / 热梗 / 查东西 / 外部停止的 App 级测试 6 个文件 27 个通过；变异检验：三件事什么都不做，19 个失败。
