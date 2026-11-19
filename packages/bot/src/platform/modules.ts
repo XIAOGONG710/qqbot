@@ -273,7 +273,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'bilibili', name: '外部世界：B 站',
         scope: '她的 B 站号：搜视频读字幕、私信、回复评论、话题评论、风险监控。',
-        files: ['bilibili/bilibili.ts', 'bilibili/bilibili-view.ts', 'bilibili/bilibili-summary.ts', 'bilibili/bilibili-stats.ts', 'bilibili/bilibili-inbox.ts', 'bilibili/bilibili-asr.ts', 'bilibili/bilibili-schema.ts', 'bilibili/bilibili-wbi.ts', 'bilibili/bilibili-feed.ts', 'bilibili/feed-browsing.ts', 'bilibili/bilibili-limit.ts', 'bilibili/bilibili-account-source.ts', 'bilibili/bilibili-account.ts', 'bilibili/platform-breaker.ts', 'bilibili/bilibili-comment.ts', 'bilibili/bilibili-login-cli.ts', 'bilibili/bilibili-login.ts', 'bilibili/bilibili-probe.ts', 'bilibili/bilibili-replies.ts', 'bilibili/bilibili-risk.ts'],
+        files: ['bilibili/bilibili.ts', 'bilibili/bilibili-view.ts', 'bilibili/bilibili-summary.ts', 'bilibili/bilibili-stats.ts', 'bilibili/bilibili-inbox.ts', 'bilibili/bilibili-asr.ts', 'bilibili/bilibili-schema.ts', 'bilibili/bilibili-wbi.ts', 'bilibili/bilibili-feed.ts', 'bilibili/feed-browsing.ts', 'bilibili/bilibili-limit.ts', 'bilibili/bilibili-account-source.ts', 'bilibili/bilibili-account.ts', 'bilibili/platform-breaker.ts', 'bilibili/bilibili-comment.ts', 'bilibili/bilibili-login-cli.ts', 'bilibili/bilibili-login.ts', 'bilibili/bilibili-probe.ts', 'bilibili/bilibili-replies.ts', 'bilibili/bilibili-risk.ts', 'bilibili/owners.ts'],
         groups: ['B 站'],
         metrics: '日志里的 B 站风险监控；presence/drafts.md',
         adrs: ['0084', '0089', '0090', '0092', '0168', '0311'],

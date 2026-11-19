@@ -26,6 +26,7 @@
 - `bilibili/bilibili-probe.ts`
 - `bilibili/bilibili-replies.ts`
 - `bilibili/bilibili-risk.ts`
+- `bilibili/owners.ts`
 
 ## 开关
 

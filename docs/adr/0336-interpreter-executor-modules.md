@@ -1439,3 +1439,11 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   「旧逻辑」不再转撤回，`legacy` 的类型去掉 `receiveRecall`。记忆那边的屏障和同步（`observeRecalledMemory`、`syncRecalledMemory`）仍在 App 里（补回、唤醒、收消息也用），由 App 传进去。
 - 至此「旧逻辑」那一个只剩 `connected` 和私聊的 `message`。
 - 验证：41 个场景对快照逐字一致（含 `poke-recall`）；撤回相关的 5 个测试文件 32 个用例通过；变异检验：模块收到撤回什么都不做，20 个失败。
+
+### 第 6 步：app.ts 只剩装配——B 站的那几样（2026-11-19）
+
+- 她的 B 站号（凭证来源 + 风控熔断，ADR 0089 / 0147）、刷视频发给他（评论、私信，ADR 0084 / 0089 / 0092）、风险转私信（ADR 0090）、回复她评论下面的话（ADR 0090）原样从 app.ts 搬到 `src/bilibili/owners.ts`（`bilibiliOwners(deps)`，约 210 行），函数体逐字不动，只有「停没停」改成现取。
+- 聊天记录、回复器、账号装饰（时间线 / 认识的人）、她自己账号的请求守卫、测试注入的假请求由 App 建好交进去。App 只留：建它、登记三项停法（browsing / risk / replies，登记先后同原来）、
+  `bilibiliAccountSource` / `startBilibiliOwners` 两个名字（B 站表情包、追更、热梗、第一次连上、醒来还在用）。
+- 这一样不经解释器：它没有事件，只在连上 / 醒来时由 App 启动，自带计时器（第 5 步「自带循环的」那一类，收进执行器另做）。
+- 验证：41 个场景对快照逐字一致；B 站相关的 App 级测试（`memory-app-*` 10 个文件 92 个用例、`app.test.ts` 里 11 个）通过；变异检验：`startOwners` 什么都不做，28 个失败。
