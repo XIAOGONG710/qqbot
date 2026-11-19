@@ -35,6 +35,7 @@
 - `platform/device-hub.ts`
 - `platform/device-phone.ts`
 - `platform/device-service.ts`
+- `platform/device-host.ts`
 - `platform/sensitive.ts`
 - `platform/web.ts`
 - `platform/consent.ts`

@@ -42,7 +42,7 @@ import { Identity } from '.././memory/identity.ts';
 import { auditedApi, memoryLedger, summarize as summarizeMemoryLedger } from '.././memory/memory-audit.ts';
 import { experiencesFromLife, experiencesFromWatched, Tastes } from '.././life/tastes.ts';
 import { readLifeEvents } from '.././world/life-events.ts';
-import { Timeline, timelineAccount, timelineFromDevice } from '.././memory/timeline.ts';
+import { Timeline, timelineAccount } from '.././memory/timeline.ts';
 import { consumeDshTimelineInbox, consumeDshWorldInbox } from '.././memory/dsh-inbox.ts';
 import { planExplicit, readWebSecrets, searchCarry, searchNeedsClarification, WebLookup } from './web.ts';
 import { readAdultSite } from '../proactive/adult-sites.ts';
@@ -126,7 +126,8 @@ import { fetchHotComments, type BiliFetch } from '.././bilibili/bilibili.ts';
 import type { BiliAccount, BiliRequest } from '.././bilibili/bilibili-account.ts';
 import { bilibiliOwners } from '.././bilibili/owners.ts';
 import { stripDeviceTokens } from './device-actions.ts';
-import { CAMERA_VISION_PROMPT, SCREEN_VISION_PROMPT, startDeviceService, type DeviceService } from './device-service.ts';
+import type { startDeviceService } from './device-service.ts';
+import { deviceHost } from './device-host.ts';
 import { configuredImageDescriber } from '.././vision/vision.ts';
 import { aiPhotoDraftFreshness, aiPhotoDraftStore, generateAiPhoto } from '.././vision/ai-photo-drafts.ts';
 import { aiPhotoProvidersFromEnv, createAiPhotoProviderPool } from '.././vision/ai-photo-provider.ts';
@@ -443,7 +444,7 @@ export function startApp(options: AppOptions): App {
 
 function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, foodSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe }: AppOptions, lifetime: Lifetime<StopName>): App {
     // 碰外部的都经执行器（ADR 0336 第 3 步）：QQ 动作、调模型、时钟和计时器、设备登记（第 8 步：设备服务下面才异步起，登记时现取）
-    const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}), ...(workRunner ? { processes: { work: workRunner } } : {}), devices: () => deviceService?.control });
+    const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}), ...(workRunner ? { processes: { work: workRunner } } : {}), devices: () => devicesHost.service()?.control });
     const transport = exec.qq;
     let stopped = false;
     lifetime.own('stopped', () => { stopped = true; });
@@ -1167,7 +1168,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ...(config.innerLife ? { innerLine: (contact: Contact) => planners.get(contact.qq)?.innerLine() } : {}),
         // 她能替他操作的设备的菜单（ADR 0148，配置 deviceControl）：名单里有男朋友档才有设备控制（同下面的 deviceOwner）；服务是异步起的，起来之前菜单是空串，每轮现取
         ...(config.deviceControl !== 'off' && config.contacts.some(c => c.tier === 'boyfriend')
-            ? { devices: { menu: () => deviceService?.control.menu() ?? '', allowed: (contact: Contact) => contact.tier === 'boyfriend' } }
+            ? { devices: { menu: () => devicesHost.service()?.control.menu() ?? '', allowed: (contact: Contact) => contact.tier === 'boyfriend' } }
             : {}),
         // 他的请求等她点头（2026-10-30）：他发「/看屏幕」「/摄像头」时下面的 pendingAsk 先记下来，她写 <<同意>> 才做；只给男朋友档、过期的不算，每轮现取
         consent: {
@@ -1294,28 +1295,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     if (feedback) log(`反馈通道：开（${config.contacts.filter(canGiveFeedback).map(c => c.name).join('、')}对她的话回「假」/「像」，记在数据目录的 feedback/ 里，不当聊天、不回应）`);
     loadChat = qq => history.load(qq);
 
-    // 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；服务是异步起的（要监听端口），
+    // 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；服务的起停在 device-host.ts（ADR 0336 第 6 步），
     // 起来之前她的菜单是空的、回复里的令牌只摘不用
-    let deviceService: DeviceService | undefined;
-    let startingDevice: Promise<void> | undefined, serviceStop: Promise<void> | undefined, deviceStopDrain: Promise<void> | undefined;
-    const deviceNotifications = new Set<Promise<void>>();
-    function stopDeviceService(): Promise<void> | undefined {
-        if (!deviceService || serviceStop) return serviceStop;
-        try { serviceStop = Promise.resolve(deviceService.stop()); }
-        catch (error) { serviceStop = Promise.reject(error); }
-        return serviceStop;
-    }
-    function stopDevices(): Promise<void> | undefined {
-        if (deviceStopDrain) return deviceStopDrain;
-        const serviceDrain = stopDeviceService();
-        const pending = [startingDevice, serviceDrain, ...deviceNotifications].filter((task): task is Promise<void> => task !== undefined);
-        if (!pending.length) return undefined;
-        deviceStopDrain = Promise.allSettled(pending).then(results => {
-            const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-            if (failures.length) throw new AggregateError(failures.map(result => result.reason), '设备控制停止收尾未确认');
-        });
-        return deviceStopDrain;
-    }
+    const devicesHost = deviceHost({ stopped: () => stopped, log });
 
     // ───────── 连续性（ADR 0157–0163）：设定账本 / 记忆账本 / 时间线 / 搜索 / 休眠 / 口味 / 认识的人 ─────────
     // 都是默认关的开关；账本和时间线只写数据目录里的小文件。出错一律只记日志，不影响聊天
@@ -1496,46 +1478,14 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         : undefined;
     const deviceHooks: NonNullable<ContactPipelineOptions['devices']> | undefined = config.deviceControl !== 'off' && deviceOwner
         ? {
-            parse: reply => deviceService?.control.parse(reply) ?? { reply: stripDeviceTokens(reply), proposals: [], rejected: [] },
+            parse: reply => devicesHost.service()?.control.parse(reply) ?? { reply: stripDeviceTokens(reply), proposals: [], rejected: [] },
             // 发送前登记选中那一稿的设备指令（联系人流水线的 beforeSend）：经执行器的 device 动作
             commit: parsed => exec.run({ kind: 'device', parsed }),
         }
         : undefined;
     if (config.deviceControl !== 'off' && !deviceOwner) log('设备控制：开着，但名单里没有男朋友档的联系人，不启动');
-    if (deviceHooks && deviceOwner) {
-        const describers = config.vision
-            ? { screen: configuredImageDescriber(config, SCREEN_VISION_PROMPT), camera: configuredImageDescriber(config, CAMERA_VISION_PROMPT) }
-            : undefined;
-        startingDevice = (startDevices ?? startDeviceService)({
-            dataDir: config.dataDir, mode: config.deviceControl as 'dryRun' | 'on', links: config.deviceLinks, apps: config.deviceApps,
-            log: message => { if (!stopped) log(message); },
-            ...(timeline ? { onAudit: (entry: Parameters<NonNullable<Parameters<typeof startDeviceService>[0]['onAudit']>>[0]) => { if (!stopped) timelineFromDevice(timeline)(entry); } } : {}),
-            say: text => {
-                if (stopped) return;
-                // Register settlement before invoking the public transport:
-                // it may synchronously re-enter App.stop while dispatching.
-                let settle!: () => void;
-                const pending = new Promise<void>(resolve => { settle = resolve; });
-                deviceNotifications.add(pending);
-                const done = () => { deviceNotifications.delete(pending); settle(); };
-                const failed = (error: unknown) => {
-                    try { if (!stopped) log(`设备控制：提示没发出去（${error instanceof Error ? error.message : String(error)}）`); }
-                    catch { /* 诊断失败不能悬置已经结束的发送。 */ }
-                    finally { done(); }
-                };
-                try { void transport.sendPrivateText(deviceOwner.qq, text).then(done, failed); }
-                catch (error) { failed(error); }
-            },
-            ...(describers?.screen && describers.camera ? { describe: { screen: describers.screen, camera: describers.camera } } : {}),
-        }).then(async service => {
-            deviceService = service;
-            if (stopped) await stopDeviceService();
-        }, error => { if (!stopped) log(`设备控制：启动出错（${error instanceof Error ? error.message : String(error)}）`); });
-        // The constructor rollback observes the original drain (including a
-        // late service.stop rejection); keep normal startup rejection handled.
-        void startingDevice.catch(() => {});
-    }
-    lifetime.own('devices', stopDevices);
+    if (deviceHooks && deviceOwner) devicesHost.start({ config, owner: deviceOwner, timeline, startDevices, sendText: (qq, text) => transport.sendPrivateText(qq, text) });
+    lifetime.own('devices', () => devicesHost.stop());
 
     // 长期记忆（Hindsight）：补回之后写一次，之后每隔一段时间把结束了的片段写进去
     const hindsight = config.memory ? new HindsightClient(config.memory.baseUrl, config.memory.timeoutMs) : undefined;
@@ -2827,6 +2777,7 @@ ${body}
         }
         // 他发的设备命令（ADR 0148）：「批准」「拒绝」「/屏幕」「/摄像头」「/设备」，只认纯文字、只认男朋友档的他；
         // 命中的算处理完，不进聊天记录、不交给回复器。看屏幕 / 摄像头：看完的描述作为他这一条消息交给回复器，她自然地回
+        const deviceService = devicesHost.service();
         if (deviceService && deviceOwner && event.user_id === deviceOwner.qq) {
             const plain = plainTextOf(event.message);
             if (plain !== undefined && !plain.trim().startsWith('/') && deviceService.isOwnerCommand(plain) && !claimOwnerCommand(event)) return;

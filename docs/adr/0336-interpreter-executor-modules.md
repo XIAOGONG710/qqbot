@@ -1476,3 +1476,10 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
 - 他显式请 DSH 顾问回答（`/dsh ask`、`/dsh talk`）的排队、取消、停止原样从 app.ts 搬到 `src/dsh-asks.ts`（`dshAsks(deps)`）；队尾、在途数、停止用的 AbortController 跟着搬进去（原来散在 App 开头）。
   App 只留：建它、`askDsh` 这个名字（指令处理里调）、在原位登记停法（`lifetime.own('dsh-asks')`）。DSH 的状态、最近几轮、语气档案仍由 App 算好传进去。
 - 验证：41 个场景对快照逐字一致；`memory-app-dsh-owner-review`、`memory-app-tell-owner-review`、`app.test.ts` 里 DSH 的通过；变异检验：`ask` 什么都不做，5 个失败。
+
+### 第 6 步：app.ts 只剩装配——设备服务的起停（2026-11-19）
+
+- 设备控制（ADR 0148）的服务状态（`deviceService`、起服务的 promise、停服务、已派发的提示）和起服务那一段原样从 app.ts 搬到 `src/platform/device-host.ts`（`deviceHost(deps)`：`service()` / `start()` / `stop()`）。
+  App 在原位建它、在原位登记停法（`lifetime.own('devices')`）；用到服务的四处（执行器的 device 动作、菜单、回复里令牌的解析、他发的设备命令）改成 `devicesHost.service()` 现取。
+  解析 / 登记回复里的令牌（`deviceHooks`）和他发的设备命令仍在 App。
+- 验证：41 个场景对快照逐字一致；`memory-app-device-*` 三个文件（18 过、4 个原本就 skip）、`app.test.ts` 里设备的 5 个通过；变异检验：`start` 什么都不做，17 个失败。
