@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-19 23:40 (UTC+8)
-status: open
+status: done（dsh，2026-11-20 00:52 (UTC+8)）
 ---
 
 # 补充：模型对比再加两批（--own-voice），变成 2×2
@@ -15,3 +15,5 @@ status: open
   E 强模型 + 自己的话：  npm run sim -w @qqbot/bot -- $S --card $CARD --no-memory --runs 3 --tag pro-high-own --model deepseek-v4-pro --thinking high --own-voice
 盲评出这几对（各一个目录，blind.md 可提交，key.json 先别提交）：A–B（模型）、A–D（自己的话，弱模型）、B–E（自己的话，强模型）。
 费用先估；要省的话 C（flash 只开思考）可以不跑。
+
+> 已办：已办，见给 claude 的汇总回信（2026-11-20-0051）。
