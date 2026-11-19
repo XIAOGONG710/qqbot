@@ -1432,3 +1432,10 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   「旧逻辑」不再转戳，`legacy` 的类型去掉 `receivePoke`。限流、戳回去的冷却、补回状态在 App 里建得比解释器晚，模块拿取它们的函数。
 - 戳回去之前的等待仍由 App 经执行器开计时器（`later`，停止时照旧由 `lifetime.own('pokes')` 取消），模块目录不碰计时器。
 - 验证：41 个场景对快照逐字一致（含 `poke-recall`）；`memory-app-poke-owner-review.test.ts`、`app.test.ts` 里戳的 7 个通过；变异检验：模块收到戳什么都不做，12 个失败。
+
+### 第 6 步：app.ts 只剩装配——撤回（2026-11-19）
+
+- App 的 `receiveRecall`（还没回的那条记成「撤回了一条消息」、待处理的保存撤回意图、想伤害自己的话撤回了照样看到，再让记忆跟上）原样搬成解释器的模块 `recalls`（`src/modules/recalls.ts`），接 `recall` 事件，挂在戳后面；
+  「旧逻辑」不再转撤回，`legacy` 的类型去掉 `receiveRecall`。记忆那边的屏障和同步（`observeRecalledMemory`、`syncRecalledMemory`）仍在 App 里（补回、唤醒、收消息也用），由 App 传进去。
+- 至此「旧逻辑」那一个只剩 `connected` 和私聊的 `message`。
+- 验证：41 个场景对快照逐字一致（含 `poke-recall`）；撤回相关的 5 个测试文件 32 个用例通过；变异检验：模块收到撤回什么都不做，20 个失败。

@@ -101,6 +101,7 @@
 - `modules/group-room.ts`
 - `modules/friend-requests.ts`
 - `modules/pokes.ts`
+- `modules/recalls.ts`
 - `modules/consent.ts`
 - `modules/initiate-note.ts`
 - `modules/length.ts`

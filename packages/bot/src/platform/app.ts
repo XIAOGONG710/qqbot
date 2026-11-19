@@ -82,6 +82,7 @@ import { groupRoom } from '.././social/group-room.ts';
 import { groupRoomModule } from '../modules/group-room.ts';
 import { friendRequestsModule } from '../modules/friend-requests.ts';
 import { pokesModule, type PokeDeps } from '../modules/pokes.ts';
+import { recallsModule } from '../modules/recalls.ts';
 import { groupAffect } from '.././social/group-affect.ts';
 import { currentTierHistory, TierRecord } from '.././memory/tier-record.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
@@ -963,6 +964,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const friendRequests = friendRequestsModule({ config, stopped: () => stopped, account: () => account, sendOwnedNotice, log });
     // 他戳她（限流、戳回去的冷却在下面才建，事件来了再取）
     const pokes = pokesModule(() => pokeDeps);
+    // 他撤回消息（聊天记录、记忆在下面才建，事件来了再取）
+    const recalls = recallsModule(() => ({ config, stopped: () => stopped, chatHistory, hasMemory: Boolean(memory), observeRecalledMemory, syncRecalledMemory, incomingFailure, log }));
     const followUps = followUpsModule(() => syncFollowUps(), () => planners.size > 0, MEMORY_SYNC_MS);
     const tastesJob = tastesModule(config.tastes ? () => reflectTastes() : undefined);
     // 长期记忆同步、「她现在在干嘛」导出、她留的话（ADR 0336 第 6 步）：只有定时任务，App 搭好时开，先后同原来（在她自己想一想的那几样之前）；做的事都在后面才建，到点再取
@@ -1246,9 +1249,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             on: {
                 connected: ({ selfId }) => legacy.connected(selfId),
                 message: ({ event }) => legacy.receive(event),
-                recall: ({ event }) => legacy.receiveRecall(event),
             },
-        }, groupRoomEntry, friendRequests, pokes, followUps, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
+        }, groupRoomEntry, friendRequests, pokes, recalls, followUps, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
         exec,
     });
     // 解释器接手各模块的停（关定时任务、拒新工作；小梗、口头习惯的收尾在里面）
@@ -3831,8 +3833,8 @@ ${body}
     if ((config.qqFriendGate ?? 'off') !== 'off' && accountMode !== 'on') log('好友申请：要 qqControl 设为 on 才处理，现在没生效');
     else if ((config.qqFriendGate ?? 'off') !== 'off') log(`好友申请：${config.qqFriendGate === 'all' ? '名单内同意、名单外驳回' : '只自动同意名单内的'}（名单 ${(config.qqAllowFriends ?? []).join('、') || '空'}）`);
 
-    // 群消息、好友申请、戳不经这里：解释器直接交给 group-room / friend-requests / pokes 模块（ADR 0336 第 6 步）
-    const legacy: Omit<App, 'receiveGroup' | 'receiveFriendRequest' | 'receivePoke'> = {
+    // 群消息、好友申请、戳、撤回不经这里：解释器直接交给 group-room / friend-requests / pokes / recalls 模块（ADR 0336 第 6 步）
+    const legacy: Omit<App, 'receiveGroup' | 'receiveFriendRequest' | 'receivePoke' | 'receiveRecall'> = {
         async connected(selfId) {
             if (stopped) return;
             // Koishi / NapCat 可能在同一次重连期间重复发出 ready。共用正在进行的补回，
@@ -3887,27 +3889,6 @@ ${body}
                 buffered.push(snapshot);
             }
             else onMessage(event);
-        },
-        receiveRecall(event) {
-            if (stopped || !config.recalls) return;
-            const contact = config.contacts.find(c => c.qq === event.user_id);
-            if (!contact) return;
-            const before = chatHistory.recallRevision(contact.qq);
-            // 想伤害自己的话撤回了也照样看到（安全比像人优先，ADR 0068）；回过的她已经看过
-            try {
-                if (chatHistory.recall(contact.qq, event.message_id, content => Boolean(detectCrisis(content)))) {
-                    observeRecalledMemory(contact);
-                    const pending = chatHistory.pendingIncoming(contact.qq).some(entry => entry.withdrawn && entry.source.messageId === event.message_id);
-                    log(pending ? `[${contact.qq}] 他撤回了一条待处理消息，已保存撤回意图` : `[${contact.qq}] 他撤回了一条还没回的消息，记成「撤回了一条消息」`);
-                }
-                syncRecalledMemory(contact.qq);
-            } catch (error) {
-                // 只有RAM已经接受的新观察才需要记忆更新；单纯读错不能授权同步旧正文。
-                if (memory && chatHistory.recallRevision(contact.qq) !== before) {
-                    try { observeRecalledMemory(contact); } catch (guardError) { incomingFailure(guardError); }
-                }
-                incomingFailure(error);
-            }
         },
         mobileCompanion: () => mobileCompanion,
         externalDrafts: () => externalDraftStore,
