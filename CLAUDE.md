@@ -33,6 +33,7 @@ SillyTavern 只用来编写、试聊角色并定义数据格式（角色卡 / �
   校验真实资料本身的测试在 `packages/character-tools/test-real/`，改了转换器或真实 `source/` 后在本机跑 `npm run test:real`，失败时只看断言行。
 - 架构迁移（ADR 0336）期间，行为基线 `packages/bot/test/baseline/snapshots/` 必须逐字不变；不要为了让测试通过而 `UPDATE_BASELINE=1`。
   只有有意改变行为的单独提交才更新快照，并在提交说明里写清哪里变了、为什么。
+  只核对基线不用跑全量：`npm run baseline:fast -w @qqbot/bot`（同一套场景和比对，分给几个进程并行；`-- --only 名字,名字` 只跑几个）。
 
 ## 环境
 
