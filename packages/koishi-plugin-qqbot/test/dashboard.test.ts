@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
+import { SILENCE_NOTICE } from '../../bot/src/platform/modules.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
 import { aiPhotoRuntimeRows, attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, lifeTrend, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText, timeZoneLine } from '../client/dashboard.js';
 
@@ -34,6 +35,16 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
                 assert.notEqual(required, feature.key, `${feature.key} 不能依赖自己`);
                 assert.ok(keys.includes(required), `${feature.key} 依赖了没有登记的功能 ${required}`);
             }
+        }
+    });
+
+    test('silenceNotice 的面板标签和说明取自模块，不改变开关状态', () => {
+        for (const on of [false, true]) {
+            const item = featureStatuses({ silenceNotice: on }).find(feature => feature.key === 'silenceNotice')!;
+            assert.equal(item.label, SILENCE_NOTICE.label);
+            assert.equal(item.on, on);
+            assert.equal(item.hint, SILENCE_NOTICE.description);
+            assert.ok(featureTitle(item).includes(SILENCE_NOTICE.description));
         }
     });
 

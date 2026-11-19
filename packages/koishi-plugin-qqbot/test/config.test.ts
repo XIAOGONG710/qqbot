@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { DEFAULTS, parseAppConfig } from '../../bot/src/platform/config.ts';
+import { SILENCE_NOTICE } from '../../bot/src/platform/modules.ts';
 import { canonicalTimeZone } from '../../bot/src/platform/time-zone.ts';
 import { Config, migrateThinking, mountMobileCompanion, thinkingBody, toAppConfigInput } from '../src/index.ts';
 import type { CompanionWebSocketLike } from '@qqbot/mobile-companion/websocket';
@@ -43,6 +44,23 @@ const before0009AsJson = {
 };
 
 describe('插件配置（控制台表单 → config.json 的形状 → parseAppConfig）', () => {
+    test('silenceNotice 表单说明取自模块，YAML 仍省略默认 false、原键保存 true', () => {
+        const schemas = Config.list?.flatMap(group => group.dict?.silenceNotice ? [group.dict.silenceNotice] : []) ?? [];
+        assert.equal(schemas.length, 1);
+        assert.equal(schemas[0]!.meta.description, `**${SILENCE_NOTICE.label}**（ADR ${SILENCE_NOTICE.adr}）：${SILENCE_NOTICE.description}`);
+        assert.equal(DEFAULTS.silenceNotice, false);
+        const yaml = createRequire(import.meta.url)('js-yaml') as { dump(value: unknown): string; load(text: string): object };
+        const save = (value: object) => yaml.dump(Config.simplify(Config(value as never)));
+        const omitted = save(minimal);
+        assert.doesNotMatch(omitted, /^silenceNotice:/m);
+        assert.equal(save({ ...minimal, silenceNotice: false }), omitted);
+        const enabled = save({ ...minimal, silenceNotice: true });
+        assert.match(enabled, /^silenceNotice: true$/m);
+        assert.deepEqual(yaml.load(enabled), { ...yaml.load(omitted), silenceNotice: true });
+        assert.equal(fromKoishi(yaml.load(omitted)).silenceNotice, false);
+        assert.equal(fromKoishi(yaml.load(enabled)).silenceNotice, true);
+    });
+
     test('名单的「别人提起时」（ADR 0016）照传；没填就没有', () => {
         const parsed = fromKoishi({
             ...minimal,

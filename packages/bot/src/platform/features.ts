@@ -2,11 +2,13 @@
 // 新加一个开关时必须在这里加一行（features.test.ts 会核对：config 里每个布尔 / 模式开关要么在这里，要么在 NOT_SWITCHES 里说明不是功能开关）。
 // 纯数据 + 一个函数，没有副作用；不放任何密钥或聊天内容。
 
+import { SILENCE_NOTICE } from './modules.ts';
+
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
 
 /** 一行：key 是 config 里的名字；requires 是要让本项真正生效还必须开启的其他功能。 */
-export interface FeatureDef { key: string; label: string; group: FeatureGroup; adr?: string; kind?: 'bool' | 'mode'; hint?: string; requires?: readonly string[] }
+export interface FeatureDef { key: string; label: string; group: FeatureGroup; adr?: string; kind?: 'bool' | 'mode'; hint?: string; description?: string; requires?: readonly string[] }
 
 export const FEATURES: readonly FeatureDef[] = [
     // 说话
@@ -39,7 +41,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'tailCap', label: '句尾「吧」「呢」封顶（压回真人的水平）', group: '说话', adr: '0146' },
     { key: 'interruptions', label: '被第三方打断', group: '说话', adr: '0115' },
     { key: 'together', label: '陪玩状态', group: '说话', adr: '0111' },
-    { key: 'silenceNotice', label: '没回时在正常聊天里酌情解释', group: '说话', adr: '0173' },
+    SILENCE_NOTICE,
     { key: 'crossRecent', label: 'QQ 和 DSH 桌面互读最近几轮（同一个她）', group: '记忆和安全', adr: '0177' },
     { key: 'selfPursuits', label: '她自己定追求（每晚想一次，自己放下 / 提新的）', group: '她的日子', adr: '0178' },
     { key: 'speechNotes', label: '她每晚自己总结说话习惯（「我发现……」，挑几条放进提示词；他可以用 /像AI /像真人 标她说的话给她看；/说话趋势 按周看她说话的数字）', group: '说话', adr: '0193' },
@@ -167,9 +169,10 @@ export function featureStatuses(config: object): FeatureStatus[] {
         const wantsOn = requested.get(def.key) === true;
         const missing = wantsOn ? (def.requires ?? []).filter(key => requested.get(key) !== true).map(key => dependencyLabel(byKey.get(key)!)) : [];
         const on = wantsOn && missing.length === 0;
+        const hint = def.hint ?? def.description;
         return {
             key: def.key, label: def.label, group: def.group,
-            ...(def.adr ? { adr: def.adr } : {}), ...(def.hint ? { hint: def.hint } : {}), on,
+            ...(def.adr ? { adr: def.adr } : {}), ...(hint ? { hint } : {}), on,
             ...(wantsOn && !on ? { configured: true, missing } : {}),
             ...(def.kind === 'mode' && wantsOn ? { mode: String(value) } : {}),
         };

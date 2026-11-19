@@ -27,7 +27,7 @@ function moduleDoc(module: ModuleDef, adrFiles: readonly string[]): string {
         '## 开关',
         '',
         ...(switches.length
-            ? ['| 配置 | 功能 | ADR |', '| --- | --- | --- |', ...switches.map(feature => `| \`${feature.key}\` | ${feature.label}${feature.kind === 'mode' ? '（模式）' : ''} | ${feature.adr ? adrLink(feature.adr, adrFiles) : ''} |`)]
+            ? ['| 配置 | 功能 | ADR |', '| --- | --- | --- |', ...switches.map(feature => `| \`${feature.key}\` | ${feature.label}${feature.kind === 'mode' ? '（模式）' : ''}${feature.description ? `：${feature.description}` : ''} | ${feature.adr ? adrLink(feature.adr, adrFiles) : ''} |`)]
             : ['这个模块没有独立的开关（它是底线 / 基础设施，永远开着）。']),
         '',
         '## 看它有没有变好',

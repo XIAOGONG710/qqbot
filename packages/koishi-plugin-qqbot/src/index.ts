@@ -23,6 +23,7 @@ import { createLog, type Log } from '../../bot/src/platform/log.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from '../../bot/src/language/fact-check.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/social/presence.ts';
 import { GROUP_CHAT_MODES, type GroupChatMode } from '../../bot/src/platform/config.ts';
+import { SILENCE_NOTICE } from '../../bot/src/platform/modules.ts';
 import { readQzoneFeed } from '../../bot/src/social/qzone-feed.ts';
 import { readFriendsFeed } from '../../bot/src/social/qzone-feeds3.ts';
 import { sessionFromCookies } from '../../bot/src/social/qzone-remote.ts';
@@ -591,8 +592,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**打错字撤回重发**（ADR 0086）：她打错字想改口时，约一半改成「先发打错的，几秒后撤回，再发对的」，他那边会看到「对方撤回了一条消息」；其余照旧补一条「*对的词」。撤回不了（超过两分钟）就补改口。大约 60 条回复里一次。默认关'),
         selfDirectedMemory: Schema.boolean().default(DEFAULTS.selfDirectedMemory)
             .description('**记忆由她自己决定**：关掉自动记忆同步和自动日记；只有她在回复里写 `<<记住：…>>` / `<<日记：…>>` 时才记，标记不会发出去。默认关'),
-        silenceNotice: Schema.boolean().default(DEFAULTS.silenceNotice)
-            .description('**没回时告诉他原因**（ADR 0173）：他连着发了 2 条以上、第一条过了 8 分钟还没回，就用「（」开头的提示说原因——是作息（睡觉 / 上课 / 在忙）、是她自己的决定（看心情不回、她已收尾）、还是故障（连不上模型），并说清这是谁的决定；一串最多说 3 次、原因变了才再说；也可以随时发 `/为什么` 问。不冒充她说话、不进她的聊天记录。默认关'),
+        [SILENCE_NOTICE.key]: Schema.boolean().default(DEFAULTS.silenceNotice)
+            .description(`**${SILENCE_NOTICE.label}**（ADR ${SILENCE_NOTICE.adr}）：${SILENCE_NOTICE.description}`),
         crossRecent: Schema.boolean().default(DEFAULTS.crossRecent)
             .description('**QQ 和 DSH 桌面互读最近几轮**（ADR 0177，「同一个她」第 2 层）：他在 DSH 桌面上刚说过的话（最近 3 轮、6 小时内），QQ 这边的她知道；他刚在 QQ 上说的话，桌面上的她也知道。只给男朋友档；要开了长期记忆。需要 DSH 那边重启插件。默认关。'),
         selfPursuits: Schema.boolean().default(DEFAULTS.selfPursuits)

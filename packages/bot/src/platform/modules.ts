@@ -4,7 +4,7 @@
 // 重新生成文档：node packages/bot/src/ops/modules-doc.ts
 // 目录整理已完成；后续的模块配置段与提示词贡献计划见 docs/modules/README.md「接下来」。
 
-import type { FeatureGroup } from './features.ts';
+import type { FeatureDef, FeatureGroup } from './features.ts';
 
 export interface ModuleDef {
     id: string;
@@ -22,6 +22,14 @@ export interface ModuleDef {
     /** 最相关的几份 ADR */
     adrs: readonly string[];
 }
+
+export const SILENCE_NOTICE = {
+    key: 'silenceNotice',
+    label: '没回时在正常聊天里酌情解释',
+    group: '说话',
+    adr: '0173',
+    description: '确认在忙或有明确的忘回记录，才在正常回复时顺口提一句；不知道就不编。小事等他自然问起再说，不想细讲可以不交代原因。',
+} as const satisfies FeatureDef;
 
 export const MODULES: readonly ModuleDef[] = [
     {
