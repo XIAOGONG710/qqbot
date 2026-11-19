@@ -1447,3 +1447,10 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   `bilibiliAccountSource` / `startBilibiliOwners` 两个名字（B 站表情包、追更、热梗、第一次连上、醒来还在用）。
 - 这一样不经解释器：它没有事件，只在连上 / 醒来时由 App 启动，自带计时器（第 5 步「自带循环的」那一类，收进执行器另做）。
 - 验证：41 个场景对快照逐字一致；B 站相关的 App 级测试（`memory-app-*` 10 个文件 92 个用例、`app.test.ts` 里 11 个）通过；变异检验：`startOwners` 什么都不做，28 个失败。
+
+### 第 6 步：app.ts 只剩装配——存在感（2026-11-19）
+
+- 存在感（ADR 0083：在线状态、资料卡点赞、个性签名、说说、翻空间、主动戳他）的 `startPresence` 原样从 app.ts 搬到 `src/social/presence-owner.ts`（`presenceOwner(deps)`），函数体逐字不动。
+  App 只留：建它、在原位登记停法（`lifetime.own('presence')`）、`startPresence` 这个名字（第一次连上时调）；回复器里的 `selfNote`、醒来 / 重连时的 `reapply` 改经它。
+- 同 B 站那几样，不经解释器（没有事件，自带计时器）。
+- 验证：41 个场景对快照逐字一致；`app.test.ts` 里存在感、主动戳他、「她知道自己在 QQ 上的样子」、全开冒烟，`memory-external-*-stop-review` 通过；变异检验：`start` 什么都不做，5 个失败。

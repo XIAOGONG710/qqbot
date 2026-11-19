@@ -28,6 +28,7 @@
 - `social/sticker-sources.ts`
 - `social/pokes.ts`
 - `social/presence.ts`
+- `social/presence-owner.ts`
 - `social/qzone.ts`
 - `social/qzone-feed.ts`
 - `social/qzone-feeds3.ts`

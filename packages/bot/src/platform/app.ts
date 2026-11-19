@@ -119,9 +119,9 @@ import { describeInsightsForOwner, insightsReader, loadInsightsState, loadSelfDi
 import { removeFaces } from '.././language/qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from '.././memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from '.././world/festivals.ts';
-import { newsKindsOf, dayMatches, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withReach, withRoom, withSmallNews, type ProactiveMode } from '.././proactive/proactive.ts';
-import { createPresence, FESTIVAL_SIGNATURES, reactionEmoji, type Presence, type PresenceTransport } from '.././social/presence.ts';
-import { qzoneComposer } from '.././social/qzone.ts';
+import { newsKindsOf, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withReach, withRoom, withSmallNews, type ProactiveMode } from '.././proactive/proactive.ts';
+import { reactionEmoji, type PresenceTransport } from '.././social/presence.ts';
+import { presenceOwner } from '.././social/presence-owner.ts';
 import { fetchHotComments, type BiliFetch } from '.././bilibili/bilibili.ts';
 import type { BiliAccount, BiliRequest } from '.././bilibili/bilibili-account.ts';
 import { bilibiliOwners } from '.././bilibili/owners.ts';
@@ -135,7 +135,7 @@ import { aiPhotoReviewModelFromImageDescriber, createAiPhotoVisualReviewer, qual
 import { aiPhotoRequestService, defaultAiPhotoStateFile, requestCurrentAiPhoto, type AiPhotoRequestService } from '.././proactive/ai-photo-requests.ts';
 import { detectCrisis, type CrisisLevel } from '.././emotion/crisis.ts';
 import { createCrisisState, CRISIS_PAUSE_MS } from '.././emotion/crisis-state.ts';
-import { createPokeLimiter, POKE_OUT_TEXT, pokeOutMessageId, quietEnoughToPoke } from '.././social/pokes.ts';
+import { createPokeLimiter } from '.././social/pokes.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner, type PlannerStatus } from '.././proactive/proactive-planner.ts';
 import { proactiveAgency } from '.././proactive/agency.ts';
 import { PromiseStateUnavailable } from '.././life/promise-state.ts';
@@ -2054,7 +2054,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 });
             } } : {}),
             // 她在 QQ 上的样子（签名、最近发的说说）进时间块（ADR 0083）
-            selfNote: (now: number) => presence?.selfNote(now),
+            selfNote: (now: number) => herPresence.selfNote(now),
             // 已读回执 / 表情回应（ADR 0083）：失败只记第一次，不影响回复
             ...(config.readReceipts && transport.markRead ? { markRead: (userId: number) => {
                 void sendOwnedNotice(() => transport.markRead!(userId), () => {}, error => failOnce('已读回执', userId, error));
@@ -2175,61 +2175,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         }
     }
 
-    /** 存在感（ADR 0083）：在线状态 / 资料卡点赞 / 个性签名 / 说说；第一次连上才起，一个开关都没开就不起 */
-    let presence: Presence | undefined;
-    lifetime.own('presence', () => presence?.stop());
-    function startPresence(): void {
-        if (presence) return;
-        if (!config.onlineStatus && !config.profileLikes && config.signature === 'off' && config.qzone === 'off' && (config.qzoneBrowse ?? 'off') === 'off' && (config.qzonePeek ?? 'off') === 'off' && (config.qzoneStrangers ?? 'off') === 'off' && !config.pokeOut) return;
-        if (!worldCard?.schedule) {
-            log('存在感：没有作息（herDays 关或卡上没有作息），不启动——在线状态、点赞、签名、说说都按她的作息排');
-            return;
-        }
-        const schedule = worldCard.schedule;
-        const extraFree = config.herDays ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [];
-        const dir = join(config.dataDir, 'presence');
-        // 说说用最低隐私档的卡来写（陌生人档，没有就同学档）；两张都读不了就不发说说
-        let lowest: TierCard | undefined;
-        for (const tier of ['stranger', 'classmate']) {
-            try { lowest = cardFor(tier); break; } catch { /* 试下一档 */ }
-        }
-        const publicSchedule = lowest?.character.schedule ?? schedule;
-        const qzone = config.qzone !== 'off' && lowest
-            ? qzoneComposer({
-                character: { name: lowest.character.name, description: lowest.character.description, personality: lowest.character.personality, banned: lowest.character.banned },
-                generate: messages => (exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 1.1 }, messages }, log)),
-                ...(vision ? { vision } : {}),
-                photoDir: join(dir, 'photos'),
-                situation: now => [
-                    // 这一档自己的作息：空闲时她在干什么按这一档看得到的来（男朋友档知道的事——买相机、他——不能漏进谁都可能看到的说说里）
-                    `你现在：${describeState(stateAt(publicSchedule, new Date(now), extraFree), publicSchedule)}`,
-                    ...(rainyAt(now) ? ['天气：在下雨'] : []),
-                ],
-                log,
-            })
-            : undefined;
-        if (config.qzone !== 'off' && !qzone) log('存在感：陌生人档和同学档的卡都读不了，不写说说');
-        presence = createPresence({
-            ...(dormancy ? { paused: () => dormancy.isDormant() } : {}),
-            ...(config.unlistedFriends ? { aiMark: true } : {}),
-            flags: { onlineStatus: config.onlineStatus, profileLikes: config.profileLikes, signature: config.signature, qzone: qzone ? config.qzone : 'off', qzoneVisibility: config.qzoneVisibility, pokeOut: config.pokeOut, qzoneBrowse: config.qzoneBrowse, qzonePeek: config.qzonePeek, qzoneStrangers: config.qzoneStrangers },
-            transport, schedule, extraFree,
-            likeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),
-            // 能看谁的空间：只放用户点名的（qqAllowFriends），名字用于提示词里说是谁的空间
-            peekTargets: config.contacts.filter(c => (config.qqAllowFriends ?? []).includes(c.qq)).map(c => ({ qq: c.qq, name: c.name })),
-            pokeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),
-            // 聊天安静了一阵、最后一条是她说的、不是刚道过晚安，且没在危机暂停里，才戳他（ADR 0087）
-            canPokeOut: (qq, now) => !crisisState.pausedAt(qq, now) && quietEnoughToPoke(chatHistory.load(qq), now),
-            recordPokeOut: (qq, now) => { chatHistory.append(qq, { time: new Date(now).toISOString(), role: 'assistant', content: POKE_OUT_TEXT, messageId: pokeOutMessageId(now) }); },
-            dir, now: worldNow, log,
-            saidSleep: now => Boolean(asleepSince(schedule, bedtimes(schedule, now), new Date(now))),
-            festival: day => worldCard.dates.find(d => FESTIVAL_SIGNATURES[d.name] && dayMatches(d, day) === 'solar')?.name,
-            rainy: rainyAt,
-            ...(qzone ? { composeQzone: qzone } : {}),
-        });
-        presence.start();
-        log(`存在感：${[config.onlineStatus && '在线状态', config.profileLikes && '资料卡点赞', config.pokeOut && '主动戳他', config.signature !== 'off' && `个性签名（${config.signature === 'dryRun' ? '只写草稿' : '真改'}）`, qzone && `说说（${config.qzone === 'dryRun' ? '只写草稿' : '真发'}，${config.qzoneVisibility === 'public' ? '所有人可见' : '仅好友可见'}）`, (config.qzoneBrowse ?? 'off') !== 'off' && `翻空间（${config.qzoneBrowse === 'dryRun' ? '只写草稿' : '记进提示词'}）`, (config.qzonePeek ?? 'off') !== 'off' && `看好友空间（${config.qzonePeek === 'dryRun' ? '只写草稿' : '记进提示词'}）`, (config.qzoneStrangers ?? 'off') !== 'off' && `刷陌生人（${config.qzoneStrangers === 'dryRun' ? '只写草稿' : '记进提示词 + 留样本'}）`].filter(Boolean).join('、')}`);
-    }
+    // 存在感（ADR 0083）：在 social/presence-owner.ts（ADR 0336 第 6 步）；停法照旧在这里登记
+    const herPresence = presenceOwner({ config, log, worldNow, cardFor, worldCard, bedtimes, exec, chatHistory, transport, vision, rainyAt, dormancy, crisisState });
+    lifetime.own('presence', () => herPresence.stop());
+    const startPresence = herPresence.start;
     // 她在 B 站的那几样（她的号、刷视频、风险转私信、回复评论）：在 bilibili/owners.ts（ADR 0336 第 6 步）；停法照旧在这里登记，先后同原来
     const bilibili = bilibiliOwners({ config, stopped: () => stopped, log, worldNow, cardFor, worldCard, bedtimes, exec, chatHistory, transport, responders, decorateAccounts, ownAccountGuard, bilibiliRequest, bilibiliFetch });
     lifetime.own('browsing', () => bilibili.stopBrowsing());
@@ -3482,7 +3431,7 @@ ${body}
             catchUpAll();
             startBilibiliOwners(); void watchJob();
             for (const planner of planners.values()) planner.poke();
-            presence?.reapply();
+            herPresence.reapply();
             const outcome = await responders.get(deviceOwner.qq)!.initiate({
                 label: '醒来', note: wakeNote(woke.minutes, problems, identityLine, missed ? `休眠期间他发了 ${missed} 条，你会接着回。` : ''),
                 topic: '她刚睡醒，想对他说什么', maxBubbles: 3, dryRun: false, commit: () => undefined,
@@ -3658,7 +3607,7 @@ ${body}
                     syncMemory();
                     startPlanners();
                     startPresence();
-                    presence?.reapply();
+                    herPresence.reapply();
                     if (!dormancy?.isDormant()) startBilibiliOwners();
                     for (const planner of planners.values()) planner.poke();
                     for (const notice of ownerNotices.splice(0)) tellOwner(notice);
