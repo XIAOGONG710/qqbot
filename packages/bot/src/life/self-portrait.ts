@@ -141,7 +141,7 @@ export const TRIPWIRES: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
  * 名字、年龄在 EXTRA_FLOORS 里；这里是爸妈、家、他在哪边。宁可误伤：这些本来就以设定为准，这份里用不着
  */
 export const HER_FIXED: ReadonlyArray<{ pattern: RegExp; reason: string }> = [
-    { pattern: /爸|妈(?![呀耶])|父母|家里人|老家|我家在|家住|住在|搬(?:到|去|回)/, reason: '写到了爸妈、家或住在哪——这些是你说了不能动的，这份里不写' },
+    { pattern: /(?:我|我的|我家)(?:爸|妈|父母|爸妈)|爸妈|父母|家里人|老家|我家在|家住|住在|搬(?:到|去|回)/, reason: '写到了爸妈、家或住在哪——这些是你说了不能动的，这份里不写' },
     { pattern: /(?:他|你|宝宝)(?:现在)?(?:在|住)(?:哪|那边|这边|外地|别的城市)|异地|(?:他|你|宝宝)(?:的|那个)?城市/, reason: '写到了他在哪边——这是你说了不能动的，这份里不写' },
 ];
 
@@ -184,17 +184,38 @@ export function portraitProblem(text: string, guard: PortraitGuard): string | un
 /** keep：这次不改；否则整份换成 text */
 export type PortraitDecision = { keep: true } | { keep: false; text: string; why: string };
 
+/** 宽松一点地解析：先原样；不行再把中文弯引号当成 JSON 的引号、去掉末尾多余的逗号再试（模型偶尔这么写） */
+function looseJson(text: string): unknown {
+    try { return JSON.parse(text); } catch { /* 再试一次 */ }
+    try { return JSON.parse(text.replace(/[“”]/g, '"').replace(/,\s*([}\]])/g, '$1')); } catch { return undefined; }
+}
+
 /** 从模型的回复里取出那个 JSON（可能带代码围栏、前后有话）；取不出返回 undefined */
 export function parsePortraitDecision(reply: string): PortraitDecision | undefined {
     const start = reply.indexOf('{');
     const end = reply.lastIndexOf('}');
     if (start < 0 || end <= start) return undefined;
-    let value: unknown;
-    try { value = JSON.parse(reply.slice(start, end + 1)); } catch { return undefined; }
+    const value = looseJson(reply.slice(start, end + 1));
     if (!isObject(value)) return undefined;
     const text = typeof value.text === 'string' ? value.text.trim() : '';
     if (!text) return value.keep === true || Object.keys(value).length === 0 ? { keep: true } : undefined;
     return { keep: false, text, why: clip(value.why, WHY_MAX) };
+}
+
+/** 第一次没按格式回的时候追问的那一句 */
+export const FORMAT_RETRY = '刚才那段不是要的格式。按上面说的，只输出那一个 JSON 对象（{"keep":true} 或 {"text":"…","why":"…"}），别的什么都别写。';
+
+/**
+ * 问她一次；回的话里取不出 JSON，就把她的话接上、追问一句再问一次（探针 11-20：3 次里 2 次没按格式回）。
+ * replies 是她回的原文（给探针和排查用，日志不记）
+ */
+export async function askPortrait(generate: (messages: OpenAIMessage[]) => Promise<string>, messages: OpenAIMessage[]): Promise<{ decision?: PortraitDecision; replies: string[] }> {
+    const first = await generate(messages);
+    const decision = parsePortraitDecision(first);
+    if (decision) return { decision, replies: [first] };
+    const second = await generate([...messages, { role: 'assistant', content: first }, { role: 'user', content: FORMAT_RETRY }]);
+    const retried = parsePortraitDecision(second);
+    return { ...(retried ? { decision: retried } : {}), replies: [first, second] };
 }
 
 export interface AppliedPortrait { changed: boolean; reason?: string }
@@ -299,14 +320,13 @@ export async function reflectPortraitIfDue(deps: PortraitDeps): Promise<Portrait
     state.attempts = state.attempts.day === dayKey(now) ? { day: state.attempts.day, n: state.attempts.n + 1 } : { day: dayKey(now), n: 1 };
     savePortraitState(deps.dataDir, state);
     try {
-        const reply = await deps.generate(portraitMessages({
+        const { decision } = await askPortrait(deps.generate, portraitMessages({
             char: deps.names.char, user: deps.names.user, persona: deps.persona(), now,
             current: state.text, speechNotes, insights, exchanges, reactions,
             ...(desktopSelf ? { desktopSelf } : {}),
             ...(state.rejected ? { lastRejected: state.rejected.reason } : {}),
         }));
-        const decision = parsePortraitDecision(reply);
-        if (!decision) throw new Error('回复里没有可用的 JSON');
+        if (!decision) throw new Error('回复里没有可用的 JSON（追问过一次）');
         const fresh = loadPortraitState(deps.dataDir);
         fresh.lastAttemptAt = state.lastAttemptAt;
         fresh.attempts = state.attempts;

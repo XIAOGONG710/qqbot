@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
-    PORTRAIT_EXPORT_FILE, PORTRAIT_EXPORT_KIND, PORTRAIT_MAX, applyPortraitDecision, emptyPortraitState, hisReactions, loadPortraitState,
+    FORMAT_RETRY, PORTRAIT_EXPORT_FILE, PORTRAIT_EXPORT_KIND, PORTRAIT_MAX, applyPortraitDecision, askPortrait, emptyPortraitState, hisReactions, loadPortraitState,
     parsePortraitDecision, portraitHistoryPath, portraitLine, portraitMessages, portraitProblem, portraitReader, readDesktopSelf, reflectPortraitIfDue, refreshPortraitExport, savePortraitState,
     type PortraitDeps, type PortraitGuard,
 } from '../src/life/self-portrait.ts';
@@ -362,5 +362,39 @@ describe('同一个她：电脑上写的 SOUL.md 和给桌面的那一份', () =
         savePortraitState(dataDir, { ...emptyPortraitState(), text: `${GOOD}再加一句。`, at: NIGHT + HOUR, version: 3 });
         assert.equal(refreshPortraitExport(soulDir, dataDir, NIGHT + 62 * 60_000), true, '内容变了马上写');
         assert.equal(refreshPortraitExport(join(soulDir, '没有这个目录', '更深'), dataDir, NIGHT), false, '灵魂目录不在就算了');
+    });
+});
+
+describe('格式不稳：宽松解析、追问一次（探针 11-20：3 次里 2 次没按 JSON 回）', () => {
+    test('中文弯引号当引号、末尾多余逗号都能解析', () => {
+        assert.deepEqual(parsePortraitDecision('{“keep”: true,}'), { keep: true });
+        assert.deepEqual(parsePortraitDecision(`{"text":"${GOOD}","why":"想改",}`), { keep: false, text: GOOD, why: '想改' });
+    });
+
+    test('第一次没按格式：把她的话接上、追问一次；还是不行就没有决定', async () => {
+        const calls: number[] = [];
+        const ok = await askPortrait(async messages => { calls.push(messages.length); return messages.length === 2 ? '我想想……' : '{"keep":true}'; }, [{ role: 'system', content: 's' }, { role: 'user', content: 'u' }]);
+        assert.deepEqual(ok, { decision: { keep: true }, replies: ['我想想……', '{"keep":true}'] });
+        assert.deepEqual(calls, [2, 4], '第二次带上她的话和追问');
+        const once = await askPortrait(async () => '{"keep":true}', []);
+        assert.equal(once.replies.length, 1, '按格式回了就不追问');
+        const never = await askPortrait(async () => '不想写', []);
+        assert.equal(never.decision, undefined);
+    });
+
+    test('夜里想：追问后写成也算成', async () => {
+        const dataDir = tmp();
+        let n = 0;
+        const result = await reflectPortraitIfDue({
+            dataDir, now: () => NIGHT, history: () => CHAT, persona: () => '', names: { char: '测试角色', user: '阿明' }, others: () => [], log: () => {},
+            generate: async messages => (++n === 1 ? '让我想想' : (assert.equal(messages.at(-1)!.content, FORMAT_RETRY), JSON.stringify({ text: GOOD, why: 'x' }))),
+        });
+        assert.deepEqual(result.applied, { changed: true });
+        assert.equal(n, 2);
+    });
+
+    test('爸妈那一条只认她自己的爸妈：说他「像他妈一样」不误伤', () => {
+        assert.equal(portraitProblem(`${GOOD}他嫌我像他妈一样唠叨。`, guard()), undefined);
+        assert.match(portraitProblem(`${GOOD}我妈也这样。`, guard())!, /爸妈/);
     });
 });
