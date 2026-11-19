@@ -123,7 +123,7 @@ test('silenceNotice：自然问才解释小事，私密原因不进入正常回�
     }
 });
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { sing?: AppOptions['sing']; photoSource?: PhotoSource; foodSource?: FoodSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; imageRecognition?: ImageDescriber; imageSearch?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { sing?: AppOptions['sing']; photoSource?: PhotoSource; foodSource?: FoodSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; imageRecognition?: ImageDescriber; imageSearch?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; repoRoot?: string; extra?: Partial<Transport> } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -168,6 +168,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.bilibiliRequest ? { bilibiliRequest: options.bilibiliRequest } : {}),
         ...(options.startDevices ? { startDevices: options.startDevices } : {}),
         ...(options.workRunner ? { workRunner: options.workRunner } : {}),
+        ...(options.repoRoot ? { repoRoot: options.repoRoot } : {}),
         // 既有测试要核对日志正文和 last-prompt.json，所以默认开着敏感调试；关着的行为在下面单独测
         sensitive: options.sensitive ?? { on: () => true, describe: () => '' },
         pipeline: {
@@ -1797,11 +1798,15 @@ describe('主动消息（ADR 0011）', () => {
     });
 
     test('休眠（ADR 0161）：/休眠 先商量（她自己说话，这条会发给他）→ /休眠 确认才封存 → 休眠中不回（每 30 分钟只提示一次）→ /唤醒 核对后醒来；封存里没有密钥', async () => {
-        const cfg = config({ dormancy: true, contacts: [boyfriend] });
+        // 封存放在数据目录的上一级 archive/：给这条测试单独一个根，不然几路测试并行时都落在系统临时目录的同一个 archive/ 里，
+        // 收尾删「最新那份」会删到别人的（11-19 四路并行时醒来核对报「少了」）。仓库根也用合成的，不把真实角色目录复制进封存。
+        const root = mkdtempSync(join(tmpdir(), 'qqbot-dormancy-'));
+        dirs.push(root);
+        const cfg = config({ dormancy: true, contacts: [boyfriend], dataDir: join(root, 'bot') });
         mkdirSync(join(cfg.dataDir, 'secrets'), { recursive: true });
         writeFileSync(join(cfg.dataDir, 'secrets', 'x.json'), '{"k":"不能进封存"}');
         const prompts: string[] = [];
-        const { app, sent, logs } = setup(cfg, { 10002: [] }, { generate: messages => { const text = messages.map(m => m.content).join('\n'); prompts.push(text); return /刚从休眠里醒来/.test(text) ? '睡醒了，头有点懵' : '行，我先睡一觉，醒了找你'; } });
+        const { app, sent, logs } = setup(cfg, { 10002: [] }, { generate: messages => { const text = messages.map(m => m.content).join('\n'); prompts.push(text); return /刚从休眠里醒来/.test(text) ? '睡醒了，头有点懵' : '行，我先睡一觉，醒了找你'; }, repoRoot: join(root, 'repo') });
         await app.connected(SELF);
         app.receive(event(10002, 611, '/休眠 想让你歇一阵'));
         await until(() => sent.some(line => line.includes('/休眠 确认')), 8000);
@@ -1827,6 +1832,7 @@ describe('主动消息（ADR 0011）', () => {
         const archives = readdirSync(archiveRoot).filter(name => name.endsWith('dormancy') || /dormancy-d+$/.test(name)).slice(-1);
         assert.equal(archives.length, 1);
         assert.ok(existsSync(join(archiveRoot, archives[0]!, 'bot')) && !existsSync(join(archiveRoot, archives[0]!, 'bot', 'secrets')), '封存里有状态、没有密钥');
+        assert.ok(!existsSync(join(archiveRoot, archives[0]!, 'characters')), '测试用的是合成仓库根：封存里不该有真实角色目录');
         rmSync(join(archiveRoot, archives[0]!), { recursive: true, force: true });
         sent.length = 0;
         app.receive(event(10002, 616, '你好呀'));

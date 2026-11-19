@@ -403,6 +403,8 @@ export interface AppOptions {
     sensitive?: SensitiveSwitch;
     /** 测试 / 审计：执行器派发每个动作之前看一眼（ADR 0336；行为基线用它记下每次调模型的完整配置） */
     observe?: ExecutorOptions['observe'];
+    /** 测试用：仓库根（休眠封存从这里复制角色目录、设定账本从这里核对）；不给按本文件位置往上推。测试给合成的根，就不会把真实角色复制出来 */
+    repoRoot?: string;
 }
 
 /** 名单外的人在提示词里的称呼（{{user}}）：QQ 昵称，没有就叫「对方」 */
@@ -443,7 +445,7 @@ export function startApp(options: AppOptions): App {
     catch (error) { lifetime.rollback(); throw error; }
 }
 
-function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, foodSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe }: AppOptions, lifetime: Lifetime<StopName>): App {
+function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, foodSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe, repoRoot: repoRootOverride }: AppOptions, lifetime: Lifetime<StopName>): App {
     // 碰外部的都经执行器（ADR 0336 第 3 步）：QQ 动作、调模型、时钟和计时器、设备登记（第 8 步：设备服务下面才异步起，登记时现取）
     const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}), ...(workRunner ? { processes: { work: workRunner } } : {}), devices: () => devicesHost.service()?.control });
     const transport = exec.qq;
@@ -1253,7 +1255,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // ───────── 连续性（ADR 0157–0163）：设定账本 / 记忆账本 / 时间线 / 搜索 / 休眠 / 口味 / 认识的人 ─────────
     // 都是默认关的开关；账本和时间线只写数据目录里的小文件。出错一律只记日志，不影响聊天
     // 这个文件在 packages/bot/src/platform/：往上四层才是仓库根（模块目录重构前在 src/ 下，三层）
-    const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+    const repoRoot = repoRootOverride ?? resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
     const clockNow = () => new Date(exec.now());
     /** 连上之后发给用户的运维提示（设定账本验不过、有没登记原因的改动……）：以「（」开头的纯文字，不进她的聊天记录 */
     const ownerNotices: string[] = [];

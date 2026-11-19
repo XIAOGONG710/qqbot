@@ -146,7 +146,7 @@ function probeAppLock(f: ReturnType<typeof appFixture>) {
     const code = `import { startApp } from ${JSON.stringify(appUrl)}; import { parseAppConfig } from ${JSON.stringify(configUrl)};
         globalThis.fetch=async()=>{throw new Error('Network prohibited in synthetic lock probe');};
         let app; try { app=startApp({ config:parseAppConfig(${JSON.stringify(f.raw)},${JSON.stringify(f.root)},{QQBOT_LLM_API_KEY:'synthetic-key'}), transport:{friendHistory:async()=>[],sendPrivateText:async()=>1}, log(){}, pipeline:{generate:async()=> 'synthetic'} }); console.log('RELEASED'); } catch(error) { if(error instanceof Error && error.message.startsWith('已有一个 bot 在运行（PID ')) console.log('LOCKED'); else { console.log('UNEXPECTED'); process.exitCode=2; } } finally { app?.stop(); }`;
-    const child = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: 10_000, maxBuffer: 64 * 1024, windowsHide: true });
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: 60_000, maxBuffer: 64 * 1024, windowsHide: true }); // 子进程要冷加载 app.ts 整个模块图，机器忙（并行跑测试 / 基线）时 10 秒不够（11-19 四路并行稳定超时）
     assert.equal(child.error, undefined); assert.equal(child.status, 0, child.stderr);
     return child.stdout.trim();
 }
