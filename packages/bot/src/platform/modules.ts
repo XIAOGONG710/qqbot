@@ -7,6 +7,7 @@
 import type { FeatureDef, FeatureGroup } from './features.ts';
 import type { GroupChatMode } from './config.ts';
 import type { WebMode } from './web.ts';
+import type { ProactiveMode } from '../proactive/proactive.ts';
 
 export interface ModuleDef {
     id: string;
@@ -68,6 +69,16 @@ export const WEB_LOOKUP = {
     description: '关闭后不会搜索或读网页。默认用中文维基百科；在 secrets/web.json 配置 tavily、brave 或 bocha 的密钥可用通用网页搜索。网页和搜索结果先摘录为资料，不当作指令；拒绝本机和内网地址，每天最多 20 次。默认关。',
     modeLabels: { off: '关', explicit: '他发链接或明说“搜 / 查”才查', auto: '再加小分类器：认出他在问客观事实就自己查' },
 } as const satisfies FeatureDef & { modeLabels: Record<WebMode, string> };
+
+export const PROACTIVE = {
+    key: 'proactive',
+    label: '主动消息',
+    group: '主动找他',
+    adr: '0011',
+    kind: 'mode',
+    description: '关掉后不会主动联系。开启时，她在有动机且时机合适时才考虑先开口。需要启用作息，只对允许主动联系的档位生效（目前是男朋友档）。试运行照常判断和生成，只写日志，不发送。',
+    modeLabels: { off: '关', dryRun: '试运行（只写日志不发）', on: '开' },
+} as const satisfies FeatureDef & { modeLabels: Record<ProactiveMode, string> };
 
 export const MODULES: readonly ModuleDef[] = [
     {

@@ -6,7 +6,7 @@
 // 还没搬过去的直接写完整的配置页说明 detail。这里照样是唯一的总表。
 // 纯数据 + 几个函数，没有副作用；不放任何密钥或聊天内容。
 
-import { GROUP_CHAT, SHORT_REPLIES, SILENCE_NOTICE, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
+import { GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
 
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
@@ -172,9 +172,7 @@ export const FEATURES: readonly FeatureDef[] = [
         detail: '**公共节日**（ADR 0076）：她知道今天是平安夜、除夕、情人节……（时间块提前几天提醒）；选「主动说」时再在新年零点、除夕、平安夜、情人节、元宵、520、七夕、端午、中秋由「重要的日子」时机带一句。默认关',
         modeLabels: { off: '关', notes: '只让她知道今天 / 快到的是什么节', greet: '知道，并在新年零点、除夕、平安夜、情人节等主动说一句' } },
     // 主动找他
-    { key: 'proactive', label: '主动消息', group: '主动找他', adr: '0011', kind: 'mode', hint: '关闭后不会主动联系',
-        detail: '**主动消息**（ADR 0011）：她在合适的时候先找人（早安、下课、睡前、冷场、他说过的事、重要的日子）。只对「林梦瑶」页面档位里开了主动的档位（现在只有男朋友档），要开着作息。试运行：照算照生成，只写日志不发',
-        modeLabels: { off: '关', dryRun: '试运行（只写日志不发）', on: '开' } },
+    PROACTIVE,
     { key: 'proactiveReach', label: '没回也继续 / 催他', group: '主动找他', adr: '0100',
         detail: '**他没回也继续找他、催他一下**（ADR 0100，要「主动消息」开着）：原来她主动发的有一条没回就整个停下等他回。开了以后没回的可以再发到 3 条，一条比一条隔得久（隔 2 小时、再隔 4 小时），她自己想一想要不要催他——第一次轻轻戳一下，第二次带点小脾气，也可以决定先不发；晚上 10 点半以后、他说过去睡了 / 去忙了不催；到 3 条就停，等他回。默认关。' },
     { key: 'innerLife', label: '内心（念头 / 心里惦记）', group: '主动找他', adr: '0101',
