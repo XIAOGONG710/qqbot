@@ -40,6 +40,7 @@
 - `platform/quoted-context.ts`
 - `platform/owner-commands.ts`
 - `platform/incoming.ts`
+- `platform/missed-messages.ts`
 - `platform/sensitive.ts`
 - `platform/web.ts`
 - `platform/consent.ts`
