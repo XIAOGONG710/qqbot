@@ -321,6 +321,13 @@ describe('群聊：进应用', () => {
         assert.ok(note.includes('别主动扯上他和你的关系'), note);
     });
 
+    test('群里的鱼、别人的角色都是玩笑：不认成自己，也不照搬别人的话（11-19 群里的「我这条」）', () => {
+        const note = groupNote({ groupName: '只帆船DeepSeek助手交流', boyfriendHere: false, reason: 'topic', disguise: true, cover: '算是来养鱼的，被穹P拉进来的' });
+        assert.ok(note.includes('你还是你'), note);
+        assert.ok(note.includes('别顺着就把这些当成自己的'), note);
+        assert.ok(note.includes('别捡来当自己的'), note);
+    });
+
     test('群里最近的事：私聊问她，她答得上（只取最近一段、不搬全文）', () => {
         const now = Date.parse('2026-11-14T21:00:00+08:00');
         const entries = [
