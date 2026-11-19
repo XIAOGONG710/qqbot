@@ -257,7 +257,7 @@ export const MODULES: readonly ModuleDef[] = [
         id: 'memory', name: '记忆与数据',
         scope: '长期记忆（Hindsight）、聊天记录、状态文件的读写和校验、归档、遗忘、隐私审计。',
         files: ['local-date.ts', 'memory/', 'modules/memory.ts', 'memory/history.ts', 'memory/archive.ts', 'memory/backfill.ts', 'memory/state-schema.ts', 'memory/tier-record.ts', 'memory/json-file.ts', 'memory/transient-io.ts', 'memory/privacy-audit.ts', 'memory/privacy-forget.ts',
-            'memory/ledger.ts', 'memory/identity.ts', 'memory/memory-audit.ts', 'memory/timeline.ts', 'memory/dsh-inbox.ts', 'memory/dormancy.ts'],
+            'memory/ledger.ts', 'memory/identity.ts', 'memory/memory-audit.ts', 'memory/timeline.ts', 'memory/dsh-inbox.ts', 'memory/dormancy.ts', 'memory/dormancy-commands.ts'],
         groups: ['记忆和安全'],
         metrics: '状态页「长期记忆」；ops/state-check-cli；ops/continuity-cli（设定账本 / 记忆账本）；聊天里发 /设定',
         adrs: ['0012', '0017', '0043', '0157', '0158', '0159', '0161', '0176', '0177', '0201', '0226', '0300', '0301', '0302', '0303', '0304', '0305', '0307', '0308', '0309', '0310', '0311', '0312', '0313', '0314', '0315', '0316', '0317', '0318', '0319', '0320', '0330', '0332'],

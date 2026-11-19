@@ -36,7 +36,8 @@ import { leaveNoteModule } from '../modules/leave-note.ts';
 import { dshStateModule } from '../modules/dsh-state.ts';
 import { dreamJobs } from '../life/dream-jobs.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
-import { Dormancy, proposeNote, wakeNote } from '.././memory/dormancy.ts';
+import { Dormancy } from '.././memory/dormancy.ts';
+import { dormancyCommands } from '.././memory/dormancy-commands.ts';
 import { Identity } from '.././memory/identity.ts';
 import { auditedApi, memoryLedger, summarize as summarizeMemoryLedger } from '.././memory/memory-audit.ts';
 import { experiencesFromLife, experiencesFromWatched, Tastes } from '.././life/tastes.ts';
@@ -2780,8 +2781,8 @@ ${body}
             if (config.herFeelings && plain === '/心境') { tellOwner(describeFeelingsForOwner(lastFeelings, loadReviewState(config.dataDir), clockNow().getTime(), Boolean(config.feelingReview))); return; }
             // 「/自我认识」：她翻日记时发现的自己、放下过什么、想写没成什么（ADR 0194）；只能看，不能改
             if (config.diaryInsights && plain === '/自我认识') { tellOwner(describeInsightsForOwner(loadInsightsState(config.dataDir), clockNow().getTime())); return; }
-            if (dormancy && plain && /^\/休眠(?:\s|$)/.test(plain)) { void handleDormancyCommand(plain.replace(/^\/休眠\s*/, '')); return; }
-            if (dormancy && plain === '/唤醒') { void wakeUp(); return; }
+            if (dormancy && plain && /^\/休眠(?:\s|$)/.test(plain)) { void dormancyCommandsNow.handle(plain.replace(/^\/休眠\s*/, '')); return; }
+            if (dormancy && plain === '/唤醒') { void dormancyCommandsNow.wakeUp(); return; }
             // 「唱 BVxxxx」（2026-11-14）：他要她唱一首。后台跑 scripts/sing.py（约 5 分钟），
             // 出结果发整首语音条；不占她这一轮的回复，也不进提示词。
             const priorSong = privateSongReference;
@@ -3375,73 +3376,17 @@ ${body}
     };
     lifetime.own('dsh-asks', stopDshAsks);
 
-    /** 「/休眠 [原因]」先商量：让她自己说话（这一条会发给他），记下她的话；「/休眠 确认」才封存并休眠；「/休眠 取消」回到醒着 */
-    async function handleDormancyCommand(argument: string): Promise<void> {
-        if (!dormancy || !deviceOwner) return;
-        try {
-            if (argument === '确认') {
-                const done = dormancy.confirm();
-                if (!done.ok) { tellOwner(`（${done.reason}）`); return; }
-                noteTimeline({ channel: 'dormancy', kind: 'sleep', summary: '进入休眠，设定和状态封存好了' });
-                log(`休眠：已封存 ${done.archive.files} 个文件（${(done.archive.bytes / 1_048_576).toFixed(1)} MB）到 ${done.archive.dir}`);
-                tellOwner(`（已封存：${done.archive.files} 个文件、${(done.archive.bytes / 1_048_576).toFixed(1)} MB，在 ${done.archive.dir}；不含密钥、日志和 Hindsight 数据库。她进入休眠，发 /唤醒 叫醒她。）`);
-                return;
-            }
-            if (argument === '取消') { tellOwner(dormancy.cancel() ? '（不休眠了，她还醒着。）' : '（没有在商量的休眠。）'); return; }
-            if (dormancy.isDormant()) { tellOwner('（她已经在休眠了。）'); return; }
-            const reason = argument.trim() || undefined;
-            const proposalToken = dormancy.propose(reason, undefined);
-            const outcome = await responders.get(deviceOwner.qq)!.initiate({ label: '休眠前商量', note: proposeNote(reason), topic: '休眠前她想对他说什么', maxBubbles: 3, dryRun: false, commit: () => undefined });
-            if (stopped) return;
-            if (outcome.result === 'sent') {
-                if (!dormancy.updateProposal(proposalToken, outcome.parts.join('\n'))) return;
-                tellOwner('（她回答了，上面就是她的话，已经记进封存。要继续就发「/休眠 确认」，改主意发「/休眠 取消」。）');
-            } else {
-                const current = dormancy.state();
-                if (current.state !== 'proposed' || current.token !== proposalToken) return;
-                tellOwner(`（没能让她回答${outcome.result === 'failed' || outcome.result === 'skipped' ? `：${outcome.reason}` : ''}。你可以直接发「/休眠 确认」（她的留言会是空的），或「/休眠 取消」。）`);
-            }
-        } catch (error) {
-            log(`休眠：处理命令出错（${error instanceof Error ? error.message : String(error)}）`);
-            tellOwner('（休眠命令出错了，没有做任何改动；详情看日志。）');
-        }
-    }
-
-    /** 「/唤醒」：核对封存清单、设定账本、记忆账本，补回休眠期间漏掉的消息，她像刚睡醒一样跟他说一句 */
-    async function wakeUp(): Promise<void> {
-        if (!dormancy || !deviceOwner) return;
-        try {
-            const since = (() => { const state = dormancy.state(); return state.state === 'dormant' ? Date.parse(state.since) : Date.now(); })();
-            const woke = dormancy.wake();
-            if (!woke.ok) { tellOwner(`（${woke.reason}）`); return; }
-            const problems = [...woke.check.problems];
-            let identityLine: string | undefined;
-            if (identity) {
-                const report = identity.check();
-                if (!report.chain.ok) problems.push(`设定账本验不过（${report.chain.reason}）`);
-                identityLine = report.changes.length ? `设定有 ${report.changes[0]!.files.length} 处改动${report.unexplained.length ? '，其中有没登记原因的' : '，都有记录'}` : '设定和睡前一样';
-            }
-            if (memoryLedgerNow) { const check = memoryLedgerNow.verify(); if (!check.ok) problems.push(`记忆账本验不过（${check.reason}）`); }
-            noteTimeline({ channel: 'dormancy', kind: 'wake', summary: `醒来了，睡了 ${woke.minutes} 分钟${problems.length ? '，核对有问题' : '，核对都对得上'}`, ok: problems.length === 0 });
-            if (selfIdKnown) { await syncMissed(selfIdKnown); }
-            if (stopped) return;
-            for (const contact of config.contacts) syncRecalledMemory(contact.qq);
-            const missed = chatHistory.load(deviceOwner.qq).filter(m => m.role === 'user' && Date.parse(m.time) >= since).length;
-            tellOwner(`（她醒了。睡了 ${woke.minutes} 分钟；核对：${problems.length ? problems.join('；') : '封存清单、设定、记忆账本都对得上'}。休眠期间你发了 ${missed} 条。）`);
+    // 「/休眠」「/唤醒」（ADR 0161）：在 memory/dormancy-commands.ts（ADR 0336 第 6 步）
+    const dormancyCommandsNow = dormancyCommands({
+        config, dormancy, deviceOwner, stopped: () => stopped, selfIdKnown: () => selfIdKnown, responders, chatHistory, identity, memoryLedgerNow, noteTimeline, tellOwner, syncMissed, syncRecalledMemory,
+        resume: () => {
             catchUpAll();
             startBilibiliOwners(); void watchJob();
             for (const planner of planners.values()) planner.poke();
             herPresence.reapply();
-            const outcome = await responders.get(deviceOwner.qq)!.initiate({
-                label: '醒来', note: wakeNote(woke.minutes, problems, identityLine, missed ? `休眠期间他发了 ${missed} 条，你会接着回。` : ''),
-                topic: '她刚睡醒，想对他说什么', maxBubbles: 3, dryRun: false, commit: () => undefined,
-            });
-            if (outcome.result !== 'sent') log('休眠：醒来的那一句没发出去');
-        } catch (error) {
-            log(`休眠：醒来出错（${error instanceof Error ? error.message : String(error)}）`);
-            tellOwner('（醒来的过程出错了；详情看日志。）');
-        }
-    }
+        },
+        log,
+    });
 
     async function syncMissed(selfId: number): Promise<void> {
         for (const contact of config.contacts) {
