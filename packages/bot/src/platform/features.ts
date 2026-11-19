@@ -2,7 +2,7 @@
 // 新加一个开关时必须在这里加一行（features.test.ts 会核对：config 里每个布尔 / 模式开关要么在这里，要么在 NOT_SWITCHES 里说明不是功能开关）。
 // 纯数据 + 一个函数，没有副作用；不放任何密钥或聊天内容。
 
-import { SILENCE_NOTICE } from './modules.ts';
+import { SHORT_REPLIES, SILENCE_NOTICE, TAIL_CAP } from './modules.ts';
 
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
@@ -27,7 +27,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'acquaintances', label: '认识的人（B 站上再见到认得）', group: '她的日子', adr: '0163' },
     { key: 'deliberate', label: '认真问她时深思（更强的模型、不套字数）', group: '说话', adr: '0151' },
     { key: 'shapeFeel', label: '情绪轮（先说自己的小情绪）', group: '说话', adr: '0099' },
-    { key: 'shortReplies', label: '说话更短', group: '说话' },
+    SHORT_REPLIES,
     { key: 'rhythm', label: '回复节奏（看想 / 打字时间）', group: '说话', adr: '0075' },
     { key: 'lagTail', label: '回复延迟的长尾', group: '说话', adr: '0105' },
     { key: 'herNo', label: '会拒绝', group: '说话', adr: '0103' },
@@ -38,7 +38,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'relationship', label: '关系阶段（聊得多了更放得开）', group: '说话', adr: '0113' },
     { key: 'jokes', label: '小梗回头提', group: '说话', adr: '0114' },
     { key: 'idioms', label: '被他带出口头习惯（他爱说的词她偶尔顺口用）', group: '说话', adr: '0138' },
-    { key: 'tailCap', label: '句尾「吧」「呢」封顶（压回真人的水平）', group: '说话', adr: '0146' },
+    TAIL_CAP,
     { key: 'interruptions', label: '被第三方打断', group: '说话', adr: '0115' },
     { key: 'together', label: '陪玩状态', group: '说话', adr: '0111' },
     SILENCE_NOTICE,

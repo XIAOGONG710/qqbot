@@ -23,7 +23,7 @@ import { createLog, type Log } from '../../bot/src/platform/log.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from '../../bot/src/language/fact-check.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/social/presence.ts';
 import { GROUP_CHAT_MODES, type GroupChatMode } from '../../bot/src/platform/config.ts';
-import { SILENCE_NOTICE } from '../../bot/src/platform/modules.ts';
+import { SHORT_REPLIES, SILENCE_NOTICE, TAIL_CAP } from '../../bot/src/platform/modules.ts';
 import { readQzoneFeed } from '../../bot/src/social/qzone-feed.ts';
 import { readFriendsFeed } from '../../bot/src/social/qzone-feeds3.ts';
 import { sessionFromCookies } from '../../bot/src/social/qzone-remote.ts';
@@ -451,8 +451,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('他登记的网页（她只能说名字），每行“名字=https://地址”，最多 8 个；电脑上的 device-agent.config.json 里也要有同名的才会打开'),
         deviceApps: Schema.array(Schema.string()).default([...DEFAULTS.deviceApps])
             .description('他登记的应用名字，最多 8 个；电脑上的 device-agent.config.json 里要有同名的路径才会打开'),
-        tailCap: Schema.boolean().default(DEFAULTS.tailCap)
-            .description('**句尾「吧」「呢」封顶**（ADR 0146）：她多出来的句尾语气字几乎全在这两个字上（吧 5.0% 对他的 2.2%，呢 5.0% 对他的 1.8%；啊 / 嘛 / 呀 / 啦在真人范围内，不动）。开了以后，她最近 80 条气泡里以“吧”收尾的占比到 3%、以“呢”收尾的到 2.5% 时，这一轮再用它收尾的就把那个字去掉（不重写）；固定搭配（干嘛 / 好吧 / 行吧）、省略问句（你呢）和太短的应声不动。默认关'),
+        [TAIL_CAP.key]: Schema.boolean().default(DEFAULTS.tailCap)
+            .description(`**${TAIL_CAP.label}**（ADR ${TAIL_CAP.adr}）：${TAIL_CAP.description}`),
         factCheck: Schema.union(FACT_CHECK_MODES.map(mode => Schema.const(mode).description(FACT_CHECK_LABELS[mode]))).default(DEFAULTS.factCheck)
             .description('**逐条事实检查**（ADR 0137）：她最容易露馅的是编——事实里只有“猫今天没下楼”，她写“猫一见我撒腿就跑”；状态是在逛淘宝，她写“刚放下手机”。回复发出去之前让模型当审稿员，把回复拆成关于她自己 / 她身边世界的一条条具体说法，对照设定、这一轮的事实和聊天记录，找出“矛盾”和“事实里根本没有”的（每个回复多一次小调用，温度 0）。off 不查；log 只查、只在日志里记（敏感调试关着时只记条数），回复照发——先看误报多不多；fix 有问题就带说明重写一次，重写后再查，还有就删那几行。危机回合不查，查不成一律照发。'),
         innerLife: Schema.boolean().default(DEFAULTS.innerLife)
@@ -626,8 +626,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**看他的反应**（ADR 0212，只男朋友档，要 proactive 开着）：她主动说自己的事（随口说件事、冷场、小事 / 猫 / 吃的照片）之后，他是接着聊、回个嗯、没回，还是明说「别老发这个」——按话题（猫、吃的、课和作业、朋友、看的玩的、买东西、天气）算三周内的，下次她主动开口时提示词多一行事实：「猫的事他多半会接着聊；课和作业他多半就回个嗯」，说什么、说多说少她自己拿捏，不禁话题。他明说过不想听的那一类照片 / 小事 7 天内不发；话题定了、正好是他不怎么接的小事 / 吃的照片，交给她决定说不说（猫的照片照发，她本人的条件）。她不舒服、关心他吃饭睡觉的话不进统计。不落盘，每次从聊天记录重算；日志只记话题和次数。'),
         rhythm: Schema.boolean().default(DEFAULTS.rhythm)
             .description('**回复节奏**（ADR 0075）：打字的时间按字数算（0.6 秒 + 每字 0.18 秒，0.9–9 秒），回之前先「看 + 想」一会儿（多半 0.8–3.5 秒，偶尔几秒到半分钟）；热聊的第一条中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒，1–4 秒）'),
-        shortReplies: Schema.boolean().default(DEFAULTS.shortReplies)
-            .description('**更短的回复**（ADR 0024 的 10-19 调整，候选 5）：约一半的轮次只回很短的一句（老样子 35%）；他在难受、说担心的事（报告被打回、没过）、问起她的朋友时不加。默认关'),
+        [SHORT_REPLIES.key]: Schema.boolean().default(DEFAULTS.shortReplies)
+            .description(`**${SHORT_REPLIES.label}**（ADR ${SHORT_REPLIES.adr}）：${SHORT_REPLIES.description}`),
         candidates: Schema.natural().min(1).max(5).default(DEFAULTS.candidates)
             .description('**挑候选**（ADR 0041）：他难过、说亲密话、收尾时一次生成几个回复、按规则挑一个（少说几句、不扯自己的事、不约「写完跟我说」）。1 是不挑；3 是这几种时候三倍的模型调用'),
         contextTurns: Schema.natural().max(40).default(DEFAULTS.contextTurns)

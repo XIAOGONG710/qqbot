@@ -128,7 +128,7 @@
 | `shapeLong` | 被认真问想法时说长一点 | [ADR 0150](../adr/0150-long-answers.md) |
 | `deliberate` | 认真问她时深思（更强的模型、不套字数） | [ADR 0151](../adr/0151-deliberate.md) |
 | `shapeFeel` | 情绪轮（先说自己的小情绪） | [ADR 0099](../adr/0099-too-smooth.md) |
-| `shortReplies` | 说话更短 |  |
+| `shortReplies` | 说话更短：约一半的轮次只回很短的一句（老样子 35%）；他在难受、说担心的事（报告被打回、没过）、问起她的朋友时不加（10-19 调整，候选 5）。 | [ADR 0024](../adr/0024-expression-layer.md) |
 | `rhythm` | 回复节奏（看想 / 打字时间） | [ADR 0075](../adr/0075-reply-rhythm.md) |
 | `lagTail` | 回复延迟的长尾 | [ADR 0105](../adr/0105-reply-lag-tail.md) |
 | `herNo` | 会拒绝 | [ADR 0103](../adr/0103-her-no.md) |
@@ -139,7 +139,7 @@
 | `relationship` | 关系阶段（聊得多了更放得开） | [ADR 0113](../adr/0113-relationship-stage.md) |
 | `jokes` | 小梗回头提 | [ADR 0114](../adr/0114-running-jokes.md) |
 | `idioms` | 被他带出口头习惯（他爱说的词她偶尔顺口用） | [ADR 0138](../adr/0138-idioms.md) |
-| `tailCap` | 句尾「吧」「呢」封顶（压回真人的水平） | [ADR 0146](../adr/0146-human-videos.md) |
+| `tailCap` | 句尾「吧」「呢」封顶（压回真人的水平）：她多出来的句尾语气字几乎全在这两个字上（吧 5.0% 对他的 2.2%，呢 5.0% 对他的 1.8%；啊 / 嘛 / 呀 / 啦在真人范围内，不动）。开了以后，她最近 80 条气泡里以“吧”收尾的占比到 3%、以“呢”收尾的到 2.5% 时，这一轮再用它收尾的就把那个字去掉（不重写）；固定搭配（干嘛 / 好吧 / 行吧）、省略问句（你呢）和太短的应声不动。 | [ADR 0146](../adr/0146-human-videos.md) |
 | `interruptions` | 被第三方打断 | [ADR 0115](../adr/0115-interruptions.md) |
 | `together` | 陪玩状态 | [ADR 0111](../adr/0111-together.md) |
 | `silenceNotice` | 没回时在正常聊天里酌情解释：确认在忙或有明确的忘回记录，才在正常回复时顺口提一句；不知道就不编。小事等他自然问起再说，不想细讲可以不交代原因。 | [ADR 0173](../adr/0173-silence-reasons.md) |

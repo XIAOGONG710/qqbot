@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { DEFAULTS, parseAppConfig } from '../../bot/src/platform/config.ts';
-import { SILENCE_NOTICE } from '../../bot/src/platform/modules.ts';
+import { SHORT_REPLIES, SILENCE_NOTICE, TAIL_CAP } from '../../bot/src/platform/modules.ts';
 import { canonicalTimeZone } from '../../bot/src/platform/time-zone.ts';
 import { Config, migrateThinking, mountMobileCompanion, thinkingBody, toAppConfigInput } from '../src/index.ts';
 import type { CompanionWebSocketLike } from '@qqbot/mobile-companion/websocket';
@@ -44,6 +44,24 @@ const before0009AsJson = {
 };
 
 describe('插件配置（控制台表单 → config.json 的形状 → parseAppConfig）', () => {
+    test('shortReplies、tailCap 共用模块说明，保留默认值和 YAML 保存键', () => {
+        const yaml = createRequire(import.meta.url)('js-yaml') as { dump(value: unknown): string; load(text: string): object };
+        const save = (value: object) => yaml.dump(Config.simplify(Config(value as never)));
+        const omitted = save(minimal);
+        for (const item of [SHORT_REPLIES, TAIL_CAP]) {
+            const { key, label, adr, description } = item;
+            const schemas = Config.list?.flatMap(group => group.dict?.[key] ? [group.dict[key]] : []) ?? [];
+            assert.equal(schemas.length, 1);
+            assert.equal(schemas[0]!.meta.description, `**${label}**（ADR ${adr}）：${description}`);
+            assert.equal(DEFAULTS[key], false);
+            assert.equal(save({ ...minimal, [key]: false }), omitted);
+            const enabled = save({ ...minimal, [key]: true });
+            assert.deepEqual(yaml.load(enabled), { ...yaml.load(omitted), [key]: true });
+            assert.equal(fromKoishi(yaml.load(omitted))[key], false);
+            assert.equal(fromKoishi(yaml.load(enabled))[key], true);
+        }
+    });
+
     test('silenceNotice 表单说明取自模块，YAML 仍省略默认 false、原键保存 true', () => {
         const schemas = Config.list?.flatMap(group => group.dict?.silenceNotice ? [group.dict.silenceNotice] : []) ?? [];
         assert.equal(schemas.length, 1);

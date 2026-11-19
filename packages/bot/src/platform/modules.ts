@@ -23,6 +23,22 @@ export interface ModuleDef {
     adrs: readonly string[];
 }
 
+export const SHORT_REPLIES = {
+    key: 'shortReplies',
+    label: '说话更短',
+    group: '说话',
+    adr: '0024',
+    description: '约一半的轮次只回很短的一句（老样子 35%）；他在难受、说担心的事（报告被打回、没过）、问起她的朋友时不加（10-19 调整，候选 5）。',
+} as const satisfies FeatureDef;
+
+export const TAIL_CAP = {
+    key: 'tailCap',
+    label: '句尾「吧」「呢」封顶（压回真人的水平）',
+    group: '说话',
+    adr: '0146',
+    description: '她多出来的句尾语气字几乎全在这两个字上（吧 5.0% 对他的 2.2%，呢 5.0% 对他的 1.8%；啊 / 嘛 / 呀 / 啦在真人范围内，不动）。开了以后，她最近 80 条气泡里以“吧”收尾的占比到 3%、以“呢”收尾的到 2.5% 时，这一轮再用它收尾的就把那个字去掉（不重写）；固定搭配（干嘛 / 好吧 / 行吧）、省略问句（你呢）和太短的应声不动。',
+} as const satisfies FeatureDef;
+
 export const SILENCE_NOTICE = {
     key: 'silenceNotice',
     label: '没回时在正常聊天里酌情解释',
