@@ -99,7 +99,7 @@ import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode, WORK_MARKER } from './work-mode.ts';
 import { noteResident, runWorkTask, rememberWorkTask } from './work-bridge.ts';
 import { isTypedByHim, NOT_TYPED_NOTICE, WANTED_BUT_NOT_TYPED_NOTICE } from './instruction-source.ts';
-import { addSoulRating, appendPrivate, addRefusal, recentRefusals, ratingSummary, soulDir } from './soul-rating.ts';
+import { appendPrivate, addRefusal, recentRefusals, ratingSummary, soulDir } from './soul-rating.ts';
 import { momentsReader } from '.././emotion/moments.ts';
 import { loadEverydayFrom } from '.././life/everyday.ts';
 import { loadThreadsFrom } from '.././world/threads.ts';
@@ -151,7 +151,7 @@ import { worldHighlights } from '.././world/highlights.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
 import { lifeExecutor } from '.././world/life-selector.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/diary.ts';
-import { armIntimate, INTIMATE_REPLIES, takeIntimateLine } from '.././language/intimacy.ts';
+import { takeIntimateLine } from '.././language/intimacy.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from '.././life/schedule.ts';
 import { useRealWeather, weatherFetcher, type WeatherFetcherStatus } from '.././world/weather.ts';
 import { parseWeatherObservation, readWeatherEvidenceLedger, reconciledWeather, userWeatherEvidence } from '.././world/weather-evidence.ts';
@@ -2806,11 +2806,6 @@ ${body}
             }
             return;
         }
-        // 他发「/亲热」（ADR 0170）：接下来十条回复临时黏一点；这条照常交给她回（回的那条也算一条）
-        if (event.user_id === deviceOwner?.qq && plainTextOf(event.message)?.trim() === '/亲热') {
-            armIntimate(config.dataDir, event.user_id);
-            log(`[${event.user_id}] 收到 /亲热：接下来 ${INTIMATE_REPLIES} 条回复黏一点`);
-        }
         // 他发「/dsh」「/QQ」「/模式」：只认男朋友档的他、只认纯文字；命中的算处理完，不进聊天记录
         if (event.user_id === deviceOwner?.qq) {
             const plain = plainTextOf(event.message)?.trim();
@@ -2831,25 +2826,6 @@ ${body}
                 tellOwner(mode === 'work' ? '（现在：工作模式）' : mode === 'pending' ? '（她还没答应切工作）' : '（现在：聊天模式）');
                 return;
             }
-            // 给她的回复打分（决定她能不能改 SOUL）
-            if (plain === '/好' || plain === '/一般' || plain === '/差') {
-                addSoulRating(plain === '/好' ? 1 : plain === '/一般' ? 0 : -1);
-                tellOwner(`（记下了：${plain.slice(1)}）`);
-                return;
-            }
-        }
-        // 他发「/主动」（ADR 0156）：让她现在就主动找他一次，只认纯文字、只认男朋友档的他；命中的算处理完，不进聊天记录、不交给回复器。
-        // 她自己发的那条走主动消息的整条链路（人设、事实、记忆）；发不了（危机暂停、他有没回的消息、主动没开）时回一句原因
-        if (event.user_id === deviceOwner?.qq && plainTextOf(event.message)?.trim() === '/主动') {
-            const qq = event.user_id;
-            const planner = planners.get(qq);
-            void (planner ? planner.fireNow() : Promise.resolve('主动消息没开'))
-                .then(reason => {
-                    if (!reason || stopped) return;
-                    sendOwnedNotice(() => transport.sendPrivateText(qq, `（现在不能主动找你：${reason}）`), () => {},
-                        error => log(`[${qq}] 「/主动」出错：${error instanceof Error ? error.message : String(error)}`));
-                }, error => { if (!stopped) log(`[${qq}] 「/主动」出错：${error instanceof Error ? error.message : String(error)}`); });
-            return;
         }
         // 他发的设备命令（ADR 0148）：「批准」「拒绝」「/屏幕」「/摄像头」「/设备」，只认纯文字、只认男朋友档的他；
         // 命中的算处理完，不进聊天记录、不交给回复器。看屏幕 / 摄像头：看完的描述作为他这一条消息交给回复器，她自然地回
