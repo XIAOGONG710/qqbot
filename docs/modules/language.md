@@ -98,6 +98,7 @@
 - `modules/transcript.ts`
 - `modules/devices.ts`
 - `modules/group.ts`
+- `modules/group-room.ts`
 - `modules/consent.ts`
 - `modules/initiate-note.ts`
 - `modules/length.ts`

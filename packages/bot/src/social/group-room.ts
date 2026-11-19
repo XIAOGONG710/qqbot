@@ -1,0 +1,470 @@
+// 群聊（ADR 0210）：名单里的群消息怎么记、攒一批之后要不要开口、开口说什么、点歌、顺手戳一下 / 点个赞、对群友的印象。
+// 原来整段写在 app.ts 里，ADR 0336 第 6 步原样搬到这里：群消息经解释器的 group-room 模块（modules/group-room.ts）进来，
+// 连上时读她在各群里的名字由 App 调 syncNames。群记录、群里认识的人、群里的遭遇私聊那边也要读，由 App 建好传进来。
+// 碰外部的都经 App 给的执行器（exec / transport）；攒批的等待和分条发送之间的停顿照旧直接用计时器（同原来，收进执行器另做）。
+
+import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { segmentsToText, type GroupMessageEvent, type QuoteLookup, type Segment } from '../platform/onebot.ts';
+import { matchSingRequest, type singSong } from '../voice/sing.ts';
+import { personaFacts, type TierCard } from '../platform/contact.ts';
+import { GROUP_CONTEXT, HER_NAMES, groupLine, type groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type SpeakReason } from './group-chat.ts';
+import { groupScheduleRecall } from './group-memory.ts';
+import { analyzeGroupStyle, renderGroupStyle } from './group-style.ts';
+import { groupAffectOf, mergeFelt, type groupAffect } from './group-affect.ts';
+import type { groupPeople } from './group-people.ts';
+import type { AppConfig } from '../platform/config.ts';
+import type { Executor } from '../executor/executor.ts';
+import type { FeelingsReport } from '../emotion/feeling-export.ts';
+import type { Log } from '../platform/log.ts';
+import type { mediaReading } from '../vision/media.ts';
+import { impressionCandidate, impressionPrompt, parseImpression } from './group-impression.ts';
+import { moodStateLine } from '../emotion/express.ts';
+import { feelingsAt } from '../emotion/feelings.ts';
+import { pick } from './reply-timing.ts';
+import { inspectReply } from '../language/exit-check.ts';
+
+export interface GroupRoomDeps {
+    config: AppConfig;
+    exec: Executor;
+    transport: Executor['qq'];
+    log: Log;
+    worldNow: () => number;
+    reading: ReturnType<typeof mediaReading> | undefined;
+    dormancy: { isDormant(): boolean } | undefined;
+    cardFor: (tier: string) => TierCard;
+    sendOwnedNotice: (send: () => Promise<unknown>, success: () => void, failure: (error: unknown) => void) => Promise<void>;
+    sing: typeof singSong;
+    repoRoot: string;
+    /** 开着群聊、名单里有群 */
+    groupsOn: boolean;
+    groupLogs: ReturnType<typeof groupLog> | undefined;
+    groupPeopleBook: ReturnType<typeof groupPeople> | undefined;
+    groupFeel: ReturnType<typeof groupAffect> | undefined;
+    /** 群里点歌等确认的那一首（按群）；和私聊点歌的有效期同一个数 */
+    groupSongRequests: Map<number, { song: string; at: number }>;
+    songRequestLifetime: number;
+    stopped: () => boolean;
+    /** 她的 QQ 号：连上之后才知道，没连上是 0 */
+    selfId: () => number;
+    /** 私聊那边最近一次算好的心境 */
+    lastFeelings: () => FeelingsReport | undefined;
+    /** 整条消息只有文字段才返回文字（App 里设备命令也用这个） */
+    plainTextOf: (message: Segment[] | string) => string | undefined;
+    /** 上一首还没唱完时那句回执（唱歌回执的说法在 App 里，私聊点歌也用） */
+    singBusyLine: () => string;
+}
+
+export interface GroupRoom {
+    /** 一条群消息（解释器的 group 事件） */
+    receive(event: GroupMessageEvent): void;
+    /** 连上之后读一次她自己的 QQ 昵称和每个群里的群名片 */
+    syncNames(): Promise<void>;
+}
+
+export function groupRoom(deps: GroupRoomDeps): GroupRoom {
+    const { config, exec, transport, log, worldNow, reading, dormancy, cardFor, sendOwnedNotice, sing, repoRoot, groupsOn, groupLogs, groupPeopleBook, groupFeel, groupSongRequests, songRequestLifetime, stopped, selfId, lastFeelings, plainTextOf, singBusyLine } = deps;
+    const groupBusy = new Set<number>();
+    /** 攒一攒再处理（用户 2026-11-14「多人同时找她要读记录、有选择地回答，不然很混乱」）：安静这么久就处理这一批 */
+    const GROUP_BATCH = { quietMs: 1500, maxMs: 6000, maxMessages: 12, maxReads: 3 } as const;
+    /** 每个群等着处理的这一批 */
+    const groupQueue = new Map<number, GroupBatchItem[]>();
+    const groupTimers = new Map<number, ReturnType<typeof setTimeout>>();
+    /** 排着队、还没进记录的消息 id（补回的同一条不能排两遍） */
+    const groupQueued = new Set<number>();
+    const groupFirstAt = new Map<number, number>();
+    /** 上次在群里戳某人的时刻（同一个人 10 分钟一次） */
+    const lastGroupPoke = new Map<number, number>();
+    /** 每个群今天顺着话题插了几次 */
+    const groupTopics = new Map<number, { day: string; count: number }>();
+    /** 每个群今天「听见别人聊她」接了几次 */
+    const groupOverheard = new Map<number, { day: string; count: number }>();
+    /** 她在群里可能被叫的名字（QQ 昵称 / 群名片），连上时读一次，落盘记着 */
+    const herGroupNames = new Map<number, string[]>();
+    /** 群风格（从聊天记录里统计的口气），按群缓存，记录变多才重算 */
+    const groupStyles = new Map<number, { at: number; text?: string }>();
+    function styleOf(groupId: number): string | undefined {
+        const entries = groupLogs?.load(groupId) ?? [];
+        const hit = groupStyles.get(groupId);
+        if (hit && hit.at === entries.length) return hit.text;
+        const text = renderGroupStyle(analyzeGroupStyle(entries));
+        groupStyles.set(groupId, { at: entries.length, ...(text ? { text } : {}) });
+        return text;
+    }
+    /** 群成员名单（不一定说过话）：导群记录时一起写进 groups/<群号>.members.json */
+    const groupRosters = new Map<number, string[]>();
+    function rosterOf(groupId: number): string[] | undefined {
+        const hit = groupRosters.get(groupId);
+        if (hit) return hit.length ? hit : undefined;
+        try {
+            const file = join(config.dataDir, 'groups', `${groupId}.members.json`);
+            const list = JSON.parse(exec.files.read(file)) as { name?: unknown }[];
+            const names = list.map(item => String(item?.name ?? '').replace(/\s+/g, ' ').trim()).filter(name => name.length >= 1).slice(0, 60);
+            groupRosters.set(groupId, names);
+            return names.length ? names : undefined;
+        } catch { groupRosters.set(groupId, []); return undefined; }
+    }
+    /** 上次读到的名字存下来（她的 QQ 昵称是「繁星」，NapCat 这次读不到时别把认识的名字忘了） */
+    const groupNamesFile = join(config.dataDir, 'groups', 'self-names.json');
+    if (groupsOn && exec.files.exists(groupNamesFile)) {
+        try {
+            const saved = JSON.parse(exec.files.read(groupNamesFile)) as Record<string, unknown>;
+            for (const [id, names] of Object.entries(saved)) {
+                const groupId = Number(id);
+                if (Number.isSafeInteger(groupId) && Array.isArray(names)) {
+                    const list = names.filter((name): name is string => typeof name === 'string' && name.trim().length >= 2);
+                    if (list.length) herGroupNames.set(groupId, list);
+                }
+            }
+        } catch { /* 坏了就重新读一遍 */ }
+    }
+    function saveGroupNames(): void {
+        try {
+            exec.files.mkdir(dirname(groupNamesFile));
+            exec.files.write(groupNamesFile, JSON.stringify(Object.fromEntries(herGroupNames)));
+        } catch { /* 写不进去只是下次重启要重新读 */ }
+    }
+    /** 连上之后读一次：她自己的 QQ 昵称 + 每个群里的群名片；读不到的群用 QQ 昵称兜底 */
+    async function syncGroupNames(): Promise<void> {
+        if (!groupsOn || !transport.callAction) return;
+        let nickname = '';
+        try {
+            const info = await transport.callAction('get_login_info', {}) as { nickname?: string } | undefined;
+            nickname = typeof info?.nickname === 'string' ? info.nickname.trim() : '';
+        } catch (error) {
+            log(`群聊：读不到自己的 QQ 昵称（${error instanceof Error ? error.message : String(error)}）`);
+        }
+        for (const group of config.groups ?? []) {
+            let names: string[] = [];
+            try {
+                const info = await transport.callAction('get_group_member_info', { group_id: group.id, user_id: selfId() }) as { card?: string; nickname?: string } | undefined;
+                const card = typeof info?.card === 'string' ? info.card.trim() : '';
+                const nick = typeof info?.nickname === 'string' ? info.nickname.trim() : '';
+                names = [...new Set([card, nick, nickname].filter(name => name.length >= 2 && !HER_NAMES.includes(name as typeof HER_NAMES[number])))];
+            } catch (error) {
+                // 名片读不到（有的 NapCat 版本群成员接口要权限）：用 QQ 昵称兜底，别一个都不认
+                if (nickname.length >= 2 && !HER_NAMES.includes(nickname as typeof HER_NAMES[number])) names = [nickname];
+                log(`[群 ${group.id}] 读不到自己在群里的名片（${error instanceof Error ? error.message : String(error)}）`);
+            }
+            if (names.length) {
+                herGroupNames.set(group.id, names);
+                saveGroupNames();
+                log(`[群 ${group.id}] 群里叫她：${names.join(' / ')}`);
+            }
+        }
+    }
+    const groupDay = () => new Date(worldNow()).toDateString();
+
+    interface GroupBatchItem {
+        event: GroupMessageEvent;
+        /** 进记录的文字（带图的要等读完再改写成看得懂的那行） */
+        text: string;
+        reason?: SpeakReason;
+        render: (message: Segment[] | string) => string;
+    }
+
+    function onGroupMessage(event: GroupMessageEvent): void {
+        if (stopped() || !groupLogs || !selfId()) return;
+        const group = (config.groups ?? []).find(g => g.id === event.group_id);
+        if (!group) return; // 不在名单的群：不看、不记、不写日志
+        if (groupQueued.has(event.message_id) || groupLogs.has(group.id, event.message_id) || dormancy?.isDormant()) return;
+        const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
+        const entries = groupLogs.load(group.id);
+        // 群里他叫什么就写什么（他的群名片）：提示词里写「宝宝（你男朋友）」时她会当众喊「宝宝」（真模型 2/2），群里收着点
+        const senderCard = (event.sender.card || event.sender.nickname || '').replace(/\s+/g, ' ').trim().slice(0, 16);
+        const bfName = boyfriend ? (event.user_id === boyfriend.qq && senderCard ? senderCard : entries.findLast(e => e.from === boyfriend.qq)?.name) ?? boyfriend.name : undefined;
+        const bf = boyfriend ? { qq: boyfriend.qq, name: bfName! } : undefined;
+        const names = new Map<number, string>(entries.filter(e => !e.mine).map(e => [e.from, e.name]));
+        const senderName = (event.sender.card || event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16);
+        names.set(event.user_id, senderName);
+        const herIds = new Set(entries.filter(e => e.mine).map(e => e.messageId));
+        const quoted: QuoteLookup = id => {
+            const hit = entries.findLast(e => e.messageId === id);
+            return hit ? { role: hit.mine ? 'assistant' : 'user', content: hit.content } : undefined;
+        };
+        const text = nameAts(segmentsToText(event.message, quoted).trim(), selfId(), names, bf);
+        if (!text) return;
+        const topics = groupTopics.get(group.id);
+        const topicToday = topics && topics.day === groupDay() ? topics.count : 0;
+        const overheard = groupOverheard.get(group.id);
+        const overheardToday = overheard && overheard.day === groupDay() ? overheard.count : 0;
+        const bfNames = bf ? [...new Set(entries.filter(e => e.from === bf.qq).map(e => e.name))] : [];
+        const herNames = herGroupNames.get(group.id);
+        const reason = speakReason(event.message, text, event.user_id, event.message_id,
+            { selfId: selfId(), ...(bf ? { boyfriend: bf } : {}), boyfriendNames: bfNames, herMessageIds: herIds, topicToday, overheardToday, ...(herNames ? { herNames } : {}) });
+        if (config.groupChat === 'on' && bf?.qq === event.user_id && transport.sendGroupText && transport.sendGroupMessage
+            && Array.isArray(event.message) && event.message.some(segment => segment.type === 'at' && Number(segment.data.qq) === selfId())) {
+            const plain = plainTextOf(event.message.filter(segment => segment.type === 'text'))?.trim() ?? '';
+            const pending = groupSongRequests.get(group.id);
+            const at = worldNow();
+            const confirmed = pending && at - pending.at <= songRequestLifetime
+                && /^(?:好[的呀啊]?|可以|唱吧|唱这首|就这首)[。！？!?]*$/.test(plain);
+            const song = confirmed ? pending.song : matchSingRequest(plain);
+            if (song) {
+                groupLogs.append(group.id, { time: new Date(at).toISOString(), from: event.user_id, name: senderName, content: text, messageId: event.message_id });
+                const failure = '这首没能发出来，晚点再试吧。';
+                const tell = (line: string) => sendOwnedNotice(() => transport.sendGroupText!(group.id, line), () => {},
+                    () => log('群里点歌：回执没发出去'));
+                if (!confirmed) {
+                    groupSongRequests.set(group.id, { song, at });
+                    void tell('要我唱《' + song + '》吗？要的话再 @ 我说「唱吧」。');
+                    return;
+                }
+                groupSongRequests.delete(group.id);
+                void sing(song, {
+                    root: repoRoot,
+                    python: join(repoRoot, 'runtime', 'gpt-sovits', '.venv', 'Scripts', 'python.exe'),
+                    ffmpeg: process.env.QQBOT_FFMPEG ?? 'ffmpeg',
+                    log,
+                }).then(async result => {
+                    if (stopped() || dormancy?.isDormant()) return;
+                    for (const file of [result.mp3, result.clip]) {
+                        if (stopped() || dormancy?.isDormant()) return;
+                        if (result.error || !file) continue;
+                        let sent = false;
+                        await sendOwnedNotice(() => transport.sendGroupMessage!(group.id, [{ type: 'record', data: { file: pathToFileURL(file).href } }]),
+                            () => { sent = true; }, () => log('群里点歌：语音没发出去'));
+                        if (sent) return;
+                    }
+                    await tell(result.error === 'busy' ? singBusyLine() : failure);
+                }).catch(() => { if (!stopped() && !dormancy?.isDormant()) void tell(failure); });
+                return;
+            }
+        }
+        const queue = groupQueue.get(group.id) ?? [];
+        queue.push({
+            event, text, ...(reason ? { reason } : {}),
+            render: message => nameAts(segmentsToText(message, quoted).trim(), selfId(), names, bf) || text,
+        });
+        groupQueue.set(group.id, queue);
+        groupQueued.add(event.message_id);
+        const first = groupFirstAt.get(group.id) ?? worldNow();
+        groupFirstAt.set(group.id, first);
+        // 攒够了、或者等太久了（一直有人说话也不能一直不接）：立刻处理
+        if (queue.length >= GROUP_BATCH.maxMessages || worldNow() - first >= GROUP_BATCH.maxMs) { void flushGroup(group.id); return; }
+        const timer = groupTimers.get(group.id);
+        if (timer) clearTimeout(timer);
+        groupTimers.set(group.id, setTimeout(() => { groupTimers.delete(group.id); void flushGroup(group.id); }, GROUP_BATCH.quietMs));
+    }
+
+    /**
+     * 这一段话处理完再决定说什么：先都记下来（带图的只读这一批里最近几张），
+     * 然后按危机 > 被叫 > 替他说 > 话题挑一个理由回一次——两个人同时叫她，不是回两条。
+     */
+    async function flushGroup(groupId: number): Promise<void> {
+        if (stopped() || !groupLogs) return;
+        const group = (config.groups ?? []).find(g => g.id === groupId);
+        const batch = groupQueue.get(groupId) ?? [];
+        if (!group || !batch.length) { groupQueue.delete(groupId); groupFirstAt.delete(groupId); return; }
+        const timer = groupTimers.get(groupId);
+        if (timer) { clearTimeout(timer); groupTimers.delete(groupId); }
+        // 她这轮还没说完：这批留着，说完再接（原来这里是直接丢）
+        if (groupBusy.has(groupId)) {
+            groupTimers.set(groupId, setTimeout(() => { groupTimers.delete(groupId); void flushGroup(groupId); }, GROUP_BATCH.quietMs));
+            return;
+        }
+        groupQueue.delete(groupId);
+        groupFirstAt.delete(groupId);
+        for (const item of batch) groupQueued.delete(item.event.message_id);
+        groupBusy.add(groupId);
+        try {
+            const reasons = batch.flatMap(item => (item.reason ? [item.reason] : []));
+            const reason = reasons.includes('crisis') ? 'crisis'
+                : reasons.includes('mentioned') ? 'mentioned'
+                    : reasons.includes('defend') ? 'defend'
+                        : reasons.includes('overheard') ? 'overheard'
+                            : reasons.includes('topic') ? 'topic' : undefined;
+            // 只读这一批里带图/表情/语音的最近几条，而且只在她要开口时读：群里刷图太凶，全量读会堵死看图接口
+            if (reason) {
+                for (const item of batch.filter(entry => reading?.needs(entry.event.message)).slice(-GROUP_BATCH.maxReads)) {
+                    if (stopped()) break;
+                    const message = await reading!.read(item.event.message, item.event.message_id, notice => log(`[群 ${groupId}] ${notice}`),
+                        { role: 'user', time: new Date(item.event.time * 1000).toISOString(), messageId: item.event.message_id, peer: groupId })
+                        .catch(() => item.event.message);
+                    item.text = item.render(message);
+                }
+            }
+            // 整段进记录：她说的话要从这里读得到上下文
+            for (const item of batch) {
+                const name = (item.event.sender.card || item.event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16);
+                const at = new Date(item.event.time * 1000).toISOString();
+                groupLogs.append(groupId, { time: at, from: item.event.user_id, name, content: item.text, messageId: item.event.message_id });
+                // 谁在这个群说过什么：下次再见她不能当陌生人
+                groupPeopleBook?.note(groupId, { qq: item.event.user_id, name, content: item.text, at });
+                // 冲她来的话（夸、骂、有人想不开）在她心里留一件事，按半衰期慢慢散
+                groupFeel?.note(groupId, groupAffectOf({
+                    entry: { content: item.text, messageId: item.event.message_id },
+                    addressed: item.reason === 'mentioned' || item.reason === 'defend', at: Date.parse(at),
+                    ...(herGroupNames.get(groupId) ? { herNames: herGroupNames.get(groupId)! } : {}),
+                }));
+            }
+            // 这一批说完，顺手把某个人在她心里的样子写一句（后台、一批最多一个、14 天才重写；不耽误回话）
+            if (config.groupChat === 'on') refineGroupImpression(groupId, batch);
+            // 只看只记（read）：心里有数，但不说话
+            if (!reason || config.groupChat === 'read') return;
+            const entries = groupLogs.load(groupId);
+            const budget = withinBudget(entries.filter(e => e.mine), worldNow(), reason);
+            if (!budget.ok) { log(`[群 ${groupId}] 想开口但${budget.why}`); return; }
+            if (reason === 'topic') {
+                const topics = groupTopics.get(groupId);
+                groupTopics.set(groupId, { day: groupDay(), count: (topics && topics.day === groupDay() ? topics.count : 0) + 1 });
+            }
+            if (reason === 'overheard') {
+                const overheard = groupOverheard.get(groupId);
+                groupOverheard.set(groupId, { day: groupDay(), count: (overheard && overheard.day === groupDay() ? overheard.count : 0) + 1 });
+            }
+            const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
+            const bf = boyfriend ? { qq: boyfriend.qq, name: entries.findLast(e => e.from === boyfriend.qq)?.name ?? boyfriend.name } : undefined;
+            const callers = [...new Set(batch.filter(item => item.reason === 'mentioned' || item.reason === 'defend')
+                .map(item => (item.event.sender.card || item.event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16)))];
+            const calling = [...batch].reverse().find(item => item.reason === 'mentioned' || item.reason === 'defend');
+            const who = calling ? (calling.event.sender.card || calling.event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16) : undefined;
+            await speakInGroup(group, reason, bf, {
+                ...(callers.length ? { callers, pending: batch.length } : { pending: batch.length }),
+                ...(calling ? { replyTo: calling.event.message_id, caller: calling.event.user_id } : {}),
+                ...(who ? { callerName: who } : {}),
+            });
+        } catch (error) {
+            log(`[群 ${groupId}] 说话出错：${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            groupBusy.delete(groupId);
+            // 她说的这会儿又有人说话：接着处理，不丢
+            if (!stopped() && (groupQueue.get(groupId)?.length ?? 0)) void flushGroup(groupId);
+        }
+    }
+    /**
+     * 她对群里某个人的印象：只从那个人自己说过的原话里总结一句，写进成员底账（重启还在）。
+     * 说得少的不写、14 天内写过的不重写；一批最多一个人，后台跑，失败就是没有。
+     */
+    function refineGroupImpression(groupId: number, batch: readonly GroupBatchItem[]): void {
+        if (!groupPeopleBook || stopped()) return;
+        const spoke = new Set(batch.map(item => item.event.user_id));
+        const candidate = impressionCandidate(groupPeopleBook.load(groupId), spoke, worldNow());
+        if (!candidate) return;
+        void (async () => {
+            const raw = await exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.7 }, messages: [{ role: 'user', content: impressionPrompt(candidate) }] }, log);
+            const text = parseImpression(raw);
+            if (!text || stopped()) return;
+            groupPeopleBook.setImpression(groupId, candidate.qq, text, new Date(worldNow()).toISOString());
+            log(`[群 ${groupId}] 记下了对一个人的印象（${[...text].length} 字；日志不记内容）`);
+        })().catch(error => log(`[群 ${groupId}] 印象没写成：${error instanceof Error ? error.message : String(error)}`));
+    }
+
+    async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean; disguise?: boolean; cover?: string }, reason: SpeakReason, bf: { qq: number; name: string } | undefined,
+        extra: { callers?: readonly string[]; pending?: number; replyTo?: number; caller?: number } = {}): Promise<void> {
+        // 群里的人都知道她是 AI（用户标过）：原卡，被问时由她定；没标：承认版卡，认真问到就承认；有人说想不开：一律承认版（ADR 0067 / 0068 / 0208）
+        // 都知道、或者要装成真人：用同学档原卡（她不用承认）；没标的群用承认版；危机一律承认版
+        const tier = (group.knowsBot || group.disguise) && reason !== 'crisis' ? 'classmate' : 'classmate-open';
+        let card: TierCard;
+        try {
+            card = cardFor(tier);
+        } catch (error) {
+            log(`[群 ${group.id}] 读不了 ${tier} 档的卡，不说话：${error instanceof Error ? error.message : String(error)}`);
+            return;
+        }
+        const entries = groupLogs!.load(group.id);
+        const boyfriendHere = Boolean(bf && entries.some(e => e.from === bf.qq));
+        const system = `你是${card.character.name}，在 QQ 群里和大家聊天。下面是你的设定。\n${personaFacts(card.character.description)}`;
+        const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, bf)).join('\n');
+        const question = reason === 'mentioned' && extra.caller !== undefined
+            ? entries.findLast(entry => entry.messageId === extra.replyTo && entry.from === extra.caller) : undefined;
+        const recalled = question
+            ? groupScheduleRecall(groupLogs!.load, group.id, question.from, question.content, Date.parse(question.time)) : undefined;
+        // 这个群里她认识谁（聊过就认得，改名也认得）；心情只说「这会儿怎么样」，不说来由（都在私聊里）
+        const memory = groupPeopleBook?.render(group.id, { ...(bf ? { exclude: bf.qq } : {}), now: worldNow() });
+        const roster = rosterOf(group.id);
+        const style = styleOf(group.id);
+        // 心境：私聊那边算好的 + 群里这些遭遇现算的，同一种取更重的那个
+        const feltNow = config.herFeelings
+            ? mergeFelt(lastFeelings()?.felt ?? [], groupFeel ? feelingsAt(groupFeel.appraisals(group.id), worldNow()) : [])
+            : [];
+        const mood = feltNow.length ? moodStateLine(feltNow) : undefined;
+        const note = groupNote({
+            groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason, ...extra,
+            ...(memory ? { memory } : {}), ...(mood ? { mood } : {}),
+            ...(herGroupNames.get(group.id) ? { myNames: herGroupNames.get(group.id)! } : {}),
+            ...(entries.some(entry => entry.history === true) ? { veteran: true } : {}),
+            ...(roster ? { roster } : {}),
+            ...(style ? { style } : {}),
+            // 群里人都知道她是 AI（knowsBot）：不用瞒、也不用主动提；危机那档照旧用承认版卡
+            ...(group.knowsBot && reason !== 'crisis' ? { knowsBot: true } : {}),
+            ...(group.disguise && reason !== 'crisis' && !group.knowsBot ? { disguise: true } : {}),
+            ...(group.cover ? { cover: group.cover } : {}),
+        });
+        const messages = [{ role: 'system' as const, content: system }, {
+            role: 'user' as const, content: transcript + '\n\n' + (recalled ? recalled + '\n\n' : '') + note,
+        }];
+        const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);
+        // 这一档的禁用词（群里叫不出「宝宝」这类黏的叫法）：带了的那条不发
+        const parts = groupReply(raw).filter(part => !inspectReply(part, card.character.banned).some(issue => issue.kind === 'banned'));
+        if (!parts.length) { log(`[群 ${group.id}] 看了一眼，没说话（${reason}）`); return; }
+        if (config.groupChat === 'dryRun' || !transport.sendGroupText) {
+            const dir = join(config.dataDir, 'groups');
+            exec.files.mkdir(dir);
+            exec.files.append(join(dir, 'drafts.md'), `- ${new Date(worldNow()).toLocaleString('zh-CN')} 群「${group.name}」（${reason}）：${parts.join(' / ')}\n`);
+            log(`[群 ${group.id}] 试运行：写了 ${parts.length} 条草稿，没发（${reason}）`);
+            return;
+        }
+        // 这个群里认得出的名字：她说「@老王」就真的 @ 他（认不出的照旧当文字，不瞎 @ 人）
+        const nameToQq = new Map<string, number>(entries.filter(e => !e.mine).map(e => [e.name, e.from]));
+        for (const person of groupPeopleBook?.load(group.id) ?? []) for (const alias of person.names) if (!nameToQq.has(alias)) nameToQq.set(alias, person.qq);
+        for (const [i, part] of parts.entries()) {
+            if (i > 0) await new Promise(resolve => setTimeout(resolve, 1200 + part.length * 150));
+            if (stopped()) return;
+            // 第一条引用叫她那一条；@ 换成段发出去
+            const replyTo = i === 0 ? extra.replyTo : undefined;
+            const segments = mentionSegments(part, nameToQq);
+            const messageId = transport.sendGroupMessage && segments
+                ? await transport.sendGroupMessage(group.id, segments, replyTo)
+                : await transport.sendGroupText(group.id, part, replyTo);
+            groupLogs!.append(group.id, { time: new Date(worldNow()).toISOString(), from: selfId(), name: '你', content: part, messageId, mine: true });
+        }
+        log(`[群 ${group.id}] 说了 ${parts.length} 条（${reason}；日志不记内容）`);
+        // 接完话的小动作：顺手戳一下、给资料卡点个赞（不冲男朋友、危机回合不做）
+        const caller = extra.caller;
+        if (caller && caller !== bf?.qq && reason !== 'crisis') {
+            const plan = config.pokeOut ? groupPokePlan(`${group.id}:${caller}:${worldNow()}`, lastGroupPoke.get(caller), worldNow()) : undefined;
+            if (plan) {
+                lastGroupPoke.set(caller, worldNow());
+                void pokeInGroup(group.id, caller, plan.delayMs);
+            }
+            likeGroupMember(group.id, caller);
+        }
+    }
+
+    /** 在群里戳一下（NapCat 的 group_poke；版本不支持就记一笔，不重试） */
+    function pokeInGroup(groupId: number, qq: number, delayMs: number): void {
+        void (async () => {
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+            if (stopped()) return;
+            try {
+                if (transport.pokeGroup) await transport.pokeGroup(groupId, qq);
+                else if (transport.callAction) await transport.callAction('group_poke', { group_id: String(groupId), user_id: String(qq) });
+                else return;
+                log(`[群 ${groupId}] 戳了一下`);
+            } catch (error) {
+                log(`[群 ${groupId}] 没戳成（${error instanceof Error ? error.message : String(error)}）`);
+            }
+        })();
+    }
+
+    /** 给群里认识的人点一次资料卡赞：一个群友一天最多一次，说得少的不点 */
+    function likeGroupMember(groupId: number, qq: number): void {
+        if (!config.profileLikes || !transport.sendLike || !groupPeopleBook) return;
+        const person = groupPeopleBook.load(groupId).find(item => item.qq === qq);
+        if (!person || person.msgs < 5) return;
+        const day = new Date(worldNow()).toDateString();
+        if (person.likedDay === day) return;
+        // 一天里约四成的日子会点（人也不是天天给每个人点赞）
+        if (pick(`${qq} ${day}`, 'group-like', [0, 999]) >= 400) return;
+        const times = pick(`${qq} ${day}`, 'group-like-times', [1, 3]);
+        groupPeopleBook.markLiked(groupId, qq, day);
+        void transport.sendLike(qq, times).then(
+            () => log(`[群 ${groupId}] 给一个人点了资料卡赞（${times} 下）`),
+            error => log(`[群 ${groupId}] 资料卡赞没点上：${error instanceof Error ? error.message : String(error)}`),
+        );
+    }
+
+
+    return { receive: onGroupMessage, syncNames: syncGroupNames };
+}

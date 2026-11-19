@@ -15,6 +15,7 @@
 - `social/rate-limit.ts`
 - `social/strangers.ts`
 - `social/group-chat.ts`
+- `social/group-room.ts`
 - `social/group-people.ts`
 - `social/group-affect.ts`
 - `social/group-impression.ts`
