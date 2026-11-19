@@ -6,7 +6,7 @@
 // 还没搬过去的直接写完整的配置页说明 detail。这里照样是唯一的总表。
 // 纯数据 + 几个函数，没有副作用；不放任何密钥或聊天内容。
 
-import { BILI_FEED, BILIBILI, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
+import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
 
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
@@ -208,9 +208,7 @@ export const FEATURES: readonly FeatureDef[] = [
     BILI_FEED,
     BILIBILI_DM,
     BILIBILI_REPLIES,
-    { key: 'bilibiliComment', label: '话题评论', group: 'B 站', adr: '0092', kind: 'mode',
-        detail: '**在 B 站评论并 @ 他**（ADR 0089）：每次分享后在那个视频下发一条公开评论、真 @ 他的 B 站号（一周最多 3 条，隔至少一天）；2 分钟和 20 分钟后去公开的最新评论里复核，两次都找不到（新号评论常被拦去审核，@ 的通知也不会推）就停一周；发失败停 24 小时，连续 3 次停到重启。评论是公开的，用最低隐私档的卡写、过禁用词，不提男朋友恋爱。要「她的 B 站号」、下面的昵称和 uid 都配好。分享是试运行时评论也只写草稿。选「只写草稿」时存在 presence/drafts.md。默认关',
-        modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' } },
+    BILIBILI_COMMENT,
     // 在 QQ 上的样子
     { key: 'pokes', label: '被戳会回', group: '在 QQ 上的样子', adr: '0079',
         detail: '**戳一戳**（ADR 0079）：名单里的人在 QQ 里戳她一下，她看到的是一条「[戳了戳你]」，像「戳我干嘛」那样短短回一句；睡着、上课时不理，5 分钟里最多算 3 下，不戳回去。默认关' },

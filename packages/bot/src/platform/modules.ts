@@ -153,6 +153,16 @@ export const BILIBILI_REPLIES = {
     modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' },
 } as const satisfies FeatureDef & { modeLabels: Record<PresenceMode, string> };
 
+export const BILIBILI_COMMENT = {
+    key: 'bilibiliComment',
+    label: '话题评论',
+    group: 'B 站',
+    adr: '0092',
+    kind: 'mode',
+    description: '每次分享后在那个视频下发一条公开评论、真 @ 他的 B 站号（一周最多 3 条，隔至少一天）；2 分钟和 20 分钟后去公开的最新评论里复核，两次都找不到（新号评论常被拦去审核，@ 的通知也不会推）就停一周；发失败停 24 小时，连续 3 次停到重启。评论是公开的，用最低隐私档的卡写、过禁用词，不提男朋友恋爱。要「她的 B 站号」、下面的昵称和 uid 都配好。分享是试运行时评论也只写草稿。选「只写草稿」时存在 presence/drafts.md。默认关。',
+    modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' },
+} as const satisfies FeatureDef & { modeLabels: Record<PresenceMode, string> };
+
 export const MODULES: readonly ModuleDef[] = [
     {
         id: 'language', name: '说话（语言）',
