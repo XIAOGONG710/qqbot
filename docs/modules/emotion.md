@@ -28,7 +28,7 @@
 | 配置 | 功能 | ADR |
 | --- | --- | --- |
 | `herNo` | 会拒绝 | [ADR 0103](../adr/0103-her-no.md) |
-| `herFeelings` | 心境（开心 / 难过 / 流泪；桌面上的她读同一份；ownerPeek 开着时 /心境 看） | [ADR 0102](../adr/0102-feelings.md) |
+| `herFeelings` | 心境（开心 / 难过 / 流泪；桌面上的她读同一份） | [ADR 0102](../adr/0102-feelings.md) |
 | `grievance` | 小别扭 / 和好 | [ADR 0074](../adr/0074-small-grievance.md) |
 | `feedbackCommands` | “假 / 像”反馈通道 | [ADR 0073](../adr/0073-feedback-channel.md) |
 
