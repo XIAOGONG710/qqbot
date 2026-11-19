@@ -176,13 +176,14 @@ import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
 import { regulationAt } from '.././life/regulation.ts';
 import { readAgencyShadow } from '.././world/agency-shadow.ts';
-import { humanValueTrends, humanValuesAt, humanValuesFromAnchor, type HumanValues, type HumanValueTrends } from '.././human-values.ts';
-import { developmentSnapshot, developmentSummary, type DevelopmentSummary } from '.././life/development.ts';
+import { humanValuesAt, humanValuesFromAnchor, type HumanValues, type HumanValueTrends } from '.././human-values.ts';
+import { type DevelopmentSummary } from '.././life/development.ts';
 import { createDshLink, dshOptionsFromLlm, sanitizeDshError, type DshProbeResult, type DshVoice } from '.././dsh-link.ts';
 import { DshConversationContext } from '.././dsh-continuity.ts';
 import { dshAsks } from '.././dsh-asks.ts';
 import { createMobileCompanion, type MobileCompanionIntegration } from '.././mobile-companion-dsh.ts';
 import { dshStateSource } from '.././dsh-state.ts';
+import { humanStateAt } from '.././human-projection.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
 import { PHOTO_REVIEW_MAX_THUMBNAIL_BYTES } from '@qqbot/mobile-companion/photo-review';
 import { MAX_QUEUED_PER_CLIENT } from '@qqbot/mobile-companion/runtime';
@@ -2686,20 +2687,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 if (!needsAnchor) return undefined;
                 try {
                     const events = sharedWorld?.events?.() ?? [];
-                    const needs = needsAt(needsAnchor, events, now);
                     const recentHistory = deviceOwner ? history.load(deviceOwner.qq).slice(-24) : [];
-                    const values = humanValuesAt({ at: now, needs, history: recentHistory, tier: deviceOwner?.tier ?? 'boyfriend', events });
-                    const anchorAt = Date.parse(needsAnchor.at);
-                    const previousAt = new Date(Math.max(anchorAt, now.getTime() - 60 * 60_000));
-                    const previous = humanValuesAt({
-                        at: previousAt,
-                        needs: needsAt(needsAnchor, events, previousAt),
-                        history: recentHistory,
-                        tier: deviceOwner?.tier ?? 'boyfriend',
-                        events,
-                    });
-                    const development = developmentSummary(developmentSnapshot({ at: now, values, history: recentHistory, events }));
-                    return { values, trends: humanValueTrends(values, previous, Math.max(1, Math.round((now.getTime() - previousAt.getTime()) / 60_000))), development };
+                    // 和给 DSH 的摘要同一套算法（human-projection.ts）
+                    const { values, trends, development } = humanStateAt({ anchor: needsAnchor, events, at: now, history: recentHistory, tier: deviceOwner?.tier ?? 'boyfriend' });
+                    return { values, trends, development };
                 } catch (error) {
                     log(`状态页：真人式状态投影失败（${error instanceof Error ? error.message : String(error)}）`);
                     return undefined;

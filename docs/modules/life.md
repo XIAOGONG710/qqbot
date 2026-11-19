@@ -50,6 +50,7 @@
 - `life/understanding.ts`
 - `life/development.ts`
 - `human-values.ts`
+- `human-projection.ts`
 - `modules/human-state.ts`
 - `character-terms.ts`
 - `modules/her-now.ts`

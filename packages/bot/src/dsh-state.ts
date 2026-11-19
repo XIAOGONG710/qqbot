@@ -1,9 +1,8 @@
 import { writeDshState } from './dsh-state-export.ts';
 import type { DshState } from './dsh-link.ts';
 import type { Executor } from './executor/executor.ts';
-import { humanValueTrends, humanValuesAt } from './human-values.ts';
-import { developmentSnapshot, developmentSummary } from './life/development.ts';
-import { needsAt, type loadNeedsAnchor } from './life/needs.ts';
+import { humanStateAt } from './human-projection.ts';
+import type { loadNeedsAnchor } from './life/needs.ts';
 import type { currentTierHistory } from './memory/tier-record.ts';
 import type { Contact } from './platform/config.ts';
 import type { Log } from './platform/log.ts';
@@ -34,20 +33,9 @@ export function dshStateSource({ dshEnabled, needsAnchor, sharedWorld, deviceOwn
         const at = new Date(worldNow());
         try {
             const events = sharedWorld?.events?.() ?? [];
-            const needs = needsAt(needsAnchor, events, at);
             // 只在本地用最近一小段 QQ 记录计算关系数值；传给 DSH 的仍然只有数值和事件类型，不外发原文。
             const recentHistory = deviceOwner ? history.load(deviceOwner.qq).slice(-24) : [];
-            const values = humanValuesAt({ at, needs, history: recentHistory, tier: deviceOwner?.tier ?? 'boyfriend', events });
-            const development = developmentSummary(developmentSnapshot({ at, values, history: recentHistory, events }));
-            const anchorAt = Date.parse(needsAnchor.at);
-            const previousAt = new Date(Math.max(anchorAt, at.getTime() - 60 * 60_000));
-            const previous = humanValuesAt({
-                at: previousAt,
-                needs: needsAt(needsAnchor, events, previousAt),
-                history: recentHistory,
-                tier: deviceOwner?.tier ?? 'boyfriend',
-                events,
-            });
+            const { needs, values, development, trends } = humanStateAt({ anchor: needsAnchor, events, at, history: recentHistory, tier: deviceOwner?.tier ?? 'boyfriend' });
             const photoStatus = aiPhotoDrafts.status();
             const latestPhoto = aiPhotoDrafts.list().at(-1);
             return {
@@ -61,7 +49,7 @@ export function dshStateSource({ dshEnabled, needsAnchor, sharedWorld, deviceOwn
                 },
                 relationship: values.relationship,
                 development,
-                trends: humanValueTrends(values, previous, Math.max(1, Math.round((at.getTime() - previousAt.getTime()) / 60_000))),
+                trends,
                 recentEvents: events.slice(-8).map(event => event.kind),
                 photoDrafts: {
                     pending: photoStatus.pending,
