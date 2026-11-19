@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { DEFAULTS, parseAppConfig } from '../../bot/src/platform/config.ts';
-import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, SHORT_REPLIES, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
+import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, SHORT_REPLIES, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
 import { canonicalTimeZone } from '../../bot/src/platform/time-zone.ts';
 import { Config, migrateThinking, mountMobileCompanion, thinkingBody, toAppConfigInput } from '../src/index.ts';
 import type { CompanionWebSocketLike } from '@qqbot/mobile-companion/websocket';
@@ -44,6 +44,19 @@ const before0009AsJson = {
 };
 
 describe('插件配置（控制台表单 → config.json 的形状 → parseAppConfig）', () => {
+    test('qzoneBrowse 使用模块说明，保留三档和保存键', () => {
+        const field = Config.list?.find(group => group.dict?.qzoneBrowse)?.dict?.qzoneBrowse;
+        assert.equal(field?.meta.description, `**${QZONE_BROWSE.label}**（ADR ${QZONE_BROWSE.adr}）：${QZONE_BROWSE.description}`);
+        assert.equal(DEFAULTS.qzoneBrowse, 'off');
+        const save = (value: object) => Config.simplify(Config(value as never));
+        const omitted = save(minimal);
+        for (const mode of ['off', 'dryRun', 'on'] as const) {
+            const written = save({ ...minimal, qzoneBrowse: mode });
+            assert.deepEqual(written, mode === 'off' ? omitted : { ...omitted, qzoneBrowse: mode });
+            assert.equal(fromKoishi(written).qzoneBrowse, mode);
+        }
+    });
+
     test('qzone 使用模块说明，保留三档和保存键', () => {
         const field = Config.list?.find(group => group.dict?.qzone)?.dict?.qzone;
         assert.equal(field?.meta.description, `**${QZONE.label}**（ADR ${QZONE.adr}）：${QZONE.description}`);
