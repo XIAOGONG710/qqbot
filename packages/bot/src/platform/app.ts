@@ -10,7 +10,6 @@
 
 // 碰文件都经执行器（exec.files，ADR 0336 第 6 步）；只剩语音那几行（用户本人在做，代理不碰）还直接读
 import { existsSync, readFileSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
@@ -39,7 +38,7 @@ import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts'
 import { Dormancy } from '.././memory/dormancy.ts';
 import { dormancyCommands } from '.././memory/dormancy-commands.ts';
 import { Identity } from '.././memory/identity.ts';
-import { auditedApi, memoryLedger, summarize as summarizeMemoryLedger } from '.././memory/memory-audit.ts';
+import { auditedApi, memoryLedger } from '.././memory/memory-audit.ts';
 import { experiencesFromLife, experiencesFromWatched, Tastes } from '.././life/tastes.ts';
 import { readLifeEvents } from '.././world/life-events.ts';
 import { Timeline, timelineAccount } from '.././memory/timeline.ts';
@@ -166,6 +165,7 @@ import { loadWatched, watchedPath, type Watched } from '.././language/watching.t
 import { passiveJobs } from '.././bilibili/passive-jobs.ts';
 import { passiveReads } from './passive-reads.ts';
 import { quotedContext } from './quoted-context.ts';
+import { ownerCommands } from './owner-commands.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { photoShelf, PHOTO_HISTORY_PREFIX, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
 import { STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
@@ -2224,16 +2224,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     let incomingRetryRunning = false;
     let incomingRetryLogged = false;
 
-    function claimOwnerCommand(event: MessageEvent): boolean {
-        try {
-            return commandReceipts.claim(event.user_id, event.message_id, clockNow());
-        } catch (error) {
-            log(`入口：QQ 命令 ${event.message_id} 去重收据写入失败，未执行（${error instanceof Error ? error.message : String(error)}）`);
-            tellOwner('（命令记录暂时写不进去，这次没有执行，等恢复后换一条新消息再试。）');
-            return false;
-        }
-    }
-
     const eventIdentity = (event: MessageEvent) => ({ role: 'user' as const, time: new Date(event.time * 1000).toISOString(), messageSeq: sourceMessageSeq(event.real_seq) });
     function validIncomingEvent(event: MessageEvent): boolean {
         if (!Number.isSafeInteger(event.user_id) || event.user_id <= 0 || !Number.isSafeInteger(event.message_id) || event.message_id < 0
@@ -2360,53 +2350,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 只认纯文字、只认男朋友档的他；命中的算处理完，不进聊天记录、不交给回复器。休眠中除了这几条，她什么都不回
         if (deviceOwner && event.user_id === deviceOwner.qq) {
             const plain = plainTextOf(event.message)?.trim();
-            if (plain?.startsWith('/') && !claimOwnerCommand(event)) return;
-            // DSH 工作模式保留裸 /dsh；桥接探针和咨询使用显式子命令，避免改变 DSH 原有语义。
-            if (dshEnabled && plain === '/dsh probe') {
-                void dshLink.probe().then(result => {
-                    dshProbe = result;
-                    return tellOwner(result.ok
-                        ? `（DSH 已连通：${result.model}，${result.latencyMs}ms）`
-                        : `（DSH 没连上：${sanitizeDshError(result.error)}）`);
-                });
-                return;
-            }
-            if (dshEnabled && plain === '/dsh pair') {
-                if (!mobileCompanion) { tellOwner('（手机伴侣还没开。）'); return; }
-                const clientId = `android-${randomBytes(6).toString('hex')}`;
-                const ticket = mobileCompanion.issuePairing(clientId);
-                tellOwner(`（手机伴侣配对码：${ticket.pairingCode}；设备 ID：${clientId}；${Math.ceil((ticket.expiresAt - Date.now()) / 60_000)} 分钟内有效。不要把配对码发给别人。）`);
-                return;
-            }
-            if (dshEnabled && plain === '/dsh unpair') {
-                if (!mobileCompanion) { tellOwner('（手机伴侣还没开。）'); return; }
-                mobileCompanion.reset();
-                tellOwner('（手机伴侣已解除配对，旧连接和媒体会话都失效了。）');
-                return;
-            }
-            if (dshEnabled && plain?.startsWith('/dsh ask ')) {
-                askDsh(plain.slice('/dsh ask '.length).trim());
-                return;
-            }
-            if (dshEnabled && plain?.startsWith('/dsh talk ')) {
-                askDsh(plain.slice('/dsh talk '.length).trim());
-                return;
-            }
-            // 指令收敛（2026-10-31 用户：「把绝大多数的指令去掉吧，以后也不新增指令」）：
-            // 只留运维必需的四条（休眠/唤醒/模式/设定），别的指令一律当作“不用了”，直接请他用话说。
-            // 想看什么、想让她做什么，都在聊天里说——她会自己判断做不做。
-            const KEEP = new Set(['/设定', '/休眠', '/唤醒', '/模式', '/dsh', '/工作', '/QQ', '/qq', '/回聊', '/屏幕', '/看屏幕', '/摄像头', '/拍照', '/设备', '/批准', '/拒绝']);
-            const head = plain?.startsWith('/') ? plain.split(/\s+/)[0]! : undefined;
-            if (head && !KEEP.has(head)) {
-                tellOwner('（这些指令已经不用了，直接跟我说就行）');
-                return;
-            }
-            if (plain === '/设定' && (identity || memoryLedgerNow || dormancy)) {
-                tellOwner([identity?.status(), memoryLedgerNow ? summarizeMemoryLedger(memoryLedgerNow) : undefined, dormancy?.status()].filter(Boolean).join('\n\n'));
-                return;
-            }
-            if (dormancy && plain && /^\/休眠(?:\s|$)/.test(plain)) { void dormancyCommandsNow.handle(plain.replace(/^\/休眠\s*/, '')); return; }
-            if (dormancy && plain === '/唤醒') { void dormancyCommandsNow.wakeUp(); return; }
+            // 他的运维指令（/dsh 子命令、不用了的、/设定、/休眠、/唤醒）：在 owner-commands.ts（ADR 0336 第 6 步）
+            if (ownerCommandsNow.early(event, plain)) return;
             // 「唱 BVxxxx」（2026-11-14）：他要她唱一首。后台跑 scripts/sing.py（约 5 分钟），
             // 出结果发整首语音条；不占她这一轮的回复，也不进提示词。
             const priorSong = privateSongReference;
@@ -2468,47 +2413,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             }
             return;
         }
-        // 他发「/dsh」「/QQ」「/模式」：只认男朋友档的他、只认纯文字；命中的算处理完，不进聊天记录
-        if (event.user_id === deviceOwner?.qq) {
-            const plain = plainTextOf(event.message)?.trim();
-            log(`[${event.user_id}] 命令检查：${JSON.stringify(plain)}`);
-            if (plain === '/dsh' || plain === '/工作') {
-                // 不机械切换：先挂起，让她自己答应/拒绝/提条件；反复催会让她烦
-                const previous = readWorkMode(config.dataDir, event.user_id);
-                setWorkMode(config.dataDir, event.user_id, 'pending');
-                if (previous === 'pending') void noteResident({ text: '他又催我切工作', from: 'baobao', negative: true });
-                log(`[${event.user_id}] 收到 /dsh：等她决定`);
-            } else if (plain === '/QQ' || plain === '/qq' || plain === '/回聊') {
-                setWorkMode(config.dataDir, event.user_id, 'chat');
-                tellOwner('（回聊天模式了）');
-                log(`[${event.user_id}] 收到 /QQ：切回聊天模式`);
-                return;
-            } else if (plain === '/模式') {
-                const mode = readWorkMode(config.dataDir, event.user_id);
-                tellOwner(mode === 'work' ? '（现在：工作模式）' : mode === 'pending' ? '（她还没答应切工作）' : '（现在：聊天模式）');
-                return;
-            }
-        }
-        // 他发的设备命令（ADR 0148）：「批准」「拒绝」「/屏幕」「/摄像头」「/设备」，只认纯文字、只认男朋友档的他；
-        // 命中的算处理完，不进聊天记录、不交给回复器。看屏幕 / 摄像头：看完的描述作为他这一条消息交给回复器，她自然地回
-        const deviceService = devicesHost.service();
-        if (deviceService && deviceOwner && event.user_id === deviceOwner.qq) {
-            const plain = plainTextOf(event.message);
-            if (plain !== undefined && !plain.trim().startsWith('/') && deviceService.isOwnerCommand(plain) && !claimOwnerCommand(event)) return;
-            const outcome = plain === undefined ? undefined : deviceService.owner(plain);
-            if (outcome?.kind === 'reply') {
-                void sendOwnedNotice(() => transport.sendPrivateText(event.user_id, outcome.text), () => {},
-                    error => log(`设备控制：回复没发出去（${error instanceof Error ? error.message : String(error)}）`));
-                return;
-            }
-            if (outcome?.kind === 'capture') {
-                // 她有权拒绝（用户 10-30）：先把请求提给她，不直接做
-                pendingAsk.set(event.user_id, { label: '看你的屏幕或摄像头', at: Date.now(), run: outcome.run });
-                void transport.sendPrivateText(event.user_id, '（我跟她说了，她愿意就给我看）').catch(error => log(`设备控制：话说没发出去：${error instanceof Error ? error.message : String(error)}`));
-                planners.get(event.user_id)?.poke();
-                return;
-            }
-        }
+        // 他发「/dsh」「/工作」「/QQ」「/模式」：在 owner-commands.ts（ADR 0336 第 6 步）
+        if (ownerCommandsNow.workMode(event)) return;
+        // 他发的设备命令（ADR 0148）：在 owner-commands.ts（ADR 0336 第 6 步）
+        if (ownerCommandsNow.device(event)) return;
         // 只从名单联系人收到的图片表情里挑；看图、判断、下载都在后台串行，不挡住这条消息的正常回复。
         if (collectingStickers && config.contacts.some(contact => contact.qq === event.user_id && contact.tier === 'boyfriend')) {
             void ownStickerWork(signal => collectingStickers.consider(event.message, { from: event.user_id, messageId: event.message_id }, { signal }));
@@ -2838,6 +2746,13 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             herPresence.reapply();
         },
         log,
+    });
+
+    // 他发的指令（只认纯文字、只认他；命中的不进聊天记录）：在 owner-commands.ts（ADR 0336 第 6 步），processMessage 按原来的先后调三段
+    const ownerCommandsNow = ownerCommands({
+        config, deviceOwner, dshEnabled, dshLink, setDshProbe: result => { dshProbe = result; }, mobileCompanion: () => mobileCompanion, askDsh,
+        identity, memoryLedgerNow, dormancy, dormancyCommands: dormancyCommandsNow, commandReceipts, clockNow, tellOwner, plainTextOf,
+        deviceService: () => devicesHost.service(), transport, sendOwnedNotice, pendingAsk, planners, log,
     });
 
     async function syncMissed(selfId: number): Promise<void> {

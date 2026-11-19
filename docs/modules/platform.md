@@ -38,6 +38,7 @@
 - `platform/device-host.ts`
 - `platform/passive-reads.ts`
 - `platform/quoted-context.ts`
+- `platform/owner-commands.ts`
 - `platform/sensitive.ts`
 - `platform/web.ts`
 - `platform/consent.ts`
