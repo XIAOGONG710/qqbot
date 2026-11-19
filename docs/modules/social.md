@@ -62,7 +62,7 @@
 | `qzoneBrowse` | 自己翻空间动态（模式） | [ADR 0142](../adr/0142-qq-account-control.md) |
 | `qzonePeek` | 刷好友动态（看名单里好友发的说说）（模式） | [ADR 0145](../adr/0145-qzone-friends-feed.md) |
 | `qzoneStrangers` | 刷陌生人的空间（学人怎么说话）（模式） | [ADR 0144](../adr/0144-qzone-strangers.md) |
-| `groupChat` | 群聊（只在名单里的群、被叫到才说）（模式） | [ADR 0210](../adr/0210-group-chat.md) |
+| `groupChat` | 群聊（模式）：只在名单群里活动。off 关闭；read 只看只记、不说话；dryRun 只把草稿写入 groups/drafts.md、不发送；on 允许发言。她基本潜水，被叫到、有人损他或聊到熟悉话题时才考虑接话；普通回复每群每小时最多 6 条、每天最多 30 条。不主动进群，不接邀请。 | [ADR 0210](../adr/0210-group-chat.md) |
 | `typingStatus` | “正在输入…” | [ADR 0077](../adr/0077-typing-status.md) |
 | `selfRecall` | 打错字撤回重发 | [ADR 0086](../adr/0086-self-recall.md) |
 | `quoteReply` | 引用回复（他连发里的问题 / 补错字） | [ADR 0136](../adr/0136-quote-reply.md) |

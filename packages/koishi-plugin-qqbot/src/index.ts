@@ -23,7 +23,7 @@ import { createLog, type Log } from '../../bot/src/platform/log.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from '../../bot/src/language/fact-check.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/social/presence.ts';
 import { GROUP_CHAT_MODES, type GroupChatMode } from '../../bot/src/platform/config.ts';
-import { SHORT_REPLIES, SILENCE_NOTICE, TAIL_CAP } from '../../bot/src/platform/modules.ts';
+import { GROUP_CHAT, SHORT_REPLIES, SILENCE_NOTICE, TAIL_CAP } from '../../bot/src/platform/modules.ts';
 import { readQzoneFeed } from '../../bot/src/social/qzone-feed.ts';
 import { readFriendsFeed } from '../../bot/src/social/qzone-feeds3.ts';
 import { sessionFromCookies } from '../../bot/src/social/qzone-remote.ts';
@@ -530,9 +530,9 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**刷好友动态**（ADR 0145）：用她自己的登录态（NapCat 的 get_cookies）读她自己的好友动态页，挑出名单里好友 3 天内新发的说说（不进对方空间、不留访客记录），10:00–22:00、每 4 小时最多一次；摘成一行带时间进提示词，6 小时内她可以自己提起。名单是下面「允许动作的好友」；读不到（登录态过期 / 断网 / 风控）6 小时后再试。默认关'),
         qzoneStrangers: Schema.union(PRESENCE_MODES.map(mode => Schema.const(mode).description(PRESENCE_LABELS[mode]))).default(DEFAULTS.qzoneStrangers)
             .description('**刷陌生人的空间**（ADR 0144）：用她的登录态读平台推的陌生人说说（「空友爱看」那种流），09:00–23:00、每 3 小时最多一次；只读不互动。摘一句进提示词，样本（只有正文，没有名字和号）留在 presence/strangers.jsonl。接口名没有公开文档，读不到只记一行。默认关'),
-        groupChat: Schema.union(GROUP_CHAT_MODES.map(mode => Schema.const(mode).description(
-            mode === 'off' ? '关' : mode === 'read' ? '只看只记，不说话' : mode === 'dryRun' ? '只写草稿，不发' : '开'))).default(DEFAULTS.groupChat)
-            .description('**群聊**（ADR 0210）：off 关 / read 只看聊天记录、认下人，但不说话 / dryRun 写草稿（groups/drafts.md）不发 / on 发。只在下面「群」里列出的群；她基本潜水，被叫到、有人损他、聊到她熟的才开口，一个群一小时最多 6 条、一天 30 条。不主动进群、不接别人的邀请'),
+        [GROUP_CHAT.key]: Schema.union(GROUP_CHAT_MODES.map(mode => Schema.const(mode).description(GROUP_CHAT.modeLabels[mode])))
+            .default(DEFAULTS.groupChat)
+            .description(`**${GROUP_CHAT.label}**（ADR ${GROUP_CHAT.adr}）：${GROUP_CHAT.description}`),
         groups: Schema.array(Schema.object({
             id: Schema.natural().required().description('**群号**'),
             name: Schema.string().required().pattern(NOT_BLANK).description('**群名**：给她看的，比如「宿舍群」'),

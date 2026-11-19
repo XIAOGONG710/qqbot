@@ -5,6 +5,7 @@
 // 目录整理已完成；后续的模块配置段与提示词贡献计划见 docs/modules/README.md「接下来」。
 
 import type { FeatureDef, FeatureGroup } from './features.ts';
+import type { GroupChatMode } from './config.ts';
 
 export interface ModuleDef {
     id: string;
@@ -46,6 +47,16 @@ export const SILENCE_NOTICE = {
     adr: '0173',
     description: '确认在忙或有明确的忘回记录，才在正常回复时顺口提一句；不知道就不编。小事等他自然问起再说，不想细讲可以不交代原因。',
 } as const satisfies FeatureDef;
+
+export const GROUP_CHAT = {
+    key: 'groupChat',
+    label: '群聊',
+    group: '在 QQ 上的样子',
+    adr: '0210',
+    kind: 'mode',
+    description: '只在名单群里活动。off 关闭；read 只看只记、不说话；dryRun 只把草稿写入 groups/drafts.md、不发送；on 允许发言。她基本潜水，被叫到、有人损他或聊到熟悉话题时才考虑接话；普通回复每群每小时最多 6 条、每天最多 30 条。不主动进群，不接邀请。',
+    modeLabels: { off: '关', read: '只看只记，不说话', dryRun: '只写草稿，不发', on: '开' },
+} as const satisfies FeatureDef & { modeLabels: Record<GroupChatMode, string> };
 
 export const MODULES: readonly ModuleDef[] = [
     {

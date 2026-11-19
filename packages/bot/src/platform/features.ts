@@ -2,7 +2,7 @@
 // 新加一个开关时必须在这里加一行（features.test.ts 会核对：config 里每个布尔 / 模式开关要么在这里，要么在 NOT_SWITCHES 里说明不是功能开关）。
 // 纯数据 + 一个函数，没有副作用；不放任何密钥或聊天内容。
 
-import { SHORT_REPLIES, SILENCE_NOTICE, TAIL_CAP } from './modules.ts';
+import { GROUP_CHAT, SHORT_REPLIES, SILENCE_NOTICE, TAIL_CAP } from './modules.ts';
 
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
@@ -125,7 +125,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'qzoneBrowse', label: '自己翻空间动态', group: '在 QQ 上的样子', adr: '0142', kind: 'mode' },
     { key: 'qzonePeek', label: '刷好友动态（看名单里好友发的说说）', group: '在 QQ 上的样子', adr: '0145', kind: 'mode' },
     { key: 'qzoneStrangers', label: '刷陌生人的空间（学人怎么说话）', group: '在 QQ 上的样子', adr: '0144', kind: 'mode' },
-    { key: 'groupChat', label: '群聊（只在名单里的群、被叫到才说）', group: '在 QQ 上的样子', adr: '0210', kind: 'mode' },
+    GROUP_CHAT,
     { key: 'typingStatus', label: '“正在输入…”', group: '在 QQ 上的样子', adr: '0077' },
     { key: 'selfRecall', label: '打错字撤回重发', group: '在 QQ 上的样子', adr: '0086' },
     { key: 'quoteReply', label: '引用回复（他连发里的问题 / 补错字）', group: '在 QQ 上的样子', adr: '0136' },
