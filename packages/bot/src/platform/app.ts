@@ -103,7 +103,8 @@ import { appendPrivate, addRefusal, recentRefusals, ratingSummary, soulDir } fro
 import { momentsReader } from '.././emotion/moments.ts';
 import { loadEverydayFrom } from '.././life/everyday.ts';
 import { loadThreadsFrom } from '.././world/threads.ts';
-import { dishesBetween, loadMenuFrom } from '.././life/menu.ts';
+import { loadMenuFrom } from '.././life/menu.ts';
+import { photoShelfDiscovery } from '.././vision/photo-discovery.ts';
 import { BILI_STICKER_PER_DAY, biliStickerDiscover, STICKER_UNCUED_CHANCE } from '.././language/bili-stickers.ts';
 import { pursuitsReader } from '.././life/pursuits.ts';
 import { selfAwareReader } from '.././life/self-pursuits.ts';
@@ -167,7 +168,7 @@ import { feedFactEntry, feedOnce, feedPath, loadFeed } from '.././bilibili/feed-
 import { fetchDanmaku, fetchStoryboard, fetchView } from '.././bilibili/bilibili-view.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { togetherNow } from '.././language/together.ts';
-import { photoAllowance, photoShelf, PHOTO_HISTORY_PREFIX, PHOTO_RETRY_MAX, PHOTO_RETRY_MS, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
+import { photoAllowance, photoShelf, PHOTO_HISTORY_PREFIX, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
 import { STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
 import { SlidingWindowRateLimiter } from '.././social/rate-limit.ts';
 import { greetingOnly, markSignature, MINOR_NOTICE, minorHint, strangerGuard } from '.././social/strangers.ts';
@@ -2263,9 +2264,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     }
 
     let stopDrain: Promise<void> | undefined;
-    let foodRetryTimer: ReturnType<typeof setTimeout> | undefined;
-    lifetime.own('food-retry', () => exec.cancel(foodRetryTimer));
-    let foodRetries = 0;
     // 周报（ADR 0118）：每小时看一眼，周日 21:30 以后这周的还没有就写一份；出错只记日志
     const checkWeeklyReport = () => {
         if (!config.weeklyReport || stopped) return;
@@ -2403,35 +2401,14 @@ ${body}
         }
         }, () => { memesRunning = false; });
     };
-    // 被限流 / 断网打断了就过一会儿再来（上线时第一次就撞上 Wikimedia 的 429，货架空了 6 小时），最多 PHOTO_RETRY_MAX 次
-    let photoRetries = 0;
-    let photoRetryTimer: ReturnType<typeof setTimeout> | undefined;
-    lifetime.own('photo-retry', () => exec.cancel(photoRetryTimer));
-    const discoverPhotos = (): void => {
-        if (!photos || stopped) return;
-        photos.discover().then(result => {
-            if (result === 'done') { photoRetries = 0; return; }
-            if (photoRetries >= PHOTO_RETRY_MAX || stopped) return;
-            photoRetries++;
-            exec.cancel(photoRetryTimer);
-            photoRetryTimer = exec.after(discoverPhotos, photoRetryMs ?? PHOTO_RETRY_MS);
-            photoRetryTimer.unref();
-        }).catch(error => log(`照片货架：找照片出错（${error instanceof Error ? error.message : String(error)}）`));
-    };
-    // 吃的照片（ADR 0128）：给今天、明天要吃的菜找照片；被限流 / 断网打断了同样过一会儿再来
-    const discoverFoodPhotos = (): void => {
-        if (!photos || !foodSource || !config.foodPhotos || !config.menu || stopped) return;
-        const dishes = dishesBetween(new Date(), 2, cardFor('boyfriend').character.herWorld?.menu, menuFrom);
-        if (!dishes.length) return;
-        photos.discoverFood(dishes).then(result => {
-            if (result === 'done') { foodRetries = 0; return; }
-            if (foodRetries >= PHOTO_RETRY_MAX || stopped) return;
-            foodRetries++;
-            exec.cancel(foodRetryTimer);
-            foodRetryTimer = exec.after(discoverFoodPhotos, photoRetryMs ?? PHOTO_RETRY_MS);
-            foodRetryTimer.unref();
-        }).catch(error => log(`照片货架：找吃的照片出错（${error instanceof Error ? error.message : String(error)}）`));
-    };
+    // 照片货架的发现与重试（ADR 0110 / 0128）：在 vision/photo-discovery.ts（ADR 0336 第 6 步）；两个重试计时器的停法照旧在这里登记
+    const shelfDiscovery = photoShelfDiscovery({
+        photos, hasFoodSource: Boolean(foodSource), config, stopped: () => stopped,
+        menu: () => cardFor('boyfriend').character.herWorld?.menu, menuFrom, exec, retryMs: photoRetryMs, log,
+    });
+    lifetime.own('food-retry', () => shelfDiscovery.cancelFoodRetry());
+    lifetime.own('photo-retry', () => shelfDiscovery.cancelPhotoRetry());
+    const { discoverPhotos, discoverFoodPhotos } = shelfDiscovery;
     const discoverStickers = () => { if (collectingStickers) void ownStickerWork(signal => collectingStickers.discover({ signal })); };
     /** Hindsight 健康检查的结果（状态页用到时才探，见 status()） */
     let health: MemoryEvent | undefined;

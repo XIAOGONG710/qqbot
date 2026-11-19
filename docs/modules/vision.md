@@ -8,6 +8,7 @@
 
 - `vision/vision.ts`
 - `vision/photos.ts`
+- `vision/photo-discovery.ts`
 - `vision/photo-index-lock.ts`
 - `vision/photo-sources.ts`
 - `vision/ai-photo-drafts.ts`

@@ -1483,3 +1483,9 @@ Koishi 插件和 `main.ts` 不用跟着改；它们内部变成“装配真实�
   App 在原位建它、在原位登记停法（`lifetime.own('devices')`）；用到服务的四处（执行器的 device 动作、菜单、回复里令牌的解析、他发的设备命令）改成 `devicesHost.service()` 现取。
   解析 / 登记回复里的令牌（`deviceHooks`）和他发的设备命令仍在 App。
 - 验证：41 个场景对快照逐字一致；`memory-app-device-*` 三个文件（18 过、4 个原本就 skip）、`app.test.ts` 里设备的 5 个通过；变异检验：`start` 什么都不做，17 个失败。
+
+### 第 6 步：app.ts 只剩装配——照片货架的发现与重试（2026-11-19）
+
+- 找猫的照片、给今天明天的菜找照片，以及被限流 / 断网打断后的重试（ADR 0110 / 0128）原样从 app.ts 搬到 `src/vision/photo-discovery.ts`（`photoShelfDiscovery(deps)`），两个重试计数和计时器跟着搬进去。
+  什么时候找（货架的周期发现经 `mediaDiscovery`、第一次连上）不动；两项停法（food-retry / photo-retry）在原位连着登记（中间原本就没有别的登记，先后不变）。
+- 验证：41 个场景对快照逐字一致；照片相关的 4 个测试文件（50 个）、`app.test.ts` 里照片 / 货架 / 吃的 10 个通过；变异检验：两个发现什么都不做，3 个失败。
