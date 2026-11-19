@@ -93,7 +93,8 @@ import { ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode, WORK_MARKER } from './work-mode.ts';
-import { noteResident, runWorkTask, rememberWorkTask } from './work-bridge.ts';
+import { noteResident, runWorkTask } from './work-bridge.ts';
+import { workHandoff } from './work-handoff.ts';
 import { isTypedByHim, NOT_TYPED_NOTICE, WANTED_BUT_NOT_TYPED_NOTICE } from './instruction-source.ts';
 import { appendPrivate, addRefusal, recentRefusals, ratingSummary, soulDir } from './soul-rating.ts';
 import { momentsReader } from '.././emotion/moments.ts';
@@ -1054,26 +1055,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 refused: reason => addRefusal(reason),
                 taskOf: contact => lastUserText.get(contact.qq),
                 // 她自己判断这条要动电脑（2026-10-29）：当轮交给 dsh 干，干完把结果单独发回去。不落工作模式，所以他不用发 /dsh，也不用事后 /QQ 切回来
-                start: (contact, task) => {
-                    const userId = contact.qq;
-                    const recent = history.load(userId).slice(-10)
-                        .map(message => `${message.role === 'user' ? '他' : '我'}：${message.content}`)
-                        .join('\n');
-                    void runWork(task, { context: recent })
-                        .then(async reply => {
-                            const messageId = await transport.sendPrivateText(userId, reply);
-                            // 干完的结果也进聊天记录（和 /dsh 工作模式一样，ADR 0176），活记在他自己的 bank 里
-                            history.append(userId, { time: clockNow().toISOString(), role: 'assistant', content: reply, messageId });
-                            void rememberWorkTask(task, reply, memory?.bankId(contact));
-                        })
-                        .catch(error => {
-                            log(`[${userId}] 她判断要动电脑、没干成：${error instanceof Error ? error.message : String(error)}`);
-                            // 这句也是她说的：记进聊天记录，他问「怎么没弄成」她知道（11-02「检查类似的问题」）
-                            void transport.sendPrivateText(userId, WORK_FAILED_LINE)
-                                .then(messageId => history.append(userId, { time: clockNow().toISOString(), role: 'assistant', content: WORK_FAILED_LINE, messageId }))
-                                .catch(() => {});
-                        });
-                },
+                // 干完的结果也进聊天记录（和 /dsh 工作模式一样，ADR 0176），活记在他自己的 bank 里；没干成那句也记（work-handoff.ts）
+                start: (contact, task) => work.handOff(contact.qq, task, work.recentFor(contact.qq), () => memory?.bankId(contact), '她判断要动电脑、没干成'),
                 notTyped: () => tellOwner(WANTED_BUT_NOT_TYPED_NOTICE),
                 log,
             },
@@ -1667,6 +1650,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     /** 他这一条原本说的话：她写 `<<用电脑>>` 时，要拿它去干活（标记发出去之前就得留住） */
     const lastUserText = new Map<number, string>();
     const runWork: typeof runWorkTask = (task, options) => exec.process.work(task, options);
+    // 把活交给 dsh、干完发回去（工作模式和她自己判断动电脑两处共用）：在 work-handoff.ts（ADR 0336 第 6 步）
+    const work = workHandoff({ runWork, transport, history, clockNow, log });
 
     // 下面这几样她自己想一想的事，定时都在 modules/reflections.ts（ADR 0336 第 6 步，App 搭好时由解释器开）；这里只留开没开的日志和自我认识那一份导出
     // 她每晚想一次要不要放下 / 改主意 / 提新的（ADR 0178）：到点才想，失败 2 小时后再试，每天最多试 3 次
@@ -1735,9 +1720,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             .replace(/\n{2,}/g, '\n')
             .trim();
     }
-
-    /** 动电脑没干成时她回的那句（也记进聊天记录） */
-    const WORK_FAILED_LINE = '这个没弄成，等下我再看。';
 
     function createContactResponder(contact: Contact): Responder {
         // 回复里的内部标记（<<记住>> / <<日记>> / <<私密>> / <<同意工作>> / <<拒绝工作>> / <<用电脑>> / <<同意>> / <<拒绝>>）：从文字里剥掉、该办的事办了，返回剩下的文字。
@@ -2403,25 +2385,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 工作模式：不进普通聊天回复器，交给 headless 的她干活，干完再回（工具桥）
         if (event.user_id === deviceOwner?.qq && typed && !text.startsWith('/') && readWorkMode(config.dataDir, event.user_id) === 'work') {
             const qq = event.user_id;
-            const recent = history.load(qq).slice(-10)
-                .map(message => `${message.role === 'user' ? '他' : '我'}：${message.content}`)
-                .join('\n');
+            const recent = work.recentFor(qq);
             log(`[${qq}] 工作模式：交给 dsh 干活（带 ${recent ? '最近对话' : '无'}上下文）`);
             // 他的话、她的回复都进聊天记录（ADR 0176）：原来工作模式里的来回不进记录，切回聊天后她不知道刚才说过什么
             history.append(qq, accepted);
-            void runWork(text, { context: recent })
-                .then(async reply => {
-                    const messageId = await transport.sendPrivateText(qq, reply);
-                    history.append(qq, { time: clockNow().toISOString(), role: 'assistant', content: reply, messageId });
-                    // 活记在他自己的 bank 里（和 QQ 聊天、DSH 桌面对话同一个），不再单独放 linmengyao
-                    void rememberWorkTask(text, reply, memory?.bankId(deviceOwner));
-                })
-                .catch(error => {
-                    log(`[${qq}] 工作桥出错：${error instanceof Error ? error.message : String(error)}`);
-                    void transport.sendPrivateText(qq, WORK_FAILED_LINE)
-                        .then(messageId => history.append(qq, { time: clockNow().toISOString(), role: 'assistant', content: WORK_FAILED_LINE, messageId }))
-                        .catch(() => {});
-                });
+            // 活记在他自己的 bank 里（和 QQ 聊天、DSH 桌面对话同一个），不再单独放 linmengyao
+            work.handOff(qq, text, recent, () => memory?.bankId(deviceOwner), '工作桥出错');
             return;
         }
         responder.receive(accepted.content, event.message_id, new Date(accepted.time), accepted.messageSeq, accepted.incomingId);

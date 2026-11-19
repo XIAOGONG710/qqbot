@@ -11,6 +11,7 @@
 - `modules/synced-jobs.ts`
 - `platform/main.ts`
 - `platform/work-bridge.ts`
+- `platform/work-handoff.ts`
 - `platform/instruction-source.ts`
 - `platform/work-mode.ts`
 - `platform/soul-rating.ts`

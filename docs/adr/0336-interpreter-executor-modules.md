@@ -1559,3 +1559,10 @@ app.ts 从 4068 行到 3317 行。照「原样搬、依赖交进去」能拆的�
   原样从 app.ts 搬到 `src/social/private-admission.ts`（`privateAdmission(deps)`）；processMessage 里只剩 `admission.admit(event)`，不回就返回（原因照旧记日志）。
   建回复器（`createContactResponder`）和名单外的称呼（`unlistedName`）由 App 传进去，不反过来 import app.ts。
 - 验证：带名单外 / 陌生人的 19 个测试文件 592 个用例通过；变异检验：一律放行（不限流、不看签名和陌生人规矩），8 个失败。41 个场景和前一步一起跑。
+
+### 第 6 步：app.ts 只剩装配——把活交给 dsh（2026-11-19 晚）
+
+- 「交给 headless 的她干活、干完把结果发回去、进聊天记录、记进他的 bank，没干成回一句『这个没弄成，等下我再看。』也记下」在 app.ts 里写了两遍：
+  工作模式里他打的字（deliver）和她自己判断要动电脑（work-mode 模块的 `start`），只有没干成时那行日志不一样。合成一份 `src/platform/work-handoff.ts`（`workHandoff(deps)`），两处各传自己的日志标签；
+  先后、说法、记录都同原来，bank 仍在干完时才取。
+- 验证：工作相关的 7 个测试文件 273 个用例通过；变异检验：两处各自不交活，各 1 个失败。没干成那条路原来没有测试，补了 `test/work-handoff.test.ts`（3 个用例）；变异检验：没干成不回那句，1 个失败。41 个场景和前一步一起跑。
