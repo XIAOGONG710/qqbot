@@ -10,6 +10,7 @@ import type { WebMode } from './web.ts';
 import type { ProactiveMode } from '../proactive/proactive.ts';
 import type { FactCheckMode } from '../language/fact-check.ts';
 import type { FestivalMode } from '../world/festivals.ts';
+import type { PresenceMode } from '../social/presence.ts';
 
 export interface ModuleDef {
     id: string;
@@ -111,6 +112,16 @@ export const FESTIVALS = {
     description: 'off 关闭；notes 让她知道今天或快到的节日，时间块可提前几天提醒；greet 还会在新年零点、除夕、平安夜、情人节、元宵、520、七夕、端午、中秋，通过「重要的日子」时机主动说一句。默认关。',
     modeLabels: { off: '关', notes: '只让她知道今天 / 快到的是什么节', greet: '知道，并在新年零点、除夕、平安夜、情人节等主动说一句' },
 } as const satisfies FeatureDef & { modeLabels: Record<FestivalMode, string> };
+
+export const BILIBILI = {
+    key: 'bilibili',
+    label: '刷 B 站发给他',
+    group: 'B 站',
+    adr: '0084',
+    kind: 'mode',
+    description: '从 B 站热门榜按口味挑视频，读过热评后，把感受和原链接发给男朋友档的人。一周最多 3 个，工作日晚上或周末下午到晚上才考虑发；睡着、上课或正聊着时不发。只读 B 站公开接口，不登录，也不在 B 站发内容。试运行只写草稿到 presence/drafts.md，默认关。',
+    modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' },
+} as const satisfies FeatureDef & { modeLabels: Record<PresenceMode, string> };
 
 export const MODULES: readonly ModuleDef[] = [
     {

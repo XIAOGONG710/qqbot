@@ -6,7 +6,7 @@
 // 还没搬过去的直接写完整的配置页说明 detail。这里照样是唯一的总表。
 // 纯数据 + 几个函数，没有副作用；不放任何密钥或聊天内容。
 
-import { FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
+import { BILIBILI, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, SHORT_REPLIES, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
 
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
@@ -202,9 +202,7 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'media', label: '听语音、看图', group: '照片和表情', adr: '0052',
         detail: '**听语音、看图上的字**（ADR 0052）：他发的语音用 QQ 自带的语音转文字，照片、截图用 NapCat 的 OCR 取上面的字（只有 Windows），她就着内容回，听完语音才回。转不出来、没字、超时（5 秒）照旧只知道是语音、图片；表情包照旧用名字' },
     // B 站
-    { key: 'bilibili', label: '刷 B 站发给他', group: 'B 站', adr: '0084', kind: 'mode',
-        detail: '**刷 B 站**（ADR 0084）：她从 B 站热门榜里按口味挑一个真视频（日常、搞笑、萌宠、美食、音乐、影视、游戏），连热评一起读，发给男朋友档的人并说一句感受，再把真链接发在后面；一周最多 3 个，工作日晚上、周末下午到晚上，睡着、上课、正聊着时不发。只读 B 站公开接口，不登录、不在 B 站发任何东西。选「只写草稿」时存在 presence/drafts.md。默认关',
-        modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' } },
+    BILIBILI,
     { key: 'bilibiliAccount', label: '她自己的 B 站账号', group: 'B 站', adr: '0089',
         detail: '**她的 B 站号**（ADR 0089）：用她自己的 B 站号（数据目录 secrets/bilibili.json，先在命令行跑 `npm run bilibili-login -w @qqbot/bot` 扫码）按口味搜视频（三花猫、王者荣耀、宿舍日常……每天换一个词）并读字幕，分享时她知道视频里讲了什么；前三个候选里挑第一个有字幕的。只读，不在 B 站发任何东西。要上面「刷 B 站」也开着。凭证失效会在日志里说，重新扫码后重启。默认关' },
     { key: 'biliFeed', label: '自己刷 B 站推荐（记下刷到的）', group: 'B 站', adr: '0168', kind: 'mode',
