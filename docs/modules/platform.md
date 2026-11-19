@@ -25,6 +25,7 @@
 - `platform/onebot.ts`
 - `platform/command-receipts.ts`
 - `platform/lock.ts`
+- `platform/lifetime.ts`
 - `platform/log.ts`
 - `platform/heartbeat.ts`
 - `platform/runtime-info.ts`

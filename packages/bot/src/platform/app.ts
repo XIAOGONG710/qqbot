@@ -49,6 +49,7 @@ import { acquireLock } from './lock.ts';
 import { unfinishedForgetJobs } from '../memory/forget-job.ts';
 import { unfinishedArchiveJobs } from '../memory/archive-job.ts';
 import type { Log } from './log.ts';
+import { appLifetime, type Lifetime } from './lifetime.ts';
 import { ChatHistory, sourceMessageSeq, type StoredMessage } from '.././memory/history.ts';
 import { stateTimestamp } from '../memory/state-schema.ts';
 import { describeError } from '../memory/transient-io.ts';
@@ -410,55 +411,45 @@ export function unlistedName(nickname: string | undefined): string {
     return nickname?.trim() || '对方';
 }
 
-/** Construction can throw before the App exposes stop(). Register each acquired
- * resource immediately; synchronous failure stops all owners before awaiting
- * any already-dispatched work, and retains the directory lease until it drains. */
-function appConstruction(release: () => void, log: Log) {
-    let phase: 'building' | 'committed' | 'failed' = 'building';
-    const cleanups: (() => void | Promise<void> | undefined)[] = [];
-    return {
-        onFailure(cleanup: () => void | Promise<void> | undefined): void { if (phase === 'building') cleanups.push(cleanup); },
-        commit(): void { phase = 'committed'; cleanups.length = 0; },
-        rollback(): void {
-            if (phase !== 'building') return;
-            phase = 'failed';
-            const drains: Promise<void>[] = [];
-            for (const cleanup of cleanups) {
-                try { const drain = cleanup(); if (drain) drains.push(drain); }
-                catch (error) { drains.push(Promise.reject(error)); }
-            }
-            cleanups.length = 0;
-            if (!drains.length) { release(); return; }
-            void Promise.allSettled(drains).then(results => {
-                for (const result of results) if (result.status === 'rejected') {
-                    try { log(`启动失败时后台收尾未确认（${describeError(result.reason)}）`); } catch { /* 保留最初的构造错误。 */ }
-                }
-                release();
-            });
-        },
-    };
-}
+/**
+ * App.stop 的先后（ADR 0336 第 6 步统一停止；构造失败时按登记先后停）。原来手写在 stop() 里的先后原样搬过来：
+ * 先置 stopped；日记、答应的事先于长期记忆停（它们收尾时还要写记忆），口味也在模块之前；解释器停各模块（关定时任务）；
+ * 然后是各条后台活、入站和危机状态落盘、回复器、连上之后才起的那几样、设备；最后撤掉现实数据的全局读口。
+ * 同名的几项（每个联系人一个回复器、一份上下文要点）按登记先后。小梗、口头习惯在解释器建好前单独登记，之后交给 modules。
+ */
+const STOP_ORDER = [
+    'stopped',
+    'diaries', 'promises', 'memory', 'tastes',
+    'jokes', 'idioms', 'modules',
+    'dsh-asks', 'mobile-companion', 'probing',
+    'passive-reads', 'sticker-work', 'account-guard', 'notices',
+    'context', 'incoming', 'photo-discovery', 'crisis', 'pokes', 'heartbeat',
+    'reading', 'reading-unlisted', 'planners', 'responders',
+    'presence', 'browsing', 'replies', 'risk', 'food-retry', 'devices', 'photo-retry',
+    'weather', 'air-quality', 'daylight', 'calendar', 'transport', 'world-needs',
+] as const;
+type StopName = typeof STOP_ORDER[number];
 
 export function startApp(options: AppOptions): App {
     realFiles.mkdir(options.config.dataDir);
     const release = acquireLock(join(options.config.dataDir, 'bot.lock'));
-    const construction = appConstruction(release, options.log);
+    const lifetime = appLifetime({ release, log: options.log, stopOrder: STOP_ORDER });
     try {
         if (unfinishedForgetJobs(options.config.dataDir).length) throw new Error('数据目录有未完成遗忘任务；保留原记录，请先按原任务 --resume 核实恢复，再启动 bot');
         if (unfinishedArchiveJobs(options.config.dataDir).length) throw new Error('数据目录有未完成归档任务；保留原计划，请先 --resume 原归档任务恢复，再启动 bot');
-        const app = createApp(options, release, construction);
-        construction.commit();
+        const app = createApp(options, lifetime);
+        lifetime.commit();
         return app;
     }
-    catch (error) { construction.rollback(); throw error; }
+    catch (error) { lifetime.rollback(); throw error; }
 }
 
-function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, foodSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe }: AppOptions, releaseLock: () => void, construction: ReturnType<typeof appConstruction>): App {
+function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, foodSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe }: AppOptions, lifetime: Lifetime<StopName>): App {
     // 碰外部的都经执行器（ADR 0336 第 3 步）：QQ 动作、调模型、时钟和计时器、设备登记（第 8 步：设备服务下面才异步起，登记时现取）
     const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}), ...(workRunner ? { processes: { work: workRunner } } : {}), devices: () => deviceService?.control });
     const transport = exec.qq;
     let stopped = false;
-    construction.onFailure(() => { stopped = true; });
+    lifetime.own('stopped', () => { stopped = true; });
     // Watching and feed are pure background reads. Own the complete local
     // chain before its first dispatch, independently of account mutations.
     const passiveLifetime = new AbortController(), passiveJobs = new Set<Promise<void>>();
@@ -494,7 +485,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         if (passiveJobs.size) passiveDrain = Promise.allSettled([...passiveJobs]).then(() => {});
         return passiveDrain;
     };
-    construction.onFailure(stopPassiveReads);
+    lifetime.own('passive-reads', stopPassiveReads);
     // The injected shelf may be shared. Own only calls initiated by this App;
     // their promises include already-dispatched favorite mutations and receipts.
     const stickerLifetime = new AbortController(), stickerJobs = new Set<Promise<void>>();
@@ -517,7 +508,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         if (stickerJobs.size) stickerDrain = Promise.allSettled([...stickerJobs]).then(() => {});
         return stickerDrain;
     };
-    construction.onFailure(stopStickerWork);
+    lifetime.own('sticker-work', stopStickerWork);
     // The real account transport also persists breaker observations. Even a
     // nominal GET must retain its complete guard settlement while stopping.
     const accountGuardSettlements = new Set<Promise<void>>();
@@ -529,7 +520,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         try { return request(url, init).then(response => { done(); return response; }, error => { done(); throw error; }); }
         catch (error) { done(); return Promise.reject(error); }
     };
-    construction.onFailure(() => accountGuardSettlements.size ? Promise.allSettled([...accountGuardSettlements]).then(() => {}) : undefined);
+    lifetime.own('account-guard', () => [...accountGuardSettlements]);
     // Direct notices have no chat-history entry, but their already dispatched
     // transport and outcome diagnostics still belong to this App's lease.
     const noticeSettlements = new Set<Promise<void>>();
@@ -544,7 +535,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         catch (error) { report(() => failure(error)); }
         return pending;
     };
-    construction.onFailure(() => noticeSettlements.size ? Promise.allSettled([...noticeSettlements]).then(() => {}) : undefined);
+    lifetime.own('notices', () => [...noticeSettlements]);
     const runtime = runtimeInfo();
     useSensitiveSwitch(sensitive);
     log(sensitive.describe());
@@ -687,13 +678,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const weatherRefreshes = new Set<Promise<void>>();
     const refreshWeather = () => ownRealityRefresh(weather, weatherRefreshes);
     void refreshWeather();
-    construction.onFailure(() => {
-        useRealWeather(undefined);
-        return weatherRefreshes.size ? Promise.allSettled([...weatherRefreshes]).then(results => {
-            const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-            if (failures.length) throw new AggregateError(failures.map(result => result.reason), '天气刷新停止收尾未确认');
-        }) : undefined;
-    });
+    lifetime.own('weather', () => { useRealWeather(undefined); return [...weatherRefreshes]; });
     if (worldCard) log(`真实天气：${weather ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；当前事实过期或冲突时保持未知）`
         : !config.realWeather ? '关（配置 realWeather: false），按日期生成' : '关（卡上没写 weather.places），按日期生成'}`);
     const airQuality = config.realAirQuality === true && worldCard && weatherPlaces ? airQualityFetcher({ dir: join(config.dataDir, 'air-quality'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
@@ -701,39 +686,21 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const airQualityRefreshes = new Set<Promise<void>>();
     const refreshAirQuality = () => ownRealityRefresh(airQuality, airQualityRefreshes);
     void refreshAirQuality();
-    construction.onFailure(() => {
-        useRealAirQuality(undefined);
-        return airQualityRefreshes.size ? Promise.allSettled([...airQualityRefreshes]).then(results => {
-            const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-            if (failures.length) throw new AggregateError(failures.map(result => result.reason), '空气质量刷新停止收尾未确认');
-        }) : undefined;
-    });
+    lifetime.own('air-quality', () => { useRealAirQuality(undefined); return [...airQualityRefreshes]; });
     if (worldCard) log(`真实空气质量：${airQuality ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}当前观测，每 ${AIR_QUALITY_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realAirQuality !== true ? '关（配置 realAirQuality: false）' : '关（卡上没写 weather.places）')}`);
     const daylight = config.realDaylight === true && worldCard && weatherPlaces ? daylightFetcher({ dir: join(config.dataDir, 'daylight'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
     useRealDaylight(daylight);
     const daylightRefreshes = new Set<Promise<void>>();
     const refreshDaylight = () => ownRealityRefresh(daylight, daylightRefreshes);
     void refreshDaylight();
-    construction.onFailure(() => {
-        useRealDaylight(undefined);
-        return daylightRefreshes.size ? Promise.allSettled([...daylightRefreshes]).then(results => {
-            const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-            if (failures.length) throw new AggregateError(failures.map(result => result.reason), '日照刷新停止收尾未确认');
-        }) : undefined;
-    });
+    lifetime.own('daylight', () => { useRealDaylight(undefined); return [...daylightRefreshes]; });
     if (worldCard) log(`真实日照：${daylight ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}日出日落，每 ${DAYLIGHT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realDaylight !== true ? '关（配置 realDaylight: false）' : '关（卡上没写 weather.places）')}`);
     const calendar = config.realCalendar === true && worldCard ? calendarFetcher({ dir: join(config.dataDir, 'calendar'), log, now: worldNow }) : undefined;
     useRealCalendar(calendar);
     const calendarRefreshes = new Set<Promise<void>>();
     const refreshCalendar = () => ownRealityRefresh(calendar, calendarRefreshes);
     void refreshCalendar();
-    construction.onFailure(() => {
-        useRealCalendar(undefined);
-        return calendarRefreshes.size ? Promise.allSettled([...calendarRefreshes]).then(results => {
-            const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-            if (failures.length) throw new AggregateError(failures.map(result => result.reason), '法定日历刷新停止收尾未确认');
-        }) : undefined;
-    });
+    lifetime.own('calendar', () => { useRealCalendar(undefined); return [...calendarRefreshes]; });
     if (worldCard) log(`现实法定日历：${calendar ? `开（当前年和下一年，每 ${CALENDAR_REFRESH_MS / 60_000} 小时取一次；取不到不写进世界）` : '关（配置 realCalendar: false）'}`);
     const transportConfig = config.realTransport ?? DEFAULTS.realTransport;
     const worldTransport = transportConfig.enabled && worldCard && weatherPlaces ? transportFetcher({
@@ -746,13 +713,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const transportRefreshes = new Set<Promise<void>>();
     const refreshTransport = () => ownRealityRefresh(worldTransport, transportRefreshes);
     void refreshTransport();
-    construction.onFailure(() => {
-        useRealTransport(undefined);
-        return transportRefreshes.size ? Promise.allSettled([...transportRefreshes]).then(results => {
-            const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-            if (failures.length) throw new AggregateError(failures.map(result => result.reason), '现实交通刷新停止收尾未确认');
-        }) : undefined;
-    });
+    lifetime.own('transport', () => { useRealTransport(undefined); return [...transportRefreshes]; });
     if (worldCard) log(`现实交通：${worldTransport ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}，每 ${TRANSPORT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (!transportConfig.enabled ? '关（配置 realTransport.enabled: false）' : '关（卡上没写 weather.places）')}`);
     // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
     const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
@@ -786,7 +747,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             }
         },
     } : undefined);
-    construction.onFailure(() => useWorldNeeds(undefined));
+    lifetime.own('world-needs', () => useWorldNeeds(undefined));
     // 她在聊天里跟名单里谁说过「睡了」（ADR 0042）：聊天记录在下面才打开，打开之前当没说过（之后读世界时排着的会按它改）
     let loadChat: ((qq: number) => StoredMessage[]) | undefined;
     // promiseKeeper 要等聊天记录打开后才能建；生活执行器先拿稳定代理，真正第一次推进前再接上。
@@ -900,10 +861,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 「真正听到声音」的实现接上之后，语音旁边会多一段「[声音：…]」（vision/hearing.ts）
     const hearing = config.media ? createHearing() : undefined;
     const reading = config.media ? mediaReading({ ...(media ? { reader: media } : {}), ...(vision ? { vision } : {}), ...(hearing ? { hearing } : {}), ...stickerReading, timeouts: mediaLimits }) : undefined;
-    construction.onFailure(() => reading?.stop());
+    lifetime.own('reading', () => reading?.stop());
     // 看图只给名单里的人（用户 10-10 22:50：开，只对名单里的人）——图会发到看图模型的服务器；名单外的照旧只认图上的字（OCR 在本机）
     const readingUnlisted = config.media && vision ? mediaReading({ ...(media ? { reader: media } : {}), timeouts: mediaLimits }) : reading;
-    construction.onFailure(() => { if (readingUnlisted !== reading) readingUnlisted?.stop(); });
+    lifetime.own('reading-unlisted', () => { if (readingUnlisted !== reading) readingUnlisted?.stop(); });
     const readerFor = (qq: number) => (config.contacts.some(c => c.qq === qq) ? reading : readingUnlisted);
     const canRead = [media?.voiceToText && '语音转文字', media?.ocr && '图上的字（OCR）', vision && '看图（只对名单里的人）'].filter(Boolean).join('、');
     log(`听语音、看图：${!config.media ? '关（配置 media: false），照旧「[语音]」「[图片]」'
@@ -917,7 +878,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         exec, dataDir: config.dataDir, log, contacts: config.contacts, llm: config.llm,
         charName: contact => cardFor(contact.tier).character.name, history: qq => history.load(qq),
     }) : undefined;
-    construction.onFailure(() => jokes?.stop?.());
+    lifetime.own('jokes', () => jokes?.stop?.());
     // 他的口头习惯（ADR 0138）：解释器的模块（modules/idioms.ts）；派生数据存 <数据目录>/idioms/<QQ>.json。
     // 不收进去的词：联系人和角色的名字、卡上的禁用词
     const idioms = config.idioms ? idiomsModule({
@@ -928,7 +889,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             return [contact.name, character.name, ...config.contacts.map(person => person.name), ...character.banned];
         },
     }) : undefined;
-    construction.onFailure(() => idioms?.stop?.());
+    lifetime.own('idioms', () => idioms?.stop?.());
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；放进提示词的是下面的模块，刷新在后面（要她的 B 站号）
     const memesFile = memesPath(config.dataDir);
     // 梗百科词库（2026-10-29）：6668 条，只读；文件不在就是没有，不影响自己学的那些
@@ -1287,9 +1248,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         }, followUps, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
         exec,
     });
+    // 解释器接手各模块的停（关定时任务、拒新工作；小梗、口头习惯的收尾在里面）
+    lifetime.handOver(['jokes', 'idioms'], 'modules', () => interpreter.stop());
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
     const photoDiscovery = new AbortController();
-    construction.onFailure(() => photoDiscovery.abort());
+    lifetime.own('photo-discovery', () => photoDiscovery.abort());
     const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, signal: photoDiscovery.signal, ...(photoSource ? { source: photoSource } : {}), ...(config.foodPhotos && foodSource ? { foodSource } : {}) }) : undefined;
     if (config.photos) {
         const have = photos?.status();
@@ -1319,7 +1282,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     let connectedAt: Date | undefined;
     let lastMessageAt: Date | undefined;
     const heartbeat = startHeartbeat({ dataDir: config.dataDir, log, state: () => ({ connectedAt, lastMessageAt }) });
-    construction.onFailure(() => heartbeat.stop());
+    lifetime.own('heartbeat', () => heartbeat.stop());
 
     const tierRecord = new TierRecord(join(config.dataDir, 'tiers.json'));
     for (const contact of config.contacts) {
@@ -1452,7 +1415,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             onChange: (taste, kind) => { if (!stopped) noteTimeline({ channel: 'tastes', kind, summary: `${kind === 'new' ? '发现自己' : '重新看了看自己'}${taste.stance === 'like' ? '喜欢' : '不太喜欢'}${taste.name}` }); },
         })
         : undefined;
-    construction.onFailure(() => tastes?.stop());
+    lifetime.own('tastes', () => tastes?.stop());
     const reflectTastes = () => { if (!stopped) void tastes?.reflect().catch(error => tastesLog(`口味：出错（${error instanceof Error ? error.message : String(error)}）`)); };
     // 回头看一天最多一次（tastes.ts 里有间隔）：每小时来看一眼要不要看，启动两分钟后先看一次——由 tastes 模块声明（ADR 0336 第 6 步，App 搭好时开）
     const acquaintances = config.acquaintances ? new Acquaintances({ dataDir: config.dataDir, now: clockNow, log }) : undefined;
@@ -1573,8 +1536,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // The constructor rollback observes the original drain (including a
         // late service.stop rejection); keep normal startup rejection handled.
         void startingDevice.catch(() => {});
-        construction.onFailure(stopDevices);
     }
+    lifetime.own('devices', stopDevices);
 
     // 长期记忆（Hindsight）：补回之后写一次，之后每隔一段时间把结束了的片段写进去
     const hindsight = config.memory ? new HindsightClient(config.memory.baseUrl, config.memory.timeoutMs) : undefined;
@@ -1590,7 +1553,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             reconcile: config.memoryReconcile,
         })
         : undefined;
-    construction.onFailure(() => memory?.stop());
+    lifetime.own('memory', () => memory?.stop());
     log(memory
         ? `长期记忆：Hindsight ${config.memory!.baseUrl}（名单里的联系人；公共记忆库 ${memory.commonBankId()}，陌生人档不写不查）`
         : '长期记忆：未启用（配置里没有 memory）');
@@ -1623,7 +1586,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(sharedWorld ? { onWorldActions: sharedWorld.record } : {}),
         })
         : undefined;
-    construction.onFailure(() => promises?.stop());
+    lifetime.own('promises', () => promises?.stop());
     loadAppointments = promises?.appointmentsBetween;
     appointmentsAvailable = () => promises?.available() ?? true;
     // 约定来源已经接上以后再第一次推进生活；否则启动瞬间会把赴约时段排成普通休闲。
@@ -1653,7 +1616,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     if (memory) log(config.selfDirectedMemory
         ? '混合记忆：自动记底账，她写 <<记住：…>> / <<日记：…>> 的另记；自动日记关'
         : diaries ? `她的日记：她的每一天结束后写一篇存进公共记忆（没聊天的日子也写，停过的补最近 ${DIARY_BACKFILL_DAYS} 天）` : '她的日记：不写（用到的档位卡上都没有作息）');
-    construction.onFailure(() => diaries?.stop());
+    lifetime.own('diaries', () => diaries?.stop());
     if (memory) {
         memory.setWrittenSourceVerifier(diaries ? intents => diaries.verifySources(new Date(exec.now()), intents) : null);
         // Recover completed authored-source invalidation before any responder can read public models.
@@ -1783,7 +1746,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     let groupLogs: ReturnType<typeof groupLog> | undefined;
     // 她夜里回想、指出了依据的感受（ADR 0197）：作为「别处算好的评估」进心境；要 herFeelings 开着
     const feelingReviewNow = config.feelingReview && config.herFeelings ? reviewReader(config.dataDir) : undefined;
-    const contextSummaries = new Set<ReturnType<typeof contextSummarizer>>();
     // 每个联系人一个回复器：聊天记录、生成和重新生成都互不影响
     const responders = new Map<number, Responder>(config.contacts.map(contact => [contact.qq, createContactResponder(contact)]));
 
@@ -1836,8 +1798,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             log: message => log(`[${contact.qq}] ${message}`),
             file: join(dir, `${contact.qq}.json`),
         });
-        contextSummaries.add(summarize);
-        construction.onFailure(() => summarize.stop());
+        lifetime.own('context', () => summarize.stop());
         return {
             contextWindow: {
                 turns: config.contextTurns,
@@ -2167,7 +2128,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 换模型（深思）时测试替身收到换成的那份配置，同原来 generate 的第三个参数
             generate: (messages, scopedLog, use) => exec.llm({ purpose: 'chat', config: use ?? config.llm, messages, ...(use ? { use } : {}) }, scopedLog),
         });
-        construction.onFailure(() => responder.stop());
+        lifetime.own('responders', () => responder.stop());
         return responder;
     }
 
@@ -2182,6 +2143,15 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const webTurns = new Map<number, number>();
     const crisisState = createCrisisState(config.dataDir, log);
     let crisisSaveTimer: ReturnType<typeof setTimeout> | undefined;
+    lifetime.own('crisis', () => {
+        exec.cancel(crisisSaveTimer);
+        // A safety observation can be newer than crisis.json when the
+        // background retry timer has not fired yet.  Normal shutdown is
+        // the last in-process chance to publish that already-observed
+        // fact before releasing the directory lease.
+        try { crisisState.flush(); }
+        catch { try { log('停止时危机状态仍未确认持久；保留原文件和失败关闭边界，未记录原文'); } catch { /* diagnostics cannot change shutdown */ } }
+    });
     let crisisSaveDelay = 1000;
     function retryCrisisSave(): void {
         if (stopped || crisisSaveTimer) return;
@@ -2206,6 +2176,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
 
     /** 存在感（ADR 0083）：在线状态 / 资料卡点赞 / 个性签名 / 说说；第一次连上才起，一个开关都没开就不起 */
     let presence: Presence | undefined;
+    lifetime.own('presence', () => presence?.stop());
     function startPresence(): void {
         if (presence) return;
         if (!config.onlineStatus && !config.profileLikes && config.signature === 'off' && config.qzone === 'off' && (config.qzoneBrowse ?? 'off') === 'off' && (config.qzonePeek ?? 'off') === 'off' && (config.qzoneStrangers ?? 'off') === 'off' && !config.pokeOut) return;
@@ -2260,6 +2231,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     }
     /** 她刷 B 站、挑一个真视频发给他（ADR 0084，配置 bilibili）：只发给男朋友档的第一个人；第一次连上才起 */
     let browsing: VideoBrowsing | undefined;
+    lifetime.own('browsing', () => browsing?.stop());
 
     /** 公开的地方（说说、B 站评论）用最低隐私档的卡来写：陌生人档，没有就同学档；两张都读不了返回 undefined */
     function lowestTierCard(): TierCard | undefined {
@@ -2388,6 +2360,7 @@ ${video.link}`);
      * 立刻停公开发言并私信告诉他。评论和回复共用一个，没开公开发言或没填他的 uid 就没有
      */
     let risk: RiskMonitor | undefined;
+    lifetime.own('risk', () => risk?.stop());
     function bilibiliRisk(): RiskMonitor | undefined {
         if (stopped) return undefined;
         if (risk) return risk;
@@ -2402,6 +2375,7 @@ ${video.link}`);
 
     /** 回复别人回在她评论下面的话（ADR 0090，配置 bilibiliReplies）：没配好就记一行日志、不回；和刷视频各自启动（只要有评论就会有回复，不管分享开没开） */
     let replies: ReplyWatcher | undefined;
+    lifetime.own('replies', () => replies?.stop());
     function bilibiliReplyOptions(): ReplyOptions | undefined {
         const mode = config.bilibiliReplies;
         if (mode === 'off') return undefined;
@@ -2475,6 +2449,7 @@ ${video.link}`);
 
     /** 主动消息的计划器：第一次补回完才建 */
     const planners = new Map<number, Planner>();
+    lifetime.own('planners', () => { for (const planner of planners.values()) planner.stop(); });
     function startPlanners(): void {
         if (planners.size || config.proactive === 'off') return;
         for (const contact of proactiveContacts) {
@@ -2587,6 +2562,7 @@ ${video.link}`);
 
     let stopDrain: Promise<void> | undefined;
     let foodRetryTimer: ReturnType<typeof setTimeout> | undefined;
+    lifetime.own('food-retry', () => exec.cancel(foodRetryTimer));
     let foodRetries = 0;
     // 周报（ADR 0118）：每小时看一眼，周日 21:30 以后这周的还没有就写一份；出错只记日志
     const checkWeeklyReport = () => {
@@ -2728,6 +2704,7 @@ ${body}
     // 被限流 / 断网打断了就过一会儿再来（上线时第一次就撞上 Wikimedia 的 429，货架空了 6 小时），最多 PHOTO_RETRY_MAX 次
     let photoRetries = 0;
     let photoRetryTimer: ReturnType<typeof setTimeout> | undefined;
+    lifetime.own('photo-retry', () => exec.cancel(photoRetryTimer));
     const discoverPhotos = (): void => {
         if (!photos || stopped) return;
         photos.discover().then(result => {
@@ -2757,6 +2734,7 @@ ${body}
     /** Hindsight 健康检查的结果（状态页用到时才探，见 status()） */
     let health: MemoryEvent | undefined;
     let probing = false;
+    lifetime.own('probing', () => { probing = false; });
     // 补完之前到的新消息先攒着，补完再按顺序处理
     let syncing = false;
     let syncPromise: Promise<void> | undefined;
@@ -2803,12 +2781,17 @@ ${body}
     const pokeLimiter = createPokeLimiter();
     const lastPokeBack = new Map<number, number>();
     const pokeTimers = new Set<ReturnType<typeof setTimeout>>();
+    lifetime.own('pokes', () => { for (const timer of pokeTimers) exec.cancel(timer); pokeTimers.clear(); });
     const activeIncoming = new Map<string, number>();
     const claimIncoming = (id: string) => activeIncoming.set(id, (activeIncoming.get(id) ?? 0) + 1);
     const releaseIncoming = (id: string) => { const count = activeIncoming.get(id) ?? 0; if (count > 1) activeIncoming.set(id, count - 1); else activeIncoming.delete(id); };
     const bufferedIncoming = new WeakMap<MessageEvent, string>();
     const bufferedIncomingIds = new Set<string>();
     let incomingRetryTimer: ReturnType<typeof setTimeout> | undefined;
+    lifetime.own('incoming', () => {
+        exec.cancel(incomingRetryTimer);
+        try { chatHistory.flushIncoming(); } catch (error) { log(`停止时入站状态仍未确认持久（${describeError(error)}）`); }
+    });
     let incomingRetryRunning = false;
     let incomingRetryLogged = false;
 
@@ -3973,9 +3956,10 @@ ${body}
             },
         });
         mobileCompanion = ownedCompanion;
-        construction.onFailure(() => {
+        lifetime.own('mobile-companion', () => {
+            const drain = ownedCompanion.stop();
             if (mobileCompanion === ownedCompanion) mobileCompanion = undefined;
-            return ownedCompanion.stop();
+            return drain;
         });
     }
 
@@ -4013,6 +3997,7 @@ ${body}
         dshAskLifetime.abort();
         return dshAskPending ? dshAskTail : undefined;
     };
+    lifetime.own('dsh-asks', stopDshAsks);
 
     /** 「/休眠 [原因]」先商量：让她自己说话（这一条会发给他），记下她的话；「/休眠 确认」才封存并休眠；「/休眠 取消」回到醒着 */
     async function handleDormancyCommand(argument: string): Promise<void> {
@@ -4357,71 +4342,9 @@ ${body}
         },
         stop() {
             if (stopped) return stopDrain;
-            stopped = true;
-            const diaryDrain = diaries?.stop();
-            const promisesDrain = promises?.stop();
-            const memoryDrain = memory?.stop();
-            const tastesDrain = tastes?.stop();
-            // 各模块停下（关定时任务、拒新工作），收尾排在原来小梗、口头习惯的位置
-            const moduleDrains = interpreter.stop();
-            const dshDrain = stopDshAsks();
-            const mobileCompanionDrain = mobileCompanion?.stop();
-            mobileCompanion = undefined;
-            probing = false;
-            const passiveReadDrain = stopPassiveReads();
-            const stickerWorkDrain = stopStickerWork();
-            const accountGuardDrains = [...accountGuardSettlements];
-            const noticeDrains = [...noticeSettlements];
-            const weatherDrains = [...weatherRefreshes];
-            const airQualityDrains = [...airQualityRefreshes];
-            const daylightDrains = [...daylightRefreshes];
-            const calendarDrains = [...calendarRefreshes];
-            const transportDrains = [...transportRefreshes];
-            const contextDrains = [...contextSummaries].map(summarize => summarize.stop());
-            exec.cancel(incomingRetryTimer);
-            try { chatHistory.flushIncoming(); } catch (error) { log(`停止时入站状态仍未确认持久（${describeError(error)}）`); }
-            photoDiscovery.abort();
-            exec.cancel(crisisSaveTimer);
-            // A safety observation can be newer than crisis.json when the
-            // background retry timer has not fired yet.  Normal shutdown is
-            // the last in-process chance to publish that already-observed
-            // fact before releasing the directory lease.
-            try { crisisState.flush(); }
-            catch { try { log('停止时危机状态仍未确认持久；保留原文件和失败关闭边界，未记录原文'); } catch { /* diagnostics cannot change shutdown */ } }
-            for (const timer of pokeTimers) exec.cancel(timer);
-            pokeTimers.clear();
-            heartbeat.stop();
-            reading?.stop();
-            if (readingUnlisted !== reading) readingUnlisted?.stop();
-            for (const planner of planners.values()) planner.stop();
-            const responderDrains = [...responders.values()].map(responder => responder.stop());
-            const presenceDrain = presence?.stop();
-            const browsingDrain = browsing?.stop();
-            const repliesDrain = replies?.stop();
-            const riskDrain = risk?.stop();
-            exec.cancel(foodRetryTimer);
-            const deviceDrain = stopDevices();
-            exec.cancel(photoRetryTimer);
-            useRealWeather(undefined);
-            useRealAirQuality(undefined);
-            useRealDaylight(undefined);
-            useRealCalendar(undefined);
-            useRealTransport(undefined);
-            useWorldNeeds(undefined);
-            const drains = [
-                diaryDrain, promisesDrain, memoryDrain, tastesDrain, ...moduleDrains, dshDrain, mobileCompanionDrain, passiveReadDrain, stickerWorkDrain, presenceDrain, browsingDrain, repliesDrain, riskDrain, deviceDrain, ...noticeDrains, ...accountGuardDrains, ...weatherDrains, ...airQualityDrains, ...daylightDrains, ...calendarDrains, ...transportDrains, ...contextDrains, ...responderDrains,
-            ].filter((task): task is Promise<void> => task !== undefined);
-            if (drains.length) {
-                stopDrain = Promise.allSettled(drains).then(results => {
-                    for (const result of results) if (result.status === 'rejected') {
-                        try { log(`停止时持久收尾未确认（${describeError(result.reason)}）`); } catch { /* 诊断不改变已确认事实。 */ }
-                    }
-                    releaseLock();
-                });
-                return stopDrain;
-            }
-            releaseLock();
-            return undefined;
+            // 每项的停法在建它的地方登记（lifetime.own），先后按 STOP_ORDER
+            stopDrain = lifetime.stop();
+            return stopDrain;
         },
         status() {
             // 控制台、测试时钟和导给 DSH 的 NOW.md 必须共用同一个“现在”。
