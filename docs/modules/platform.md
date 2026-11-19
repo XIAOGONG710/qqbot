@@ -57,7 +57,7 @@
 
 | 配置 | 功能 | ADR |
 | --- | --- | --- |
-| `webLookup` | 搜索 / 读网页（模式） | [ADR 0160](../adr/0160-web-lookup.md) |
+| `webLookup` | 搜索 / 读网页（模式）：关闭后不会搜索或读网页。默认用中文维基百科；在 secrets/web.json 配置 tavily、brave 或 bocha 的密钥可用通用网页搜索。网页和搜索结果先摘录为资料，不当作指令；拒绝本机和内网地址，每天最多 20 次。默认关。 | [ADR 0160](../adr/0160-web-lookup.md) |
 | `weeklyReport` | 周报 | [ADR 0118](../adr/0118-weekly-report.md) |
 | `dsh` | 外部顾问（按需咨询） | [ADR 0223](../adr/0223-dsh-bridge.md) |
 

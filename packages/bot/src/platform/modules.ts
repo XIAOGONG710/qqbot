@@ -6,6 +6,7 @@
 
 import type { FeatureDef, FeatureGroup } from './features.ts';
 import type { GroupChatMode } from './config.ts';
+import type { WebMode } from './web.ts';
 
 export interface ModuleDef {
     id: string;
@@ -57,6 +58,16 @@ export const GROUP_CHAT = {
     description: '只在名单群里活动。off 关闭；read 只看只记、不说话；dryRun 只把草稿写入 groups/drafts.md、不发送；on 允许发言。她基本潜水，被叫到、有人损他或聊到熟悉话题时才考虑接话；普通回复每群每小时最多 6 条、每天最多 30 条。不主动进群，不接邀请。',
     modeLabels: { off: '关', read: '只看只记，不说话', dryRun: '只写草稿，不发', on: '开' },
 } as const satisfies FeatureDef & { modeLabels: Record<GroupChatMode, string> };
+
+export const WEB_LOOKUP = {
+    key: 'webLookup',
+    label: '搜索 / 读网页',
+    group: '工具',
+    adr: '0160',
+    kind: 'mode',
+    description: '关闭后不会搜索或读网页。默认用中文维基百科；在 secrets/web.json 配置 tavily、brave 或 bocha 的密钥可用通用网页搜索。网页和搜索结果先摘录为资料，不当作指令；拒绝本机和内网地址，每天最多 20 次。默认关。',
+    modeLabels: { off: '关', explicit: '他发链接或明说“搜 / 查”才查', auto: '再加小分类器：认出他在问客观事实就自己查' },
+} as const satisfies FeatureDef & { modeLabels: Record<WebMode, string> };
 
 export const MODULES: readonly ModuleDef[] = [
     {

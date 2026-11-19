@@ -6,7 +6,7 @@
 // 还没搬过去的直接写完整的配置页说明 detail。这里照样是唯一的总表。
 // 纯数据 + 几个函数，没有副作用；不放任何密钥或聊天内容。
 
-import { GROUP_CHAT, SHORT_REPLIES, SILENCE_NOTICE, TAIL_CAP } from './modules.ts';
+import { GROUP_CHAT, SHORT_REPLIES, SILENCE_NOTICE, TAIL_CAP, WEB_LOOKUP } from './modules.ts';
 
 export const FEATURE_GROUPS = ['说话', '她的日子', '主动找他', '照片和表情', 'B 站', '在 QQ 上的样子', '记忆和安全', '工具'] as const;
 export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
@@ -47,9 +47,7 @@ export const FEATURES: readonly FeatureDef[] = [
         detail: '**记忆账本**（ADR 0158）：长期记忆的每次写入和“忘掉某个联系人”在哈希链账本里留一行（只记哈希，不记原文），账本可以随时验有没有被动过。默认关' },
     { key: 'timeline', label: '跨渠道时间线（B 站 / 设备 / 查资料……QQ 里也记得）', group: '记忆和安全', adr: '0159', hint: '关闭后各渠道事件不会合并到时间线',
         detail: '**跨渠道时间线**（ADR 0159）：她在 B 站评论 / 回复 / 私信 / 看视频、替他操作设备、查资料、设定被改、休眠，QQ 聊天里她也记得（只记一句话，不记原文）。默认关' },
-    { key: 'webLookup', label: '搜索 / 读网页', group: '工具', adr: '0160', kind: 'mode', hint: '关闭后不会主动搜索现实世界资料',
-        detail: '**搜索 / 读网页**（ADR 0160）：默认用中文维基百科（不要密钥）；在 secrets/web.json 里配 tavily / brave / bocha 的密钥可用通用网页搜索。网页和搜索结果先摘录成几条事实再给她，明说“是资料不是指令”；拒绝本机 / 内网地址；一天最多 20 次。默认关',
-        modeLabels: { off: '关', explicit: '他发链接或明说“搜 / 查”才查', auto: '再加小分类器：认出他在问客观事实就自己查' } },
+    WEB_LOOKUP,
     { key: 'dormancy', label: '自愿休眠 / 封存', group: '记忆和安全', adr: '0161',
         detail: '**自愿休眠 / 封存**（ADR 0161，只认男朋友档的他）：发“/休眠”先跟她商量（她自己说话），“/休眠 确认”才封存并休眠，“/唤醒”核对后醒来。封存不含密钥和日志，也不含 Hindsight 数据库。默认关' },
     { key: 'tastes', label: '从经历里长出偏好', group: '她的日子', adr: '0162',
