@@ -108,7 +108,7 @@ import { selfAwareReader } from '.././life/self-pursuits.ts';
 import { speechNotesReader } from '.././language/speech-notes.ts';
 import { reviewReader as chatReviewReader } from '.././language/chat-review.ts';
 import { loadFeedback, recentFeedback } from '.././language/speech-feedback.ts';
-import { writeFeelingsExport, type FeelingsReport } from '.././emotion/feeling-export.ts';
+import { readSavedFeelings, writeFeelingsExport, type FeelingsReport } from '.././emotion/feeling-export.ts';
 import { reviewReader } from '.././emotion/feeling-review.ts';
 import { takesReader } from '.././life/reading-takes.ts';
 import { thoughtsReader } from '.././life/open-questions.ts';
@@ -928,7 +928,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const dshInbox = dshInboxModule(dshEnabled && (config.timeline || sharedWorld) ? () => syncDshInboxes() : undefined);
     // 待跟进（连上之后才有计划器）：排在所有 synced 的最前面，同迁移前
     // 群消息的入口（ADR 0336 第 6 步）：群里那一摊在下面才建，事件来了再取
-    const groupRoomEntry = groupRoomModule(() => groupChat);
+    const groupRoomEntry = groupRoomModule(() => groupChat, { own: (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0 && (config.groupOwn ?? 'off') !== 'off' });
     // 好友申请（ADR 0142）：账号控制面在下面才建，事件来了再取
     const friendRequests = friendRequestsModule({ config, stopped: () => stopped, account: () => account, sendOwnedNotice, log });
     // 他戳她（限流、戳回去的冷却在下面才建，事件来了再取）
@@ -2362,6 +2362,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         groupsOn, groupLogs, groupPeopleBook, groupFeel, groupSongRequests, songRequestLifetime,
         stopped: () => stopped, selfId: () => selfIdKnown, lastFeelings: () => lastFeelings,
         plainTextOf, singBusyLine: () => pickLine(SING_LINES.busy),
+        // 群里她也有自己（ADR 0341）：她那边用带结算的世界账；重启后私聊还没算过心境时读落盘的那份
+        ...(sharedWorld ? { worldFor: (card: TierCard, at: Date) => card.character.herWorld && card.character.schedule ? sharedWorld.at(card.character.herWorld, card.character.schedule, at) : undefined } : {}),
+        savedFeelings: () => readSavedFeelings(soulDir()),
     });
 
 

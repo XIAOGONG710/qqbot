@@ -10,7 +10,7 @@
 
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { join } from 'node:path';
-import type { Felt } from './feelings.ts';
+import { CLEAR, FEELING_KINDS, STRONG, type Felt, type FeelingKind } from './feelings.ts';
 
 export const FEELINGS_EXPORT_FILE = 'FEELINGS.json';
 export const FEELINGS_EXPORT_KIND = 'qq-feelings';
@@ -57,4 +57,21 @@ export function writeFeelingsExport(soulDir: string, report: FeelingsReport): bo
     }
     writeJsonAtomic(path, { ...next, generatedAt: new Date(report.at).toISOString() } satisfies FeelingsExport);
     return true;
+}
+
+/**
+ * 读回落盘的那份（ADR 0341 G3：重启后私聊还没算过心境时，群里用它）。只认种类、轻重认得出的那几条；分量按轻重取门槛值。
+ * 坏了、没有就是 undefined；新不新由用的地方按 at 判断（FEELINGS_STALE_MS）
+ */
+export function readSavedFeelings(soulDir: string): FeelingsReport | undefined {
+    const value = readJsonOr<unknown>(feelingsExportPath(soulDir), undefined);
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+    const saved = value as Partial<FeelingsExport>;
+    const at = typeof saved.generatedAt === 'string' ? Date.parse(saved.generatedAt) : NaN;
+    if (saved.kind !== FEELINGS_EXPORT_KIND || !Number.isFinite(at) || !Array.isArray(saved.felt)) return undefined;
+    const felt: Felt[] = saved.felt.flatMap(item => {
+        if (!FEELING_KINDS.includes(item?.kind as FeelingKind) || (item.level !== 'strong' && item.level !== 'clear')) return [];
+        return [{ kind: item.kind as FeelingKind, level: item.level, weight: item.level === 'strong' ? STRONG : CLEAR, cause: String(item.cause ?? ''), source: item.source as Felt['source'], aboutHim: Boolean(item.aboutHim) }];
+    });
+    return { at, felt, line: typeof saved.line === 'string' ? saved.line : undefined };
 }

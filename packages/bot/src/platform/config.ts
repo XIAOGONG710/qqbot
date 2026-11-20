@@ -158,6 +158,7 @@ export const DEFAULTS = {
     qzonePeek: 'off' as PresenceMode,
     qzoneStrangers: 'off' as PresenceMode,
     groupChat: 'off' as GroupChatMode,
+    groupOwn: 'off' as GroupOwnMode,
     qqControl: 'off' as ControlMode,
     qqAllowFriends: [] as readonly number[],
     qqAllowGroups: [] as readonly number[],
@@ -606,6 +607,8 @@ export interface AppConfig {
     qzoneStrangers?: PresenceMode;
     /** 群聊（ADR 0210）：off 关 / read 只看只记不说话 / dryRun 写草稿不发 / on 发。只在 groups 名单里的群。默认 off */
     groupChat?: GroupChatMode;
+    /** 群里她也有自己（ADR 0341）：off 关 / dryRun 她自己冒的那句（冷场、有事）只写草稿，别的回话照旧 / on 每次开口都带着她此刻（同学能知道的）和她定的边界，冷场有事会自己冒一句。要开着 groupChat。默认 off */
+    groupOwn?: GroupOwnMode;
     /** 她能说话的群（用户拉她进去、再加进这里的）；knowsBot：群里的人都知道她是 AI（用户确认过） */
     groups?: GroupConfig[];
     /** 账号控制面（ADR 0142）：off 关 / read 只读盘点 / on 放行写动作。默认 off */
@@ -723,6 +726,9 @@ export interface AppConfig {
 /** 群聊的四种状态（ADR 0210，2026-11-14 加 read）：off 完全不管；read 只看只记不说话；dryRun 写草稿不发；on 真说 */
 export const GROUP_CHAT_MODES = ['off', 'read', 'dryRun', 'on'] as const;
 export type GroupChatMode = (typeof GROUP_CHAT_MODES)[number];
+/** 群里她也有自己（ADR 0341）：off 照旧；dryRun 她自己冒的那句只写草稿；on 每次开口都带着她自己、会自己冒一句 */
+export const GROUP_OWN_MODES = ['off', 'dryRun', 'on'] as const;
+export type GroupOwnMode = (typeof GROUP_OWN_MODES)[number];
 
 export interface GroupConfig {
     id: number;
@@ -1012,6 +1018,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qzonePeek: oneOf(file.qzonePeek, 'qzonePeek', PRESENCE_MODES, DEFAULTS.qzonePeek),
         qzoneStrangers: oneOf(file.qzoneStrangers, 'qzoneStrangers', PRESENCE_MODES, DEFAULTS.qzoneStrangers),
         groupChat: oneOf(file.groupChat, 'groupChat', GROUP_CHAT_MODES, DEFAULTS.groupChat),
+        groupOwn: oneOf(file.groupOwn, 'groupOwn', GROUP_OWN_MODES, DEFAULTS.groupOwn),
         groups: parseGroups(file.groups),
         qqControl: oneOf(file.qqControl, 'qqControl', ACCOUNT_MODES, DEFAULTS.qqControl),
         qqAllowFriends: qqList(file.qqAllowFriends, 'qqAllowFriends'),

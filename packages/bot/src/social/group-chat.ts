@@ -50,7 +50,8 @@ const namedAt = (text: string, names: readonly string[]) =>
 const ABOUT_HER_GOOD = /好看|好听|厉害|牛|可爱|靠谱|温柔|聪明|厉害|真行|不错|挺好|好会|会说话|人好/;
 const ABOUT_HER_BAD = /难看|难听|做作|装|绿茶|蠢|傻|烦人|恶心|刻薄|有病|不行|讨厌|自恋|整天/;
 
-export type SpeakReason = 'mentioned' | 'crisis' | 'defend' | 'topic' | 'overheard';
+/** quiet / news：她自己想说（ADR 0341 G2，groupOwn）——冷场冒一句、她那边有事顺嘴说一句；不是从某条消息来的 */
+export type SpeakReason = 'mentioned' | 'crisis' | 'defend' | 'topic' | 'overheard' | 'quiet' | 'news';
 
 export interface SpeakContext {
     selfId: number;
@@ -118,7 +119,7 @@ export function withinBudget(mine: readonly GroupEntry[], now: number, reason: S
     if (reason !== 'crisis' && lastHour >= GROUP_LIMITS.perHour) return { ok: false, why: `这一小时已经在这个群说了 ${lastHour} 条` };
     if (reason !== 'crisis' && today >= GROUP_LIMITS.perDay) return { ok: false, why: `今天已经在这个群说了 ${today} 条` };
     const last = times.length ? Math.max(...times) : -Infinity;
-    if ((reason === 'topic' || reason === 'defend' || reason === 'overheard') && now - last < GROUP_LIMITS.minGapMs) return { ok: false, why: '刚说过，隔一会儿' };
+    if ((reason === 'topic' || reason === 'defend' || reason === 'overheard' || reason === 'quiet' || reason === 'news') && now - last < GROUP_LIMITS.minGapMs) return { ok: false, why: '刚说过，隔一会儿' };
     return { ok: true };
 }
 
@@ -145,6 +146,8 @@ const REASON_NOTE: Record<SpeakReason, string> = {
     defend: '刚才有人在损他（你男朋友），你可以出来替他说两句，嘴上别太凶，像平时斗嘴那样。',
     topic: '刚才聊到的正好是你熟的，想插一句就插一句；没什么想说的就只写「不说」。',
     overheard: '刚才没人在跟你说话，是他们在聊到你（提到你的名字）。你可以装作恰好看见、接一句；被说得不好听就给自己分辩一下，但别大气凛然，也别追着问是谁说的；不想理就只写「不说」。',
+    quiet: '群里安静了好一阵了，没人在跟你说话。你这会儿想冒一句就冒一句——说说你这边、随口问一句、接上面没聊完的都行，像自己闲下来顺手发的；不想说就只写「不说」。',
+    news: '没人在跟你说话，是你自己这边刚有件事，群里刚好有人在。想顺嘴说一句就说，一句就够；不想说就只写「不说」。',
 };
 
 /**
@@ -172,6 +175,10 @@ export function groupNote(input: {
     roster?: readonly string[];
     /** 这个群平时的味儿（group-style.ts 从聊天记录里统计的） */
     style?: string;
+    /** 她自己（ADR 0341，groupOwn）：群里能带的「你现在」那一段 + 她自己定的群里的边界（group-self.ts） */
+    self?: string;
+    /** 她那边刚有的事（reason 是 news 时） */
+    news?: string;
 }): string {
     const others = input.pending && input.callers ? input.pending - input.callers.length : 0;
     // 群里叫她别的名字（QQ 昵称、群名片）：那也是她，别人叫那些也算叫她
@@ -191,11 +198,13 @@ export function groupNote(input: {
         '群里说话像在群里：短，一两句，不刷屏，不用每句都接；不在群里说你和他之间的私事，也不说别人私下跟你说的事。',
         input.boyfriendHere && input.boyfriendName ? `${input.boyfriendName}（你男朋友）也在这个群：群里收着点，正常说话，别喊得黏，也别装不认识。` : '',
         input.memory ?? '',
+        input.self ?? '',
         input.mood ?? '',
         input.callers?.length
             ? `刚才${input.callers.join('、')}在跟你说话${others > 0 ? `，这一段里还有 ${others} 条是别人在说别的` : ''}：先把上面的记录看完，挑你最想接的那一两句回，不用挨个都应，也不要一个人回一条。`
             : '',
         REASON_NOTE[input.reason],
+        input.news ? `（你这边的事：${input.news}）` : '',
         '只输出你要发到群里的话，不写名字前缀、不写动作；想让谁看见就写「@群名片」（只认这个群里叫得出来的名字）；不想说就只写「不说」。]',
     ].filter(Boolean).join('');
 }

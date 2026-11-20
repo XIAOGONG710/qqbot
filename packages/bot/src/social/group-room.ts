@@ -23,6 +23,10 @@ import { moodStateLine } from '../emotion/express.ts';
 import { feelingsAt } from '../emotion/feelings.ts';
 import { pick } from './reply-timing.ts';
 import { inspectReply } from '../language/exit-check.ts';
+import { chimePlan, crossesHerLine, freeToChime, groupNowLine, smallNews } from './group-self.ts';
+import { stateAt } from '../life/schedule.ts';
+import { worldAt, type WorldNow } from '../world/world.ts';
+import { FEELINGS_STALE_MS } from '../emotion/feeling-export.ts';
 
 export interface GroupRoomDeps {
     config: AppConfig;
@@ -53,6 +57,10 @@ export interface GroupRoomDeps {
     plainTextOf: (message: Segment[] | string) => string | undefined;
     /** 上一首还没唱完时那句回执（唱歌回执的说法在 App 里，私聊点歌也用） */
     singBusyLine: () => string;
+    /** 她那边（ADR 0341 G1，groupOwn）：App 给带结算的世界账；不给就按卡现算 */
+    worldFor?: (card: TierCard, at: Date) => WorldNow | undefined;
+    /** 重启后私聊那份心境还没算过时读落盘的那份（ADR 0341 G3，groupOwn）；FEELINGS_STALE_MS 以内才用 */
+    savedFeelings?: () => FeelingsReport | undefined;
 }
 
 export interface GroupRoom {
@@ -60,6 +68,8 @@ export interface GroupRoom {
     receive(event: GroupMessageEvent): void;
     /** 连上之后读一次她自己的 QQ 昵称和每个群里的群名片 */
     syncNames(): Promise<void>;
+    /** 定时看一眼（ADR 0341 G2，groupOwn）：哪个群冷场了、她那边有没有事，要不要自己冒一句 */
+    tick(): Promise<void>;
 }
 
 export function groupRoom(deps: GroupRoomDeps): GroupRoom {
@@ -154,6 +164,31 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         }
     }
     const groupDay = () => new Date(worldNow()).toDateString();
+    /** 她自己（ADR 0341，groupOwn）：off 照旧；dryRun 只把她自己冒的那句写草稿，别的回话照旧；on 每次开口都带上她自己 */
+    const ownMode = config.groupOwn ?? 'off';
+    /** 每个群今天自己冒过几次（冷场 / 有事各算） */
+    const groupChimes = new Map<number, { day: string; quiet: number; news: number }>();
+    const chimesToday = (groupId: number) => {
+        const hit = groupChimes.get(groupId);
+        return hit && hit.day === groupDay() ? hit : { day: groupDay(), quiet: 0, news: 0 };
+    };
+    /** 群里那一档的卡：都知道 / 要装成真人用原卡，没标的用承认版，危机一律承认版 */
+    const tierOf = (group: { knowsBot?: boolean; disguise?: boolean }, reason: SpeakReason) =>
+        (group.knowsBot || group.disguise) && reason !== 'crisis' ? 'classmate' : 'classmate-open';
+    /** 她此刻（同学档那张卡上的作息和她那边） */
+    function herNowIn(card: TierCard, at: Date): { state?: ReturnType<typeof stateAt>; world?: WorldNow } {
+        const schedule = config.schedule ? card.character.schedule : undefined;
+        const state = schedule ? stateAt(schedule, at) : undefined;
+        const world = config.herDays && card.character.herWorld && card.character.schedule
+            ? (deps.worldFor ? deps.worldFor(card, at) : worldAt(card.character.herWorld, card.character.schedule, at)) : undefined;
+        return { ...(state ? { state } : {}), ...(world ? { world } : {}) };
+    }
+    /** 私聊那边的心境：on / dryRun 时只用 FEELINGS_STALE_MS 以内的（重启后读落盘的那份）；off 照旧取上一次的 */
+    function privateFelt(fresh: boolean) {
+        if (!fresh) return lastFeelings()?.felt ?? [];
+        const report = lastFeelings() ?? deps.savedFeelings?.();
+        return report && worldNow() - report.at <= FEELINGS_STALE_MS && report.at <= worldNow() ? report.felt : [];
+    }
 
     interface GroupBatchItem {
         event: GroupMessageEvent;
@@ -351,10 +386,10 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
     }
 
     async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean; disguise?: boolean; cover?: string }, reason: SpeakReason, bf: { qq: number; name: string } | undefined,
-        extra: { callers?: readonly string[]; pending?: number; replyTo?: number; caller?: number } = {}): Promise<void> {
+        extra: { callers?: readonly string[]; pending?: number; replyTo?: number; caller?: number; news?: string } = {}): Promise<void> {
         // 群里的人都知道她是 AI（用户标过）：原卡，被问时由她定；没标：承认版卡，认真问到就承认；有人说想不开：一律承认版（ADR 0067 / 0068 / 0208）
         // 都知道、或者要装成真人：用同学档原卡（她不用承认）；没标的群用承认版；危机一律承认版
-        const tier = (group.knowsBot || group.disguise) && reason !== 'crisis' ? 'classmate' : 'classmate-open';
+        const tier = tierOf(group, reason);
         let card: TierCard;
         try {
             card = cardFor(tier);
@@ -374,14 +409,18 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         const memory = groupPeopleBook?.render(group.id, { ...(bf ? { exclude: bf.qq } : {}), now: worldNow() });
         const roster = rosterOf(group.id);
         const style = styleOf(group.id);
-        // 心境：私聊那边算好的 + 群里这些遭遇现算的，同一种取更重的那个
+        // 她自己（ADR 0341）：on 时每次开口都带，dryRun 时只有她自己冒的那句带（那句只写草稿）
+        const own = reason === 'quiet' || reason === 'news';
+        const withSelf = ownMode === 'on' || (ownMode === 'dryRun' && own);
+        const self = withSelf && reason !== 'crisis' ? groupNowLine({ at: new Date(worldNow()), ...herNowIn(card, new Date(worldNow())) }) : undefined;
+        // 心境：私聊那边算好的 + 群里这些遭遇现算的，同一种取更重的那个（带她自己时不用过期的，G3）
         const feltNow = config.herFeelings
-            ? mergeFelt(lastFeelings()?.felt ?? [], groupFeel ? feelingsAt(groupFeel.appraisals(group.id), worldNow()) : [])
+            ? mergeFelt(privateFelt(withSelf), groupFeel ? feelingsAt(groupFeel.appraisals(group.id), worldNow()) : [])
             : [];
         const mood = feltNow.length ? moodStateLine(feltNow) : undefined;
         const note = groupNote({
             groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason, ...extra,
-            ...(memory ? { memory } : {}), ...(mood ? { mood } : {}),
+            ...(memory ? { memory } : {}), ...(mood ? { mood } : {}), ...(self ? { self } : {}),
             ...(herGroupNames.get(group.id) ? { myNames: herGroupNames.get(group.id)! } : {}),
             ...(entries.some(entry => entry.history === true) ? { veteran: true } : {}),
             ...(roster ? { roster } : {}),
@@ -396,9 +435,15 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         }];
         const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);
         // 这一档的禁用词（群里叫不出「宝宝」这类黏的叫法）：带了的那条不发
-        const parts = groupReply(raw).filter(part => !inspectReply(part, card.character.banned).some(issue => issue.kind === 'banned'));
+        // 带她自己时，她定的线（分数排名、她和他的事）越过的那条不发
+        const parts = groupReply(raw).filter(part => !inspectReply(part, card.character.banned).some(issue => issue.kind === 'banned'))
+            .filter(part => {
+                const crossed = withSelf ? crossesHerLine(part) : undefined;
+                if (crossed) log(`[群 ${group.id}] 有一条越过了她自己定的线（${crossed === 'study' ? '分数排名' : '她和他的事'}），没发`);
+                return !crossed;
+            });
         if (!parts.length) { log(`[群 ${group.id}] 看了一眼，没说话（${reason}）`); return; }
-        if (config.groupChat === 'dryRun' || !transport.sendGroupText) {
+        if (config.groupChat === 'dryRun' || !transport.sendGroupText || (ownMode === 'dryRun' && own)) {
             const dir = join(config.dataDir, 'groups');
             exec.files.mkdir(dir);
             exec.files.append(join(dir, 'drafts.md'), `- ${new Date(worldNow()).toLocaleString('zh-CN')} 群「${group.name}」（${reason}）：${parts.join(' / ')}\n`);
@@ -466,5 +511,40 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
     }
 
 
-    return { receive: onGroupMessage, syncNames: syncGroupNames };
+    /**
+     * 她自己冒一句（ADR 0341 G2）：每隔一会儿看一眼名单里的群——冷场了、或者她那边刚有件事，抽签决定要不要说；
+     * 说什么、说不说由她（可以「不说」）。只在开了群聊（on / dryRun）、groupOwn 不是 off 时；只看不说（read）的群不冒。
+     */
+    async function tick(): Promise<void> {
+        if (ownMode === 'off' || stopped() || !groupLogs || !selfId() || dormancy?.isDormant()) return;
+        if (config.groupChat !== 'on' && config.groupChat !== 'dryRun') return;
+        for (const group of config.groups ?? []) {
+            if (stopped()) return;
+            if (groupBusy.has(group.id) || (groupQueue.get(group.id)?.length ?? 0)) continue;
+            let card: TierCard;
+            try { card = cardFor(tierOf(group, 'quiet')); } catch { continue; }
+            const at = new Date(worldNow());
+            const { state, world } = herNowIn(card, at);
+            const done = chimesToday(group.id);
+            const entries = groupLogs.load(group.id);
+            const plan = chimePlan({ groupId: group.id, entries, now: at.getTime(), free: freeToChime(state), done, ...(smallNews(world, at) ? { news: smallNews(world, at)! } : {}) });
+            if (!plan) continue;
+            const budget = withinBudget(entries.filter(e => e.mine), at.getTime(), plan.kind);
+            if (!budget.ok) { log(`[群 ${group.id}] 想自己冒一句但${budget.why}`); continue; }
+            groupChimes.set(group.id, { ...done, [plan.kind]: done[plan.kind] + 1 });
+            const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
+            const bf = boyfriend ? { qq: boyfriend.qq, name: entries.findLast(e => e.from === boyfriend.qq)?.name ?? boyfriend.name } : undefined;
+            groupBusy.add(group.id);
+            try {
+                await speakInGroup(group, plan.kind, bf, plan.kind === 'news' ? { news: plan.news } : {});
+            } catch (error) {
+                log(`[群 ${group.id}] 自己冒一句出错：${error instanceof Error ? error.message : String(error)}`);
+            } finally {
+                groupBusy.delete(group.id);
+                if (!stopped() && (groupQueue.get(group.id)?.length ?? 0)) void flushGroup(group.id);
+            }
+        }
+    }
+
+    return { receive: onGroupMessage, syncNames: syncGroupNames, tick };
 }
