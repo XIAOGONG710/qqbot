@@ -97,10 +97,11 @@ describe('少规矩（fewerRules）', () => {
             assert.ok(plain.includes(rule), `关着时有：${rule}`);
             assert.ok(!relaxed.includes(rule), `开着时没有：${rule}`);
         }
-        // 开着时照旧有的：她的日子、承认是程序的那段、卡末尾那四句
+        // 开着时照旧有的：她的日子、承认是程序的那段、卡末尾那几句（含她自己要留的那条）
         assert.match(relaxed, /\[你现在：/);
         assert.match(relaxed, /【被问是不是 AI】/);
         assert.ok(relaxed.includes(FEWER_RULES_BASICS.split('\n')[0]!));
         assert.ok(relaxed.includes('不编他说过的话'));
+        assert.ok(relaxed.includes('他追着问你为什么不说话，你不想说可以不说'), '她 11-20 自己要留的那条');
     });
 });
