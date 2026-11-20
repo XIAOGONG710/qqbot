@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { insightsLine, writeInsightsExport, type Insight } from '../src/life/diary-insights.ts';
 import { writeFeelingsExport } from '../src/emotion/feeling-export.ts';
 import { clarity as qqMemoryClarity } from '../src/memory/fading.ts';
+import { ChatHistory } from '../src/memory/history.ts';
 
 // 林梦瑶的 DSH 记忆桥（dsh-plugins/dsh-linmengyao-memory）：灵魂模块 1245 行里原来一条测试都没有。
 // 这里用一个假的 Cordis 上下文驱动真插件的工具，全部落在临时目录里，不碰她真正的灵魂目录。
@@ -523,6 +524,33 @@ describe('同一个她·第 2 层：DSH 读他刚在 QQ 上聊的（ADR 0177）'
         assert.ok(!block.includes('昨晚的话'), '超过 6 小时的不放');
         assert.ok(!block.includes('第0句') && !block.includes('第1句'), '只留最近的');
         assert.match(lines[0]!, /^\d\d:\d\d 他：第3句|^\d\d:\d\d 你：第3句/);
+    });
+
+    test('撤回清单是 QQ 那边真写出来的格式（ChatHistory 的 v2）：他撤回的照样遮住（11-20 前插件只认老数组，什么都没遮）', () => {
+        const c = crossRoot();
+        const history = new ChatHistory(c.root);
+        const at = (agoMin: number) => new Date(T - mins(agoMin)).toISOString();
+        history.append(10002, { role: 'user', time: at(10), content: '早上好', messageId: 701 });
+        history.append(10002, { role: 'assistant', time: at(9), content: '早呀', messageId: 702 });
+        history.append(10002, { role: 'user', time: at(3), content: '这句我撤回了ZQR', messageId: 703 });
+        assert.equal(history.recall(10002, 703), true);
+        const saved = JSON.parse(readFileSync(c.files.recalledFile, 'utf8')) as { version?: number };
+        assert.equal(saved.version, 2, '对照：QQ 那边写的不是数组');
+        const block = cross().qqRecentBlock(c.cfg, T);
+        assert.ok(block.includes('早上好') && block.includes('早呀'));
+        assert.match(block, /他：\[撤回了一条消息\]$/);
+        assert.ok(!block.includes('ZQR'), '撤回的原文不进桌面的提示词');
+    });
+
+    test('撤回清单在但读不了 / 认不出格式：整段不放（不能当成没撤回过）', () => {
+        const c = crossRoot();
+        writeFileSync(c.files.chatFile, c.chatRow(3, 'user', '这句我撤回了ZQB', 555));
+        for (const bad of ['{"version":2,"legacyIds":[5', '{"version":3,"ids":[555]}', '"555"']) {
+            writeFileSync(c.files.recalledFile, bad);
+            assert.equal(cross().qqRecentBlock(c.cfg, T), '', bad);
+        }
+        rmSync(c.files.recalledFile);
+        assert.match(cross().qqRecentBlock(c.cfg, T), /ZQB/, '对照：没有撤回清单 = 没撤回过，照常放');
     });
 
     test('只读文件尾部：几百 KB 的聊天记录也只取最后几句', () => {

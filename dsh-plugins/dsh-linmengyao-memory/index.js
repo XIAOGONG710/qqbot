@@ -411,14 +411,34 @@ function inboxTime(value, now = Date.now()) {
   return new Date(at)
 }
 
+/**
+ * 他在 QQ 上撤回过的消息 id（<QQ>.recalled.json，QQ 那边 packages/bot/src/memory/history.ts 写）。
+ * 现在的格式是 { version: 2, legacyIds, messages: [{ messageId, … }], pending: [{ source: { messageId }, withdrawn }], kept }；
+ * 老格式是一个 id 数组（QQ 那边第一次读到就改写成 v2）。只按 id 遮：比 QQ 那边（id + 内容哈希，kept 的不遮）遮得宽，宁可多遮。
+ * 没有文件 = 没撤回过，返回空集合；文件在但读不了 / 认不出格式返回 undefined——调用方整段不放，不能当成「没撤回过」把原文放出去。
+ */
+export function recalledIds(file) {
+  let raw
+  try { raw = fs.readFileSync(file, 'utf8') } catch (error) { return error?.code === 'ENOENT' ? new Set() : undefined }
+  let value
+  try { value = JSON.parse(raw) } catch { return undefined }
+  const id = (item) => (Number.isSafeInteger(item) && item >= 0 ? [item] : [])
+  if (Array.isArray(value)) return new Set(value.flatMap(id))
+  if (!value || typeof value !== 'object' || value.version !== 2 || !Array.isArray(value.legacyIds) || !Array.isArray(value.messages)) return undefined
+  return new Set([
+    ...value.legacyIds.flatMap(id),
+    ...value.messages.flatMap((mark) => id(mark?.messageId)),
+    ...(Array.isArray(value.pending) ? value.pending.filter((entry) => entry?.withdrawn === true).flatMap((entry) => id(entry?.source?.messageId)) : []),
+  ])
+}
+
 /** 他的 QQ 聊天记录最后几句（6 小时内、最多 10 句；他撤回的遮成「[撤回了一条消息]」）。QQ 那边没开 crossRecent（owner-bank.json 里没有 chatFile）就是空串 */
 export function qqRecentBlock(cfg, now = Date.now()) {
   const files = ownerBanks(cfg)
   if (!files?.chatFile) return ''
-  let hidden = new Set()
-  if (files.recalledFile) {
-    try { const ids = JSON.parse(fs.readFileSync(files.recalledFile, 'utf8')); if (Array.isArray(ids)) hidden = new Set(ids.filter((id) => Number.isSafeInteger(id))) } catch {}
-  }
+  // 撤回清单读不了就整段不放（11-20 前这里只认老的数组格式，QQ 那边早已改写成 v2，等于什么都没遮）
+  const hidden = files.recalledFile ? recalledIds(files.recalledFile) : new Set()
+  if (!hidden) return ''
   const rows = []
   for (const line of tailLines(files.chatFile)) {
     try {
