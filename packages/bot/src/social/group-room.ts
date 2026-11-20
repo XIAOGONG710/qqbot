@@ -359,8 +359,9 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             // 这一批说完，顺手把某个人在她心里的样子写一句（后台、一批最多一个、14 天才重写；不耽误回话）
             if (config.groupChat === 'on') refineGroupImpression(groupId, batch);
             // 群自主：她定的线在决策层就挡住——起哄问咱俩装看不见；冲宝宝来的才算「咱俩的事」（替陌生人讲公道话不在此列）。危机不拦。
+            // 只看让她开口的那几条：同一批里别人随口提了句「成绩」，不该连带吞掉有人 @ 她问的别的事
             if (agencyOn && reason && reason !== 'crisis'
-                && (reason === 'defend' || batch.some(item => crossesHerLine(item.text)))) {
+                && (reason === 'defend' || batch.some(item => item.reason === reason && crossesHerLine(item.text)))) {
                 if (trace) { trace.passed = false; trace.blockedBy = 'line'; }
                 log(`[群 ${groupId}] 她定的线：这件事装看不见，没开口`);
                 return;
@@ -390,6 +391,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
                 ...(calling ? { replyTo: calling.event.message_id, caller: calling.event.user_id } : {}),
                 ...(who ? { callerName: who } : {}),
                 ...(trace ? { trace } : {}),
+                ...(sourceItem.decision?.source === 'motive' ? { motive: true } : {}),
             });
         } catch (error) {
             log(`[群 ${groupId}] 说话出错：${error instanceof Error ? error.message : String(error)}`);
@@ -420,7 +422,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
     }
 
     async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean; disguise?: boolean; cover?: string }, reason: SpeakReason, bf: { qq: number; name: string } | undefined,
-        extra: { callers?: readonly string[]; pending?: number; replyTo?: number; caller?: number; news?: string; trace?: GroupDecisionTrace } = {}): Promise<void> {
+        extra: { callers?: readonly string[]; pending?: number; replyTo?: number; caller?: number; news?: string; trace?: GroupDecisionTrace; motive?: boolean } = {}): Promise<void> {
         // 群里的人都知道她是 AI（用户标过）：原卡，被问时由她定；没标：承认版卡，认真问到就承认；有人说想不开：一律承认版（ADR 0067 / 0068 / 0208）
         // 都知道、或者要装成真人：用同学档原卡（她不用承认）；没标的群用承认版；危机一律承认版
         const tier = tierOf(group, reason);
@@ -485,7 +487,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             if (lineBlocked && extra.trace) { extra.trace.passed = false; extra.trace.blockedBy = 'line'; }
             log(`[群 ${group.id}] 看了一眼，没说话（${reason}）`); return;
         }
-        if (config.groupChat === 'dryRun' || !transport.sendGroupText || (ownMode === 'dryRun' && own) || (agencyMode === 'dryRun' && agencyOn)) {
+        if (config.groupChat === 'dryRun' || !transport.sendGroupText || (ownMode === 'dryRun' && own) || (agencyMode === 'dryRun' && extra.motive)) {
             const dir = join(config.dataDir, 'groups');
             exec.files.mkdir(dir);
             exec.files.append(join(dir, 'drafts.md'), `- ${new Date(worldNow()).toLocaleString('zh-CN')} 群「${group.name}」（${reason}）：${parts.join(' / ')}\n`);
@@ -589,7 +591,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             const bf = boyfriend ? { qq: boyfriend.qq, name: entries.findLast(e => e.from === boyfriend.qq)?.name ?? boyfriend.name } : undefined;
             groupBusy.add(group.id);
             try {
-                await speakInGroup(group, plan.kind, bf, { ...(plan.kind === 'news' ? { news: plan.news } : {}), ...(trace ? { trace } : {}) });
+                await speakInGroup(group, plan.kind, bf, { ...(plan.kind === 'news' ? { news: plan.news } : {}), ...(trace ? { trace } : {}), ...(motive ? { motive: true } : {}) });
             } catch (error) {
                 log(`[群 ${group.id}] 自己冒一句出错：${error instanceof Error ? error.message : String(error)}`);
             } finally {

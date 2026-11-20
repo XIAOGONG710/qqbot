@@ -89,7 +89,7 @@ export function groupSimConfig(dataDir: string, scenario: GroupScenario, options
         ...(options.base.timeZone ? { timeZone: options.base.timeZone } : {}),
         groupChat: 'on',
         ...(options.base.groupAgency ? { groupAgency: options.base.groupAgency } : {}),
-        ...(options.motiveOverride ? { groupAgency: 'on' as const } : {}),
+        ...(options.motiveOverride && !options.base.groupAgency ? { groupAgency: 'on' as const } : {}),
         groups: [{ id: GROUP_SIM.groupId, name: scenario.group.name, ...(scenario.group.knowsBot ? { knowsBot: true } : {}) }],
     } as AppConfig;
 }

@@ -94,12 +94,12 @@ describe('群自主：chimePlan 时机不动，只换末尾那道判定', () => 
 });
 
 describe('群自主：她定的边界（ADR 0343 原话）', () => {
-    test('分数排名、咱俩的事、起哄问咱俩、多穿点式关心越线；土豆和替陌生人讲公道话不越', () => {
+    test('分数排名、咱俩的事、起哄问咱俩、多穿点式关心越线；她喂的猫和替陌生人讲公道话不越', () => {
         assert.equal(crossesHerLine('这次排名第 3'), 'study');
         assert.equal(crossesHerLine('我男朋友昨天来找我'), 'us');
         assert.equal(crossesHerLine('你俩啥时候在一起的'), 'tease');
         assert.equal(crossesHerLine('今天冷了，多穿点'), 'care');
-        assert.equal(crossesHerLine('我下楼喂了土豆，还拍了它'), undefined);
+        assert.equal(crossesHerLine('我下楼喂了猫，还拍了它'), undefined);
         assert.equal(crossesHerLine('替他说句公道话，这事本来就不对'), undefined);
     });
 });
@@ -170,4 +170,36 @@ describe('群自主：模拟端到端', () => {
         assert.equal(run.decisions.filter(decision => decision.reason === 'mentioned').length, 4);
         assert.ok(run.decisions.filter(decision => decision.reason === 'mentioned').every(decision => decision.source === 'reactive'));
     });
+
+    test('dryRun 只把动机放行的那句写草稿：被叫照常发出去（不能因为开了 dryRun 就不理 @ 她的人）', async () => {
+        const scenario: GroupScenario = {
+            about: '合成：dryRun 下叫她', group: { name: '合成宿舍群' }, boyfriend: '阿明', members: ['老王'],
+            steps: [{ from: '老王', say: '梦瑶在吗', atHer: true, pause: 0.1 }],
+        };
+        const run = await runGroupScenario(scenario, options({ base: { ...base, groupAgency: 'dryRun' }, motiveOverride: blocked }));
+        assert.equal(run.spoke, 1, run.logs.join('\n'));
+        assert.deepEqual(run.reasons, { mentioned: 1 });
+    });
+
+    test('dryRun + 动机放行：主动那句只写草稿，不发', async () => {
+        const run = await runGroupScenario(topicScenario('学校门口新开了家奶茶店，好喝吗'), options({
+            base: { ...base, groupAgency: 'dryRun' }, motiveOverride: allowed, firstMessageId: 6000,
+        }));
+        assert.equal(run.spoke, 0, run.logs.join('\n'));
+        assert.ok(run.decisions.some(decision => decision.reason === 'topic' && decision.passed), JSON.stringify(run.decisions));
+    });
+
+    test('她定的线只看叫她开口的那条：同一批里别人提了句「成绩」，有人 @ 她问别的照样接', async () => {
+        const scenario: GroupScenario = {
+            about: '合成：一批里有人说成绩，另一个人叫她', group: { name: '合成宿舍群' }, boyfriend: '阿明', members: ['老王', '陈陈'],
+            steps: [
+                { from: '老王', say: '期中成绩出来了', pause: 0.1 },
+                { from: '陈陈', say: '晚上吃饭去不去', atHer: true, pause: 0.1 },
+            ],
+        };
+        const run = await runGroupScenario(scenario, options({ motiveOverride: blocked, generate: async () => '去啊，几点' }));
+        assert.equal(run.spoke, 1, run.logs.join('\n'));
+        assert.deepEqual(run.reasons, { mentioned: 1 });
+    });
 });
+
