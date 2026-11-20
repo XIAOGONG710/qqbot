@@ -50,7 +50,8 @@ test('默认安静窗口定时器归属回复器，stop会实际清除而不是�
     let quietTimer: ReturnType<typeof setTimeout> | undefined, quietCleared = false;
     globalThis.setTimeout = ((callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
         const timer = originalSet(callback, ms, ...args);
-        if (ms === 4000) quietTimer = timer;
+        // 安静窗口的等待是 quietMs 减去已经过去的时间（responder.ts 的 waitForQuiet）：机器忙的时候过了一两毫秒就是 3999，不能只认正好 4000
+        if (ms !== undefined && ms > 3000 && ms <= 4000) quietTimer = timer;
         return timer;
     }) as typeof setTimeout;
     globalThis.clearTimeout = ((timer: Parameters<typeof clearTimeout>[0]) => {
