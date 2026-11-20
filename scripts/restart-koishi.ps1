@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $lock = Join-Path $repo 'runtime\bot-shadow\bot.lock'
 $instance = Join-Path $repo 'runtime\koishi'
-$botLog = Join-Path $repo 'runtime\bot-shadow\logs\{0}.log' -f (Get-Date -Format 'yyyy-MM-dd')
+$botLog = (Join-Path $repo 'runtime\bot-shadow\logs\{0}.log') -f (Get-Date -Format 'yyyy-MM-dd')
 
 function Get-LockOwner {
     if (-not (Test-Path $lock)) { return $null }
@@ -43,7 +43,7 @@ Remove-Item $lock -Force -ErrorAction SilentlyContinue
 $before = 0
 if (Test-Path $botLog) { $before = (Get-Content $botLog).Count }
 
-Start-Process -FilePath pwsh -ArgumentList '-NoProfile', '-File', (Join-Path $repo 'scripts\start-koishi.ps1') -WindowStyle Hidden
+Start-Process -FilePath powershell -ArgumentList '-NoProfile', '-File', (Join-Path $repo 'scripts\start-koishi.ps1') -WindowStyle Hidden
 Start-Sleep -Seconds 30
 
 $listening = Get-NetTCPConnection -LocalPort 5140 -State Listen -ErrorAction SilentlyContinue

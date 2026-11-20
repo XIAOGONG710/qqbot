@@ -19,7 +19,7 @@ if (-not (Test-Path $configPath)) {
 
 # The user-scope variables are the source of truth: a terminal opened before a key was set or changed
 # still carries the old value, so take the user-scope one whenever it exists.
-# 2026-10-31：QQBOT_KEEP_PROCESS_ENV=1 时不覆盖——给「临时换线路」的启动器留口子（start-koishi-ginka.ps1）。
+# 2026-10-31: do not override when QQBOT_KEEP_PROCESS_ENV=1 - leaves a hook for the temp line-switch launcher (start-koishi-ginka.ps1).
 if (-not $env:QQBOT_KEEP_PROCESS_ENV) {
     foreach ($name in 'QQBOT_LLM_API_KEY', 'QQBOT_ONEBOT_TOKEN', 'QQBOT_KOISHI_PASSWORD', 'QQBOT_SENSITIVE_LOGS') {
         $value = [Environment]::GetEnvironmentVariable($name, 'User')
