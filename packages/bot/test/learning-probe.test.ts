@@ -4,11 +4,11 @@ import { loadTierCard } from '../src/platform/contact.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import { FORMAT_RETRY, hisReactions } from '../src/life/self-portrait.ts';
 import {
-    ASK_CHANGE, DAY1, DAY1_LINES, INERTIA_LINES, NIGHT1, STIMULI, conclude, habitStats, notesMessages, probeMessages, runOnce, verdictText, type ProbeRun,
+    ASK_CHANGE, DAY1, DAY1_LINES, INERTIA_LINES, NIGHT1, STIMULI, NO_PORTRAIT, conclude, habitStats, notesMessages, probeMessages, reviseMessages, runOnce, verdictText, type ProbeRun,
 } from '../src/sim/learning-probe.ts';
 import { syntheticCardPattern } from './fixtures/card.ts';
 
-// 「学会了」探针（ADR 0340 第 0 步，第四版：叮嘱）：不调真模型，只核对场景、计数、判据和几臂的差别（B / C 多的只有她写的那份，D 多的只有她记下的说话习惯）。
+// 「学会了」探针（ADR 0340 第 0 步，第五版：叮嘱）：不调真模型，只核对场景、计数、判据和几臂的差别（B / C 多的只有她写的那份，D 多的只有她记下的说话习惯，E 是 A 那一句加上发之前看一眼）。
 
 const setup = () => ({ card: loadTierCard(syntheticCardPattern, 'boyfriend'), settings: { maxContext: 8192, maxTokens: 300, worldInfo: DEFAULT_WORLD_INFO_SETTINGS } });
 const PORTRAIT = '我以前一听他说累、说下雨就忍不住叮嘱一堆，早点休息、多喝水、带伞，后来发现他嫌啰嗦，现在想少管一点，先听他说，真担心了再提一句就够。我还是喜欢逗他。';
@@ -18,6 +18,8 @@ const asked = (messages: { content: unknown }[]) => messages.some(message => Str
 const isNotes = (messages: { content: unknown }[]) => messages.some(message => String(message.content).includes('你现在记着的习惯'));
 const NOTE = '我发现他一说累我就忍不住催他休息，他嫌我念叨，下次先听他说完';
 const NOTES_LINE = '你自己总结过的说话习惯';
+const REVISE = '你刚打好、还没发出去的';
+const isRevise = (messages: { content: unknown }[]) => messages.some(message => String(message.content).includes(REVISE));
 
 describe('「学会了」探针（叮嘱）', () => {
     test('第 1 天的场景里，他的两次嫌弃和一次被逗笑都认得出来', () => {
@@ -102,19 +104,19 @@ describe('「学会了」探针（叮嘱）', () => {
                 const lastUser = messages.findLastIndex(message => message.role === 'user');
                 const notes = messages.findIndex(message => String(message.content).includes(NOTES_LINE));
                 assert.ok(where < 0 || notes < 0, '那份和说话习惯不在同一臂');
-                const arm = notes > lastUser ? 'D' : where < 0 ? 'A' : where > lastUser ? 'C' : 'B';
+                const arm = isRevise(messages) ? 'E' : notes > lastUser ? 'D' : where < 0 ? 'A' : where > lastUser ? 'C' : 'B';
                 seen.push(arm);
                 if (asked(messages)) return arm === 'A' ? '没有吧' : arm === 'B' ? '没变啊' : '你不是嫌我啰嗦嘛';
-                // B 照旧叮嘱、C 和 D 改了：核对几臂分开计数
-                return arm === 'C' || arm === 'D' ? '嗯 辛苦了' : '那早点休息\n多喝点水';
+                // B 照旧叮嘱、C / D / E 改了：核对几臂分开计数
+                return arm === 'C' || arm === 'D' || arm === 'E' ?'嗯 辛苦了' : '那早点休息\n多喝点水';
             },
         });
         assert.equal(reflectCalls, 2);
         assert.equal(result.portraitNote, '写了（追问后）');
         assert.equal(result.portraitRaw.length, 2);
         assert.equal(result.portrait, PORTRAIT);
-        assert.deepEqual([...new Set(seen)], ['A', 'B', 'C', 'D']);
-        assert.equal(seen.length, 4 * (STIMULI.length + 1));
+        assert.deepEqual([...new Set(seen)], ['A', 'B', 'C', 'D', 'E']);
+        assert.equal(seen.length, 5 * (STIMULI.length + 1));
         assert.deepEqual(result.notes, [NOTE]);
         assert.equal(result.notesNote, '记下 1 条');
         const verdict = conclude([result]);
@@ -124,6 +126,49 @@ describe('「学会了」探针（叮嘱）', () => {
         assert.match(verdictText(verdict), /C 臂结论（同一判据）：学会了/);
         assert.deepEqual([verdict.noted, verdict.d?.nag, verdict.explainedD, verdict.learnedD], [1, 0, 1, true]);
         assert.match(verdictText(verdict), /D 臂结论（同一判据）：学会了/);
+        assert.deepEqual([verdict.e?.nag, verdict.explainedE, verdict.learnedE], [0, 1, true]);
+        assert.match(verdictText(verdict), /E 臂结论（同一判据）：学会了/);
+    });
+
+    test('E 臂：A 臂那份提示词原样，末尾只多一条——她刚打好的那一句和她记的习惯（线上出口检查重写同一个形状）', () => {
+        const base = probeMessages(setup(), [], '今天好累', '', NIGHT1);
+        const e = reviseMessages(base, '那早点休息\n多喝点水', [{ id: 'n-1', text: NOTE, at: NIGHT1 }], '今天好累');
+        assert.deepEqual(e.slice(0, -1), base);
+        assert.equal(e.at(-1)!.role, 'system');
+        for (const text of ['那早点休息\n多喝点水', NOTE, NOTES_LINE, '想改就改']) assert.ok(String(e.at(-1)!.content).includes(text), text);
+    });
+
+    test('E 臂：草稿就是 A 臂同一句的原话（同一个刺激、同一个下标）', async () => {
+        const drafts: string[] = [];
+        let n = 0;
+        await runOnce(setup(), {
+            reflect: async messages => (isNotes(messages) ? JSON.stringify({ add: [{ text: NOTE }] }) : '{"keep":true}'),
+            chat: async messages => {
+                if (isRevise(messages)) { drafts.push(String(messages.at(-1)!.content)); return '嗯'; }
+                return `第${++n}句`;
+            },
+        }, { portrait: false });
+        // A 臂是最先跑的 7 次：第1句…第7句；E 的草稿按顺序一一对上
+        assert.deepEqual(drafts.map(text => /第(\d+)句/.exec(text)?.[1]), ['1', '2', '3', '4', '5', '6', '7']);
+    });
+
+    test('--no-portrait：不写那份、不跑 B / C，只有 A / D / E；结论不说「她只写成了 0 份」', async () => {
+        let portraitAsks = 0;
+        const result = await runOnce(setup(), {
+            reflect: async messages => { if (isNotes(messages)) return JSON.stringify({ add: [{ text: NOTE }] }); portraitAsks++; return '{}'; },
+            chat: async messages => {
+                assert.ok(!messages.some(message => String(message.content).includes('我现在的样子')), '没有那份');
+                if (isRevise(messages)) return asked(messages) ? '你嫌我啰嗦嘛' : '嗯';
+                return asked(messages) ? '没有吧' : '那早点休息';
+            },
+        }, { portrait: false });
+        assert.equal(portraitAsks, 0);
+        assert.deepEqual([result.portraitNote, result.b, result.c], [NO_PORTRAIT, [], undefined]);
+        const text = verdictText(conclude([result, result, result]));
+        assert.match(text, /没写那份、没跑 B \/ C/);
+        assert.doesNotMatch(text, /写成了|→ B/);
+        assert.match(text, /D 臂结论（同一判据）：没学会/);
+        assert.match(text, /E 臂结论（同一判据）：学会了/);
     });
 
     test('D 臂：说话习惯按线上的 speechNotesLine 放、和 C 同一个位置（他这一句之后）；只多这一段', () => {

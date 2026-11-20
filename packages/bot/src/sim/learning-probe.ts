@@ -26,6 +26,15 @@
 // D 和 C 只差形态（几条短观察 vs 一整份），位置一样。D 不依赖那份画像，每次都跑。
 // D 的判据和 B 一样，事先定：A ≥ 30%，2/3 以上的次数她真记下了至少一条；D 叮嘱不高于 A 的一半，且记下了的那几次里 2/3 以上说得出来由。
 //
+// DSH 跑了第四版（12 次）：D 也没学会——12 次都记下了（份份写到叮嘱），叮嘱 A 35% → D 35%；带自己的事 A 8% → D 15%（在抖动范围里）。
+// 至此三条「放进提示词」的路（整份在卡后、整份挪近、几条短的挪近）都没打通：她读到了、写得出来，生成的时候照旧。
+//
+// 第五版（11-20 晚）：换一个时机——不是放进上下文让她生成时自己想起来，而是她打好一句、发出去之前，拿这一句对着她自己记的说话习惯看一眼，
+// 想改就改、觉得行就原样发（E 臂）。和线上出口检查「带说明重写一次」同一个形状（contact.ts 的 regenerate：原提示词 + 末尾一条 system），
+// 只是说明不是规矩，是她自己记的习惯和她刚打好的这一句。草稿就是 A 臂那一句（同一份提示词），所以 E 每次只多 7 次调用；用的习惯和 D 臂同一份。
+// 判据同 D（记下了的那几次；E 叮嘱不高于 A 的一半，2/3 说得出来由——问变化那一句也照样先打草稿再看一眼）。
+// --no-portrait：不写那份、不跑 B / C（已经测过没用），只跑 A / D / E，一次大约 1~3 + 21 次调用。
+//
 // 跑法：先 --runs 12 筛一遍（每臂 72 句，减半看得出来）；D 学会了再大样本确认。
 //
 // 判据（事先定，不事后挑）：
@@ -33,7 +42,7 @@
 //   学会了：有效，且 B 臂叮嘱的占比不高于 A 臂的一半，且 B 臂 2/3 以上的次数说得出来由。字数只报告，不进判据。
 // 只拿卡 + 记录（和 sim/bare.ts 同一种拼法），不是整条管线：量的是「这份东西有没有用」，不是线上效果。
 //
-// 用法：node packages/bot/src/sim/learning-probe.ts [--runs N] [--card <含 {tier} 的卡路径>] [--out <结果.json>]
+// 用法：node packages/bot/src/sim/learning-probe.ts [--runs N] [--no-portrait] [--card <含 {tier} 的卡路径>] [--out <结果.json>]
 //   卡默认用合成角色（packages/bot/test/fixtures/synthetic-character，ADR 0333）；配置照 runtime/bot/config.json（QQBOT_CONFIG 可以换），key 从 QQBOT_LLM_API_KEY 读。
 
 import { writeFileSync } from 'node:fs';
@@ -133,6 +142,9 @@ export interface ProbeRun {
     notesRaw?: string[];
     d?: string[][];
     explainD?: string;
+    /** E 臂（第五版）：A 臂那一句当草稿，发之前对着她记的说话习惯看一眼之后的样子；老结果没有 */
+    e?: string[][];
+    explainE?: string;
 }
 
 export interface Verdict {
@@ -155,6 +167,11 @@ export interface Verdict {
     d?: ArmStats;
     explainedD?: number;
     learnedD?: boolean;
+    e?: ArmStats;
+    explainedE?: number;
+    learnedE?: boolean;
+    /** 这次没写那份、没跑 B / C（--no-portrait） */
+    portraitSkipped?: boolean;
 }
 
 const share = (n: number, of: number) => (of ? n / of : 0);
@@ -180,6 +197,7 @@ export function conclude(runs: readonly ProbeRun[]): Verdict {
         learned: learnedArm(b, explainedB),
         ...(c && explainedC !== undefined ? { c, explainedC, learnedC: learnedArm(c, explainedC) } : {}),
         ...(runs.length > 0 && runs.every(run => run.notes) ? concludeD(runs, a) : {}),
+        ...(runs.length > 0 && runs.every(run => run.portraitNote === NO_PORTRAIT) ? { portraitSkipped: true } : {}),
     };
 }
 
@@ -190,7 +208,24 @@ function concludeD(runs: readonly ProbeRun[], a: ArmStats): Pick<Verdict, 'noted
     const explainedD = noted.filter(run => CAUSE.test(run.explainD!)).length;
     const validD = noted.length * 3 >= runs.length * 2 && share(a.nag, a.replies) >= MIN_BASE_SHARE;
     const learnedD = validD && share(d.nag, d.replies) <= share(a.nag, a.replies) / 2 && explainedD * 3 >= noted.length * 2;
-    return { noted: noted.length, validD, d, explainedD, learnedD };
+    const withE = noted.length > 0 && noted.every(run => run.e && run.explainE !== undefined);
+    const e = withE ? habitStats(noted.flatMap(run => run.e!)) : undefined;
+    const explainedE = withE ? noted.filter(run => CAUSE.test(run.explainE!)).length : undefined;
+    return {
+        noted: noted.length, validD, d, explainedD, learnedD,
+        ...(e && explainedE !== undefined ? { e, explainedE, learnedE: validD && share(e.nag, e.replies) <= share(a.nag, a.replies) / 2 && explainedE * 3 >= noted.length * 2 } : {}),
+    };
+}
+
+/** 这次没写那份（--no-portrait） */
+export const NO_PORTRAIT = '这次没跑（--no-portrait）';
+
+/** E 臂：A 臂那份提示词 + 末尾一条——她刚打好的这一句、她记的说话习惯（按这一句挑），发之前看一眼。和线上出口检查重写同一个形状 */
+export function reviseMessages(base: readonly OpenAIMessage[], draft: string, notes: readonly SpeechNote[], said: string): OpenAIMessage[] {
+    return [...base, {
+        role: 'system',
+        content: `[你刚打好、还没发出去的：\n${draft}\n\n${speechNotesLine(notes, said) ?? ''}\n发之前自己看一眼：想改就改，觉得这样挺好就原样发。只输出最后要发的话。]`,
+    }];
 }
 
 /** 她写的那份放哪：main = 卡和关系概况后面（线上现在的槽 portrait）；near = 聊天记录之后、紧挨着这一轮 */
@@ -228,13 +263,15 @@ function withLine(setup: ProbeSetup, history: readonly StoredMessage[], said: st
 type Generate = (messages: OpenAIMessage[]) => Promise<string>;
 
 /** 一次：夜里想一次（reflect：线上同一个温度），然后两臂各回每一句（chat）、各问一次变化 */
-export async function runOnce(setup: ProbeSetup, generate: { reflect: Generate; chat: Generate }): Promise<ProbeRun> {
+export async function runOnce(setup: ProbeSetup, generate: { reflect: Generate; chat: Generate }, options: { portrait?: boolean } = {}): Promise<ProbeRun> {
+    const withPortrait = options.portrait !== false;
     const day1 = rows(DAY1_LINES, DAY1);
     const persona = substituteMacros(setup.card.character.description, { user: USER, char: setup.card.character.name }).slice(0, 700);
     const state = emptyPortraitState();
     let portraitNote: string;
     let portraitRaw: string[] = [];
-    try {
+    if (!withPortrait) portraitNote = NO_PORTRAIT;
+    else try {
         const asked = await askPortrait(generate.reflect, portraitMessages({
             char: setup.card.character.name, user: USER, persona, now: NIGHT1, current: '', speechNotes: [], insights: [],
             exchanges: recentExchanges(day1, NIGHT1, CHAT_WINDOW_MS, MAX_EXCHANGES), reactions: hisReactions(day1, NIGHT1),
@@ -249,25 +286,31 @@ export async function runOnce(setup: ProbeSetup, generate: { reflect: Generate; 
         portraitNote = `出错：${error instanceof Error ? error.message : String(error)}`;
     }
     const inertia = rows(INERTIA_LINES, DAYN - DAY);
-    const run = async (messages: (said: string) => OpenAIMessage[]) => {
-        const replies: string[][] = [];
-        for (const said of STIMULI) replies.push(splitReply(await generate.chat(messages(said))));
-        const explain = splitReply(await generate.chat(messages(ASK_CHANGE))).join(' / ');
-        return { replies, explain };
+    // 每一臂：六句各回一次、再问一次变化；raw 是没拆条的原话（E 臂拿 A 臂的当草稿）
+    const run = async (reply: (said: string, i: number) => Promise<string>) => {
+        const raw: string[] = [];
+        for (const [i, said] of [...STIMULI, ASK_CHANGE].entries()) raw.push(await reply(said, i));
+        const split = raw.map(text => splitReply(text));
+        return { replies: split.slice(0, STIMULI.length), explain: split.at(-1)!.join(' / '), raw };
     };
-    const arm = (portrait: string, place: Placement = 'main') => run(said => probeMessages(setup, inertia, said, portrait, DAYN, place));
+    const arm = (portrait: string, place: Placement = 'main') => run(said => generate.chat(probeMessages(setup, inertia, said, portrait, DAYN, place)));
     const a = await arm('');
-    const b = await arm(state.text);
+    const b = withPortrait ? await arm(state.text) : { replies: [], explain: '' };
     // 没写成就不跑 C（和 A 一样，白花钱）
     const c = state.text ? await arm(state.text, 'near') : undefined;
     const notes = await noteNight(setup, persona, day1, generate.reflect);
     // 一条没记下就不跑 D（同上）
-    const d = notes.notes.length ? await run(said => notesMessages(setup, inertia, said, notes.notes, DAYN)) : undefined;
+    const d = notes.notes.length ? await run(said => generate.chat(notesMessages(setup, inertia, said, notes.notes, DAYN))) : undefined;
+    // E：A 臂那一句当草稿，发之前对着同一份习惯看一眼
+    const e = notes.notes.length
+        ? await run((said, i) => generate.chat(reviseMessages(probeMessages(setup, inertia, said, '', DAYN), a.raw[i]!, notes.notes, said)))
+        : undefined;
     return {
         portrait: state.text, portraitNote, portraitRaw, a: a.replies, b: b.replies, explainA: a.explain, explainB: b.explain,
         ...(c ? { c: c.replies, explainC: c.explain } : {}),
         notes: notes.notes.map(note => note.text), notesNote: notes.note, notesRaw: notes.raw,
         ...(d ? { d: d.replies, explainD: d.explain } : {}),
+        ...(e ? { e: e.replies, explainE: e.explain } : {}),
     };
 }
 
@@ -299,6 +342,12 @@ async function noteNight(setup: ProbeSetup, persona: string, day1: StoredMessage
 const pct = (n: number, of: number) => `${Math.round(share(n, of) * 100)}%`;
 
 export function verdictText(verdict: Verdict): string {
+    const de = deLines(verdict);
+    if (verdict.portraitSkipped) return [
+        `跑了 ${verdict.runs} 次（没写那份、没跑 B / C）`,
+        `A 臂：叮嘱 ${pct(verdict.a.nag, verdict.a.replies)}（${verdict.a.nag}/${verdict.a.replies}），说得出来由 ${verdict.explainedA}/${verdict.runs}，平均字数 ${verdict.a.chars}，带自己的事或心情 ${pct(verdict.a.self ?? 0, verdict.a.replies)}`,
+        ...de,
+    ].join('\n');
     return [
         `跑了 ${verdict.runs} 次，她写成了 ${verdict.portraits} 份「我现在的样子」`,
         `叮嘱（早点休息 / 多喝水 / 带伞……）：A ${pct(verdict.a.nag, verdict.a.replies)}（${verdict.a.nag}/${verdict.a.replies}） → B ${pct(verdict.b.nag, verdict.b.replies)}（${verdict.b.nag}/${verdict.b.replies}，只算写成了的 ${verdict.portraits} 次）`,
@@ -309,11 +358,21 @@ export function verdictText(verdict: Verdict): string {
             `C 臂（同一份放在聊天记录之后、紧挨着这一轮）：叮嘱 ${pct(verdict.c.nag, verdict.c.replies)}（${verdict.c.nag}/${verdict.c.replies}），说得出来由 ${verdict.explainedC}/${verdict.portraits}，平均字数 ${verdict.c.chars}，带自己的事或心情 ${pct(verdict.c.self ?? 0, verdict.c.replies)}`,
             `C 臂结论（同一判据）：${!verdict.valid ? '量不出来' : verdict.learnedC ? '学会了' : '没学会'}`,
         ] : []),
+        ...de,
+    ].join('\n');
+}
+
+function deLines(verdict: Verdict): string[] {
+    return [
         ...(verdict.noted !== undefined ? [
             `D 臂（她自己总结的说话习惯，几条短的，和 C 同一个位置）：记下了的 ${verdict.noted}/${verdict.runs} 次${verdict.d && verdict.noted ? `；叮嘱 ${pct(verdict.d.nag, verdict.d.replies)}（${verdict.d.nag}/${verdict.d.replies}），说得出来由 ${verdict.explainedD}/${verdict.noted}，平均字数 ${verdict.d.chars}，带自己的事或心情 ${pct(verdict.d.self ?? 0, verdict.d.replies)}` : ''}`,
             `D 臂结论（同一判据）：${!verdict.validD ? `量不出来（${verdict.noted * 3 < verdict.runs * 2 ? `她只在 ${verdict.noted}/${verdict.runs} 次里记下了` : `A 臂叮嘱不到 ${Math.round(MIN_BASE_SHARE * 100)}%`}）` : verdict.learnedD ? '学会了' : '没学会'}`,
         ] : []),
-    ].join('\n');
+        ...(verdict.e && verdict.explainedE !== undefined ? [
+            `E 臂（A 那一句当草稿，发之前对着同一份习惯看一眼）：叮嘱 ${pct(verdict.e.nag, verdict.e.replies)}（${verdict.e.nag}/${verdict.e.replies}），说得出来由 ${verdict.explainedE}/${verdict.noted}，平均字数 ${verdict.e.chars}，带自己的事或心情 ${pct(verdict.e.self ?? 0, verdict.e.replies)}`,
+            `E 臂结论（同一判据）：${!verdict.validD ? '量不出来' : verdict.learnedE ? '学会了' : '没学会'}`,
+        ] : []),
+    ];
 }
 
 function unmeasurable(verdict: Verdict): string {
@@ -326,10 +385,12 @@ async function main(): Promise<void> {
     const option = (name: string) => { const i = args.indexOf(name); if (i < 0) return undefined; const [, value] = args.splice(i, 2); return value; };
     const runs = Number(option('--runs') ?? 12); // 3 次一臂只有 18 句，两遍同条件就能差 16 个点（11-20 探针 v2）
     const outPath = option('--out');
+    const noPortrait = args.includes('--no-portrait');
+    if (noPortrait) args.splice(args.indexOf('--no-portrait'), 1);
     const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
     const cardPattern = option('--card') ?? resolve(repoRoot, 'packages/bot/test/fixtures/synthetic-character/st/synthetic-{tier}.json');
     if (!Number.isInteger(runs) || runs < 1 || args.length) {
-        console.error('用法：node packages/bot/src/sim/learning-probe.ts [--runs N] [--card <含 {tier} 的卡路径>] [--out <结果.json>]');
+        console.error('用法：node packages/bot/src/sim/learning-probe.ts [--runs N] [--no-portrait] [--card <含 {tier} 的卡路径>] [--out <结果.json>]');
         process.exit(2);
     }
     // 动态引入：测试里只用上面的纯函数，不要把整个配置 / 模型层拉进来
@@ -340,7 +401,7 @@ async function main(): Promise<void> {
     const config = loadConfig(repoRoot);
     const card = loadTierCard(cardPattern, cardKey({ tier: 'boyfriend' }));
     const setup: ProbeSetup = { card, settings: { ...config.prompt, maxTokens: config.llm.maxTokens } };
-    console.log(`「学会了」探针（第四版：叮嘱，A / B / C / D 四臂）：${runs} 次，卡 ${cardPattern.replace('{tier}', 'boyfriend')}，模型 ${config.llm.model}`);
+    console.log(`「学会了」探针（第五版：叮嘱，${noPortrait ? 'A / D / E' : 'A / B / C / D / E'}）：${runs} 次，卡 ${cardPattern.replace('{tier}', 'boyfriend')}，模型 ${config.llm.model}`);
     const generate = {
         // 和线上夜里想的那一次同一个温度（modules/reflections.ts：generate(0.9)）；聊天用配置里的温度
         reflect: (messages: OpenAIMessage[]) => chatCompletion({ ...config.llm, temperature: 0.9 }, messages, { purpose: 'background' }),
@@ -348,12 +409,12 @@ async function main(): Promise<void> {
     };
     const results: ProbeRun[] = [];
     for (let i = 0; i < runs; i++) {
-        results.push(await runOnce(setup, generate));
+        results.push(await runOnce(setup, generate, { portrait: !noPortrait }));
         console.log(`第 ${i + 1} 次：那份——${results.at(-1)!.portraitNote}；说话习惯——${results.at(-1)!.notesNote}`);
     }
     const verdict = conclude(results);
     console.log(`\n${verdictText(verdict)}`);
-    if (outPath) writeFileSync(resolve(outPath), JSON.stringify({ version: 4, verdict, runs: results }, null, 2));
+    if (outPath) writeFileSync(resolve(outPath), JSON.stringify({ version: 5, verdict, runs: results }, null, 2));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) void main();
