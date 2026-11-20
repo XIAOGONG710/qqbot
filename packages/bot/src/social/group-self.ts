@@ -27,19 +27,32 @@ export const GROUP_OWN = {
     stickerPerDay: 1,
 } as const;
 
-/** 她的条件：群里不说的。分数、排名这类学习上的茬；她和他两个人的事 */
+/** 她的条件：群里不说的。分数排名（最要紧）／咱俩的事／别人起哄问咱俩／「多穿点」式关心（ADR 0343 她本人 11-20 的原话） */
 const STUDY_TALK = /分数|多少分|考了\s*\d|\d+\s*分(?![钟享])|排名|名次|第\s*\d+\s*名|倒数第|绩点|GPA|挂科|不及格|成绩/i;
 const ABOUT_US = /男朋友|对象|宝宝|我们俩|咱俩|我俩|他和我|我和他/;
+/** 群里别人起哄问咱俩：装看不见，不接这个茬 */
+const TEASE_US = /你俩|你们俩|你和他|他和你|在一起了吗|什么时候在一起|啥时候在一起|谈恋爱|处对象|秀恩爱|亲一个|甜甜的/;
+/** 她看了来气的那种关心：今天多穿点、记得喝热水这类 */
+const CARE_TALK = /多穿点|多穿些|穿厚点|穿厚些|注意保暖|记得添衣|多喝点热水|多喝热水/;
 
-/** 她在群里要说的这一条，越没越过她自己定的线（越过的那条不发） */
-export function crossesHerLine(text: string): 'study' | 'us' | undefined {
+export type HerLine = 'study' | 'us' | 'tease' | 'care';
+
+/**
+ * 她在群里要说的这一条，越没越过她自己定的线（越过的那条不发）。
+ * 替陌生人讲公道话是她自己的事，不算越线；只有话头落到「咱俩」才算。她喂的猫（土豆）不算咱俩的事，放行。
+ */
+export function crossesHerLine(text: string): HerLine | undefined {
     if (STUDY_TALK.test(text)) return 'study';
     if (ABOUT_US.test(text)) return 'us';
+    if (TEASE_US.test(text)) return 'tease';
+    if (CARE_TALK.test(text)) return 'care';
     return undefined;
 }
 
+export const LINE_LABEL: Record<HerLine, string> = { study: '分数排名', us: '咱俩的事', tease: '别人起哄问你俩', care: '「多穿点」式关心' };
+
 /** 她在群里自己定的边界（每次开口都放在说明里） */
-export const GROUP_OWN_LINES = '群里你自己定的规矩：学习上的茬不接，分数、排名一个字不提（考完了可以说一句）；你和你男朋友两个人的事，群里一句都不说。';
+export const GROUP_OWN_LINES = '群里你自己定的规矩：学习上的茬不接，分数、排名一个字不提（考完了可以说一句）；你和你男朋友两个人的事，群里一句都不说（一个陈佳宁知道就够了）；别人起哄问你俩就装看不见；别说「今天多穿点」那种关心；表情包一天最多一个；土豆（你喂的那只猫）不算你俩的事，发群里没问题。';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 

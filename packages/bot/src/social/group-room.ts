@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { segmentsToText, type GroupMessageEvent, type QuoteLookup, type Segment } from '../platform/onebot.ts';
 import { matchSingRequest, type singSong } from '../voice/sing.ts';
 import { personaFacts, type TierCard } from '../platform/contact.ts';
-import { GROUP_CONTEXT, HER_NAMES, groupLine, type groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type SpeakReason } from './group-chat.ts';
+import { GROUP_CONTEXT, HER_NAMES, groupLine, type groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type GroupDecisionTrace, type SpeakDecision, type SpeakReason } from './group-chat.ts';
 import { groupScheduleRecall } from './group-memory.ts';
 import { analyzeGroupStyle, renderGroupStyle } from './group-style.ts';
 import { groupAffectOf, mergeFelt, type groupAffect } from './group-affect.ts';
@@ -23,10 +23,11 @@ import { moodStateLine } from '../emotion/express.ts';
 import { feelingsAt } from '../emotion/feelings.ts';
 import { pick } from './reply-timing.ts';
 import { inspectReply } from '../language/exit-check.ts';
-import { chimePlan, crossesHerLine, freeToChime, groupNowLine, smallNews } from './group-self.ts';
+import { chimePlan, crossesHerLine, freeToChime, groupNowLine, LINE_LABEL, smallNews } from './group-self.ts';
 import { stateAt } from '../life/schedule.ts';
 import { worldAt, type WorldNow } from '../world/world.ts';
 import { FEELINGS_STALE_MS } from '../emotion/feeling-export.ts';
+import type { GroupMotiveDecision } from './group-opportunity.ts';
 
 export interface GroupRoomDeps {
     config: AppConfig;
@@ -61,6 +62,10 @@ export interface GroupRoomDeps {
     worldFor?: (card: TierCard, at: Date) => WorldNow | undefined;
     /** 重启后私聊那份心境还没算过时读落盘的那份（ADR 0341 G3，groupOwn）；FEELINGS_STALE_MS 以内才用 */
     savedFeelings?: () => FeelingsReport | undefined;
+    /** 群自主（ADR 0343）：此刻的动机快照，App 独占读影子账；不给就是 off 路径，逐字走抽签 */
+    groupOpportunity?: () => GroupMotiveDecision | undefined;
+    /** 群自主的模拟钩子（仅 sim 用）：决策痕迹，早于模型 */
+    onDecision?: (trace: GroupDecisionTrace) => void;
 }
 
 export interface GroupRoom {
@@ -166,6 +171,9 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
     const groupDay = () => new Date(worldNow()).toDateString();
     /** 她自己（ADR 0341，groupOwn）：off 照旧；dryRun 只把她自己冒的那句写草稿，别的回话照旧；on 每次开口都带上她自己 */
     const ownMode = config.groupOwn ?? 'off';
+    /** 群自主（ADR 0343）：off 抽签照旧；dryRun 动机放行的那句只写草稿；on 主动开口由动机决定。与 ownMode 正交 */
+    const agencyMode = config.groupAgency ?? 'off';
+    const agencyOn = agencyMode !== 'off' || Boolean(deps.groupOpportunity);
     /** 每个群今天自己冒过几次（冷场 / 有事各算） */
     const groupChimes = new Map<number, { day: string; quiet: number; news: number }>();
     const chimesToday = (groupId: number) => {
@@ -195,6 +203,8 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         /** 进记录的文字（带图的要等读完再改写成看得懂的那行） */
         text: string;
         reason?: SpeakReason;
+        /** 这条的开口决策（source / 动机是否放行），早于模型；仅模拟钩子需要 */
+        decision?: SpeakDecision;
         render: (message: Segment[] | string) => string;
     }
 
@@ -225,8 +235,12 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         const overheardToday = overheard && overheard.day === groupDay() ? overheard.count : 0;
         const bfNames = bf ? [...new Set(entries.filter(e => e.from === bf.qq).map(e => e.name))] : [];
         const herNames = herGroupNames.get(group.id);
+        // 群自主开着：动机快照在这里取一次（App 独占影子账），决策连同 source 一起记进这批
+        const motive = agencyOn ? (deps.groupOpportunity?.() ?? { eligible: false, blocks: [], reason: '没有动机快照' }) : undefined;
+        let decision: SpeakDecision | undefined;
         const reason = speakReason(event.message, text, event.user_id, event.message_id,
-            { selfId: selfId(), ...(bf ? { boyfriend: bf } : {}), boyfriendNames: bfNames, herMessageIds: herIds, topicToday, overheardToday, ...(herNames ? { herNames } : {}) });
+            { selfId: selfId(), ...(bf ? { boyfriend: bf } : {}), boyfriendNames: bfNames, herMessageIds: herIds, topicToday, overheardToday, ...(herNames ? { herNames } : {}) },
+            (motive || deps.onDecision) ? { ...(motive ? { motives: motive } : {}), ...(deps.onDecision ? { onDecision: (value: SpeakDecision) => { decision = value; } } : {}) } : undefined);
         if (config.groupChat === 'on' && bf?.qq === event.user_id && transport.sendGroupText && transport.sendGroupMessage
             && Array.isArray(event.message) && event.message.some(segment => segment.type === 'at' && Number(segment.data.qq) === selfId())) {
             const plain = plainTextOf(event.message.filter(segment => segment.type === 'text'))?.trim() ?? '';
@@ -268,7 +282,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         }
         const queue = groupQueue.get(group.id) ?? [];
         queue.push({
-            event, text, ...(reason ? { reason } : {}),
+            event, text, ...(reason ? { reason } : {}), ...(decision ? { decision } : {}),
             render: message => nameAts(segmentsToText(message, quoted).trim(), selfId(), names, bf) || text,
         });
         groupQueue.set(group.id, queue);
@@ -309,6 +323,14 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
                     : reasons.includes('defend') ? 'defend'
                         : reasons.includes('overheard') ? 'overheard'
                             : reasons.includes('topic') ? 'topic' : undefined;
+            // 决策痕迹：passed 在这里定（早于模型），模型写「不说」不改它
+            const sourceItem = batch.find(item => item.reason === reason) ?? batch.at(-1)!;
+            const trace: GroupDecisionTrace | undefined = deps.onDecision ? {
+                groupId, messageId: sourceItem.event.message_id, timeBlock: Math.floor(worldNow() / 3_600_000),
+                reason, source: sourceItem.decision?.source ?? (reason ? 'reactive' : 'lottery'),
+                motiveEligible: sourceItem.decision?.motiveEligible ?? false,
+                passed: false, blockedBy: 'none',
+            } : undefined;
             // 只读这一批里带图/表情/语音的最近几条，而且只在她要开口时读：群里刷图太凶，全量读会堵死看图接口
             if (reason) {
                 for (const item of batch.filter(entry => reading?.needs(entry.event.message)).slice(-GROUP_BATCH.maxReads)) {
@@ -335,11 +357,19 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             }
             // 这一批说完，顺手把某个人在她心里的样子写一句（后台、一批最多一个、14 天才重写；不耽误回话）
             if (config.groupChat === 'on') refineGroupImpression(groupId, batch);
+            // 群自主：她定的线在决策层就挡住——起哄问咱俩装看不见；冲宝宝来的才算「咱俩的事」（替陌生人讲公道话不在此列）。危机不拦。
+            if (agencyOn && reason && reason !== 'crisis'
+                && (reason === 'defend' || batch.some(item => crossesHerLine(item.text)))) {
+                if (trace) { trace.passed = false; trace.blockedBy = 'line'; }
+                log(`[群 ${groupId}] 她定的线：这件事装看不见，没开口`);
+                return;
+            }
             // 只看只记（read）：心里有数，但不说话
             if (!reason || config.groupChat === 'read') return;
             const entries = groupLogs.load(groupId);
             const budget = withinBudget(entries.filter(e => e.mine), worldNow(), reason);
-            if (!budget.ok) { log(`[群 ${groupId}] 想开口但${budget.why}`); return; }
+            if (!budget.ok) { if (trace) { trace.blockedBy = 'budget'; } log(`[群 ${groupId}] 想开口但${budget.why}`); return; }
+            if (trace) trace.passed = true;
             if (reason === 'topic') {
                 const topics = groupTopics.get(groupId);
                 groupTopics.set(groupId, { day: groupDay(), count: (topics && topics.day === groupDay() ? topics.count : 0) + 1 });
@@ -358,6 +388,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
                 ...(callers.length ? { callers, pending: batch.length } : { pending: batch.length }),
                 ...(calling ? { replyTo: calling.event.message_id, caller: calling.event.user_id } : {}),
                 ...(who ? { callerName: who } : {}),
+                ...(trace ? { trace } : {}),
             });
         } catch (error) {
             log(`[群 ${groupId}] 说话出错：${error instanceof Error ? error.message : String(error)}`);
@@ -386,7 +417,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
     }
 
     async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean; disguise?: boolean; cover?: string }, reason: SpeakReason, bf: { qq: number; name: string } | undefined,
-        extra: { callers?: readonly string[]; pending?: number; replyTo?: number; caller?: number; news?: string } = {}): Promise<void> {
+        extra: { callers?: readonly string[]; pending?: number; replyTo?: number; caller?: number; news?: string; trace?: GroupDecisionTrace } = {}): Promise<void> {
         // 群里的人都知道她是 AI（用户标过）：原卡，被问时由她定；没标：承认版卡，认真问到就承认；有人说想不开：一律承认版（ADR 0067 / 0068 / 0208）
         // 都知道、或者要装成真人：用同学档原卡（她不用承认）；没标的群用承认版；危机一律承认版
         const tier = tierOf(group, reason);
@@ -435,15 +466,23 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         }];
         const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);
         // 这一档的禁用词（群里叫不出「宝宝」这类黏的叫法）：带了的那条不发
-        // 带她自己时，她定的线（分数排名、她和他的事）越过的那条不发；有人想不开时不拦（劝人的话常带「挂科」「成绩」，保命在前）
+        // 她定的线：带她自己时（groupOwn）或群自主开着时都拦；有人想不开时不拦（劝人的话常带「挂科」「成绩」，保命在前）
+        const lineCheck = withSelf || agencyOn;
+        let lineBlocked = false;
         const parts = groupReply(raw).filter(part => !inspectReply(part, card.character.banned).some(issue => issue.kind === 'banned'))
             .filter(part => {
-                const crossed = withSelf && reason !== 'crisis' ? crossesHerLine(part) : undefined;
-                if (crossed) log(`[群 ${group.id}] 有一条越过了她自己定的线（${crossed === 'study' ? '分数排名' : '她和他的事'}），没发`);
+                const crossed = lineCheck && reason !== 'crisis' ? crossesHerLine(part) : undefined;
+                if (crossed) {
+                    lineBlocked = true;
+                    log(`[群 ${group.id}] 有一条越过了她自己定的线（${LINE_LABEL[crossed]}），没发`);
+                }
                 return !crossed;
             });
-        if (!parts.length) { log(`[群 ${group.id}] 看了一眼，没说话（${reason}）`); return; }
-        if (config.groupChat === 'dryRun' || !transport.sendGroupText || (ownMode === 'dryRun' && own)) {
+        if (!parts.length) {
+            if (lineBlocked && extra.trace) { extra.trace.passed = false; extra.trace.blockedBy = 'line'; }
+            log(`[群 ${group.id}] 看了一眼，没说话（${reason}）`); return;
+        }
+        if (config.groupChat === 'dryRun' || !transport.sendGroupText || (ownMode === 'dryRun' && own) || (agencyMode === 'dryRun' && agencyOn)) {
             const dir = join(config.dataDir, 'groups');
             exec.files.mkdir(dir);
             exec.files.append(join(dir, 'drafts.md'), `- ${new Date(worldNow()).toLocaleString('zh-CN')} 群「${group.name}」（${reason}）：${parts.join(' / ')}\n`);
@@ -516,7 +555,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
      * 说什么、说不说由她（可以「不说」）。只在开了群聊（on / dryRun）、groupOwn 不是 off 时；只看不说（read）的群不冒。
      */
     async function tick(): Promise<void> {
-        if (ownMode === 'off' || stopped() || !groupLogs || !selfId() || dormancy?.isDormant()) return;
+        if (ownMode === 'off' && !agencyOn || stopped() || !groupLogs || !selfId() || dormancy?.isDormant()) return;
         if (config.groupChat !== 'on' && config.groupChat !== 'dryRun') return;
         for (const group of config.groups ?? []) {
             if (stopped()) return;
@@ -527,16 +566,26 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             const { state, world } = herNowIn(card, at);
             const done = chimesToday(group.id);
             const entries = groupLogs.load(group.id);
-            const plan = chimePlan({ groupId: group.id, entries, now: at.getTime(), free: freeToChime(state), done, ...(smallNews(world, at) ? { news: smallNews(world, at)! } : {}) });
+            const motive = agencyOn ? (deps.groupOpportunity?.() ?? { eligible: false, blocks: [], reason: '没有动机快照' }) : undefined;
+            let decision: SpeakDecision | undefined;
+            const plan = chimePlan({ groupId: group.id, entries, now: at.getTime(), free: freeToChime(state), done, ...(smallNews(world, at) ? { news: smallNews(world, at)! } : {}) },
+                (motive || deps.onDecision) ? { ...(motive ? { motives: motive } : {}), ...(deps.onDecision ? { onDecision: (value: SpeakDecision) => { decision = value; } } : {}) } : undefined);
+            const trace: GroupDecisionTrace | undefined = deps.onDecision ? {
+                groupId: group.id, messageId: 0, timeBlock: Math.floor(at.getTime() / 3_600_000),
+                reason: plan?.kind, source: decision?.source ?? (motive ? 'motive' : 'lottery'),
+                motiveEligible: decision?.motiveEligible ?? false,
+                passed: false, blockedBy: 'none',
+            } : undefined;
             if (!plan) continue;
             const budget = withinBudget(entries.filter(e => e.mine), at.getTime(), plan.kind);
-            if (!budget.ok) { log(`[群 ${group.id}] 想自己冒一句但${budget.why}`); continue; }
+            if (!budget.ok) { if (trace) { trace.blockedBy = 'budget'; } log(`[群 ${group.id}] 想自己冒一句但${budget.why}`); continue; }
+            if (trace) trace.passed = true;
             groupChimes.set(group.id, { ...done, [plan.kind]: done[plan.kind] + 1 });
             const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
             const bf = boyfriend ? { qq: boyfriend.qq, name: entries.findLast(e => e.from === boyfriend.qq)?.name ?? boyfriend.name } : undefined;
             groupBusy.add(group.id);
             try {
-                await speakInGroup(group, plan.kind, bf, plan.kind === 'news' ? { news: plan.news } : {});
+                await speakInGroup(group, plan.kind, bf, { ...(plan.kind === 'news' ? { news: plan.news } : {}), ...(trace ? { trace } : {}) });
             } catch (error) {
                 log(`[群 ${group.id}] 自己冒一句出错：${error instanceof Error ? error.message : String(error)}`);
             } finally {
