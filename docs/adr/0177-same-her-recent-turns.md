@@ -1,6 +1,6 @@
 # ADR 0177：同一个她·第 2 层——QQ 和 DSH 桌面互读最近几轮（crossRecent）
 
-- 状态：**已实现，默认关**（配置 `crossRecent`）；打开要在 `koishi.yml` 里设 `crossRecent: true` 并重启 Koishi；DSH 那边要重启（重新加载插件），不用改 DSH 配置
+- 状态：**已实现，代码默认关；线上已开（2026-11-20 18:54 起，DSH 信箱 1856 核对日志确认）**，用户 11-20 在 DSH 那台亲口点头「四个都开」。快照 `exchange/live/koishi-2026-11-20-1855.yaml`（DSH 1843 先开的，那时加载的旧代码也认这个开关）；原记录：打开要在 `koishi.yml` 里设 `crossRecent: true` 并重启 Koishi；DSH 那边要重启（重新加载插件），不用改 DSH 配置
 - **用户 2026-11-20 同意打开**（「crossRecent 可以开」）；她本人 11-19 也说要（ADR 0340「她的意见」问 3：「要啊，不然不就成了两个人了吗」）。线上那台（DSH）11-20 关机中，开机后由 DSH 改 `koishi.yml` 并重启 Koishi 和 DSH。
 - 日期：2026-10-29
 - 关联：[ADR 0176](0176-same-her-shared-memory.md)（共用他的 bank，第 1 层）、[ADR 0172](0172-work-mode-full-access.md)（工作模式）、`docs/plans/2026-10-29-autonomy-and-realness.md` §5
