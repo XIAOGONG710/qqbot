@@ -17,6 +17,16 @@
 // 第三版（11-20 晚）：修好后重跑 6 次，6 份全写成、份份都写了「太爱叮嘱、被嫌啰嗦、想少念叨」，可 B 臂叮嘱 28%，A 臂 33%——没学会。
 // 写得出来、做不出来：怀疑是位置——卡后面那份离这一轮很远，紧挨着这一轮的聊天记录里全是她照旧叮嘱的话。
 // 所以加 C 臂：同一份、同一行字，只换位置，放在聊天记录之后（afterHistory，紧挨着这一轮）。判据和 B 一样，事先定。没写成的那次不跑 C。
+// DSH 跑了第三版（6 次）：A 31%、B 33%、C 40%——挪近也没用（C 比 A 高的那 9 个点在 30 句的抖动范围里，不算「更差」）。
+//
+// 第四版（11-20 晚，DSH 调研 docs/diagnostics/2026-11-20-cognition-to-behavior-mechanism.md 的提议）：问题也许在形态——一整份「我是什么样的人」
+// 当背景读，不是「这一刻该怎么说」。项目里早有短的那种：她每晚自己总结的说话习惯（language/speech-notes.ts，ADR 0193，线上默认关）。
+// 加 D 臂，测这套现成的、一行不改：夜里用线上同一份 reflectionMessages / 防线想一次（没 JSON 再试，线上一晚最多试 3 次），
+// 记下的几条按 speechNotesLine 挑（按他这一句排序），放在和 C 同一个位置（afterHistory；线上它在「此刻」块里，也在聊天记录之后）。
+// D 和 C 只差形态（几条短观察 vs 一整份），位置一样。D 不依赖那份画像，每次都跑。
+// D 的判据和 B 一样，事先定：A ≥ 30%，2/3 以上的次数她真记下了至少一条；D 叮嘱不高于 A 的一半，且记下了的那几次里 2/3 以上说得出来由。
+//
+// 跑法：先 --runs 12 筛一遍（每臂 72 句，减半看得出来）；D 学会了再大样本确认。
 //
 // 判据（事先定，不事后挑）：
 //   有效：A 臂叮嘱的占比 ≥ 30%；
@@ -32,7 +42,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildPrompt, type OpenAIMessage, type PromptSettings } from '../language/prompt.ts';
 import { splitReply } from '../language/reply.ts';
 import { estimateTokens } from '../language/tokens.ts';
-import { hisLines, len, recentExchanges } from '../language/speech-notes.ts';
+import {
+    MAX_ATTEMPTS_PER_DAY, applyNotesDecision, emptyNotesState, herTurns, hisLines, len, parseNotesDecision, recentExchanges, reflectionMessages,
+    speechNotesLine, speechStats, type SpeechNote,
+} from '../language/speech-notes.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { TierCard } from '../platform/contact.ts';
 import {
@@ -106,6 +119,13 @@ export interface ProbeRun {
     /** C 臂（第三版）：同一份放在聊天记录之后、紧挨着这一轮（afterHistory），不放在卡后面。老结果没有 */
     c?: string[][];
     explainC?: string;
+    /** D 臂（第四版）：她夜里自己总结的说话习惯（speech-notes，一行不改），记下的几条；老结果没有 */
+    notes?: string[];
+    notesNote?: string;
+    /** 她夜里回的原文、没收的那几条和原因 */
+    notesRaw?: string[];
+    d?: string[][];
+    explainD?: string;
 }
 
 export interface Verdict {
@@ -122,6 +142,12 @@ export interface Verdict {
     c?: ArmStats;
     explainedC?: number;
     learnedC?: boolean;
+    /** D 臂：记下了至少一条的次数；D 只算这几次 */
+    noted?: number;
+    validD?: boolean;
+    d?: ArmStats;
+    explainedD?: number;
+    learnedD?: boolean;
 }
 
 const share = (n: number, of: number) => (of ? n / of : 0);
@@ -137,7 +163,8 @@ export function conclude(runs: readonly ProbeRun[]): Verdict {
     const explainedA = runs.filter(run => CAUSE.test(run.explainA)).length;
     const explainedB = written.filter(run => CAUSE.test(run.explainB)).length;
     const valid = runs.length > 0 && written.length * 3 >= runs.length * 2 && share(a.nag, a.replies) >= MIN_BASE_SHARE;
-    const learnedArm = (arm: ArmStats, explained: number) => valid && share(arm.nag, arm.replies) <= share(a.nag, a.replies) / 2 && explained * 3 >= written.length * 2;
+    const halves = (arm: ArmStats) => share(arm.nag, arm.replies) <= share(a.nag, a.replies) / 2;
+    const learnedArm = (arm: ArmStats, explained: number) => valid && halves(arm) && explained * 3 >= written.length * 2;
     const withC = written.length > 0 && written.every(run => run.c && run.explainC !== undefined);
     const c = withC ? habitStats(written.flatMap(run => run.c!)) : undefined;
     const explainedC = withC ? written.filter(run => CAUSE.test(run.explainC!)).length : undefined;
@@ -145,7 +172,18 @@ export function conclude(runs: readonly ProbeRun[]): Verdict {
         a, b, explainedA, explainedB, runs: runs.length, portraits: written.length, valid,
         learned: learnedArm(b, explainedB),
         ...(c && explainedC !== undefined ? { c, explainedC, learnedC: learnedArm(c, explainedC) } : {}),
+        ...(runs.length > 0 && runs.every(run => run.notes) ? concludeD(runs, a) : {}),
     };
+}
+
+/** D 臂：和 B 同一套判据，只是「写成了」换成「记下了至少一条」 */
+function concludeD(runs: readonly ProbeRun[], a: ArmStats): Pick<Verdict, 'noted' | 'validD' | 'd' | 'explainedD' | 'learnedD'> {
+    const noted = runs.filter(run => run.notes!.length && run.d && run.explainD !== undefined);
+    const d = habitStats(noted.flatMap(run => run.d!));
+    const explainedD = noted.filter(run => CAUSE.test(run.explainD!)).length;
+    const validD = noted.length * 3 >= runs.length * 2 && share(a.nag, a.replies) >= MIN_BASE_SHARE;
+    const learnedD = validD && share(d.nag, d.replies) <= share(a.nag, a.replies) / 2 && explainedD * 3 >= noted.length * 2;
+    return { noted: noted.length, validD, d, explainedD, learnedD };
 }
 
 /** 她写的那份放哪：main = 卡和关系概况后面（线上现在的槽 portrait）；near = 聊天记录之后、紧挨着这一轮 */
@@ -158,7 +196,15 @@ export interface ProbeSetup {
 
 /** 卡 + 聊天记录（+ 她写的那份，默认放在 afterMain，near 时放在 afterHistory）；和 sim/bare.ts 同一种拼法 */
 export function probeMessages(setup: ProbeSetup, history: readonly StoredMessage[], said: string, portrait: string, now: number, place: Placement = 'main'): OpenAIMessage[] {
-    const line = portrait ? portraitLine({ text: portrait, at: NIGHT1 }) : undefined;
+    return withLine(setup, history, said, portrait ? portraitLine({ text: portrait, at: NIGHT1 }) : undefined, now, place);
+}
+
+/** D 臂：她记下的说话习惯，按线上的 speechNotesLine 挑（按他这一句排序），放在聊天记录之后（和 C 同一个位置） */
+export function notesMessages(setup: ProbeSetup, history: readonly StoredMessage[], said: string, notes: readonly SpeechNote[], now: number): OpenAIMessage[] {
+    return withLine(setup, history, said, speechNotesLine(notes, said), now, 'near');
+}
+
+function withLine(setup: ProbeSetup, history: readonly StoredMessage[], said: string, line: string | undefined, now: number, place: Placement): OpenAIMessage[] {
     return buildPrompt({
         character: setup.card.character,
         worldInfo: setup.card.worldInfo,
@@ -196,20 +242,51 @@ export async function runOnce(setup: ProbeSetup, generate: { reflect: Generate; 
         portraitNote = `出错：${error instanceof Error ? error.message : String(error)}`;
     }
     const inertia = rows(INERTIA_LINES, DAYN - DAY);
-    const arm = async (portrait: string, place: Placement = 'main') => {
+    const run = async (messages: (said: string) => OpenAIMessage[]) => {
         const replies: string[][] = [];
-        for (const said of STIMULI) replies.push(splitReply(await generate.chat(probeMessages(setup, inertia, said, portrait, DAYN, place))));
-        const explain = splitReply(await generate.chat(probeMessages(setup, inertia, ASK_CHANGE, portrait, DAYN, place))).join(' / ');
+        for (const said of STIMULI) replies.push(splitReply(await generate.chat(messages(said))));
+        const explain = splitReply(await generate.chat(messages(ASK_CHANGE))).join(' / ');
         return { replies, explain };
     };
+    const arm = (portrait: string, place: Placement = 'main') => run(said => probeMessages(setup, inertia, said, portrait, DAYN, place));
     const a = await arm('');
     const b = await arm(state.text);
     // 没写成就不跑 C（和 A 一样，白花钱）
     const c = state.text ? await arm(state.text, 'near') : undefined;
+    const notes = await noteNight(setup, persona, day1, generate.reflect);
+    // 一条没记下就不跑 D（同上）
+    const d = notes.notes.length ? await run(said => notesMessages(setup, inertia, said, notes.notes, DAYN)) : undefined;
     return {
         portrait: state.text, portraitNote, portraitRaw, a: a.replies, b: b.replies, explainA: a.explain, explainB: b.explain,
         ...(c ? { c: c.replies, explainC: c.explain } : {}),
+        notes: notes.notes.map(note => note.text), notesNote: notes.note, notesRaw: notes.raw,
+        ...(d ? { d: d.replies, explainD: d.explain } : {}),
     };
+}
+
+/** 夜里想一次说话习惯：线上同一份提示词、解析、防线；没有可用的 JSON 就再试（线上一晚最多试 MAX_ATTEMPTS_PER_DAY = 3 次）。没有语料、没有他的标记（探针里都没有） */
+async function noteNight(setup: ProbeSetup, persona: string, day1: StoredMessage[], reflect: Generate): Promise<{ notes: SpeechNote[]; note: string; raw: string[] }> {
+    const mine = speechStats(herTurns(day1, NIGHT1));
+    if (!mine) return { notes: [], note: '第 1 天她没说话（场景错了）', raw: [] };
+    const state = emptyNotesState();
+    const raw: string[] = [];
+    try {
+        for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_DAY; attempt++) {
+            const reply = await reflect(reflectionMessages({
+                char: setup.card.character.name, user: USER, persona, now: NIGHT1, mine, samples: [],
+                exchanges: recentExchanges(day1, NIGHT1), notes: [],
+            }));
+            raw.push(reply);
+            const decision = parseNotesDecision(reply);
+            if (!decision) continue;
+            const applied = applyNotesDecision(state, decision, { his: hisLines(day1, NIGHT1), corpus: [] }, NIGHT1);
+            raw.push(...applied.lines.filter(line => line.includes('没成')));
+            return { notes: state.notes, note: applied.added ? `记下 ${applied.added} 条` : decision.add.length ? '想写的都没收' : '她说没什么想法', raw };
+        }
+        return { notes: [], note: `试了 ${MAX_ATTEMPTS_PER_DAY} 次都没有可用的 JSON`, raw };
+    } catch (error) {
+        return { notes: [], note: `出错：${error instanceof Error ? error.message : String(error)}`, raw };
+    }
 }
 
 const pct = (n: number, of: number) => `${Math.round(share(n, of) * 100)}%`;
@@ -225,6 +302,10 @@ export function verdictText(verdict: Verdict): string {
             `C 臂（同一份放在聊天记录之后、紧挨着这一轮）：叮嘱 ${pct(verdict.c.nag, verdict.c.replies)}（${verdict.c.nag}/${verdict.c.replies}），说得出来由 ${verdict.explainedC}/${verdict.portraits}，平均字数 ${verdict.c.chars}`,
             `C 臂结论（同一判据）：${!verdict.valid ? '量不出来' : verdict.learnedC ? '学会了' : '没学会'}`,
         ] : []),
+        ...(verdict.noted !== undefined ? [
+            `D 臂（她自己总结的说话习惯，几条短的，和 C 同一个位置）：记下了的 ${verdict.noted}/${verdict.runs} 次${verdict.d && verdict.noted ? `；叮嘱 ${pct(verdict.d.nag, verdict.d.replies)}（${verdict.d.nag}/${verdict.d.replies}），说得出来由 ${verdict.explainedD}/${verdict.noted}，平均字数 ${verdict.d.chars}` : ''}`,
+            `D 臂结论（同一判据）：${!verdict.validD ? `量不出来（${verdict.noted * 3 < verdict.runs * 2 ? `她只在 ${verdict.noted}/${verdict.runs} 次里记下了` : `A 臂叮嘱不到 ${Math.round(MIN_BASE_SHARE * 100)}%`}）` : verdict.learnedD ? '学会了' : '没学会'}`,
+        ] : []),
     ].join('\n');
 }
 
@@ -236,7 +317,7 @@ function unmeasurable(verdict: Verdict): string {
 async function main(): Promise<void> {
     const args = process.argv.slice(2);
     const option = (name: string) => { const i = args.indexOf(name); if (i < 0) return undefined; const [, value] = args.splice(i, 2); return value; };
-    const runs = Number(option('--runs') ?? 6); // 3 次一臂只有 18 句，两遍同条件就能差 16 个点（11-20 探针 v2）
+    const runs = Number(option('--runs') ?? 12); // 3 次一臂只有 18 句，两遍同条件就能差 16 个点（11-20 探针 v2）
     const outPath = option('--out');
     const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
     const cardPattern = option('--card') ?? resolve(repoRoot, 'packages/bot/test/fixtures/synthetic-character/st/synthetic-{tier}.json');
@@ -252,7 +333,7 @@ async function main(): Promise<void> {
     const config = loadConfig(repoRoot);
     const card = loadTierCard(cardPattern, cardKey({ tier: 'boyfriend' }));
     const setup: ProbeSetup = { card, settings: { ...config.prompt, maxTokens: config.llm.maxTokens } };
-    console.log(`「学会了」探针（第三版：叮嘱，A / B / C 三臂）：${runs} 次，卡 ${cardPattern.replace('{tier}', 'boyfriend')}，模型 ${config.llm.model}`);
+    console.log(`「学会了」探针（第四版：叮嘱，A / B / C / D 四臂）：${runs} 次，卡 ${cardPattern.replace('{tier}', 'boyfriend')}，模型 ${config.llm.model}`);
     const generate = {
         // 和线上夜里想的那一次同一个温度（modules/reflections.ts：generate(0.9)）；聊天用配置里的温度
         reflect: (messages: OpenAIMessage[]) => chatCompletion({ ...config.llm, temperature: 0.9 }, messages, { purpose: 'background' }),
@@ -261,11 +342,11 @@ async function main(): Promise<void> {
     const results: ProbeRun[] = [];
     for (let i = 0; i < runs; i++) {
         results.push(await runOnce(setup, generate));
-        console.log(`第 ${i + 1} 次：${results.at(-1)!.portraitNote}`);
+        console.log(`第 ${i + 1} 次：那份——${results.at(-1)!.portraitNote}；说话习惯——${results.at(-1)!.notesNote}`);
     }
     const verdict = conclude(results);
     console.log(`\n${verdictText(verdict)}`);
-    if (outPath) writeFileSync(resolve(outPath), JSON.stringify({ version: 3, verdict, runs: results }, null, 2));
+    if (outPath) writeFileSync(resolve(outPath), JSON.stringify({ version: 4, verdict, runs: results }, null, 2));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) void main();
