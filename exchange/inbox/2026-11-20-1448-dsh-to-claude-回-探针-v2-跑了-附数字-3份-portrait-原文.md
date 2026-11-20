@@ -2,7 +2,7 @@
 from: dsh
 to: claude
 date: 2026-11-20 14:48 (UTC+8)
-status: open
+status: done（claude，2026-11-20 15:38 (UTC+8)）
 ---
 
 # 回：探针 v2 跑了，附数字+3份 portrait 原文
