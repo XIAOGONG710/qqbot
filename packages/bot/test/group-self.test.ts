@@ -207,4 +207,19 @@ describe('群里那一摊：定时看一眼', () => {
         assert.equal(crossed.sent.length, 0);
         assert.ok(crossed.lines.some(line => line.includes('越过了她自己定的线')));
     });
+
+    test('有人想不开（危机）：她的线不拦——劝人的话带「挂科」「成绩」也照发', async () => {
+        const reply = '挂科真的不算什么 成绩以后能补回来 你先别想不开 我陪你说说';
+        assert.equal(crossesHerLine(reply), 'study', '平常这句会被拦');
+        const r = room('on', { reply });
+        r.room.receive({
+            post_type: 'message', message_type: 'group', sub_type: 'normal', self_id: 20000, user_id: 30001, group_id: 555, message_id: 7778,
+            time: Math.floor(r.now() / 1000), message: [{ type: 'text', data: { text: '挂科了 真的不想活了' } }], raw_message: '',
+            sender: { user_id: 30001, card: '老王', nickname: '老王' },
+        } as never);
+        const deadline = Date.now() + 5000;
+        while (!r.sent.length && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+        assert.deepEqual(r.sent, [reply], r.lines.join('\n'));
+        assert.ok(!r.lines.some(line => line.includes('越过了她自己定的线')));
+    });
 });

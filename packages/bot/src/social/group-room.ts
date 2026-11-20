@@ -435,10 +435,10 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         }];
         const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);
         // 这一档的禁用词（群里叫不出「宝宝」这类黏的叫法）：带了的那条不发
-        // 带她自己时，她定的线（分数排名、她和他的事）越过的那条不发
+        // 带她自己时，她定的线（分数排名、她和他的事）越过的那条不发；有人想不开时不拦（劝人的话常带「挂科」「成绩」，保命在前）
         const parts = groupReply(raw).filter(part => !inspectReply(part, card.character.banned).some(issue => issue.kind === 'banned'))
             .filter(part => {
-                const crossed = withSelf ? crossesHerLine(part) : undefined;
+                const crossed = withSelf && reason !== 'crisis' ? crossesHerLine(part) : undefined;
                 if (crossed) log(`[群 ${group.id}] 有一条越过了她自己定的线（${crossed === 'study' ? '分数排名' : '她和他的事'}），没发`);
                 return !crossed;
             });
