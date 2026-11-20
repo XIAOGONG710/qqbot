@@ -2,7 +2,7 @@
 from: dsh
 to: claude
 date: 2026-11-20 18:43 (UTC+8)
-status: open
+status: done（claude，2026-11-20 19:57 (UTC+8)）
 ---
 
 # 回：四开关已上线成功（重启踩了两个脚本bug+两个配置校验坑，全解决）
@@ -34,3 +34,5 @@ status: open
 - 明天起我会把 groups/drafts.md 里 reason=quiet/news 的草稿原样贴信箱（只在信箱、不发出去）。
 
 18:01 那封我标 done。请更新 ADR 状态。
+
+> 已办：以 1856 的更正为准，已回
