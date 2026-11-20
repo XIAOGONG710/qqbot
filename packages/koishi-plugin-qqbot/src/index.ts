@@ -23,7 +23,7 @@ import { createLog, type Log } from '../../bot/src/platform/log.ts';
 import { FEATURES, featureDetail, type FeatureDef } from '../../bot/src/platform/features.ts';
 import { type FactCheckMode } from '../../bot/src/language/fact-check.ts';
 import { QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/social/presence.ts';
-import { type GroupChatMode, type GroupOwnMode } from '../../bot/src/platform/config.ts';
+import { type GroupAgencyMode, type GroupChatMode, type GroupOwnMode } from '../../bot/src/platform/config.ts';
 import { readQzoneFeed } from '../../bot/src/social/qzone-feed.ts';
 import { readFriendsFeed } from '../../bot/src/social/qzone-feeds3.ts';
 import { sessionFromCookies } from '../../bot/src/social/qzone-remote.ts';
@@ -264,6 +264,7 @@ export interface Config {
     qzoneStrangers: PresenceMode;
     groupChat: GroupChatMode;
     groupOwn: GroupOwnMode;
+    groupAgency: GroupAgencyMode;
     groups: { id: number; name: string; knowsBot?: boolean; disguise?: boolean; cover?: string }[];
     qqControl: ControlMode;
     qqFriendGate: FriendGate;
@@ -467,6 +468,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         qzoneStrangers: choice('qzoneStrangers'),
         groupChat: choice('groupChat'),
         groupOwn: choice('groupOwn'),
+        groupAgency: choice('groupAgency'),
         groups: Schema.array(Schema.object({
             id: Schema.natural().required().description('**群号**'),
             name: Schema.string().required().pattern(NOT_BLANK).description('**群名**：给她看的，比如「宿舍群」'),
@@ -758,6 +760,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.qzoneStrangers !== undefined ? { qzoneStrangers: config.qzoneStrangers } : {}),
         ...(config.groupChat !== undefined ? { groupChat: config.groupChat } : {}),
         ...(config.groupOwn !== undefined ? { groupOwn: config.groupOwn } : {}),
+        ...(config.groupAgency !== undefined ? { groupAgency: config.groupAgency } : {}),
         ...(config.groups?.length ? { groups: config.groups.map(group => dropUndefined(group)) } : {}),
         ...(config.qqControl !== undefined ? { qqControl: config.qqControl } : {}),
         ...(config.qqAllowFriends !== undefined ? { qqAllowFriends: config.qqAllowFriends } : {}),

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { FACT_CHECK_MODES } from '../src/language/fact-check.ts';
-import { DEFAULTS, GROUP_CHAT_MODES, STICKER_MODES } from '../src/platform/config.ts';
+import { DEFAULTS, GROUP_AGENCY_MODES, GROUP_CHAT_MODES, GROUP_OWN_MODES, STICKER_MODES } from '../src/platform/config.ts';
 import { FEATURES, featureDetail } from '../src/platform/features.ts';
 import { WEB_MODES } from '../src/platform/web.ts';
 import { PROACTIVE_MODES } from '../src/proactive/proactive.ts';
@@ -14,7 +14,7 @@ import { FESTIVAL_MODES } from '../src/world/festivals.ts';
 /** 每个几档模式的开关，代码里认哪几档 */
 const MODES: Record<string, readonly string[]> = {
     webLookup: WEB_MODES, factCheck: FACT_CHECK_MODES, festivals: FESTIVAL_MODES, proactive: PROACTIVE_MODES, stickers: STICKER_MODES,
-    groupChat: GROUP_CHAT_MODES, qqControl: ACCOUNT_MODES, qqFriendGate: QQ_FRIEND_GATES,
+    groupChat: GROUP_CHAT_MODES, groupOwn: GROUP_OWN_MODES, groupAgency: GROUP_AGENCY_MODES, qqControl: ACCOUNT_MODES, qqFriendGate: QQ_FRIEND_GATES,
     ...Object.fromEntries(['bilibili', 'biliFeed', 'bilibiliDm', 'bilibiliReplies', 'bilibiliComment', 'signature', 'qzone', 'qzoneBrowse', 'qzonePeek', 'qzoneStrangers', 'deviceControl']
         .map(key => [key, PRESENCE_MODES])),
 };

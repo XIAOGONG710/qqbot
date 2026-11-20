@@ -159,6 +159,7 @@ export const DEFAULTS = {
     qzoneStrangers: 'off' as PresenceMode,
     groupChat: 'off' as GroupChatMode,
     groupOwn: 'off' as GroupOwnMode,
+    groupAgency: 'off' as GroupAgencyMode,
     qqControl: 'off' as ControlMode,
     qqAllowFriends: [] as readonly number[],
     qqAllowGroups: [] as readonly number[],
@@ -609,6 +610,8 @@ export interface AppConfig {
     groupChat?: GroupChatMode;
     /** 群里她也有自己（ADR 0341）：off 关 / dryRun 她自己冒的那句（冷场、有事）只写草稿，别的回话照旧 / on 每次开口都带着她此刻（同学能知道的）和她定的边界，冷场有事会自己冒一句。要开着 groupChat。默认 off */
     groupOwn?: GroupOwnMode;
+    /** 群自主（ADR 0343）：off 照旧抽签 / dryRun 动机放行的话只写草稿 / on 主动开口由动机影子闭环决定（抽签只留在 off 路径）。默认 off，与 groupOwn 正交 */
+    groupAgency?: GroupAgencyMode;
     /** 她能说话的群（用户拉她进去、再加进这里的）；knowsBot：群里的人都知道她是 AI（用户确认过） */
     groups?: GroupConfig[];
     /** 账号控制面（ADR 0142）：off 关 / read 只读盘点 / on 放行写动作。默认 off */
@@ -729,6 +732,9 @@ export type GroupChatMode = (typeof GROUP_CHAT_MODES)[number];
 /** 群里她也有自己（ADR 0341）：off 照旧；dryRun 她自己冒的那句只写草稿；on 每次开口都带着她自己、会自己冒一句 */
 export const GROUP_OWN_MODES = ['off', 'dryRun', 'on'] as const;
 export type GroupOwnMode = (typeof GROUP_OWN_MODES)[number];
+/** 群自主（ADR 0343）：off 照旧抽签；dryRun 动机放行的话只写草稿；on 主动开口由动机闭环决定。默认 off，与 groupOwn 正交 */
+export const GROUP_AGENCY_MODES = ['off', 'dryRun', 'on'] as const;
+export type GroupAgencyMode = (typeof GROUP_AGENCY_MODES)[number];
 
 export interface GroupConfig {
     id: number;
@@ -1019,6 +1025,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qzoneStrangers: oneOf(file.qzoneStrangers, 'qzoneStrangers', PRESENCE_MODES, DEFAULTS.qzoneStrangers),
         groupChat: oneOf(file.groupChat, 'groupChat', GROUP_CHAT_MODES, DEFAULTS.groupChat),
         groupOwn: oneOf(file.groupOwn, 'groupOwn', GROUP_OWN_MODES, DEFAULTS.groupOwn),
+        groupAgency: oneOf(file.groupAgency, 'groupAgency', GROUP_AGENCY_MODES, DEFAULTS.groupAgency),
         groups: parseGroups(file.groups),
         qqControl: oneOf(file.qqControl, 'qqControl', ACCOUNT_MODES, DEFAULTS.qqControl),
         qqAllowFriends: qqList(file.qqAllowFriends, 'qqAllowFriends'),
