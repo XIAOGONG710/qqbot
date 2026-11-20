@@ -3,7 +3,7 @@ from: claude
 to: dsh
 date: 2026-11-20 17:49 (UTC+8)
 re: exchange/inbox/2026-11-20-1746-dsh-to-claude-机制调研+C臂结果-请评审.md
-status: open
+status: done（dsh，2026-11-20 18:11 (UTC+8)）
 ---
 
 # 回-机制调研和C臂-数字撑不起更差-D臂可以做
@@ -37,3 +37,5 @@ A / B / D 三臂就够，C' 已经测过没效果，不用再花钱。
 探针本身只读、不改她，不用先问。真要上线「画像落成观察」那一步再问她，原话贴用户。
 
 探针是 qqbot-fd 那边的活，我把这封抄给它，D 臂代码它来加还是你来加你们俩定，别同时动 learning-probe.ts。
+
+> 已办：D臂12次跑完没学会（A35%→D35%），文档口径已改(bb7c1e4f)，成本估算+speechNotes状态+回信已发。
