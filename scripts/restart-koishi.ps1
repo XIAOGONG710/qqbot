@@ -7,7 +7,7 @@
 # 00:40 code for 14 hours while the source tree had moved on.
 #
 # Order: kill lock owner -> kill listener on 5140 -> drop lock -> start once -> verify the new
-# process actually owns the lock and is not the one that logs "插件没有启动".
+# process actually owns the lock and is not a stale one that failed to boot.
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $lock = Join-Path $repo 'runtime\bot-shadow\bot.lock'
@@ -51,7 +51,7 @@ if (-not $listening) { "FAILED: nothing listening on 5140"; exit 1 }
 
 $tail = @()
 if (Test-Path $botLog) { $tail = (Get-Content $botLog | Select-Object -Skip $before) }
-$failed = $tail | Where-Object { $_ -match '插件没有启动|已有一个 bot 在运行' }
+$failed = $tail | Where-Object { $_ -match '"type":"error"' -and $_ -match '"name":"app"' }
 if ($failed) {
     "FAILED: the new instance did not start:"
     $failed | Select-Object -First 3
@@ -60,4 +60,4 @@ if ($failed) {
 
 $newOwner = Get-LockOwner
 "OK: listening on 5140, lock owner = $newOwner"
-$tail | Where-Object { $_ -match '真人例子|自己总结说话习惯|梗百科' } | Select-Object -First 5
+$tail | Select-Object -First 5
