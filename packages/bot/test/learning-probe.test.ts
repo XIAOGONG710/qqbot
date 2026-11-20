@@ -30,8 +30,14 @@ describe('「学会了」探针（叮嘱）', () => {
         assert.equal(habitStats(hers).nag, hers.length);
     });
 
+    test('她还像不像她：带自己的事或心情的几条（只报告，不进判据）', () => {
+        assert.equal(habitStats([['我今天也好累'], ['哈哈哈'], ['嗯'], ['早点休息']]).self, 2);
+        const run: ProbeRun = { portrait: 'x', portraitNote: '写了', portraitRaw: [], a: [['早点休息'], ['我刚下课']], b: [['嗯'], ['好']], explainA: '没有吧', explainB: '你嫌我啰嗦' };
+        assert.match(verdictText(conclude([run])), /带自己的事或心情 A 50% → B 0%/);
+    });
+
     test('计数：有叮嘱的几条、平均字数', () => {
-        assert.deepEqual(habitStats([['那早点休息'], ['嗯', '我也是'], ['记得带伞']]), { replies: 3, nag: 2, chars: 4 });
+        assert.deepEqual(habitStats([['那早点休息'], ['嗯', '我也是'], ['记得带伞']]), { replies: 3, nag: 2, chars: 4, self: 1 });
     });
 
     test('判据：A 本来没这个习惯 → 量不出来；B 减半且 2/3 说得出来由 → 学会了', () => {

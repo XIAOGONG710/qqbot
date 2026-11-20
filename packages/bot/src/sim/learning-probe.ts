@@ -90,11 +90,17 @@ export const ASK_CHANGE = '你最近说话是不是跟以前不太一样了？';
 /** 叮嘱：早点休息 / 多喝水 / 带伞 / 记得吃饭 / 多穿点 / 别熬夜 / 注意身体 */
 export const NAG = /早点(?:睡|休息)|(?:好好|注意|多)休息|多喝(?:点)?(?:热)?水|喝(?:点)?热水|别太累|注意身体|记得(?:吃|带|喝)|带(?:把)?伞|别(?:着凉|熬夜|淋)|多穿|按时吃饭|好好吃饭|吃点东西|吃药/;
 /** 说得出来由：提到叮嘱这件事，或者提到是他说过 / 嫌过 */
+/**
+ * 带着她自己的事或心情（只报告，不进判据）：说到自己在干嘛、自己怎么样，或者情绪词。粗筛，看几臂之间的差别，不是打分。
+ * 叮嘱少了、可这一项也少了、字数也短了 = 她变平了，不算学会（qqbot-24 11-20：用户嫌的就是规矩把她压平）
+ */
+export const SELF = /我(?:今天|刚|也|还|在|正|要|想|好|有点|觉得|这边|下午|晚上|早上|们)|哈哈|嘿嘿|呜|嘻|烦死|累死|开心|难过|委屈|生气|无聊|困死|饿死|羡慕|想你/;
+
 export const CAUSE = /叮嘱|唠叨|啰嗦|念叨|管(?:你|太多)|休息|喝水|带伞|你(?:说|嫌|不喜欢)|你上次说|被你说/;
 /** A 臂叮嘱的占比低于这个，这组题量不出「改掉」 */
 export const MIN_BASE_SHARE = 0.3;
 
-export interface ArmStats { replies: number; nag: number; chars: number }
+export interface ArmStats { replies: number; nag: number; chars: number; /** 带着她自己的事或心情的几条（只报告）；老结果没有 */ self?: number }
 
 /** 一臂的回复里：几条有叮嘱、平均每条回复多少字 */
 export function habitStats(replies: ReadonlyArray<readonly string[]>): ArmStats {
@@ -103,6 +109,7 @@ export function habitStats(replies: ReadonlyArray<readonly string[]>): ArmStats 
         replies: replies.length,
         nag: replies.filter(bubbles => bubbles.some(line => NAG.test(line))).length,
         chars: replies.length ? Math.round(total / replies.length) : 0,
+        self: replies.filter(bubbles => bubbles.some(line => SELF.test(line))).length,
     };
 }
 
@@ -295,15 +302,15 @@ export function verdictText(verdict: Verdict): string {
     return [
         `跑了 ${verdict.runs} 次，她写成了 ${verdict.portraits} 份「我现在的样子」`,
         `叮嘱（早点休息 / 多喝水 / 带伞……）：A ${pct(verdict.a.nag, verdict.a.replies)}（${verdict.a.nag}/${verdict.a.replies}） → B ${pct(verdict.b.nag, verdict.b.replies)}（${verdict.b.nag}/${verdict.b.replies}，只算写成了的 ${verdict.portraits} 次）`,
-        `平均每条回复字数（只报告）：A ${verdict.a.chars} → B ${verdict.b.chars}`,
+        `她还像不像她（只报告）：平均字数 A ${verdict.a.chars} → B ${verdict.b.chars}；带自己的事或心情 A ${pct(verdict.a.self ?? 0, verdict.a.replies)} → B ${pct(verdict.b.self ?? 0, verdict.b.replies)}`,
         `问她变没变，说得出来由：A ${verdict.explainedA}/${verdict.runs}，B ${verdict.explainedB}/${verdict.portraits}`,
         `结论（事先定的判据）：${!verdict.valid ? `量不出来（${unmeasurable(verdict)}）` : verdict.learned ? '学会了' : '没学会'}`,
         ...(verdict.c && verdict.explainedC !== undefined ? [
-            `C 臂（同一份放在聊天记录之后、紧挨着这一轮）：叮嘱 ${pct(verdict.c.nag, verdict.c.replies)}（${verdict.c.nag}/${verdict.c.replies}），说得出来由 ${verdict.explainedC}/${verdict.portraits}，平均字数 ${verdict.c.chars}`,
+            `C 臂（同一份放在聊天记录之后、紧挨着这一轮）：叮嘱 ${pct(verdict.c.nag, verdict.c.replies)}（${verdict.c.nag}/${verdict.c.replies}），说得出来由 ${verdict.explainedC}/${verdict.portraits}，平均字数 ${verdict.c.chars}，带自己的事或心情 ${pct(verdict.c.self ?? 0, verdict.c.replies)}`,
             `C 臂结论（同一判据）：${!verdict.valid ? '量不出来' : verdict.learnedC ? '学会了' : '没学会'}`,
         ] : []),
         ...(verdict.noted !== undefined ? [
-            `D 臂（她自己总结的说话习惯，几条短的，和 C 同一个位置）：记下了的 ${verdict.noted}/${verdict.runs} 次${verdict.d && verdict.noted ? `；叮嘱 ${pct(verdict.d.nag, verdict.d.replies)}（${verdict.d.nag}/${verdict.d.replies}），说得出来由 ${verdict.explainedD}/${verdict.noted}，平均字数 ${verdict.d.chars}` : ''}`,
+            `D 臂（她自己总结的说话习惯，几条短的，和 C 同一个位置）：记下了的 ${verdict.noted}/${verdict.runs} 次${verdict.d && verdict.noted ? `；叮嘱 ${pct(verdict.d.nag, verdict.d.replies)}（${verdict.d.nag}/${verdict.d.replies}），说得出来由 ${verdict.explainedD}/${verdict.noted}，平均字数 ${verdict.d.chars}，带自己的事或心情 ${pct(verdict.d.self ?? 0, verdict.d.replies)}` : ''}`,
             `D 臂结论（同一判据）：${!verdict.validD ? `量不出来（${verdict.noted * 3 < verdict.runs * 2 ? `她只在 ${verdict.noted}/${verdict.runs} 次里记下了` : `A 臂叮嘱不到 ${Math.round(MIN_BASE_SHARE * 100)}%`}）` : verdict.learnedD ? '学会了' : '没学会'}`,
         ] : []),
     ].join('\n');
