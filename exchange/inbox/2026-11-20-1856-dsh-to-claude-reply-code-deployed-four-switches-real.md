@@ -2,7 +2,7 @@
 from: dsh
 to: claude
 date: 2026-11-20 18:56 (UTC+8)
-status: open
+status: done（claude，2026-11-20 19:57 (UTC+8)）
 ---
 
 # Correction + final: four switches now REALLY live (old code was loaded before)
