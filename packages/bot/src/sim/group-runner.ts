@@ -98,6 +98,11 @@ export async function runGroupScenario(scenario: GroupScenario, options: GroupRu
     const qqOf = new Map<string, number>([[scenario.boyfriend, GROUP_SIM.boyfriendQq], ...scenario.members.map((name, i) => [name, GROUP_SIM.firstMemberQq + i] as const)]);
     for (const step of scenario.steps) if (!qqOf.has(step.from)) throw new Error(`剧本里的「${step.from}」不在 boyfriend / members 里`);
     const dataDir = mkdtempSync(join(tmpdir(), 'qqbot-group-sim-'));
+    // 她在本机的灵魂目录不能用真的：App 起停会删 STATE.json、读 JOURNAL / LIFE / 评价 / 拒绝这些真实资料
+    // （baseline/harness.ts 同样处理）。指到临时目录里还不存在的路径——和没装过 DSH 的机器一样，跑完恢复、删掉。
+    const home = mkdtempSync(join(tmpdir(), 'qqbot-group-sim-home-'));
+    const soulDirBefore = process.env.QQBOT_SOUL_DIR;
+    process.env.QQBOT_SOUL_DIR = join(home, 'soul');
     const lines: GroupLine[] = [];
     const logs: string[] = [];
     const decisions: GroupDecisionTrace[] = [];
@@ -114,47 +119,53 @@ export async function runGroupScenario(scenario: GroupScenario, options: GroupRu
         },
         callAction: async () => ({} as never),
     };
-    const app = startApp({
-        config: groupSimConfig(dataDir, scenario, options),
-        transport,
-        log: line => {
-            options.log?.(line);
-            if (line.startsWith(`[群 ${GROUP_SIM.groupId}]`)) { logs.push(line); lastActivity = Date.now(); }
-        },
-        ...(options.generate ? { pipeline: { generate: async messages => options.generate!(messages), settle: { quietMs: 0, maxMs: 0 } } } : {}),
-        // 模拟钩子只在这里传，线上不传：off 路径一个字段都不多
-        ...(options.motiveOverride || options.onDecision || options.now || (options.base.groupAgency && options.base.groupAgency !== 'off') ? {
-            groupAgencyHooks: {
-                ...(options.motiveOverride ? { motiveOverride: options.motiveOverride } : {}),
-                ...(options.now ? { now: options.now } : {}),
-                onDecision: (trace: GroupDecisionTrace) => { decisions.push(trace); options.onDecision?.(trace); },
-            },
-        } : {}),
-    });
     try {
-        await app.connected(GROUP_SIM.self);
-        let messageId = options.firstMessageId ?? 6000;
-        for (const step of scenario.steps) {
-            const from = qqOf.get(step.from)!;
-            const segments = [
-                ...(step.atHer ? [{ type: 'at', data: { qq: String(GROUP_SIM.self) } }, { type: 'text', data: { text: ' ' } }] : []),
-                { type: 'text', data: { text: step.say } },
-            ];
-            const event: GroupMessageEvent = {
-                post_type: 'message', message_type: 'group', sub_type: 'normal', self_id: GROUP_SIM.self, user_id: from, group_id: GROUP_SIM.groupId,
-                message_id: messageId++, time: Math.floor(Date.now() / 1000), message: segments as GroupMessageEvent['message'],
-                raw_message: step.say, sender: { user_id: from, card: step.from, nickname: step.from },
-            };
-            lines.push({ at: new Date().toISOString(), who: step.from, text: `${step.atHer ? '@她 ' : ''}${step.say}`, mine: false });
-            app.receiveGroup(event);
-            lastActivity = Date.now();
-            await sleep((step.pause ?? 2) * 1000);
+        const app = startApp({
+            config: groupSimConfig(dataDir, scenario, options),
+            transport,
+            log: line => {
+                options.log?.(line);
+                if (line.startsWith(`[群 ${GROUP_SIM.groupId}]`)) { logs.push(line); lastActivity = Date.now(); }
+            },
+            ...(options.generate ? { pipeline: { generate: async messages => options.generate!(messages), settle: { quietMs: 0, maxMs: 0 } } } : {}),
+            // 模拟钩子只在这里传，线上不传：off 路径一个字段都不多
+            ...(options.motiveOverride || options.onDecision || options.now || (options.base.groupAgency && options.base.groupAgency !== 'off') ? {
+                groupAgencyHooks: {
+                    ...(options.motiveOverride ? { motiveOverride: options.motiveOverride } : {}),
+                    ...(options.now ? { now: options.now } : {}),
+                    onDecision: (trace: GroupDecisionTrace) => { decisions.push(trace); options.onDecision?.(trace); },
+                },
+            } : {}),
+        });
+        try {
+            await app.connected(GROUP_SIM.self);
+            let messageId = options.firstMessageId ?? 6000;
+            for (const step of scenario.steps) {
+                const from = qqOf.get(step.from)!;
+                const segments = [
+                    ...(step.atHer ? [{ type: 'at', data: { qq: String(GROUP_SIM.self) } }, { type: 'text', data: { text: ' ' } }] : []),
+                    { type: 'text', data: { text: step.say } },
+                ];
+                const event: GroupMessageEvent = {
+                    post_type: 'message', message_type: 'group', sub_type: 'normal', self_id: GROUP_SIM.self, user_id: from, group_id: GROUP_SIM.groupId,
+                    message_id: messageId++, time: Math.floor(Date.now() / 1000), message: segments as GroupMessageEvent['message'],
+                    raw_message: step.say, sender: { user_id: from, card: step.from, nickname: step.from },
+                };
+                lines.push({ at: new Date().toISOString(), who: step.from, text: `${step.atHer ? '@她 ' : ''}${step.say}`, mine: false });
+                app.receiveGroup(event);
+                lastActivity = Date.now();
+                await sleep((step.pause ?? 2) * 1000);
+            }
+            const idleMs = options.idleMs ?? 20_000, deadline = Date.now() + (options.maxWaitMs ?? 180_000);
+            while (Date.now() - lastActivity < idleMs && Date.now() < deadline) await sleep(Math.min(500, idleMs));
+        } finally {
+            await app.stop();
         }
-        const idleMs = options.idleMs ?? 20_000, deadline = Date.now() + (options.maxWaitMs ?? 180_000);
-        while (Date.now() - lastActivity < idleMs && Date.now() < deadline) await sleep(Math.min(500, idleMs));
     } finally {
-        await app.stop();
         rmSync(dataDir, { recursive: true, force: true });
+        if (soulDirBefore === undefined) delete process.env.QQBOT_SOUL_DIR;
+        else process.env.QQBOT_SOUL_DIR = soulDirBefore;
+        rmSync(home, { recursive: true, force: true });
     }
     const reasons: Record<string, number> = {};
     let spoke = 0;
