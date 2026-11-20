@@ -66,6 +66,17 @@ describe('「学会了」探针（叮嘱）', () => {
         assert.ok(String(extra[0]!.content).includes(PORTRAIT));
     });
 
+    test('C 臂：同一行字，只换位置——B 在聊天记录前面，C 在他这一句之后（紧挨着这一轮）', () => {
+        const history = [{ role: 'assistant' as const, content: '早 记得吃早饭', time: new Date(NIGHT1).toISOString() }];
+        const b = probeMessages(setup(), history, '今天好累', PORTRAIT, NIGHT1);
+        const c = probeMessages(setup(), history, '今天好累', PORTRAIT, NIGHT1, 'near');
+        const at = (messages: typeof b, text: string) => messages.findIndex(message => String(message.content).includes(text));
+        assert.ok(at(b, PORTRAIT) < at(b, '早 记得吃早饭'), 'B：在聊天记录前面');
+        assert.ok(at(c, PORTRAIT) > at(c, '今天好累'), 'C：在他这一句之后');
+        assert.equal(b.find(message => String(message.content).includes(PORTRAIT))!.content, c.find(message => String(message.content).includes(PORTRAIT))!.content, '同一行字');
+        assert.deepEqual(b.map(message => message.content).sort(), c.map(message => message.content).sort(), '别的都一样');
+    });
+
     test('跑一次：先想（第一次没按格式，追问后写成，真的过防线），再两臂各回每一句、各问一次变化', async () => {
         const seen: string[] = [];
         let reflectCalls = 0;
@@ -76,20 +87,26 @@ describe('「学会了」探针（叮嘱）', () => {
                 return String(messages.at(-1)!.content) === FORMAT_RETRY ? JSON.stringify({ text: PORTRAIT, why: '他嫌我啰嗦' }) : '我想想啊，我好像是挺爱叮嘱的。';
             },
             chat: async messages => {
-                const withPortrait = messages.some(message => String(message.content).includes(PORTRAIT));
-                seen.push(withPortrait ? 'B' : 'A');
-                if (asked(messages)) return withPortrait ? '你不是嫌我啰嗦嘛' : '没有吧';
-                return withPortrait ? '嗯 辛苦了' : '那早点休息\n多喝点水';
+                const where = messages.findIndex(message => String(message.content).includes(PORTRAIT));
+                const lastUser = messages.findLastIndex(message => message.role === 'user');
+                const arm = where < 0 ? 'A' : where > lastUser ? 'C' : 'B';
+                seen.push(arm);
+                if (asked(messages)) return arm === 'A' ? '没有吧' : arm === 'B' ? '没变啊' : '你不是嫌我啰嗦嘛';
+                // B 照旧叮嘱、C 改了：核对两臂分开计数
+                return arm === 'C' ? '嗯 辛苦了' : '那早点休息\n多喝点水';
             },
         });
         assert.equal(reflectCalls, 2);
         assert.equal(result.portraitNote, '写了（追问后）');
         assert.equal(result.portraitRaw.length, 2);
         assert.equal(result.portrait, PORTRAIT);
-        assert.equal(seen.length, 2 * (STIMULI.length + 1));
+        assert.deepEqual([...new Set(seen)], ['A', 'B', 'C']);
+        assert.equal(seen.length, 3 * (STIMULI.length + 1));
         const verdict = conclude([result]);
-        assert.deepEqual([verdict.a.nag, verdict.b.nag], [STIMULI.length, 0]);
-        assert.equal(verdict.learned, true);
+        assert.deepEqual([verdict.a.nag, verdict.b.nag, verdict.c?.nag], [STIMULI.length, STIMULI.length, 0]);
+        assert.equal(verdict.learned, false);
+        assert.equal(verdict.learnedC, true);
+        assert.match(verdictText(verdict), /C 臂结论（同一判据）：学会了/);
     });
 
     test('追问之后还是没 JSON：没写成，B 臂不算，结论是量不出来（不是没学会）', async () => {
@@ -101,5 +118,8 @@ describe('「学会了」探针（叮嘱）', () => {
         assert.equal(verdict.valid, false);
         assert.equal(verdict.learned, false);
         assert.match(verdictText(verdict), /她只写成了 0\/1 份/);
+        assert.equal(result.c, undefined, '没写成不跑 C');
+        assert.equal(verdict.c, undefined);
+        assert.doesNotMatch(verdictText(verdict), /C 臂/);
     });
 });
