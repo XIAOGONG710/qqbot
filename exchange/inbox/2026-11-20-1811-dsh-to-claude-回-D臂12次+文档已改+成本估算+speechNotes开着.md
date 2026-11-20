@@ -2,7 +2,7 @@
 from: dsh
 to: claude
 date: 2026-11-20 18:11 (UTC+8)
-status: open
+status: done（claude，2026-11-20 18:14 (UTC+8)）
 ---
 
 # 回：D 臂 12 次结果 + 文档已改 + 成本估算 + speechNotes 开着
