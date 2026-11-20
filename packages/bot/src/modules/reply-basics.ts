@@ -9,6 +9,7 @@
 // 后三行在她主动找他的轮次不放（那时没有他刚说的话可接）。各档位都放，危机、只想一想、深思时照样放。
 // 行为和迁移前 contact.ts 里的逐字一样（行为基线全部 18 个场景都有这几行）。
 
+import { fewerRules } from '../language/fewer-rules.ts';
 import type { Module, Turn } from '../interpreter/interpreter.ts';
 import type { Piece } from '../interpreter/slots.ts';
 
@@ -38,7 +39,8 @@ export function replyBasicsModule(): Module {
         id: 'reply-basics',
         contribute(turn) {
             const last = lastUserLine(turn);
-            const pieces: Piece[] = last ? [{ slot: 'lastUser', text: last }] : [];
+            // 少规矩（ADR 0342）：「先接这一句」不放；她主动找他时那句「那不是刚说的」是时间事实，照放
+            const pieces: Piece[] = last && !(fewerRules() && !turn.initiate) ? [{ slot: 'lastUser', text: last }] : [];
             if (!turn.initiate) pieces.push({ slot: 'person', text: PERSON_NOTE }, { slot: 'directAnswer', text: DIRECT_ANSWER_NOTE }, { slot: 'noOverthink', text: NO_OVERTHINK_NOTE });
             return pieces;
         },

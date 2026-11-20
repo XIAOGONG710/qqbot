@@ -179,6 +179,8 @@ export const DEFAULTS = {
     diaryInsights: false,
     /** 她带着往前走的「我现在的样子」（ADR 0340）：每晚整份重写一次，每轮整份放进男朋友档的提示词 */
     selfPortrait: false,
+    /** 少规矩（ADR 0342）：提示词里教她怎么说话的那一类整类不放，只留她是谁、她的日子、保命、真实能力和格式 */
+    fewerRules: false,
     /** 她聊完回想一下、记下有依据的感受（ADR 0197）：要 herFeelings 开着；每条要指出是哪几条消息 / 日记让她有的 */
     feelingReview: false,
     /** 她的私人空间（ADR 0200）：关着（默认）时，/追求 /说话习惯 /心境 /自我认识 这四条念她私人内容的命令不念，他得到一句固定的话；开着才念 */
@@ -638,6 +640,8 @@ export interface AppConfig {
     diaryInsights?: boolean;
     /** 她带着往前走的「我现在的样子」（ADR 0340）：每晚 22 点以后她自己把说话习惯、自我认识、最近三天的聊天和他对她说话方式的反应（「好怪」「别这么说」「笑死」……，只给她看、不是规定）整份重写成一份第一人称的「我现在是什么样的人、最近在变什么、为什么」（60–600 字，不改就 keep）；以后每一轮男朋友档的提示词都整份带着，说话习惯、口味、看法和卡里不一样时按这份，名字年龄家人学校经历仍以卡为准。底线、网址、瞒着他、引他原话、写别人都不收；旧版本整份进 self-portrait.history.jsonl 可回滚；写好后给桌面留一份 PORTRAIT.json。危机轮次不放。要名单里有男朋友档；默认关 */
     selfPortrait?: boolean;
+    /** 少规矩（ADR 0342，用户 11-20「我想让她有灵性」「规矩给她压住了」）：开着时提示词里只教她怎么说话的槽（说话短、先接哪句、别反问、别主动、不另起话题、意图、形状、字数……）整类不放，卡末尾那段换成只剩做不到的事、格式和不编他的话的几句；她是谁、她的日子、记忆、保命（危机、被问是不是 AI）和代码要认的格式照旧。危机回合不受影响。默认关 */
+    fewerRules?: boolean;
     /** 她聊完回想一下、记下有依据的感受（ADR 0197）：一段聊天结束半小时后想一次——看最近 36 小时和他的聊天、昨天今天的日记，写下哪些事让她心里有了感受（开心 / 松了口气 / 担心 / 难过 / 烦 / 累）；每一条必须指出是哪几条消息（或日记）让她有的，只有小事和明显两档（大事只有作者能写 moments.json），因为他的态度难过 / 烦的一晚最多一条，来由不能引他的原话、不写别人、不碰底线；散得快。他用 /心境 看，改不了。要 herFeelings 开着、名单里有男朋友档；默认关 */
     feelingReview?: boolean;
     /** 她的私人空间（ADR 0200）：已不起作用（11-19 起）。原来开着时他才能用 /追求 /说话习惯 /心境 /自我认识 看她自己总结 / 回想 / 追求出来的东西；这四条 10-31 起停用，用户 11-19 定为留着开关、只改说法 */
@@ -1023,6 +1027,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         speechNotes: bool(file, 'speechNotes', '', DEFAULTS.speechNotes),
         diaryInsights: bool(file, 'diaryInsights', '', DEFAULTS.diaryInsights),
         selfPortrait: bool(file, 'selfPortrait', '', DEFAULTS.selfPortrait),
+        fewerRules: bool(file, 'fewerRules', '', DEFAULTS.fewerRules),
         feelingReview: bool(file, 'feelingReview', '', DEFAULTS.feelingReview),
         ownerPeek: bool(file, 'ownerPeek', '', DEFAULTS.ownerPeek),
         memoryReconcile: bool(file, 'memoryReconcile', '', DEFAULTS.memoryReconcile),

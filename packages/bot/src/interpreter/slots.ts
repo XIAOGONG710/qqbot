@@ -6,6 +6,8 @@
 // - 「此刻」块的行槽：这些行按顺序用换行拼成一条消息，放在 afterHistory 的最后（时间、状态、心情、意图、形状……）。
 // 同一个槽里有几段时，按模块注册顺序、同一模块按给出的顺序排。
 
+import { fewerRules, RULE_SLOTS } from '../language/fewer-rules.ts';
+
 /** main 之后、不常变的（长期记忆里的关系概况）；同 ST 的 After Main Prompt */
 export const AFTER_MAIN_SLOTS = [
     'relationship',
@@ -66,6 +68,8 @@ export function assemblePrompt(pieces: readonly Piece[]): { afterMain: string[];
     pieces.forEach((piece, order) => {
         const at = where.get(piece.slot);
         if (!at) throw new Error(`没有这个提示词槽：${piece.slot}`);
+        // 少规矩（ADR 0342，默认关）：教她怎么说话的槽不放
+        if (fewerRules() && RULE_SLOTS.has(piece.slot)) return;
         byList[at.list].push({ index: at.index, order, text: piece.text });
     });
     const sorted = (list: Placed[]) => [...list].sort((a, b) => a.index - b.index || a.order - b.order).map(item => item.text);

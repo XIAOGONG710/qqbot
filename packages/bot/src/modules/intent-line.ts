@@ -10,6 +10,7 @@
 // 这一行和「QQ 文字里的抱抱」那条出口检查（textIntimacy）无关，那条读的是意图。
 // 不存状态、不调模型。同步返回，不多等一个微任务（行为基线核对事件顺序）。「亲热」那行日志在 decideAt.intimate 里记。
 
+import { fewerRules } from '../language/fewer-rules.ts';
 import type { Module, TurnFacts } from '../interpreter/interpreter.ts';
 import type { Piece } from '../interpreter/slots.ts';
 
@@ -35,7 +36,8 @@ export function intentLineModule(): Module {
             const facts = turn.facts;
             const pieces: Piece[] = [];
             const intent = facts.intent;
-            if (intent && !(facts.deliberate && ANSWER_HOW.test(intent))) pieces.push({ slot: 'intent', text: intent });
+            // 少规矩（ADR 0342）：「这一轮你想怎么接」不放，危机回合的照放
+            if (intent && !(facts.deliberate && ANSWER_HOW.test(intent)) && !(fewerRules() && !facts.crisis)) pieces.push({ slot: 'intent', text: intent });
             if (facts.intimateLine) pieces.push({ slot: 'intimate', text: facts.intimateLine });
             return pieces;
         },

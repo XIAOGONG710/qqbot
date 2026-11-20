@@ -1,3 +1,4 @@
+import { FEWER_RULES_BASICS, fewerRules, isSceneExample } from '../language/fewer-rules.ts';
 import { localDate } from '../local-date.ts';
 // 一位联系人的回复流水线：召回长期记忆 → 按 ST 顺序拼提示词 → 后处理 → 生成 → 清理（含卡上的 ST 正则）→ 出口检查 → 拆条发送（responder.ts 调度）。
 // 出口检查带上聊天记录里她最近几次回复和对方最近几条，查说话的毛病（ADR 0014，配置 speechCheck）。
@@ -528,7 +529,11 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             // 名字、红线（character.banned）、危机承认版卡、每轮拼出来的事实照旧——去掉的是「她该是什么样」，不是「她是谁」。
             // 只留卡里那段「被问是不是 AI」的说明（承认是程序是底线，不能跟设定一起清掉）；open 卡本来没有这段
             const bare = INJECT_PERSONA ? character : { ...character, description: personaFacts(character.description), personality: '', scenario: '', mesExample: '' };
-            const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...bare, postHistoryInstructions: '' }, worldInfo } : { character: bare, worldInfo };
+            // 少规矩（ADR 0342，默认关）：卡末尾那段换成只剩真实能力、格式和真话的几句；危机回合照旧用承认版卡
+            // 场景世界书里的「场景参考」（只学语气和长短的范例）一并不放
+            const plain = fewerRules() ? { ...bare, postHistoryInstructions: FEWER_RULES_BASICS } : bare;
+            const plainWorld = fewerRules() ? worldInfo.filter(entry => !isSceneExample(entry)) : worldInfo;
+            const turnCard = crisisNow && options.openCard ? options.openCard : thinking ? { character: { ...bare, postHistoryInstructions: '' }, worldInfo } : { character: plain, worldInfo: plainWorld };
             // 图片表情和照片的清单（ADR 0063 / 0109 / 0240）是 media-offers 模块的 decideAt.lists：在这里、所有模块的 contribute 之前原位取
             // （货架每取一次都查索引 / 文件，坏了会抛错；条件一次、内容一次，照旧），写进 turn.facts，经 turnModules 放进 sticker、photo 槽
             decideStage(options.turnModules ?? [], 'lists', turn, decideCtx);
@@ -562,7 +567,8 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
             return {
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
-                ...(crisisNow ? { maxBubbles: 3 } : feltNow.length && !grievanceActive ? { maxBubbles: tunedMaxBubbles(shapeNow ? shapeNow.maxBubbles : 3, moodNow) } : ((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) || grievanceActive) ? { maxBubbles: shapeNow ? Math.min(2, shapeNow.maxBubbles) : 2 } : shapeNow ? { maxBubbles: shapeNow.maxBubbles } : deliberateNow ? { maxBubbles: DELIBERATE_MAX_BUBBLES } : {}),
+                // 少规矩（ADR 0342）：除了危机回合，不再按心境、意图、形状压条数
+                ...(crisisNow ? { maxBubbles: 3 } : fewerRules() ? {} : feltNow.length && !grievanceActive ? { maxBubbles: tunedMaxBubbles(shapeNow ? shapeNow.maxBubbles : 3, moodNow) } : ((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) || grievanceActive) ? { maxBubbles: shapeNow ? Math.min(2, shapeNow.maxBubbles) : 2 } : shapeNow ? { maxBubbles: shapeNow.maxBubbles } : deliberateNow ? { maxBubbles: DELIBERATE_MAX_BUBBLES } : {}),
                 ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆${summary ? '和前面的要点' : ''}）` } : {}),
             };
         },

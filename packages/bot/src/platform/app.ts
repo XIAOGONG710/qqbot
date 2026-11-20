@@ -114,6 +114,7 @@ import { takesReader } from '.././life/reading-takes.ts';
 import { thoughtsReader } from '.././life/open-questions.ts';
 import { guessesReader } from '.././life/her-guesses.ts';
 import { insightsReader, loadInsightsState, loadSelfDiary, recordSelfDiary, writeInsightsExport } from '.././life/diary-insights.ts';
+import { relaxStyle, useFewerRules } from '../language/fewer-rules.ts';
 import { portraitReader } from '../life/self-portrait.ts';
 import { removeFaces } from '.././language/qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from '.././memory/long-term.ts';
@@ -439,7 +440,8 @@ export function startApp(options: AppOptions): App {
     try {
         if (unfinishedForgetJobs(options.config.dataDir).length) throw new Error('数据目录有未完成遗忘任务；保留原记录，请先按原任务 --resume 核实恢复，再启动 bot');
         if (unfinishedArchiveJobs(options.config.dataDir).length) throw new Error('数据目录有未完成归档任务；保留原计划，请先 --resume 原归档任务恢复，再启动 bot');
-        const app = createApp(options, lifetime);
+        // 少规矩（ADR 0342）：只管说话风格的开关（说话的毛病检查、句尾封顶、质感、形状、挑候选）一并关掉
+        const app = createApp(options.config.fewerRules ? { ...options, config: relaxStyle(options.config) } : options, lifetime);
         lifetime.commit();
         return app;
     }
@@ -1678,6 +1680,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     if (config.diaryInsights && deviceOwner) exportInsights();
     if (config.diaryInsights) log(deviceOwner ? '她翻自己的日记写对自己的认识：开（每晚 22 点以后想一次；/自我认识 随时看）' : '她翻自己的日记写对自己的认识：开着，但名单里没有男朋友档，不启动');
     if (config.selfPortrait) log(deviceOwner ? '「我现在的样子」：开（每晚 22 点以后她自己整份重写一次，每轮整份带上）' : '「我现在的样子」：开着，但名单里没有男朋友档，不启动');
+    // 少规矩（ADR 0342，默认关）：教她怎么说话的那些不放；整个进程一个开关，回复器拼提示词时读
+    useFewerRules(Boolean(config.fewerRules));
+    if (config.fewerRules) log('少规矩：开（教她怎么说话的那些提示词不放，只留她是谁、她的日子、保命和格式）');
     // 她读完 / 看完之后自己想的（ADR 0204）：22 点以后想一次；今天读到哪儿 / 看了什么视频，有话想说才写一句；私人空间，没有命令念给他
     if (config.readingTakes) log(deviceOwner ? '她读完看完之后自己想的：开（每晚 22 点以后想一次，有话想说才写；私人空间，没有命令念给他）' : '她读完看完之后自己想的：readingTakes 开着，但名单里没有男朋友档，不起作用');
     if (config.hisReactions) log(`看他的反应：${config.proactive === 'off' ? '开着，但主动消息（proactive）关着，不起作用' : '开（只男朋友档；她主动说自己的事时提示词多一行他三周内对各类事的反应，说什么她自己拿捏；他明说过不想听的那一类照片 / 小事 7 天内不发）'}`);

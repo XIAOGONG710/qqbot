@@ -10,6 +10,7 @@
 // 不经联系人流水线、也没人预先放好上下文时（接线漏了）照旧：平常回合原样放过，危机回合发固定兜底。
 // 原来这一步总是 await（reviewReply / reviewCrisisReply 都是 async），这里也总是返回 promise：多出的微任务落在本来就异步的路径上。
 
+import { fewerRules } from '../language/fewer-rules.ts';
 import type { Module, ReviewCtx, ReviewVerdict, Turn } from '../interpreter/interpreter.ts';
 import { crisisFallback, faceContext, reviewCrisisReply, reviewReply, type ReviewOptions } from '../language/exit-check.ts';
 import { ODD_BODY_WORDS, STILTED_WORDS } from '../language/expression.ts';
@@ -23,7 +24,8 @@ export function exitOptionsOf(turn: Turn, ctx: ReviewCtx): ReviewOptions | undef
     const history = ctx.history ?? (() => []);
     return {
         // 角色卡的禁用词 + 医书里的词（“肚子坠着”之类，expression.ts 的 ODD_BODY_WORDS）：出了就让她重写
-        banned: [...(turn.card?.banned ?? []), ...ODD_BODY_WORDS, ...STILTED_WORDS],
+        // 少规矩（ADR 0342）：只留卡上的红线，医书词和书面腔不再让她重写
+        banned: fewerRules() ? [...(turn.card?.banned ?? [])] : [...(turn.card?.banned ?? []), ...ODD_BODY_WORDS, ...STILTED_WORDS],
         userName: contact.name,
         ...(given.speechCheck ? { speech: { ...speechContext(history(), given.tailCap ? { tailCaps: TAIL_CAPS } : {}), ...(facts.sulk ? { allowGrievance: true } : {}), ...(ctx.allowRepeat ? { allowRepeat: true } : {}) } } : {}),
         ...(facts.books?.context ? { books: facts.books.context } : {}),

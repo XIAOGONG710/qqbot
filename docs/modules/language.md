@@ -9,6 +9,7 @@
 - `language/prompt.ts`
 - `language/intent.ts`
 - `language/own-voice.ts`
+- `language/fewer-rules.ts`
 - `language/shape.ts`
 - `language/turn-weight.ts`
 - `language/expression.ts`
@@ -149,6 +150,7 @@
 | `together` | 陪玩状态 | [ADR 0111](../adr/0111-together.md) |
 | `silenceNotice` | 没回时在正常聊天里酌情解释：确认在忙或有明确的忘回记录，才在正常回复时顺口提一句；不知道就不编。小事等他自然问起再说，不想细讲可以不交代原因。 | [ADR 0173](../adr/0173-silence-reasons.md) |
 | `speechNotes` | 她每晚自己总结说话习惯（「我发现……」，挑几条放进提示词；他可以用 /像AI /像真人 标她说的话给她看；/说话趋势 按周看她说话的数字） | [ADR 0193](../adr/0193-nightly-speech-notes.md) |
+| `fewerRules` | 少规矩：提示词里教她怎么说话的那些（说话短、先接哪句、别主动、不另起话题……）整类拿掉，只留她是谁和她的日子 | [ADR 0342](../adr/0342-fewer-rules.md) |
 | `exemplars` | 看真人怎么回（从已批准的真人语料挑几条当口气参考） | [ADR 0190](../adr/0190-learn-from-real-chat.md) |
 | `jealousy` | 吃醋（最轻一档） | [ADR 0123](../adr/0123-jealousy.md) |
 | `texture` | 说话的质感（问号 / ～ / 小黄脸 / 叠字） | [ADR 0131](../adr/0131-texture.md) |
