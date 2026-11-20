@@ -9,6 +9,8 @@ import { join } from 'node:path';
 import { startApp, type Transport } from '../platform/app.ts';
 import { DEFAULTS, type AppConfig } from '../platform/config.ts';
 import type { GroupMessageEvent } from '../platform/onebot.ts';
+import type { GroupDecisionTrace } from '../social/group-chat.ts';
+import type { GroupMotiveDecision } from '../social/group-opportunity.ts';
 
 export const GROUP_SIM = { self: 20000, groupId: 555, boyfriendQq: 10001, firstMemberQq: 30001 } as const;
 
@@ -42,6 +44,8 @@ export interface GroupRun {
     spoke: number;
     /** 按开口理由数 */
     reasons: Record<string, number>;
+    /** 开口决策痕迹（早于模型）；只给了模拟钩子时才有 */
+    decisions: GroupDecisionTrace[];
 }
 
 export interface GroupRunOptions {
@@ -57,6 +61,12 @@ export interface GroupRunOptions {
     /** 群友消息的起始编号（默认 6000）。插话抽签按消息编号定，多次跑要换编号，否则每次抽到的签一样 */
     firstMessageId?: number;
     log?: (line: string) => void;
+    /** 群自主（ADR 0343，仅 sim 用）：替换 App 从影子账取的动机快照，构造「放行 / 潜水」样本 */
+    motiveOverride?: GroupMotiveDecision;
+    /** 群自主（仅 sim 用）：每条开口决策的观测，早于模型 */
+    onDecision?: (trace: GroupDecisionTrace) => void;
+    /** 群自主（仅 sim 用）：给群聊决策一个假时钟，timeBlock 由它决定 */
+    now?: () => number;
 }
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -78,6 +88,8 @@ export function groupSimConfig(dataDir: string, scenario: GroupScenario, options
         dataDir,
         ...(options.base.timeZone ? { timeZone: options.base.timeZone } : {}),
         groupChat: 'on',
+        ...(options.base.groupAgency ? { groupAgency: options.base.groupAgency } : {}),
+        ...(options.motiveOverride ? { groupAgency: 'on' as const } : {}),
         groups: [{ id: GROUP_SIM.groupId, name: scenario.group.name, ...(scenario.group.knowsBot ? { knowsBot: true } : {}) }],
     } as AppConfig;
 }
@@ -88,6 +100,7 @@ export async function runGroupScenario(scenario: GroupScenario, options: GroupRu
     const dataDir = mkdtempSync(join(tmpdir(), 'qqbot-group-sim-'));
     const lines: GroupLine[] = [];
     const logs: string[] = [];
+    const decisions: GroupDecisionTrace[] = [];
     let lastActivity = Date.now();
     const mine = (text: string) => { lines.push({ at: new Date().toISOString(), who: '她', text, mine: true }); lastActivity = Date.now(); };
     let nextId = 9000;
@@ -109,6 +122,14 @@ export async function runGroupScenario(scenario: GroupScenario, options: GroupRu
             if (line.startsWith(`[群 ${GROUP_SIM.groupId}]`)) { logs.push(line); lastActivity = Date.now(); }
         },
         ...(options.generate ? { pipeline: { generate: async messages => options.generate!(messages), settle: { quietMs: 0, maxMs: 0 } } } : {}),
+        // 模拟钩子只在这里传，线上不传：off 路径一个字段都不多
+        ...(options.motiveOverride || options.onDecision || options.now || (options.base.groupAgency && options.base.groupAgency !== 'off') ? {
+            groupAgencyHooks: {
+                ...(options.motiveOverride ? { motiveOverride: options.motiveOverride } : {}),
+                ...(options.now ? { now: options.now } : {}),
+                onDecision: (trace: GroupDecisionTrace) => { decisions.push(trace); options.onDecision?.(trace); },
+            },
+        } : {}),
     });
     try {
         await app.connected(GROUP_SIM.self);
@@ -141,7 +162,7 @@ export async function runGroupScenario(scenario: GroupScenario, options: GroupRu
         const said = /说了 \d+ 条（([a-z]+)/.exec(line);
         if (said) { spoke++; reasons[said[1]!] = (reasons[said[1]!] ?? 0) + 1; }
     }
-    return { lines, logs, spoke, reasons };
+    return { lines, logs, spoke, reasons, decisions };
 }
 
 /** 一次的记录：按时间排好的群聊，她说的标出来；后面附群聊日志 */

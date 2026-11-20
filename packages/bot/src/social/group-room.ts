@@ -316,6 +316,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         groupFirstAt.delete(groupId);
         for (const item of batch) groupQueued.delete(item.event.message_id);
         groupBusy.add(groupId);
+        let trace: GroupDecisionTrace | undefined;
         try {
             const reasons = batch.flatMap(item => (item.reason ? [item.reason] : []));
             const reason = reasons.includes('crisis') ? 'crisis'
@@ -325,7 +326,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
                             : reasons.includes('topic') ? 'topic' : undefined;
             // 决策痕迹：passed 在这里定（早于模型），模型写「不说」不改它
             const sourceItem = batch.find(item => item.reason === reason) ?? batch.at(-1)!;
-            const trace: GroupDecisionTrace | undefined = deps.onDecision ? {
+            trace = deps.onDecision ? {
                 groupId, messageId: sourceItem.event.message_id, timeBlock: Math.floor(worldNow() / 3_600_000),
                 reason, source: sourceItem.decision?.source ?? (reason ? 'reactive' : 'lottery'),
                 motiveEligible: sourceItem.decision?.motiveEligible ?? false,
@@ -393,6 +394,8 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         } catch (error) {
             log(`[群 ${groupId}] 说话出错：${error instanceof Error ? error.message : String(error)}`);
         } finally {
+            // 决策痕迹只发一次：所有 blockedBy / passed 的改动到这里都已定稿
+            if (trace && deps.onDecision) deps.onDecision(trace);
             groupBusy.delete(groupId);
             // 她说的这会儿又有人说话：接着处理，不丢
             if (!stopped() && (groupQueue.get(groupId)?.length ?? 0)) void flushGroup(groupId);
@@ -570,15 +573,16 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             let decision: SpeakDecision | undefined;
             const plan = chimePlan({ groupId: group.id, entries, now: at.getTime(), free: freeToChime(state), done, ...(smallNews(world, at) ? { news: smallNews(world, at)! } : {}) },
                 (motive || deps.onDecision) ? { ...(motive ? { motives: motive } : {}), ...(deps.onDecision ? { onDecision: (value: SpeakDecision) => { decision = value; } } : {}) } : undefined);
-            const trace: GroupDecisionTrace | undefined = deps.onDecision ? {
+            let trace: GroupDecisionTrace | undefined = deps.onDecision ? {
                 groupId: group.id, messageId: 0, timeBlock: Math.floor(at.getTime() / 3_600_000),
                 reason: plan?.kind, source: decision?.source ?? (motive ? 'motive' : 'lottery'),
                 motiveEligible: decision?.motiveEligible ?? false,
                 passed: false, blockedBy: 'none',
             } : undefined;
-            if (!plan) continue;
+            const emit = () => { if (trace && deps.onDecision) { deps.onDecision(trace); trace = undefined; } };
+            if (!plan) { emit(); continue; }
             const budget = withinBudget(entries.filter(e => e.mine), at.getTime(), plan.kind);
-            if (!budget.ok) { if (trace) { trace.blockedBy = 'budget'; } log(`[群 ${group.id}] 想自己冒一句但${budget.why}`); continue; }
+            if (!budget.ok) { if (trace) { trace.blockedBy = 'budget'; } emit(); log(`[群 ${group.id}] 想自己冒一句但${budget.why}`); continue; }
             if (trace) trace.passed = true;
             groupChimes.set(group.id, { ...done, [plan.kind]: done[plan.kind] + 1 });
             const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
@@ -589,6 +593,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             } catch (error) {
                 log(`[群 ${group.id}] 自己冒一句出错：${error instanceof Error ? error.message : String(error)}`);
             } finally {
+                emit();
                 groupBusy.delete(group.id);
                 if (!stopped() && (groupQueue.get(group.id)?.length ?? 0)) void flushGroup(group.id);
             }

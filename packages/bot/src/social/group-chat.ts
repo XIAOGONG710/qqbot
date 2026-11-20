@@ -75,6 +75,21 @@ export interface SpeakOptions {
     onDecision?: (decision: SpeakDecision) => void;
 }
 
+/**
+ * 一次开口决策的痕迹（仅模拟器注入 onDecision 时收集，线上不传）。
+ * passed 在决策层定（早于模型）：模型写「不说」只影响说不说，不翻这里。
+ */
+export interface GroupDecisionTrace {
+    groupId: number;
+    messageId: number;
+    timeBlock: number;
+    reason: SpeakReason | undefined;
+    source: SpeakSource;
+    motiveEligible: boolean;
+    passed: boolean;
+    blockedBy?: 'budget' | 'line' | 'none';
+}
+
 export interface SpeakContext {
     selfId: number;
     /** 男朋友（宝宝）：他在群里的 QQ 号、她怎么叫他 */
