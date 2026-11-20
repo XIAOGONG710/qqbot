@@ -223,12 +223,12 @@ export interface Guard {
     corpus: readonly Exemplar[];
 }
 
-/** 笔记里「」“”引起来的那几个字，有没有原样出现在 sources 里（3 个字以上、不是同一个字重复）；有就返回它 */
-export function quotedSpan(text: string, sources: Iterable<string>): string | undefined {
+/** 笔记里「」“”引起来的那几个字，有没有原样出现在 sources 里（min 个字以上、默认 3，不是同一个字重复）；有就返回它 */
+export function quotedSpan(text: string, sources: Iterable<string>, min = 3): string | undefined {
     const cleaned = [...sources].map(norm).filter(Boolean);
     for (const match of text.matchAll(/[「『“"‘'](.{2,24}?)[」』”"’']/gu)) {
         const quoted = norm(match[1] ?? '');
-        if (quoted.length < 3 || new Set(quoted).size < 2) continue;
+        if (quoted.length < min || new Set(quoted).size < 2) continue;
         if (cleaned.some(source => source.includes(quoted))) return match[1];
     }
     return undefined;

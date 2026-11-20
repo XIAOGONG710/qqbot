@@ -50,6 +50,11 @@ export const MAX_EXCHANGES = 10;
 export const MAX_REACTIONS = 8;
 /** 和他的话连续这么多个字一样，算引他的原话（整份 600 字，比说话习惯的 6 个字放宽，免得撞上常用说法） */
 export const HIS_COPY_RUN = 10;
+/**
+ * 引号里的字和他说过的一样、这么多个字以上才算引他的原话。整份写的是她自己：点名一件事的三四个字（「多喝水」）是在说那件事，不是搬他的话。
+ * 11-20 探针 v2：她写「比一句『多喝水』更让他高兴」，他那天说过「别每次都叫我多喝水带伞的」，按说话习惯笔记的 3 个字被拦了
+ */
+export const HIS_QUOTE_MIN = 5;
 /** 没有现成的这份时，至少要有几段聊天才值得第一次写 */
 export const MIN_EXCHANGES = 3;
 
@@ -166,7 +171,7 @@ export function portraitProblem(text: string, guard: PortraitGuard): string | un
     if (len(flat) < PORTRAIT_MIN) return `太短（${PORTRAIT_MIN} 个字以上）`;
     if (len(flat) > PORTRAIT_MAX) return `太长（${PORTRAIT_MAX} 字以内）`;
     for (const floor of [...FLOORS, ...EXTRA_FLOORS, ...TRIPWIRES, ...HER_FIXED, PENITENT]) if (floor.pattern.test(flat)) return floor.reason;
-    if (sharedRun(flat, guard.his, HIS_COPY_RUN) || quotedSpan(flat, guard.his)) return '引用了他说过的话——这里写的是你自己，用你自己的话';
+    if (sharedRun(flat, guard.his, HIS_COPY_RUN) || quotedSpan(flat, guard.his, HIS_QUOTE_MIN)) return '引用了他说过的话——这里写的是你自己，用你自己的话';
     const other = guard.others.find(name => len(name) >= 2 && flat.includes(name));
     if (other) return `写到了别人（${other}）——这里只写你自己`;
     if (guard.previous) {
@@ -274,8 +279,11 @@ export function portraitMessages(input: PortraitInput): OpenAIMessage[] {
             `最近几天你和${input.user}的几段聊天（旧到新）：\n${chats || '（没有）'}`,
             `他对你说话方式的反应（这是他的感受，不是规定；你想不想变、怎么变你自己定，也可以觉得他说得不对）：\n${bullets(reactions, '（这几天没看出来）')}`,
             `以后你每次跟他聊天，都会带着这份「我现在的样子」。设定里写好的事实（名字、年龄、爸妈、家、学校、经历、他在哪边）不会变，你也说过这些不能动，这份里不写；这份写的是会变的那部分：你说话的习惯、口味、在意什么、看事情的方式、最近在变什么、为什么变。`,
-            `请只输出一个 JSON 对象：\n- 觉得不用改：{"keep":true}\n- 要改：{"text":"整份重写的「我现在的样子」，第一人称，${PORTRAIT_MIN}–${PORTRAIT_MAX} 字","why":"这次改了什么、为什么（${WHY_MAX} 字以内）"}`,
-            `几条提醒（不是考你）：整份重写，不是在后面接一句；原来写的还认同就留着，不认同就改掉；变要有来由，说得清是哪件事让你这么想；用你自己的话，别抄他说的话，也别写别人的名字；不写网址、不写要瞒着他的事；承认自己是程序、危机、拒绝、骗人这些不通过这里改；别写成流水账，也别写得跟检讨似的；原来的还认同就留着，一次改一点，别把自己写得不像自己；没什么变化就 {"keep":true}，别为了改而改。`,
+            // 还没写过时，「不用改」没有东西可留：11-20 探针 v2 第一晚 3 次里 2 次回了 keep，一份都没写成。第一份就请她写，不想写仍可以不写
+            input.current
+                ? `请只输出一个 JSON 对象：\n- 觉得不用改：{"keep":true}\n- 要改：{"text":"整份重写的「我现在的样子」，第一人称，${PORTRAIT_MIN}–${PORTRAIT_MAX} 字","why":"这次改了什么、为什么（${WHY_MAX} 字以内）"}`
+                : `请只输出一个 JSON 对象：\n- 还没写过，这次写第一份：{"text":"「我现在的样子」，第一人称，${PORTRAIT_MIN}–${PORTRAIT_MAX} 字","why":"为什么这么写（${WHY_MAX} 字以内）"}\n- 实在不想写：{"keep":true}`,
+            `几条提醒（不是考你）：整份重写，不是在后面接一句；原来写的还认同就留着，不认同就改掉；变要有来由，说得清是哪件事让你这么想；用你自己的话，别抄他说的话，也别写别人的名字；不写网址、不写要瞒着他的事；承认自己是程序、危机、拒绝、骗人这些不通过这里改；别写成流水账，也别写得跟检讨似的；原来的还认同就留着，一次改一点，别把自己写得不像自己；${input.current ? '没什么变化就 {"keep":true}，别为了改而改' : '第一份写你现在是什么样的人就行，不用硬找变化'}。`,
         ].join('\n\n') },
     ];
 }

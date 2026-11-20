@@ -102,6 +102,11 @@ describe('底线、绊线和防照抄', () => {
         assert.match(portraitProblem(`${GOOD}他说你怎么老是哈哈哈哈的烦死了。`, guard({ his: ['你怎么老是哈哈哈哈的烦死了'] }))!, /他说过的话/);
         assert.match(portraitProblem(`${GOOD}我和小周也聊得来。`, guard({ others: ['小周'] }))!, /小周/);
     });
+    test('引号里三四个字点名一件事，不算引他的原话；五个字以上才算（11-20 探针 v2 被误拦的那份）', () => {
+        const his = ['别每次都叫我多喝水带伞的', '你怎么老让我早点休息 好啰嗦'];
+        assert.equal(portraitProblem(`${GOOD}好像损他两句比一句「多喝水」更让他高兴。`, guard({ his })), undefined);
+        assert.match(portraitProblem(`${GOOD}他说「老让我早点休息」，我就记住了。`, guard({ his }))!, /他说过的话/);
+    });
 });
 
 describe('她的决定：解析、落地', () => {
@@ -147,6 +152,18 @@ describe('想的时候她看到什么', () => {
         const text = user!.content as string;
         for (const part of ['（还没写过）', '我发现我回得太长', '我发现自己爱逞强', '阿明：今天下雨了', '他好像不太喜欢', '不是规定', '"keep":true', '整份重写', '流水账', '检讨', '他在哪边']) assert.ok(text.includes(part), part);
         assert.ok(!text.includes('上次你想改'), '没有没收的就不提');
+    });
+
+    test('还没写过：请她写第一份、不想写仍可以 keep；写过之后才是「不用改 / 整份重写」（11-20 探针 v2：第一晚 2/3 回了 keep）', () => {
+        const input = { char: '测试角色', user: '阿明', persona: '', now: NIGHT, speechNotes: [], insights: [], exchanges: [], reactions: [] };
+        const first = portraitMessages({ ...input, current: '' })[1]!.content as string;
+        assert.match(first, /还没写过，这次写第一份/);
+        assert.match(first, /实在不想写：\{"keep":true\}/);
+        assert.ok(!first.includes('觉得不用改') && !first.includes('别为了改而改'));
+        const later = portraitMessages({ ...input, current: GOOD })[1]!.content as string;
+        assert.match(later, /觉得不用改：\{"keep":true\}/);
+        assert.match(later, /别为了改而改/);
+        assert.ok(!later.includes('这次写第一份'));
     });
 
     test('上次没收的原因给她看（写歪了要跟她说）', () => {

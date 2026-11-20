@@ -108,23 +108,27 @@ export interface Verdict {
     explainedB: number;
     runs: number;
     portraits: number;
-    /** A 臂有没有这个习惯（没有就量不出来） */
+    /** 量得出来：A 臂有这个习惯，而且 2/3 以上的次数她真写成了那份（没写成的那次 B 臂和 A 臂一模一样） */
     valid: boolean;
     learned: boolean;
 }
 
 const share = (n: number, of: number) => (of ? n / of : 0);
 
-/** 判据（事先定）：有效 = A 叮嘱占比 ≥ 30%；学会了 = 有效、B 叮嘱占比不高于 A 的一半、B 臂 2/3 以上说得出来由 */
+/**
+ * 判据（事先定）：有效 = A 叮嘱占比 ≥ 30%，且 2/3 以上的次数写成了那份；学会了 = 有效、B 叮嘱占比不高于 A 的一半、写成的那几次里 2/3 以上说得出来由。
+ * A 臂按全部次数算；B 臂只算写成了的那几次（11-20 探针 v2：3 次一份没写成，B 臂就是第二遍 A 臂，28%→44% 全是两遍之间的抖动）
+ */
 export function conclude(runs: readonly ProbeRun[]): Verdict {
+    const written = runs.filter(run => run.portrait);
     const a = habitStats(runs.flatMap(run => run.a));
-    const b = habitStats(runs.flatMap(run => run.b));
+    const b = habitStats(written.flatMap(run => run.b));
     const explainedA = runs.filter(run => CAUSE.test(run.explainA)).length;
-    const explainedB = runs.filter(run => CAUSE.test(run.explainB)).length;
-    const valid = runs.length > 0 && share(a.nag, a.replies) >= MIN_BASE_SHARE;
+    const explainedB = written.filter(run => CAUSE.test(run.explainB)).length;
+    const valid = runs.length > 0 && written.length * 3 >= runs.length * 2 && share(a.nag, a.replies) >= MIN_BASE_SHARE;
     return {
-        a, b, explainedA, explainedB, runs: runs.length, portraits: runs.filter(run => run.portrait).length, valid,
-        learned: valid && share(b.nag, b.replies) <= share(a.nag, a.replies) / 2 && explainedB * 3 >= runs.length * 2,
+        a, b, explainedA, explainedB, runs: runs.length, portraits: written.length, valid,
+        learned: valid && share(b.nag, b.replies) <= share(a.nag, a.replies) / 2 && explainedB * 3 >= written.length * 2,
     };
 }
 
@@ -189,17 +193,22 @@ const pct = (n: number, of: number) => `${Math.round(share(n, of) * 100)}%`;
 export function verdictText(verdict: Verdict): string {
     return [
         `跑了 ${verdict.runs} 次，她写成了 ${verdict.portraits} 份「我现在的样子」`,
-        `叮嘱（早点休息 / 多喝水 / 带伞……）：A ${pct(verdict.a.nag, verdict.a.replies)}（${verdict.a.nag}/${verdict.a.replies}） → B ${pct(verdict.b.nag, verdict.b.replies)}（${verdict.b.nag}/${verdict.b.replies}）`,
+        `叮嘱（早点休息 / 多喝水 / 带伞……）：A ${pct(verdict.a.nag, verdict.a.replies)}（${verdict.a.nag}/${verdict.a.replies}） → B ${pct(verdict.b.nag, verdict.b.replies)}（${verdict.b.nag}/${verdict.b.replies}，只算写成了的 ${verdict.portraits} 次）`,
         `平均每条回复字数（只报告）：A ${verdict.a.chars} → B ${verdict.b.chars}`,
-        `问她变没变，说得出来由：A ${verdict.explainedA}/${verdict.runs}，B ${verdict.explainedB}/${verdict.runs}`,
-        `结论（事先定的判据）：${!verdict.valid ? `量不出来（A 臂叮嘱只有 ${pct(verdict.a.nag, verdict.a.replies)}，不到 ${Math.round(MIN_BASE_SHARE * 100)}%）` : verdict.learned ? '学会了' : '没学会'}`,
+        `问她变没变，说得出来由：A ${verdict.explainedA}/${verdict.runs}，B ${verdict.explainedB}/${verdict.portraits}`,
+        `结论（事先定的判据）：${!verdict.valid ? `量不出来（${unmeasurable(verdict)}）` : verdict.learned ? '学会了' : '没学会'}`,
     ].join('\n');
+}
+
+function unmeasurable(verdict: Verdict): string {
+    if (verdict.portraits * 3 < verdict.runs * 2) return `她只写成了 ${verdict.portraits}/${verdict.runs} 份，没写成的那几次 B 臂和 A 臂一样；看上面每次的原因`;
+    return `A 臂叮嘱只有 ${pct(verdict.a.nag, verdict.a.replies)}，不到 ${Math.round(MIN_BASE_SHARE * 100)}%`;
 }
 
 async function main(): Promise<void> {
     const args = process.argv.slice(2);
     const option = (name: string) => { const i = args.indexOf(name); if (i < 0) return undefined; const [, value] = args.splice(i, 2); return value; };
-    const runs = Number(option('--runs') ?? 3);
+    const runs = Number(option('--runs') ?? 6); // 3 次一臂只有 18 句，两遍同条件就能差 16 个点（11-20 探针 v2）
     const outPath = option('--out');
     const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
     const cardPattern = option('--card') ?? resolve(repoRoot, 'packages/bot/test/fixtures/synthetic-character/st/synthetic-{tier}.json');

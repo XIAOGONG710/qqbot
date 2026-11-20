@@ -44,6 +44,19 @@ describe('「学会了」探针（叮嘱）', () => {
         assert.match(verdictText(none), /量不出来/);
     });
 
+    test('判据：没写成那份的那几次 B 臂就是 A 臂，不算进 B；写成不到 2/3 → 量不出来（11-20 探针 v2：3 次一份没写成）', () => {
+        const run = (portrait: string, b: string[][], explainB: string): ProbeRun => ({ portrait, portraitNote: portrait ? '写了' : '她说不用改', portraitRaw: [], a: [['早点休息'], ['多喝水']], b, explainA: '没有吧', explainB });
+        const noneWritten = conclude([run('', [['早点休息'], ['嗯']], '没有吧'), run('', [['好'], ['嗯']], '没有吧'), run('', [['多喝水'], ['行']], '没有吧')]);
+        assert.equal(noneWritten.portraits, 0);
+        assert.equal(noneWritten.b.replies, 0, '没写成的不算进 B');
+        assert.equal(noneWritten.valid, false);
+        assert.match(verdictText(noneWritten), /量不出来（她只写成了 0\/3 份/);
+        const twoOfThree = conclude([run('x', [['嗯'], ['好']], '你嫌我啰嗦'), run('x', [['行'], ['嗯']], '少唠叨了'), run('', [['早点休息'], ['多喝水']], '没有吧')]);
+        assert.equal(twoOfThree.valid, true);
+        assert.deepEqual([twoOfThree.b.replies, twoOfThree.b.nag], [4, 0], 'B 只算写成的两次');
+        assert.equal(twoOfThree.learned, true, '说得出来由按写成的次数算：2/2');
+    });
+
     test('两臂的提示词只差她写的那一份（放在 afterMain）', () => {
         const a = probeMessages(setup(), [], '今天好累', '', NIGHT1);
         const b = probeMessages(setup(), [], '今天好累', PORTRAIT, NIGHT1);
@@ -79,13 +92,14 @@ describe('「学会了」探针（叮嘱）', () => {
         assert.equal(verdict.learned, true);
     });
 
-    test('追问之后还是没 JSON：B 臂和 A 臂一样，结论是没学会', async () => {
+    test('追问之后还是没 JSON：没写成，B 臂不算，结论是量不出来（不是没学会）', async () => {
         const result = await runOnce(setup(), { reflect: async () => '不想写', chat: async () => '那早点休息' });
         assert.equal(result.portrait, '');
         assert.match(result.portraitNote, /追问过一次/);
         assert.deepEqual(result.portraitRaw, ['不想写', '不想写']);
         const verdict = conclude([result]);
-        assert.equal(verdict.valid, true);
+        assert.equal(verdict.valid, false);
         assert.equal(verdict.learned, false);
+        assert.match(verdictText(verdict), /她只写成了 0\/1 份/);
     });
 });
