@@ -24,7 +24,7 @@ export interface Options { jobs: number; only?: string[] }
 
 /** 命令行参数；不认识的返回错误说明 */
 export function parseOptions(args: readonly string[], cpus: number): Options | string {
-    let jobs = Math.max(1, Math.min(8, cpus - 1));
+    let jobs = defaultJobs(cpus);
     let only: string[] | undefined;
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
@@ -95,56 +95,70 @@ async function worker(): Promise<void> {
 
 // ───────── 主进程：分发、收结果、汇总 ─────────
 
-async function main(): Promise<void> {
-    const options = parseOptions(process.argv.slice(2), availableParallelism());
-    if (typeof options === 'string') {
-        console.error(`${options}\n用法：npm run baseline:fast -- [--jobs N] [--only 场景名,场景名]`);
-        process.exit(2);
-    }
-    const { SCENARIOS } = await import('./scenarios.ts');
-    if (new Set(SCENARIOS.map(s => s.name)).size !== SCENARIOS.length) { console.error('场景名有重复'); process.exit(1); }
-    const names = pickScenarios(SCENARIOS.map(s => s.name), options.only);
-    if (typeof names === 'string') { console.error(names); process.exit(2); }
-    // 上次每个场景跑了多久（本机临时目录）：长的先发，免得最后剩一个长场景拖着
+/**
+ * 把这些场景分给 jobs 个子进程跑，长的先发；每跑完一个调一次 onResult。返回全部结果（子进程中途死了，它手上那个记为没过）。
+ * 跑完把每个场景的用时记进系统临时目录，下次排先后用。baseline.test.ts 和 npm run baseline:fast 都走这里
+ */
+export async function runParallel(names: readonly string[], jobs: number, onResult?: (result: Result, done: number) => void): Promise<Result[]> {
     const timesFile = join(tmpdir(), TIMES_FILE);
     const times = readTimes(timesFile);
     const queue = longestFirst(names, times);
     const results: Result[] = [];
-    const started = Date.now();
     const self = fileURLToPath(import.meta.url);
     // --import 要 URL：Windows 上的绝对路径（c:…）会被当成 c: 协议
     const tzSetup = pathToFileURL(resolve(import.meta.dirname, '..', 'time-zone-setup.ts')).href;
-    const jobs = Math.min(options.jobs, names.length);
-    console.log(`行为基线：${names.length} 个场景，${jobs} 个进程`);
-
-    await Promise.all(Array.from({ length: jobs }, () => new Promise<void>(done => {
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(jobs, names.length)) }, () => new Promise<void>(done => {
         const child: ChildProcess = fork(self, ['--worker'], { execArgv: ['--import', tzSetup], stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });
         let current: string | undefined;
         const next = () => {
             current = queue.shift();
             if (current) child.send({ name: current } satisfies Job);
-            else { child.send('exit'); }
+            else child.send('exit');
         };
         child.on('message', (message: Result | 'ready') => {
             if (message !== 'ready') {
                 results.push(message);
-                console.log(`${message.ok ? '✔' : '✖'} ${message.name}（${(message.ms / 1000).toFixed(1)} 秒）  ${results.length}/${names.length}`);
+                onResult?.(message, results.length);
             }
             next();
         });
         child.on('exit', code => {
             // 子进程中途死了：它手上那个算没过，剩下的交给别的进程
             if (current && !results.some(result => result.name === current)) {
-                results.push({ name: current, ok: false, ms: 0, problem: `子进程退出了（退出码 ${code}），这个场景没跑完` });
+                const result: Result = { name: current, ok: false, ms: 0, problem: `子进程退出了（退出码 ${code}），这个场景没跑完` };
+                results.push(result);
+                onResult?.(result, results.length);
             }
             done();
         });
     })));
-
     for (const result of results) if (result.ms > 0) times[result.name] = result.ms;
     try { writeFileSync(timesFile, JSON.stringify(times, null, 2)); } catch { /* 记不下就下次照原顺序 */ }
+    return results;
+}
+
+/** 默认进程数：CPU 数 - 1，至少 1、最多 8 */
+export const defaultJobs = (cpus = availableParallelism()) => Math.max(1, Math.min(8, cpus - 1));
+
+async function main(): Promise<void> {
+    const options = parseOptions(process.argv.slice(2), availableParallelism());
+    if (typeof options === 'string') {
+        console.error(`${options}
+用法：npm run baseline:fast -- [--jobs N] [--only 场景名,场景名]`);
+        process.exit(2);
+    }
+    const { SCENARIOS } = await import('./scenarios.ts');
+    if (new Set(SCENARIOS.map(s => s.name)).size !== SCENARIOS.length) { console.error('场景名有重复'); process.exit(1); }
+    const names = pickScenarios(SCENARIOS.map(s => s.name), options.only);
+    if (typeof names === 'string') { console.error(names); process.exit(2); }
+    const started = Date.now();
+    console.log(`行为基线：${names.length} 个场景，${Math.min(options.jobs, names.length)} 个进程`);
+    const results = await runParallel(names, options.jobs, (result, done) => {
+        console.log(`${result.ok ? '✔' : '✖'} ${result.name}（${(result.ms / 1000).toFixed(1)} 秒）  ${done}/${names.length}`);
+    });
     const summary = summarize(results, names.length, Date.now() - started);
-    console.log(`\n${summary.text}`);
+    console.log(`
+${summary.text}`);
     const slowest = [...results].sort((a, b) => b.ms - a.ms).slice(0, 3);
     if (slowest.length) console.log(`最慢的：${slowest.map(result => `${result.name} ${(result.ms / 1000).toFixed(0)} 秒`).join('、')}`);
     process.exit(summary.ok ? 0 : 1);
