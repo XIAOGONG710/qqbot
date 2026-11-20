@@ -10,6 +10,7 @@ import { detectCrisis } from '../emotion/crisis.ts';
 import { join } from 'node:path';
 import { pick } from './reply-timing.ts';
 import type { Segment } from '../platform/onebot.ts';
+import { motiveAllows, type GroupMotiveDecision } from './group-opportunity.ts';
 
 /** 群里的一条（她自己说的 mine） */
 export interface GroupEntry {
@@ -53,6 +54,27 @@ const ABOUT_HER_BAD = /难看|难听|做作|装|绿茶|蠢|傻|烦人|恶心|刻
 /** quiet / news：她自己想说（ADR 0341 G2，groupOwn）——冷场冒一句、她那边有事顺嘴说一句；不是从某条消息来的 */
 export type SpeakReason = 'mentioned' | 'crisis' | 'defend' | 'topic' | 'overheard' | 'quiet' | 'news';
 
+/**
+ * 这条开口是从哪来的（ADR 0343，与 reason 正交）：
+ * - reactive：被叫、危机、替他说，看见就接，跟开关无关；
+ * - motive：群自主开着的主动类（话题 / 听见 / 冷场 / 有事），由动机决定，不抽签；
+ * - lottery：群自主关着时原来的抽签路径。
+ */
+export type SpeakSource = 'motive' | 'lottery' | 'reactive';
+
+/** 开口决策的观测（早于模型；模型写「不说」只影响说不说，不改这里） */
+export interface SpeakDecision {
+    reason: SpeakReason | undefined;
+    source: SpeakSource;
+    motiveEligible: boolean;
+}
+
+/** 群自主开着时传 motives；不传就逐字走原来的抽签逻辑 */
+export interface SpeakOptions {
+    motives?: GroupMotiveDecision;
+    onDecision?: (decision: SpeakDecision) => void;
+}
+
 export interface SpeakContext {
     selfId: number;
     /** 男朋友（宝宝）：他在群里的 QQ 号、她怎么叫他 */
@@ -83,30 +105,41 @@ export function gossipTone(text: string, extra: readonly string[] = []): 'good' 
 }
 
 /** 这条该不该让她开口、为什么；undefined = 潜水 */
-export function speakReason(message: Segment[] | string, text: string, from: number, messageId: number, ctx: SpeakContext): SpeakReason | undefined {
+export function speakReason(message: Segment[] | string, text: string, from: number, messageId: number, ctx: SpeakContext, options?: SpeakOptions): SpeakReason | undefined {
     const segments = typeof message === 'string' ? [] : message;
+    const motives = options?.motives;
+    const eligible = motiveAllows(motives);
+    // 被动那几路跟开关无关；主动那几路：开着读动机，关着走原来的抽签
+    const decide = (reason: SpeakReason | undefined, source: SpeakSource, motiveEligible = false): SpeakReason | undefined => {
+        options?.onDecision?.({ reason, source, motiveEligible });
+        return reason;
+    };
+    const onMotive = (reason: SpeakReason): SpeakReason | undefined => decide(eligible ? reason : undefined, 'motive', eligible);
     const atHer = segments.some(s => s.type === 'at' && Number(s.data?.qq) === ctx.selfId);
     const repliesHer = segments.some(s => s.type === 'reply' && ctx.herMessageIds.has(Number(s.data?.id)));
-    if (despair(text)) return 'crisis';
-    if (atHer || repliesHer) return 'mentioned';
+    if (despair(text)) return decide('crisis', 'reactive');
+    if (atHer || repliesHer) return decide('mentioned', 'reactive');
     const names = ctx.herNames ?? [];
     if (mentionsHer(text, names)) {
         // 名字后面跟着「你 / 在吗 / 帮我看」这种，就是在跟她说话；只是被提起来，是「听见」
-        if (namedAt(text, herNameList(names))) return 'mentioned';
-        if ((ctx.overheardToday ?? 0) >= GROUP_LIMITS.overheardPerDay) return undefined;
+        if (namedAt(text, herNameList(names))) return decide('mentioned', 'reactive');
+        if ((ctx.overheardToday ?? 0) >= GROUP_LIMITS.overheardPerDay) return decide(undefined, motives ? 'motive' : 'lottery', eligible);
         // 听见别人聊她：说坏话的更容易接一句给自己分辩；被夸、被随口提起来的大多看着不说话
-        if (gossipTone(text, names) === 'bad') return 'overheard';
-        if (pick(String(messageId), 'group-overheard', [0, 999]) < GROUP_LIMITS.overheardChance * 1000) return 'overheard';
-        return undefined;
+        if (gossipTone(text, names) === 'bad') return motives ? onMotive('overheard') : decide('overheard', 'lottery');
+        if (motives) return onMotive('overheard');
+        if (pick(String(messageId), 'group-overheard', [0, 999]) < GROUP_LIMITS.overheardChance * 1000) return decide('overheard', 'lottery');
+        return decide(undefined, 'lottery');
     }
     if (ctx.boyfriend && from !== ctx.boyfriend.qq) {
         const atHim = segments.some(s => s.type === 'at' && Number(s.data?.qq) === ctx.boyfriend!.qq);
         const namesHim = (ctx.boyfriendNames ?? []).some(name => name.length >= 2 && text.includes(name));
-        if ((atHim || namesHim) && TEASING.test(text)) return 'defend';
+        if ((atHim || namesHim) && TEASING.test(text)) return decide('defend', 'reactive');
     }
-    if (herTopics().test(text) && ctx.topicToday < GROUP_LIMITS.topicPerDay
-        && pick(String(messageId), 'group-topic', [0, 999]) < GROUP_LIMITS.topicChance * 1000) return 'topic';
-    return undefined;
+    if (herTopics().test(text) && ctx.topicToday < GROUP_LIMITS.topicPerDay) {
+        if (motives) return onMotive('topic');
+        if (pick(String(messageId), 'group-topic', [0, 999]) < GROUP_LIMITS.topicChance * 1000) return decide('topic', 'lottery');
+    }
+    return decide(undefined, motives ? 'motive' : 'lottery', eligible);
 }
 
 /** 额度：这一次能不能说（被叫到、有人说想不开的不看间隔，但照样看一小时 / 一天的上限） */

@@ -12,7 +12,8 @@
 import { pick } from './reply-timing.ts';
 import { describeWeather, type WorldNow } from '../world/world.ts';
 import type { State } from '../life/schedule.ts';
-import type { GroupEntry } from './group-chat.ts';
+import type { GroupEntry, SpeakDecision } from './group-chat.ts';
+import { motiveAllows, type GroupMotiveDecision } from './group-opportunity.ts';
 
 /**
  * 冷场：群里最后一句话过去 quietHours 小时以上（但不到 deadHours，死群不去叫醒），之前一天里别人说过至少 minLively 句，才算「冷场」；
@@ -87,32 +88,48 @@ export function smallNews(world: WorldNow | undefined, at: Date): string | undef
     return undefined;
 }
 
+/** 群自主开着时传动机；不传就逐字走原来的抽签逻辑 */
+export interface ChimeOptions {
+    motives?: GroupMotiveDecision;
+    onDecision?: (decision: SpeakDecision) => void;
+}
+
 /**
  * 这个群这会儿要不要冒一句：quiet（冷场）/ news（有事）/ 不冒。
  * entries：这个群的记录；done：今天在这个群已经冒过的（按种类）；news：她那边刚有的事。
+ * 时机条件（醒着、冷场、刚有人）原样不动；只有末尾那道「想不想说」的判定，开着群自主时读动机而不是抽签。
  */
 export function chimePlan(input: {
     groupId: number; entries: readonly GroupEntry[]; now: number; free: boolean;
     done: { quiet: number; news: number }; news?: string;
-}): { kind: 'quiet' } | { kind: 'news'; news: string } | undefined {
+}, options?: ChimeOptions): { kind: 'quiet' } | { kind: 'news'; news: string } | undefined {
     const { groupId, now, free, done } = input;
-    if (!free) return undefined;
+    const motives = options?.motives;
+    const eligible = motiveAllows(motives);
+    const source = motives ? 'motive' as const : 'lottery' as const;
+    const decide = (plan: { kind: 'quiet' } | { kind: 'news'; news: string } | undefined): typeof plan => {
+        options?.onDecision?.({ reason: plan?.kind, source, motiveEligible: eligible });
+        return plan;
+    };
+    if (!free) return decide(undefined);
     const live = input.entries.filter(entry => !entry.history);
     const last = live.at(-1);
-    if (!last) return undefined;
+    if (!last) return decide(undefined);
     const lastAt = Date.parse(last.time);
     const since = now - lastAt;
     // 有事：群里刚有人在（最近 30 分钟有别人说话），她这会儿没刚说过
     if (input.news && done.news < GROUP_OWN.perDay && !last.mine && since <= GROUP_OWN.recentMinutes * 60_000) {
         const mineRecently = live.some(entry => entry.mine && now - Date.parse(entry.time) <= GROUP_OWN.recentMinutes * 60_000);
         const hour = Math.floor(now / 3_600_000);
-        if (!mineRecently && pick(`${groupId} ${hour} ${input.news}`, 'group-news', [0, 999]) < GROUP_OWN.newsChance * 1000) return { kind: 'news', news: input.news };
+        const wants = motives ? eligible : pick(`${groupId} ${hour} ${input.news}`, 'group-news', [0, 999]) < GROUP_OWN.newsChance * 1000;
+        if (!mineRecently && wants) return decide({ kind: 'news', news: input.news });
     }
     // 冷场：安静了好一阵，但不是死群；最后一句不是她自己（她说完没人理，不再接着说）
     if (done.quiet < GROUP_OWN.perDay && !last.mine && since >= GROUP_OWN.quietHours * 3_600_000 && since < GROUP_OWN.deadHours * 3_600_000) {
         const lively = live.filter(entry => !entry.mine && lastAt - Date.parse(entry.time) <= 24 * 3_600_000).length;
         const hour = Math.floor(now / 3_600_000);
-        if (lively >= GROUP_OWN.minLively && pick(`${groupId} ${hour}`, 'group-quiet', [0, 999]) < GROUP_OWN.quietChance * 1000) return { kind: 'quiet' };
+        const wants = motives ? eligible : pick(`${groupId} ${hour}`, 'group-quiet', [0, 999]) < GROUP_OWN.quietChance * 1000;
+        if (lively >= GROUP_OWN.minLively && wants) return decide({ kind: 'quiet' });
     }
-    return undefined;
+    return decide(undefined);
 }
