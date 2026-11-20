@@ -216,7 +216,6 @@ export interface Module {
     perceive?(turn: Turn): Maybe<void>;
     assess?(turn: Turn): Maybe<void>;
     contribute?(turn: Turn): Maybe<readonly Piece[]>;
-    review?(draft: string, turn: Turn): Maybe<string>;
     /**
      * 判断那一串（ADR 0336「判断那一串」）：assess 之后、拼段落之前，挂在判断顺序表（DECIDE_STAGES）的某几个位置，读前面写下的事实、把自己的判断写进 turn.facts。
      * 一般同步；这一轮真要等外部（语义路由问小模型）时才返回 promise，流水线只在那时等
@@ -616,7 +615,7 @@ export function createInterpreter(options: { modules: readonly Module[]; exec: P
         ids.add(module.id);
     }
     const modules = [...options.modules];
-    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.review || module.reviewAt || module.cleanAt || module.candidates || module.decorateAt || module.decideAt);
+    const turnModules = modules.filter(module => module.perceive || module.assess || module.contribute || module.reviewAt || module.cleanAt || module.candidates || module.decorateAt || module.decideAt);
     const { exec } = options;
     const timers: ReturnType<Executor['every']>[] = [];
     const started = new Set<ScheduleStart>();

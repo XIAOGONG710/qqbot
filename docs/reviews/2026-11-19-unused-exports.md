@@ -7,6 +7,7 @@
 - **同日稍后删了 A 组（除 `addSoulRating` `dshStateFresh`）和 D 组**（用户：「先多开几个子代理，把你手头上的活先完成」）：连同只为它们存在的私有辅助、import 和只测它们的测试用例；41 个基线场景逐字不变，全量测试通过。
   B 组和 `addSoulRating` 跟用户 11-19 定的「`ownerPeek` 开关留着、SOUL 打分先不动」相关，没删；C、E 组是做好还没接线的功能，没删；`dshStateFresh` 可能给 DSH 那边读，没删。
 - 删完新冒出来的：`social/external-platforms.ts` 的 `externalPlatformCapability` 没人调了；`interpreter.ts` 里 `Module` 的 `review?` 字段没有模块实现（只剩 `createInterpreter` 筛选时读它，要改线上代码，没动）。
+  **11-20 两个都删了**：没有调用方 / 没有实现，删掉不改任何行为；`npm run baseline:fast` 41/41 逐字一致。
 - 不在清单里的：只在本文件里用、只是多写了 `export` 的（约 365 个，抽查过是真在用）；只被 scripts 或 Koishi 插件用的（是活的）。
 
 ## A. 哪里都没人用（src、测试、脚本都没有，本文件里也没用）

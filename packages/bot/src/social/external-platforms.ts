@@ -57,10 +57,6 @@ export const EXTERNAL_PLATFORM_CAPABILITIES: readonly ExternalPlatformCapability
     },
 ];
 
-export function externalPlatformCapability(platform: ExternalPlatform): ExternalPlatformCapability {
-    return EXTERNAL_PLATFORM_CAPABILITIES.find(item => item.platform === platform)!;
-}
-
 /** 只接受明确的安全模式；未知值和空值都回到关闭。 */
 export function externalPlatformMode(value: unknown): ExternalPlatformMode {
     return value === 'draft' || value === 'authorized' || value === 'off' ? value : 'off';
