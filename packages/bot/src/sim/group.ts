@@ -62,7 +62,8 @@ for (const file of files) {
     const reasons: Record<string, number> = {};
     for (let r = 1; r <= runs; r++) {
         console.log(`${name} r${r}…`);
-        const run = await runGroupScenario(scenario, { base: { ...loaded, llm }, characterCard });
+        // 每次换一组消息编号：插话抽签按编号定，编号一样的话几次跑抽到的签一模一样（11-20 第一批 3 次结果逐项相同就是这个原因）
+        const run = await runGroupScenario(scenario, { base: { ...loaded, llm }, characterCard, firstMessageId: 6000 + Math.floor(Math.random() * 1_000_000) * 100 });
         writeFileSync(join(root, name, `r${r}.md`), renderGroupRun(scenario, run));
         counts.push(run.spoke);
         for (const [reason, n] of Object.entries(run.reasons)) reasons[reason] = (reasons[reason] ?? 0) + n;

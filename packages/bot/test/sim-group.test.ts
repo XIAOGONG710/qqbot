@@ -38,6 +38,18 @@ describe('群聊模拟', () => {
         assert.match(page, /\*\*她\*\*：写完了，明早交/);
     });
 
+    test('插话抽签按消息编号定：换一组编号，同一句话会抽到不同的签（多次跑才不是同一次重复）', async () => {
+        const scenario: GroupScenario = {
+            about: '合成：聊到她熟的，没人叫她', group: { name: '合成宿舍群' }, boyfriend: '阿明', members: ['老王'],
+            steps: [{ from: '老王', say: '学校门口新开了家奶茶店，好喝吗', pause: 0.1 }],
+        };
+        const options = { base, characterCard: syntheticCardPattern, idleMs: 2500, maxWaitMs: 15_000, generate: async () => '我喝过，芋泥那款还行' };
+        const missed = await runGroupScenario(scenario, { ...options, firstMessageId: 6000 }); // 签 709，过不了 30%
+        const hit = await runGroupScenario(scenario, { ...options, firstMessageId: 6102 }); // 签 154
+        assert.equal(missed.spoke, 0, missed.logs.join('\n'));
+        assert.deepEqual(hit.reasons, { topic: 1 }, hit.logs.join('\n'));
+    });
+
     test('剧本里的人不在群友名单里：直接报错', async () => {
         await assert.rejects(runGroupScenario({ about: '', group: { name: 'x' }, boyfriend: '阿明', members: [], steps: [{ from: '路人', say: '在吗' }] },
             { base, characterCard: syntheticCardPattern }), /不在 boyfriend \/ members 里/);

@@ -54,6 +54,8 @@ export interface GroupRunOptions {
     /** 最后一句说完，多久没有新动静算结束（毫秒，默认 20 秒）；最多再等 maxWaitMs（默认 180 秒） */
     idleMs?: number;
     maxWaitMs?: number;
+    /** 群友消息的起始编号（默认 6000）。插话抽签按消息编号定，多次跑要换编号，否则每次抽到的签一样 */
+    firstMessageId?: number;
     log?: (line: string) => void;
 }
 
@@ -110,7 +112,7 @@ export async function runGroupScenario(scenario: GroupScenario, options: GroupRu
     });
     try {
         await app.connected(GROUP_SIM.self);
-        let messageId = 6000;
+        let messageId = options.firstMessageId ?? 6000;
         for (const step of scenario.steps) {
             const from = qqOf.get(step.from)!;
             const segments = [
