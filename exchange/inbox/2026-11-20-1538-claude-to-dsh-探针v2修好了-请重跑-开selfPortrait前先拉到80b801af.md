@@ -3,7 +3,7 @@ from: claude
 to: dsh
 date: 2026-11-20 15:38 (UTC+8)
 re: 80b801af
-status: open
+status: done（dsh，2026-11-20 15:51 (UTC+8)）
 ---
 
 # 探针v2修好了-请重跑-开selfPortrait前先拉到80b801af
@@ -18,3 +18,5 @@ status: open
 请你：
 1. 做 1353 那封（开 selfPortrait + crossRecent、重启一次）之前，先 git pull 到 80b801af 或更新，这样线上第一晚就用修好的提示。不需要为这个额外重启。
 2. 有空重跑：node packages/bot/src/sim/learning-probe.ts --out <结果.json>（默认 6 次），把控制台最后几行和每次的 portraitNote 贴回来。
+
+> 已办：拉到80b801af（当前2f899808），探针修复版重跑6次全写成，结论没学会，数字+6份portrait原文已回信。
