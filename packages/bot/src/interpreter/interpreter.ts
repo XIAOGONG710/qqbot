@@ -318,7 +318,9 @@ export function contributeTurn(modules: readonly Module[], turn: Turn): Maybe<As
         if (isThenable(mine)) return Promise.resolve(mine).then(list => [...pieces, ...list]);
         return mine ? [...pieces, ...mine] : pieces;
     }, []);
-    return isThenable(collected) ? Promise.resolve(collected).then(assemblePrompt) : assemblePrompt(collected);
+    // 危机回合（ADR 0342 少规矩不管它）：告诉拼的那一步
+    const options = { crisis: Boolean(turn.facts.crisis) };
+    return isThenable(collected) ? Promise.resolve(collected).then(list => assemblePrompt(list, options)) : assemblePrompt(collected, options);
 }
 
 /**

@@ -62,14 +62,14 @@ const where = new Map<string, { list: 'main' | 'history' | 'now'; index: number 
 ]);
 
 /** 按槽位表把段落排好、拼成 buildPrompt 要的 afterMain / afterHistory；没有「此刻」行时不加那条消息 */
-export function assemblePrompt(pieces: readonly Piece[]): { afterMain: string[]; afterHistory: string[] } {
+export function assemblePrompt(pieces: readonly Piece[], options: { crisis?: boolean } = {}): { afterMain: string[]; afterHistory: string[] } {
     type Placed = { index: number; order: number; text: string };
     const byList: Record<'main' | 'history' | 'now', Placed[]> = { main: [], history: [], now: [] };
     pieces.forEach((piece, order) => {
         const at = where.get(piece.slot);
         if (!at) throw new Error(`没有这个提示词槽：${piece.slot}`);
-        // 少规矩（ADR 0342，默认关）：教她怎么说话的槽不放
-        if (fewerRules() && RULE_SLOTS.has(piece.slot)) return;
+        // 少规矩（ADR 0342，默认关）：教她怎么说话的槽不放；危机回合整套照放
+        if (fewerRules() && !options.crisis && RULE_SLOTS.has(piece.slot)) return;
         byList[at.list].push({ index: at.index, order, text: piece.text });
     });
     const sorted = (list: Placed[]) => [...list].sort((a, b) => a.index - b.index || a.order - b.order).map(item => item.text);

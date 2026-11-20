@@ -4,7 +4,7 @@
 // 开着时：
 // - 提示词里「教她怎么说话」的槽整类不放（RULE_SLOTS）；她是谁、她的日子（事实）、保命、真实能力和代码要认的格式照旧；
 // - 卡末尾那段（post_history_instructions）换成 FEWER_RULES_BASICS：只剩真实能力、格式和不编他的话；
-// - 危机回合不受影响（承认版卡、危机那几段照旧）。
+// - 危机回合不受影响：承认版卡、危机意图、这些槽、「他最后说的是」、出口检查的禁用词都照旧（只管风格的开关 relaxStyle 是整个进程的，危机回合也关着）。
 // 关着时一个字都不变（行为基线逐字核对）。线上由 App 按配置设一次；模拟器 --fewer-rules。
 
 import type { Slot } from '../interpreter/slots.ts';
@@ -27,7 +27,7 @@ export const RULE_SLOTS: ReadonlySet<Slot> = new Set<Slot>([
     'groundNote', // 「你现在」是底子不是话题、没人问别说
     'pace', // 心情好话多一点、心情差话少一点
     'length', 'shape', // 这一轮几条、每条几个字
-    'person', 'directAnswer', 'noOverthink', // 人称、正经问先答、别琢磨
+    'directAnswer', 'noOverthink', // 正经问先答、别琢磨（人称那句是帮她读懂「我」「你」指谁，10-30 修理解错误加的，留着）
     'reading', // 把这一轮当完整一句理解、别反问「你指哪件」
     'scene', 'opinion', 'askHint', 'routedHint', 'deliberate', // 碰到某类话该怎么接
     'register', 'rating', // 照平时的样子接、评价低就话少一点

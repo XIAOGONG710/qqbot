@@ -39,8 +39,8 @@ export function replyBasicsModule(): Module {
         id: 'reply-basics',
         contribute(turn) {
             const last = lastUserLine(turn);
-            // 少规矩（ADR 0342）：「先接这一句」不放；她主动找他时那句「那不是刚说的」是时间事实，照放
-            const pieces: Piece[] = last && !(fewerRules() && !turn.initiate) ? [{ slot: 'lastUser', text: last }] : [];
+            // 少规矩（ADR 0342）：「先接这一句」不放；她主动找他时那句「那不是刚说的」是时间事实，危机回合整套，都照放
+            const pieces: Piece[] = last && !(fewerRules() && !turn.initiate && !turn.facts.crisis) ? [{ slot: 'lastUser', text: last }] : [];
             if (!turn.initiate) pieces.push({ slot: 'person', text: PERSON_NOTE }, { slot: 'directAnswer', text: DIRECT_ANSWER_NOTE }, { slot: 'noOverthink', text: NO_OVERTHINK_NOTE });
             return pieces;
         },

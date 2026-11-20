@@ -42,6 +42,19 @@ describe('少规矩（fewerRules）', () => {
         assert.ok(!RULE_SLOTS.has('portrait') && !RULE_SLOTS.has('state') && !RULE_SLOTS.has('time'));
     });
 
+    test('危机回合：开着也整套照放（槽、「他最后说的是」、人称）', () => {
+        useFewerRules(true);
+        const now = assemblePrompt(pieces, { crisis: true }).afterHistory.at(-1)!;
+        assert.match(now, /没人问就别主动说/);
+        assert.match(now, /每条不超过 14 个字/);
+        assert.match(now, /先接这一句/);
+        const module = replyBasicsModule();
+        const fresh = [{ role: 'user', content: '我不想活了', time: '2026-11-20T11:59:00Z' }];
+        const slots = (module.contribute!(turnOf({ crisis: { level: 'high' } }, { history: fresh } as Partial<Turn>)) as Piece[]).map(piece => piece.slot);
+        assert.ok(slots.includes('lastUser') && slots.includes('directAnswer'), slots.join(','));
+        assert.equal(RULE_SLOTS.has('person'), false, '人称那句帮她读懂「我」「你」，不算教她怎么说话');
+    });
+
     test('意图行：开着时不放，危机回合照放', () => {
         const module = intentLineModule();
         useFewerRules(true);

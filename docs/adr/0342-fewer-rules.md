@@ -21,10 +21,13 @@
 | 保命、真实能力、代码要认的格式 | 危机回合整套；被问是不是 AI（设定事实段）；说别人的事的分寸；照片电话做不到；语音条 / 命令 / 用电脑 / 表情的格式 | 照放 |
 | 教她怎么说话 | 见下 | 不放 |
 
-**不放的提示词**（`language/fewer-rules.ts` 的 `RULE_SLOTS`，分类逐槽核过）：groundNote、pace、length、shape、person、directAnswer、noOverthink、reading、scene、opinion、askHint、routedHint、deliberate（那句提示；换强模型照旧）、register、rating、crutch、opener、told、idiom、exemplar、unsure、solveFrame；
+**不放的提示词**（`language/fewer-rules.ts` 的 `RULE_SLOTS`，分类逐槽核过）：groundNote、pace、length、shape、directAnswer、noOverthink、reading、scene、opinion、askHint、routedHint、deliberate（那句提示；换强模型照旧）、register、rating、crutch、opener、told、idiom、exemplar、unsure、solveFrame；
 另外：意图行（「这一轮你想……」，危机回合的照放）、「他最后说的是……先接这一句」（她主动找他时那句「那不是刚说的」是时间事实，照放）、角色卡场景世界书里的「场景参考」（只学语气和长短的范例）。
 
 **卡末尾那段**（post_history_instructions，原来有「说话短」「讲题先一句话再打比方」「难过先别嘴硬」「不算他几小时没回的账」……）换成四句：只输出要发的消息；照片电话做不到、能用的照运行时说的格式；方括号里的语音图片是什么；不编他说过的话和没一起经历的事。
+
+**危机回合整套照放**：开关开着也一样——承认版卡、危机意图、上面这些槽、「他最后说的是」、出口检查的禁用词都照旧（qqbot-fd 审 77f6bf77 时指出第一版漏了，已补，带测试）。只管风格的开关（`relaxStyle`）是整个进程的，危机回合也关着；危机审查（`reviewCrisisReply`）不受它影响。
+人称那句（「他说『我』是他自己……」）是 10-30 修理解错误加的，帮她读懂指代，不算教她怎么说话，留着。
 
 **生成之后的**：不再按心境 / 意图 / 形状压条数（危机回合仍最多 3 条；课上、刚被吵醒这类处境的条数照旧）；出口检查只认卡上的红线，医书词和书面腔不再让她重写；只管说话风格的开关一并关掉（`relaxStyle`：说话的毛病检查、句尾封顶、质感、形状那一套、挑候选）。答应做不到的事、编两个人的对话、危机审查、事实核对、内部标记清理照旧。
 
