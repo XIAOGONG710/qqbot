@@ -50,6 +50,13 @@ const DEFAULTS = {
   /** QQ 那边每次给他算完心境写的（ADR 0197）；超过 feelingsStaleMs 没刷新就不用 */
   feelingsFile: soulPath('FEELINGS.json'),
   feelingsStaleMs: 3 * 60 * 60 * 1000,
+  /** QQ 那边用拼提示词的同一批模块算好的「此刻的她」（ADR 0347 第 2 层）；格式见 packages/bot/src/life/self-types.ts */
+  selfFile: soulPath('SELF.json'),
+  /** 她在桌面上把攒着的话说出口之后，插件只追加回执，QQ 那边消费 */
+  selfReceiptsFile: soulPath('self-receipts.jsonl'),
+  selfStaleMs: 30 * 60 * 1000,
+  /** 「此刻的你」整块（标题 + 各行 + 攒着的那段）最多这么多字，超了从后往前整行丢 */
+  selfMaxChars: 1200,
   ratingFile: soulPath('RATINGS.json'),
   logFile: path.join(os.homedir(), '.dsh', 'linmengyao-memory.log'),
   // SOUL.md 每轮整份注入提示词：超过这个字数，最老的追加段落搬进 SOUL.archive.md（不再注入）；24 小时内最多写几次
@@ -705,6 +712,123 @@ function readNowLine(cfg) {
   } catch { return '' }
 }
 
+// ───────── 一个生活·第 2 层（ADR 0347）：进门拿到「此刻的她」（SELF.json） ─────────
+// 格式和 QQ 侧 packages/bot/src/life/self-types.ts 是同一份（SelfExport / SelfPending / SelfReceipt）；插件是纯 JS，不 import 那边，
+// 那边格式改了（升 version）这里要跟着改。方案：docs/plans/2026-11-22-same-her-layer2-self.md 二、3–二、5。
+
+const SELF_KIND = 'qq-self'
+const SELF_VERSION = 1
+const SELF_PENDING_KINDS = new Set(['inner', 'news', 'followUp'])
+const SELF_SAID_CHARS = 600
+const SELF_HEADER = '[此刻的你（QQ 那边算好的，就是你此刻的样子；不用复述，也别说成「QQ 那边说」）]'
+const SELF_PENDING_HEAD = '[攒着想跟他说的（QQ 那边还没说出口的；他这会儿在跟你说话，接得上就顺口带一句，不想说就算了，一次别全倒出来）：'
+
+/** 绊线（网址、「别让他知道」这类）和 `<<…>>` 标记：命中的那一行 / 那一件丢掉 */
+const selfUnsafe = (text) => Boolean(soulTripwire(text)) || /<<|>>/.test(text)
+
+let selfCache = { key: '', data: undefined, logged: '' }
+
+/**
+ * 读 SELF.json：kind / version 对得上；generatedAt 不在未来超过 60 秒、不超过 selfStaleMs（30 分钟，同 NOW）；
+ * 现在没过 validUntil + 60 秒（「19:58 写的『20:00 还有课』」20:05 不能还当现在）。任一不满足当没有，记一行日志（不记内容；同一版文件同一个原因只记一次）。
+ * 每行 / 每件再过绊线和 `<<` 检查，命中的丢掉；都丢光了也当没有（退回 NOW + FEELINGS）。文件按 mtime + 大小缓存解析结果（同 readSoul），时间每次重判。
+ * 没有文件（开关没开）不记日志。返回 { generatedAt, lines: [{ slot, text }], pending: [{ id, kind, goes?, text }] } 或 undefined。
+ */
+export function readSelf(cfg, now = Date.now()) {
+  let stat
+  try { stat = fs.statSync(cfg.selfFile) } catch { return undefined }
+  const key = `${cfg.selfFile}|${stat.mtimeMs}|${stat.size}`
+  if (selfCache.key !== key) {
+    let data
+    try { data = JSON.parse(fs.readFileSync(cfg.selfFile, 'utf8')) } catch { data = null }
+    selfCache = { key, data, logged: '' }
+  }
+  const bad = (reason) => {
+    if (selfCache.logged !== reason) {
+      selfCache.logged = reason
+      log(cfg, `此刻：SELF.json ${reason}，不用（退回 NOW / FEELINGS）`)
+    }
+    return undefined
+  }
+  const data = selfCache.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return bad('读不懂')
+  if (data.kind !== SELF_KIND || data.version !== SELF_VERSION) return bad('不是我们的标记或版本不对')
+  const generatedAt = Date.parse(String(data.generatedAt || ''))
+  if (!Number.isFinite(generatedAt) || generatedAt > now + 60_000) return bad('生成时间异常或在未来')
+  if (now - generatedAt > cfg.selfStaleMs) return bad('过期（QQ 没在跑？）')
+  const validUntil = Date.parse(String(data.validUntil || ''))
+  if (!Number.isFinite(validUntil) || now > validUntil + 60_000) return bad('已经过了 validUntil')
+  const lines = (Array.isArray(data.lines) ? data.lines : []).flatMap((line) => {
+    const text = typeof line?.text === 'string' ? line.text.trim() : ''
+    return text && !selfUnsafe(text) ? [{ slot: typeof line.slot === 'string' ? line.slot : '', text }] : []
+  })
+  const seen = new Set()
+  const pending = (Array.isArray(data.pending) ? data.pending : []).flatMap((item) => {
+    const id = typeof item?.id === 'string' ? item.id.trim() : ''
+    const text = typeof item?.text === 'string' ? item.text.replace(/\s+/g, ' ').trim() : ''
+    if (!id || id.length > 200 || seen.has(id) || !SELF_PENDING_KINDS.has(item.kind) || !text || selfUnsafe(text)) return []
+    seen.add(id)
+    return [{ id, kind: item.kind, ...(item.goes === 'ask' || item.goes === 'tell' ? { goes: item.goes } : {}), text }]
+  }).slice(0, 4)
+  if (!lines.length && !pending.length) return bad('过滤完什么都不剩')
+  selfCache.logged = ''
+  return { generatedAt: new Date(generatedAt).toISOString(), lines, pending }
+}
+
+/** 攒着的一件怎么说（二、3 的写法；用户 2026-11-22 定：照写，不跑 ask-her） */
+const selfPendingLine = (item) => {
+  if (item.kind === 'news') return `- 你今天${item.text.replace(/^今天/, '')}，还没跟他说过`
+  if (item.kind === 'followUp') return `- 想问问他：${item.text}怎么样了`
+  return item.goes === 'ask' ? `- 想问他：${item.text}` : `- 想告诉他：「${item.text}」`
+}
+
+const charCount = (text) => [...text].length
+
+/**
+ * 桌面上他自己和她说话的回合才放（醒来 / 整合 / QQ 派的活归第 4 层）：标题 + SELF 各行 + 攒着的那段。
+ * 字数上限 selfMaxChars（默认 1200）：攒着的那段先自己限在一半以内（从后往前丢整件）——它短、而且回执要靠它；
+ * 剩下的给各行，按 QQ 的先后从前往后放，放不下的那行和它后面的整行丢，不截半行。
+ * 返回 { text, shown: 放进去的 pending id, generatedAt, lines: 行数 } 或 undefined（SELF 不能用 / 不是 desktop 渠道 / 一行都放不下）。
+ */
+export function selfBlock(cfg, now = Date.now()) {
+  if (channel() !== 'desktop') return undefined
+  const self = readSelf(cfg, now)
+  if (!self) return undefined
+  const max = cfg.selfMaxChars
+  const pendingSection = (items) => (items.length ? `${SELF_PENDING_HEAD}\n${items.map(selfPendingLine).join('\n')}]` : '')
+  const items = [...self.pending]
+  while (items.length && charCount(pendingSection(items)) > max / 2) items.pop()
+  const tail = pendingSection(items)
+  let used = charCount(SELF_HEADER) + (tail ? charCount(tail) + 1 : 0)
+  const kept = []
+  for (const line of self.lines) {
+    const size = charCount(line.text) + 1
+    if (used + size > max) break
+    kept.push(line.text)
+    used += size
+  }
+  if (!kept.length && !items.length) return undefined
+  return {
+    text: [SELF_HEADER, ...kept, ...(tail ? [tail] : [])].join('\n'),
+    shown: items.map((item) => item.id),
+    generatedAt: self.generatedAt,
+    lines: kept.length,
+  }
+}
+
+/** 回执只追加一行（同 appendInbox 的写法），QQ 那边按行游标 + id 去重消费；日志只记件数 */
+function appendSelfReceipt(cfg, receipt) {
+  fs.mkdirSync(path.dirname(cfg.selfReceiptsFile), { recursive: true })
+  fs.appendFileSync(cfg.selfReceiptsFile, `${JSON.stringify(receipt)}\n`)
+  log(cfg, `此刻：回执 ${receipt.shown.length} 件（不记内容）`)
+}
+
+/** 一轮结束时写的那一行（SelfReceipt）；他这一轮没说话、或这一轮没放攒着的事，不写 */
+export function selfReceipt(user, assistant, shown, selfAt, now = Date.now()) {
+  if (!String(user || '').trim() || !shown.length) return undefined
+  return { v: 1, id: randomUUID(), at: new Date(now).toISOString(), selfAt, shown: [...shown], said: [...String(assistant || '').trim()].slice(0, SELF_SAID_CHARS).join('') }
+}
+
 /** QQ 侧唯一计算的真人式状态：这里只读数字和事件类型，坏文件 / 旧文件直接降级。 */
 function readStateBlock(cfg, now = Date.now()) {
   if (channel() !== 'desktop') return ''
@@ -782,7 +906,8 @@ export function apply(ctx, config = {}) {
     // 只给她的预设挂记忆/灵魂工具；助手窗口（cordis）和其他预设不挂
     if (allow.size && (!preset || !allow.has(preset))) return
 
-    const cache = { text: '', preset, user: '', assistant: '', outbox: 0 }
+    // self：这一步放进「此刻的你」的 SELF（selfBlock 的结果，没有就是 null）；selfShown / selfAt：这一轮放给她看过的攒着的事，turn-stopping 写回执后清空
+    const cache = { text: '', preset, user: '', assistant: '', outbox: 0, self: null, selfShown: new Set(), selfAt: '' }
 
     const off = agent.ctx.effect(() => {
       const disposers = []
@@ -791,6 +916,7 @@ export function apply(ctx, config = {}) {
         // 每个模型步骤都重新构造上下文。召回超时、坏文件或空输入时也不能沿用上一轮，
         // 否则旧问题的 QQ 最近对话 / 记忆会悄悄串进新一轮。
         cache.text = ''
+        cache.self = null
         try {
           let p = cache.preset
           if (!p) {
@@ -798,6 +924,15 @@ export function apply(ctx, config = {}) {
             cache.preset = p
           }
           if (allow.size && p && !allow.has(p)) { cache.text = ''; log(cfg, `skip preset=${p}`); return next() }
+          // 「此刻的你」（ADR 0347 第 2 层）：SELF 能用、又是桌面上他自己在说话时，替掉 NOW 那块、记忆块里不再放心境（SELF 的 feeling 行就是同一行）
+          try {
+            cache.self = selfBlock(cfg) || null
+            if (cache.self) {
+              for (const id of cache.self.shown) cache.selfShown.add(id)
+              if (cache.self.shown.length) cache.selfAt = cache.self.generatedAt
+              log(cfg, `此刻：放了 SELF（${cache.self.lines} 行、攒着 ${cache.self.shown.length} 件；不记内容）`)
+            }
+          } catch (e) { cache.self = null; log(cfg, `self error ${e}`) }
           const messages = Array.isArray(payload.messages) ? payload.messages : []
           const query = textOf(messages[messages.length - 1]).trim()
           // pre-step 会在同一轮的每个模型步骤执行。工具调用后的最后一条消息通常是
@@ -817,7 +952,7 @@ export function apply(ctx, config = {}) {
             // 「她现在在干嘛」只从 readNowLine 一条路进（带过期判断，下面的 sp.context）：原来这里还有一条直接读 NOW.md 的，
             // 同一份状态注入两遍，而且这一条不看过期——QQ 没在跑时旧状态照样冒充现在（任务书 S7）
             const insights = insightsBlock(cfg, query)
-            const feelings = feelingsBlock(cfg)
+            const feelings = cache.self ? '' : feelingsBlock(cfg)
             if (feelings) log(cfg, '心境：这一轮放了 QQ 那边算的心境（日志不记内容）')
             if (insights) log(cfg, `自我认识：这一轮放了 ${insights.split('\n').length - 1} 条（日志不记内容）`)
             cache.text = [
@@ -845,8 +980,12 @@ export function apply(ctx, config = {}) {
         cache.outbox = 0
         const user = cache.user
         const assistant = cache.assistant
+        const selfShown = [...cache.selfShown]
+        const selfAt = cache.selfAt
         cache.user = ''
         cache.assistant = ''
+        cache.selfShown = new Set()
+        cache.selfAt = ''
         if (!user && !assistant) return
         let p = cache.preset
         if (!p) {
@@ -854,6 +993,13 @@ export function apply(ctx, config = {}) {
         }
         if (allow.size && p && !allow.has(p)) return
         try { recordDesktopTurn(cfg, user, assistant) } catch (e) { log(cfg, `desktop-recent error ${e}`) }
+        // 回执：桌面上他自己说了话、这一轮放过攒着的事，才追加一行；QQ 那边认没认成「说过了」由它自己判断
+        if (channel() === 'desktop') {
+          try {
+            const receipt = selfReceipt(user, assistant, selfShown, selfAt)
+            if (receipt) appendSelfReceipt(cfg, receipt)
+          } catch (e) { log(cfg, `self receipt error ${e}`) }
+        }
         if (shouldAutoSaveTurn(user, assistant)) {
           try {
             await retain(cfg, `宝宝：${user}\n林梦瑶：${assistant.slice(0, 2000)}`, writeBank(cfg), ['dsh'], 'DSH')
@@ -886,6 +1032,8 @@ ${persona}` : ''
           name: 'linmengyao-now',
           order: 80,
           text: () => {
+            // SELF 能用时整块换成「此刻的你」；不能用就完全走原来的 NOW 行，一个字不变
+            if (cache.self) return cache.self.text
             const now = readNowLine(cfg)
             return now ? `[她现在在干嘛]
 ${now}` : ''

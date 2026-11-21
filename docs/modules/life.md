@@ -42,6 +42,7 @@
 - `life/acquaintances.ts`
 - `life/her-plans.ts`
 - `life/now-export.ts`
+- `life/self-types.ts`
 - `life/leave-note.ts`
 - `life/dreams.ts`
 - `life/dream-jobs.ts`
