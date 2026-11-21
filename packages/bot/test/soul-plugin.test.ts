@@ -730,6 +730,47 @@ describe('同一个她·「她现在在干嘛」只从一条路进、过期不�
     });
 });
 
+describe('一个生活，两个地方·「你走到现在的故事」只认 QQ 生成的 STORY.md（ADR 0347 第 1 层）', () => {
+    const qqStory = (generatedAt: Date) => `<!-- 生成的，别手改 -->\n<!-- generated-at: ${generatedAt.toISOString()} -->\n\n这学期她搬回了宿舍，开始自己做饭ZQS。\n`;
+    const injected = async (h: ReturnType<typeof boot>) => {
+        await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '最近怎么样' }] }, async () => undefined);
+        return h.contexts.map(entry => entry.text()).join('\n');
+    };
+    const logLines = (h: ReturnType<typeof boot>, pattern: RegExp) => h.text('plugin.log').split('\n').filter(line => pattern.test(line)).length;
+
+    test('her-life.mjs 的旧故事（没有 generated-at）：一个字都不注入，日志只记一次', async () => {
+        const fake = fakeHindsight({ banks: ALL_BANKS });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile(undefined) });
+            writeFileSync(h.f('STORY.md'), '## 第 3 周\n她和苏雨桐去图书馆自习ZQS，精力 40。\n');
+            assert.ok(!(await injected(h)).includes('ZQS'));
+            assert.ok(!(await injected(h)).includes('走到现在的故事'));
+            assert.equal(logLines(h, /STORY\.md 没有 generated-at.*ADR 0347/), 1, '不每轮刷日志');
+        } finally { fake.restore(); }
+    });
+
+    test('QQ 生成的（带 generated-at）：注入，注释行不进提示词；故事不看过期', async () => {
+        const fake = fakeHindsight({ banks: ALL_BANKS });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile(undefined) });
+            writeFileSync(h.f('STORY.md'), qqStory(new Date(Date.now() - 30 * 86_400_000)));
+            const text = await injected(h);
+            assert.match(text, /\[你走到现在的故事\]\n这学期她搬回了宿舍，开始自己做饭ZQS。/);
+            assert.ok(!text.includes('generated-at') && !text.includes('别手改'), '给机器看的注释不进提示词');
+        } finally { fake.restore(); }
+    });
+
+    test('生成时间明显在未来：当坏文件，不注入', async () => {
+        const fake = fakeHindsight({ banks: ALL_BANKS });
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile(undefined) });
+            writeFileSync(h.f('STORY.md'), qqStory(new Date(Date.now() + 60 * 60_000)));
+            assert.ok(!(await injected(h)).includes('ZQS'));
+            assert.equal(logLines(h, /STORY\.md 的生成时间在未来/), 1);
+        } finally { fake.restore(); }
+    });
+});
+
 describe('同一个她：桌面上的她也知道自己翻日记发现了什么（ADR 0194，INSIGHTS.json）', () => {
     const NOTES: Insight[] = [
         { id: 'i-1', text: '作业总拖到要交的前一晚才动手，熬到很晚才写完，眼睛都熬得发酸。', at: 3, dates: ['2026-10-12', '2026-10-25'] },

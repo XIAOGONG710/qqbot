@@ -162,12 +162,37 @@ function readSoul(cfg) {
   }
 }
 
-let storyCache = { path: '', at: 0, text: '' }
+/**
+ * 「你走到现在的故事」（ADR 0347「一个生活，两个地方」）：她的生活只由 QQ 那边算，
+ * 所以 STORY.md 只认 QQ 生成的——带 `<!-- generated-at: <ISO> -->` 那一行（和 NOW.md 同一个标记）。
+ * 没有标记的是 scripts/her-life.mjs 每周追加的那份（第二套生活：随机活动、编出来的人），一个字都不注入。
+ * 故事不怕旧，不看过期；但生成时间明显在未来（超过 60 秒）当坏文件。
+ * 同一版文件只记一次日志，不每轮刷。注释行不进提示词。
+ */
+let storyCache = { path: '', at: 0, text: '', generatedAt: NaN, logged: false }
 function readStory(cfg) {
   try {
     const stat = fs.statSync(cfg.storyFile)
     if (storyCache.path !== cfg.storyFile || storyCache.at !== stat.mtimeMs) {
-      storyCache = { path: cfg.storyFile, at: stat.mtimeMs, text: fs.readFileSync(cfg.storyFile, 'utf8').trim() }
+      const raw = fs.readFileSync(cfg.storyFile, 'utf8')
+      const m = /<!--\s*generated-at:\s*(\S+?)\s*-->/.exec(raw)
+      storyCache = {
+        path: cfg.storyFile,
+        at: stat.mtimeMs,
+        text: raw.replace(/<!--[\s\S]*?-->/g, '').trim(),
+        generatedAt: m ? Date.parse(m[1]) : NaN,
+        logged: false,
+      }
+    }
+    const generatedAt = storyCache.generatedAt
+    if (!Number.isFinite(generatedAt) || generatedAt > Date.now() + 60_000) {
+      if (!storyCache.logged) {
+        storyCache.logged = true
+        log(cfg, Number.isFinite(generatedAt)
+          ? '故事：STORY.md 的生成时间在未来，当坏文件不注入'
+          : '故事：STORY.md 没有 generated-at 标记（her-life.mjs 的旧故事），按 ADR 0347 不注入')
+      }
+      return ''
     }
     return storyCache.text.slice(-1200)
   } catch {
