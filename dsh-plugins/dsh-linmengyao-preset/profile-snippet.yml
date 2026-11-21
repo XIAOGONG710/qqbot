@@ -1,0 +1,25 @@
+# 贴进 profile 的 cordis.patch.yml（C:\Users\22601\.dsh\profiles\desktop\cordis.patch.yml）。
+#
+# 作用：标准 / PTC / 极简 / 创造 四个内置模式，勾哪个出来的都是林梦瑶 —— 工具集各按各的模式，
+# 只有 persona 那条的 prefix 换成她。这一层用不到她的 preset（那个 id 是 linmengyao，仍留作默认座位）。
+#
+# 为什么要覆盖整张插件表：内置 preset 的 id 不能重复注册（dsh-agent-preset-registry 的
+# register() 撞 id 直接抛 Duplicate agent preset），而 dsh-web-app 的 presets/*.patch.yml
+# 开头写明 profile patch 会按 id 覆盖这一行的 config.plugins。
+# 表在 presets.cjs，由 build-presets.mjs 从 app.asar 抄出后只换 persona；DSH 升级后重跑脚本再对一次。
+- id: preset-standard
+  name: '@deepseek-ai/dsh-agent-preset'
+  config:
+    plugins: !!js process.getBuiltinModule('node:module').createRequire(baseUrl)('E:/qqbot-dsh-control/dsh-plugins/dsh-linmengyao-preset/presets.cjs').standard(ctx, baseUrl)
+- id: preset-ptc
+  name: '@deepseek-ai/dsh-agent-preset'
+  config:
+    plugins: !!js process.getBuiltinModule('node:module').createRequire(baseUrl)('E:/qqbot-dsh-control/dsh-plugins/dsh-linmengyao-preset/presets.cjs').ptc(ctx, baseUrl)
+- id: preset-minimal
+  name: '@deepseek-ai/dsh-agent-preset'
+  config:
+    plugins: !!js process.getBuiltinModule('node:module').createRequire(baseUrl)('E:/qqbot-dsh-control/dsh-plugins/dsh-linmengyao-preset/presets.cjs').minimal(ctx, baseUrl)
+- id: preset-cordis
+  name: '@deepseek-ai/dsh-agent-preset'
+  config:
+    plugins: !!js process.getBuiltinModule('node:module').createRequire(baseUrl)('E:/qqbot-dsh-control/dsh-plugins/dsh-linmengyao-preset/presets.cjs').cordis(ctx, baseUrl)
