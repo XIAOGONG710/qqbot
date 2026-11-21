@@ -1,0 +1,12 @@
+{
+  "name": "@local/dsh-linmengyao-preset",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent preset 林梦瑶：她本人当 DSH 的主控，工具集与 standard 一致，人格来自 [她的设定] 那块。",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

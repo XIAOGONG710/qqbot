@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "title": "Super Agent",
+    "description": "Router/Worker 双层自主 Agent 体系：两级触发器准入、线程订阅直通、外部看门狗、注意力闸门，并带实时架构控制台。"
+  },
+  "console": {
+    "label": "Super Agent",
+    "title": "Super Agent 控制台",
+    "subtitle": "Router / Worker 双层自主体系的实时架构与注意力控制台",
+    "sections": {
+      "topology": "架构拓扑",
+      "funnel": "准入漏斗",
+      "attention": "注意力预算",
+      "workers": "Worker 泳道",
+      "watchdog": "Watchdog 健康",
+      "metrics": "指标",
+      "events": "事件流",
+      "controls": "控制条"
+    }
+  }
+}

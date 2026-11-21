@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "title": "Super Agent",
+    "description": "Router/Worker two-layer autonomous agent system: two-stage trigger admission, thread subscription, an external watchdog, an attention gate, and a live architecture console."
+  },
+  "console": {
+    "label": "Super Agent",
+    "title": "Super Agent console",
+    "subtitle": "Live architecture and attention console for the Router / Worker two-layer system",
+    "sections": {
+      "topology": "Architecture",
+      "funnel": "Admission funnel",
+      "attention": "Attention budget",
+      "workers": "Worker lanes",
+      "watchdog": "Watchdog health",
+      "metrics": "Metrics",
+      "events": "Event stream",
+      "controls": "Controls"
+    }
+  }
+}

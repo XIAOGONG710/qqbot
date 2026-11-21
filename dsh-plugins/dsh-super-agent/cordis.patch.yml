@@ -1,0 +1,60 @@
+# Inserts the Super Agent bundle into the current profile.
+#
+#   dsh-super-agent       : the Router/Worker control plane (admission, threads, watchdog,
+#                           attention gate, metrics), the real Trigger sources, per-ticket git
+#                           worktrees and the delivery pipeline, plus /api/super-agent routes.
+#   dsh-super-agent.demo  : the same package in replay mode; disabled by default.
+#
+# Every key below is optional. `acceptMode: observe` is the safe start: proactive work is
+# recorded, not executed. Set `accept` only after reading the observe log for a while.
+- insert:
+    - id: dsh-super-agent
+      name: 'dsh-super-agent'
+      config:
+        acceptMode: observe
+        runner: auto
+        maxWorkers: 4
+        # Only these sources may act proactively when acceptMode=accept; [] means all.
+        acceptSources: []
+        # Unattended guards (0 disables a limit).
+        budget:
+          maxWorkersPerHour: 12
+          maxRuntimeMs: 1800000
+          maxTokensPerDay: 0
+        # One isolated git worktree per ticket. `root` defaults to <stateDir>/worktrees.
+        worktree:
+          enabled: true
+          root: ''
+        # patch = commit in the worktree + patch + PR draft (no credentials needed)
+        # push  = also push the branch to `remote`
+        # pr    = push, then open a GitHub PR with `githubToken`
+        delivery:
+          mode: patch
+          remote: origin
+          prBase: ''
+          githubToken: ''
+          artifactsDir: ''
+        # Symbolic repo -> local clone, e.g. { 'acme/demo': 'D:/code/demo' }.
+        repoMap: {}
+        sources:
+          # Drop a { text, author?, threadId?, repo? } JSON file into `dir` to trigger a ticket.
+          inbox:
+            enabled: false
+            dir: ''
+            intervalMs: 2000
+          # Poll open issues and their new comments. `repos` uses 'owner/name'.
+          github:
+            enabled: false
+            repos: []
+            token: ''
+            intervalMs: 300000
+            allowAuthors: []
+          # Shared secret for POST /api/super-agent/hook signatures ('' = unauthenticated).
+          ci:
+            secret: ''
+    - id: dsh-super-agent.demo
+      name: 'dsh-super-agent'
+      disabled: true
+      config:
+        acceptMode: observe
+        runner: simulate

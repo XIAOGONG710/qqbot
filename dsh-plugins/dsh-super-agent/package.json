@@ -1,0 +1,63 @@
+{
+  "name": "dsh-super-agent",
+  "version": "0.2.0",
+  "private": false,
+  "description": "Router/Worker two-layer autonomous agent system for DeepSeek Harness: two-stage trigger admission, per-ticket git worktrees, delivery closed loop (patch/push/PR), an external watchdog, an attention gate, and a live architecture console.",
+  "type": "module",
+  "license": "MIT",
+  "author": "aowind",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aowind/dsh-super-agent.git"
+  },
+  "homepage": "https://github.com/aowind/dsh-super-agent#readme",
+  "bugs": {
+    "url": "https://github.com/aowind/dsh-super-agent/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "agent",
+    "multi-agent",
+    "router-worker",
+    "worktree",
+    "autonomous-agents"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib/*.js",
+    "lib/*.mjs",
+    "lib/sources/*.mjs",
+    "lib/delivery/*.mjs",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node test/engine.test.mjs && node test/worktree.test.mjs && node lib/sources/selftest.mjs && node lib/sources/reply.test.mjs && node lib/delivery/selftest.mjs"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  }
+}
