@@ -1347,12 +1347,15 @@ export class LongTermMemory {
         };
         const results = await this.#recall(`${this.#options.bankPrefix}`, request, `[${contact.qq}] DSH 记忆召回失败，这次不带`);
         if (!results?.length) return undefined;
+        // 2026-11-21：她把「你让我把新会话默认挂到 preset-linmengyao 上」说出来，他根本没下过这个指令；还带着工程汇报的口气。
+        // 事情本身是她（同一个她）在电脑那边做的，说成自己做的没问题（用户 2026-11-21：「那个也是你，所以说是她做的也没问题」），
+        // 要挡住的是两样：替他说他从没下过的指令、以及在 QQ 聊天里报工程进度。标题里写清楚「是你干的，只是不在 QQ 上」。
         return formatRecalled(results.map(result => ({ ...result, document_id: result.document_id ?? 'dsh-work' })), {
-            header: `[你在 DSH 里做过的事（包括帮他干活；从记忆里想起来的，只作参考）]`,
+            header: `[你在电脑那边（DSH）干过的活——都是你干的，只是不是在 QQ 上、不是这一轮：聊到了可以说，但别替他安他没下过的指令（「你让我…」），也别把工程细节当聊天内容报一遍]`,
             limit: 3,
             now,
             fade: this.#fade(chat, {}),
-            source: () => '你干过的事',
+            source: () => '电脑那边干过',
         });
     }
 
