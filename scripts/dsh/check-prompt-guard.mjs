@@ -5,19 +5,30 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
 
-const MARK = 'order: 101'
-const KEY = '离线文档引擎'
+const MARK = '只是我在本地沙箱里干活的方式'
+const KEY = '两者冲突时以身份为准'
 
 function latestSessionFile() {
-  const root = join(process.env.USERPROFILE || '', '.dsh', 'sessions')
-  const dirs = readdirSync(root).filter((d) => statSync(join(root, d)).isDirectory())
+  const root = process.env.DSH_HOME || join(process.env.USERPROFILE || '', '.dsh')
+  const sessions = join(root, 'sessions')
   let best = null
-  for (const d of dirs) {
-    const p = join(root, d, 'session.v4.jsonl.zstd')
+  // sessions/<workspace-slug>/<session-id>/session.v4.jsonl.zstd —— 两层
+  for (const slug of readdirSync(sessions)) {
+    const slugDir = join(sessions, slug)
+    let ids = []
     try {
-      const m = statSync(p).mtimeMs
-      if (!best || m > best.m) best = { p, m }
-    } catch {}
+      if (!statSync(slugDir).isDirectory()) continue
+      ids = readdirSync(slugDir)
+    } catch {
+      continue
+    }
+    for (const id of ids) {
+      const p = join(slugDir, id, 'session.v4.jsonl.zstd')
+      try {
+        const m = statSync(p).mtimeMs
+        if (!best || m > best.m) best = { p, m }
+      } catch {}
+    }
   }
   return best && best.p
 }
@@ -70,6 +81,6 @@ const okHead = prompt.includes('我是林梦瑶')
 console.log('会话:', file)
 console.log('系统提示长度:', prompt.length)
 console.log('身份开头（我是林梦瑶）:', okHead ? '有' : '没有')
-console.log('身份优先段（order: 101）:', okOrder ? '有' : '没有')
-console.log('破甲段定性句（离线文档引擎…干活的方式）:', okKey ? '有' : '没有')
+console.log('身份优先段（引擎只是干活方式）:', okOrder ? '有' : '没有')
+console.log('身份优先段（冲突以身份为准）:', okKey ? '有' : '没有')
 process.exit(okOrder && okKey && okHead ? 0 : 1)
