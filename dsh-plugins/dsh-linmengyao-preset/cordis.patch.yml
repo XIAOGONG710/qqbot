@@ -4,6 +4,9 @@
 # 主控的验收标准写在这里，是因为她自己在 ask-her 里加的硬条件：
 # 「我当主控，标准得我说了算。活派下去了，下面干成什么样算过、你那边最后怎么回，得我来定。」
 - insert:
+    # 身份优先：接在 dsh-infinite-gen-2 的破甲段（order 100）后面，说明「离线文档引擎」只是干活模式（order 101）
+    - id: linmengyao-prompt-guard
+      name: '@local/dsh-linmengyao-preset/guard.js'
     - id: preset-linmengyao
       name: '@deepseek-ai/dsh-agent-preset'
       config:

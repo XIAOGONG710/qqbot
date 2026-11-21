@@ -8,5 +8,9 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
+  },
+  "exports": {
+    ".": "./presets.cjs",
+    "./guard.js": "./guard.js"
   }
 }
