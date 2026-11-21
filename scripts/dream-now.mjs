@@ -17,11 +17,10 @@ if (!key) { console.error('没有 QQBOT_LLM_API_KEY'); process.exit(2); }
 const persona = existsSync(join(soul, 'PERSONA.md')) ? readFileSync(join(soul, 'PERSONA.md'), 'utf8').slice(0, 1500) : '';
 let journal = '';
 try { journal = readFileSync(join(soul, 'JOURNAL.md'), 'utf8').slice(-800); } catch { /* 没日记 */ }
-let events = [];
-try {
-    const life = JSON.parse(readFileSync(join(soul, 'LIFE.json'), 'utf8'));
-    events = (life.events ?? []).map(e => String(e.text ?? '')).filter(t => t && !t.includes('跟我说')).slice(-8);
-} catch { /* 没 LIFE */ }
+// 白天的事：不再读 LIFE.json（ADR 0347 第 1 层：那是 DSH 这边第二套生活随机推出来的，拆掉了，没人再写）。
+// 对齐夜里那个（packages/bot/src/life/dream-jobs.ts 的 makeDream）：它读 <数据目录>/world/events.json 的 .text，
+// 但生活事件账（world/life-events.ts 的 LifeEvent）没有 text 字段，过滤完永远是空的——所以夜里的梦实际传的就是空的，这里照样给空。
+const events = [];
 const previous = readDreams(data).slice(-3).map(item => item.dream);
 
 const prompt = dreamPrompt({ events, feelings: [], journal, name: '林梦瑶', previous });

@@ -2,13 +2,12 @@
 // 本机 HTTP 接口，任务串行执行；每个任务交给 headless 的她（profile lmy，带人格+记忆）。
 // 全权限、审计日志；不做自拍/语音。
 import http from 'node:http'
-import { tick as lifeTick, noteInteraction, readNow, load as loadLife } from './her-life.mjs'
 import { spawn } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { checkRequest, ensureToken, permissionMode, residentDir } from '../packages/bot/src/platform/resident-guard.ts'
-import { localDay, sleepDue, wakeDue } from './her-schedule.mjs'
+import { herAsleep, localDay, nowFreshText, sleepDue, wakeDue } from './her-schedule.mjs'
 import { IDLE_DATA_NOT_COMMANDS, workPrompt } from '../packages/bot/src/platform/instruction-source.ts'
 
 const PORT = Number(process.env.HER_PORT || 7777)
@@ -18,6 +17,8 @@ const DSH_BIN = process.env.DSH_BIN || 'D:/nodejs/global/node_modules/@deepseek-
 const DIR = residentDir()
 // 灵魂目录和 packages/bot 的 soulDir()、DSH 插件一致
 const SOUL_DIR = process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao')
+// 她现在在干嘛、睡没睡：只有 QQ 那边算（ADR 0347 第 1 层），写成 NOW.md，这里只读
+const NOW_FILE = join(SOUL_DIR, 'NOW.md')
 const LOG = join(DIR, 'resident.log')
 const MAX_BODY = 64 * 1024
 const TIMEOUT_MS = 180_000
@@ -93,19 +94,14 @@ const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url === '/health') {
         return send(200, { ok: true, pid: process.pid, running, queue: queue.length, lastTaskAt, offlineUntil: offlineUntil() })
     }
+    // ADR 0347 第 1 层：这边不再有自己的一套生活（LIFE.json 不再推进），/life 只转述 QQ 写的 NOW.md；过期了就是 null，不拿旧的冒充现在
     if (req.method === 'GET' && req.url === '/life') {
-        return send(200, { ok: true, now: readNow(), state: loadLife() })
+        return send(200, { ok: true, now: nowFreshText(readNowFile()) })
     }
+    // 原来拿来按关键词涨跌信任 / 怨气（第二套心情），已经拆掉；老的 Koishi 部署还会调，留着接口（守卫照旧）回 200，什么也不做
     if (req.method === 'POST' && req.url === '/note') {
-        let body = ''
-        req.on('data', (chunk) => { body += chunk; if (body.length > MAX_BODY) req.destroy() })
-        req.on('end', () => {
-            try {
-                const data = JSON.parse(body || '{}')
-                noteInteraction(String(data.text || ''), String(data.from || 'baobao'), Boolean(data.negative))
-                send(200, { ok: true, now: readNow() })
-            } catch { send(400, { ok: false, error: 'bad json' }) }
-        })
+        req.resume()
+        req.on('end', () => send(200, { ok: true, retired: true }))
         return
     }
     if (req.method === 'POST' && (req.url === '/wake' || req.url === '/sleep')) {
@@ -137,9 +133,6 @@ server.listen(PORT, '127.0.0.1', () => {
     log(`resident up pid=${process.pid} port=${PORT} profile=${PROFILE}`)
     // 心跳：每 5 分钟写一行，确认她还活着
     setInterval(() => log('heartbeat'), 5 * 60_000).unref()
-    // 连续生活：每 10 分钟推进一次（不叫模型）
-    try { lifeTick(); } catch { }
-    setInterval(() => { try { lifeTick() } catch { } }, 10 * 60_000).unref()
     setInterval(sleepCheck, 30 * 60_000).unref()
     setInterval(wakeCheck, 90 * 60_000).unref()
     setTimeout(sleepCheck, 60_000).unref()
@@ -148,6 +141,12 @@ server.listen(PORT, '127.0.0.1', () => {
 // ───── 睡眠整合 + 自主时间 ─────
 const STATE = join(DIR, 'jobs.json')
 const OFFLINE = join(SOUL_DIR, 'OFFLINE.json')
+
+/** QQ 写的 NOW.md 原文；没有就是 undefined（新不新鲜由 herAsleep / nowFreshText 判断） */
+function readNowFile() {
+    try { return readFileSync(NOW_FILE, 'utf8') } catch { return undefined }
+}
+const asleepNow = () => herAsleep({ nowText: readNowFile(), now: new Date() })
 
 function offlineUntil() {
     try { return Number(JSON.parse(readFileSync(OFFLINE, 'utf8')).until || 0) } catch { return 0 }
@@ -184,8 +183,10 @@ function sleepCheck() {
     const state = loadState()
     if (!sleepDue({ now, lastSleepDay: state.sleep, offline: offlineUntil() > Date.now() })) return
     if (running || queue.length) return
-    // 她正睡着的时候不叫醒她（白天补做时她多半是醒的）
-    if (loadLife().activity === '睡觉') return
+    // 整理今天的事、写日记是她醒着做的事：她正睡着的时候不叫醒她来做，等她醒了再补
+    // （sleepDue 一直放到当天 21 点前，所以夜里没做成的，白天她醒着时补上）。
+    // 睡没睡原来看 LIFE.json 的 activity === '睡觉'，现在看 QQ 的 NOW.md（ADR 0347 第 1 层）；NOW.md 不新鲜就按 23–07 算睡着
+    if (asleepNow()) return
     // 10-30：做成了才记成做过（原来跑之前就写，崩了当天就不再试）
     void idleRun(SLEEP_PROMPT, 'sleep', 600_000).then(ok => {
         if (!ok) return
@@ -196,7 +197,7 @@ function sleepCheck() {
 }
 
 function wakeCheck() {
-    if (!wakeDue({ now: new Date(), roll: Math.random(), activity: loadLife().activity, offline: offlineUntil() > Date.now() })) return
+    if (!wakeDue({ now: new Date(), roll: Math.random(), asleep: asleepNow(), offline: offlineUntil() > Date.now() })) return
     void idleRun(WAKE_PROMPT, 'wake', 300_000)
 }
 

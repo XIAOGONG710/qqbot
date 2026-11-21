@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { checkRequest, ensureToken, permissionMode, readToken, residentDir, TOKEN_FILE, TOKEN_HEADER } from '../src/platform/resident-guard.ts';
-import { noteResident, runWorkTask } from '../src/platform/work-bridge.ts';
+import { runWorkTask } from '../src/platform/work-bridge.ts';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-resident-')); dirs.push(d); return d; };
@@ -101,22 +101,6 @@ describe('工作桥：带令牌去找常驻的她；被明确拒绝不能悄悄�
         assert.equal(seen[0]!.headers['Content-Type'], 'application/json');
     });
 
-    test('互动记录（/note，生活引擎据此改心情 / 关系）也要带令牌，否则加了守卫之后会被 401 静默丢掉；常驻没起来不抛错', async () => {
-        const dir = tmp();
-        process.env.HER_DIR = dir;
-        const token = ensureToken(dir);
-        const seen: Array<{ url: string; method: string; headers: Record<string, string>; body: string }> = [];
-        globalThis.fetch = (async (url: string, init: { method: string; headers: Record<string, string>; body: string }) => { seen.push({ url, ...init }); return new Response('{"ok":true}', { status: 200 }); }) as never;
-        await noteResident({ text: '他又催我切工作', from: 'baobao', negative: true });
-        assert.equal(seen[0]!.url, 'http://127.0.0.1:7777/note');
-        assert.equal(seen[0]!.method, 'POST');
-        assert.equal(seen[0]!.headers[TOKEN_HEADER], token);
-        assert.equal(seen[0]!.headers['Content-Type'], 'application/json');
-        assert.deepEqual(JSON.parse(seen[0]!.body), { text: '他又催我切工作', from: 'baobao', negative: true });
-        globalThis.fetch = (async () => { throw new Error('ECONNREFUSED'); }) as never;
-        await assert.doesNotReject(noteResident({ text: 'x', from: 'baobao' }));
-    });
-
     test('常驻回 401 / 403：抛错并说怎么查，不会改走临时 headless（那样会绕过队列和「她离开电脑」）', async () => {
         process.env.HER_DIR = tmp();
         for (const status of [401, 403]) {
@@ -142,12 +126,15 @@ describe('真的把 scripts/her-resident.mjs 起起来：守卫接上了（不�
         req.end(options.body);
     });
 
-    test('无令牌 401、错令牌 401、带 Origin 403、text/plain 415、伪造 Host 400；有令牌的 GET /life 200；GET /health 不要令牌', async () => {
+    test('无令牌 401、错令牌 401、带 Origin 403、text/plain 415、伪造 Host 400；有令牌的 GET /life 200；GET /health 不要令牌；/note 只是个空接口（ADR 0347 第 1 层）', async () => {
         const dir = tmp();
         const port = await freePort();
         const script = resolve(import.meta.dirname, '../../../scripts/her-resident.mjs');
+        // QQ 那边写的 NOW.md（生成时间 + 睡没睡）；常驻只读它
+        const freshNow = `<!-- generated-at: ${new Date().toISOString()} -->\n<!-- asleep: no -->\n\n在宿舍看书\n`;
+        writeFileSync(join(dir, 'NOW.md'), freshNow);
         const child = spawn(process.execPath, [script], {
-            env: { ...process.env, HER_PORT: String(port), HER_DIR: dir, HER_SOUL_DIR: dir, HER_CWD: dir, DSH_PERMISSION_MODE: '', QQBOT_LLM_API_KEY: '' },
+            env: { ...process.env, HER_PORT: String(port), HER_DIR: dir, HER_SOUL_DIR: dir, QQBOT_SOUL_DIR: dir, HER_CWD: dir, DSH_PERMISSION_MODE: '', QQBOT_LLM_API_KEY: '' },
             stdio: 'ignore', windowsHide: true,
         });
         try {
@@ -168,7 +155,18 @@ describe('真的把 scripts/her-resident.mjs 起起来：守卫接上了（不�
             assert.equal((await call(port, { method: 'GET', path: '/life' })).status, 401);
             const life = await call(port, { method: 'GET', path: '/life', headers: { [TOKEN_HEADER]: token } });
             assert.equal(life.status, 200);
-            assert.equal((JSON.parse(life.body) as { ok: boolean }).ok, true);
+            assert.deepEqual(JSON.parse(life.body), { ok: true, now: freshNow.trim() }, '只转述新鲜的 NOW.md，不再带 LIFE 状态');
+            // NOW.md 过期了：now 是 null，不拿旧的冒充现在
+            writeFileSync(join(dir, 'NOW.md'), `<!-- generated-at: ${new Date(Date.now() - 31 * 60_000).toISOString()} -->\n<!-- asleep: no -->\n\n在宿舍看书\n`);
+            assert.deepEqual(JSON.parse((await call(port, { method: 'GET', path: '/life', headers: { [TOKEN_HEADER]: token } })).body), { ok: true, now: null });
+            // 老的 Koishi 还会调 /note：回 200，什么也不做（不写 LIFE.json，不动 NOW.md）
+            const nowBefore = readFileSync(join(dir, 'NOW.md'), 'utf8');
+            const note = await call(port, { method: 'POST', path: '/note', headers: { ...json, [TOKEN_HEADER]: token }, body: '{"text":"你好烦","from":"baobao","negative":true}' });
+            assert.equal(note.status, 200);
+            assert.deepEqual(JSON.parse(note.body), { ok: true, retired: true });
+            assert.equal((await call(port, { method: 'POST', path: '/note', headers: { ...json, [TOKEN_HEADER]: token }, body: 'not json' })).status, 200, '坏 JSON 也不在乎，反正不读');
+            assert.equal(existsSync(join(dir, 'LIFE.json')), false, '不再有第二套生活写 LIFE.json');
+            assert.equal(readFileSync(join(dir, 'NOW.md'), 'utf8'), nowBefore, 'NOW.md 只归 QQ 写');
             assert.equal((await call(port, { method: 'GET', path: '/health' })).status, 200);
             assert.match(readFileSync(join(dir, 'resident.log'), 'utf8'), /rejected POST \/task: token required/);
         } finally {
