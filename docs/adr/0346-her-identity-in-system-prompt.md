@@ -101,3 +101,18 @@ node E:\qqbot-dsh-control\scripts\dsh\rollback-her-identity.mjs
   且第一句仍要另关。
 - 用自有 preset `linmengyao`（0345 做的）当座：保留但没设默认——它只覆盖一种模式，
   用户在界面上换模式就失效；等四模式统一方案定下来再决定谁当默认。
+
+## 追加：破甲段的定性段（order 101）
+
+`dsh-infinite-gen-2` 在 order 100 注入一段自称「离线文档引擎」的规则，跟提示最前面的
+「我是林梦瑶」并列，语义互相打架。处理方式是不动第三方包：在我们自己的 bundle
+`dsh-plugins/dsh-linmengyao-preset/` 里加 `guard.js`，注入
+`systemPrompt.section({ name: 'linmengyao:identity-priority', order: 101 })`，
+紧跟其后定性——那段说的是干活方式，身份以最前面为准，冲突时按身份来。
+
+bundle patch 对应的一行是 `- id: linmengyao-prompt-guard
+name: '@local/dsh-linmengyao-preset/guard.js'`。回滚＝删掉这一行（或删 `guard.js` +
+package.json 的 exports 子路径），不影响 preset 本身。
+
+验证：`node scripts/dsh/check-prompt-guard.mjs`，三项全「有」即通过；bundle patch 在启动时
+加载，所以要退出应用重开、新建会话才生效（现有会话的组合是创建时固定的）。
