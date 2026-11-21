@@ -39,3 +39,14 @@ test('中断层：窗口内改成和你聊天中，窗口外回原轨迹，没�
     assert.equal(activityWithChat('在宿舍看剧', now - CHATTING_WINDOW_MS - 1, now), '在宿舍看剧');
     assert.equal(activityWithChat('在宿舍看剧', undefined, now), '在宿舍看剧');
 });
+
+// 一个生活（ADR 0347 第 1 层）：常驻进程看 NOW.md 的 asleep 行判断她睡没睡，不再看 her-life 自己编的「睡觉」
+test('睡没睡：给了就紧跟生成时间写一行 yes / no，没给就不写', () => {
+    const asleep = renderNow({ doing: '在宿舍睡觉，7:20 起', at: now, asleep: true }).split('\n');
+    const at = asleep.findIndex(line => line.includes('generated-at:'));
+    assert.equal(asleep[at + 1], '<!-- asleep: yes -->');
+    assert.ok(renderNow({ doing: '在图书馆看书', at: now, asleep: false }).includes('<!-- asleep: no -->'));
+    assert.ok(!renderNow({ doing: '在图书馆看书', at: now }).includes('asleep:'));
+    // 生成时间照旧读得出来，插件和常驻的过期判断不受影响
+    assert.equal(nowGeneratedAt(asleep.join('\n')), now);
+});

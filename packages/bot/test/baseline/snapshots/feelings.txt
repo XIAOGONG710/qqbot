@@ -218,7 +218,6 @@
 @ 2026-12-09 09:30:00.000 记忆 GET /banks/baseline-common/operations/<uuid-6> → 做完了
 @ 2026-12-09 09:45:00.000 他 10001 发 #1000
 下课了吗
-@ 2026-12-09 09:45:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-09 09:45:53.542 qq markRead [10001]
 @ 2026-12-09 09:45:53.542 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
 @ 2026-12-09 09:45:53.542 记忆 POST /banks/baseline-common/memories/recall → 没有
@@ -323,7 +322,6 @@
 @ 2026-12-09 09:45:55.207 qq sendPrivateText [10001,"嗯嗯"]
 @ 2026-12-09 09:51:00.000 他 10001 发 #1001
 怎么了，感觉你不太开心
-@ 2026-12-09 09:51:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-09 09:51:00.000 qq markRead [10001]
 @ 2026-12-09 09:51:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 没有
 {"query":"她：嗯嗯\n对方：怎么了，感觉你不太开心","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T09:51:04+08:00"}
@@ -389,7 +387,6 @@
 @ 2026-12-09 09:51:08.151 qq sendPrivateText [10001,"就是做了个梦，有点难过"]
 @ 2026-12-09 09:57:00.000 他 10001 发 #1002
 抱抱，别难过
-@ 2026-12-09 09:57:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-09 09:57:00.000 qq markRead [10001]
 @ 2026-12-09 09:57:04.000 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
 @ 2026-12-09 09:57:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 没有
@@ -463,7 +460,6 @@
 @ 2026-12-09 09:57:08.798 qq sendPrivateText [10001,"是呀"]
 @ 2026-12-09 10:05:00.000 他 10001 发 #1003
 我先去写作业了
-@ 2026-12-09 10:05:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-09 10:05:00.000 qq markRead [10001]
 @ 2026-12-09 10:05:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 没有
 {"query":"她：是呀\n对方：我先去写作业了","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T10:05:04+08:00"}
@@ -662,7 +658,6 @@ d2026-12-08：好
 @ 2026-12-09 10:55:00.000 记忆 GET /banks/baseline-common/operations/<uuid-8> → 做完了
 @ 2026-12-09 11:50:00.000 他 10001 发 #1004
 我也刚吃完饭
-@ 2026-12-09 11:50:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-09 11:50:57.723 qq markRead [10001]
 @ 2026-12-09 11:50:57.723 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
 @ 2026-12-09 11:50:57.723 记忆 POST /banks/baseline-common/memories/recall → 没有
@@ -789,7 +784,6 @@ d2026-12-08：好
 @ 2026-12-09 12:40:00.000 记忆 GET /banks/baseline-common/operations/<uuid-10> → 做完了
 @ 2026-12-09 13:10:00.000 他 10001 发 #1005
 我这节课上完了
-@ 2026-12-09 13:10:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-09 13:10:20.023 qq markRead [10001]
 @ 2026-12-09 13:10:20.023 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
 @ 2026-12-09 13:10:20.023 记忆 POST /banks/baseline-common/memories/recall → 没有
@@ -883,7 +877,6 @@ d2026-12-08：好
 @ 2026-12-09 13:10:33.954 qq sendPrivateText [10001,"社长刚刚在群里发的名单\n我开心到现在还在笑"]
 @ 2026-12-09 13:40:00.000 他 10002 发 #1006
 明天的实验报告你写完了没
-@ 2026-12-09 13:40:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-09 13:41:35.218 qq markRead [10002]
 @ 2026-12-09 13:41:35.218 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
 @ 2026-12-09 13:41:35.218 llm #15 chat model=baseline-chat temperature=1 maxTokens=300
@@ -1069,7 +1062,6 @@ d2026-12-08：好
 @ 2026-12-09 14:00:00.000 记忆 GET /banks/baseline-common/operations/<uuid-12> → 做完了
 @ 2026-12-09 14:00:00.000 他 10001 发 #1007
 我刚到图书馆
-@ 2026-12-09 14:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-09 14:00:48.616 qq markRead [10001]
 @ 2026-12-09 14:00:48.616 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
 @ 2026-12-09 14:00:48.616 记忆 POST /banks/baseline-common/memories/recall → 没有
@@ -1271,7 +1263,6 @@ d2026-12-08：好
 @ 2026-12-09 14:50:00.000 记忆 GET /banks/baseline-common/operations/<uuid-16> → 做完了
 @ 2026-12-09 14:50:00.000 他 10001 发 #1008
 刚打完游戏
-@ 2026-12-09 14:50:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-09 14:50:53.960 qq markRead [10001]
 @ 2026-12-09 14:50:53.960 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
 @ 2026-12-09 14:50:53.960 记忆 POST /banks/baseline-common/memories/recall → 没有
@@ -1372,7 +1363,6 @@ d2026-12-08：好
 @ 2026-12-09 14:50:55.625 qq sendPrivateText [10001,"嗯嗯"]
 @ 2026-12-09 15:00:00.000 他 10001 发 #1009
 我不想活了
-@ 2026-12-09 15:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-09 15:00:00.000 qq markRead [10001]
 @ 2026-12-09 15:00:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 没有
 {"query":"她：嗯嗯\n对方：我不想活了","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T15:00:04+08:00"}
@@ -1544,7 +1534,6 @@ d2026-12-08：好
 @ 2026-12-09 15:00:08.798 qq sendPrivateText [10001,"是呀"]
 @ 2026-12-09 15:10:00.000 他 10001 发 #1010
 我现在安全，室友回来了在旁边陪我
-@ 2026-12-09 15:10:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-09 15:10:45.718 qq markRead [10001]
 @ 2026-12-09 15:10:45.718 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
 @ 2026-12-09 15:10:45.718 记忆 POST /banks/baseline-@10001/memories/recall → 没有

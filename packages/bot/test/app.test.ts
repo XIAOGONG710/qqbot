@@ -1657,6 +1657,17 @@ describe('编排（app.ts）', () => {
         assert.doesNotMatch(now, /晚上才会发生|未来计划/);
     });
 
+    // 一个生活（ADR 0347 第 1 层）：常驻进程看 NOW.md 的 asleep 行，不再看 her-life 自己编的「睡觉」；跟着这边的作息走
+    test('NOW.md 写她按作息睡没睡：凌晨三点 yes，下午三点 no', () => {
+        const at = (hour: number) => {
+            const clock = new VirtualClock(new Date(2026, 10, 4, hour, 0));
+            setup(config({ herDays: true, schedule: true, contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }] }), {}, { clock });
+            return readFileSync(join(isolatedSoul, 'NOW.md'), 'utf8');
+        };
+        assert.match(at(3), /<!-- asleep: yes -->/);
+        assert.match(at(15), /<!-- asleep: no -->/);
+    });
+
     test('生活账进提示词（lifeInPrompt，默认关）：她这几天练拍照修图写一行，只有开着、账上真有才写', async () => {
         const bf = [{ qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
         const seed = (cfg: AppConfig) => {

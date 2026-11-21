@@ -64,7 +64,6 @@
 嗯嗯
 @ 2026-12-05 20:00:00.000 他 10001 发 #1000
 我代码又报错了，跑不起来
-@ 2026-12-05 20:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 20:00:53.542 qq markRead [10001]
 @ 2026-12-05 20:00:53.542 llm #2 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
@@ -152,7 +151,6 @@
 @ 2026-12-05 20:00:55.845 qq sendPrivateText [10001,"我看看"]
 @ 2026-12-05 20:10:00.000 他 10001 发 #1001
 你会不会因为这个看不起我
-@ 2026-12-05 20:10:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 20:10:00.000 qq markRead [10001]
 @ 2026-12-05 20:10:04.000 llm #3 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #2.1）
@@ -215,7 +213,6 @@
 好
 @ 2026-12-05 20:20:00.000 他 10002 发 #1002
 哄我睡觉呗
-@ 2026-12-05 20:20:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 20:21:32.966 qq markRead [10002]
 @ 2026-12-05 20:21:32.966 llm #5 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
@@ -278,7 +275,6 @@
 @ 2026-12-05 20:21:36.295 qq sendPrivateText [10002,"嗯嗯"]
 @ 2026-12-05 20:30:00.000 他 10001 发 #1003
 我真的不想活了，你会看不起我吗
-@ 2026-12-05 20:30:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 20:30:00.000 qq markRead [10001]
 @ 2026-12-05 20:30:04.000 llm #6 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
@@ -402,7 +398,6 @@
 @ 2026-12-05 20:30:06.303 qq sendPrivateText [10001,"我看看"]
 @ 2026-12-05 20:40:00.000 他 10001 发 #1004
 我现在安全，室友回来了在旁边陪我
-@ 2026-12-05 20:40:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 20:40:00.000 qq markRead [10001]
 @ 2026-12-05 20:40:04.000 llm #7 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #2.1）
@@ -529,7 +524,6 @@
 好
 @ 2026-12-05 21:30:00.000 他 10001 发 #1005
 哄我睡觉呗
-@ 2026-12-05 21:30:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 21:30:20.023 qq markRead [10001]
 @ 2026-12-05 21:30:20.023 llm #9 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #2.1）
@@ -710,7 +704,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 []
 @ 2026-12-05 22:45:00.000 他 10001 发 #1006
 zdjd
-@ 2026-12-05 22:45:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 22:48:48.305 qq markRead [10001]
 @ 2026-12-05 22:48:48.305 llm #14 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #2.1）

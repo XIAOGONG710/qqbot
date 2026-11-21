@@ -94,7 +94,7 @@ import { ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode, WORK_MARKER } from './work-mode.ts';
-import { noteResident, runWorkTask } from './work-bridge.ts';
+import { runWorkTask } from './work-bridge.ts';
 import { workHandoff } from './work-handoff.ts';
 import { isTypedByHim, NOT_TYPED_NOTICE, WANTED_BUT_NOT_TYPED_NOTICE } from './instruction-source.ts';
 import { appendPrivate, addRefusal, recentRefusals, ratingSummary, soulDir } from './soul-rating.ts';
@@ -1092,16 +1092,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         },
         // 她在本机的那一份（DSH 的灵魂目录）：心里的线头、拒绝过的、评价、「你现在的生活」、首轮铺底；只给男朋友档，每一轮现读
         soul: {
+            // 一个生活（ADR 0347 第 1 层）：原来这里还读 LIFE.json 最近两条，作为「你这两天自己在做的」——那是 her-life.mjs 随机挑的活动和虚构 NPC，
+            // 不是她的作息和世界。拆掉了；她这两天真实的日子由第 2 层从 QQ 自己的世界 / 作息补上。
             selfThread: (): string | undefined => {
                 try {
-                    const journal = selfThreadLine(selfThread(exec.files.read(join(soulDir(), 'JOURNAL.md'))));
-                    let doing: string | undefined;
-                    try {
-                        const life = JSON.parse(exec.files.read(join(soulDir(), 'LIFE.json'))) as { events?: { text?: string }[] };
-                        const own = (life.events ?? []).map(e => String(e.text ?? '')).filter(t => t && !t.includes('跟我说') && !t.startsWith('新的一天')).slice(-2);
-                        if (own.length) doing = `[你这两天自己在做的：${own.map(t => t.replace(/^我在/, '')).join('；').slice(0, 80)}]`;
-                    } catch { /* 没有 LIFE.json 就只有日记那一段 */ }
-                    return [journal, doing].filter(Boolean).join(String.fromCharCode(10)) || undefined;
+                    return selfThreadLine(selfThread(exec.files.read(join(soulDir(), 'JOURNAL.md')))) || undefined;
                 } catch { return undefined; }
             },
             refusals: () => recentRefusals(),
@@ -1601,7 +1596,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 在读的书 + 她自己决定今天想做的（ADR 0182）：状态行里她就是个在做那件事的人
             const extraFree = config.herDays ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, now, log)] : [];
             const owner = deviceOwner;
-            const base = describeState(stateAt(schedule, now, extraFree), schedule, owner ? { userName: owner.name } : {});
+            const state = stateAt(schedule, now, extraFree);
+            const base = describeState(state, schedule, owner ? { userName: owner.name } : {});
             // 中断层：他刚说过话就写「和你聊天中」，聊完下一次渲染自己回到原来的轨迹
             const lastAt = owner ? Date.parse(history.load(owner.qq).at(-1)?.time ?? '') : NaN;
             const doing = activityWithChat(base, Number.isFinite(lastAt) ? lastAt : undefined, at);
@@ -1610,7 +1606,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             const recent = worldCard.herWorld && sharedWorld
                 ? worldHighlights(sharedWorld.at(worldCard.herWorld, schedule, now), now).map(item => item.text)
                 : [];
-            writeNow(nowFile, renderNow({ doing, at, ...(recent.length ? { recent } : {}) }));
+            // 睡没睡给常驻进程看（ADR 0347 第 1 层：原来它看 her-life 自己编的「睡觉」，和这边的作息对不上）；正和他聊着就算醒着
+            const asleep = state.activity.kind === 'sleep' && doing === base;
+            writeNow(nowFile, renderNow({ doing, at, asleep, ...(recent.length ? { recent } : {}) }));
         } catch (error) {
             log(`「她现在在干嘛」没写出去（${error instanceof Error ? error.message : String(error)}）`);
         }
@@ -2414,8 +2412,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             }
         }
         if (event.user_id === deviceOwner?.qq && !typed && readWorkMode(config.dataDir, event.user_id) === 'work') tellOwner(NOT_TYPED_NOTICE);
-        // 连续生活：他一句话会改变她的心情/关系（不挡回复）
-        void noteResident({ text, from: event.user_id === deviceOwner?.qq ? 'baobao' : 'classmate' });
         // 工作模式：不进普通聊天回复器，交给 headless 的她干活，干完再回（工具桥）
         if (event.user_id === deviceOwner?.qq && typed && !text.startsWith('/') && readWorkMode(config.dataDir, event.user_id) === 'work') {
             const qq = event.user_id;

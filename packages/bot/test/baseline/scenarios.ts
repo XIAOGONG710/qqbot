@@ -726,7 +726,6 @@ export const SCENARIOS: readonly Scenario[] = [
         },
         soul: (dir, start) => {
             writeFileSync(join(dir, 'JOURNAL.md'), '# 日记\n\n## 2026-12-10\n今天在图书馆把那本小说看完了。结尾有点难过。晚上去食堂吃了面。\n\n## 2026-12-11\n下午拍了几张楼下的树。光线很好，就是手有点冷。回来路上买了杯热奶茶。\n');
-            writeFileSync(join(dir, 'LIFE.json'), JSON.stringify({ events: [{ text: '我在整理这周拍的照片' }, { text: '我在看一本新借的小说' }] }));
             writeFileSync(join(dir, 'REFUSALS.json'), JSON.stringify({ items: [{ at: start - 86_400_000, text: '他让我通宵陪他打游戏' }] }));
             writeFileSync(join(dir, 'RATINGS.json'), JSON.stringify({ samples: [{ score: 1, at: start - 3 * 3600_000 }, { score: 1, at: start - 2 * 3600_000 }, { score: 0.5, at: start - 3600_000 }] }));
             writeFileSync(join(dir, 'NOW.md'), '在宿舍看书');

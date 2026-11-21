@@ -19,6 +19,8 @@ export interface NowText {
     feeling?: string;
     /** 最近发生的一两件事（可选） */
     recent?: string[];
+    /** 按作息她这会儿在睡（被他叫醒、正和他聊着不算）。给常驻进程判断醒不醒（ADR 0347 第 1 层），不进任何提示词 */
+    asleep?: boolean;
     at: number;
 }
 
@@ -28,6 +30,7 @@ export function renderNow(text: NowText): string {
     const lines = [
         '<!-- 生成的，别手改：QQ 这边每 10 分钟重写一次；来源是作息 + 世界 + 心境 -->',
         `<!-- generated-at: ${at} -->`,
+        ...(text.asleep === undefined ? [] : [`<!-- asleep: ${text.asleep ? 'yes' : 'no'} -->`]),
         '',
         text.doing,
         ...(text.feeling ? [text.feeling] : []),

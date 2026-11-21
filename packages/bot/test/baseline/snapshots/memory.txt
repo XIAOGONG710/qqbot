@@ -555,7 +555,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 []
 @ 2026-12-08 19:00:00.000 他 10001 发 #1000
 在干嘛
-@ 2026-12-08 19:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-08 19:00:53.542 qq markRead [10001]
 @ 2026-12-08 19:00:53.542 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
 @ 2026-12-08 19:00:53.542 记忆 POST /banks/baseline-common/memories/recall → 1 条：c-today
@@ -672,7 +671,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:00:58.340 qq sendPrivateText [10001,"是呀"]
 @ 2026-12-08 19:06:00.000 他 10001 发 #1001
 考试考完了，感觉还行
-@ 2026-12-08 19:06:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-08 19:06:00.000 qq markRead [10001]
 @ 2026-12-08 19:06:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
 {"query":"她：是呀\n对方：考试考完了，感觉还行","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:06:04+08:00"}
@@ -784,7 +782,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:06:06.308 qq sendPrivateText [10001,"怎么啦？"]
 @ 2026-12-08 19:12:00.000 他 10001 发 #1002
 学校门口那家奶茶店你去过没
-@ 2026-12-08 19:12:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-08 19:12:00.000 qq markRead [10001]
 @ 2026-12-08 19:12:04.000 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
 @ 2026-12-08 19:12:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
@@ -866,7 +863,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:12:07.182 qq sendPrivateText [10001,"好"]
 @ 2026-12-08 19:18:00.000 他 10001 发 #1003
 你昨天干嘛了
-@ 2026-12-08 19:18:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-08 19:18:00.000 qq markRead [10001]
 @ 2026-12-08 19:18:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
 {"query":"她：好\n对方：你昨天干嘛了","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:18:04+08:00"}
@@ -951,7 +947,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:18:05.665 qq sendPrivateText [10001,"嗯嗯"]
 @ 2026-12-08 19:26:00.000 他 10001 发 #1004
 小周最近在忙什么
-@ 2026-12-08 19:26:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-08 19:26:00.000 qq markRead [10001]
 @ 2026-12-08 19:26:04.000 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
 @ 2026-12-08 19:26:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
@@ -1047,7 +1042,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:26:08.798 qq sendPrivateText [10001,"是呀"]
 @ 2026-12-08 19:32:00.000 他 10001 发 #1005
 他实验报告写完了吗
-@ 2026-12-08 19:32:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-08 19:32:00.000 qq markRead [10001]
 @ 2026-12-08 19:32:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
 {"query":"她：是呀\n对方：他实验报告写完了吗","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:32:04+08:00"}
@@ -1143,7 +1137,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:32:06.308 qq sendPrivateText [10001,"怎么啦？"]
 @ 2026-12-08 19:40:00.000 他 10002 发 #1006
 实验报告我写完了，你看看
-@ 2026-12-08 19:40:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-08 19:41:35.218 qq markRead [10002]
 @ 2026-12-08 19:41:35.218 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
 @ 2026-12-08 19:41:35.218 记忆 POST /banks/baseline-@10002/memories/recall → 1 条：m-own
@@ -1212,7 +1205,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:41:41.581 qq sendPrivateText [10002,"好"]
 @ 2026-12-08 19:46:00.000 他 10002 发 #1007
 数据那块你再核对一下
-@ 2026-12-08 19:46:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-08 19:46:00.000 qq markRead [10002]
 @ 2026-12-08 19:46:04.000 记忆 POST /banks/baseline-@10002/memories/recall → 没有
 {"query":"她：好\n对方：数据那块你再核对一下","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:46:04+08:00"}
@@ -1382,7 +1374,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 是呀
 @ 2026-12-08 19:55:00.000 他 10001 发 #1008
 晚安啦
-@ 2026-12-08 19:55:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-08 19:55:53.960 qq markRead [10001]
 @ 2026-12-08 19:55:53.960 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
 @ 2026-12-08 19:55:53.960 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot

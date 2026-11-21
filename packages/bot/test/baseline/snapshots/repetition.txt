@@ -61,7 +61,6 @@
 困死了好冷
 @ 2026-12-05 12:30:00.000 他 10001 发 #1000
 在干嘛
-@ 2026-12-05 12:30:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 12:30:53.542 qq markRead [10001]
 @ 2026-12-05 12:30:53.542 llm #2 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
@@ -228,7 +227,6 @@
 困死了撑
 @ 2026-12-05 13:00:00.000 他 10001 发 #1001
 下午有课吗
-@ 2026-12-05 13:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 13:00:46.641 qq markRead [10001]
 @ 2026-12-05 13:00:46.641 llm #6 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
@@ -581,7 +579,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 快递到了困死
 @ 2026-12-05 19:00:00.000 他 10001 发 #1002
 我刚到宿舍
-@ 2026-12-05 19:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 19:00:46.483 qq markRead [10001]
 @ 2026-12-05 19:00:46.483 llm #13 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #6.1）
@@ -645,7 +642,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-05 19:00:55.591 qq sendPrivateText [10001,"刚吃完饭，困死了撑"]
 @ 2026-12-05 19:20:00.000 他 10001 发 #1003
 我不想活了
-@ 2026-12-05 19:20:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 19:20:00.000 qq markRead [10001]
 @ 2026-12-05 19:20:04.000 llm #14 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
@@ -781,7 +777,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-05 19:20:07.659 qq sendPrivateText [10001,"困死了好冷"]
 @ 2026-12-05 19:30:00.000 他 10001 发 #1004
 我现在安全了，室友一直陪着我
-@ 2026-12-05 19:30:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 19:30:00.000 qq markRead [10001]
 @ 2026-12-05 19:30:04.000 llm #15 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #6.1）
@@ -948,7 +943,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 快递到了困死
 @ 2026-12-05 21:00:00.000 他 10001 发 #1005
 你今天怎么样
-@ 2026-12-05 21:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-05 21:00:20.023 qq markRead [10001]
 @ 2026-12-05 21:00:20.023 llm #18 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #6.1）

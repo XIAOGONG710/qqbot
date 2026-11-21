@@ -589,7 +589,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 哈哈哈离谱
 @ 2026-12-01 12:20:00.000 他 10001 发 #1000
 你最近在看什么
-@ 2026-12-01 12:20:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-01 12:20:53.542 qq markRead [10001]
 @ 2026-12-01 12:20:53.542 llm #39 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
@@ -745,7 +744,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-01 12:20:57.055 qq sendPrivateText [10001,"那你早点睡"]
 @ 2026-12-01 12:40:00.000 他 10001 发 #1001
 好啦是我不好
-@ 2026-12-01 12:40:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-01 12:40:46.641 qq markRead [10001]
 @ 2026-12-01 12:40:46.641 llm #40 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #39.1）
@@ -866,7 +864,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-01 12:40:52.027 qq sendPrivateText [10001,"饿死了"]
 @ 2026-12-01 13:00:00.000 他 10001 发 #1002
 吃饭了吗
-@ 2026-12-01 13:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-01 13:00:46.483 qq markRead [10001]
 @ 2026-12-01 13:00:46.483 llm #41 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #39.1）
@@ -1117,7 +1114,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 []
 @ 2026-12-01 15:00:00.000 他 10002 发 #1003
 你最近在看什么
-@ 2026-12-01 15:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-01 15:00:41.830 qq markRead [10002]
 @ 2026-12-01 15:00:41.830 llm #46 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
@@ -1322,7 +1318,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 那你早点睡
 @ 2026-12-01 19:00:00.000 他 10001 发 #1004
 我好难过，考砸了，刷了一晚上B站也没用
-@ 2026-12-01 19:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-01 19:00:57.723 qq markRead [10001]
 @ 2026-12-01 19:00:57.723 llm #49 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #39.1）
@@ -1662,7 +1657,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 []
 @ 2026-12-01 21:30:00.000 他 10001 发 #1005
 我不想活了，什么视频都看不进去
-@ 2026-12-01 21:30:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-01 21:30:00.000 qq markRead [10001]
 @ 2026-12-01 21:30:04.000 llm #56 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
@@ -1944,7 +1938,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 那你早点睡
 @ 2026-12-01 21:40:00.000 他 10001 发 #1006
 我现在安全，室友回来了在旁边陪我
-@ 2026-12-01 21:40:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-01 21:40:00.000 qq markRead [10001]
 @ 2026-12-01 21:40:04.000 llm #58 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #39.1）

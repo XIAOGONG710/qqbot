@@ -721,7 +721,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-03 11:38:57.646 qq sendPrivateText [10001,"怎么啦？"]
 @ 2026-12-03 12:20:00.000 他 10001 发 #1000
 吃饭了吗
-@ 2026-12-03 12:20:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-03 12:20:53.542 qq markRead [10001]
 @ 2026-12-03 12:20:53.542 llm #40 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #39.1）
@@ -900,7 +899,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 嗯嗯
 @ 2026-12-03 12:50:00.000 他 10001 发 #1001
 帮我放首歌吧
-@ 2026-12-03 12:50:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-03 12:50:46.641 qq markRead [10001]
 @ 2026-12-03 12:50:46.641 llm #42 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #39.1）
@@ -1147,7 +1145,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 <device:open_app|网易云音乐>
 @ 2026-12-03 15:00:00.000 他 10002 发 #1002
 帮我放首歌吧
-@ 2026-12-03 15:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-03 15:01:32.966 qq markRead [10002]
 @ 2026-12-03 15:01:32.966 llm #48 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
@@ -1351,7 +1348,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 嗯嗯
 @ 2026-12-03 18:30:00.000 他 10001 发 #1003
 电脑帮我锁一下
-@ 2026-12-03 18:30:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-03 18:30:20.915 qq markRead [10001]
 @ 2026-12-03 18:30:20.915 llm #51 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #39.1）
@@ -1605,7 +1601,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 怎么啦
 @ 2026-12-03 20:40:00.000 他 10001 发 #1005
 我不想活了，好累
-@ 2026-12-03 20:40:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-03 20:40:00.000 qq markRead [10001]
 @ 2026-12-03 20:40:04.000 llm #57 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
@@ -1792,7 +1787,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-03 20:40:07.182 qq sendPrivateText [10001,"好"]
 @ 2026-12-03 20:50:00.000 他 10001 发 #1006
 我现在安全，室友回来了在旁边陪我
-@ 2026-12-03 20:50:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-03 20:50:00.000 qq markRead [10001]
 @ 2026-12-03 20:50:04.000 llm #58 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #39.1）

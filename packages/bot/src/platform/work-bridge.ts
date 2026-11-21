@@ -83,22 +83,8 @@ function spawnWorkTask(task: string, options: WorkTaskOptions = {}): Promise<str
     })
 }
 
-/**
- * 把一次互动告诉常驻的她（生活引擎据此改心情 / 关系；不挡回复，失败静默）。
- * 常驻的接口要令牌（ADR 0172）：这里和 runWorkTask 一样带上，否则会被 401 静默丢掉，生活引擎就收不到互动了
- */
-export async function noteResident(body: { text: string; from: string; negative?: boolean }): Promise<void> {
-    const resident = process.env.HER_RESIDENT_URL ?? 'http://127.0.0.1:7777'
-    const token = readToken(residentDir())
-    try {
-        await fetch(`${resident}/note`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...(token ? { [TOKEN_HEADER]: token } : {}) },
-            body: JSON.stringify(body),
-            signal: AbortSignal.timeout(5000),
-        })
-    } catch { /* 常驻没起来就算了 */ }
-}
+// 一个生活（ADR 0347 第 1 层）：原来这里有 noteResident，把每条私聊（含同学档的原文）POST 到常驻的 /note，
+// 让 her-life.mjs 用关键词涨跌信任 / 怨气。关系和心境只在 QQ 这边算，那一路拆了；常驻的 /note 保留接口但不再改状态。
 
 /** 优先交给常驻的她（独立进程），没起来再自己起 headless */
 export async function runWorkTask(task: string, options: WorkTaskOptions = {}): Promise<string> {

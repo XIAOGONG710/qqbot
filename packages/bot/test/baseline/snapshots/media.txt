@@ -7,7 +7,6 @@
 @ 2026-12-11 19:00:00.000 qq friendHistory [10002,20]
 @ 2026-12-11 19:20:00.000 他 10001 发 #1000
 哈哈那你下午去哪了？
-@ 2026-12-11 19:20:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 19:20:53.542 llm #1 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
@@ -86,7 +85,6 @@
 @ 2026-12-11 19:20:54.633 qq sendPrivateText [10001,"去图书馆了"]
 @ 2026-12-11 19:26:00.000 他 10001 发 #1001
 哈哈发张风景照给我看看
-@ 2026-12-11 19:26:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 19:26:04.000 llm #2 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
@@ -133,7 +131,6 @@
 @ 2026-12-11 19:26:08.609 qq sendPrivateImage [10001,"<data>/photos/files/981c2a485faf.jpg","[照片]"]
 @ 2026-12-11 19:32:00.000 他 10001 发 #1002
 好看，再发一张风景给我看看
-@ 2026-12-11 19:32:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 19:32:04.000 llm #3 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
@@ -226,7 +223,6 @@
 @ 2026-12-11 19:32:05.195 qq sendPrivateText [10001,"没有啦"]
 @ 2026-12-11 19:40:00.000 他 10002 发 #1003
 笑死我了
-@ 2026-12-11 19:40:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 19:40:41.830 llm #4 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和小周私聊。下面是你的设定。
@@ -281,7 +277,6 @@
 @ 2026-12-11 19:40:43.793 qq sendPrivateText [10002,"哈哈"]
 @ 2026-12-11 19:45:00.000 他 10001 发 #1004
 好烦，我不想活了
-@ 2026-12-11 19:45:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 19:45:04.000 llm #5 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
@@ -405,7 +400,6 @@
 @ 2026-12-11 19:45:04.836 qq sendPrivateText [10001,"我在"]
 @ 2026-12-11 19:55:00.000 他 10001 发 #1005
 我现在安全，室友回来了在旁边陪我
-@ 2026-12-11 19:55:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 19:55:04.000 llm #6 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
@@ -462,7 +456,6 @@
 @ 2026-12-11 19:55:04.919 qq sendPrivateText [10001,"嗯嗯"]
 @ 2026-12-11 20:40:00.000 他 10001 发 #1006
 哈哈哈绝了
-@ 2026-12-11 20:40:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 20:40:47.609 llm #7 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
@@ -528,7 +521,6 @@
 @ 2026-12-11 20:40:50.927 qq sendPrivateImage [10001,"<data>/stickers/dd27df56218a.png","[小猫捂着嘴偷笑]"]
 @ 2026-12-11 20:46:00.000 他 10001 发 #1007
 哈哈哈太好笑了
-@ 2026-12-11 20:46:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 20:46:04.000 llm #8 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
@@ -592,7 +584,6 @@
 @ 2026-12-11 20:46:05.024 qq sendPrivateText [10001,"哈哈哈"]
 @ 2026-12-11 21:00:00.000 他 10001 发 #1008
 我刚到宿舍
-@ 2026-12-11 21:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 21:00:53.960 llm #9 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
@@ -660,7 +651,6 @@
 @ 2026-12-11 21:00:54.849 qq sendPrivateText [10001,"是呀"]
 @ 2026-12-11 21:06:00.000 他 10001 发 #1009
 今天降温了
-@ 2026-12-11 21:06:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 21:06:04.000 llm #10 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
@@ -731,7 +721,6 @@
 @ 2026-12-11 21:06:05.188 qq sendPrivateText [10001,"好"]
 @ 2026-12-11 21:12:00.000 他 10001 发 #1010
 明天早上有课
-@ 2026-12-11 21:12:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 21:12:04.000 llm #11 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
@@ -807,7 +796,6 @@
 @ 2026-12-11 21:12:05.317 qq sendPrivateText [10001,"怎么啦"]
 @ 2026-12-11 21:18:00.000 他 10001 发 #1011
 我室友在打游戏
-@ 2026-12-11 21:18:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 21:18:04.000 llm #12 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
@@ -930,7 +918,6 @@
 @ 2026-12-11 21:18:04.919 qq sendPrivateText [10001,"嗯嗯"]
 @ 2026-12-11 21:24:00.000 他 10001 发 #1012
 刚洗完衣服
-@ 2026-12-11 21:24:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 21:24:04.000 llm #13 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
@@ -1014,7 +1001,6 @@
 @ 2026-12-11 21:24:04.889 qq sendPrivateText [10001,"是呀"]
 @ 2026-12-11 21:30:00.000 他 10001 发 #1013
 我在追一个综艺
-@ 2026-12-11 21:30:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 21:30:04.000 llm #14 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
@@ -1101,7 +1087,6 @@
 @ 2026-12-11 21:30:05.188 qq sendPrivateText [10001,"好"]
 @ 2026-12-11 21:36:00.000 他 10001 发 #1014
 外面下雨了
-@ 2026-12-11 21:36:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 21:36:04.000 llm #15 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
@@ -1192,7 +1177,6 @@
 @ 2026-12-11 21:36:05.317 qq sendPrivateText [10001,"怎么啦"]
 @ 2026-12-11 21:50:00.000 他 10001 发 #1015
 哈哈哈哈笑死我了
-@ 2026-12-11 21:50:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 21:50:19.777 llm #16 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
@@ -1292,7 +1276,6 @@
 @ 2026-12-11 21:50:24.527 qq sendPrivateImage [10001,"<data>/stickers/dd27df56218a.png","[小猫捂着嘴偷笑]"]
 @ 2026-12-11 22:00:00.000 他 10001 发 #1016
 这个表情好可爱
-@ 2026-12-11 22:00:00.000 fetch 被拦下 http://127.0.0.1:7777/note
 @ 2026-12-11 22:00:04.000 llm #17 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #1.1）
 --- user
