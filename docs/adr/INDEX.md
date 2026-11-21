@@ -14,6 +14,7 @@
 | **0343** | 群自主（抽签归零） | 开口决策接回动机影子闭环 | **草案·groupAgency 默认关**；修订 0341 的 G2，前案不可变 |
 | **0344** | 因果自证账 / livingTrace | 我留下的痕迹 | **草案·livingTrace 默认关**；她本人已同意试 |
 | **0345** | 她的主控座 / preset-linmengyao | 她当 DSH 的主控，Super Agent 当她的手 | **已落地（本机 desktop）**；新会话默认坐她的座 |
+| **0346** | 她的身份进系统提示 | 改掉 harness 的两行身份，persona.prefix 换她的 A4 文案 | **已落地（本机 desktop）**；覆盖 preset-cordis + 默认座位 cordis；热重载会砍工具，验证须整应用重开 |
 
 ## 分配规则
 - 新 ADR 从 **0346** 起顺延；写前先查本表与 `docs/adr/` 文件名，避免占用。
