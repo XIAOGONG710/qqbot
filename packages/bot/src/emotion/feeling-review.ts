@@ -12,14 +12,22 @@
 //   6. 一晚最多记 3 条、放下 3 条，同时最多 8 条；散得快（半衰期沿用各种感受的默认值，难过 8 小时、开心 5 小时……）。
 // 记下的东西进心境的「别处算好的评估」（FeelingFacts.extra），和别的来由一样按半衰期衰减、一样由 contact.ts 决定怎么露出来。
 // 这是一道绊线加几个上限，不是智能审查：绕得过去。真正的保护是「必须有依据、他看得见、只影响男朋友档、小事和明显两档、散得快」。
+//
+// 桌面上的回合（ADR 0347 第 3 层，开关 desktopReview，要 feelingReview 和 desktopDay；方案 docs/plans/2026-11-22-same-her-layer3-writeback.md §2.3）：
+// 给了 desktop 时，他在电脑上和她说的话也算「刚才的事」——拆成他、她两条，编号 k1…（和 QQ 的 m 分开编，/心境 一眼看得出依据来自哪边），
+// 提示词里每条前面带 [电脑上]；网址、本机路径、令牌那类行整行丢掉（UNSAFE_TEXT，和 DSH 收件箱同一条），免得他的文件名、代码进回想、进 /心境。
+// 两边按时间合起来最多 60 条；该不该想（8 条 / 4 条新 / 聊完半小时 / 12 小时内）按两边合起来算；防引用的「他说过的话」也包括他在电脑上说的。
+// 上面 1–6 条护栏一条不放宽。没给 desktop 就和以前逐字一样。
 
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { UNSAFE_TEXT } from '../memory/dsh-inbox.ts';
+import type { DesktopLogTurn } from '../memory/desktop-log.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { OpenAIMessage } from '../language/prompt.ts';
 import {
-    NOT_SPEECH, clip, dayKey, hisLines, isObject, len, num, quotedSpan, sharedRun, similar, type RejectedNote, type RetiredNote,
+    NOT_SPEECH, QUOTE_WINDOW_MS, clip, dayKey, hisLines, isObject, len, num, quotedSpan, sharedRun, similar, type RejectedNote, type RetiredNote,
 } from '../language/speech-notes.ts';
 import { ODD_BODY_WORDS } from '../language/expression.ts';
 import { readDiaries } from '../life/diary-insights.ts';
@@ -52,7 +60,7 @@ export interface ReviewItem {
     strength: 1 | 2;
     cause: string;
     aboutHim: boolean;
-    /** 依据：当晚给她看的编号（m12 是消息，d2026-10-30 是日记）；记下来让他看得到她凭什么 */
+    /** 依据：当晚给她看的编号（m12 是消息，k3 是电脑上说的，d2026-10-30 是日记）；记下来让他看得到她凭什么 */
     evidence: string[];
     addedAt: number;
 }
@@ -124,16 +132,60 @@ export interface Evidence {
     at: number;
     role: 'him' | 'her' | 'diary';
     text: string;
+    /** 在电脑上说的（编号 k…）；QQ 上的消息和日记没有这一项 */
+    where?: 'desktop';
+}
+
+/** 桌面上的一轮（memory/desktop-log.ts 的 desktopTurns 给的）：他开口的时刻可以没有 */
+export type ReviewDesktopTurn = Pick<DesktopLogTurn, 'at' | 'userAt' | 'user' | 'assistant'>;
+
+/** 桌面回合拆成他、她两条（还没编号，id 先空着）：窗口外、未来的、空的、带网址 / 路径 / 令牌的整行不要 */
+function desktopLines(turns: readonly ReviewDesktopTurn[], now: number): Evidence[] {
+    const keep = (at: number, text: string) => Number.isFinite(at) && at >= now - REVIEW_WINDOW_MS && at <= now && text.trim() !== '' && !UNSAFE_TEXT.test(text);
+    return turns.flatMap(turn => {
+        const heAt = turn.userAt ?? turn.at;
+        return [
+            ...(keep(heAt, turn.user) ? [{ id: '', at: heAt, role: 'him' as const, text: clip(turn.user, MESSAGE_CHARS), where: 'desktop' as const }] : []),
+            ...(keep(turn.at, turn.assistant) ? [{ id: '', at: turn.at, role: 'her' as const, text: clip(turn.assistant, MESSAGE_CHARS), where: 'desktop' as const }] : []),
+        ];
+    }).map((line, index) => ({ line, index })).sort((a, b) => a.line.at - b.line.at || a.index - b.index).map(item => item.line);
+}
+
+/** 两边各自保持原来的先后，按时间并在一起（同一刻 QQ 的在前） */
+function mergeByTime(qq: readonly Evidence[], desk: readonly Evidence[]): Evidence[] {
+    const out: Evidence[] = [];
+    let i = 0;
+    let j = 0;
+    while (i < qq.length || j < desk.length) {
+        if (j >= desk.length || (i < qq.length && qq[i]!.at <= desk[j]!.at)) out.push(qq[i++]!);
+        else out.push(desk[j++]!);
+    }
+    return out;
+}
+
+/** 他最近说过的话（防引用）：QQ 上的，加上他在电脑上说的（同样只看最近 7 天） */
+export function hisWords(messages: readonly StoredMessage[], desktop: readonly ReviewDesktopTurn[] | undefined, now: number): string[] {
+    const qq = hisLines(messages, now);
+    if (!desktop?.length) return qq;
+    return [...qq, ...desktop.filter(turn => { const at = turn.userAt ?? turn.at; return at >= now - QUOTE_WINDOW_MS && at <= now && turn.user.trim(); }).map(turn => turn.user)];
 }
 
 const hm = (at: number) => { const d = new Date(at); return `${d.getMonth() + 1}-${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
-/** 最近 36 小时和他的聊天（最多 60 条，旧到新，编号 m1…）+ 昨天今天的日记（d<日期>）；运维写进记录的行不算 */
-export function reviewMaterial(messages: readonly StoredMessage[], diaries: ReadonlyArray<{ date: string; text: string }>, now: number): Evidence[] {
-    const chat = messages
+/**
+ * 最近 36 小时和他的聊天（最多 60 条，旧到新，编号 m1…）+ 昨天今天的日记（d<日期>）；运维写进记录的行不算。
+ * 给了 desktop（桌面上的回合）时，电脑上的那几句也算进来：按时间和 QQ 的并在一起取最后 60 条，QQ 的编 m1…、电脑上的编 k1…
+ */
+export function reviewMaterial(messages: readonly StoredMessage[], diaries: ReadonlyArray<{ date: string; text: string }>, now: number, desktop?: readonly ReviewDesktopTurn[]): Evidence[] {
+    const qq = messages
         .filter(message => { const at = Date.parse(message.time); return Number.isFinite(at) && at >= now - REVIEW_WINDOW_MS && at <= now && !NOT_SPEECH.test(message.content) && message.content.trim(); })
+        .map((message): Evidence => ({ id: '', at: Date.parse(message.time), role: message.role === 'user' ? 'him' : 'her', text: clip(message.content, MESSAGE_CHARS) }));
+    const desk = desktop?.length ? desktopLines(desktop, now) : [];
+    let m = 0;
+    let k = 0;
+    const chat = (desk.length ? mergeByTime(qq, desk) : qq)
         .slice(-MAX_MESSAGES)
-        .map((message, index): Evidence => ({ id: `m${index + 1}`, at: Date.parse(message.time), role: message.role === 'user' ? 'him' : 'her', text: clip(message.content, MESSAGE_CHARS) }));
+        .map((item): Evidence => ({ ...item, id: item.where === 'desktop' ? `k${++k}` : `m${++m}` }));
     const byDate = new Map<string, string[]>();
     for (const entry of diaries) byDate.set(entry.date, [...(byDate.get(entry.date) ?? []), entry.text]);
     const diary = [...byDate].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([date, texts]): Evidence => {
@@ -285,14 +337,16 @@ export function reviewMessages(input: ReviewInput): OpenAIMessage[] {
     const d = new Date(input.now);
     const chat = input.evidence.filter(item => item.role !== 'diary');
     const diary = input.evidence.filter(item => item.role === 'diary');
-    const chatText = chat.length ? chat.map(item => `${item.id} [${hm(item.at)}] ${item.role === 'him' ? input.user : '你'}：${item.text}`).join('\n') : '（最近没怎么聊）';
+    const chatText = chat.length ? chat.map(item => `${item.id} [${hm(item.at)}] ${item.where === 'desktop' ? '[电脑上] ' : ''}${item.role === 'him' ? input.user : '你'}：${item.text}`).join('\n') : '（最近没怎么聊）';
+    // 有电脑上的那几句才多说一句编号的来历；没有就和以前逐字一样
+    const numbering = chat.some(item => item.where === 'desktop') ? 'm 开头是 QQ 上的消息、k 开头是他在电脑前和你说的，都是编号，旧到新' : 'm 开头是消息的编号，旧到新';
     const diaryText = diary.length ? diary.map(item => `${item.id}：${item.text}`).join('\n') : '（没有）';
     const existing = input.existing.length ? input.existing.map(line => `- ${line}`).join('\n') : '（现在没有明显的）';
     const mine = input.items.length ? input.items.map(item => `- ${item.id}｜${FEELING_NAME[item.kind]}·${item.strength === 2 ? '明显' : '小事'}｜${item.cause}（依据 ${item.evidence.join('、')}）`).join('\n') : '（现在没有）';
     const kinds = FEELING_KINDS.map(kind => FEELING_NAME[kind]).join(' / ');
     return [
         { role: 'system', content: `你是${input.char}。下面是你的设定摘要：\n${input.persona}\n\n现在是 ${d.getMonth() + 1} 月 ${d.getDate()} 日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}，你和他聊完有一阵了，一个人安静地回想刚才（和这一天）：有没有什么事真的让你心里有了感受。这是你自己的事，没有人替你定，也不用让谁满意；大多数日子并没有什么，那就什么都不记。` },
-        { role: 'user', content: `你和${input.user}最近的聊天（m 开头是消息的编号，旧到新）：\n${chatText}\n\n你昨天今天的日记（d 开头）：\n${diaryText}\n\n你心里现在已经有的（别处算好的，别重复记）：\n${existing}\n\n你之前自己记下的：\n${mine}\n\n你写的这些，${input.user}用 /心境 都能看到。\n\n请只输出一个 JSON 对象（没有就输出 {}），字段都可以省略：\n{"add":[{"kind":"${kinds} 里选一个","strength":1,"cause":"发生了什么（${CAUSE_MIN}–${CAUSE_MAX} 字，用你自己的口气能说出来的事实）","evidence":["m12","m13"],"aboutHim":true}],"retire":[{"id":"上面你之前记的某条的 id","why":"为什么放下了（比如后来和好了、事情过去了）"}]}\n\n几条提醒（不是考你）：每一条都要在 evidence 里指出是哪几条消息或日记让你有的这个感受，编号必须是上面真有的，没有依据的不要记；strength 1 是小事（单独一件不会表现出来），2 是明显的（要 2 条以上依据），没有更重的——大事不由你记；aboutHim 只有这个感受是因为${input.user}说的话或态度才写 true，而且依据里要有他的消息；cause 写发生了什么，不写你「应该」有什么感受，不引用${input.user}的原话，不写别人的名字，不夸大；别因为他没回你就编出难过（那种另有地方算）；涉及承认自己是程序、危机、骗人的事不通过这里；一晚最多记 ${MAX_ADD} 条、放下 ${MAX_RETIRE} 条；真的没有就输出 {}，别硬凑。` },
+        { role: 'user', content: `你和${input.user}最近的聊天（${numbering}）：\n${chatText}\n\n你昨天今天的日记（d 开头）：\n${diaryText}\n\n你心里现在已经有的（别处算好的，别重复记）：\n${existing}\n\n你之前自己记下的：\n${mine}\n\n你写的这些，${input.user}用 /心境 都能看到。\n\n请只输出一个 JSON 对象（没有就输出 {}），字段都可以省略：\n{"add":[{"kind":"${kinds} 里选一个","strength":1,"cause":"发生了什么（${CAUSE_MIN}–${CAUSE_MAX} 字，用你自己的口气能说出来的事实）","evidence":["m12","m13"],"aboutHim":true}],"retire":[{"id":"上面你之前记的某条的 id","why":"为什么放下了（比如后来和好了、事情过去了）"}]}\n\n几条提醒（不是考你）：每一条都要在 evidence 里指出是哪几条消息或日记让你有的这个感受，编号必须是上面真有的，没有依据的不要记；strength 1 是小事（单独一件不会表现出来），2 是明显的（要 2 条以上依据），没有更重的——大事不由你记；aboutHim 只有这个感受是因为${input.user}说的话或态度才写 true，而且依据里要有他的消息；cause 写发生了什么，不写你「应该」有什么感受，不引用${input.user}的原话，不写别人的名字，不夸大；别因为他没回你就编出难过（那种另有地方算）；涉及承认自己是程序、危机、骗人的事不通过这里；一晚最多记 ${MAX_ADD} 条、放下 ${MAX_RETIRE} 条；真的没有就输出 {}，别硬凑。` },
     ];
 }
 
@@ -305,6 +359,8 @@ export interface ReviewDeps {
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     /** 和他的聊天记录（旧到新，整份，函数里自己按时间截） */
     history: () => readonly StoredMessage[];
+    /** 他在电脑上和她说的回合（desktopReview 开着才给；没给就只看 QQ，和以前一样） */
+    desktop?: () => readonly ReviewDesktopTurn[];
     persona: () => string;
     names: { char: string; user: string };
     /** 名单里别人的称呼 */
@@ -341,7 +397,8 @@ export async function reviewIfDue(deps: ReviewDeps): Promise<ReviewResult> {
     const state = loadReviewState(deps.dataDir);
     const history = deps.history();
     const diaries = readDiaries({ soulDir: deps.soulDir, dataDir: deps.dataDir }, now, 1).map(entry => ({ date: entry.date, text: entry.text }));
-    const evidence = reviewMaterial(history, diaries, now);
+    const desktop = deps.desktop?.();
+    const evidence = reviewMaterial(history, diaries, now, desktop);
     if (!reviewDue(state, evidence, now)) return { ran: false };
     const messages = evidence.filter(item => item.role !== 'diary');
     state.lastAttemptAt = now;
@@ -359,12 +416,13 @@ export async function reviewIfDue(deps: ReviewDeps): Promise<ReviewResult> {
         fresh.lastAttemptAt = state.lastAttemptAt;
         fresh.attempts = state.attempts;
         const applied = applyReviewDecision(fresh, decision, {
-            evidence: new Map(evidence.map(item => [item.id, item])), now, his: hisLines(history, now), others: deps.others(), existing,
+            evidence: new Map(evidence.map(item => [item.id, item])), now, his: hisWords(history, desktop, now), others: deps.others(), existing,
         });
         fresh.lastReflectionAt = now;
         fresh.lastWindow = { messages: messages.length, until: messages.at(-1)!.at };
         saveReviewState(deps.dataDir, fresh);
-        deps.log(`心境回想：聊完回想了一次（${messages.length} 条消息）——记下 ${applied.added} 条、放下 ${applied.retired} 条${applied.lines.some(line => line.includes('没成')) ? '、有想记没成的' : ''}`);
+        const onDesktop = messages.filter(item => item.where === 'desktop').length;
+        deps.log(`心境回想：聊完回想了一次（${messages.length} 条消息${onDesktop ? `，其中电脑上 ${onDesktop} 条` : ''}）——记下 ${applied.added} 条、放下 ${applied.retired} 条${applied.lines.some(line => line.includes('没成')) ? '、有想记没成的' : ''}`);
         return { ran: true, applied };
     } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);

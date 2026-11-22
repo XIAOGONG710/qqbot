@@ -40,7 +40,8 @@ const DSH_WORLD_EVENT_KINDS = new Set([
     'feed_cat', 'pick_parcel', 'finish_homework', 'family_call', 'receive_money',
 ]);
 const RESULTS = new Set<DshWorldInboxEntry['result']>(['succeeded', 'failed', 'interrupted']);
-const UNSAFE_TEXT = /https?:\/\/|(?:[A-Za-z]:[\\/]|(?:^|\s)\\\\|(?:^|\s)\/(?:Users|home|var|tmp)\b)|(?:api[_-]?key|token|password|密码|令牌)/i;
+/** 网址、本机路径、令牌 / 密码那类字样；心境回想拿桌面回合当材料时也用它整行丢掉（ADR 0347 第 3 层） */
+export const UNSAFE_TEXT = /https?:\/\/|(?:[A-Za-z]:[\\/]|(?:^|\s)\\\\|(?:^|\s)\/(?:Users|home|var|tmp)\b)|(?:api[_-]?key|token|password|密码|令牌)/i;
 
 interface InboxState {
     version: 2;

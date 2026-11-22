@@ -6,7 +6,7 @@ import { afterEach, describe, test } from 'node:test';
 import {
     FRESH_MS, KEEP_MS, MAX_ACTIVE, MAX_ADD, MAX_ATTEMPTS_PER_DAY, MAX_MESSAGES, MAX_RETIRE, MIN_GAP_MS, SETTLE_MS, applyReviewDecision, describeFeelingsForOwner,
     emptyReviewState, loadReviewState, parseReviewDecision, reviewAppraisals, reviewDue, reviewIfDue, reviewMaterial, reviewMessages, reviewPath, reviewProblem,
-    reviewReader, saveReviewState, type Evidence, type ReviewGuard, type ReviewItem, type ReviewState,
+    reviewReader, saveReviewState, hisWords, type Evidence, type ReviewDesktopTurn, type ReviewGuard, type ReviewItem, type ReviewState,
 } from '../src/emotion/feeling-review.ts';
 import { describeFeelings, feelingsAt } from '../src/emotion/feelings.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -347,5 +347,116 @@ describe('变成心境、给他看', () => {
         assert.match(describeFeelingsForOwner(undefined, emptyReviewState(), NOW, true), /最近还没有给她算过心境/);
         assert.match(describeFeelingsForOwner({ at: NOW, felt: [] }, emptyReviewState(), NOW, true), /她此刻没有明显的感受（刚刚算的）/);
         assert.match(describeFeelingsForOwner({ at: NOW, felt: [] }, emptyReviewState(), NOW, true), /她还没有聊完回想出来的感受/);
+    });
+});
+
+// ADR 0347 第 3 层（开关 desktopReview）：桌面上的回合进聊完回想。没给 desktop 就和以前逐字一样。
+describe('桌面上的回合也算（desktopReview）', () => {
+    /** 桌面上的一轮：他 userAt 开口、她 at 回完 */
+    const turn = (user: string, assistant: string, at: number, userAt?: number): ReviewDesktopTurn => ({ at, ...(userAt !== undefined ? { userAt } : {}), user, assistant });
+    /** 一段桌面会话：count 轮，最后一轮在 lastAgo 之前结束，每轮隔 2 分钟，他开口比她回完早 1 分钟 */
+    const session = (count: number, lastAgo = 40 * MIN, now = NOW) => Array.from({ length: count }, (_, i) => {
+        const at = now - lastAgo - (count - 1 - i) * 2 * MIN;
+        return turn(`电脑上他说的第${i}句`, `电脑上她回的第${i}句`, at, at - MIN);
+    });
+
+    test('没给 / 给了空的：和以前逐字一样', () => {
+        const messages = chat(10, 40 * MIN);
+        const before = reviewMaterial(messages, [{ date: '2026-10-30', text: '今天' }], NOW);
+        assert.deepEqual(reviewMaterial(messages, [{ date: '2026-10-30', text: '今天' }], NOW, undefined), before);
+        assert.deepEqual(reviewMaterial(messages, [{ date: '2026-10-30', text: '今天' }], NOW, []), before);
+        assert.ok(before.every(item => !('where' in item)), 'QQ 的消息不带 where');
+        assert.deepEqual(hisWords(messages, undefined, NOW), hisWords(messages, [], NOW));
+    });
+
+    test('拆成他、她两条，编号 k1… 和 m 分开编，按时间并在一起；他那条的时刻是 userAt，没有就用 at；日记还在最后', () => {
+        const material = reviewMaterial(
+            [row('user', 'QQ 上他早上说的', NOW - 5 * HOUR), row('assistant', 'QQ 上她回的', NOW - 5 * HOUR + MIN), row('user', 'QQ 上他晚上说的', NOW - HOUR)],
+            [{ date: '2026-10-30', text: '今天' }], NOW,
+            [turn('下午在电脑上他说', '下午在电脑上她回', NOW - 3 * HOUR, NOW - 3 * HOUR - 2 * MIN), turn('没有开口时刻的那轮', '她回的', NOW - 2 * HOUR)],
+        );
+        assert.deepEqual(material.map(e => [e.id, e.role, e.text, e.where ?? 'qq']), [
+            ['m1', 'him', 'QQ 上他早上说的', 'qq'], ['m2', 'her', 'QQ 上她回的', 'qq'],
+            ['k1', 'him', '下午在电脑上他说', 'desktop'], ['k2', 'her', '下午在电脑上她回', 'desktop'],
+            ['k3', 'him', '没有开口时刻的那轮', 'desktop'], ['k4', 'her', '她回的', 'desktop'],
+            ['m3', 'him', 'QQ 上他晚上说的', 'qq'], ['d2026-10-30', 'diary', '今天', 'qq'],
+        ]);
+        assert.equal(material[2]!.at, NOW - 3 * HOUR - 2 * MIN, '他那条用 userAt');
+        assert.equal(material[4]!.at, NOW - 2 * HOUR, '没有 userAt 就用 at');
+    });
+
+    test('网址、本机路径、令牌那类行整行丢掉（只丢那一边）；每条截 60 字；36 小时外、未来的、空的不要', () => {
+        const material = reviewMaterial([], [], NOW, [
+            turn('帮我看下 https://example.com/a 这个', '好，我看看', NOW - 6 * HOUR),
+            turn('打开 C:\\Users\\someone\\发票.xlsx', '打开了', NOW - 5 * HOUR),
+            turn('我的 api_key 是多少来着', '这个我不记', NOW - 4 * HOUR),
+            turn('那我先去吃饭', '去吧，我在 /home/me/notes 里记一下', NOW - 3 * HOUR),
+            turn('长'.repeat(200), '  ', NOW - 2 * HOUR),
+            turn('三天前', '三天前她回', NOW - 80 * HOUR),
+            turn('未来的', '未来她回', NOW + HOUR),
+        ]);
+        assert.deepEqual(material.map(e => [e.id, e.role, e.text.slice(0, 6)]), [
+            ['k1', 'her', '好，我看看'], ['k2', 'her', '打开了'], ['k3', 'her', '这个我不记'], ['k4', 'him', '那我先去吃饭'], ['k5', 'him', '长长长长长长'],
+        ]);
+        assert.equal([...material.at(-1)!.text].length, 60);
+        const text = JSON.stringify(material);
+        for (const leak of ['example.com', 'Users', 'api_key', '/home']) assert.ok(!text.includes(leak), `不该有「${leak}」`);
+    });
+
+    test('两边合起来最多 60 条，留最后的；编号按留下的重新编', () => {
+        const qq = Array.from({ length: 40 }, (_, i) => row('user', `QQ第${i}条`, NOW - (200 - i) * MIN));
+        const desk = Array.from({ length: 20 }, (_, i) => turn(`桌面他${i}`, `桌面她${i}`, NOW - (100 - i) * MIN));
+        const material = reviewMaterial(qq, [], NOW, desk);
+        assert.equal(material.length, MAX_MESSAGES);
+        assert.deepEqual([material[0]!.id, material[0]!.text], ['m1', 'QQ第20条']);
+        assert.deepEqual([material.at(-1)!.id, material.at(-1)!.text], ['k40', '桌面她19']);
+    });
+
+    test('该不该想按两边合起来算：QQ 4 条 + 桌面 2 轮（4 条）就够；最后一条在电脑上、刚聊完不到半小时就还不想', () => {
+        const state = emptyReviewState();
+        assert.equal(reviewDue(state, reviewMaterial(chat(4, 2 * HOUR), [], NOW), NOW), false, '只看 QQ 不够 8 条');
+        assert.equal(reviewDue(state, reviewMaterial(chat(4, 2 * HOUR), [], NOW, session(2, 40 * MIN)), NOW), true);
+        assert.equal(reviewDue(state, reviewMaterial(chat(10, 2 * HOUR), [], NOW, session(2, 10 * MIN)), NOW), false, 'QQ 早聊完了，可电脑上 10 分钟前还在聊');
+        assert.equal(reviewDue(state, reviewMaterial([], [], NOW, session(4, 40 * MIN)), NOW), true, '只在电脑上聊的日子也会想');
+        const until = NOW - 2 * HOUR;
+        assert.equal(reviewDue({ ...state, lastWindow: { messages: 10, until } }, reviewMaterial(chat(10, 2 * HOUR), [], NOW, session(2, 40 * MIN)), NOW), true, '新的 4 条都在电脑上');
+        assert.equal(reviewDue({ ...state, lastWindow: { messages: 10, until } }, reviewMaterial(chat(10, 2 * HOUR), [], NOW, session(1, 40 * MIN)), NOW), false, '新的只有 2 条');
+    });
+
+    test('提示词：电脑上的那几条带 [电脑上]，说明 m / k 两种编号；没有电脑上的就是原来那句', () => {
+        const evidence = reviewMaterial(chat(2, 3 * HOUR), [], NOW, [turn('你看这样行吗', '挺好的', NOW - HOUR, NOW - HOUR - MIN)]);
+        const user = reviewMessages({ char: '林梦瑶', user: '宝宝', persona: '大学生', now: NOW, existing: [], items: [], evidence })[1]!.content;
+        assert.match(user, /k1 \[10-30 21:59\] \[电脑上\] 宝宝：你看这样行吗\nk2 \[10-30 22:00\] \[电脑上\] 你：挺好的/);
+        assert.match(user, /m1 \[10-30 19:59\] 宝宝：他说的第0句话/);
+        assert.match(user, /m 开头是 QQ 上的消息、k 开头是他在电脑前和你说的/);
+        const plain = reviewMessages({ char: '林梦瑶', user: '宝宝', persona: '大学生', now: NOW, existing: [], items: [], evidence: reviewMaterial(chat(2, 3 * HOUR), [], NOW) })[1]!.content;
+        assert.match(plain, /最近的聊天（m 开头是消息的编号，旧到新）/);
+        assert.ok(!plain.includes('电脑'));
+    });
+
+    test('防引用的「他说过的话」也有他在电脑上说的（7 天内的，网址那类行也算进去）', () => {
+        const his = hisWords(chat(2, HOUR), [turn('今天的发票终于整理完了好累', '辛苦啦', NOW - HOUR), turn('看 https://example.com', '好', NOW - 2 * HOUR), turn('八天前说的', '嗯', NOW - 8 * 86_400_000)], NOW);
+        assert.deepEqual(his, ['他说的第0句话', '今天的发票终于整理完了好累', '看 https://example.com']);
+    });
+
+    test('整条路径：依据可以指 k；他在电脑上说的算「他的话」；抄他在电脑上的原话不收；日志说其中几条在电脑上；记下的时刻是电脑上最后那条', async () => {
+        const dir = tmp();
+        const logs: string[] = [];
+        const desk = [turn('今天的发票终于整理完了好累', '辛苦啦，歇会儿', NOW - 50 * MIN, NOW - 51 * MIN), ...session(3, 40 * MIN)];
+        const result = await reviewIfDue({
+            dataDir: dir, soulDir: dir, now: () => NOW, generate: async () => JSON.stringify({ add: [
+                { kind: '开心', strength: 2, cause: '下午在电脑前陪他把事情弄完了', evidence: ['k1', 'k2'], aboutHim: true },
+                { kind: '累', strength: 1, cause: '发票终于整理完了好累', evidence: ['k1'], aboutHim: false },
+            ] }),
+            history: () => chat(4, 3 * HOUR), desktop: () => desk,
+            persona: () => '大学生', names: { char: '林梦瑶', user: '宝宝' }, others: () => [], existing: () => [], log: line => logs.push(line),
+        });
+        assert.equal(result.applied?.added, 1);
+        const state = loadReviewState(dir);
+        assert.deepEqual(state.items.map(i => [i.cause, i.evidence, i.aboutHim, i.at]), [['下午在电脑前陪他把事情弄完了', ['k1', 'k2'], true, NOW - 50 * MIN]]);
+        assert.match(state.rejected[0]!.reason, /引了他说过的话/);
+        assert.equal(state.lastWindow?.until, NOW - 40 * MIN, '最后一条是电脑上她回的那条');
+        assert.match(logs.join('\n'), /聊完回想了一次（12 条消息，其中电脑上 8 条）/);
+        assert.ok(!logs.join('\n').includes('发票'), '日志不记内容');
     });
 });

@@ -2,7 +2,7 @@
 // - 追求（ADR 0178）：每晚 20 点以后想一次要不要放下 / 改主意 / 提新的。
 // - 说话习惯（ADR 0193）：每晚 22 点以后总结一次，带上他标过的「像真人 / 像 AI」。
 // - 聊天回顾（ADR 0221）：22 点以后看一次今天和他的聊天里数得出来的几处。
-// - 心境回想（ADR 0197）：一段聊天结束半小时后回想、记下有依据的感受；每 10 分钟看一眼（其余每 30 分钟）。
+// - 心境回想（ADR 0197）：一段聊天结束半小时后回想、记下有依据的感受；每 10 分钟看一眼（其余每 30 分钟）。给了 desktop 时电脑上的回合也算（ADR 0347 第 3 层）。
 // - 自我认识（ADR 0194）：22 点以后翻日记写对自己的认识；每次想完（不管想没想出来）都给桌面上的她写一份。
 // - 读完看完的想法（ADR 0204）、没想完的问题（ADR 0207，用深思的模型）、她猜的事（ADR 0213，要她那边的世界）。
 // - 我现在的样子（ADR 0340）：22 点以后把上面这些、她在电脑上写的 SOUL.md 和最近的聊天整份重写成一份，排在最后；每一拍之后给桌面刷新一份 PORTRAIT.json。
@@ -20,6 +20,7 @@ import type { StoredMessage } from '../memory/history.ts';
 import type { OpenAIMessage } from '../language/prompt.ts';
 import type { WorldNow } from '../world/world.ts';
 import type { FeelingKind } from '../emotion/feelings.ts';
+import type { ReviewDesktopTurn } from '../emotion/feeling-review.ts';
 import { reflectIfDue as reflectPursuits } from '../life/self-pursuits.ts';
 import type { pursuitsReader } from '../life/pursuits.ts';
 import { reflectIfDue as reflectSpeechNotes } from '../language/speech-notes.ts';
@@ -59,7 +60,8 @@ export interface ReflectionsOptions {
     selfPursuits?: { base: () => ReturnType<typeof pursuitsReader> };
     speechNotes?: { corpus: () => Exemplar[]; feedback: () => ReturnType<typeof recentFeedback> };
     chatReview?: boolean;
-    feelingReview?: { existing: () => { kind: FeelingKind; cause: string }[] };
+    /** 心境回想；desktop 是他在电脑上和她说的回合（ADR 0347 第 3 层，开关 desktopReview，App 读 desktop-log 给；不给就只看 QQ） */
+    feelingReview?: { existing: () => { kind: FeelingKind; cause: string }[]; desktop?: () => readonly ReviewDesktopTurn[] };
     diaryInsights?: { exportInsights: () => void };
     readingTakes?: { watched: () => readonly Watched[] };
     /** 没想完的问题用深思的模型（开思考） */
@@ -116,7 +118,7 @@ export function reflectionsModule(options: ReflectionsOptions): Module {
     if (feelingReview) every(10 * 60_000, () => reviewFeelings({
         dataDir, soulDir: options.soulDir(), now, generate: options.generate(0.9), history, persona, names: names(), others,
         // 心里已经有的（最近 6 小时内给他算过的明显感受）：别重复记
-        existing: feelingReview.existing, log,
+        existing: feelingReview.existing, ...(feelingReview.desktop ? { desktop: feelingReview.desktop } : {}), log,
     }), '心境回想：想的时候出错');
     if (diaryInsights) every(30 * 60_000, () => reflectInsights({
         dataDir, soulDir: options.soulDir(), now, generate: options.generate(0.9), history, persona, names: names(), others, log,

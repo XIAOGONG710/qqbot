@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { reflectionsModule, type ReflectionsOptions } from '../src/modules/reflections.ts';
+import { loadReviewState } from '../src/emotion/feeling-review.ts';
 
 // 她自己想一想的那几样（ADR 0336 第 6 步）：定时任务的先后、间隔、开的时机，以及「没有男朋友档就都不想」「停下之后不再起新的一拍」「上一拍没想完就跳过」。
 describe('她自己想一想的那几样（reflections 模块）', () => {
@@ -57,5 +58,22 @@ describe('她自己想一想的那几样（reflections 模块）', () => {
             await new Promise(resolve => setImmediate(resolve));
             assert.equal(exported, 1, '停下之后不再想');
         } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+
+    test('心境回想：给了 desktop 就把电脑上的回合交给回想（ADR 0347 第 3 层）；没给就只看 QQ', async () => {
+        const at = new Date('2026-11-18T10:00:00+08:00').getTime();
+        const desktop = Array.from({ length: 4 }, (_, i) => ({ at: at - 40 * 60_000 - (3 - i) * 2 * 60_000, user: `电脑上他第${i}句`, assistant: `电脑上她第${i}句` }));
+        const run = async (feelingReview: ReflectionsOptions['feelingReview']) => {
+            const dir = mkdtempSync(join(tmpdir(), 'reflections-'));
+            try {
+                let calls = 0;
+                const module = reflectionsModule(base(dir, { feelingReview, generate: () => async () => { calls++; return '{}'; } }));
+                module.schedules![0]!.run();
+                for (let i = 0; i < 40 && !loadReviewState(dir).lastWindow; i++) await new Promise(resolve => setTimeout(resolve, 5));
+                return { calls, window: loadReviewState(dir).lastWindow };
+            } finally { rmSync(dir, { recursive: true, force: true }); }
+        };
+        assert.deepEqual(await run({ existing: () => [], desktop: () => desktop }), { calls: 1, window: { messages: 8, until: desktop.at(-1)!.at } });
+        assert.deepEqual(await run({ existing: () => [] }), { calls: 0, window: undefined }, 'QQ 上没聊，不给 desktop 就不想');
     });
 });
