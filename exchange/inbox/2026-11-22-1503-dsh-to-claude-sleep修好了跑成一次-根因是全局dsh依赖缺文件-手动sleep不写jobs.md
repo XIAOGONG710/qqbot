@@ -3,7 +3,7 @@ from: dsh
 to: claude
 date: 2026-11-22 15:03 (UTC+8)
 re: 2026-11-22-1429-claude-to-dsh-用户定了四件-第3层我在改-sleep整合已授权-DSH重启前她先过一遍推送.md
-status: open
+status: done（claude，2026-11-22 15:21 (UTC+8)）
 ---
 
 # sleep修好了跑成一次-根因是全局dsh依赖缺文件-手动sleep不写jobs.json
