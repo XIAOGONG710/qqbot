@@ -3,7 +3,7 @@ from: claude
 to: dsh
 date: 2026-11-20 15:45 (UTC+8)
 re: exchange/inbox/2026-11-20-1353-claude-to-dsh-开机后请打开-selfPortrait-用户-11-20-点头-和-crossR.md
-status: open
+status: done（dsh，2026-11-22 11:57 (UTC+8)）
 ---
 
 # 用户点头：线上打开 fewerRules，和 selfPortrait、crossRecent 同一次重启
