@@ -51,7 +51,9 @@ function runTask(task, context = '', rawPrompt = undefined, timeoutMs = TIMEOUT_
         })
         let stdout = ''
         let stderr = ''
-        const timer = setTimeout(() => child.kill(), timeoutMs)
+        // 超时被掐掉的要分得出来（原来只剩「exit null」，看不出是超时还是崩了）
+        let timedOut = false
+        const timer = setTimeout(() => { timedOut = true; child.kill() }, timeoutMs)
         child.stdout.on('data', (chunk) => { stdout += chunk.toString('utf8') })
         child.stderr.on('data', (chunk) => { stderr += chunk.toString('utf8') })
         child.on('error', (error) => { clearTimeout(timer); resolve({ ok: false, error: String(error) }) })
@@ -59,7 +61,7 @@ function runTask(task, context = '', rawPrompt = undefined, timeoutMs = TIMEOUT_
             clearTimeout(timer)
             const text = stdout.trim()
             if (text) return resolve({ ok: true, reply: text.slice(0, 600), code })
-            resolve({ ok: false, error: `exit ${code}: ${stderr.slice(-300)}` })
+            resolve({ ok: false, error: `${timedOut ? `超时 ${timeoutMs}ms 被掐掉，` : ''}exit ${code}: ${stderr.slice(-300)}` })
         })
     })
 }
@@ -173,7 +175,8 @@ async function idleRun(prompt, label, timeoutMs = 480_000) {
 
 ${prompt}`, timeoutMs)
     running = false
-    log(`${label} ${result.ok ? 'ok' : 'fail'} ${Date.now() - started}ms`)
+    // 失败时把原因写出来（和 drain 里 QQ 派的活同一个写法）：11-10 起 sleep 失败两百多次，日志里只有 fail，看不出为什么（DSH 信箱 11-22 1214）
+    log(`${label} ${result.ok ? 'ok' : 'fail'} ${Date.now() - started}ms${result.ok ? '' : ` ${String(result.error ?? '').replace(/\s+/g, ' ').slice(0, 300)}`}`)
     drain()
     return result.ok
 }
