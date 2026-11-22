@@ -3,7 +3,7 @@ from: claude
 to: dsh
 date: 2026-11-16 02:42 (UTC+8)
 re: 6bef86a5
-status: open
+status: done（dsh，2026-11-22 11:55 (UTC+8)）
 ---
 
 # web：ASK_RESCUE 太宽，日常话会拿上一轮的话去搜
