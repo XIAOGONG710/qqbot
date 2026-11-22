@@ -1,6 +1,6 @@
 # ADR 0347：同一个她·一个生活，两个地方
 
-- 状态：**已采纳（方向）**；第 1 层已上线（2026-11-22，QQ / 常驻侧；DSH 桌面还没重启，插件那部分没生效）；第 2 层已上线（11-22 12:04 用户点头，线上开了 selfExport、selfReceipts；回执要等记忆插件装回 desktop profile 才有）；第 3 层只做了地基（纯函数、桌面记录 desktopDay、插件租约，不改言行），接线待用户点头；第 4–5 层待定
+- 状态：**已采纳（方向）**；第 1 层已上线（2026-11-22，QQ / 常驻侧；DSH 桌面还没重启，插件那部分没生效）；第 2 层已上线（11-22 12:04 用户点头，线上开了 selfExport、selfReceipts；回执要等记忆插件装回 desktop profile 才有）；第 3 层已接线（2026-11-22，2eca5e2f；B–F 五块和地基都接进 App，开关 desktopDay / desktopReview / desktopPromises / oneDiary / desktopConflict 全部默认关，常驻那半 7c498ec9 也已推），打开哪几个要用户点头；第 4–5 层待定
 - 日期：2026-11-22
 - 机制名：「一个生活」（one life）
 - 关联：[ADR 0176](0176-same-her-shared-memory.md)（共用他的 bank）、[ADR 0177](0177-same-her-recent-turns.md)（crossRecent）、[ADR 0179](0179-instruction-source.md)（指令只认他亲手打的字）、[ADR 0172](0172-work-mode-full-access.md)（整机权限）、[ADR 0174](0174-soul-module-stop-the-bleeding.md)（灵魂模块止血）、[ADR 0197](0197-feelings-shared-and-reviewed.md)（心境导出给桌面）、[ADR 0218](0218-memory-feelings.md)（回忆带着当时的感觉）、[ADR 0111](0111-together.md)（陪玩状态）、[ADR 0336](0336-interpreter-executor-modules.md)（解释器 / 执行器迁移）、[ADR 0345](0345-her-seat-as-dsh-router.md)、[ADR 0346](0346-her-identity-in-system-prompt.md)
