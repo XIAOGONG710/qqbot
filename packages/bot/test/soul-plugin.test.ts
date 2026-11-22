@@ -25,6 +25,8 @@ interface Plugin {
     soulTripwire: (text: string) => string;
     trimSoul: (file: string, maxChars: number) => number;
     desktopMemoryClarity: (item: Record<string, unknown>, query?: string, now?: Date) => string;
+    memoryDistance: (item: Record<string, unknown>, now?: Date) => string;
+    memoryAsMine: (text: string) => string;
     shouldAutoSaveTurn: (user: string, assistant: string) => boolean;
 }
 let plugin: Plugin;
@@ -1399,5 +1401,57 @@ describe('桌面会话的收尾（session-tail）', () => {
                 else assert.match(readFileSync(file, 'utf8'), /是吧我也看到了/);
             });
         }
+    });
+});
+
+// ───────── 一个生活·第 5 层：记忆有体感（ADR 0347）─────────
+
+describe('一个生活·第 5 层：记忆有体感', () => {
+    test('召回换成她自己的口气，带「你想起来的」标题和远近', async () => {
+        const threeWeeks = new Date(Date.now() - 21 * 86_400_000).toISOString();
+        const fake = fakeHindsight({
+            banks: ALL_BANKS,
+            recall: { [OWNER]: [{ id: 'm1', text: '林梦瑶说水卡找不到了，去了两趟宿管', document_id: 'ep-1', fact_type: 'world', date: threeWeeks }] },
+        });
+        const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+        try {
+            await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '水卡呢' }] }, async () => undefined);
+            const shown = h.contexts.map(entry => entry.text()).join('\n');
+            assert.match(shown, /\[你想起来的\]/);
+            assert.match(shown, /- （\d+周前，记不太清了）我说水卡找不到了/);
+            assert.ok(!shown.includes('林梦瑶说'), '不再原样贴第三人称的事实');
+        } finally { fake.restore(); }
+    });
+
+    test('「林梦瑶的妈妈」→「我妈」：只换人称，事实一个字不改', () => {        assert.equal(plugin.memoryAsMine('林梦瑶的妈妈说她最近压力大'), '我妈说她最近压力大');
+        assert.equal(plugin.memoryAsMine('林梦瑶说想吃火锅'), '我说想吃火锅');
+        assert.equal(plugin.memoryAsMine('宝宝说想她了'), '宝宝说想她了');
+    });
+
+    test('远近只说到粗：昨天 / N天前 / 上周 / N周前 / N个月前 / 很久以前；今天和不知道时间的不说', () => {
+        const now = new Date(2026, 10, 22, 22);
+        const at = (days: number) => new Date(2026, 10, 22 - days, 12).toISOString();
+        assert.equal(plugin.memoryDistance({ mentionedAt: at(0) }, now), '');
+        assert.equal(plugin.memoryDistance({}, now), '');
+        assert.equal(plugin.memoryDistance({ mentionedAt: at(1) }, now), '昨天');
+        assert.equal(plugin.memoryDistance({ mentionedAt: at(4) }, now), '4天前');
+        assert.equal(plugin.memoryDistance({ mentionedAt: at(9) }, now), '上周');
+        assert.equal(plugin.memoryDistance({ mentionedAt: at(21) }, now), '3周前');
+        assert.equal(plugin.memoryDistance({ mentionedAt: at(90) }, now), '3个月前');
+        assert.equal(plugin.memoryDistance({ mentionedAt: at(400) }, now), '很久以前');
+    });
+
+    test('memoryVoice: false 回到原样：第三人称、没有标题（回滚用）', async () => {
+        const fake = fakeHindsight({
+            banks: ALL_BANKS,
+            recall: { [OWNER]: [{ id: 'm1', text: '林梦瑶说想吃火锅', document_id: 'ep-1', fact_type: 'world', date: new Date().toISOString() }] },
+        });
+        const h = boot({ baseUrl: `http://hs-${++urlCounter}`, memoryVoice: false, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+        try {
+            await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '吃啥' }] }, async () => undefined);
+            const shown = h.contexts.map(entry => entry.text()).join('\n');
+            assert.ok(shown.includes('- 林梦瑶说想吃火锅'), '原样贴回去');
+            assert.ok(!shown.includes('[你想起来的]'), '没有标题');
+        } finally { fake.restore(); }
     });
 });

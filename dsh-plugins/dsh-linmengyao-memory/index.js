@@ -58,6 +58,8 @@ const DEFAULTS = {
   selfStaleMs: 30 * 60 * 1000,
   /** 「此刻的你」整块（标题 + 各行 + 攒着的那段）最多这么多字，超了从后往前整行丢 */
   selfMaxChars: 1200,
+  /** 召回按她自己的口气说、带「你想起来的」标题和远近（ADR 0347 第 5 层）；false 就回到原样贴第三人称的事实 */
+  memoryVoice: true,
   /** 桌面在场租约（ADR 0347 第 3 层）：他在桌面上跟她说话时写 / 续，QQ 只读；格式见 packages/bot/src/life/desktop-presence.ts */
   presenceFile: soulPath('desktop-presence.json'),
   /** 桌面会话的收尾（session-tail.js）：每轮留一句，新一场开局带上一场 */
@@ -121,6 +123,37 @@ export function desktopMemoryClarity(item, query = '', now = new Date()) {
 
 export const withoutMemoryMarks = text => String(text || '')
   .replaceAll(MEMORY_IMPORTANT, '').replaceAll(MEMORY_LASTING, '').trim()
+
+/** 召回文本开头的清晰度前缀（recallAll 加的），单独拆出来好和远近排在一处（ADR 0347 第 5 层） */
+const CLARITY_PREFIX = /^（((?:他一提才想起来，)?记不太清了)）/
+
+/**
+ * 多久以前的事（ADR 0347 第 5 层「远近」）：粗粒度就够——她 11-22 说「三个月以前的只留个大概」，
+ * 不报精确天数，也不假装记得准。今天的事不说；不知道什么时候的不说。
+ */
+export function memoryDistance(item, now = new Date()) {
+  const at = memoryLastTouched(item)
+  if (!at) return ''
+  const days = memoryDaysBetween(at, now)
+  if (!(days > 0)) return ''
+  if (days === 1) return '昨天'
+  if (days < 7) return `${days}天前`
+  if (days < 14) return '上周'
+  if (days < 45) return `${Math.max(2, Math.round(days / 7))}周前`
+  if (days < 365) return `${Math.round(days / 30)}个月前`
+  return '很久以前'
+}
+
+/**
+ * 召回的记忆改成她自己的口气：「林梦瑶……」→「我……」（ADR 0347 第 5 层）。
+ * 只换人称，不改事实、不加没记过的东西：她 11-22 说「字都对，就是跟我隔一层」。
+ */
+export function memoryAsMine(text) {
+  return String(text || '')
+    .replaceAll('林梦瑶的妈妈', '我妈')
+    .replaceAll('林梦瑶的', '我的')
+    .replaceAll('林梦瑶', '我')
+}
 
 /** 纯寒暄/确认不值得单独形成长期事实；只要任一方包含实质内容就保留。 */
 export function shouldAutoSaveTurn(user, assistant) {
@@ -1034,7 +1067,17 @@ export function apply(ctx, config = {}) {
           }
           if (query) {
             const all = await recallAll(cfg, query)
-            let text = all.slice(0, cfg.pick).map((item) => `- ${item.text}`).join('\n')
+            // 第 5 层：她自己的口气 + 多久以前（ADR 0347）。原来原样贴「林梦瑶……」，
+            // 她说那读起来像在翻别人的日记；这里只换人称和加远近，事实一个字不加。
+            const voice = cfg.memoryVoice !== false
+            let text = all.slice(0, cfg.pick).map((item) => {
+              if (!voice) return `- ${item.text}`
+              const raw = String(item.text || '')
+              const clarity = CLARITY_PREFIX.exec(raw)?.[1] || ''
+              const body = memoryAsMine(clarity ? raw.slice(clarity.length + 2) : raw)
+              const note = [memoryDistance(item), clarity].filter(Boolean).join('，')
+              return `- ${note ? `（${note}）` : ''}${body}`
+            }).join('\n')
             if (text.length > cfg.maxChars) text = text.slice(0, cfg.maxChars) + '…'
             const soul = readSoul(cfg)
             const ledger = readLedger(cfg)
@@ -1052,7 +1095,7 @@ export function apply(ctx, config = {}) {
               feelings,
               insights,
               ledger ? `[你的判断账本]\n${ledger}` : '',
-              text,
+              text ? `${voice ? '[你想起来的]\n' : ''}${text}` : '',
               cache.bridge,
             ].filter(Boolean).join('\n\n')
             log(cfg, `recall q=${query.slice(0, 40)} items=${all.length} picked=${cache.text.length}chars`)
