@@ -36,6 +36,8 @@
 | `timeline` | 跨渠道时间线（B 站 / 设备 / 查资料……QQ 里也记得） | [ADR 0159](../adr/0159-timeline.md) |
 | `dormancy` | 自愿休眠 / 封存 | [ADR 0161](../adr/0161-dormancy.md) |
 | `crossRecent` | QQ 和 DSH 桌面互读最近几轮（同一个她） | [ADR 0177](../adr/0177-same-her-recent-turns.md) |
+| `selfExport` | 「此刻的她」交给桌面（SELF.json：和 QQ 提示词同一批模块算的此刻） | [ADR 0347](../adr/0347-one-life-two-places.md) |
+| `selfReceipts` | 桌面上说过的话 QQ 不再重发（回执） | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `selfDirectedMemory` | 她自己决定记不记（关掉自动记忆同步和自动日记） | [ADR 0171](../adr/0171-self-directed-memory.md) |
 | `factHim` | 事实检查多查一类：她替他说的、聊天 / 记忆里没有依据的事（要 factCheck 开着） | [ADR 0203](../adr/0203-fact-check-him.md) |
 | `memoryReconcile` | 记忆对账：记着写过、Hindsight 里却查不到的片段，重新排队写（防记忆悄悄少一块） | [ADR 0201](../adr/0201-memory-reconcile.md) |

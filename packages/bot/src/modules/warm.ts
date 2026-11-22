@@ -40,7 +40,8 @@ export function warmModule(options: WarmModuleOptions): Module {
             const affect = turn.card?.moods.length ? warmAffect(turn.history) : undefined;
             const loops = turn.facts.unsettled;
             const unsettled = loops ? describeUnsettled(loops.map(what => ({ what })), affect?.kind === 'repair' || affect?.kind === 'comfort') : undefined;
-            if (affect) options.log(`[${turn.contact.qq}] 情绪余温：${affect.kind}，还影响 ${affect.remaining} 轮`);
+            // 「此刻的她」快照（turn.snapshot）不要余温那一行，也不记
+            if (affect && !turn.snapshot) options.log(`[${turn.contact.qq}] 情绪余温：${affect.kind}，还影响 ${affect.remaining} 轮`);
             const warm = describeWarmAffect(affect);
             const pieces: Piece[] = [];
             if (unsettled) pieces.push({ slot: 'unsettled', text: unsettled });

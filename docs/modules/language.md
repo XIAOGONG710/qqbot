@@ -88,6 +88,7 @@
 - `modules/dsh-state.ts`
 - `modules/memory-sync.ts`
 - `modules/now-export.ts`
+- `modules/self-export.ts`
 - `modules/outbox.ts`
 - `modules/world-upkeep.ts`
 - `modules/dsh-inbox.ts`

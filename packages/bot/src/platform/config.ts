@@ -173,6 +173,12 @@ export const DEFAULTS = {
     silenceNotice: false,
     /** 「同一个她」第 2 层（ADR 0177）：QQ 和 DSH 桌面互读最近几轮对话；要开了长期记忆（owner-bank.json）才起作用 */
     crossRecent: false,
+    /** 「此刻的她」导出（ADR 0347 第 2 层）：QQ 用拼提示词的同一批模块把此刻的她写进灵魂目录 SELF.json，桌面插件读到有效的才用；只给男朋友档 */
+    selfExport: false,
+    /** 桌面上说过了的回执（ADR 0347 第 2 层）：QQ 消费 self-receipts.jsonl，攒着的话在桌面上说过就不再从 QQ 发；要 selfExport 开着 */
+    selfReceipts: false,
+    /** 「这两天自己在做的」换成世界账里真发生过的（ADR 0347 第 2 层第三节）：给他的提示词里恢复那一行 */
+    ownDays: false,
     /** 她自己定追求（ADR 0178）：每晚想一次，自己放下 / 暂停 / 恢复 / 记进度 / 提新的；要同时开 pursuits */
     selfPursuits: false,
     /** 她每晚自己总结说话习惯（ADR 0193）：22 点以后想一次，写「我发现……」的笔记，挑相关的几条放进提示词；他用 /说话习惯 看 */
@@ -638,6 +644,12 @@ export interface AppConfig {
     silenceNotice?: boolean;
     /** 两边互读最近几轮（ADR 0177）：他在 DSH 桌面上刚说过的话 QQ 这边的她知道，他刚在 QQ 上说的话桌面上的她也知道；只给男朋友档，窗口 6 小时。默认关 */
     crossRecent?: boolean;
+    /** 「此刻的她」导出（ADR 0347 第 2 层）：QQ 用拼「此刻」块的同一批模块渲染她此刻的样子（在干嘛、身体、她那边、今天的打算、答应的、没了结的、心境、梦、最近的念头、攒着想跟他说的），每 5 分钟和状态行要变的时刻、给他回完一条之后写进灵魂目录 SELF.json；DSH 桌面插件读到有效的就用它代替 NOW / FEELINGS。只给名单里第一个男朋友档；休眠时不写。默认关 */
+    selfExport?: boolean;
+    /** 桌面上说过了的回执（ADR 0347 第 2 层）：她在 DSH 桌面上把攒着的话说出口了，插件写回执，QQ 消费后记成「说过了」，主动那条线不再重发。要 selfExport 开着。默认关 */
+    selfReceipts?: boolean;
+    /** 「这两天自己在做的」（ADR 0347 第 2 层第三节）：给他的提示词里恢复这一行，来源换成共享世界账里这两天真发生过的事。默认关 */
+    ownDays?: boolean;
     /** 她自己定追求（ADR 0178）：每晚想一次，自己放下 / 暂停 / 恢复（包括作者给的两条）/ 记进度 / 提新的（同时最多 3 件、隔 3 天提一件）；他用 /追求 看，改不了。要同时开 pursuits。默认关 */
     selfPursuits?: boolean;
     /** 她每晚自己总结说话习惯（ADR 0193）：每晚 22 点以后想一次——看自己这几天说话的样子（一次几条、每条多长、短反应、问号、表情）和真人语料里的样子，写下「我发现……」；挑最相关的几条放进以后的提示词；笔记不能引用他说过的话、不能照抄真人原话、不碰底线；他用 /说话习惯 看，改不了。要名单里有男朋友档；默认关 */
@@ -1037,6 +1049,9 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         selfDirectedMemory: bool(file, 'selfDirectedMemory', '', DEFAULTS.selfDirectedMemory),
         silenceNotice: bool(file, 'silenceNotice', '', DEFAULTS.silenceNotice),
         crossRecent: bool(file, 'crossRecent', '', DEFAULTS.crossRecent),
+        selfExport: bool(file, 'selfExport', '', DEFAULTS.selfExport),
+        selfReceipts: bool(file, 'selfReceipts', '', DEFAULTS.selfReceipts),
+        ownDays: bool(file, 'ownDays', '', DEFAULTS.ownDays),
         selfPursuits: bool(file, 'selfPursuits', '', DEFAULTS.selfPursuits),
         speechNotes: bool(file, 'speechNotes', '', DEFAULTS.speechNotes),
         diaryInsights: bool(file, 'diaryInsights', '', DEFAULTS.diaryInsights),

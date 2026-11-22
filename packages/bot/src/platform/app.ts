@@ -33,6 +33,9 @@ import { outboxModule } from '../modules/outbox.ts';
 import { dreamsModule } from '../modules/dreams.ts';
 import { leaveNoteModule } from '../modules/leave-note.ts';
 import { dshStateModule } from '../modules/dsh-state.ts';
+import { selfExportModule } from '../modules/self-export.ts';
+import { renderSelf, SELF_REFRESH_MS, selfExportPath, writeSelfExport } from '../life/self-export.ts';
+import type { SelfPending } from '../life/self-types.ts';
 import { dreamJobs } from '../life/dream-jobs.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy } from '.././memory/dormancy.ts';
@@ -72,7 +75,7 @@ const pickLine = (lines: readonly string[], ...args: string[]): string =>
 import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
-import { createContactResponder as createPipeline, loadTierCard, type ContactPipelineOptions, type TierCard } from './contact.ts';
+import { createContactResponder as createPipeline, loadTierCard, type ContactPipelineOptions, type ContactResponder, type TierCard } from './contact.ts';
 import { groupLog, type GroupDecisionTrace } from '.././social/group-chat.ts';
 import { groupOpportunity, type GroupMotiveDecision } from '.././social/group-opportunity.ts';
 import { privateGroupBulletinRecall, privateGroupBulletinTarget, privateGroupScheduleRecall } from '../social/group-memory.ts';
@@ -978,6 +981,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         stopped: () => stopped,
     }).check : undefined);
     const dshStateExport = dshStateModule(dshEnabled ? () => exportDshState() : undefined, NOW_REFRESH_MS);
+    // 「此刻的她」（SELF.json，ADR 0347 第 2 层，配置 selfExport）：每 5 分钟、validUntil 到点、给他回完一条之后写；怎么写在后面的 exportSelf。关着时没有定时任务
+    const selfExport = selfExportModule({
+        ...(config.selfExport ? { exportSelf: () => exportSelf() } : {}),
+        every: SELF_REFRESH_MS, now: () => exec.now(),
+        after: (fn, ms) => exec.after(fn, ms), cancel: timer => exec.cancel(timer),
+    });
     // 一轮回复的模块（ADR 0336 第 6 步）：和模拟器同一份接线（platform/turn-modules.ts），先后在那里定；这里只按配置给选项。
     // 好些东西（聊天记录、答应的事、长期记忆、设备服务、计划器……）在后面才建：这里给的都是用到时再取的函数，挂不挂只看配置
     const turnModules = buildTurnModules({
@@ -1208,7 +1217,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 connected: ({ selfId }) => legacy.connected(selfId),
                 message: ({ event }) => legacy.receive(event),
             },
-        }, groupRoomEntry, friendRequests, pokes, recalls, followUps, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport],
+        }, groupRoomEntry, friendRequests, pokes, recalls, followUps, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport, selfExport],
         exec,
     });
     // 解释器接手各模块的停（关定时任务、拒新工作；小梗、口头习惯的收尾在里面）
@@ -1616,6 +1625,41 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     exportNow();
     // 之后每 NOW_REFRESH_MS 再写一次：由 now-export 模块声明（ADR 0336 第 6 步，App 搭好时开）
 
+    // 「此刻的她」（SELF.json，ADR 0347 第 2 层，配置 selfExport，默认关）：他那条流水线的快照（拼 QQ「此刻」块的同一批模块）+ 攒着想跟他说的，写进灵魂目录。
+    // 只给 deviceOwner（名单里第一个男朋友档，ADR 0020）；休眠时不写；危机暂停时攒着的整块不出（paused: 'crisis'）。已经写过的那份不删，靠过期降级。
+    // 攒着的由计划器给（pendingForSelf，ADR 0347 第 2 层 C 块）：计划器有这个方法才调。日志只记行数和件数
+    let selfLogged: string | undefined;
+    const pendingOf = (planner: unknown, now: number): SelfPending[] => {
+        const provider = (planner as { pendingForSelf?: unknown } | undefined)?.pendingForSelf;
+        return typeof provider === 'function' ? (provider as (now: number) => SelfPending[]).call(planner, now) : [];
+    };
+    const exportSelf = async (): Promise<number | undefined> => {
+        const owner = deviceOwner;
+        const snapshot = ownerSnapshot;
+        if (!config.selfExport || !owner || !snapshot || stopped || dormancy?.isDormant()) return undefined;
+        try {
+            const at = new Date(worldNow());
+            const { pieces, facts } = await snapshot(at);
+            if (stopped) return undefined;
+            const paused = crisisState.pausedAt(owner.qq, at.getTime());
+            const lastAt = Date.parse(history.load(owner.qq).at(-1)?.time ?? '');
+            const self = renderSelf({
+                at, pieces, ...(facts.state ? { state: facts.state } : {}), ...(facts.schedule ? { schedule: facts.schedule } : {}),
+                ...(Number.isFinite(lastAt) ? { lastChatAt: lastAt } : {}),
+                pending: paused ? [] : pendingOf(planners.get(owner.qq), at.getTime()), paused,
+            });
+            if (writeSelfExport(selfExportPath(soulDir()), self)) {
+                const counts = `${self.lines.length} 行、攒着 ${self.pending.length} 件${paused ? '（危机暂停中，攒着的不放）' : ''}`;
+                if (counts !== selfLogged) log(`此刻的她：SELF.json ${counts}（不记内容）`);
+                selfLogged = counts;
+            }
+            return Date.parse(self.validUntil);
+        } catch (error) {
+            log(`此刻的她：SELF.json 没写出去（${error instanceof Error ? error.message : String(error)}）`);
+            return undefined;
+        }
+    };
+
     // 她自己想让他知道的事：常驻进程/她写进 OUTBOX.jsonl，这里发出去（ADR 0174：和别的主动消息守同一套规矩）
     const outboxFile = process.env.QQBOT_OUTBOX ?? join(soulDir(), 'OUTBOX.jsonl');
     const OUTBOX_BLOCKING = new Set<ExitIssue['kind']>(['banned', 'promise', 'media', 'script', 'text-intimacy']);
@@ -1655,6 +1699,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const pursuitsNow = config.selfPursuits ? selfAwareReader(config.dataDir, authorPursuits) : authorPursuits;
     // 最近一次给他算的心境（ADR 0197）：写给桌面上的她，/心境 也看它；同样要在创建回复器之前定义
     let lastFeelings: FeelingsReport | undefined;
+    // 他（deviceOwner）那条流水线的「此刻的她」快照（ADR 0347 第 2 层）：只有开了 selfExport 才留；别的联系人的流水线不留，SELF 只写他的（ADR 0020）
+    let ownerSnapshot: ContactResponder['snapshot'] | undefined;
     // 群里的遭遇（2026-11-14，心境用）：群聊那段构造时才赋值，这里先声明，回复器每次现取
     let groupFeel: ReturnType<typeof groupAffect> | undefined;
     // 群记录同理：私聊要能读到「群里最近的事」，得在回复器构造之前就声明
@@ -1740,6 +1786,16 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             .split(WORK_MARKER).join('')
             .replace(/\n{2,}/g, '\n')
             .trim();
+    }
+
+    /** 发给他的一条发出去之后刷新 SELF.json（selfExport 关着、不是他时原样返回 send） */
+    function afterSentToOwner(contact: Contact, send: ContactPipelineOptions['send']): ContactPipelineOptions['send'] {
+        if (!config.selfExport || contact.qq !== deviceOwner?.qq) return send;
+        return async (userId, text, sendOptions) => {
+            const id = await send(userId, text, sendOptions);
+            selfExport.refreshSoon();
+            return id;
+        };
     }
 
     function createContactResponder(contact: Contact): Responder {
@@ -1980,7 +2036,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 void sendOwnedNotice(() => transport.reactMessage!(messageId, reactionEmoji(text, messageId)),
                     () => log(`[${userId}] 看到了没回，点了个表情回应`), error => failOnce('表情回应', userId, error));
             } } : {}),
-            send: async (userId, text, sendOptions) => {
+            // 发给他（deviceOwner）的一条发出去之后，「此刻的她」稍后刷新一次（ADR 0347 第 2 层；selfExport 关着时就是原来那个函数）
+            send: afterSentToOwner(contact, async (userId, text, sendOptions) => {
                 text = absorbMarkers(userId, text);
                 // 兜底：她偶尔把提示词里的标记原样写出来（10-30 发过「<<当前时间：…>>」），发送前剥掉
                 text = tidyQuestionMarks(stripInternalMarkers(text));
@@ -2029,7 +2086,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                     log(`[${userId}] 带小黄脸的消息没发出去（${reason}），去掉表情再发一次`);
                     return sendText(plain);
                 }
-            },
+            }),
             // 整条只有内部标记的气泡不发，但里面的标记要处理（responder 的 absorb）
             absorb: (userId, part) => { absorbMarkers(userId, part); },
             log,
@@ -2046,6 +2103,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 换模型（深思）时测试替身收到换成的那份配置，同原来 generate 的第三个参数
             generate: (messages, scopedLog, use) => exec.llm({ purpose: 'chat', config: use ?? config.llm, messages, ...(use ? { use } : {}) }, scopedLog),
         });
+        if (config.selfExport && contact.qq === deviceOwner?.qq) ownerSnapshot = responder.snapshot;
         lifetime.own('responders', () => responder.stop());
         return responder;
     }

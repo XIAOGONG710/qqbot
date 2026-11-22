@@ -206,6 +206,11 @@ export interface Turn {
     /** 这一轮用的卡（分档位：她那边、身体、作息按这一档的卡算）；危机回合换的承认版卡只换说话的部分，这里仍是原卡。不经联系人流水线建的轮次（测试）可以没有 */
     readonly card?: Character;
     readonly facts: TurnFacts;
+    /**
+     * 不生成、不发送的「此刻的她」快照（SELF.json，ADR 0347 第 2 层；platform/contact.ts 的 snapshot）：没有提示词，
+     * 放段落的模块见到它不记「这一轮提示词里放了……」之类的日志。真回复的轮次永远没有（行为基线核对）
+     */
+    readonly snapshot?: true;
 }
 
 export interface Module {
@@ -412,6 +417,8 @@ export interface DecideCtx {
     photos?: Pick<PhotoShelf, 'has' | 'list'>;
     /** 「现在的照片」的解析（ADR 0240）：只有已审核、和此刻匹配的才能发 */
     currentAiPhoto?: (request: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => CurrentAiPhotoResult;
+    /** 她那边的这件事（世界事件 id）在桌面上已经说过了（ADR 0347 第 2 层回执，配置 selfReceipts）：聊天里「还没跟他说过」不再算它。不给就和原来一样 */
+    toldElsewhere?: (id: string) => boolean;
     log: (line: string) => void;
 }
 

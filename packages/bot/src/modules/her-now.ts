@@ -96,9 +96,12 @@ export function herNowModule(options: HerNowOptions): Module {
                     ? { projectChoice: { events: worldState.events(), books: card.books } }
                     : {}),
             }) : undefined;
-            if (status?.saidAsleep) log(turn, `她 ${status.saidAsleep.since.toTimeString().slice(0, 5)} 说过睡了：状态行按在睡觉`);
-            if (status?.busy) log(turn, `此刻在做：${status.busy}`);
-            if (status?.revised) log(turn, `改了打算：${status.revised}`);
+            // 「此刻的她」快照（ADR 0347 第 2 层，turn.snapshot）每几分钟跑一次，没有这一轮回复：不记这三行，免得日志像是她在回话
+            if (!turn.snapshot) {
+                if (status?.saidAsleep) log(turn, `她 ${status.saidAsleep.since.toTimeString().slice(0, 5)} 说过睡了：状态行按在睡觉`);
+                if (status?.busy) log(turn, `此刻在做：${status.busy}`);
+                if (status?.revised) log(turn, `改了打算：${status.revised}`);
+            }
             const herNow = schedule ?? herSchedule;
             Object.assign(turn.facts, {
                 ...(around ? { world: around } : {}), ...(body ? { body } : {}), ...(status ? { status, state: status.state } : {}),

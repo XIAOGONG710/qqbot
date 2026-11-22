@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { INSIGHTS_EXPORT_FILE, INSIGHTS_FILE } from '../src/life/diary-insights.ts';
 import { FEELINGS_EXPORT_FILE } from '../src/emotion/feeling-export.ts';
+import { SELF_FILE } from '../src/life/self-types.ts';
 import { REVIEW_FILE } from '../src/emotion/feeling-review.ts';
 import { SPEECH_FEEDBACK_FILE } from '../src/language/speech-feedback.ts';
 import { SPEECH_NOTES_FILE } from '../src/language/speech-notes.ts';
@@ -49,7 +50,7 @@ describe('她的私人空间（ADR 0200）', () => {
     });
 
     test('私人文件清单和各功能真正用的文件名对得上（改了文件名这里会红）；他自己标的话不在里面', () => {
-        assert.deepEqual([...PRIVATE_FILES].sort(), [SPEECH_NOTES_FILE, INSIGHTS_FILE, REVIEW_FILE, SELF_PURSUITS_FILE, INSIGHTS_EXPORT_FILE, FEELINGS_EXPORT_FILE, TAKES_FILE, QUESTIONS_FILE, GUESSES_FILE, CHAT_REVIEW_FILE].sort());
+        assert.deepEqual([...PRIVATE_FILES].sort(), [SPEECH_NOTES_FILE, INSIGHTS_FILE, REVIEW_FILE, SELF_PURSUITS_FILE, INSIGHTS_EXPORT_FILE, FEELINGS_EXPORT_FILE, SELF_FILE, TAKES_FILE, QUESTIONS_FILE, GUESSES_FILE, CHAT_REVIEW_FILE].sort());
         assert.equal(isPrivateFile(SPEECH_FEEDBACK_FILE), false);
         assert.equal(isPrivateFile('diary.json'), false);
         assert.equal(isPrivateFile(SPEECH_NOTES_FILE), true);

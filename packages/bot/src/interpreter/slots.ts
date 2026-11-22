@@ -47,6 +47,28 @@ export const NOW_SLOTS = [
     'deliberate', 'routedHint', 'length', 'shape', 'quote', 'crutch', 'told', 'opener', 'inner', 'intimate', 'transcript', 'solveFrame', 'initiateNote',
 ] as const;
 
+/**
+ * 「此刻的她」（SELF.json，ADR 0347 第 2 层，方案 docs/plans/2026-11-22-same-her-layer2-self.md 二、1）导出哪几个「此刻」行槽：
+ * 关于她此刻的事实（在干嘛、身体、她那边、今天的打算、答应的、没了结的、心境、梦、最近的念头），不跟着他这一句话走、不教她怎么说话。
+ * 每个都必须在 NOW_SLOTS 里（测试钉住）；先后照 NOW_SLOTS，不照这里。
+ * 第 2 层之后「这两天自己在做的」（selfThread，ownDays）接上真实来源时加在这里，不在别处另拼（见 platform/contact.ts 的 snapshot）。
+ */
+export const SELF_SLOTS = ['days', 'state', 'groundNote', 'body', 'unsettled', 'feeling', 'world', 'plans', 'promised', 'partnerBack', 'dreams', 'inner'] as const satisfies readonly NowSlot[];
+
+/**
+ * SELF 要的段落：只留 SELF_SLOTS 里的，按 NOW_SLOTS 的先后排（同一槽按给出的顺序，同 assemblePrompt）。
+ * 少规矩开着时丢掉 RULE_SLOTS 里的槽，和 assemblePrompt 同一个开关、同一张表（快照不是危机回合），保证和 QQ「此刻」块一致
+ */
+export function selfPieces(pieces: readonly Piece[]): Piece[] {
+    const wanted = new Set<string>(SELF_SLOTS);
+    const index = (slot: Slot) => (NOW_SLOTS as readonly string[]).indexOf(slot);
+    return pieces
+        .map((piece, order) => ({ piece, order }))
+        .filter(({ piece }) => wanted.has(piece.slot) && !(fewerRules() && RULE_SLOTS.has(piece.slot)))
+        .sort((a, b) => index(a.piece.slot) - index(b.piece.slot) || a.order - b.order)
+        .map(({ piece }) => piece);
+}
+
 export type AfterMainSlot = (typeof AFTER_MAIN_SLOTS)[number];
 export type AfterHistorySlot = (typeof AFTER_HISTORY_SLOTS)[number];
 export type NowSlot = (typeof NOW_SLOTS)[number];

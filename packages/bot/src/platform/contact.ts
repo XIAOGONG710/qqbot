@@ -7,7 +7,8 @@ import { localDate } from '../local-date.ts';
 // 记忆（ADR 0018）：召回会变淡，她和名单里的称呼不算「一提就想起」的线索；放进提示词的记忆里她的名字换成「你」。
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
-import { assessTurn, candidatePlan, cleanStages, contributeTurn, decideStage, decorateStages, perceiveTurn, reviewStage, type CleanCtx, type DecideCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn } from '../interpreter/interpreter.ts';
+import { assessTurn, candidatePlan, cleanStages, contributeTurn, DECIDE_STAGES, decideStage, decorateStages, perceiveTurn, reviewStage, type CleanCtx, type DecideCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
+import { selfPieces, type Piece } from '../interpreter/slots.ts';
 import { dirname, join } from 'node:path';
 import { noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
@@ -268,12 +269,14 @@ export interface ContactPipelineOptions {
     contextWindow?: TurnWindow & { summarize: Summarizer };
     /** 解释器上注册的、要参与一轮回复的模块（ADR 0336）；拼提示词时排在迁移前的旧逻辑前面，各段按槽位表排 */
     turnModules?: readonly Module[];
+    /** 她那边的这件事在桌面上已经说过了（ADR 0347 第 2 层回执，配置 selfReceipts）：经 DecideCtx.toldElsewhere 交给意图阶梯的 news；不给就和原来一样 */
+    toldElsewhere?: (id: string) => boolean;
 }
 
 /** 问到过去的某一天时，几天以内她那边的事还记得清楚（ADR 0032，同 ADR 0018 的 7 天） */
 export const RECAP_DAYS = 7;
 
-export function createContactResponder(options: ContactPipelineOptions): Responder {
+export function createContactResponder(options: ContactPipelineOptions): ContactResponder {
     const { contact, card: { character, worldInfo }, llm, memory } = options;
     const names = { user: contact.name, char: character.name };
     const now = options.now ?? Date.now;
@@ -296,6 +299,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         ...(options.intimacyLine ? { intimacyLine: options.intimacyLine } : {}),
         ...(options.selfNote ? { selfNote: options.selfNote } : {}),
         ...(options.promises ? { promises: options.promises } : {}),
+        ...(options.toldElsewhere ? { toldElsewhere: options.toldElsewhere } : {}),
         ...(options.humanValues ? { values: { humanValues: options.humanValues, ...(options.worldState?.events ? { worldEvents: () => options.worldState!.events!() } : {}) } } : {}),
         ...(options.stickers ? { stickers: { ...(options.stickerChance !== undefined ? { chance: options.stickerChance } : {}), ...(options.stickerUncued ? { uncued: options.stickerUncued } : {}), ...(options.stickerOnlyChance ? { onlyChance: options.stickerOnlyChance } : {}) } } : {}),
         ...(options.photos ? { photos: options.photos } : {}),
@@ -392,7 +396,7 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         const day = `${dayStart.getMonth() + 1}月${dayStart.getDate()}日 ${'日一二三四五六'.split('').map(d => `周${d}`)[dayStart.getDay()]}`;
         return { day, lines, text: recapText(day, lines, written, feltDay) };
     };
-    return createResponder({
+    const responder = createResponder({
         userId: contact.qq,
         history: options.history,
         buildPrompt: async (chat, { woken, initiate, offlineSince }) => {
@@ -688,4 +692,62 @@ export function createContactResponder(options: ContactPipelineOptions): Respond
         onPrompt: options.onPrompt,
         ...(options.sensitive ? { sensitive: options.sensitive } : {}),
     });
+    /**
+     * 「此刻的她」快照（ADR 0347 第 2 层，方案 docs/plans/2026-11-22-same-her-layer2-self.md 二、1）：不生成、不发送。
+     * 和 buildPrompt 同一个 decideCtx、同一份 turnModules、同样的 Turn 构造，只跑「此刻」块要的几步：
+     * perceive（她那边、身体、状态行）→ 判断那一串的 promises、loops、news、dream、feelings（按 DECIDE_STAGES 的先后）→ 放段落的那几个模块，
+     * 再按 SELF_SLOTS 收段落（slots.ts 的 selfPieces，少规矩跟着同一张表）。段落出自同一个函数、同样的输入，所以和 QQ「此刻」块逐字相同。
+     * 堵住的副作用：
+     * - 心境不交给 App 的 onFeelings（它改 lastFeelings，回想、梦、群里读）；换成这里接住中性版那一行（melt: false，同 FEELINGS.json），
+     *   「他这一句在关心她」的写法只对 QQ 当下那一句有意义；
+     * - 判断那一串的日志换成静默的；her-now / inner / warm 自带的日志见 turn.snapshot 不记；
+     * - 不跑 values（会落事件）、recall / continuity（等外部）、intimate（每取一次扣一条）、lists、assess、onHerDay；
+     * - contribute 只问会给 SELF 槽的那几个模块（SNAPSHOT_MODULES）：别的模块放段落时也记日志、有的抽随机数，跟这份快照无关。
+     * 只有 App 给 deviceOwner 建的流水线会被调（ADR 0020 披露分级，见 app.ts）
+     */
+    const snapshot = async (at: Date): Promise<ContactSnapshot> => {
+        const modules = options.turnModules ?? [];
+        const history = options.history.load(contact.qq).map(({ role, content, time }) => ({ role, content, time }));
+        const turn: Turn = { contact, at, history, thinking: false, card: character, facts: {}, snapshot: true };
+        let neutral: FeelingsReport | undefined;
+        const quiet: DecideCtx = {
+            ...decideCtx, log: () => {},
+            ...(decideCtx.feelings ? { feelings: { ...decideCtx.feelings, onFeelings: (report: FeelingsReport) => { neutral = report; } } } : {}),
+        };
+        const perceived = perceiveTurn(modules, turn);
+        if (perceived instanceof Promise) await perceived;
+        for (const stage of SNAPSHOT_STAGES) {
+            const decided = decideStage(modules, stage, turn, quiet);
+            if (decided instanceof Promise) await decided;
+        }
+        // 心境那一行用中性版（同 FEELINGS.json）：QQ 那一句的 melt 写法不交出去
+        if (turn.facts.feelingLine !== undefined) {
+            if (neutral?.line) turn.facts.feelingLine = neutral.line;
+            else delete turn.facts.feelingLine;
+        }
+        const pieces: Piece[] = [];
+        for (const module of modules) {
+            if (!module.contribute || !SNAPSHOT_MODULES.has(module.id)) continue;
+            const mine = module.contribute(turn);
+            pieces.push(...(mine instanceof Promise ? await mine : mine));
+        }
+        // 「这两天自己在做的」（selfThread，配置 ownDays）接上世界账之后，经 soul 模块放进 selfThread 槽：那时把 soul 加进 SNAPSHOT_MODULES、selfThread 加进 SELF_SLOTS
+        const { world, state, schedule, felt } = turn.facts;
+        return { pieces: selfPieces(pieces), facts: { ...(world ? { world } : {}), ...(state ? { state } : {}), ...(schedule ? { schedule } : {}), ...(felt ? { felt } : {}) } };
+    };
+    return Object.assign(responder, { snapshot });
 }
+
+/** 快照跑的判断那一串（先后照 DECIDE_STAGES） */
+const SNAPSHOT_STAGES = DECIDE_STAGES.filter(stage => stage === 'promises' || stage === 'loops' || stage === 'news' || stage === 'dream' || stage === 'feelings');
+/** 会给 SELF_SLOTS 放段落的模块（状态 / 她那边 / 身体 / 打算、重要的日子 / 答应的事、没了结的、心境 / 梦、念头）；新的 SELF 槽由别的模块放时加在这里 */
+const SNAPSHOT_MODULES: ReadonlySet<string> = new Set(['her-now', 'time-notes', 'warm', 'feelings', 'inner']);
+
+/** 快照的结果：SELF 要的段落（按 NOW_SLOTS 排好）和算 validUntil / asleep / 她的那一天要的事实 */
+export interface ContactSnapshot {
+    pieces: Piece[];
+    facts: Pick<TurnFacts, 'world' | 'state' | 'schedule' | 'felt'>;
+}
+
+/** 联系人流水线：回复器 + 「此刻的她」快照 */
+export type ContactResponder = Responder & { snapshot(at: Date): Promise<ContactSnapshot> };

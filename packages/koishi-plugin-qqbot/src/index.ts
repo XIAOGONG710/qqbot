@@ -283,6 +283,9 @@ export interface Config {
     selfDirectedMemory: boolean;
     silenceNotice: boolean;
     crossRecent: boolean;
+    selfExport: boolean;
+    selfReceipts: boolean;
+    ownDays: boolean;
     selfPursuits: boolean;
     speechNotes: boolean;
     diaryInsights: boolean;
@@ -515,6 +518,9 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         selfDirectedMemory: toggle('selfDirectedMemory'),
         silenceNotice: toggle('silenceNotice'),
         crossRecent: toggle('crossRecent'),
+        selfExport: toggle('selfExport'),
+        selfReceipts: toggle('selfReceipts'),
+        ownDays: toggle('ownDays'),
         selfPursuits: toggle('selfPursuits'),
         exemplars: toggle('exemplars'),
         speechNotes: toggle('speechNotes'),
@@ -783,6 +789,9 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.selfDirectedMemory !== undefined ? { selfDirectedMemory: config.selfDirectedMemory } : {}),
         ...(config.silenceNotice !== undefined ? { silenceNotice: config.silenceNotice } : {}),
         ...(config.crossRecent !== undefined ? { crossRecent: config.crossRecent } : {}),
+        ...(config.selfExport !== undefined ? { selfExport: config.selfExport } : {}),
+        ...(config.selfReceipts !== undefined ? { selfReceipts: config.selfReceipts } : {}),
+        ...(config.ownDays !== undefined ? { ownDays: config.ownDays } : {}),
         ...(config.selfPursuits !== undefined ? { selfPursuits: config.selfPursuits } : {}),
         ...(config.speechNotes !== undefined ? { speechNotes: config.speechNotes } : {}),
         ...(config.exemplars !== undefined ? { exemplars: config.exemplars } : {}),

@@ -3325,3 +3325,81 @@ describe('账号控制面与好友申请（ADR 0142）', () => {
     });
 });
 
+
+// 「此刻的她」（SELF.json，ADR 0347 第 2 层，配置 selfExport，默认关）：方案 docs/plans/2026-11-22-same-her-layer2-self.md 四、2（一字不差）、四、3（变异检验 7、8）
+describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
+    const selfFile = join(isolatedSoul, 'SELF.json');
+    const feelingsFile = join(isolatedSoul, 'FEELINGS.json');
+    const bf = [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }];
+    const start = new Date(2026, 10, 4, 20, 30);
+    const life = { herDays: true, schedule: true, herFeelings: true };
+    /** 作者写下的事：一小时前她小测没考好（很重），心境那一行一定有 */
+    const writeMoment = (cfg: AppConfig, clock: VirtualClock) => {
+        writeFileSync(join(cfg.dataDir, 'moments.json'), JSON.stringify({ moments: [{ id: 'quiz', at: new Date(clock.now() - 3_600_000).toISOString(), kind: 'sad', strength: 3, cause: '高数小测没考好' }] }));
+    };
+    /** 等她回（按作息她可能过一会儿才看到：虚拟时钟拨到下一个等待） */
+    const replied = async (clock: VirtualClock, sent: string[]) => {
+        const deadline = Date.now() + 8_000;
+        while (sent.length === 0 && Date.now() < deadline) {
+            await new Promise(resolve => setTimeout(resolve, 20));
+            const next = clock.nextTimer();
+            if (next !== undefined) clock.advanceTo(next);
+        }
+        assert.ok(sent.length > 0, '她没回');
+    };
+    const readSelf = () => JSON.parse(readFileSync(selfFile, 'utf8')) as { kind: string; generatedAt: string; validUntil: string; lines: { slot: string; text: string }[]; pending: unknown[] };
+
+    test('一字不差：SELF 每一行（心境除外）原样在 QQ 那一轮的「此刻」块里；心境那一行 = 同一轮 FEELINGS.json 的中性版；「此刻」块里 SELF 槽的行一行不少；导出本身不写 FEELINGS.json', async () => {
+        rmSync(selfFile, { force: true });
+        rmSync(feelingsFile, { force: true });
+        const clock = new VirtualClock(start);
+        const cfg = config({ ...life, contacts: bf, selfExport: true });
+        writeMoment(cfg, clock);
+        const prompts: string[][] = [];
+        const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, generate: messages => { prompts.push(messages.map(m => m.content)); return '嗯嗯'; } });
+        await until(() => existsSync(selfFile));
+        const self = readSelf();
+        assert.equal(self.kind, 'qq-self');
+        assert.equal(existsSync(feelingsFile), false, '导出不经 onFeelings：FEELINGS.json 只在给他算回复时写');
+        assert.ok(logs.some(line => /此刻的她：SELF\.json \d+ 行、攒着 0 件（不记内容）/.test(line)));
+        assert.ok(!logs.some(line => /高数小测/.test(line)), '日志不记内容');
+        for (const slot of ['state', 'feeling', 'groundNote']) assert.ok(self.lines.some(line => line.slot === slot), `缺 ${slot}`);
+        await app.connected(SELF);
+        app.receive({ ...event(10001, 1, '嗯'), time: Math.floor(clock.now() / 1000) });
+        await replied(clock, sent);
+        const block = prompts[0]!.find(content => content.includes(self.lines.find(line => line.slot === 'state')!.text));
+        assert.ok(block, 'QQ 这一轮有「此刻」块');
+        for (const line of self.lines.filter(line => line.slot !== 'feeling')) assert.ok(block.includes(line.text), `${line.slot} 不在 QQ 的「此刻」块里`);
+        const feelings = JSON.parse(readFileSync(feelingsFile, 'utf8')) as { line: string | null };
+        assert.equal(self.lines.find(line => line.slot === 'feeling')!.text, feelings.line);
+        // 反过来：把 SELF 的行从「此刻」块里拿掉，剩下的不该还有 SELF 槽的那几种行（你现在、底子、心境、身体、她那边、今天的打算……）
+        let rest = block;
+        for (const line of self.lines) rest = rest.replace(line.text, '');
+        assert.doesNotMatch(rest, /\[你现在：|是你的底子|你此刻的心境|你的身体|你今天的打算|你那边/);
+    });
+
+    test('默认关：不写 SELF.json；只有他（男朋友档）的才写，名单里没有男朋友档不写', async () => {
+        rmSync(selfFile, { force: true });
+        const offClock = new VirtualClock(start);
+        const off = setup(config({ ...life, contacts: bf }), { 10001: [] }, { clock: offClock });
+        await off.app.connected(SELF);
+        off.app.receive({ ...event(10001, 1, '嗯'), time: Math.floor(offClock.now() / 1000) });
+        await replied(offClock, off.sent);
+        assert.equal(existsSync(selfFile), false, '开关关着不写');
+        const mateClock = new VirtualClock(start);
+        const mate = setup(config({ ...life, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], selfExport: true }), { 10001: [] }, { clock: mateClock });
+        await mate.app.connected(SELF);
+        mate.app.receive({ ...event(10001, 1, '嗯'), time: Math.floor(mateClock.now() / 1000) });
+        await replied(mateClock, mate.sent);
+        assert.equal(existsSync(selfFile), false, '同学档的流水线不建快照');
+        // 名单里同学档排在他后面：快照只留他那条流水线的（心境只给男朋友档算，同学档的快照没有那一行）
+        const bothClock = new VirtualClock(start);
+        const bothCfg = config({ ...life, contacts: [...bf, { qq: 10003, name: '同学', tier: 'classmate' }], selfExport: true });
+        writeMoment(bothCfg, bothClock);
+        const both = setup(bothCfg, {}, { clock: bothClock });
+        await until(() => existsSync(selfFile));
+        assert.ok(readSelf().lines.some(line => line.text.includes('[你现在：')));
+        assert.ok(readSelf().lines.some(line => line.slot === 'feeling'), '是他的快照');
+        assert.ok(both.logs.some(line => /此刻的她：SELF\.json/.test(line)));
+    });
+});

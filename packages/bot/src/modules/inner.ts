@@ -21,7 +21,8 @@ export function innerModule(options: InnerModuleOptions): Module {
             if (turn.facts.crisis) return [];
             const line = options.innerLine(turn.contact);
             if (!line) return [];
-            options.log(`[${turn.contact.qq}] 内心：这一轮提示词里放了她最近的念头`);
+            // 「此刻的她」快照（turn.snapshot）没有提示词，不记
+            if (!turn.snapshot) options.log(`[${turn.contact.qq}] 内心：这一轮提示词里放了她最近的念头`);
             return [{ slot: 'inner', text: line }];
         },
     };

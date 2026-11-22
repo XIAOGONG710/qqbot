@@ -7,6 +7,7 @@
 // 不在这里面的：/设定（设定账本、记忆账本：是「有没有被人悄悄改过」的留痕，不是她的想法）、/说话趋势（只有数字）、/像AI /像真人（是他自己的话）、/为什么。
 
 import type { AppConfig } from './config.ts';
+import { SELF_FILE } from '../life/self-types.ts';
 
 /** 念她私人内容的命令 → 哪个功能开着时它才算命令（功能没开，它还是一句普通的话） */
 export const PEEK_COMMANDS: readonly { command: string; active: (config: AppConfig) => boolean }[] = [
@@ -27,8 +28,9 @@ export function peekRefused(plain: string | undefined, config: AppConfig): boole
 /**
  * 她私人空间里的状态文件（数据目录里）：她自己总结 / 回想 / 追求出来的东西。除了她自己的提示词和桌面上她读的导出，
  * 没有任何功能读它们；迁移 / 导出 / 存档工具不带它们；日志只记条数，不记内容。
+ * SELF.json（ADR 0347 第 2 层「此刻的她」）带着她的念头、心境和从他聊天里来的答应的事，同样只给桌面上的她。
  * （speech-feedback.json 是他自己标的话，不在这里。）
  */
-export const PRIVATE_FILES: readonly string[] = ['speech-notes.json', 'diary-insights.json', 'feeling-review.json', 'pursuits-self.json', 'INSIGHTS.json', 'FEELINGS.json', 'reading-takes.json', 'open-questions.json', 'her-guesses.json', 'chat-review.json'];
+export const PRIVATE_FILES: readonly string[] = ['speech-notes.json', 'diary-insights.json', 'feeling-review.json', 'pursuits-self.json', 'INSIGHTS.json', 'FEELINGS.json', SELF_FILE, 'reading-takes.json', 'open-questions.json', 'her-guesses.json', 'chat-review.json'];
 
 export const isPrivateFile = (name: string): boolean => PRIVATE_FILES.includes(name);
