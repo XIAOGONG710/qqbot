@@ -33,13 +33,19 @@ import type { FadeStats } from '../memory/fading.ts';
 import type { DecideCtx, Module, Turn } from '../interpreter/interpreter.ts';
 import type { Piece, Slot } from '../interpreter/slots.ts';
 import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart } from '../emotion/disclosure.ts';
-import { feltNoteFor } from '../emotion/felt-then.ts';
+import { feltNoteFor, sameThing } from '../emotion/felt-then.ts';
+import { ledgerNote, type LedgerEntry } from '../emotion/feeling-ledger.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '../life/people.ts';
 import { initiateQuery, PERSON_RECALLED, secondPerson } from '../memory/long-term.ts';
 import { recentChat } from '../memory/fading.ts';
 import { turnCut } from '../language/context-window.ts';
 
 const DAY_MS = 86_400_000;
+/** 同一个本地日子 */
+const sameDay = (at: number, day: Date) => {
+    const d = new Date(at);
+    return d.getFullYear() === day.getFullYear() && d.getMonth() === day.getMonth() && d.getDate() === day.getDate();
+};
 export const countLines = (text: string) => text.split('\n').length - 1;
 /** 记忆变淡（ADR 0018）各几条，写日志用：「记个大概 2，一提想起 1，想不起来 3」，都是 0 就是空的 */
 const fadeParts = (stats: FadeStats | undefined) => (stats
@@ -97,9 +103,18 @@ async function recall(turn: Turn, ctx: DecideCtx): Promise<void> {
     const faded: (FadeStats | undefined)[] = [];
     const fade = (i: number) => ({ ignore, onFade: (stats: FadeStats) => { faded[i] = stats; } });
     // 回忆带着当时的感觉（ADR 0218）：召回的和他的记忆，那天她心里对得上的那种感觉；主动找他时不附（开了 memoryFeelings、男朋友档时流水线才给 feltOnDay）
+    // 感觉账（ADR 0347 第 5 层）：当天的感觉早散了、回想也只记几天——那几天以前的事从账里配，说法照她的要求换过（疼 / 她妈那块的慌不原样带）
     const feltOnDay = options.feltOnDay;
-    const feltForRecall = feltOnDay && !initiate
-        ? (when: Date, text: string) => feltNoteFor(feltOnDay(new Date(when.getFullYear(), when.getMonth(), when.getDate())), text)
+    const feltLedger = options.feltLedger;
+    const feltForRecall = (feltOnDay || feltLedger) && !initiate
+        ? (when: Date, text: string) => {
+            const day = new Date(when.getFullYear(), when.getMonth(), when.getDate());
+            const felt = feltOnDay ? feltNoteFor(feltOnDay(day), text) : undefined;
+            if (felt) return felt;
+            const same = (feltLedger?.() ?? []).filter(row => sameDay(row.at, day) && sameThing(row, text));
+            const best = same.sort((a, b) => Number(b.level === 'strong') - Number(a.level === 'strong'))[0];
+            return best ? ledgerNote(best) : undefined;
+        }
         : undefined;
     // 她今天跟别人聊过的也是她的生活（ADR 0020）：只在亲密联系人开启新一段对话、或她主动找他时想起。
     // 本轮已有明确公共记忆线索时不另查，避免把同一件事放两遍。

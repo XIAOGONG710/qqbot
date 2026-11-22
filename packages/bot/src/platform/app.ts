@@ -113,6 +113,7 @@ import { speechNotesReader } from '.././language/speech-notes.ts';
 import { reviewReader as chatReviewReader } from '.././language/chat-review.ts';
 import { loadFeedback, recentFeedback } from '.././language/speech-feedback.ts';
 import { readSavedFeelings, writeFeelingsExport, type FeelingsReport } from '.././emotion/feeling-export.ts';
+import { appendFeelings, readLedger } from '../emotion/feeling-ledger.ts';
 import { reviewReader } from '.././emotion/feeling-review.ts';
 import { takesReader } from '.././life/reading-takes.ts';
 import { thoughtsReader } from '.././life/open-questions.ts';
@@ -2192,10 +2193,23 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 群里的遭遇也进心境（2026-11-14）：有人在群里夸她、冲她发火、说想不开，私聊里她也带着
             ...(config.herFeelings && (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0 ? { groupMood: () => groupFeel?.appraisals() ?? [] } : {}),
             // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
-            ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => { lastFeelings = report; writeFeelingsExport(soulDir(), report); } } : {}),
+            ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => {
+                lastFeelings = report;
+                writeFeelingsExport(soulDir(), report);
+                // 感觉账（ADR 0347 第 5 层）：只追加，几天以后想起那件事还配得上当时的感觉。
+                // 「聊完回想」记下的感受同时最多 8 条、放下就丢种类，靠账补；疼和她妈那块的慌记账时不换、召回时才换说法
+                if (config.feelingLedger) {
+                    try {
+                        const added = appendFeelings(soulDir(), report.felt, report.at);
+                        if (added) log(`感觉账：记了 ${added} 条（日志不记内容）`);
+                    } catch (e) { log(`感觉账：写不进去 ${e}`); }
+                }
+            } } : {}),
             ...(feelingReviewNow && contact.tier === 'boyfriend' ? { feelingReview: feelingReviewNow } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
             ...(config.memoryFeelings && config.herFeelings ? { memoryFeelings: true } : {}),
+            // 感觉账（ADR 0347 第 5 层）：几天以前的事想起时，从账里配当时的感觉（说法照她定的换过）
+            ...(config.feelingLedger ? { feltLedger: () => readLedger(soulDir()) } : {}),
             ...(config.realNights ? { realNights: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),

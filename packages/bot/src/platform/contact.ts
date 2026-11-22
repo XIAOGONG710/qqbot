@@ -44,6 +44,7 @@ import { withMenu } from '.././life/menu.ts';
 import { moodShape, tunedMaxBubbles } from '.././emotion/express.ts';
 import type { Pursuit } from '.././life/pursuits.ts';
 import { appraisals, type Appraisal, type Felt, type Moment } from '.././emotion/feelings.ts';
+import type { LedgerEntry } from '../emotion/feeling-ledger.ts';
 import type { FeelingsReport } from '../emotion/feeling-export.ts';
 
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
@@ -165,6 +166,8 @@ export interface ContactPipelineOptions {
     diaryOn?: (date: string) => string | undefined;
     /** 回忆带着当时的感觉（ADR 0218，默认关）：想起某一天的事时附一句她那天有依据的感觉；因为他而难过 / 烦 / 担心的不附 */
     memoryFeelings?: boolean;
+    /** 感觉账（ADR 0347 第 5 层，默认开）：几天以前的事那天感觉早散了，从只追加的账里配；说法照她的要求换过（疼 / 她妈那块的慌） */
+    feltLedger?: () => readonly LedgerEntry[];
     /** 昨晚真的怎么睡的（ADR 0219，默认关）：早上困不困从她说「睡了」、半夜被吵醒、睡前跟他聊推，不按课表；被吵醒有起床气 */
     realNights?: boolean;
     /** 昨晚做的梦（2026-10-31）：一条心境事实 + 早上递给她的一句话 */
@@ -430,6 +433,8 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
                     ...(remembers ? { memory } : {}), ...(options.contacts ? { contacts: options.contacts } : {}),
                     ...((schedule ?? herSchedule ?? character.schedule) ? { schedule: schedule ?? herSchedule ?? character.schedule } : {}),
                     ...(options.memoryFeelings && contact.tier === 'boyfriend' ? { feltOnDay } : {}),
+                    // 感觉账（ADR 0347 第 5 层）：几天以前的事回想记不下那么远，靠账配当时的感觉
+                    ...(options.feltLedger ? { feltLedger: options.feltLedger } : {}),
                     ...(options.groupRecent ? { groupRecent: options.groupRecent } : {}), ...(options.desktopRecent ? { desktopRecent: options.desktopRecent } : {}),
                 },
             });

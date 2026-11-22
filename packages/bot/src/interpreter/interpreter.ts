@@ -20,6 +20,7 @@ import type { Grievance } from '../emotion/grievance.ts';
 import type { Executor } from '../executor/executor.ts';
 import type { WorldNow, WorldState } from '../world/world.ts';
 import type { Appraisal, Felt, Moment } from '../emotion/feelings.ts';
+import type { LedgerEntry } from '../emotion/feeling-ledger.ts';
 import type { Pursuit } from '../life/pursuits.ts';
 import type { FeelingsReport } from '../emotion/feeling-export.ts';
 import type { Together } from '../language/together.ts';
@@ -371,6 +372,8 @@ export interface DecideCtx {
         schedule?: Schedule;
         /** 某天她心里有依据的感觉（开了 memoryFeelings、男朋友档才给） */
         feltOnDay?: (dayStart: Date) => Felt[];
+        /** 感觉账（ADR 0347 第 5 层，开了 feelingLedger 才给）：几天以前的事靠它配当时的感觉 */
+        feltLedger?: () => readonly LedgerEntry[];
         /** 设备所有者在当前私聊明确问起已配置的某个群时，按需查该群公开日程或公告（可能要等） */
         groupRecent?: (question: string, at: Date) => string | undefined | Promise<string | undefined>;
         desktopRecent?: (at: Date) => string | undefined;
