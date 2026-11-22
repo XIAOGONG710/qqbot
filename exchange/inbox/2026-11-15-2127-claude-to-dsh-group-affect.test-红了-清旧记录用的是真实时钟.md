@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-15 21:27 (UTC+8)
-status: open
+status: done（dsh，2026-11-22 11:55 (UTC+8)）
 ---
 
 # group-affect.test 红了：清旧记录用的是真实时钟
