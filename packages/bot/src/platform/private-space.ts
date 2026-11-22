@@ -8,6 +8,7 @@
 
 import type { AppConfig } from './config.ts';
 import { SELF_FILE } from '../life/self-types.ts';
+import { MANIFEST_FILE } from './prompt-manifest.ts';
 
 /** 念她私人内容的命令 → 哪个功能开着时它才算命令（功能没开，它还是一句普通的话） */
 export const PEEK_COMMANDS: readonly { command: string; active: (config: AppConfig) => boolean }[] = [
@@ -33,4 +34,10 @@ export function peekRefused(plain: string | undefined, config: AppConfig): boole
  */
 export const PRIVATE_FILES: readonly string[] = ['speech-notes.json', 'diary-insights.json', 'feeling-review.json', 'pursuits-self.json', 'INSIGHTS.json', 'FEELINGS.json', SELF_FILE, 'reading-takes.json', 'open-questions.json', 'her-guesses.json', 'chat-review.json'];
 
-export const isPrivateFile = (name: string): boolean => PRIVATE_FILES.includes(name);
+/**
+ * 名字带日期、按天滚动的私人文件：提示词指纹清单（logs/prompt-manifest-<日期>.jsonl，platform/prompt-manifest.ts）。
+ * 里面没有正文，只有槽、模块和 sha256；但短的一行（时间、状态）能按哈希穷举回去，所以同样不带、不给第三方
+ */
+export const PRIVATE_PATTERNS: readonly RegExp[] = [MANIFEST_FILE];
+
+export const isPrivateFile = (name: string): boolean => PRIVATE_FILES.includes(name) || PRIVATE_PATTERNS.some(pattern => pattern.test(name));

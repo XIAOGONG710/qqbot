@@ -8,7 +8,8 @@ import { localDate } from '../local-date.ts';
 // bot（main.ts）和模拟器（sim/）共用这一份；模拟器只换掉收发、时钟和数据目录（ADR 0005）。
 
 import { assessTurn, candidatePlan, cleanStages, contributeTurn, DECIDE_STAGES, decideStage, decorateStages, perceiveTurn, reviewStage, type CleanCtx, type DecideCtx, type Draft, type Module, type ReviewCtx, type ReviewStage, type Turn, type TurnFacts } from '../interpreter/interpreter.ts';
-import { selfPieces, type Piece } from '../interpreter/slots.ts';
+import { selfPieces, type Piece, type PlacedPiece } from '../interpreter/slots.ts';
+import { promptManifest, type ManifestInput, type PromptManifest } from './prompt-manifest.ts';
 import { dirname, join } from 'node:path';
 import { noteCharacterTerms } from '../character-terms.ts';
 import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
@@ -178,6 +179,11 @@ export interface ContactPipelineOptions {
     log: Log;
     /** 每次生成前拿到后处理之后、实际发给模型的提示词 */
     onPrompt?: (prompt: PromptResult) => void;
+    /**
+     * 提示词指纹清单（platform/prompt-manifest.ts）：每次生成前（和 onPrompt 同一时机、同一份提示词）拿到这一份的清单——
+     * 每段的槽、模块、字数、sha256 和最终消息的条数、哈希，没有正文。不给就不算
+     */
+    onManifest?: (manifest: PromptManifest) => void;
     /** 能不能把聊天正文写进日志（ADR 0070 第 8 项）；不传就不写 */
     sensitive?: () => boolean;
     /** 毫秒时间戳，默认真实时间；模拟器传虚拟时钟 */
@@ -344,6 +350,8 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
     let turnNow: Turn | undefined;
     /** 这一轮拼出来的提示词（ST 后处理之前，system 还是 system）：事实检查拿它当“她能依据的事实”（ADR 0137） */
     let promptSource: OpenAIMessage[] | undefined;
+    /** 每份拼好的提示词对应的清单材料（提示词指纹清单，onManifest 给了才有）：回复器调 onPrompt 时按同一个对象取出、算好交出去 */
+    const manifestParts = new WeakMap<object, Pick<ManifestInput, 'at' | 'kind' | 'placed'>>();
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022，modules/past.ts）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -542,7 +550,9 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             // （货架每取一次都查索引 / 文件，坏了会抛错；条件一次、内容一次，照旧），写进 turn.facts，经 turnModules 放进 sticker、photo 槽
             decideStage(options.turnModules ?? [], 'lists', turn, decideCtx);
             // 按槽位表拼（ADR 0336）：迁移前这里手写的那一串（第 4 步时包成的「旧逻辑」大模块）已经全部拆成解释器的模块，经 options.turnModules 放；顺序由 interpreter/slots.ts 定
-            const ran = contributeTurn(options.turnModules ?? [], turn);
+            // 提示词指纹清单（platform/prompt-manifest.ts）：要的时候顺手拿真正放进去的段落（带模块），不要的时候不多算
+            const placed: { list?: PlacedPiece[] } = {};
+            const ran = contributeTurn(options.turnModules ?? [], turn, options.onManifest ? list => { placed.list = list; } : undefined);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             const { afterMain, afterHistory } = ran instanceof Promise ? await ran : ran;
             // 形状控制（ADR 0091，modules/shape.ts）contribute 时算好写回 turn.facts.shape：生成时按它调最多几条
@@ -568,13 +578,16 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             if (prompt.omittedAfterHistory) log(`提示词预算：为保留他最后一条消息，省略 ${prompt.omittedAfterHistory} 段较低优先级背景（日志不记内容）`);
             promptSource = prompt.messages;
             if (prompt.fallbackReply && crisisNow) prompt.fallbackReply = crisisFallback(crisisNow.level);
-            return {
+            const built = {
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
                 // 少规矩（ADR 0342）：除了危机回合，不再按心境、意图、形状压条数
                 ...(crisisNow ? { maxBubbles: 3 } : fewerRules() ? {} : feltNow.length && !grievanceActive ? { maxBubbles: tunedMaxBubbles(shapeNow ? shapeNow.maxBubbles : 3, moodNow) } : ((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) || grievanceActive) ? { maxBubbles: shapeNow ? Math.min(2, shapeNow.maxBubbles) : 2 } : shapeNow ? { maxBubbles: shapeNow.maxBubbles } : deliberateNow ? { maxBubbles: DELIBERATE_MAX_BUBBLES } : {}),
                 ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆${summary ? '和前面的要点' : ''}）` } : {}),
             };
+            // 清单跟着这一份提示词走（回复器拿它调 onPrompt 时取）：同一个对象，主动和回复同时在拼也不会串
+            if (placed.list) manifestParts.set(built, { at: time, kind: thinking ? 'think' : initiate ? 'initiate' : 'reply', placed: placed.list });
+            return built;
         },
         generate: async messages => {
             const plan = turnNow ? candidatePlan(options.turnModules ?? [], turnNow) : undefined;
@@ -689,7 +702,22 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             skip: replySkip(character, options.moody ?? false, options.moodyChance),
         },
         waitUntil: options.waitUntil,
-        onPrompt: options.onPrompt,
+        // 提示词指纹清单（onManifest）：在原来的 onPrompt 之后，按同一份提示词算清单交出去；算或交出错只记一句，不挡回复。没给 onManifest 时和原来一样
+        onPrompt: options.onManifest ? prompt => {
+            options.onPrompt?.(prompt);
+            const parts = manifestParts.get(prompt);
+            if (!parts) return;
+            manifestParts.delete(prompt);
+            try {
+                options.onManifest!(promptManifest({
+                    qq: contact.qq, ...parts, messages: prompt.messages,
+                    ...(prompt.omittedAfterHistory ? { omittedAfterHistory: prompt.omittedAfterHistory } : {}),
+                    fallback: prompt.fallbackReply != null,
+                }));
+            } catch (error) {
+                log(`提示词指纹清单没记下（${error instanceof Error ? error.message : String(error)}），不影响回复`);
+            }
+        } : options.onPrompt,
         ...(options.sensitive ? { sensitive: options.sensitive } : {}),
     });
     /**

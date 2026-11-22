@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { isPrivateTask, privateReason, scrubQueue } from '../../../scripts/ginka-guard.mjs';
-import { PRIVATE_FILES } from '../src/platform/private-space.ts';
+import { PRIVATE_FILES, PRIVATE_PATTERNS } from '../src/platform/private-space.ts';
+import { manifestFileName } from '../src/platform/prompt-manifest.ts';
 
 const repoRoot = resolve(import.meta.dirname, '../../..');
 
@@ -25,6 +26,12 @@ describe('免费网关（第三方）不该看到的东西（用户 10-31：「�
     test('她的私人空间文件、他的留痕、日记：不管放在哪都拒绝；和 PRIVATE_FILES 同一批', () => {
         for (const name of PRIVATE_FILES) assert.ok(privateReason(`some/where/${name}`), name);
         for (const name of ['traces.json', 'JOURNAL.md', 'owner-bank.json']) assert.ok(privateReason(`x/${name}`), name);
+    });
+
+    test('提示词指纹清单（按天滚动，和 PRIVATE_PATTERNS 同一个名字规则）：不管放在哪都拒绝，理由写明是清单', () => {
+        for (const pattern of PRIVATE_PATTERNS) assert.ok(pattern.test(manifestFileName('2026-11-22')));
+        for (const path of ['some/where/prompt-manifest-2026-11-22.jsonl', 'C:\\data\\logs\\Prompt-Manifest-2026-01-02.jsonl']) assert.match(privateReason(path) ?? '', /提示词指纹清单/, path);
+        assert.equal(privateReason('packages/bot/src/platform/prompt-manifest.ts'), undefined, '源码可以给');
     });
 
     test('源码、文档、脚本、研究笔记：可以给（包括目录名撞上 memory / soul / dreams 的源码）', () => {

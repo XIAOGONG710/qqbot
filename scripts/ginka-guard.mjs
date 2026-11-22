@@ -5,6 +5,7 @@
 //   · 任何 .jsonl（聊天记录、语料、样本都是这个格式；源码和文档不是）；
 //   · 路径里有 runtime / chats / memory / secrets / migration / blind / evidence / real-chat / diary / dreams / soul 这些目录；
 //   · 她的私人空间文件和他的留痕（和 platform/private-space.ts 的 PRIVATE_FILES 同一批，再加 traces / 日记 / 梦）；
+//   · 提示词指纹清单 prompt-manifest-<日期>.jsonl（和 PRIVATE_PATTERNS 同一个名字规则：没有正文，但短行的哈希能穷举回去）；
 //   · .env / 密钥。
 // 能给的：packages 下的源码、docs 下的文档、scripts、exchange/research 里的笔记——这些里没有他和她的聊天。
 // 这是一道拦网，不是智能审查：清单写得再绕也只会被它拒绝，不会被放行。
@@ -21,9 +22,14 @@ const PRIVATE_NAMES = new Set([
     'traces.json', 'journal.md', 'dreams.jsonl', 'owner-bank.json', 'koishi.yml', 'config.json',
 ]);
 
+/** 按天滚动的私人文件（platform/private-space.ts 的 PRIVATE_PATTERNS）：提示词指纹清单 */
+const PRIVATE_PATTERNS = [/^prompt-manifest-\d{4}-\d{2}-\d{2}\.jsonl$/];
+
 /** 为什么不能给第三方看；能给返回 undefined */
 export function privateReason(path) {
     const full = norm(path);
+    const base = full.slice(full.lastIndexOf('/') + 1);
+    if (PRIVATE_PATTERNS.some(pattern => pattern.test(base))) return `提示词指纹清单 ${base}`;
     if (/\.jsonl$/.test(full)) return '.jsonl（聊天记录 / 语料 / 样本）';
     if (/(^|\/)\.env(\.|$)/.test(full) || /secret|apikey|api-key|credential/.test(full)) return '密钥';
     const hit = PRIVATE_SEGMENTS.find(segment => full.includes(segment))

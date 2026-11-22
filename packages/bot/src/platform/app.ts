@@ -179,6 +179,7 @@ import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { photoShelf, PHOTO_HISTORY_PREFIX, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
 import { STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
+import type { PromptManifest } from './prompt-manifest.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
 import { regulationAt } from '.././life/regulation.ts';
@@ -408,6 +409,11 @@ export interface AppOptions {
     workRunner?: typeof runWorkTask;
     /** 敏感调试开关（ADR 0070 第 8 项）；不传按环境变量 QQBOT_SENSITIVE_LOGS（默认关） */
     sensitive?: SensitiveSwitch;
+    /**
+     * 提示词指纹清单（platform/prompt-manifest.ts）：每次给联系人生成前交一份清单（槽、模块、字数、sha256，没有正文）。
+     * 宿主给（platform/main.ts、Koishi 插件按天写进 <数据目录>/logs，默认就写，不看敏感开关）；不给就不算（测试、行为基线、模拟器）
+     */
+    promptManifest?: (manifest: PromptManifest) => void;
     /** 测试 / 审计：执行器派发每个动作之前看一眼（ADR 0336；行为基线用它记下每次调模型的完整配置） */
     observe?: ExecutorOptions['observe'];
     /** 测试用：仓库根（休眠封存从这里复制角色目录、设定账本从这里核对）；不给按本文件位置往上推。测试给合成的根，就不会把真实角色复制出来 */
@@ -459,7 +465,7 @@ export function startApp(options: AppOptions): App {
     catch (error) { lifetime.rollback(); throw error; }
 }
 
-function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, foodSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), observe, repoRoot: repoRootOverride, groupAgencyHooks }: AppOptions, lifetime: Lifetime<StopName>): App {
+function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, foodSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), promptManifest, observe, repoRoot: repoRootOverride, groupAgencyHooks }: AppOptions, lifetime: Lifetime<StopName>): App {
     // 碰外部的都经执行器（ADR 0336 第 3 步）：QQ 动作、调模型、时钟和计时器、设备登记（第 8 步：设备服务下面才异步起，登记时现取）
     const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}), ...(workRunner ? { processes: { work: workRunner } } : {}), devices: () => devicesHost.service()?.control });
     const transport = exec.qq;
@@ -2124,6 +2130,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 if (!sensitive.on()) return;
                 exec.files.write(join(config.dataDir, 'last-prompt.json'), JSON.stringify({ qq: contact.qq, ...prompt }, null, 2));
             },
+            // 提示词指纹清单：宿主给了才算（不含正文，不看敏感开关）
+            ...(promptManifest ? { onManifest: promptManifest } : {}),
             turnModules: interpreter.turnModules,
             // 桌面上已经说过的那件她那边的事（ADR 0347 第 2 层回执，selfReceipts）：意图阶梯的 news 不再当没说过；只给他，开关关着时不给（和原来一样）
             ...(config.selfExport && config.selfReceipts && contact.qq === deviceOwner?.qq

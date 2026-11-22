@@ -74,8 +74,11 @@ export type AfterHistorySlot = (typeof AFTER_HISTORY_SLOTS)[number];
 export type NowSlot = (typeof NOW_SLOTS)[number];
 export type Slot = AfterMainSlot | AfterHistorySlot | NowSlot;
 
-/** 一段提示词：放进哪个槽、什么内容 */
-export interface Piece { slot: Slot; text: string }
+/**
+ * 一段提示词：放进哪个槽、什么内容。
+ * module 是产出它的模块（解释器 contributeTurn 收段落时标上，提示词指纹清单 platform/prompt-manifest.ts 用）：不进提示词，拼的时候只看 slot 和 text
+ */
+export interface Piece { slot: Slot; text: string; module?: string }
 
 const where = new Map<string, { list: 'main' | 'history' | 'now'; index: number }>([
     ...AFTER_MAIN_SLOTS.map((slot, index) => [slot, { list: 'main' as const, index }] as const),
@@ -83,18 +86,39 @@ const where = new Map<string, { list: 'main' | 'history' | 'now'; index: number 
     ...NOW_SLOTS.map((slot, index) => [slot, { list: 'now' as const, index }] as const),
 ]);
 
-/** 按槽位表把段落排好、拼成 buildPrompt 要的 afterMain / afterHistory；没有「此刻」行时不加那条消息 */
-export function assemblePrompt(pieces: readonly Piece[], options: { crisis?: boolean } = {}): { afterMain: string[]; afterHistory: string[] } {
-    type Placed = { index: number; order: number; text: string };
-    const byList: Record<'main' | 'history' | 'now', Placed[]> = { main: [], history: [], now: [] };
+type PromptList = 'main' | 'history' | 'now';
+
+/** 真正放进去的段落，按三张表分好、各自排好（assemblePrompt 和 placedPieces 共用，清单和提示词是同一次筛、同一次排） */
+function place(pieces: readonly Piece[], options: { crisis?: boolean }): Record<PromptList, Piece[]> {
+    type Placed = { index: number; order: number; piece: Piece };
+    const byList: Record<PromptList, Placed[]> = { main: [], history: [], now: [] };
     pieces.forEach((piece, order) => {
         const at = where.get(piece.slot);
         if (!at) throw new Error(`没有这个提示词槽：${piece.slot}`);
         // 少规矩（ADR 0342，默认关）：教她怎么说话的槽不放；危机回合整套照放
         if (fewerRules() && !options.crisis && RULE_SLOTS.has(piece.slot)) return;
-        byList[at.list].push({ index: at.index, order, text: piece.text });
+        byList[at.list].push({ index: at.index, order, piece });
     });
-    const sorted = (list: Placed[]) => [...list].sort((a, b) => a.index - b.index || a.order - b.order).map(item => item.text);
-    const now = sorted(byList.now);
-    return { afterMain: sorted(byList.main), afterHistory: [...sorted(byList.history), ...(now.length ? [now.join('\n')] : [])] };
+    const sorted = (list: Placed[]) => [...list].sort((a, b) => a.index - b.index || a.order - b.order).map(item => item.piece);
+    return { main: sorted(byList.main), history: sorted(byList.history), now: sorted(byList.now) };
+}
+
+/** 按槽位表把段落排好、拼成 buildPrompt 要的 afterMain / afterHistory；没有「此刻」行时不加那条消息 */
+export function assemblePrompt(pieces: readonly Piece[], options: { crisis?: boolean } = {}): { afterMain: string[]; afterHistory: string[] } {
+    const placed = place(pieces, options);
+    const texts = (list: readonly Piece[]) => list.map(piece => piece.text);
+    const now = texts(placed.now);
+    return { afterMain: texts(placed.main), afterHistory: [...texts(placed.history), ...(now.length ? [now.join('\n')] : [])] };
+}
+
+/** 一段真正放进提示词的段落：在哪张表里（main 之后 / 聊天记录之后 / 「此刻」块） */
+export interface PlacedPiece { list: PromptList; piece: Piece }
+
+/**
+ * 真正放进提示词的段落（和 assemblePrompt 同一个筛法、同一个先后）：先 main 的，再聊天记录之后的，最后「此刻」块的行。
+ * 提示词指纹清单（platform/prompt-manifest.ts）按它记每段的槽、模块和哈希
+ */
+export function placedPieces(pieces: readonly Piece[], options: { crisis?: boolean } = {}): PlacedPiece[] {
+    const placed = place(pieces, options);
+    return (['main', 'history', 'now'] as const).flatMap(list => placed[list].map(piece => ({ list, piece })));
 }

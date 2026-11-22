@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { startApp } from './app.ts';
 import { loadConfig } from './config.ts';
 import { createLog } from './log.ts';
+import { createPromptManifestLog } from './prompt-manifest.ts';
 import type { HistoryMessage } from '.././memory/backfill.ts';
 import { ocrLines } from '.././vision/media.ts';
 import { assertKernelOk, isFriendRecall, isGroupMessage, isPokeAtMe, isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
@@ -37,6 +38,8 @@ const stickers = (config.stickers ?? 'off') !== 'off' && stickerVision ? sticker
 }) : undefined;
 const app = startApp({
     config,
+    // 提示词指纹清单：和按天日志同一个目录，默认就写（没有正文，platform/prompt-manifest.ts）
+    promptManifest: createPromptManifestLog(join(config.dataDir, 'logs'), { log }),
     transport: {
         sendPrivateText: (userId, text, replyTo) => client.sendPrivateText(userId, text, replyTo),
         sendGroupText: (groupId, text, replyTo) => client.sendGroupText(groupId, text, replyTo),

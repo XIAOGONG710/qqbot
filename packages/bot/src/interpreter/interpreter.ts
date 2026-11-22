@@ -46,7 +46,7 @@ import type { StoredMessage } from '../memory/history.ts';
 import type { TypoRecall } from '../language/expression.ts';
 import type { Summarizer, TurnWindow } from '../language/context-window.ts';
 import type { CurrentAiPhotoResult } from '../proactive/ai-photo-requests.ts';
-import { assemblePrompt, type Piece } from './slots.ts';
+import { assemblePrompt, placedPieces, type PlacedPiece, type Piece } from './slots.ts';
 
 /** 解释器收到的事件 */
 export type BotEvent =
@@ -316,16 +316,27 @@ export function assessTurn(modules: readonly Module[], turn: Turn): Maybe<void> 
     return eachModule(modules, module => module.assess?.(turn));
 }
 
-/** 第三个阶段：收各模块的段落，按槽位表拼成 afterMain / afterHistory（不再 assess） */
-export function contributeTurn(modules: readonly Module[], turn: Turn): Maybe<Assembled> {
+/** 给每段标上产出它的模块（提示词指纹清单用；拼的时候不看） */
+const tagged = (module: Module, list: readonly Piece[]): Piece[] => list.map(piece => ({ ...piece, module: module.id }));
+
+/**
+ * 第三个阶段：收各模块的段落，按槽位表拼成 afterMain / afterHistory（不再 assess）。
+ * 收的时候给每段标上模块 id；onPlaced 给了就把真正放进去的段落（同一个筛法和先后，slots.ts 的 placedPieces）交给它，提示词指纹清单用
+ */
+export function contributeTurn(modules: readonly Module[], turn: Turn, onPlaced?: (placed: PlacedPiece[]) => void): Maybe<Assembled> {
     const collected = sequence<Module, Piece[]>(modules, (module, pieces) => {
         const mine = module.contribute?.(turn);
-        if (isThenable(mine)) return Promise.resolve(mine).then(list => [...pieces, ...list]);
-        return mine ? [...pieces, ...mine] : pieces;
+        if (isThenable(mine)) return Promise.resolve(mine).then(list => [...pieces, ...tagged(module, list)]);
+        return mine ? [...pieces, ...tagged(module, mine)] : pieces;
     }, []);
     // 危机回合（ADR 0342 少规矩不管它）：告诉拼的那一步
     const options = { crisis: Boolean(turn.facts.crisis) };
-    return isThenable(collected) ? Promise.resolve(collected).then(list => assemblePrompt(list, options)) : assemblePrompt(collected, options);
+    const assemble = (list: Piece[]): Assembled => {
+        const assembled = assemblePrompt(list, options);
+        onPlaced?.(placedPieces(list, options));
+        return assembled;
+    };
+    return isThenable(collected) ? Promise.resolve(collected).then(assemble) : assemble(collected);
 }
 
 /**

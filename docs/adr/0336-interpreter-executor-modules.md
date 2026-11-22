@@ -1580,3 +1580,17 @@ app.ts 从 3317 行到 2764 行（今晚 9 个提交；全量测试除串行基�
 - `deliver`（收下之后：世界影子、天气证据、工作模式、交给回复器、纠正和痕迹、危机、戳计划器）：每一步都是一两行调别的模块，剩下的是一大包依赖，搬了也不更清楚；天气证据那十几行可以随世界那边一起动。
 - `createContactResponder`（拼提示词的接线，约 300 行）：里面有她的声音（语音条）那一段，同上。
 - `status()`、手机伴侣、`connected` 的那一串：照旧。
+
+## 附：提示词指纹清单（2026-11-22，研究 `docs/research/2026-11-22-private-companion-v2.md` 五、建议 1）
+
+拆模块之后，「这一段是哪个模块放的、哪一步改了它」要能不碰正文地看出来，第 2 层（ADR 0347）的「SELF 和 QQ『此刻』块一字不差」也要能不开敏感日志地验。做法：
+
+- `Piece` 多一个可选的 `module`：解释器 `contributeTurn` 收段落时标上模块 id；拼提示词只看 `slot` 和 `text`，模块名不进提示词。
+- `slots.ts` 的 `placedPieces`：和 `assemblePrompt` 同一个筛法（少规矩、危机回合）、同一个先后，给出真正放进去的段落；`contributeTurn` 的第三个参数 `onPlaced` 要的时候交出来。
+- 联系人流水线（`platform/contact.ts`）给了 `onManifest` 才算：按同一份提示词对象（WeakMap），在回复器调 `onPrompt` 的那一刻算清单（`platform/prompt-manifest.ts` 的 `promptManifest`）。诊断只认这一份冻结的清单，不另拼一份。
+- 清单一行：`{ v, qq, at, kind: reply|initiate|think, pieces: [{ slot, module, list, chars, sha256, omitted? }], chars, messages: { count, sha256, list: [{ role, chars, sha256 }] }, omittedAfterHistory?, fallback? }`。被预算挤掉的段按 `buildPrompt` 的省略次序标 `omitted`。没有正文。
+- 落盘是宿主的事（同按天日志）：`platform/main.ts`、Koishi 插件给 App 一个 `promptManifest`，写 `<数据目录>/logs/prompt-manifest-<YYYY-MM-DD>.jsonl`，只追加，保留 14 天（每天第一次写时删更早的）。默认就写，不看 `QQBOT_SENSITIVE_LOGS`。
+- 行为基线不变：基线的 harness 不给 `promptManifest`，App 自己不写这个文件，数据目录快照逐字不变；联系人流水线没给 `onManifest` 时 `onPrompt` 原样传。
+- 哈希也算私人的：短行（时间、状态）能按 sha256 穷举回去，所以文件名规则进了 `private-space.ts` 的 `PRIVATE_PATTERNS`（迁移 / 存档不带）和 `scripts/ginka-guard.mjs`（不给第三方）。
+- 核对 SELF：`node scripts/prompt-manifest-diff.mjs <数据目录> [--self <SELF.json>] [--qq <他>]`，逐槽比 sha256，只输出槽名、模块和对不对得上。两边不是同一时刻算的，跟着钟走的槽对不上先看时刻。
+- 还没覆盖：群聊的提示词（不走联系人流水线）、审稿重写和挑候选（同一份提示词加一条说明 / 多生成几次，不另记）。

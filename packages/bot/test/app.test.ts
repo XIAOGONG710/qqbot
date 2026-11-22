@@ -7,6 +7,10 @@ import { after, afterEach, before, describe, mock, test } from 'node:test';
 import { setWorkMode } from '../src/platform/work-mode.ts';
 import { startApp, type App, type AppOptions, type Transport } from '../src/platform/app.ts';
 import { PEEK_OFF_NOTICE } from '../src/platform/private-space.ts';
+import type { PromptManifest } from '../src/platform/prompt-manifest.ts';
+import { SELF_SLOTS } from '../src/interpreter/slots.ts';
+import { compareSelf } from '../../../scripts/prompt-manifest-diff.mjs';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { SENSITIVE_OFF, type SensitiveSwitch } from '../src/platform/sensitive.ts';
 import type { HistoryMessage } from '../src/memory/backfill.ts';
@@ -123,7 +127,7 @@ test('silenceNotice：自然问才解释小事，私密原因不进入正常回�
     }
 });
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { sing?: AppOptions['sing']; photoSource?: PhotoSource; foodSource?: FoodSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; imageRecognition?: ImageDescriber; imageSearch?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; repoRoot?: string; extra?: Partial<Transport> } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { sing?: AppOptions['sing']; photoSource?: PhotoSource; foodSource?: FoodSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; imageRecognition?: ImageDescriber; imageSearch?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; repoRoot?: string; extra?: Partial<Transport>; promptManifest?: AppOptions['promptManifest'] } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -169,6 +173,7 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.startDevices ? { startDevices: options.startDevices } : {}),
         ...(options.workRunner ? { workRunner: options.workRunner } : {}),
         ...(options.repoRoot ? { repoRoot: options.repoRoot } : {}),
+        ...(options.promptManifest ? { promptManifest: options.promptManifest } : {}),
         // 既有测试要核对日志正文和 last-prompt.json，所以默认开着敏感调试；关着的行为在下面单独测
         sensitive: options.sensitive ?? { on: () => true, describe: () => '' },
         pipeline: {
@@ -3376,6 +3381,41 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
         let rest = block;
         for (const line of self.lines) rest = rest.replace(line.text, '');
         assert.doesNotMatch(rest, /\[你现在：|是你的底子|你此刻的心境|你的身体|你今天的打算|你那边/);
+    });
+
+    // 提示词指纹清单（platform/prompt-manifest.ts）：第 2 层「一字不差」不碰正文也能验——SELF 每一行的 sha256 和 QQ 那一轮清单里「此刻」块同一个槽的那一段一样（心境除外：QQ 那一句可能是融化的写法）
+    test('指纹清单：SELF 每一行（心境除外）的哈希和 QQ 那一轮清单里同一个槽的一样；清单的段真在那份提示词里；App 自己不写清单文件（落盘是宿主的事）', async () => {
+        rmSync(selfFile, { force: true });
+        const clock = new VirtualClock(start);
+        const cfg = config({ ...life, contacts: bf, selfExport: true });
+        writeMoment(cfg, clock);
+        const prompts: string[][] = [];
+        const manifests: PromptManifest[] = [];
+        const { app, sent } = setup(cfg, { 10001: [] }, { clock, promptManifest: manifest => { manifests.push(manifest); }, generate: messages => { prompts.push(messages.map(m => m.content)); return '嗯嗯'; } });
+        await until(() => existsSync(selfFile));
+        const self = readSelf();
+        await app.connected(SELF);
+        app.receive({ ...event(10001, 1, '嗯'), time: Math.floor(clock.now() / 1000) });
+        await replied(clock, sent);
+        assert.equal(manifests.length, prompts.length, '一次生成一份');
+        const manifest = manifests[0]!;
+        assert.equal(manifest.qq, 10001);
+        assert.equal(manifest.kind, 'reply');
+        // 最终消息的哈希就是模型拿到的那份
+        assert.deepEqual(manifest.messages.list.map(m => m.sha256), prompts[0]!.map(content => createHash('sha256').update(content, 'utf8').digest('hex')));
+        // 每段都标了模块，SELF 的几个槽由拼「此刻」块的那几个模块给
+        assert.ok(manifest.pieces.every(piece => piece.module && piece.module !== '?'), '每段都有模块');
+        assert.equal(manifest.pieces.find(piece => piece.slot === 'state')?.module, 'her-now');
+        const result = compareSelf(self, manifest, SELF_SLOTS);
+        const notMatching = result.rows.filter(row => row.slot !== 'feeling' && row.status !== 'match');
+        assert.deepEqual(notMatching, [], 'SELF 和 QQ「此刻」块逐槽一致');
+        assert.ok(result.rows.filter(row => row.status === 'match').length >= 2);
+        // 清单里没有正文
+        const json = JSON.stringify(manifests);
+        for (const line of self.lines) assert.ok(!json.includes(line.text), `清单里有正文（${line.slot}）`);
+        assert.ok(!json.includes('高数小测'));
+        // App 只把清单交给宿主给的函数，自己不往数据目录写（行为基线不给这个函数，数据目录逐字不变）
+        assert.ok(!existsSync(join(cfg.dataDir, 'logs')) || !readdirSync(join(cfg.dataDir, 'logs')).some(name => name.startsWith('prompt-manifest-')));
     });
 
     // 接线（ADR 0347 第 2 层 C 块）：桌面回执只在 selfExport + selfReceipts 都开、DSH 开着时由 30 秒的收件箱定时器消费；消费过就有游标文件

@@ -20,6 +20,7 @@ import type { HistoryMessage } from '../../bot/src/memory/backfill.ts';
 import type { WebMode } from '../../bot/src/platform/web.ts';
 import { CONTACT_TIERS, DEFAULTS, parseAppConfig, type AppConfig, type ContactTier, type StickerMode } from '../../bot/src/platform/config.ts';
 import { createLog, type Log } from '../../bot/src/platform/log.ts';
+import { createPromptManifestLog } from '../../bot/src/platform/prompt-manifest.ts';
 import { FEATURES, featureDetail, type FeatureDef } from '../../bot/src/platform/features.ts';
 import { type FactCheckMode } from '../../bot/src/language/fact-check.ts';
 import { QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/social/presence.ts';
@@ -987,7 +988,9 @@ export function apply(ctx: Context, config: Config) {
     try {
         const photoSource = appConfig.photos ? webPhotoSource(appConfig, log) : undefined;
         const foodSource = appConfig.photos && appConfig.foodPhotos && appConfig.menu ? webFoodSource(appConfig, log) : undefined;
-        app = startApp({ config: appConfig, transport, log, media, vision, ...(stickerReader ? { stickerReader } : {}), ...(stickers ? { stickers } : {}), ...(photoSource ? { photoSource } : {}), ...(foodSource ? { foodSource } : {}) });
+        // 提示词指纹清单（platform/prompt-manifest.ts）：和按天日志同一个目录，默认就写（没有正文）
+        const promptManifest = createPromptManifestLog(join(appConfig.dataDir, 'logs'), { log });
+        app = startApp({ config: appConfig, transport, log, media, vision, promptManifest, ...(stickerReader ? { stickerReader } : {}), ...(stickers ? { stickers } : {}), ...(photoSource ? { photoSource } : {}), ...(foodSource ? { foodSource } : {}) });
     } catch (error) {
         releaseTimeZone();
         const plain = plainError('插件没有启动', error);

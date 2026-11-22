@@ -12,7 +12,8 @@ import { GUESSES_FILE } from '../src/life/her-guesses.ts';
 import { REVIEW_FILE as CHAT_REVIEW_FILE } from '../src/language/chat-review.ts';
 import { SELF_PURSUITS_FILE } from '../src/life/self-pursuits.ts';
 import { DEFAULTS, type AppConfig } from '../src/platform/config.ts';
-import { isPrivateFile, PEEK_COMMANDS, PEEK_OFF_NOTICE, PRIVATE_FILES, peekRefused } from '../src/platform/private-space.ts';
+import { isPrivateFile, PEEK_COMMANDS, PEEK_OFF_NOTICE, PRIVATE_FILES, PRIVATE_PATTERNS, peekRefused } from '../src/platform/private-space.ts';
+import { MANIFEST_FILE, manifestFileName } from '../src/platform/prompt-manifest.ts';
 
 const cfg = (patch: Partial<AppConfig>) => patch as AppConfig;
 const ALL_ON = { pursuits: true, selfPursuits: true, speechNotes: true, herFeelings: true, diaryInsights: true };
@@ -54,5 +55,11 @@ describe('她的私人空间（ADR 0200）', () => {
         assert.equal(isPrivateFile(SPEECH_FEEDBACK_FILE), false);
         assert.equal(isPrivateFile('diary.json'), false);
         assert.equal(isPrivateFile(SPEECH_NOTES_FILE), true);
+    });
+
+    test('按天滚动的私人文件：提示词指纹清单（只有哈希，但短行能穷举，同样不带）；和写清单用的是同一个名字规则', () => {
+        assert.deepEqual(PRIVATE_PATTERNS, [MANIFEST_FILE]);
+        assert.equal(isPrivateFile(manifestFileName('2026-11-22')), true);
+        assert.equal(isPrivateFile('2026-11-22.log'), false, '按天日志不在这里（另有隐私审计）');
     });
 });
