@@ -103,6 +103,29 @@ DSH 那台拉代码后重启 Koishi（QQ 侧）、常驻进程（`scripts/start-
 没做的：SELF 里的 `selfThread` 槽（ownDays 那一行目前只进 QQ 提示词，桌面上靠 world 行和 NOW）；「计划器想完一个念头后立刻刷新 SELF」（现在靠 5 分钟刷新）；回执的话题签名兜底（研究报告建议，看上线后的漏判率）。
 上线：三个开关都要用户点头打开；DSH 那台拉代码、开 `selfExport`（再开 `selfReceipts`）、重启 Koishi 和 DSH。验收按方案四、5。
 
+## 第 3 层：实现记录（2026-11-22 / 23）
+
+方案见 `docs/plans/2026-11-22-same-her-layer3-writeback.md`。每块一个开关，**全部默认关**；关着时行为基线逐字不变（每次提交都核过 41/41）。只给名单里第一个男朋友档。
+
+| 块 | 开关 | 做了什么 | 提交 |
+|---|---|---|---|
+| 地基 | `desktopDay` | 桌面记录 `memory/desktop-log.ts`（插件写的 desktop-recent.jsonl 每 30 秒收进 QQ 自己的 desktop-log.jsonl，按 id 去重、留 14 天）；插件的在场租约 `desktop-presence.json` | 182e71f0、7c6ea776 |
+| B 在场 | `desktopDay` | `life/desktop-now.ts`：他在电脑前（租约优先、最后一轮 10 分钟内兜底）时主动消息不打扰（睡前那句除外）、留话先留着，桌面上刚聊过也算聊过；NOW.md 写「和你聊天中（本来在…）」；`life/desktop-timeline.ts` 结束的会话记一条时间线（只有时长和动作类别） | e1307597 |
+| C 回想 | `desktopReview` | 桌面对话进「聊完回想」，回合编号 k，含网址 / 路径 / 令牌的行整行丢 | 687db26a |
+| D 承诺 | `desktopPromises` | `memory/owner-day-view.ts`：他那一位的承诺抽取和时间块看 QQ + 电脑上合并的一份 | 76fae1b4、373a2b12 |
+| E 一本日记 | `oneDiary` | `life/one-diary.ts`：当天日记只由 QQ 写，抄一份「## 日期（当天）」进 JOURNAL.md；selfThread、醒来补上下文、他问某天、做梦都从同一本读；NOW.md 加 `<!-- diary-by: qq -->`，常驻进程 72 小时内见到这行就不再 journal_write（7c498ec9，DSH） | cdb682b8、7c498ec9 |
+| F 作息冲突 | `desktopConflict` | `life/desktop-conflict.ts`：被叫上电脑时她知道本来在上课 / 该睡了；空闲时间的会话占着生活选择器、结束后记成世界事件（只记打开开关以后的）；电脑上说「睡了」也算 | 2245ab6f |
+| 接线 | 以上 | 全部接进 `platform/app.ts`，依赖不齐时记一行日志、当没开 | 2eca5e2f |
+
+后续修正：
+- 3edb1c02：第 5 层的 `desktopFeelings` 要读桌面对话，原来缓存只跟着 `desktopConflict` 刷新，单开它是空的，所以给心境单开了一份缓存。同一个提交还修了 `feelingsAt` 的来源白名单漏掉 `desktop` 的问题。
+- 8d2ea533（DSH）：DSH 派的记忆整理子 agent（mnemon-review / mnemon-run）创建时也带着她的预设，被插件当成「他在桌面上说话」，往 session-tails.jsonl 写了十几行假收尾。现在子 agent 一律不挂记忆钩子。DSH 查过，desktop-recent / desktop-log 没被写过，所以假话没有进 QQ。
+
+上线前提（2026-11-23 待 DSH 核实）：DSH 那台的 owner-bank.json 里没有 `desktopFile`，桌面回合从来没被记过。可能的原因有三个：记忆插件没装进 desktop profile、Koishi 的数据目录和插件读的路径不是同一个、crossRecent 没生效。查清之前开 `desktopDay` 也收不到东西。
+
+上线：用户 11-23 同意先开 `desktopDay`（和第 5 层的 `memoryVoice` 一起），其余四个照旧关着。验收是在桌面上聊几句，然后确认三件事：desktop-recent 多出几行；QQ 的 desktop-log 30 秒内收进来；NOW.md 那段时间写「和你聊天中」，他走开 10 分钟以后主动消息恢复。
+回滚：在 koishi.yml 里删掉开关、重启；desktop-log.jsonl 留着无害。
+
 ## 第 5 层：实现记录（2026-11-22）
 
 先问她本人（`scripts/ask-her.mjs`，走过一次 400 tokens 截断后补问；四段原话在 `exchange/inbox/2026-11-22-2130-claude-to-dsh-请代问她ADR0347第5层-…` 的 done 回执里）。她的意思是：
