@@ -50,7 +50,7 @@ export const SILENCE_NOTICE = {
     label: '没回时在正常聊天里酌情解释',
     group: '说话',
     adr: '0173',
-    description: '确认在忙或有明确的忘回记录，才在正常回复时顺口提一句；不知道就不编。小事等他自然问起再说，不想细讲可以不交代原因。',
+    description: '确认在睡（夜里，或她自己说过睡了）、在上课、在忙、出了故障或有明确的忘回记录，才在正常回复时顺口照实提一句；不知道就不编。她自己不想回的，他问起就照实说不想回，不拿在忙顶上（她 2026-11-22 的条件，ADR 0173）。',
 } as const satisfies FeatureDef;
 
 export const GROUP_CHAT = {

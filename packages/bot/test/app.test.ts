@@ -121,7 +121,7 @@ test('silenceNotice：自然问才解释小事，私密原因不进入正常回�
         await run.app.connected(SELF);
         run.app.receive(event(qq, 921, '刚才怎么没回？'));
         await until(() => run.sent.length === 1);
-        assert.equal(/你自己选择没接话/.test(prompts.at(-1) ?? ''), enabled);
+        assert.equal(/是你自己当时不想回/.test(prompts.at(-1) ?? ''), enabled);
         assert.doesNotMatch(prompts.at(-1) ?? '', /不能告诉他的合成原因/);
         assert.deepEqual(run.sent, [`${qq}:没啥`]);
     }

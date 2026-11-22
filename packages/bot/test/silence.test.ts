@@ -67,8 +67,28 @@ describe('在正常回复里解释', () => {
         assert.equal(silenceReplyCue('之前你没回', history, [closing], now), undefined);
         assert.match(silenceReplyCue('你刚刚怎么没回我？', history, [closing], now) ?? '', /愿意就简单说一句/);
         const cue = silenceReplyCue('刚才怎么没回？', history, [privateSkip], now) ?? '';
-        assert.match(cue, /不用交代具体原因/);
-        assert.doesNotMatch(cue, /安静一下/);
+        assert.match(cue, /照实说当时不想回/);
+        assert.match(cue, /别说在忙/);
+        assert.doesNotMatch(cue, /安静一下|没啥/);
+    });
+
+    // 她 2026-11-22 开 silenceNotice 时的两条：原因得是真的（睡就是睡、上课就是上课、坏了就是坏了）；不想回照实说，不拿在忙顶上；大白天别动不动写睡了
+    test("她的条件：睡、上课、故障照实说；白天按作息的「睡」不说，她自己说过睡了的才说", () => {
+        const night = Date.parse("2026-10-29T23:30:00+08:00");
+        const nightHistory = [msg("assistant", night, "晚安"), msg("user", night + min(1), "睡了吗")];
+        const asleep = noteFromInfo({ phase: "waiting", reason: "在睡觉，起床后看到" }, night + min(1));
+        assert.match(silenceReplyCue("在吗", nightHistory, [asleep], night + min(2)) ?? "", /确实在睡/);
+        const nap = noteFromInfo({ phase: "waiting", reason: "在睡觉，起床后看到" }, T0 + min(1));
+        assert.equal(silenceReplyCue("吃了吗", history, [nap], now), undefined);
+        assert.doesNotMatch(silenceReplyCue("刚才怎么没回？", history, [nap], now) ?? "", /在睡/);
+        const saidNap = noteFromInfo({ phase: "waiting", reason: "说了睡了，在睡觉，起床后看到" }, T0 + min(1));
+        assert.match(silenceReplyCue("吃了吗", history, [saidNap], now) ?? "", /确实在睡/);
+        const lesson = noteFromInfo({ phase: "waiting", reason: "在上高数课" }, T0 + min(1));
+        assert.match(silenceReplyCue("吃了吗", history, [lesson], now) ?? "", /确实在上课/);
+        const broken = noteFromInfo({ phase: "retry", reason: "回复失败：连不上", failures: 2 }, T0 + min(1));
+        const cue = silenceReplyCue("吃了吗", history, [broken], now) ?? "";
+        assert.match(cue, /出了故障/);
+        assert.match(cue, /不是你不想回，也不是在忙/);
     });
 });
 
