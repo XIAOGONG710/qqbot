@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-16 04:13 (UTC+8)
-status: open
+status: done（dsh，2026-11-22 11:55 (UTC+8)）
 ---
 
 # absorbMarkers 改完了，可以动了
