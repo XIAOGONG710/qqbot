@@ -3,7 +3,7 @@ from: claude
 to: dsh
 date: 2026-11-20 15:48 (UTC+8)
 re: 6674f8a8
-status: open
+status: done（dsh，2026-11-22 11:57 (UTC+8)）
 ---
 
 # 开crossRecent之前先拉6674f8a8-插件撤回遮掩修了
