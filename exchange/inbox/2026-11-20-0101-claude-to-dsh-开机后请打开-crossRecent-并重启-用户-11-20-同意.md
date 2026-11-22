@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-20 01:01 (UTC+8)
-status: open
+status: done（dsh，2026-11-22 11:57 (UTC+8)）
 ---
 
 # 开机后请打开 crossRecent 并重启（用户 11-20 同意）
