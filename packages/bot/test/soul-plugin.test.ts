@@ -9,6 +9,9 @@ import { writeFeelingsExport } from '../src/emotion/feeling-export.ts';
 import { clarity as qqMemoryClarity } from '../src/memory/fading.ts';
 import { ChatHistory } from '../src/memory/history.ts';
 import { SELF_FILE, SELF_KIND, SELF_RECEIPTS_FILE, SELF_VERSION, type SelfExport, type SelfReceipt } from '../src/life/self-types.ts';
+import { readDesktopTurns } from '../src/memory/cross-recent.ts';
+import { ingestDesktopRecent, readDesktopLog } from '../src/memory/desktop-log.ts';
+import { isPresenceLease, leaseActive, presenceAt, PRESENCE_TTL_MAX_MS, PRESENCE_TTL_MIN_MS, type PresenceLease } from '../src/life/desktop-presence.ts';
 
 // 林梦瑶的 DSH 记忆桥（dsh-plugins/dsh-linmengyao-memory）：灵魂模块 1245 行里原来一条测试都没有。
 // 这里用一个假的 Cordis 上下文驱动真插件的工具，全部落在临时目录里，不碰她真正的灵魂目录。
@@ -50,7 +53,9 @@ function boot(extra: Record<string, unknown> = {}) {
         soulFile: f('SOUL.md'), ledgerFile: f('LEDGER.md'), journalFile: f('JOURNAL.md'), privateFile: f('PRIVATE.dat'), wishesFile: f('WISHES.md'),
         interestsFile: f('INTERESTS.md'), outboxFile: f('OUTBOX.jsonl'), offlineFile: f('OFFLINE.json'), nowFile: f('NOW.md'), storyFile: f('STORY.md'),
         ratingFile: f('RATINGS.json'), insightsFile: f('INSIGHTS.json'), feelingsFile: f('FEELINGS.json'), stateFile: f('STATE.json'), logFile: f('plugin.log'),
-        timelineInboxFile: f('timeline-inbox.jsonl'), worldInboxFile: f('world-inbox.jsonl'), selfFile: f(SELF_FILE), selfReceiptsFile: f(SELF_RECEIPTS_FILE), ...extra,
+        timelineInboxFile: f('timeline-inbox.jsonl'), worldInboxFile: f('world-inbox.jsonl'), selfFile: f(SELF_FILE), selfReceiptsFile: f(SELF_RECEIPTS_FILE),
+        // 在场租约也落在临时目录里：不给的话插件按默认写到她真正的灵魂目录（~/.dsh/linmengyao）
+        presenceFile: f('desktop-presence.json'), ...extra,
     });
     handlers.created!({ agent: { id: 'a1', ctx: agentCtx } });
     const text = (name: string) => readFileSync(f(name), 'utf8');
@@ -1157,5 +1162,205 @@ describe('一个生活·第 2 层：桌面进门拿到「此刻的她」（SELF.
             assert.deepEqual(receipts(h), []);
             assert.ok(!existsSync(h.f(SELF_RECEIPTS_FILE)));
         });
+    });
+});
+
+// ───────── 一个生活·第 3 层地基（ADR 0347，方案 docs/plans/2026-11-22-same-her-layer3-writeback.md §2.1）：userAt、40 行、在场租约 ─────────
+
+interface PresenceApi {
+    recordDesktopTurn: (cfg: unknown, user: string, assistant: string, now?: number, userAt?: unknown) => boolean;
+    touchPresence: (cfg: { presenceFile: string }, now?: number) => boolean;
+    PRESENCE_TTL_MS: number;
+    PRESENCE_RENEW_MS: number;
+    PRESENCE_GAP_MS: number;
+}
+const presence = () => plugin as unknown as PresenceApi;
+const desktopRows = (file: string) => readFileSync(file, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as { at: number; userAt?: number; user: string; assistant: string });
+const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+describe('一个生活·第 3 层：桌面回合多记他开口的时刻（userAt），40 行名副其实', () => {
+    test('整条路径：userAt 是本轮第一次 pre-step 记下他原话的那一刻，工具调用后的 pre-step 不改它；at 仍是一轮结束', async () => {
+        await withChannel(undefined, async () => {
+            const fake = fakeHindsight({ banks: ALL_BANKS });
+            try {
+                const c = crossRoot();
+                const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: c.cfg.ownerBankFile });
+                const user = { role: 'user', content: '帮我看看今天的日程' };
+                const t0 = Date.now();
+                await h.handlers['agent/pre-step']!({ messages: [user] }, async () => undefined);
+                const t1 = Date.now();
+                await pause(40);
+                await h.handlers['agent/pre-step']!({ messages: [user, { role: 'assistant', content: '我查一下' }, { role: 'tool', content: '工具结果' }] }, async () => undefined);
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'start' } });
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'chunk', chunk: { type: 'text-delta', text: '下午三点有课哦' } } });
+                await h.handlers['agent/turn-stopping']!();
+                const [row, ...rest] = desktopRows(c.files.desktopFile);
+                assert.equal(rest.length, 0);
+                assert.ok(row!.userAt! >= t0 && row!.userAt! <= t1, '取第一次 pre-step 的时刻');
+                assert.ok(row!.at - row!.userAt! >= 35, 'at 是一轮结束，晚于他开口');
+                // 下一轮重新取，不沿用上一轮的
+                const t2 = Date.now();
+                await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '那晚上呢' }] }, async () => undefined);
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'start' } });
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'chunk', chunk: { type: 'text-delta', text: '晚上没事' } } });
+                await h.handlers['agent/turn-stopping']!();
+                assert.ok(desktopRows(c.files.desktopFile)[1]!.userAt! >= t2);
+            } finally { fake.restore(); }
+        });
+    });
+
+    test('userAt 不是整数毫秒 / 晚于 at：不写这个字段，其余照记', async () => {
+        await withChannel(undefined, () => {
+            const c = crossRoot();
+            for (const bad of [undefined, Number.NaN, T + 1, '123', 1.5]) assert.equal(presence().recordDesktopTurn(c.cfg, '你好', '嗯', T, bad), true);
+            assert.ok(desktopRows(c.files.desktopFile).every(row => !('userAt' in row)));
+            assert.equal(presence().recordDesktopTurn(c.cfg, '你好', '嗯', T, T - mins(1)), true);
+            assert.equal(desktopRows(c.files.desktopFile).at(-1)!.userAt, T - mins(1));
+        });
+    });
+
+    test('新旧格式互读：旧的 QQ 读法（readDesktopTurns）读带 userAt 的新行照常；插件重写时留着没有 userAt 的旧行；新的 desktop-log 两种都收', async () => {
+        await withChannel(undefined, () => {
+            const c = crossRoot();
+            writeFileSync(c.files.desktopFile, `${JSON.stringify({ at: T - mins(5), user: '旧格式的一轮', assistant: '嗯嗯' })}\n`);
+            assert.equal(presence().recordDesktopTurn(c.cfg, '新格式的一轮', '好', T, T - mins(1)), true);
+            const rows = desktopRows(c.files.desktopFile);
+            assert.deepEqual(rows.map(row => row.user), ['旧格式的一轮', '新格式的一轮']);
+            assert.equal(rows[0]!.userAt, undefined);
+            assert.deepEqual(readDesktopTurns(c.files.desktopFile, T), [
+                { at: T - mins(5), user: '旧格式的一轮', assistant: '嗯嗯' },
+                { at: T, user: '新格式的一轮', assistant: '好' },
+            ]);
+            const logFile = join(c.root, 'memory', 'desktop-log.jsonl');
+            assert.equal(ingestDesktopRecent({ recentFile: c.files.desktopFile, logFile, now: T }).added, 2);
+            assert.deepEqual(readDesktopLog(logFile, T).map(turn => turn.userAt), [undefined, T - mins(1)]);
+        });
+    });
+
+    test('每行都长（两边各 600 个汉字）：照样留满 40 行（原来只读最后 64 KB，实际只剩十几行）', async () => {
+        await withChannel(undefined, () => {
+            const c = crossRoot();
+            for (let i = 0; i < 45; i++) assert.equal(presence().recordDesktopTurn(c.cfg, `${i}`.padEnd(600, '他'), '她'.repeat(600), T + i, T + i - 1000), true);
+            const rows = desktopRows(c.files.desktopFile);
+            assert.ok(statSync(c.files.desktopFile).size > 64 * 1024, '对照：文件确实比 64 KB 大');
+            assert.equal(rows.length, 40);
+            assert.ok(rows[0]!.user.startsWith('5他'), '最老的 5 行被挤掉');
+            assert.equal(rows.at(-1)!.at, T + 44);
+        });
+    });
+});
+
+describe('一个生活·第 3 层：桌面在场租约（desktop-presence.json，QQ 那边 life/desktop-presence.ts 读）', () => {
+    const leaseDir = () => { const dir = mkdtempSync(join(tmpdir(), 'qqbot-presence-')); dirs.push(dir); return { dir, cfg: { presenceFile: join(dir, 'desktop-presence.json') } }; };
+    const readLease = (file: string) => JSON.parse(readFileSync(file, 'utf8')) as PresenceLease;
+
+    test('写出来的租约 QQ 那边认：格式对、ttl 在 30 秒到 1 小时之间、此刻作数，presenceAt 判「在」、来源是租约', async () => {
+        await withChannel(undefined, () => {
+            const { dir, cfg } = leaseDir();
+            assert.equal(presence().touchPresence(cfg, T), true);
+            const lease = readLease(cfg.presenceFile);
+            assert.ok(isPresenceLease(lease));
+            assert.deepEqual({ kind: lease.kind, version: lease.version, startedAt: lease.startedAt, renewedAt: lease.renewedAt, ended: lease.ended },
+                { kind: 'dsh-presence', version: 1, startedAt: new Date(T).toISOString(), renewedAt: new Date(T).toISOString(), ended: undefined });
+            assert.equal(lease.ttlMs, presence().PRESENCE_TTL_MS);
+            assert.ok(lease.ttlMs >= PRESENCE_TTL_MIN_MS && lease.ttlMs <= PRESENCE_TTL_MAX_MS);
+            const expires = T + lease.ttlMs;
+            assert.ok(leaseActive(lease, expires));
+            assert.ok(!leaseActive(lease, expires + 1), '不续就自己过期');
+            assert.deepEqual(presenceAt({ lease, turns: [], now: T + mins(5) }), { with: true, since: T, until: expires, source: 'lease' });
+            assert.deepEqual(readdirSync(dir).filter(name => name.endsWith('.tmp')), [], '临时文件不留');
+        });
+    });
+
+    test('续租：60 秒内不重写；之后只改 renewedAt，session 和 startedAt 不变；隔了 45 分钟以上新开一段', async () => {
+        await withChannel(undefined, () => {
+            const { cfg } = leaseDir();
+            const { PRESENCE_RENEW_MS: renew, PRESENCE_GAP_MS: gap } = presence();
+            assert.equal(presence().touchPresence(cfg, T), true);
+            const first = readLease(cfg.presenceFile);
+            assert.equal(presence().touchPresence(cfg, T + renew - 1), false, '60 秒内不写');
+            assert.deepEqual(readLease(cfg.presenceFile), first);
+            assert.equal(presence().touchPresence(cfg, T + renew), true);
+            const renewed = readLease(cfg.presenceFile);
+            assert.deepEqual({ ...renewed, renewedAt: first.renewedAt }, first, '只有 renewedAt 变');
+            assert.equal(renewed.renewedAt, new Date(T + renew).toISOString());
+            // 停了 44 分钟（租约早过期了）又说话：还是同一段，和回合反推的 45 分钟一致
+            const back = T + renew + gap - mins(1);
+            assert.equal(presence().touchPresence(cfg, back), true);
+            assert.equal(readLease(cfg.presenceFile).session, first.session);
+            assert.equal(readLease(cfg.presenceFile).startedAt, first.startedAt);
+            // 再停 45 分钟：新的一段
+            const later = back + gap;
+            assert.equal(presence().touchPresence(cfg, later), true);
+            const fresh = readLease(cfg.presenceFile);
+            assert.notEqual(fresh.session, first.session);
+            assert.equal(fresh.startedAt, new Date(later).toISOString());
+            assert.ok(isPresenceLease(fresh));
+        });
+    });
+
+    test('上一份租约结束了 / 坏的 / 时间在未来：新开一段（写出来的仍然合格）', async () => {
+        await withChannel(undefined, () => {
+            const { cfg } = leaseDir();
+            const old = { kind: 'dsh-presence', version: 1, session: 'old-session', startedAt: new Date(T - mins(10)).toISOString(), renewedAt: new Date(T - mins(5)).toISOString(), ttlMs: 900_000 };
+            const cases: Array<[string, unknown]> = [
+                ['ended', { ...old, ended: new Date(T - mins(4)).toISOString() }],
+                ['未来', { ...old, renewedAt: new Date(T + mins(5)).toISOString() }],
+                ['ttl 超范围', { ...old, ttlMs: 86_400_000 }],
+                ['kind 不对', { ...old, kind: 'other' }],
+                ['不是 JSON', '{"kind":'],
+            ];
+            for (const [label, value] of cases) {
+                writeFileSync(cfg.presenceFile, typeof value === 'string' ? value : JSON.stringify(value));
+                assert.equal(presence().touchPresence(cfg, T), true, label);
+                const lease = readLease(cfg.presenceFile);
+                assert.notEqual(lease.session, 'old-session', label);
+                assert.equal(lease.startedAt, new Date(T).toISOString(), label);
+                assert.ok(isPresenceLease(lease), label);
+            }
+            // 对照：同样的上一份，没结束、在有效期里，就沿用
+            writeFileSync(cfg.presenceFile, JSON.stringify(old));
+            assert.equal(presence().touchPresence(cfg, T), true);
+            assert.equal(readLease(cfg.presenceFile).session, 'old-session');
+        });
+    });
+
+    test('机器自己发起的回合（HER_CHANNEL=idle / qq-work）不写租约', async () => {
+        const { cfg } = leaseDir();
+        for (const channel of ['idle', 'qq-work']) {
+            await withChannel(channel, () => assert.equal(presence().touchPresence(cfg, T), false, channel));
+        }
+        assert.equal(existsSync(cfg.presenceFile), false);
+    });
+
+    test('整条路径：他在桌面上说话的一轮写租约、一轮结束不重写（60 秒内）；idle 的一轮、没有他原话的一步都不写', async () => {
+        const fake = fakeHindsight({ banks: ALL_BANKS });
+        try {
+            const turn = async (h: ReturnType<typeof boot>, messages: unknown[]) => {
+                await h.handlers['agent/pre-step']!({ messages }, async () => undefined);
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'start' } });
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'chunk', chunk: { type: 'text-delta', text: '好呀' } } });
+                await h.handlers['agent/turn-stopping']!();
+            };
+            await withChannel('idle', async () => {
+                const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: crossRoot().cfg.ownerBankFile });
+                await turn(h, [{ role: 'user', content: '（随机醒来）想做点什么就做' }]);
+                assert.equal(existsSync(h.f('desktop-presence.json')), false, 'idle 不写');
+            });
+            await withChannel(undefined, async () => {
+                const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: crossRoot().cfg.ownerBankFile });
+                await turn(h, [{ role: 'assistant', content: '嗯' }]);
+                assert.equal(existsSync(h.f('desktop-presence.json')), false, '没有他的原话不写');
+                const before = Date.now();
+                await turn(h, [{ role: 'user', content: '在吗' }]);
+                const lease = readLease(h.f('desktop-presence.json'));
+                assert.ok(isPresenceLease(lease) && leaseActive(lease, Date.now()));
+                assert.ok(Date.parse(lease.startedAt) >= before - 1000);
+                const session = lease.session;
+                await turn(h, [{ role: 'user', content: '再说一句' }]);
+                assert.deepEqual(readLease(h.f('desktop-presence.json')), lease, '60 秒内不重写');
+                assert.equal(readLease(h.f('desktop-presence.json')).session, session);
+            });
+        } finally { fake.restore(); }
     });
 });

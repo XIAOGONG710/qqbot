@@ -24,6 +24,7 @@
 - `memory/timeline.ts`
 - `memory/dsh-inbox.ts`
 - `memory/self-receipts.ts`
+- `memory/desktop-log.ts`
 - `memory/dormancy.ts`
 - `memory/dormancy-commands.ts`
 

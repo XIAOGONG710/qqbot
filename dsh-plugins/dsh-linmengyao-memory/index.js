@@ -57,6 +57,8 @@ const DEFAULTS = {
   selfStaleMs: 30 * 60 * 1000,
   /** 「此刻的你」整块（标题 + 各行 + 攒着的那段）最多这么多字，超了从后往前整行丢 */
   selfMaxChars: 1200,
+  /** 桌面在场租约（ADR 0347 第 3 层）：他在桌面上跟她说话时写 / 续，QQ 只读；格式见 packages/bot/src/life/desktop-presence.ts */
+  presenceFile: soulPath('desktop-presence.json'),
   ratingFile: soulPath('RATINGS.json'),
   logFile: path.join(os.homedir(), '.dsh', 'linmengyao-memory.log'),
   // SOUL.md 每轮整份注入提示词：超过这个字数，最老的追加段落搬进 SOUL.archive.md（不再注入）；24 小时内最多写几次
@@ -390,6 +392,10 @@ const CROSS_WINDOW_MS = 6 * 3_600_000
 const CROSS_TAIL_BYTES = 64 * 1024
 const CROSS_LINE_CHARS = 200
 const DESKTOP_KEEP = 40
+// 重写 desktop-recent.jsonl 时读回多少字节来留最近 40 行（ADR 0347 第 3 层方案 §2.1）：原来用 CROSS_TAIL_BYTES（64 KB），
+// 一行两边各 600 字、中文 3 字节，一行就要 3.6 KB 多，实际只留下十几行。最坏一行：两边各 601 个码点、每个按 JSON 转义最多 6 字节，
+// 加字段名和时间不到 7.4 KB，所以按每行 8 KB 留够：40 行最多读 320 KB，读的大小仍然有上限。
+const DESKTOP_TAIL_BYTES = DESKTOP_KEEP * 8 * 1024
 
 /** 这一轮是谁发起的：桌面上他自己在和她说话 = desktop；QQ 工作模式派的活 / 随机醒来 / 睡眠整合由派活的一方设 HER_CHANNEL，那些不算「桌面对话」 */
 const channel = () => process.env.HER_CHANNEL || 'desktop'
@@ -489,18 +495,84 @@ export function qqRecentBlock(cfg, now = Date.now()) {
 /**
  * 桌面对话回合记一行给 QQ 那边读（<数据目录>/memory/desktop-recent.jsonl，最近 40 行）。
  * 只记桌面上他自己和她说的话；机器自己发起的回合（HER_CHANNEL 不是 desktop）、QQ 没开 crossRecent（owner-bank.json 里没有 desktopFile）都不记。返回有没有记。
+ * at 是一轮结束的时刻；userAt（ADR 0347 第 3 层，可缺）是这一轮在 pre-step 里第一次记下他原话的时刻，不是有限数或晚于 at 就不写。
+ * QQ 那边的旧读法（cross-recent.ts 的 readDesktopTurns）只看 at / user / assistant，多一个字段不影响。
  */
-export function recordDesktopTurn(cfg, user, assistant, now = Date.now()) {
+export function recordDesktopTurn(cfg, user, assistant, now = Date.now(), userAt = undefined) {
   if (channel() !== 'desktop') return false
   const file = ownerBanks(cfg)?.desktopFile
   if (!file) return false
-  const row = { at: now, user: clipText(user, 600), assistant: clipText(assistant, 600) }
+  const row = {
+    at: now,
+    ...(Number.isSafeInteger(userAt) && userAt <= now ? { userAt } : {}),
+    user: clipText(user, 600),
+    assistant: clipText(assistant, 600),
+  }
   if (!row.user && !row.assistant) return false
-  const keep = tailLines(file).filter((line) => { try { return typeof JSON.parse(line).at === 'number' } catch { return false } }).slice(-(DESKTOP_KEEP - 1))
+  const keep = tailLines(file, DESKTOP_TAIL_BYTES).filter((line) => { try { return typeof JSON.parse(line).at === 'number' } catch { return false } }).slice(-(DESKTOP_KEEP - 1))
   fs.mkdirSync(path.dirname(file), { recursive: true })
   const tmp = `${file}.${process.pid}.tmp`
   fs.writeFileSync(tmp, `${[...keep, JSON.stringify(row)].join('\n')}\n`)
   fs.renameSync(tmp, file)
+  return true
+}
+
+// ───────── 桌面在场租约（ADR 0347 第 3 层；QQ 那边的读法和校验在 packages/bot/src/life/desktop-presence.ts） ─────────
+
+const PRESENCE_KIND = 'dsh-presence'
+const PRESENCE_VERSION = 1
+/** 一次心跳管多久：15 分钟（QQ 那边只认 30 秒到 1 小时，PRESENCE_TTL_MIN_MS / MAX_MS）。他停下来 15 分钟没再说话，租约自己失效，之后 QQ 退回看回合 */
+export const PRESENCE_TTL_MS = 15 * 60_000
+/** 两次续租至少隔这么久（pre-step 一轮里会跑好几次，不必每次都写盘） */
+export const PRESENCE_RENEW_MS = 60_000
+/** 上一次心跳过去不到这么久，算同一段、沿用 session 和 startedAt；和 QQ 切片段 / 回合反推的 45 分钟（EPISODE_GAP_MS）同一个口径 */
+export const PRESENCE_GAP_MS = 45 * 60_000
+/** 租约时间比现在晚这么多以内当作钟没对齐（和 QQ 的 PRESENCE_FUTURE_SLACK_MS 一致），再晚就当坏租约、新开一段 */
+const PRESENCE_FUTURE_SLACK_MS = 60_000
+
+const isIsoTime = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+/** 和 QQ 的 isPresenceLease 同样的条件 */
+const presenceLeaseOk = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  && value.kind === PRESENCE_KIND && value.version === PRESENCE_VERSION
+  && typeof value.session === 'string' && value.session.length > 0
+  && isIsoTime(value.startedAt) && isIsoTime(value.renewedAt) && Date.parse(value.startedAt) <= Date.parse(value.renewedAt)
+  && Number.isFinite(value.ttlMs) && value.ttlMs >= 30_000 && value.ttlMs <= 3_600_000
+  && (value.ended === undefined || isIsoTime(value.ended))
+
+/**
+ * 他在桌面上跟她说话时写 / 续在场租约（灵魂目录的 desktop-presence.json，临时文件再改名）。只认 HER_CHANNEL=desktop，机器自己发起的回合（idle / qq-work 等）不写。
+ * - 上一份租约格式对、没写 ended、时间不在未来、最后一次心跳离现在不到 45 分钟：同一段，session 和 startedAt 不变，只更新 renewedAt；
+ *   离上次心跳不到 60 秒就不写（返回 false）。
+ * - 否则（没有、坏的、结束了、隔了 45 分钟以上）新开一段：新的 session，startedAt = renewedAt = 现在。
+ * 不写 ended：DSH 没有「他关了窗口 / 走了」的钩子（agent 的 effect 清理在插件重载时也会跑，不等于他走了），靠 ttlMs 过期。返回这次有没有写。
+ */
+export function touchPresence(cfg, now = Date.now()) {
+  if (channel() !== 'desktop' || !cfg.presenceFile) return false
+  let previous
+  try { previous = JSON.parse(fs.readFileSync(cfg.presenceFile, 'utf8')) } catch { previous = undefined }
+  const lastBeat = presenceLeaseOk(previous) ? Date.parse(previous.renewedAt) : NaN
+  const same = Number.isFinite(lastBeat) && previous.ended === undefined
+    && Date.parse(previous.startedAt) <= now + PRESENCE_FUTURE_SLACK_MS && lastBeat <= now + PRESENCE_FUTURE_SLACK_MS
+    && now - lastBeat < PRESENCE_GAP_MS
+  if (same && now - lastBeat < PRESENCE_RENEW_MS) return false
+  const at = new Date(now).toISOString()
+  const lease = {
+    kind: PRESENCE_KIND,
+    version: PRESENCE_VERSION,
+    session: same ? previous.session : randomUUID(),
+    startedAt: same ? previous.startedAt : at,
+    renewedAt: at,
+    ttlMs: PRESENCE_TTL_MS,
+  }
+  fs.mkdirSync(path.dirname(cfg.presenceFile), { recursive: true })
+  const tmp = `${cfg.presenceFile}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    fs.writeFileSync(tmp, `${JSON.stringify(lease)}\n`)
+    fs.renameSync(tmp, cfg.presenceFile)
+  } catch (error) {
+    try { fs.unlinkSync(tmp) } catch { /* 留着最初的错误 */ }
+    throw error
+  }
   return true
 }
 
@@ -907,7 +979,8 @@ export function apply(ctx, config = {}) {
     if (allow.size && (!preset || !allow.has(preset))) return
 
     // self：这一步放进「此刻的你」的 SELF（selfBlock 的结果，没有就是 null）；selfShown / selfAt：这一轮放给她看过的攒着的事，turn-stopping 写回执后清空
-    const cache = { text: '', preset, user: '', assistant: '', outbox: 0, self: null, selfShown: new Set(), selfAt: '' }
+    // userAt：本轮第一次记下他原话（cache.user）的时刻，turn-stopping 清空
+    const cache = { text: '', preset, user: '', userAt: undefined, assistant: '', outbox: 0, self: null, selfShown: new Set(), selfAt: '' }
 
     const off = agent.ctx.effect(() => {
       const disposers = []
@@ -941,6 +1014,12 @@ export function apply(ctx, config = {}) {
           if (!cache.user) {
             const originalUser = [...messages].reverse().find((message) => message?.role === 'user')
             cache.user = textOf(originalUser).trim()
+            // userAt（ADR 0347 第 3 层）：本轮第一次记下他原话的这一刻，turn-stopping 写进 desktop-recent.jsonl
+            if (cache.user) cache.userAt = Date.now()
+          }
+          // 在场租约：他这一轮在桌面上说了话才写 / 续（touchPresence 自己挡掉非 desktop 渠道、60 秒内的重复）
+          if (cache.user) {
+            try { if (touchPresence(cfg)) log(cfg, '在场：续了桌面租约') } catch (e) { log(cfg, `presence error ${e}`) }
           }
           if (query) {
             const all = await recallAll(cfg, query)
@@ -979,10 +1058,12 @@ export function apply(ctx, config = {}) {
       disposers.push(agent.ctx.on('agent/turn-stopping', async () => {
         cache.outbox = 0
         const user = cache.user
+        const userAt = cache.userAt
         const assistant = cache.assistant
         const selfShown = [...cache.selfShown]
         const selfAt = cache.selfAt
         cache.user = ''
+        cache.userAt = undefined
         cache.assistant = ''
         cache.selfShown = new Set()
         cache.selfAt = ''
@@ -992,7 +1073,11 @@ export function apply(ctx, config = {}) {
           try { p = ctx.get('agentPresets')?.composedPreset?.(agent.ctx) || '' } catch {}
         }
         if (allow.size && p && !allow.has(p)) return
-        try { recordDesktopTurn(cfg, user, assistant) } catch (e) { log(cfg, `desktop-recent error ${e}`) }
+        try { recordDesktopTurn(cfg, user, assistant, Date.now(), userAt) } catch (e) { log(cfg, `desktop-recent error ${e}`) }
+        // 一轮结束也续一次租约（工具调用多的一轮可能跑了好几分钟）
+        if (user) {
+          try { if (touchPresence(cfg)) log(cfg, '在场：续了桌面租约') } catch (e) { log(cfg, `presence error ${e}`) }
+        }
         // 回执：桌面上他自己说了话、这一轮放过攒着的事，才追加一行；QQ 那边认没认成「说过了」由它自己判断
         if (channel() === 'desktop') {
           try {
