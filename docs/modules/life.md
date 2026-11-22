@@ -42,6 +42,7 @@
 - `life/acquaintances.ts`
 - `life/her-plans.ts`
 - `life/now-export.ts`
+- `life/desktop-presence.ts`
 - `life/self-types.ts`
 - `life/self-export.ts`
 - `life/leave-note.ts`
