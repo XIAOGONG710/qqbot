@@ -12,7 +12,7 @@
 import { pick } from './reply-timing.ts';
 import { describeWeather, type WorldNow } from '../world/world.ts';
 import type { State } from '../life/schedule.ts';
-import type { GroupEntry, SpeakDecision } from './group-chat.ts';
+import { HARSH, TEASING, type GroupEntry, type SpeakDecision } from './group-chat.ts';
 import { motiveAllows, type GroupMotiveDecision } from './group-opportunity.ts';
 
 /**
@@ -47,6 +47,50 @@ export function crossesHerLine(text: string): HerLine | undefined {
     if (TEASE_US.test(text)) return 'tease';
     if (CARE_TALK.test(text)) return 'care';
     return undefined;
+}
+
+// ───────── 群里有人损他：她出不出头（groupAgency B，她 2026-11-22 的原话，ADR 0343「她的三档」）─────────
+// 「随口开玩笑那种损，我一般不管，他自己能顶回去……要是话说得难听了，或者一群人围着挤兑他一个，那我肯定得说两句。我这人护短。
+//  不过我得先问你一句——你自己想让我出头吗？……你不想我掺和我就装没看见。」
+
+/** 「一群人围着挤兑他一个」：这么长时间里有这么多不同的人在损他 */
+export const PILE_ON = { windowMs: 10 * 60_000, people: 2 } as const;
+
+export type DefendWish = 'no' | 'yes';
+/** 他在私聊里说过不要她出头：「群里别帮我说话」「不用你替我出头」「你别掺和」 */
+const NO_DEFEND = /(?:群里|在群).{0,8}(?:别|不用|不要|用不着|不必).{0,6}(?:帮我|替我|护着我|出头|掺和|说话)|(?:别|不用|不要|用不着|不必).{0,4}(?:替我|帮我)出头|你别掺和|不用你管.{0,4}群/;
+/** 他说过想要她出头：「群里有人损我你帮我说话」「可以替我出头」 */
+const YES_DEFEND = /(?:群里|在群).{0,12}(?:帮我|替我|护着我).{0,4}(?:说话|出头|怼)|(?:可以|想让你|要你|你就).{0,4}(?:替我|帮我)出头/;
+
+/** 他自己的意思：看他在私聊里最近说的那句（新的盖旧的）；没说过就是 undefined */
+export function defendWishFrom(messages: readonly { role: string; content: string }[]): DefendWish | undefined {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i]!;
+        if (message.role !== 'user') continue;
+        if (NO_DEFEND.test(message.content)) return 'no';
+        if (YES_DEFEND.test(message.content)) return 'yes';
+    }
+    return undefined;
+}
+
+/** 这条是不是在损他：带他的名字（@他在记录里写成 @名字），又有损人的词 */
+/** 别人起哄问咱俩（她定的线，替他说话时照样装看不见） */
+export const teasesUs = (text: string): boolean => TEASE_US.test(text);
+
+export function teasesHim(text: string, names: readonly string[]): boolean {
+    return names.some(name => name.length >= 2 && text.includes(name)) && (TEASING.test(text) || HARSH.test(text));
+}
+
+/**
+ * 有人损他，她出不出头。teasing：最近这一阵损他的那几条（这一批 + 记录里的，不含他自己、不含她）。
+ * 他说过不要 → 不出头；话难听、或者 PILE_ON 时间内不止一个人在损 → 出头；剩下的是随口开玩笑，他自己顶得回去，不管。
+ */
+export function defendCall(input: { teasing: readonly { from: number; text: string; at: number }[]; now: number; wish?: DefendWish }): { defend: boolean; why: string } {
+    if (input.wish === 'no') return { defend: false, why: '他说过群里不用她出头，装没看见' };
+    const recent = input.teasing.filter(item => input.now - item.at <= PILE_ON.windowMs && item.at <= input.now);
+    if (recent.some(item => HARSH.test(item.text))) return { defend: true, why: '话说得难听了' };
+    if (new Set(recent.map(item => item.from)).size >= PILE_ON.people) return { defend: true, why: '一群人围着挤兑他一个' };
+    return { defend: false, why: '随口开玩笑的损，他自己能顶回去' };
 }
 
 export const LINE_LABEL: Record<HerLine, string> = { study: '分数排名', us: '咱俩的事', tease: '别人起哄问你俩', care: '「多穿点」式关心' };

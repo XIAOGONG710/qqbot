@@ -40,7 +40,9 @@ const escaped = (names: readonly string[]) => names.map(name => name.replace(/[.
 /** 她熟的话题（她本人：吃的、剧、楼下的猫；猫的名字从卡上读，ADR 0335） */
 const herTopics = () => new RegExp(`吃什么|吃啥|饭|外卖|奶茶|火锅|烧烤|零食|追剧|这剧|电视剧|番剧|新番|电影|猫|${catAlternative()}相机|拍照|摄影|修图|照片`);
 /** 损人的话（有人这样说他） */
-const TEASING = /菜|笨|傻|蠢|丑|怂|废物|拉胯|垃圾|太弱|弱鸡|不行啊|就这|笑死|好惨|活该|单身狗/;
+export const TEASING = /菜|笨|傻|蠢|丑|怂|废物|拉胯|垃圾|太弱|弱鸡|不行啊|就这|笑死|好惨|活该|单身狗/;
+/** 话说得难听：骂人的、侮辱人的，不是斗嘴那种「菜」「笑死」（groupAgency B，她 11-22：「话说得难听了……那我肯定得说两句」；group-self.ts 的 defendCall） */
+export const HARSH = /废物|垃圾|傻[逼比叉B]|(?<![a-z])sb(?![a-z])|滚(?:蛋|开|远点)?(?![滚动烫])|恶心|去死|脑残|智障|贱|狗东西|你妈的|他妈的|tmd|尼玛|死开|丢人现眼|没用的东西/i;
 /** 想伤害自己、绝望（群里有人这么说，她认真接，不当玩笑）：用私聊那套判定，夸张、否认、说别人的都不算 */
 const despair = (text: string) => detectCrisis(text) !== undefined;
 
@@ -148,7 +150,8 @@ export function speakReason(message: Segment[] | string, text: string, from: num
     if (ctx.boyfriend && from !== ctx.boyfriend.qq) {
         const atHim = segments.some(s => s.type === 'at' && Number(s.data?.qq) === ctx.boyfriend!.qq);
         const namesHim = (ctx.boyfriendNames ?? []).some(name => name.length >= 2 && text.includes(name));
-        if ((atHim || namesHim) && TEASING.test(text)) return decide('defend', 'reactive');
+        // 群自主开着（motives）时难听的话也算损他（她出不出头由 group-self.ts 的 defendCall 定）；关着逐字照旧
+        if ((atHim || namesHim) && (TEASING.test(text) || (motives !== undefined && HARSH.test(text)))) return decide('defend', 'reactive');
     }
     if (herTopics().test(text) && ctx.topicToday < GROUP_LIMITS.topicPerDay) {
         if (motives) return onMotive('topic');

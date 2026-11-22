@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { DEFAULTS } from '../src/platform/config.ts';
-import { groupOpportunity, motiveAllows, type GroupMotiveDecision } from '../src/social/group-opportunity.ts';
+import { EXPRESSION_WINDOW_MS, groupOpportunity, motiveAllows, opportunityOpen, type GroupMotiveDecision } from '../src/social/group-opportunity.ts';
 import { speakReason, type SpeakContext, type SpeakDecision } from '../src/social/group-chat.ts';
-import { chimePlan, crossesHerLine } from '../src/social/group-self.ts';
+import { chimePlan, crossesHerLine, defendCall, defendWishFrom, teasesHim } from '../src/social/group-self.ts';
 import type { AgencyShadow } from '../src/world/agency-shadow.ts';
 import type { GroupEntry } from '../src/social/group-chat.ts';
 import { runGroupScenario, type GroupScenario } from '../src/sim/group-runner.ts';
@@ -17,16 +17,20 @@ const blocked: GroupMotiveDecision = { eligible: false, blocks: ['low_mood'], re
 const ctx = (): SpeakContext => ({ selfId: SELF, herMessageIds: new Set([7001]), topicToday: 0, overheardToday: 0 });
 const text = (value: string) => ({ type: 'text', data: { text: value } });
 
-function shadowWith(opportunities: () => { driveId: string; eligible: boolean; blocks: readonly never[]; reason: string }[], scores: Record<string, number>): AgencyShadow {
+const SHADOW_AT = '2026-11-20T12:00:00';
+function shadowWith(opportunities: () => { driveId: string; eligible: boolean; blocks: readonly never[]; reason: string }[], scores: Record<string, number>,
+    decidedAt: Record<string, string> = {}, expiresAt: Record<string, string> = {}): AgencyShadow {
+    const fallback = new Date(Date.parse(SHADOW_AT) - 10 * 60_000).toISOString();
     return {
         opportunities: { opportunities },
-        decisions: { decisions: () => Object.entries(scores).map(([driveId, score]) => ({ id: `decision:${driveId}`, driveId, score, outcome: 'focus', decidedAt: new Date().toISOString(), reason: '测试' })) },
+        decisions: { decisions: () => Object.entries(scores).map(([driveId, score]) => ({ id: `decision:${driveId}`, driveId, score, outcome: 'focus', decidedAt: decidedAt[driveId] ?? fallback, reason: '测试' })) },
+        motivations: { drives: () => Object.entries(expiresAt).map(([id, expires]) => ({ id, expiresAt: expires })) },
     } as unknown as AgencyShadow;
 }
 
 describe('群自主：影子账投影', () => {
     test('取分数最高的可表达机会；没账 / 没有机会 / 读账出错都按潜水', () => {
-        const at = new Date('2026-11-20T12:00:00');
+        const at = new Date(SHADOW_AT);
         const shadow = shadowWith(() => [
             { driveId: 'low', eligible: true, blocks: [], reason: '低分' },
             { driveId: 'high', eligible: true, blocks: [], reason: '高分' },
@@ -43,6 +47,24 @@ describe('群自主：影子账投影', () => {
         assert.equal(groupOpportunity(at, broken).eligible, false, '异常吞掉');
         assert.equal(motiveAllows(blocked), false);
         assert.equal(motiveAllows({ eligible: true, blocks: [], reason: '没给分数', score: 0.1 }), false, '分数不够不放行');
+    });
+
+    // groupAgency A（用户 2026-11-22 选「加时间窗」）：原来账里一条 eligible 写进去就永远放行
+    test('只认此刻还在时间窗里的机会：从那次裁决起一小时，动机更早过期就到那时；还没裁决、裁决在以后、找不到裁决的都不算', () => {
+        const at = new Date(SHADOW_AT);
+        const iso = (offsetMin: number) => new Date(at.getTime() + offsetMin * 60_000).toISOString();
+        const opp = (driveId: string) => ({ driveId, eligible: true, blocks: [] as never[], reason: driveId });
+        const closed = shadowWith(() => [opp('old'), opp('future'), opp('edge'), opp('expired'), opp('orphan')],
+            { old: 1, future: 1, edge: 1, expired: 1 },
+            { old: iso(-90), future: iso(5), edge: iso(-60), expired: iso(-10) },
+            { expired: iso(-1) });
+        assert.equal(groupOpportunity(at, closed).eligible, false, JSON.stringify(groupOpportunity(at, closed)));
+        const open = shadowWith(() => [opp('old'), opp('fresh')], { old: 1, fresh: 0.5 }, { old: iso(-90), fresh: iso(-59) });
+        assert.equal(groupOpportunity(at, open).driveId, 'fresh');
+        assert.equal(EXPRESSION_WINDOW_MS, 3_600_000);
+        assert.equal(opportunityOpen(iso(0), undefined, at.getTime()), true);
+        assert.equal(opportunityOpen(undefined, undefined, at.getTime()), false);
+        assert.equal(opportunityOpen('坏', undefined, at.getTime()), false);
     });
 });
 
@@ -203,3 +225,45 @@ describe('群自主：模拟端到端', () => {
     });
 });
 
+
+// groupAgency B：有人损他，她出不出头按她 2026-11-22 的三档（ADR 0343「她的三档」）
+describe('群自主：有人损他，她的三档', () => {
+    const now = Date.parse('2026-11-20T16:00:00');
+    const t = (minAgo: number) => now - minAgo * 60_000;
+    test('随口玩笑的损不管；难听的、或者十分钟内两个人以上一起损才出头；他说过不要就不出头', () => {
+        assert.deepEqual(defendCall({ teasing: [{ from: 1, text: '阿明这把也太菜了', at: t(1) }], now }).defend, false);
+        assert.equal(defendCall({ teasing: [{ from: 1, text: '阿明你个废物', at: t(1) }], now }).defend, true);
+        assert.equal(defendCall({ teasing: [{ from: 1, text: '阿明菜', at: t(3) }, { from: 2, text: '阿明就这', at: t(1) }], now }).why, '一群人围着挤兑他一个');
+        assert.equal(defendCall({ teasing: [{ from: 1, text: '阿明菜', at: t(3) }, { from: 1, text: '阿明就这', at: t(1) }], now }).defend, false, '同一个人说两句不算围攻');
+        assert.equal(defendCall({ teasing: [{ from: 1, text: '阿明菜', at: t(30) }, { from: 2, text: '阿明就这', at: t(1) }], now }).defend, false, '半小时前那句不算这一阵');
+        assert.equal(defendCall({ teasing: [{ from: 1, text: '阿明你个废物', at: t(1) }], now, wish: 'no' }).defend, false);
+        assert.equal(teasesHim('阿明滚蛋', ['阿明']), true, '难听的话也算损他');
+        assert.equal(teasesHim('阿明明天来吗', ['阿明']), false);
+    });
+    test('他的意思看私聊里最近那句：说过不要就是 no，后来又说要就是 yes', () => {
+        const said = (...lines: string[]) => lines.map(content => ({ role: 'user', content }));
+        assert.equal(defendWishFrom(said('今天好累')), undefined);
+        assert.equal(defendWishFrom(said('群里有人损我你别帮我说话')), 'no');
+        assert.equal(defendWishFrom(said('不用你替我出头')), 'no');
+        assert.equal(defendWishFrom(said('不用你替我出头', '算了，群里有人损我你就帮我说话吧')), 'yes');
+        assert.equal(defendWishFrom([{ role: 'assistant', content: '群里别帮我说话' }]), undefined, '她自己说的不算');
+    });
+    // 他先在群里说过话（群名片认得出他）、隔开一批，后面的人再叫他的名字损他
+    const tease = (steps: GroupScenario['steps']): GroupScenario => ({ about: '合成：有人损他', group: { name: '合成宿舍群' }, boyfriend: '阿明', members: ['老王', '陈陈'], steps: [{ from: '阿明', say: '这把输了', pause: 2 }, ...steps] });
+    test('模拟器：一个人随口损一句她不出头；一个人骂得难听她出头', async () => {
+        const mild = await runGroupScenario(tease([{ from: '老王', say: '阿明这把打得也太菜了', pause: 0.1 }]), options({ motiveOverride: blocked, generate: async () => '人家好着呢' }));
+        assert.equal(mild.spoke, 0, mild.logs.join('\n'));
+        assert.ok(mild.logs.some(line => line.includes('随口开玩笑的损')), mild.logs.join('\n'));
+        const harsh = await runGroupScenario(tease([{ from: '老王', say: '阿明你个废物', pause: 0.1 }]), options({ motiveOverride: blocked, generate: async () => '人家好着呢，你行你上' }));
+        assert.equal(harsh.spoke, 1, harsh.logs.join('\n'));
+        assert.deepEqual(harsh.reasons, { defend: 1 });
+    });
+    test('模拟器：两个人一起损（都只是斗嘴的词）也出头', async () => {
+        const run = await runGroupScenario(tease([
+            { from: '老王', say: '阿明这把打得也太菜了', pause: 0.1 },
+            { from: '陈陈', say: '阿明就这？', pause: 0.1 },
+        ]), options({ motiveOverride: blocked, generate: async () => '人家好着呢，你行你上' }));
+        assert.equal(run.spoke, 1, run.logs.join('\n'));
+        assert.deepEqual(run.reasons, { defend: 1 });
+    });
+});

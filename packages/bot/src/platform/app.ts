@@ -201,6 +201,7 @@ import { humanStateAt } from '.././human-projection.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
 import { PHOTO_REVIEW_MAX_THUMBNAIL_BYTES } from '@qqbot/mobile-companion/photo-review';
 import { MAX_QUEUED_PER_CLIENT } from '@qqbot/mobile-companion/runtime';
+import { defendWishFrom } from '../social/group-self.ts';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { journalOn, journalOnDiaries, selfThread, selfThreadFromDiaries, selfThreadLine } from '.././language/self-thread.ts';
 import { leaveAnnouncer } from '.././life/leave-note.ts';
@@ -2626,6 +2627,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const agencyActive = (config.groupAgency ?? 'off') !== 'off' || Boolean(agencyHooks?.motiveOverride);
     const agencyMotive = agencyActive ? (): GroupMotiveDecision =>
         agencyHooks?.motiveOverride ?? groupOpportunity(new Date(groupWorldNow()), agencyShadow) : undefined;
+    const groupBoyfriend = config.contacts.find(c => c.tier === 'boyfriend');
     const groupChat = groupRoom({
         config, exec, transport, log, worldNow: groupWorldNow, reading, dormancy, cardFor, sendOwnedNotice, sing, repoRoot,
         groupsOn, groupLogs, groupPeopleBook, groupFeel, groupSongRequests, songRequestLifetime,
@@ -2636,6 +2638,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         savedFeelings: () => readSavedFeelings(soulDir()),
         ...(agencyMotive ? { groupOpportunity: agencyMotive } : {}),
         ...(agencyHooks?.onDecision ? { onDecision: agencyHooks.onDecision } : {}),
+        // 群里有人损他，她出不出头先看他自己的意思（groupAgency B，她 11-22：「你不想我掺和我就装没看见」）：他在私聊里最近说的那句
+        ...(config.groupAgency !== 'off' && groupBoyfriend ? { defendWish: () => defendWishFrom(history.load(groupBoyfriend.qq)) } : {}),
     });
 
 

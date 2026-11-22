@@ -23,7 +23,7 @@ import { moodStateLine } from '../emotion/express.ts';
 import { feelingsAt } from '../emotion/feelings.ts';
 import { pick } from './reply-timing.ts';
 import { inspectReply } from '../language/exit-check.ts';
-import { chimePlan, crossesHerLine, freeToChime, groupNowLine, LINE_LABEL, smallNews } from './group-self.ts';
+import { chimePlan, crossesHerLine, defendCall, freeToChime, groupNowLine, LINE_LABEL, PILE_ON, smallNews, teasesHim, teasesUs, type DefendWish } from './group-self.ts';
 import { stateAt } from '../life/schedule.ts';
 import { worldAt, type WorldNow } from '../world/world.ts';
 import { FEELINGS_STALE_MS } from '../emotion/feeling-export.ts';
@@ -66,6 +66,8 @@ export interface GroupRoomDeps {
     groupOpportunity?: () => GroupMotiveDecision | undefined;
     /** 群自主的模拟钩子（仅 sim 用）：决策痕迹，早于模型 */
     onDecision?: (trace: GroupDecisionTrace) => void;
+    /** 群自主（groupAgency B）：他在私聊里说过要不要她在群里替他出头（group-self.ts 的 defendWishFrom）；不给就是没说过 */
+    defendWish?: () => DefendWish | undefined;
 }
 
 export interface GroupRoom {
@@ -300,6 +302,20 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
      * 这一段话处理完再决定说什么：先都记下来（带图的只读这一批里最近几张），
      * 然后按危机 > 被叫 > 替他说 > 话题挑一个理由回一次——两个人同时叫她，不是回两条。
      */
+    /** 有人损他，她出不出头（groupAgency B）：这一批已经进了记录，从记录里取最近 PILE_ON 时间内别人损他的那几条 */
+    function defendFor(groupId: number, batch: readonly { reason?: SpeakReason; text: string }[]): { defend: boolean; why: string } {
+        if (batch.some(item => item.reason === 'defend' && teasesUs(item.text))) return { defend: false, why: '是在起哄问你俩，装看不见' };
+        const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
+        if (!boyfriend || !groupLogs) return { defend: false, why: '名单里没有他' };
+        const now = worldNow();
+        const entries = groupLogs.load(groupId);
+        const names = [...new Set([boyfriend.name, ...entries.filter(e => e.from === boyfriend.qq).map(e => e.name)])];
+        const teasing = entries
+            .filter(e => !e.mine && e.from !== boyfriend.qq && now - Date.parse(e.time) <= PILE_ON.windowMs && teasesHim(e.content, names))
+            .map(e => ({ from: e.from, text: e.content, at: Date.parse(e.time) }));
+        const wish = deps.defendWish?.();
+        return defendCall({ teasing, now, ...(wish ? { wish } : {}) });
+    }
     async function flushGroup(groupId: number): Promise<void> {
         if (stopped() || !groupLogs) return;
         const group = (config.groups ?? []).find(g => g.id === groupId);
@@ -358,10 +374,21 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             }
             // 这一批说完，顺手把某个人在她心里的样子写一句（后台、一批最多一个、14 天才重写；不耽误回话）
             if (config.groupChat === 'on') refineGroupImpression(groupId, batch);
-            // 群自主：她定的线在决策层就挡住——起哄问咱俩装看不见；冲宝宝来的才算「咱俩的事」（替陌生人讲公道话不在此列）。危机不拦。
+            // 群自主：有人损他，她出不出头按她 11-22 的三档（group-self.ts 的 defendCall）：随口玩笑的不管；难听、或者一群人围着挤兑他一个才说两句；
+            // 他说过不要她出头就装没看见。损他的话里带着起哄问咱俩的，照样装看不见
+            if (agencyOn && reason === 'defend') {
+                const call = defendFor(groupId, batch);
+                if (!call.defend) {
+                    if (trace) { trace.passed = false; trace.blockedBy = 'line'; }
+                    log(`[群 ${groupId}] 有人损他：${call.why}，没开口`);
+                    return;
+                }
+                log(`[群 ${groupId}] 有人损他：${call.why}，出来说两句`);
+            }
+            // 群自主：她定的线在决策层就挡住——起哄问咱俩装看不见；分数排名等。危机不拦。
             // 只看让她开口的那几条：同一批里别人随口提了句「成绩」，不该连带吞掉有人 @ 她问的别的事
-            if (agencyOn && reason && reason !== 'crisis'
-                && (reason === 'defend' || batch.some(item => item.reason === reason && crossesHerLine(item.text)))) {
+            if (agencyOn && reason && reason !== 'crisis' && reason !== 'defend'
+                && batch.some(item => item.reason === reason && crossesHerLine(item.text))) {
                 if (trace) { trace.passed = false; trace.blockedBy = 'line'; }
                 log(`[群 ${groupId}] 她定的线：这件事装看不见，没开口`);
                 return;
