@@ -287,6 +287,7 @@ export interface Config {
     selfExport: boolean;
     selfReceipts: boolean;
     ownDays: boolean;
+    desktopDay: boolean;
     selfPursuits: boolean;
     speechNotes: boolean;
     diaryInsights: boolean;
@@ -522,6 +523,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         selfExport: toggle('selfExport'),
         selfReceipts: toggle('selfReceipts'),
         ownDays: toggle('ownDays'),
+        desktopDay: toggle('desktopDay'),
         selfPursuits: toggle('selfPursuits'),
         exemplars: toggle('exemplars'),
         speechNotes: toggle('speechNotes'),
@@ -793,6 +795,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.selfExport !== undefined ? { selfExport: config.selfExport } : {}),
         ...(config.selfReceipts !== undefined ? { selfReceipts: config.selfReceipts } : {}),
         ...(config.ownDays !== undefined ? { ownDays: config.ownDays } : {}),
+        ...(config.desktopDay !== undefined ? { desktopDay: config.desktopDay } : {}),
         ...(config.selfPursuits !== undefined ? { selfPursuits: config.selfPursuits } : {}),
         ...(config.speechNotes !== undefined ? { speechNotes: config.speechNotes } : {}),
         ...(config.exemplars !== undefined ? { exemplars: config.exemplars } : {}),

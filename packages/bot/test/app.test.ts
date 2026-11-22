@@ -3443,6 +3443,29 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
         } finally { rmSync(receipts, { force: true }); }
     });
 
+    // 接线（ADR 0347 第 3 层地基）：desktopDay + crossRecent 开着、DSH 开着时，30 秒的收件箱定时器把 desktop-recent.jsonl 收进 desktop-log.jsonl；关着不收
+    test('桌面记录接线：desktopDay 开着才收进 desktop-log.jsonl', async () => {
+        const run = async (on: boolean) => {
+            const clock = new VirtualClock(start);
+            const cfg = config({ ...life, contacts: bf, dsh: { enabled: true }, crossRecent: true, ...(on ? { desktopDay: true } : {}) });
+            mkdirSync(join(cfg.dataDir, 'memory'), { recursive: true });
+            const row = { at: start.getTime() - 5 * 60_000, user: '帮我看看这个表', assistant: '弄好了' };
+            writeFileSync(join(cfg.dataDir, 'memory', 'desktop-recent.jsonl'), JSON.stringify(row) + String.fromCharCode(10));
+            mock.timers.enable({ apis: ['setInterval'] });
+            try {
+                const { app, logs } = setup(cfg, { 10001: [] }, { clock });
+                await app.connected(SELF);
+                for (let i = 0; i < 2; i++) { mock.timers.tick(30_000); await new Promise(resolve => setTimeout(resolve, 20)); }
+                assert.ok(!logs.some(line => /帮我看看这个表/.test(line)), '日志不记内容');
+            } finally { mock.timers.reset(); }
+            const file = join(cfg.dataDir, 'memory', 'desktop-log.jsonl');
+            return existsSync(file) ? readFileSync(file, 'utf8') : undefined;
+        };
+        assert.equal(await run(false), undefined, '关着不收');
+        const log = await run(true);
+        assert.ok(log?.includes('"user":"帮我看看这个表"'), '开着收进来了');
+    });
+
     // 接线（ADR 0347 第 2 层 D 块）：ownDays 开着，给他的提示词里「你这两天自己在做的」来自共享世界账（昨天真发生的事）；关着没有这一行
     test('ownDays 接线：开着才有「你这两天自己在做的」，来源是世界账', async () => {
         // 合成角色的世界里 10-28 晚上写完了高数作业：10-29 那天问，「昨天」就有这件事（11-04 那天昨天没有新事，这一行本来就不出）

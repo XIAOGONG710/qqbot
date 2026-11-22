@@ -179,6 +179,8 @@ export const DEFAULTS = {
     selfReceipts: false,
     /** 「这两天自己在做的」换成世界账里真发生过的（ADR 0347 第 2 层第三节）：给他的提示词里恢复那一行 */
     ownDays: false,
+    /** 桌面上的时间算进她的一天（ADR 0347 第 3 层）：先只收桌面记录（desktop-recent → desktop-log），不改她言行；要 crossRecent 开着 */
+    desktopDay: false,
     /** 她自己定追求（ADR 0178）：每晚想一次，自己放下 / 暂停 / 恢复 / 记进度 / 提新的；要同时开 pursuits */
     selfPursuits: false,
     /** 她每晚自己总结说话习惯（ADR 0193）：22 点以后想一次，写「我发现……」的笔记，挑相关的几条放进提示词；他用 /说话习惯 看 */
@@ -650,6 +652,8 @@ export interface AppConfig {
     selfReceipts?: boolean;
     /** 「这两天自己在做的」（ADR 0347 第 2 层第三节）：给他的提示词里恢复这一行，来源换成共享世界账里这两天真发生过的事。默认关 */
     ownDays?: boolean;
+    /** 桌面上的时间算进她的一天（ADR 0347 第 3 层）：现在只做地基——每 30 秒把插件写的 desktop-recent.jsonl 收进 QQ 自己的 desktop-log.jsonl（按 id 去重、留 14 天），还没有任何地方读它。要 crossRecent 开着。默认关 */
+    desktopDay?: boolean;
     /** 她自己定追求（ADR 0178）：每晚想一次，自己放下 / 暂停 / 恢复（包括作者给的两条）/ 记进度 / 提新的（同时最多 3 件、隔 3 天提一件）；他用 /追求 看，改不了。要同时开 pursuits。默认关 */
     selfPursuits?: boolean;
     /** 她每晚自己总结说话习惯（ADR 0193）：每晚 22 点以后想一次——看自己这几天说话的样子（一次几条、每条多长、短反应、问号、表情）和真人语料里的样子，写下「我发现……」；挑最相关的几条放进以后的提示词；笔记不能引用他说过的话、不能照抄真人原话、不碰底线；他用 /说话习惯 看，改不了。要名单里有男朋友档；默认关 */
@@ -1052,6 +1056,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         selfExport: bool(file, 'selfExport', '', DEFAULTS.selfExport),
         selfReceipts: bool(file, 'selfReceipts', '', DEFAULTS.selfReceipts),
         ownDays: bool(file, 'ownDays', '', DEFAULTS.ownDays),
+        desktopDay: bool(file, 'desktopDay', '', DEFAULTS.desktopDay),
         selfPursuits: bool(file, 'selfPursuits', '', DEFAULTS.selfPursuits),
         speechNotes: bool(file, 'speechNotes', '', DEFAULTS.speechNotes),
         diaryInsights: bool(file, 'diaryInsights', '', DEFAULTS.diaryInsights),

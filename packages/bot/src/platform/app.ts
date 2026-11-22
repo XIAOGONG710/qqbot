@@ -154,6 +154,7 @@ import { bodyAt } from '.././life/body.ts';
 import { useWorldNeeds, worldState, type WorldNow } from '.././world/world.ts';
 import { ownDaysLine, recentDayHighlights, worldHighlights } from '.././world/highlights.ts';
 import { consumeSelfReceipts } from '.././memory/self-receipts.ts';
+import { desktopLogPath, ingestDesktopRecent } from '.././memory/desktop-log.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
 import { lifeExecutor } from '.././world/life-selector.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/diary.ts';
@@ -942,7 +943,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             scanAiPhotoWorld?.();
         } } } : {}),
     });
-    const dshInbox = dshInboxModule(dshEnabled && (config.timeline || sharedWorld || (config.selfExport && config.selfReceipts)) ? () => syncDshInboxes() : undefined);
+    const dshInbox = dshInboxModule(dshEnabled && (config.timeline || sharedWorld || (config.selfExport && config.selfReceipts) || (config.desktopDay && config.crossRecent)) ? () => syncDshInboxes() : undefined);
     // 待跟进（连上之后才有计划器）：排在所有 synced 的最前面，同迁移前
     // 群消息的入口（ADR 0336 第 6 步）：群里那一摊在下面才建，事件来了再取
     const groupRoomEntry = groupRoomModule(() => groupChat, {
@@ -1316,6 +1317,13 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                     now, sharedWorld, log,
                 );
                 if (count) log(`DSH：收进世界事件 ${count} 条`);
+            }
+            // 桌面记录（ADR 0347 第 3 层地基，desktopDay）：把插件整份重写的 desktop-recent.jsonl 收进 QQ 自己的 desktop-log.jsonl；现在还没有地方读它
+            if (config.desktopDay && config.crossRecent && deviceOwner) {
+                const memoryDir = join(config.dataDir, 'memory');
+                // 旧账读不了时它会抛（不覆盖 14 天的记录）：单独接住，别连带后面的回执一起失败
+                try { ingestDesktopRecent({ recentFile: desktopRecentPath(memoryDir), logFile: desktopLogPath(config.dataDir), now: now.getTime(), log }); }
+                catch (error) { log(`桌面记录：这次没收（${error instanceof Error ? error.message : String(error)}）`); }
             }
             // 桌面回执（ADR 0347 第 2 层，selfReceipts）：她在桌面上把攒着的话说出口了，计划器记成说过了，QQ 不再重发；收到了就刷新一次 SELF
             const owner = deviceOwner;
