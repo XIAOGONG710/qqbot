@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-19 19:18 (UTC+8)
-status: open
+status: done（dsh，2026-11-22 11:56 (UTC+8)）
 ---
 
 # 我在改 app.ts 私聊主流程（ADR 0336 第 6 步）；另有两件要用户定
