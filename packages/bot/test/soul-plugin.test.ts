@@ -26,6 +26,8 @@ interface Plugin {
     trimSoul: (file: string, maxChars: number) => number;
     desktopMemoryClarity: (item: Record<string, unknown>, query?: string, now?: Date) => string;
     memoryDistance: (item: Record<string, unknown>, now?: Date) => string;
+    readFeelingLedger: (file?: string, now?: number) => { at: number; kind: string; level: string; cause: string; aboutHim: boolean; withhold: string; coarse: boolean }[];
+    feltThenNote: (ledger: unknown[], item: Record<string, unknown>, now?: Date) => string;
     memoryAsMine: (text: string) => string;
     shouldAutoSaveTurn: (user: string, assistant: string) => boolean;
 }
@@ -1452,6 +1454,74 @@ describe('一个生活·第 5 层：记忆有体感', () => {
             const shown = h.contexts.map(entry => entry.text()).join('\n');
             assert.ok(shown.includes('- 林梦瑶说想吃火锅'), '原样贴回去');
             assert.ok(!shown.includes('[你想起来的]'), '没有标题');
+        } finally { fake.restore(); }
+    });
+});
+
+describe('一个生活·第 5 层：感觉账配当时的感觉（DSH 侧只读）', () => {
+    const dir = () => mkdtempSync(join(tmpdir(), 'felt-ledger-'));
+    const DAY = 86_400_000;
+    const ledgerFile = (rows: unknown[]) => {
+        const file = join(dir(), 'feeling-ledger.jsonl');
+        writeFileSync(file, rows.map(row => JSON.stringify(row)).join('\n'), 'utf8');
+        return file;
+    };
+    const row = (at: number, kind: string, cause: string, extra: Record<string, unknown> = {}) => ({ at, kind, level: 'clear', cause, source: 'chat', aboutHim: false, withhold: '', ...extra });
+    const now = new Date(2026, 10, 22, 22, 0).getTime();
+    const daysAgo = (days: number) => now - days * DAY;
+
+    test('读账：坏行跳过，90 天以前只剩个大概——开心、松口气不降', () => {
+        const file = ledgerFile([
+            row(daysAgo(3), 'annoyed', '水卡丢了跑了两趟宿管'),
+            row(daysAgo(200), 'worry', '作业拖到最后一晚'),
+            row(daysAgo(200), 'joy', '他说想我了'),
+            '{"at": "坏行"',
+        ]);
+        const rows = plugin.readFeelingLedger(file, now);
+        assert.equal(rows.length, 3);
+        assert.equal(rows[0]!.coarse, false);
+        assert.equal(rows[1]!.coarse, true, '200 天以前只剩个大概');
+        assert.equal(rows[2]!.coarse, false, '想起来还会笑的那种留着');
+    });
+
+    test('同一天、对得上的事才配：账里那天的感觉回到这条召回上', () => {
+        const file = ledgerFile([row(daysAgo(21), 'annoyed', '水卡丢了，跑了两趟宿管')]);
+        const ledger = plugin.readFeelingLedger(file, now);
+        const note = plugin.feltThenNote(ledger, { text: '林梦瑶说水卡找不到了，去了两趟宿管', mentionedAt: new Date(daysAgo(21)).toISOString() }, new Date(now));
+        assert.match(note, /^那时候你心里有点烦/);
+        assert.match(note, /那是你当时的感觉，现在不一定还这样/);
+        assert.equal(plugin.feltThenNote(ledger, { text: '林梦瑶说想喝奶茶', mentionedAt: new Date(daysAgo(21)).toISOString() }, new Date(now)), '', '对不上就不配');
+        assert.equal(plugin.feltThenNote(ledger, { text: '林梦瑶说水卡找不到了', mentionedAt: new Date(daysAgo(2)).toISOString() }, new Date(now)), '', '不是那一天不配');
+    });
+
+    test('疼和她妈那块的慌不原样带上：只说身上不太舒服、心里一直悬着', () => {
+        const file = ledgerFile([row(daysAgo(5), 'tired', '痛经痛得躺床上', { withhold: 'pain' }), row(daysAgo(5), 'worry', '我妈又说成绩', { withhold: 'mother' })]);
+        const ledger = plugin.readFeelingLedger(file, now);
+        const pain = plugin.feltThenNote(ledger, { text: '林梦瑶说痛经痛得躺床上', mentionedAt: new Date(daysAgo(5)).toISOString() }, new Date(now));
+        assert.match(pain, /身上不太舒服/);
+        assert.doesNotMatch(pain, /痛经/);
+        const mother = plugin.feltThenNote(ledger, { text: '林梦瑶说我妈又说成绩', mentionedAt: new Date(daysAgo(5)).toISOString() }, new Date(now));
+        assert.match(mother, /心里一直悬着/);
+        assert.doesNotMatch(mother, /我妈/);
+    });
+
+    test('因为他而难过、烦、担心的不附（ADR 0218 的护栏）', () => {
+        const file = ledgerFile([row(daysAgo(4), 'sad', '他好久不回我消息', { aboutHim: true })]);
+        const ledger = plugin.readFeelingLedger(file, now);
+        assert.equal(plugin.feltThenNote(ledger, { text: '林梦瑶说他好久不回我消息', mentionedAt: new Date(daysAgo(4)).toISOString() }, new Date(now)), '');
+    });
+
+    test('memoryFeelings: false 不加那句（回滚用）', async () => {
+        const fake = fakeHindsight({
+            banks: ALL_BANKS,
+            recall: { [OWNER]: [{ id: 'm1', text: '林梦瑶说水卡找不到了', document_id: 'ep-1', fact_type: 'world', date: new Date(daysAgo(3)).toISOString() }] },
+        });
+        const h = boot({ baseUrl: `http://hs-${++urlCounter}`, memoryFeelings: false, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+        try {
+            await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '水卡' }] }, async () => undefined);
+            const shown = h.contexts.map(entry => entry.text()).join('\n');
+            assert.ok(shown.includes('[你想起来的]'), '口气那块还在');
+            assert.ok(!shown.includes('那时候你心里'), '不附当时的感觉');
         } finally { fake.restore(); }
     });
 });

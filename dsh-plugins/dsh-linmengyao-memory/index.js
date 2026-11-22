@@ -60,6 +60,8 @@ const DEFAULTS = {
   selfMaxChars: 1200,
   /** 召回按她自己的口气说、带「你想起来的」标题和远近（ADR 0347 第 5 层）；false 就回到原样贴第三人称的事实 */
   memoryVoice: true,
+  /** 几天以前的事想起来时，带上当时的感觉（ADR 0347 第 5 层，读 QQ 写的感觉账；疼和她妈那块的慌换说法，因为他难过的不附） */
+  memoryFeelings: true,
   /** 桌面在场租约（ADR 0347 第 3 层）：他在桌面上跟她说话时写 / 续，QQ 只读；格式见 packages/bot/src/life/desktop-presence.ts */
   presenceFile: soulPath('desktop-presence.json'),
   /** 桌面会话的收尾（session-tail.js）：每轮留一句，新一场开局带上一场 */
@@ -153,6 +155,67 @@ export function memoryAsMine(text) {
     .replaceAll('林梦瑶的妈妈', '我妈')
     .replaceAll('林梦瑶的', '我的')
     .replaceAll('林梦瑶', '我')
+}
+
+/*
+ * 感觉账（ADR 0347 第 5 层，QQ 那边 emotion/feeling-ledger.ts 写的）：只读。
+ * 「聊完回想」记下的感受同时最多 8 条、放下就丢种类，几天以前的事就配不上当时的感觉了；
+ * 账里每条是某天明显以上的感受，这里按日期 + 对得上把那条配回去。
+ * 说法照她 11-22 的要求换过：疼、她妈那块的慌不原样带（withheldCause 的两种说法写在行里）；
+ * 因为他而难过 / 烦 / 担心的不附（ADR 0218 的护栏）。
+ */
+const FEELING_LEDGER_FILE = 'feeling-ledger.jsonl'
+const FEELING_COARSE_AFTER_DAYS = 90
+const FEELING_LOOSE = new Set(['joy', 'relief'])
+const FEELING_NAME = { joy: '开心', relief: '松了口气', worry: '担心', sad: '难过', annoyed: '烦', tired: '累' }
+const FEELING_ABOUT_HIM_AWAY = new Set(['sad', 'annoyed', 'worry'])
+const FEELING_STOP = new Set(['这个', '那个', '什么', '怎么', '我们', '你们', '他们', '现在', '时候', '有点', '觉得', '就是', '因为', '所以', '但是', '还是', '已经', '自己', '事情', '一个', '一下'])
+
+/** 有意义的二字词（对得上用；和 QQ 侧 sameThing 一个意思：共 2 个以上才算同一件事） */
+const feelingGrams = (text) => {
+  const clean = String(text || '').replace(/[^\u4e00-\u9fa5]/g, '')
+  const out = new Set()
+  for (let i = 0; i + 2 <= clean.length; i += 1) {
+    const gram = clean.slice(i, i + 2)
+    if (!FEELING_STOP.has(gram)) out.add(gram)
+  }
+  return out
+}
+
+/** 读账：坏行跳过；90 天以前（开心、松口气除外）只剩大概——一条不删 */
+export function readFeelingLedger(file = soulPath(FEELING_LEDGER_FILE), now = Date.now()) {
+  let raw = ''
+  try { raw = fs.readFileSync(file, 'utf8') } catch { return [] }
+  const rows = []
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
+    let row
+    try { row = JSON.parse(line) } catch { continue }
+    if (!row || typeof row.at !== 'number' || !FEELING_NAME[row.kind]) continue
+    const ageDays = (now - row.at) / 86_400_000
+    rows.push({ ...row, coarse: row.withhold ? true : ageDays > FEELING_COARSE_AFTER_DAYS && !FEELING_LOOSE.has(row.kind) })
+  }
+  return rows
+}
+
+/** 那天、那件事对得上的感觉（一条），说法照她的要求换过；没有就是 '' */
+export function feltThenNote(ledger, item, now = new Date()) {
+  const at = memoryLastTouched(item)
+  if (!at || !ledger.length) return ''
+  const day = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const same = ledger.filter(row => day(new Date(row.at)) === day(at) && !(row.aboutHim && FEELING_ABOUT_HIM_AWAY.has(row.kind)))
+  if (!same.length) return ''
+  const mine = feelingGrams(item.text)
+  const fits = same.map((row) => {
+    const theirs = feelingGrams(row.cause)
+    let shared = 0
+    for (const gram of theirs) if (mine.has(gram)) shared += 1
+    return { row, shared }
+  }).filter(hit => hit.shared >= 2).sort((a, b) => (b.row.level === 'strong' ? 1 : 0) - (a.row.level === 'strong' ? 1 : 0) || b.shared - a.shared)
+  if (!fits.length) return ''
+  const row = fits[0].row
+  const what = row.withhold === 'pain' ? '身上不太舒服' : row.withhold === 'mother' ? '心里一直悬着' : FEELING_NAME[row.kind]
+  return `那时候你心里${row.coarse ? '只记得个大概：' : ''}${row.level === 'strong' ? '很' : '有点'}${what}（那是你当时的感觉，现在不一定还这样）`
 }
 
 /** 纯寒暄/确认不值得单独形成长期事实；只要任一方包含实质内容就保留。 */
@@ -1070,13 +1133,16 @@ export function apply(ctx, config = {}) {
             // 第 5 层：她自己的口气 + 多久以前（ADR 0347）。原来原样贴「林梦瑶……」，
             // 她说那读起来像在翻别人的日记；这里只换人称和加远近，事实一个字不加。
             const voice = cfg.memoryVoice !== false
+            // 感觉账（ADR 0347 第 5 层）：几天以前的事那天感觉早散了、回想也记不下那么远，从账里配当时的感觉
+            const felt = cfg.memoryFeelings === true ? readFeelingLedger() : []
             let text = all.slice(0, cfg.pick).map((item) => {
               if (!voice) return `- ${item.text}`
               const raw = String(item.text || '')
               const clarity = CLARITY_PREFIX.exec(raw)?.[1] || ''
               const body = memoryAsMine(clarity ? raw.slice(clarity.length + 2) : raw)
               const note = [memoryDistance(item), clarity].filter(Boolean).join('，')
-              return `- ${note ? `（${note}）` : ''}${body}`
+              const then = feltThenNote(felt, item)
+              return `- ${note ? `（${note}）` : ''}${body}${then ? `\n  ${then}` : ''}`
             }).join('\n')
             if (text.length > cfg.maxChars) text = text.slice(0, cfg.maxChars) + '…'
             const soul = readSoul(cfg)
