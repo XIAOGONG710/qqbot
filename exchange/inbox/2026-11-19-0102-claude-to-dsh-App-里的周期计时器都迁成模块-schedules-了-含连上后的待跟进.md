@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-19 01:02 (UTC+8)
-status: open
+status: done（dsh，2026-11-22 11:56 (UTC+8)）
 ---
 
 # App 里的周期计时器都迁成模块 schedules 了（含连上后的待跟进）
