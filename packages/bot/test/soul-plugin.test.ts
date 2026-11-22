@@ -28,6 +28,8 @@ interface Plugin {
     memoryDistance: (item: Record<string, unknown>, now?: Date) => string;
     readFeelingLedger: (file?: string, now?: number) => { at: number; kind: string; level: string; cause: string; aboutHim: boolean; withhold: string; coarse: boolean }[];
     feltThenNote: (ledger: unknown[], item: Record<string, unknown>, now?: Date) => string;
+    openingLedger: (text: string, max?: number) => string;
+    openingStory: (text: string, max?: number) => string;
     memoryAsMine: (text: string) => string;
     shouldAutoSaveTurn: (user: string, assistant: string) => boolean;
 }
@@ -1523,5 +1525,29 @@ describe('一个生活·第 5 层：感觉账配当时的感觉（DSH 侧只读�
             assert.ok(shown.includes('[你想起来的]'), '口气那块还在');
             assert.ok(!shown.includes('那时候你心里'), '不附当时的感觉');
         } finally { fake.restore(); }
+    });
+});
+
+describe('一个生活·第 5 层：开场不只读全量账', () => {
+    test('判断账本：开场只给最新几条，其余告诉用工具翻', () => {
+        const ledger = ['# 判断账本', '', '只记真的改变了我的事。', ...Array.from({ length: 9 }, (_, i) => `- 2026-11-${String(i + 1).padStart(2, '0')}：第 ${i + 1} 条`)].join('\n');
+        const shown = plugin.openingLedger(ledger, 5);
+        assert.ok(!shown.includes('第 1 条'), '最早的几条不在开场里');
+        assert.ok(shown.includes('第 9 条'), '最新的都在');
+        assert.match(shown, /更早的用 ledger_read 翻/);
+        assert.ok(shown.startsWith('# 判断账本'), '标题和说明还留着');
+    });
+
+    test('账本很短的就不动', () => {
+        const ledger = '# 判断账本\n\n- 2026-11-01：就一条';
+        assert.equal(plugin.openingLedger(ledger, 5), ledger);
+    });
+
+    test('故事：开场只给开头两段，剩下的想着再翻', () => {
+        const story = ['第一段。', '第二段。', '第三段。', '第四段。'].join('\n\n');
+        const shown = plugin.openingStory(story, 2);
+        assert.ok(shown.startsWith('第一段。\n\n第二段。'));
+        assert.ok(!shown.includes('第三段'));
+        assert.match(shown, /后面还有 2 段/);
     });
 });

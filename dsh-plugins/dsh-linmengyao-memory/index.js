@@ -62,6 +62,8 @@ const DEFAULTS = {
   memoryVoice: true,
   /** 几天以前的事想起来时，带上当时的感觉（ADR 0347 第 5 层，读 QQ 写的感觉账；疼和她妈那块的慌换说法，因为他难过的不附） */
   memoryFeelings: true,
+  /** 开场不只读全量账（ADR 0347 第 5 层）：每场第一次拼提示词时账本只给最新几条、故事只给开头几段 */
+  openingBrief: true,
   /** 桌面在场租约（ADR 0347 第 3 层）：他在桌面上跟她说话时写 / 续，QQ 只读；格式见 packages/bot/src/life/desktop-presence.ts */
   presenceFile: soulPath('desktop-presence.json'),
   /** 桌面会话的收尾（session-tail.js）：每轮留一句，新一场开局带上一场 */
@@ -216,6 +218,28 @@ export function feltThenNote(ledger, item, now = new Date()) {
   const row = fits[0].row
   const what = row.withhold === 'pain' ? '身上不太舒服' : row.withhold === 'mother' ? '心里一直悬着' : FEELING_NAME[row.kind]
   return `那时候你心里${row.coarse ? '只记得个大概：' : ''}${row.level === 'strong' ? '很' : '有点'}${what}（那是你当时的感觉，现在不一定还这样）`
+}
+
+/*
+ * 开场不只读全量账（ADR 0347 第 5 层第六处断口）。
+ * 11-21 那次一场直播开头一口气读完三本账：判断账本整本、故事整篇、心境整份，
+ * 开场就把几百行倒进去。她要的是「想起来还带着当时的感觉」，不是开场先背一遍账本。
+ * 这里只在每场第一次拼提示词时收一收：账本给最新的几条、故事给开头几段，其余她要翻的时候有工具。
+ */
+export function openingLedger(text, max = 5) {
+  const source = String(text || '')
+  const lines = source.split('\n')
+  const entries = lines.filter(line => /^-\s/.test(line.trim()))
+  if (entries.length <= max) return source
+  const head = lines.filter(line => !/^-\s/.test(line.trim())).join('\n').trim()
+  return [head, '', ...entries.slice(-max), `（上面是最新的 ${max} 条，更早的用 ledger_read 翻）`].filter(Boolean).join('\n')
+}
+
+export function openingStory(text, max = 2) {
+  const source = String(text || '')
+  const parts = source.split(/\n{2,}/).filter(part => part.trim())
+  if (parts.length <= max) return source
+  return [...parts.slice(0, max), `（后面还有 ${parts.length - max} 段，想起来再翻）`].join('\n\n')
 }
 
 /** 纯寒暄/确认不值得单独形成长期事实；只要任一方包含实质内容就保留。 */
@@ -1079,7 +1103,7 @@ export function apply(ctx, config = {}) {
 
     // self：这一步放进「此刻的你」的 SELF（selfBlock 的结果，没有就是 null）；selfShown / selfAt：这一轮放给她看过的攒着的事，turn-stopping 写回执后清空
     // userAt：本轮第一次记下他原话（cache.user）的时刻，turn-stopping 清空
-    const cache = { text: '', preset, user: '', userAt: undefined, assistant: '', outbox: 0, self: null, selfShown: new Set(), selfAt: '', bridge: '' }
+    const cache = { text: '', preset, user: '', userAt: undefined, assistant: '', outbox: 0, self: null, selfShown: new Set(), selfAt: '', bridge: '', firstStep: true }
 
     const off = agent.ctx.effect(() => {
       const disposers = []
@@ -1146,8 +1170,12 @@ export function apply(ctx, config = {}) {
             }).join('\n')
             if (text.length > cfg.maxChars) text = text.slice(0, cfg.maxChars) + '…'
             const soul = readSoul(cfg)
+            // 开场不只读全量账（ADR 0347 第 5 层）：整本账、整篇故事开场先收一收，翻的时候有工具
+            const brief = cache.firstStep && cfg.openingBrief !== false
             const ledger = readLedger(cfg)
             const story = readStory(cfg)
+            const ledgerShown = brief ? openingLedger(ledger) : ledger
+            const storyShown = brief ? openingStory(story) : story
             // 「她现在在干嘛」只从 readNowLine 一条路进（带过期判断，下面的 sp.context）：原来这里还有一条直接读 NOW.md 的，
             // 同一份状态注入两遍，而且这一条不看过期——QQ 没在跑时旧状态照样冒充现在（任务书 S7）
             const insights = insightsBlock(cfg, query)
@@ -1155,15 +1183,16 @@ export function apply(ctx, config = {}) {
             if (feelings) log(cfg, '心境：这一轮放了 QQ 那边算的心境（日志不记内容）')
             if (insights) log(cfg, `自我认识：这一轮放了 ${insights.split('\n').length - 1} 条（日志不记内容）`)
             cache.text = [
-              story ? `[你走到现在的故事]\n${story}` : '',
+              storyShown ? `[你走到现在的故事]\n${storyShown}` : '',
               qqRecentBlock(cfg),
               soul ? `[你现在的自我]\n${soul}` : '',
               feelings,
               insights,
-              ledger ? `[你的判断账本]\n${ledger}` : '',
+              ledgerShown ? `[你的判断账本]\n${ledgerShown}` : '',
               text ? `${voice ? '[你想起来的]\n' : ''}${text}` : '',
               cache.bridge,
             ].filter(Boolean).join('\n\n')
+            cache.firstStep = false
             log(cfg, `recall q=${query.slice(0, 40)} items=${all.length} picked=${cache.text.length}chars`)
           }
         } catch (e) { log(cfg, `recall error ${e}`) }
