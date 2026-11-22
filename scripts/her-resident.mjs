@@ -3,7 +3,7 @@
 // 全权限、审计日志；不做自拍/语音。
 import http from 'node:http'
 import { spawn } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { checkRequest, ensureToken, permissionMode, residentDir } from '../packages/bot/src/platform/resident-guard.ts'
@@ -111,7 +111,7 @@ const server = http.createServer((req, res) => {
         const label = req.url === '/wake' ? 'wake-manual' : 'sleep-manual'
         // 手动触发也照实记账：原来只有定时那条路在成功后写 jobs.json，手动跑成了却不记，
         // 结果 sleepCheck 当晚还会再来一遍（DSH 信箱 11-22 1503，用户「都行」）
-        void idleRun(req.url === '/wake' ? WAKE_PROMPT : SLEEP_PROMPT, label, req.url === '/wake' ? 300_000 : 600_000)
+        void idleRun(req.url === '/wake' ? WAKE_PROMPT : sleepPrompt(), label, req.url === '/wake' ? 300_000 : 600_000)
             .then((ok) => {
                 if (!ok || req.url !== '/sleep') return
                 const done = loadState()
@@ -161,11 +161,32 @@ const asleepNow = () => herAsleep({ nowText: readNowFile(), now: new Date() })
 function offlineUntil() {
     try { return Number(JSON.parse(readFileSync(OFFLINE, 'utf8')).until || 0) } catch { return 0 }
 }
-const SLEEP_PROMPT = `把今天的事整理一下（不一定是夜里，可能是第二天白天补的）：
-1) 从记忆里查今天发生的事，最多挑 3 条真正值得长期留下的结论，用 memory_save 写进记忆（写成“林梦瑶……”；旧结论会被自动软失效，不要重复写同一件事）；
-2) 写今天的公开日记前，可以先用 journal_read 翻一眼前两天写的：前两天说要做的、没弄完的、还惦记的，今天有下文就带一句，没有就不提，别重抄前两天的话；然后用 journal_write 写一篇今天的（一段就够）；
-3) 有不想让他知道的感受，用 private_write 写进私密日记（可选）。
-不要给他发消息，做完就结束。`
+// 一本日记（ADR 0347 第 3 层，E 的常驻那半）：oneDiary 开着时 QQ 在 NOW.md 的 asleep 那行后面留一行
+// `<!-- diary-by: qq -->`，意思是今天的日记 QQ 写过了。常驻的睡眠整合看到它就不写日记，只做记忆整理——
+// 两边都写就成了两个人记同一本日记。有效期按 72 小时（不用 asleep 的 30 分钟）：QQ 停过以后会补写最近
+// 3 天的日记，30 分钟一过常驻就又开始写，又撞上了。NOW.md 超过 72 小时或者没这一行，照旧写。
+const DIARY_BY_QQ = /<!--\s*diary-by:\s*qq\s*-->/
+const DIARY_BY_QQ_TTL_MS = 72 * 60 * 60 * 1000
+
+/** 今天这份日记是不是 QQ 已经写过了（NOW.md 里有 diary-by 那行，而且 NOW.md 是 72 小时内的） */
+function diaryWrittenByQQ(now = new Date()) {
+    try {
+        if (now.getTime() - statSync(NOW_FILE).mtimeMs > DIARY_BY_QQ_TTL_MS) return false
+        return DIARY_BY_QQ.test(readFileSync(NOW_FILE, 'utf8'))
+    } catch { return false }
+}
+
+/** 睡眠整合交给她的活：QQ 写过日记的那天就只剩记忆整理，写日记这一步不给她 */
+function sleepPrompt(now = new Date()) {
+    const steps = ['从记忆里查今天发生的事，最多挑 3 条真正值得长期留下的结论，用 memory_save 写进记忆（写成“林梦瑶……”；旧结论会被自动软失效，不要重复写同一件事）；']
+    if (diaryWrittenByQQ(now)) {
+        steps.push('今天的公开日记 QQ 那边已经写过了，你不用再写。')
+    } else {
+        steps.push('写今天的公开日记前，可以先用 journal_read 翻一眼前两天写的：前两天说要做的、没弄完的、还惦记的，今天有下文就带一句，没有就不提，别重抄前两天的话；然后用 journal_write 写一篇今天的（一段就够）；')
+    }
+    steps.push('有不想让他知道的感受，用 private_write 写进私密日记（可选）。')
+    return `把今天的事整理一下（不一定是夜里，可能是第二天白天补的）：\n${steps.map((step, i) => `${i + 1}) ${step}`).join('\n')}\n不要给他发消息，做完就结束。`
+}
 const WAKE_PROMPT = `你一个人在家，随机醒了。先用 interest_list 看你自己定的长期兴趣，挑一件做（看书、查资料、整理自己的东西都行）；做完用 interest_log 记进度，做完了用 interest_done。不想做就用 private_write 写一句你现在的念头，然后结束。如果读到什么想让他知道的，用 outbox_send 留一句给他（别刷屏）。不要直接给 QQ 发消息。`
 
 function loadState() {
@@ -199,7 +220,7 @@ function sleepCheck() {
     // 睡没睡原来看 LIFE.json 的 activity === '睡觉'，现在看 QQ 的 NOW.md（ADR 0347 第 1 层）；NOW.md 不新鲜就按 23–07 算睡着
     if (asleepNow()) return
     // 10-30：做成了才记成做过（原来跑之前就写，崩了当天就不再试）
-    void idleRun(SLEEP_PROMPT, 'sleep', 600_000).then(ok => {
+    void idleRun(sleepPrompt(now), 'sleep', 600_000).then(ok => {
         if (!ok) return
         const done = loadState()
         done.sleep = localDay(now)

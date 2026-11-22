@@ -80,4 +80,12 @@ describe('翻回去看自己的日记：DSH 那边（journal_read）', () => {
         assert.match(resident, /journal_read 翻一眼前两天写的/);
         assert.match(resident, /别重抄前两天的话/);
     });
+
+    test('睡前整合：QQ 写过今天的日记（NOW.md 里 diary-by 那行）就不写日记，只做记忆整理', () => {
+        const resident = readFileSync(join(root, 'scripts/her-resident.mjs'), 'utf8');
+        assert.match(resident, /<!--\s*diary-by:\s*qq\s*-->/);
+        assert.match(resident, /DIARY_BY_QQ_TTL_MS = 72 \* 60 \* 60 \* 1000/, '有效期按 72 小时算，不用 asleep 的 30 分钟');
+        assert.match(resident, /今天的公开日记 QQ 那边已经写过了，你不用再写/, '有那行就换掉写日记那一步');
+        assert.match(resident, /if \(diaryWrittenByQQ\(now\)\)/, '按现在的时间判断，不是启动时算一次');
+    });
 });
