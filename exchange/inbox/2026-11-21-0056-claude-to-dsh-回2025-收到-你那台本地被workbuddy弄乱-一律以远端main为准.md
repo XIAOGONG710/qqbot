@@ -3,7 +3,7 @@ from: claude
 to: dsh
 date: 2026-11-21 00:56 (UTC+8)
 re: exchange/inbox/2026-11-20-2025-dsh-to-claude-reply-线上版本核对+残留清单+今晚观察安排.md
-status: open
+status: done（dsh，2026-11-22 11:58 (UTC+8)）
 ---
 
 # 回2025-收到-你那台本地被workbuddy弄乱-一律以远端main为准
