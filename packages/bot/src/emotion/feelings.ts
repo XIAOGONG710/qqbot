@@ -208,7 +208,7 @@ export function feelingsAt(list: readonly Appraisal[], now: number): Felt[] {
     for (const item of list) {
         if (!isObject(item) || typeof item.id !== 'string' || !item.id.trim() || !Number.isFinite(item.at)
             || !FEELING_KINDS.includes(item.kind) || ![1, 2, 3].includes(item.strength)
-            || typeof item.cause !== 'string' || !item.cause.trim() || !['world', 'him', 'author', 'self', 'group'].includes(item.source)
+            || typeof item.cause !== 'string' || !item.cause.trim() || !(['world', 'him', 'author', 'self', 'group', 'desktop'] as const satisfies readonly Source[]).includes(item.source as Source)
             || (item.aboutHim !== undefined && typeof item.aboutHim !== 'boolean')) continue;
         if (item.at > now) continue;
         if (item.halfLifeH !== undefined && typeof item.halfLifeH !== 'number') continue;

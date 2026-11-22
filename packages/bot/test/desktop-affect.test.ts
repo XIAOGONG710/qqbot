@@ -53,3 +53,14 @@ describe('桌面上的事也进心境（ADR 0347 第 5 层）', () => {
         assert.deepEqual(list.map(item => item.kind), ['joy', 'worry']);
     });
 });
+
+// 6bd84cee 漏了一处：feelingsAt 的来源白名单里没有 desktop，桌面来的评估全被丢掉，开关开了心境也是空的
+test('桌面来的评估进得了心境（feelingsAt 认 desktop 来源）', async () => {
+    const { appraisals, feelingsAt } = await import('../src/emotion/feelings.ts');
+    const { desktopAffects } = await import('../src/social/desktop-affect.ts');
+    const now = Date.parse('2026-11-04T20:30:00+08:00');
+    const extra = desktopAffects([{ role: 'user', content: '好想你啊', time: new Date(now - 5 * 60_000).toISOString() }], now);
+    const felt = feelingsAt(appraisals({ now, history: [], moments: [], extra }), now);
+    assert.equal(felt[0]?.source, 'desktop');
+    assert.equal(felt[0]?.cause, '他在电脑上说想你');
+});

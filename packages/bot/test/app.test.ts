@@ -3466,6 +3466,30 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
         assert.ok(log?.includes('"user":"帮我看看这个表"'), '开着收进来了');
     });
 
+    // 桌面上的事也进心境（ADR 0347 第 5 层 desktopFeelings）：不开 desktopConflict 也得起作用（原来桌面缓存只在 desktopConflict 开着时刷新，单开它是空的）
+    test('desktopFeelings 接线：只开 desktopDay + desktopFeelings，他在电脑上说想她，QQ 这边心境里有这件事', async () => {
+        const run = async (on: boolean) => {
+            const clock = new VirtualClock(start);
+            const prompts: string[] = [];
+            const cfg = config({ ...life, contacts: bf, dsh: { enabled: true }, crossRecent: true, herFeelings: true, desktopDay: true, ...(on ? { desktopFeelings: true } : {}) });
+            mkdirSync(join(cfg.dataDir, 'memory'), { recursive: true });
+            const row = { at: start.getTime() - 5 * 60_000, user: '好想你啊', assistant: '我也是' };
+            writeFileSync(join(cfg.dataDir, 'memory', 'desktop-recent.jsonl'), JSON.stringify(row) + String.fromCharCode(10));
+            mock.timers.enable({ apis: ['setInterval'] });
+            try {
+                const { app, sent } = setup(cfg, { 10001: [] }, { clock, generate: messages => { prompts.push(messages.map(m => m.content).join(String.fromCharCode(10))); return '嗯嗯'; } });
+                await app.connected(SELF);
+                for (let i = 0; i < 2; i++) { mock.timers.tick(30_000); await new Promise(resolve => setTimeout(resolve, 20)); }
+                mock.timers.reset();
+                app.receive({ ...event(10001, 1, '在吗'), time: Math.floor(clock.now() / 1000) });
+                await replied(clock, sent);
+            } finally { mock.timers.reset(); }
+            return prompts.join(String.fromCharCode(10));
+        };
+        assert.doesNotMatch(await run(false), /他在电脑上说想你/, '关着不算');
+        assert.match(await run(true), /他在电脑上说想你/, '开着进了心境');
+    });
+
     // 接线（ADR 0347 第 2 层 D 块）：ownDays 开着，给他的提示词里「你这两天自己在做的」来自共享世界账（昨天真发生的事）；关着没有这一行
     test('ownDays 接线：开着才有「你这两天自己在做的」，来源是世界账', async () => {
         // 合成角色的世界里 10-28 晚上写完了高数作业：10-29 那天问，「昨天」就有这件事（11-04 那天昨天没有新事，这一行本来就不出）

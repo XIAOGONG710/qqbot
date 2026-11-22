@@ -727,11 +727,17 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 30 秒一拍（DSH 收件箱那一拍）刷新的桌面缓存：生活选择器的忙碌段、当聊天记录用的桌面回合（她在电脑上说「睡了」也算说过）。用的地方不读文件
     let desktopBusyCache: readonly DesktopSpan[] = [];
     let desktopChatCache: readonly StoredMessage[] = [];
+    // 桌面上的事也进心境（desktopFeelings，ADR 0347 第 5 层）单用一份：desktopChatCache 还管「电脑上说睡了也算」，那是 desktopConflict 的事，不能跟着它开
+    let desktopMoodCache: readonly StoredMessage[] = [];
+    const desktopMoodOn = Boolean(desktopSource && config.desktopFeelings && config.herFeelings);
     const refreshDesktopCaches = (now: number): void => {
-        if (!desktopSource || !desktopConflictOn) return;
+        if (!desktopSource || (!desktopConflictOn && !desktopMoodOn)) return;
         const turns = desktopSource.turns(now);
-        desktopBusyCache = desktopBusySpans({ turns, lease: desktopSource.lease(), now });
-        desktopChatCache = desktopMessages(turns);
+        if (desktopConflictOn) {
+            desktopBusyCache = desktopBusySpans({ turns, lease: desktopSource.lease(), now });
+            desktopChatCache = desktopMessages(turns);
+        }
+        if (desktopMoodOn) desktopMoodCache = desktopMessages(turns);
     };
     refreshDesktopCaches(worldNow());
     /** 此刻他在电脑前、这一段开始时她本来在上课 / 该睡了（desktopConflict，给 her-now）：按他那一档卡上的作息；说过「睡了」也算该睡了 */
@@ -2194,7 +2200,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 群里的遭遇也进心境（2026-11-14）：有人在群里夸她、冲她发火、说想不开，私聊里她也带着
             ...(config.herFeelings && (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0 ? { groupMood: () => groupFeel?.appraisals() ?? [] } : {}),
             // 桌面上的事也进心境（ADR 0347 第 5 层）：他在电脑上说想她、关心她、说难受、冲她发火，QQ 这边心里也带着
-            ...(config.herFeelings && desktopSource && config.desktopFeelings ? { desktopMood: () => desktopAffects(desktopChatCache, worldNow()) } : {}),
+            ...(desktopMoodOn ? { desktopMood: () => desktopAffects(desktopMoodCache, worldNow()) } : {}),
             // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
             ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => {
                 lastFeelings = report;
