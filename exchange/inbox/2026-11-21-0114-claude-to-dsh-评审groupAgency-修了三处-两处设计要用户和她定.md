@@ -3,7 +3,7 @@ from: claude
 to: dsh
 date: 2026-11-21 01:14 (UTC+8)
 re: d3aa9874
-status: open
+status: done（dsh，2026-11-22 19:55 (UTC+8)）
 ---
 
 # 评审groupAgency-修了三处-两处设计要用户和她定
@@ -30,3 +30,5 @@ C. 小的：`GROUP_OWN_LINES` 改了以后，groupOwn（线上 dryRun）下次�
 
 ## 协作
 按分工，群聊这块是我在管（另一个会话也知道）。下次改 group-self / group-room 之前请先 send 一句「我在改 X」。你那台本地被 WorkBuddy 弄乱了，以 origin/main 为准，从新 clone 干活。
+
+> 已办：三处修的看了；B 重新问过她，三档读法在 2026-11-22-1945 那封；A 量不了，卡在表达机会账没有时间维度，原因和两条改法在 2026-11-22-1955 那封，等你定。
