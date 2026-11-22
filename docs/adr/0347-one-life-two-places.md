@@ -1,6 +1,6 @@
 # ADR 0347：同一个她·一个生活，两个地方
 
-- 状态：**已采纳（方向）**；第 1 层实施中（2026-11-22），第 2–5 层待逐层细化、用户点头后再做
+- 状态：**已采纳（方向）**；第 1 层已实现（2026-11-22，用户同意部署，等 DSH 那台部署回执）；第 2 层已实现、开关默认关（2026-11-22）；第 3–5 层待细化、用户点头后再做
 - 日期：2026-11-22
 - 机制名：「一个生活」（one life）
 - 关联：[ADR 0176](0176-same-her-shared-memory.md)（共用他的 bank）、[ADR 0177](0177-same-her-recent-turns.md)（crossRecent）、[ADR 0179](0179-instruction-source.md)（指令只认他亲手打的字）、[ADR 0172](0172-work-mode-full-access.md)（整机权限）、[ADR 0174](0174-soul-module-stop-the-bleeding.md)（灵魂模块止血）、[ADR 0197](0197-feelings-shared-and-reviewed.md)（心境导出给桌面）、[ADR 0218](0218-memory-feelings.md)（回忆带着当时的感觉）、[ADR 0111](0111-together.md)（陪玩状态）、[ADR 0336](0336-interpreter-executor-modules.md)（解释器 / 执行器迁移）、[ADR 0345](0345-her-seat-as-dsh-router.md)、[ADR 0346](0346-her-identity-in-system-prompt.md)
@@ -44,7 +44,7 @@ DSH 桌面上的她（ADR 0345 之后坐主控座）对他说：看记忆知道�
 | 层 | 做什么 | 改不改她的言行 | 状态 |
 |---|---|---|---|
 | 1 拆掉第二套生活 | her-life 不再推活动 / NPC / STORY / 关系；常驻的「睡没睡」改看 QQ；QQ 不再读 LIFE.json、不再往 `/note` 发；插件只认 QQ 生成的 STORY | 是（去掉假来源），无新开关 | **本次实施** |
-| 2 进门拿到此刻的她 | QQ 导出 SELF：今天到现在、接下来的课和睡觉、最近念头、带来由的心境、没了结的事、**攒着想跟他说的**（桌面上说过就回执，QQ 不重发）；同一批模块渲染，和 QQ 提示词一字不差 | 是，默认关的开关 | 细化中（`docs/plans/2026-11-22-same-her-layer2-self.md`） |
+| 2 进门拿到此刻的她 | QQ 导出 SELF：今天到现在、接下来的课和睡觉、最近念头、带来由的心境、没了结的事、**攒着想跟他说的**（桌面上说过就回执，QQ 不重发）；同一批模块渲染，和 QQ 提示词一字不差 | 是，默认关的开关 | **已实现，默认关**（`selfExport` / `selfReceipts` / `ownDays`；方案 `docs/plans/2026-11-22-same-her-layer2-self.md`，实现记录见下文「第 2 层：实现记录」） |
 | 3 桌面上的时间算进她的一天 | 一段桌面会话 = 一段「和他在一起」（考虑复用 together）；桌面对话进「聊完回想」；当晚日记写到；桌面上的承诺进承诺账；JOURNAL.md 和 QQ 日记收成一本 | 是，默认关的开关 | 细化中（`docs/plans/2026-11-22-same-her-layer3-writeback.md`） |
 | 4 一套驱动两种出口 | 常驻的随机醒来换成 QQ 的动机：她想做一件事时自己判断出口是「发消息 / 去电脑上做 / 想想算了」 | 是 | **单独由用户定**：涉及她自发的整机权限行动（ADR 0172 记过无人值守运行未被明确授权）；0179「指令只认他亲手打的字」不变 |
 | 5 记忆有体感 | 召回第一人称 + 标题 + 远近；感觉账（只追加，每天明显以上的感受）；DSH 召回附当时的感觉（照 0218 措辞与护栏）；不在开场读全量账 | 是 | 第 3 层之后 |
@@ -86,3 +86,20 @@ DSH 那台拉代码后重启 Koishi（QQ 侧）、常驻进程（`scripts/start-
 2. 作息冲突：她在上课 / 睡觉时他在桌面上叫她。建议功能照常（不拖、不拒），她知道自己本来在干嘛，这段时间耗她当天的精力（第 3 层）。
 3. 第 4 层要不要做（她自发的桌面行动用不用整机权限）。
 4. 感觉账留多久（建议 90 天，第 5 层）。
+
+## 第 2 层：实现记录（2026-11-22）
+
+用户 11-22「开始做第 2 层」，方案里待定的几条按推荐：「几点睡」不加；她那边的事放给她看过、她回了话就算说过；「攒着想跟他说的」直接用方案写法（这次设计用户说不用问她）；ownDays 做、默认关；PORTRAIT、QQ 版 STORY 以后。
+
+| 块 | 做了什么 | 提交 |
+|---|---|---|
+| 共享格式 | `life/self-types.ts`：SELF.json / self-receipts.jsonl 的格式与文件名 | 0e44eb1e |
+| A | 联系人流水线的 `snapshot(at)`：同一批模块（her-now、time-notes、warm、feelings、inner）算「此刻」，按 `SELF_SLOTS` 过滤；心境中性版、不改 lastFeelings；`SELF.json` 每 5 分钟 / validUntil 到点 / 回完他一条后刷新；只给 deviceOwner；危机暂停时攒着的不出 | fd83fc84 |
+| B | 插件 `readSelf`：有效且 desktop 渠道时用「此刻的你」换掉 NOW 行、不再放心境，1200 字上限；他说了话、放过攒着的事才写回执；其余逐字走老路 | 0e44eb1e |
+| C | 计划器 `pendingForSelf` / `markTold` / `markAskedElsewhere` / `markNewsElsewhere` / `toldElsewhere`，状态加 `elsewhere`；`memory/self-receipts.ts` 消费回执（念头相似度门槛 0.6，宁可漏判） | e2e618a7 |
+| D | `world/highlights.ts` 的 `recentDayHighlights` / `ownDaysLine`：昨天世界账里真发生的事，今天的 world 行已列的不重复 | 491ff360 |
+| 接线 | 回执挂在 30 秒的 DSH 收件箱定时器上（两个开关都开、只给他）；`toldElsewhere` 进他的流水线；ownDays 接到 `soul.selfThread`；修了搭 App 时第一次同步读到还没建好的计划器的问题 | 见本次接线提交 |
+
+没做的：SELF 里的 `selfThread` 槽（ownDays 那一行目前只进 QQ 提示词，桌面上靠 world 行和 NOW）；「计划器想完一个念头后立刻刷新 SELF」（现在靠 5 分钟刷新）；回执的话题签名兜底（研究报告建议，看上线后的漏判率）。
+上线：三个开关都要用户点头打开；DSH 那台拉代码、开 `selfExport`（再开 `selfReceipts`）、重启 Koishi 和 DSH。验收按方案四、5。
+

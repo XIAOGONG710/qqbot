@@ -35,7 +35,7 @@ import { leaveNoteModule } from '../modules/leave-note.ts';
 import { dshStateModule } from '../modules/dsh-state.ts';
 import { selfExportModule } from '../modules/self-export.ts';
 import { renderSelf, SELF_REFRESH_MS, selfExportPath, writeSelfExport } from '../life/self-export.ts';
-import type { SelfPending } from '../life/self-types.ts';
+import { SELF_RECEIPTS_FILE, type SelfPending } from '../life/self-types.ts';
 import { dreamJobs } from '../life/dream-jobs.ts';
 import { Acquaintances, acquaintancesAccount } from '.././life/acquaintances.ts';
 import { Dormancy } from '.././memory/dormancy.ts';
@@ -142,7 +142,7 @@ import { detectCrisis, type CrisisLevel } from '.././emotion/crisis.ts';
 import { createCrisisState, crisisMarks, CRISIS_PAUSE_MS } from '.././emotion/crisis-state.ts';
 import { createPokeLimiter } from '.././social/pokes.ts';
 import { plannerHost } from '.././proactive/planner-host.ts';
-import { type PlannerStatus } from '.././proactive/proactive-planner.ts';
+import { type Planner, type PlannerStatus } from '.././proactive/proactive-planner.ts';
 import { PromiseStateUnavailable } from '.././life/promise-state.ts';
 import { promiseKeeper, type Appointment } from '.././life/promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from '.././life/her-days.ts';
@@ -152,7 +152,8 @@ import { attachMatchingMemoryReviews, finishMemoryReviews, readMemoryReviews, re
 import { recordTrace, traceOf, tracesLine } from '.././life/traces.ts';
 import { bodyAt } from '.././life/body.ts';
 import { useWorldNeeds, worldState, type WorldNow } from '.././world/world.ts';
-import { worldHighlights } from '.././world/highlights.ts';
+import { ownDaysLine, recentDayHighlights, worldHighlights } from '.././world/highlights.ts';
+import { consumeSelfReceipts } from '.././memory/self-receipts.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
 import { lifeExecutor } from '.././world/life-selector.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/diary.ts';
@@ -935,7 +936,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             scanAiPhotoWorld?.();
         } } } : {}),
     });
-    const dshInbox = dshInboxModule(dshEnabled && (config.timeline || sharedWorld) ? () => syncDshInboxes() : undefined);
+    const dshInbox = dshInboxModule(dshEnabled && (config.timeline || sharedWorld || (config.selfExport && config.selfReceipts)) ? () => syncDshInboxes() : undefined);
     // 待跟进（连上之后才有计划器）：排在所有 synced 的最前面，同迁移前
     // 群消息的入口（ADR 0336 第 6 步）：群里那一摊在下面才建，事件来了再取
     const groupRoomEntry = groupRoomModule(() => groupChat, {
@@ -1105,7 +1106,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 不是她的作息和世界。拆掉了；她这两天真实的日子由第 2 层从 QQ 自己的世界 / 作息补上。
             selfThread: (): string | undefined => {
                 try {
-                    return selfThreadLine(selfThread(exec.files.read(join(soulDir(), 'JOURNAL.md')))) || undefined;
+                    let journal: string | undefined;
+                    try { journal = selfThreadLine(selfThread(exec.files.read(join(soulDir(), 'JOURNAL.md')))); } catch { /* 没有 JOURNAL.md */ }
+                    // 「你这两天自己在做的」（ADR 0347 第 2 层，ownDays，默认关）：来源换成共享世界账里昨天真发生的事（第 1 层拆掉的那行念的是 her-life 编的）
+                    const days = config.ownDays ? ownDaysNow() : undefined;
+                    return [journal, days].filter(Boolean).join(String.fromCharCode(10)) || undefined;
                 } catch { return undefined; }
             },
             refusals: () => recentRefusals(),
@@ -1283,6 +1288,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const noteTimeline = (entry: Parameters<Timeline['record']>[0]): void => {
         try { timeline?.record(entry); } catch (error) { log(`时间线：写不进去（${error instanceof Error ? error.message : String(error)}）`); }
     };
+    // 主动消息的计划器在后面才建（plannerHost）：搭 App 时第一次同步收件箱那会儿还没有，先返回 undefined，建好后换成真的（避免读到还没初始化的 planners）
+    let plannerOf: (qq: number) => Planner | undefined = () => undefined;
     // DSH 只追加脱敏收件箱；QQ 开着 DSH 时用同一条时间线 / 世界账落地，关掉时不启动同步定时器。
     const syncDshInboxes = (): void => {
         if (!dshEnabled) return;
@@ -1303,6 +1310,17 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                     now, sharedWorld, log,
                 );
                 if (count) log(`DSH：收进世界事件 ${count} 条`);
+            }
+            // 桌面回执（ADR 0347 第 2 层，selfReceipts）：她在桌面上把攒着的话说出口了，计划器记成说过了，QQ 不再重发；收到了就刷新一次 SELF
+            const owner = deviceOwner;
+            const planner = owner && config.selfExport && config.selfReceipts ? plannerOf(owner.qq) : undefined;
+            if (planner) {
+                const counts = consumeSelfReceipts({
+                    file: join(soulDir(), SELF_RECEIPTS_FILE),
+                    stateFile: join(config.dataDir, 'memory', 'self-receipts-state.json'),
+                    planner, now, log,
+                });
+                if (counts.receipts) selfExport.refreshSoon();
             }
         } catch (error) {
             log(`DSH：收件箱同步失败（${error instanceof Error ? error.message : String(error)}）`);
@@ -1624,6 +1642,15 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     };
     exportNow();
     // 之后每 NOW_REFRESH_MS 再写一次：由 now-export 模块声明（ADR 0336 第 6 步，App 搭好时开）
+
+    // 「你这两天自己在做的」的真实来源（ADR 0347 第 2 层 D 块，ownDays）：共享世界账里昨天已经发生的事，今天的小事 world 行已经列了不重复
+    function ownDaysNow(): string | undefined {
+        const schedule = worldCard?.schedule;
+        const herWorld = worldCard?.herWorld;
+        if (!schedule || !herWorld || !sharedWorld) return undefined;
+        const world = sharedWorld;
+        return ownDaysLine(recentDayHighlights(at => world.at(herWorld, schedule, at), schedule, new Date(worldNow())));
+    }
 
     // 「此刻的她」（SELF.json，ADR 0347 第 2 层，配置 selfExport，默认关）：他那条流水线的快照（拼 QQ「此刻」块的同一批模块）+ 攒着想跟他说的，写进灵魂目录。
     // 只给 deviceOwner（名单里第一个男朋友档，ADR 0020）；休眠时不写；危机暂停时攒着的整块不出（paused: 'crisis'）。已经写过的那份不删，靠过期降级。
@@ -2098,6 +2125,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 exec.files.write(join(config.dataDir, 'last-prompt.json'), JSON.stringify({ qq: contact.qq, ...prompt }, null, 2));
             },
             turnModules: interpreter.turnModules,
+            // 桌面上已经说过的那件她那边的事（ADR 0347 第 2 层回执，selfReceipts）：意图阶梯的 news 不再当没说过；只给他，开关关着时不给（和原来一样）
+            ...(config.selfExport && config.selfReceipts && contact.qq === deviceOwner?.qq
+                ? { toldElsewhere: (id: string) => plannerOf(contact.qq)?.toldElsewhere(id) ?? false } : {}),
             ...pipeline,
             // 回复和逐条事实检查的审稿也经执行器（ADR 0336 第 3 步）：配置、日志和原来 contact.ts 的默认调用一样；
             // 换模型（深思）时测试替身收到换成的那份配置，同原来 generate 的第三个参数
@@ -2157,6 +2187,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         agencyShadow, weather, web, herGuessesNow, promises, dormancy, crisisState, bedtimes, watchedEntries: () => watchedEntries, pipeline,
     });
     const planners = proactivePlanners.planners;
+    plannerOf = qq => planners.get(qq);
     lifetime.own('planners', () => { for (const planner of planners.values()) planner.stop(); });
     const startPlanners = proactivePlanners.start;
     function syncFollowUps(): void {

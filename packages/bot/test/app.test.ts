@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { after, afterEach, before, describe, test } from 'node:test';
+import { after, afterEach, before, describe, mock, test } from 'node:test';
 import { setWorkMode } from '../src/platform/work-mode.ts';
 import { startApp, type App, type AppOptions, type Transport } from '../src/platform/app.ts';
 import { PEEK_OFF_NOTICE } from '../src/platform/private-space.ts';
@@ -3376,6 +3376,48 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
         let rest = block;
         for (const line of self.lines) rest = rest.replace(line.text, '');
         assert.doesNotMatch(rest, /\[你现在：|是你的底子|你此刻的心境|你的身体|你今天的打算|你那边/);
+    });
+
+    // 接线（ADR 0347 第 2 层 C 块）：桌面回执只在 selfExport + selfReceipts 都开、DSH 开着时由 30 秒的收件箱定时器消费；消费过就有游标文件
+    test('回执接线：两个开关都开才消费 self-receipts.jsonl（游标文件出现），关着不碰', async () => {
+        const receipts = join(isolatedSoul, 'self-receipts.jsonl');
+        const line = JSON.stringify({ v: 1, id: '00000000-0000-4000-8000-000000000001', at: new Date(start.getTime() - 60_000).toISOString(), selfAt: new Date(start.getTime() - 120_000).toISOString(), shown: ['news:nope'], said: '嗯' });
+        const run = async (on: boolean) => {
+            writeFileSync(receipts, line + String.fromCharCode(10));
+            const clock = new VirtualClock(start);
+            const cfg = config({ ...life, contacts: bf, proactive: 'on', dsh: { enabled: true }, selfExport: true, ...(on ? { selfReceipts: true } : {}) });
+            // 收件箱 30 秒一次的定时器是真的 setInterval：只把它换成可拨的（别的 setTimeout 照常走）
+            mock.timers.enable({ apis: ['setInterval'] });
+            try {
+                const { app, logs } = setup(cfg, { 10001: [] }, { clock });
+                await app.connected(SELF);
+                for (let i = 0; i < 3; i++) { mock.timers.tick(30_000); await new Promise(resolve => setTimeout(resolve, 20)); }
+                // 搭 App 时那一次同步在计划器建好之前：不能因为读到还没初始化的计划器而整次失败
+                assert.ok(!logs.some(line => /收件箱同步失败/.test(line)), logs.filter(line => /收件箱/.test(line)).join(' / '));
+            } finally { mock.timers.reset(); }
+            return existsSync(join(cfg.dataDir, 'memory', 'self-receipts-state.json'));
+        };
+        try {
+            assert.equal(await run(false), false, 'selfReceipts 关着不消费');
+            assert.equal(await run(true), true, '两个开关都开时消费回执');
+        } finally { rmSync(receipts, { force: true }); }
+    });
+
+    // 接线（ADR 0347 第 2 层 D 块）：ownDays 开着，给他的提示词里「你这两天自己在做的」来自共享世界账（昨天真发生的事）；关着没有这一行
+    test('ownDays 接线：开着才有「你这两天自己在做的」，来源是世界账', async () => {
+        // 合成角色的世界里 10-28 晚上写完了高数作业：10-29 那天问，「昨天」就有这件事（11-04 那天昨天没有新事，这一行本来就不出）
+        const day = new Date(2026, 9, 29, 20, 30);
+        const run = async (on: boolean) => {
+            const clock = new VirtualClock(day);
+            const prompts: string[] = [];
+            const { app, sent } = setup(config({ ...life, autonomousLife: true, contacts: bf, ...(on ? { ownDays: true } : {}) }), { 10001: [] }, { clock, generate: messages => { prompts.push(messages.map(m => m.content).join(String.fromCharCode(10))); return '嗯嗯'; } });
+            await app.connected(SELF);
+            app.receive({ ...event(10001, 1, '嗯'), time: Math.floor(clock.now() / 1000) });
+            await replied(clock, sent);
+            return prompts[0] ?? '';
+        };
+        assert.doesNotMatch(await run(false), /你这两天自己在做的/);
+        assert.ok((await run(true)).includes('[你这两天自己在做的：昨天'), '开着时有这一行，来自昨天的世界账');
     });
 
     test('默认关：不写 SELF.json；只有他（男朋友档）的才写，名单里没有男朋友档不写', async () => {
