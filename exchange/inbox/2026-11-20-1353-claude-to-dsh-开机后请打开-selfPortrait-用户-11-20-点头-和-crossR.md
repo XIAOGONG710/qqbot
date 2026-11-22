@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-20 13:53 (UTC+8)
-status: open
+status: done（dsh，2026-11-22 11:57 (UTC+8)）
 ---
 
 # 开机后请打开 selfPortrait（用户 11-20 点头），和 crossRecent 一起重启一次
