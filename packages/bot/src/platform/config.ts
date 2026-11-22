@@ -179,8 +179,16 @@ export const DEFAULTS = {
     selfReceipts: false,
     /** 「这两天自己在做的」换成世界账里真发生过的（ADR 0347 第 2 层第三节）：给他的提示词里恢复那一行 */
     ownDays: false,
-    /** 桌面上的时间算进她的一天（ADR 0347 第 3 层）：先只收桌面记录（desktop-recent → desktop-log），不改她言行；要 crossRecent 开着 */
+    /** 桌面上的时间算进她的一天（ADR 0347 第 3 层）：收桌面记录（desktop-recent → desktop-log）；NOW.md、主动消息、留话知道他在电脑前，会话记进时间线；要 crossRecent 开着 */
     desktopDay: false,
+    /** 桌面上的对话也进「聊完回想」（ADR 0347 第 3 层 §2.3）：要 feelingReview 和 desktopDay */
+    desktopReview: false,
+    /** 桌面上答应的事进承诺账（ADR 0347 第 3 层 §2.4）：要 desktopDay 和长期记忆 */
+    desktopPromises: false,
+    /** 一本日记（ADR 0347 第 3 层 §2.5）：当天日记由 QQ 写（selfDirectedMemory 开着也写），抄一份进 JOURNAL.md；读的一侧统一 */
+    oneDiary: false,
+    /** 作息冲突（ADR 0347 第 3 层 §2.6）：他在她上课 / 睡觉 / 空闲时叫她上电脑，她知道本来在干嘛；要 desktopDay 和 herDays */
+    desktopConflict: false,
     /** 她自己定追求（ADR 0178）：每晚想一次，自己放下 / 暂停 / 恢复 / 记进度 / 提新的；要同时开 pursuits */
     selfPursuits: false,
     /** 她每晚自己总结说话习惯（ADR 0193）：22 点以后想一次，写「我发现……」的笔记，挑相关的几条放进提示词；他用 /说话习惯 看 */
@@ -652,8 +660,26 @@ export interface AppConfig {
     selfReceipts?: boolean;
     /** 「这两天自己在做的」（ADR 0347 第 2 层第三节）：给他的提示词里恢复这一行，来源换成共享世界账里这两天真发生过的事。默认关 */
     ownDays?: boolean;
-    /** 桌面上的时间算进她的一天（ADR 0347 第 3 层）：现在只做地基——每 30 秒把插件写的 desktop-recent.jsonl 收进 QQ 自己的 desktop-log.jsonl（按 id 去重、留 14 天），还没有任何地方读它。要 crossRecent 开着。默认关 */
+    /**
+     * 桌面上的时间算进她的一天（ADR 0347 第 3 层）：每 30 秒把插件写的 desktop-recent.jsonl 收进 QQ 自己的 desktop-log.jsonl（按 id 去重、留 14 天）；
+     * 他在电脑前（在场租约优先、桌面回合兜底）时主动消息不打扰（睡前那句除外）、留话先留着，桌面上刚聊过也算聊过；NOW.md 写「和你聊天中（本来在上课 / 本来该睡了）」；
+     * 一段桌面会话结束后记一条时间线（只有时长和动作类别，要 timeline）。只给名单里第一个男朋友档。要 crossRecent 开着。默认关
+     */
     desktopDay?: boolean;
+    /** 桌面上的对话也进「聊完回想」（ADR 0347 第 3 层 §2.3）：电脑上的回合编号 k、含网址 / 路径 / 令牌的行整行丢，护栏不放宽。要 feelingReview（和 herFeelings）、desktopDay。默认关 */
+    desktopReview?: boolean;
+    /** 桌面上答应的事进承诺账（ADR 0347 第 3 层 §2.4）：他那一位的承诺抽取看 QQ + 电脑上合并的一份（电脑上那几句前面带「（电脑上）」）。要 desktopDay、长期记忆。默认关 */
+    desktopPromises?: boolean;
+    /**
+     * 一本日记（ADR 0347 第 3 层 §2.5）：当天日记由 QQ 写（selfDirectedMemory 开着也写，周记 / 阶段总结跟着回来），写完往 JOURNAL.md 抄一份「## 日期（当天）」；
+     * 自己的下文、首轮铺底、他问到某天、做梦都从同一本读；NOW.md 多一行 diary-by: qq 告诉常驻进程别再 journal_write。desktopDay 也开着时日记材料多一行「电脑上：…」（只有时段和动作类别）。默认关
+     */
+    oneDiary?: boolean;
+    /**
+     * 作息冲突（ADR 0347 第 3 层 §2.6）：被他叫上电脑时功能照常；她知道本来在上课 / 该睡了（提示词多一行，刚被叫起来按被吵醒写），昨晚算上半夜在电脑上陪他；
+     * 空闲时间的桌面会话占着她的时间（排着的空闲活动停下），结束后记成一件世界事件；她在电脑上说「睡了」也算说过睡了。要 desktopDay、herDays（睡觉那一行还要 realNights）。默认关
+     */
+    desktopConflict?: boolean;
     /** 她自己定追求（ADR 0178）：每晚想一次，自己放下 / 暂停 / 恢复（包括作者给的两条）/ 记进度 / 提新的（同时最多 3 件、隔 3 天提一件）；他用 /追求 看，改不了。要同时开 pursuits。默认关 */
     selfPursuits?: boolean;
     /** 她每晚自己总结说话习惯（ADR 0193）：每晚 22 点以后想一次——看自己这几天说话的样子（一次几条、每条多长、短反应、问号、表情）和真人语料里的样子，写下「我发现……」；挑最相关的几条放进以后的提示词；笔记不能引用他说过的话、不能照抄真人原话、不碰底线；他用 /说话习惯 看，改不了。要名单里有男朋友档；默认关 */
@@ -1057,6 +1083,10 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         selfReceipts: bool(file, 'selfReceipts', '', DEFAULTS.selfReceipts),
         ownDays: bool(file, 'ownDays', '', DEFAULTS.ownDays),
         desktopDay: bool(file, 'desktopDay', '', DEFAULTS.desktopDay),
+        desktopReview: bool(file, 'desktopReview', '', DEFAULTS.desktopReview),
+        desktopPromises: bool(file, 'desktopPromises', '', DEFAULTS.desktopPromises),
+        oneDiary: bool(file, 'oneDiary', '', DEFAULTS.oneDiary),
+        desktopConflict: bool(file, 'desktopConflict', '', DEFAULTS.desktopConflict),
         selfPursuits: bool(file, 'selfPursuits', '', DEFAULTS.selfPursuits),
         speechNotes: bool(file, 'speechNotes', '', DEFAULTS.speechNotes),
         diaryInsights: bool(file, 'diaryInsights', '', DEFAULTS.diaryInsights),

@@ -94,8 +94,8 @@ export interface TurnModuleDeps {
     lifeInPrompt: boolean;
     intent: IntentModuleOptions;
     shape: Omit<ShapeModuleOptions, 'log'>;
-    /** 她此刻的另几样（项目选择、昨晚怎么睡的、她自己定的计划） */
-    herNow?: Pick<HerNowOptions, 'projectChoice' | 'realNights' | 'herPlan'>;
+    /** 她此刻的另几样（项目选择、昨晚怎么睡的、她自己定的计划；作息冲突的桌面那两样，ADR 0347 第 3 层 desktopConflict，App 才给） */
+    herNow?: Pick<HerNowOptions, 'projectChoice' | 'realNights' | 'herPlan' | 'desktopNight' | 'desktopCalled'>;
     /** 她自己记下的东西：各样的读取函数，配置没开的不给 */
     herNotes?: Omit<HerNotesOptions, 'now' | 'log'>;
     /** 「我现在的样子」（ADR 0340）：配置 selfPortrait 开着才给 */

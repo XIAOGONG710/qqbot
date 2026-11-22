@@ -22,8 +22,13 @@ export interface NowText {
     recent?: string[];
     /** 按作息她这会儿在睡（被他叫醒、正和他聊着不算）。给常驻进程判断醒不醒（ADR 0347 第 1 层），不进任何提示词 */
     asleep?: boolean;
+    /** 一本日记（ADR 0347 第 3 层，oneDiary）：当天日记由 QQ 写，常驻进程的睡眠整合别再 journal_write。不给就没有这一行 */
+    diaryBy?: 'qq';
     at: number;
 }
+
+/** NOW.md 里告诉常驻进程「当天日记 QQ 写了」的那一行（life/one-diary.ts 的契约；常驻进程按整行认） */
+export const DIARY_BY_LINE = '<!-- diary-by: qq -->';
 
 /** 渲染成文件内容：第一行是给机器看的生成时间，正文是给人读的几行 */
 export function renderNow(text: NowText): string {
@@ -32,6 +37,7 @@ export function renderNow(text: NowText): string {
         '<!-- 生成的，别手改：QQ 这边每 10 分钟重写一次；来源是作息 + 世界 + 心境 -->',
         `<!-- generated-at: ${at} -->`,
         ...(text.asleep === undefined ? [] : [`<!-- asleep: ${text.asleep ? 'yes' : 'no'} -->`]),
+        ...(text.diaryBy === 'qq' ? [DIARY_BY_LINE] : []),
         '',
         text.doing,
         ...(text.feeling ? [text.feeling] : []),

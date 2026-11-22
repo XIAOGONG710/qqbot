@@ -92,14 +92,16 @@ export function saveInsightsState(dataDir: string, state: InsightsState): void {
 
 /** 标题后面带这两个字的段落是「补记」：事后让模型按素材补写的，不是她那天亲手写的（DSH 的 scripts/backfill-life.mjs，10-30）。翻日记发现自己时不看这些——别在编出来的日子上长出「我发现自己」 */
 export const BACKFILLED_MARK = /补记/;
+/** 标题后面带「（当天）」的段落是 QQ 写完当天日记后抄进 JOURNAL.md 的那份（一本日记，ADR 0347 第 3 层 oneDiary；life/one-diary.ts 的 DAY_DIARY_MARK）：正文在 memory/diary.json 里已经有了，这里跳过，不算她手写的 */
+export const DAY_COPY_MARK = /（当天）/;
 
-/** JOURNAL.md：journal_write 追加的是 `\n## YYYY-MM-DD\n正文\n`；一个标题一段，同一天可以有好几段。标题后面可以跟别的字（比如「（补记）」），带「补记」的段落跳过 */
+/** JOURNAL.md：journal_write 追加的是 `\n## YYYY-MM-DD\n正文\n`；一个标题一段，同一天可以有好几段。标题后面可以跟别的字（比如「（补记）」），带「补记」的段落跳过；带「（当天）」的是 QQ 抄过去的当天日记，也跳过 */
 export function parseJournal(text: string): DiaryEntry[] {
     const parts = text.split(/^##\s+(\d{4}-\d{2}-\d{2})([^\n]*)$/m);
     const out: DiaryEntry[] = [];
     // split 带两个捕获组：['前言', '日期1', '标题后面的字1', '正文1', '日期2', '标题后面的字2', '正文2', ...]
     for (let i = 1; i < parts.length; i += 3) {
-        if (BACKFILLED_MARK.test(parts[i + 1] ?? '')) continue;
+        if (BACKFILLED_MARK.test(parts[i + 1] ?? '') || DAY_COPY_MARK.test(parts[i + 1] ?? '')) continue;
         const body = (parts[i + 2] ?? '').replace(/\s+/g, ' ').trim();
         if (body) out.push({ date: parts[i]!, text: body, source: 'journal' });
     }

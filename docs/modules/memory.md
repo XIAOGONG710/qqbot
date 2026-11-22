@@ -40,7 +40,9 @@
 | `crossRecent` | QQ 和 DSH 桌面互读最近几轮（同一个她） | [ADR 0177](../adr/0177-same-her-recent-turns.md) |
 | `selfExport` | 「此刻的她」交给桌面（SELF.json：和 QQ 提示词同一批模块算的此刻） | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `selfReceipts` | 桌面上说过的话 QQ 不再重发（回执） | [ADR 0347](../adr/0347-one-life-two-places.md) |
-| `desktopDay` | 桌面上的时间算进她的一天（先只收桌面记录） | [ADR 0347](../adr/0347-one-life-two-places.md) |
+| `desktopDay` | 桌面上的时间算进她的一天（他在电脑前不打扰、留话先留着、NOW.md 知道） | [ADR 0347](../adr/0347-one-life-two-places.md) |
+| `desktopReview` | 桌面上的对话也进「聊完回想」 | [ADR 0347](../adr/0347-one-life-two-places.md) |
+| `desktopPromises` | 桌面上答应的事进承诺账 | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `selfDirectedMemory` | 她自己决定记不记（关掉自动记忆同步和自动日记） | [ADR 0171](../adr/0171-self-directed-memory.md) |
 | `factHim` | 事实检查多查一类：她替他说的、聊天 / 记忆里没有依据的事（要 factCheck 开着） | [ADR 0203](../adr/0203-fact-check-him.md) |
 | `memoryReconcile` | 记忆对账：记着写过、Hindsight 里却查不到的片段，重新排队写（防记忆悄悄少一块） | [ADR 0201](../adr/0201-memory-reconcile.md) |

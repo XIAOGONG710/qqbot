@@ -288,6 +288,10 @@ export interface Config {
     selfReceipts: boolean;
     ownDays: boolean;
     desktopDay: boolean;
+    desktopReview: boolean;
+    desktopPromises: boolean;
+    oneDiary: boolean;
+    desktopConflict: boolean;
     selfPursuits: boolean;
     speechNotes: boolean;
     diaryInsights: boolean;
@@ -524,6 +528,10 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         selfReceipts: toggle('selfReceipts'),
         ownDays: toggle('ownDays'),
         desktopDay: toggle('desktopDay'),
+        desktopReview: toggle('desktopReview'),
+        desktopPromises: toggle('desktopPromises'),
+        oneDiary: toggle('oneDiary'),
+        desktopConflict: toggle('desktopConflict'),
         selfPursuits: toggle('selfPursuits'),
         exemplars: toggle('exemplars'),
         speechNotes: toggle('speechNotes'),
@@ -796,6 +804,10 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.selfReceipts !== undefined ? { selfReceipts: config.selfReceipts } : {}),
         ...(config.ownDays !== undefined ? { ownDays: config.ownDays } : {}),
         ...(config.desktopDay !== undefined ? { desktopDay: config.desktopDay } : {}),
+        ...(config.desktopReview !== undefined ? { desktopReview: config.desktopReview } : {}),
+        ...(config.desktopPromises !== undefined ? { desktopPromises: config.desktopPromises } : {}),
+        ...(config.oneDiary !== undefined ? { oneDiary: config.oneDiary } : {}),
+        ...(config.desktopConflict !== undefined ? { desktopConflict: config.desktopConflict } : {}),
         ...(config.selfPursuits !== undefined ? { selfPursuits: config.selfPursuits } : {}),
         ...(config.speechNotes !== undefined ? { speechNotes: config.speechNotes } : {}),
         ...(config.exemplars !== undefined ? { exemplars: config.exemplars } : {}),
