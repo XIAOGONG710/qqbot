@@ -291,6 +291,7 @@ export interface Config {
     desktopReview: boolean;
     desktopPromises: boolean;
     oneDiary: boolean;
+    desktopFeelings: boolean;
     desktopConflict: boolean;
     selfPursuits: boolean;
     speechNotes: boolean;
@@ -531,6 +532,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         desktopReview: toggle('desktopReview'),
         desktopPromises: toggle('desktopPromises'),
         oneDiary: toggle('oneDiary'),
+        desktopFeelings: toggle('desktopFeelings'),
         desktopConflict: toggle('desktopConflict'),
         selfPursuits: toggle('selfPursuits'),
         exemplars: toggle('exemplars'),
@@ -807,6 +809,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.desktopReview !== undefined ? { desktopReview: config.desktopReview } : {}),
         ...(config.desktopPromises !== undefined ? { desktopPromises: config.desktopPromises } : {}),
         ...(config.oneDiary !== undefined ? { oneDiary: config.oneDiary } : {}),
+        ...(config.desktopFeelings !== undefined ? { desktopFeelings: config.desktopFeelings } : {}),
         ...(config.desktopConflict !== undefined ? { desktopConflict: config.desktopConflict } : {}),
         ...(config.selfPursuits !== undefined ? { selfPursuits: config.selfPursuits } : {}),
         ...(config.speechNotes !== undefined ? { speechNotes: config.speechNotes } : {}),

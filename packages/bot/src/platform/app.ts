@@ -114,6 +114,7 @@ import { reviewReader as chatReviewReader } from '.././language/chat-review.ts';
 import { loadFeedback, recentFeedback } from '.././language/speech-feedback.ts';
 import { readSavedFeelings, writeFeelingsExport, type FeelingsReport } from '.././emotion/feeling-export.ts';
 import { appendFeelings, readLedger } from '../emotion/feeling-ledger.ts';
+import { desktopAffects } from '../social/desktop-affect.ts';
 import { reviewReader } from '.././emotion/feeling-review.ts';
 import { takesReader } from '.././life/reading-takes.ts';
 import { thoughtsReader } from '.././life/open-questions.ts';
@@ -2192,6 +2193,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             } : {}),
             // 群里的遭遇也进心境（2026-11-14）：有人在群里夸她、冲她发火、说想不开，私聊里她也带着
             ...(config.herFeelings && (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0 ? { groupMood: () => groupFeel?.appraisals() ?? [] } : {}),
+            // 桌面上的事也进心境（ADR 0347 第 5 层）：他在电脑上说想她、关心她、说难受、冲她发火，QQ 这边心里也带着
+            ...(config.herFeelings && desktopSource && config.desktopFeelings ? { desktopMood: () => desktopAffects(desktopChatCache, worldNow()) } : {}),
             // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
             ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => {
                 lastFeelings = report;

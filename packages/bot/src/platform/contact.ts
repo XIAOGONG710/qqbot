@@ -247,6 +247,8 @@ export interface ContactPipelineOptions {
     groupRecent?: (question: string, at: Date) => string | undefined | Promise<string | undefined>;
     /** 群里的遭遇（2026-11-14）：有人夸她、冲她发火、说想不开——作为额外评估进心境，要 herFeelings 开着 */
     groupMood?: () => readonly Appraisal[];
+    /** 桌面上的事也进心境（ADR 0347 第 5 层，desktopFeelings）：他在电脑上说想她、关心她、说难受、冲她发火 */
+    desktopMood?: () => readonly Appraisal[];
     /** 作者写下的、引起她情绪的事（ADR 0102，runtime/bot/moments.json）；每次生成现取 */
     moments?: () => readonly Moment[];
     /** 她自己的追求（ADR 0104，配置 pursuits）：内置两条（别挂科、用新相机拍出满意的东西）加作者在 pursuits.json 里改的 / 加的；每次生成现取 */
@@ -319,7 +321,7 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             herFeelings: Boolean(options.herFeelings), everydayLife: Boolean(options.everydayLife), ...(options.herDays && character.schedule ? { schedule: character.schedule } : {}),
             ...(options.pursuits ? { pursuits: options.pursuits } : {}), ...(options.worldState?.events ? { worldEvents: () => options.worldState!.events!() } : {}),
             worldAt: (herWorld, schedule, end) => options.worldState?.at(herWorld, schedule, end) ?? worldAt(herWorld, schedule, end),
-            ...(options.moments ? { moments: options.moments } : {}), ...(options.feelingReview ? { feelingReview: options.feelingReview } : {}), ...(options.groupMood ? { groupMood: options.groupMood } : {}),
+            ...(options.moments ? { moments: options.moments } : {}), ...(options.feelingReview ? { feelingReview: options.feelingReview } : {}), ...(options.groupMood ? { groupMood: options.groupMood } : {}), ...(options.desktopMood ? { desktopMood: options.desktopMood } : {}),
             ...(options.onFeelings ? { onFeelings: options.onFeelings } : {}),
         }, ...(options.currentAiPhoto ? { currentAiPhoto: options.currentAiPhoto } : {}), log: message => log(message) };
     const shelves: CleanCtx = { ...(options.stickers ? { stickers: options.stickers } : {}), ...(options.photos ? { photos: options.photos } : {}) };

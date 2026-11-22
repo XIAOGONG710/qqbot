@@ -190,6 +190,7 @@ export const DEFAULTS = {
     /** 一本日记（ADR 0347 第 3 层 §2.5）：当天日记由 QQ 写（selfDirectedMemory 开着也写），抄一份进 JOURNAL.md；读的一侧统一 */
     oneDiary: false,
     /** 作息冲突（ADR 0347 第 3 层 §2.6）：他在她上课 / 睡觉 / 空闲时叫她上电脑，她知道本来在干嘛；要 desktopDay 和 herDays */
+    desktopFeelings: false,
     desktopConflict: false,
     /** 她自己定追求（ADR 0178）：每晚想一次，自己放下 / 暂停 / 恢复 / 记进度 / 提新的；要同时开 pursuits */
     selfPursuits: false,
@@ -686,6 +687,7 @@ export interface AppConfig {
      * 作息冲突（ADR 0347 第 3 层 §2.6）：被他叫上电脑时功能照常；她知道本来在上课 / 该睡了（提示词多一行，刚被叫起来按被吵醒写），昨晚算上半夜在电脑上陪他；
      * 空闲时间的桌面会话占着她的时间（排着的空闲活动停下），结束后记成一件世界事件；她在电脑上说「睡了」也算说过睡了。要 desktopDay、herDays（睡觉那一行还要 realNights）。默认关
      */
+    desktopFeelings?: boolean;
     desktopConflict?: boolean;
     /** 她自己定追求（ADR 0178）：每晚想一次，自己放下 / 暂停 / 恢复（包括作者给的两条）/ 记进度 / 提新的（同时最多 3 件、隔 3 天提一件）；他用 /追求 看，改不了。要同时开 pursuits。默认关 */
     selfPursuits?: boolean;
@@ -1094,6 +1096,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         desktopReview: bool(file, 'desktopReview', '', DEFAULTS.desktopReview),
         desktopPromises: bool(file, 'desktopPromises', '', DEFAULTS.desktopPromises),
         oneDiary: bool(file, 'oneDiary', '', DEFAULTS.oneDiary),
+        desktopFeelings: bool(file, 'desktopFeelings', '', DEFAULTS.desktopFeelings),
         desktopConflict: bool(file, 'desktopConflict', '', DEFAULTS.desktopConflict),
         selfPursuits: bool(file, 'selfPursuits', '', DEFAULTS.selfPursuits),
         speechNotes: bool(file, 'speechNotes', '', DEFAULTS.speechNotes),

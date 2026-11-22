@@ -54,7 +54,7 @@ export function feelingsModule(): Module {
                     : undefined;
                 // 心境（ADR 0102）：事实 → 带来由的评估 → 按半衰期衰减的感受，不落盘、每一轮重算；只给男朋友档，危机回合不算
                 const felt = given.herFeelings && boyfriend && !facts.crisis
-                    ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), ...(previous ? { previousWorld: previous } : {}), moments: given.moments?.() ?? [], extra: [...views.flatMap(view => view.appraisals), ...(given.feelingReview?.() ?? []), ...(given.groupMood?.() ?? []), ...(facts.dreamAppraisals ?? [])] }), time.getTime())
+                    ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), ...(previous ? { previousWorld: previous } : {}), moments: given.moments?.() ?? [], extra: [...views.flatMap(view => view.appraisals), ...(given.feelingReview?.() ?? []), ...(given.groupMood?.() ?? []), ...(given.desktopMood?.() ?? []), ...(facts.dreamAppraisals ?? [])] }), time.getTime())
                     : [];
                 if (given.herFeelings && boyfriend && !facts.crisis) facts.felt = felt;
                 const shown = felt.length > 0 && !facts.grievanceActive;

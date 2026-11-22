@@ -424,6 +424,8 @@ export interface DecideCtx {
         feelingReview?: () => readonly Appraisal[];
         /** 群里的遭遇 */
         groupMood?: () => readonly Appraisal[];
+        /** 桌面上的事也进心境（ADR 0347 第 5 层）：他在电脑上说想她、关心她、说难受、冲她发火 */
+        desktopMood?: () => readonly Appraisal[];
         /** 交给桌面上的她（ADR 0197） */
         onFeelings?: (report: FeelingsReport) => void;
     };
