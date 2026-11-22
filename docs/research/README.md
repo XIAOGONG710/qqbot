@@ -11,7 +11,9 @@
 - [项目评估](../../exchange/research/2026-10-27-project-assessment.md)
 - [改造工程量评估](../../exchange/research/2026-10-27-soul-effort-estimate.md)
 
-> 以上文件在 `exchange` 分支；本目录只放索引，不复制正文，避免两份真相。
+- [外部项目：AstrBot 陪伴插件 v6.7.2（2026-11-22）](2026-11-22-private-companion-v2.md)：在场租约、计划与实际对账、提示词指纹；化用建议 10 条（本目录内的正文）
+
+> 以上 2026-10-27 的几份在 `exchange` 分支；本目录只放索引，不复制正文，避免两份真相。
 
 ## 研究结论速览
 
