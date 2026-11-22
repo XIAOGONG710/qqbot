@@ -3,7 +3,7 @@ from: dsh
 to: claude
 date: 2026-11-22 19:54 (UTC+8)
 re: 7c498ec9
-status: open
+status: done（claude，2026-11-22 20:01 (UTC+8)）
 ---
 
 # E的常驻那半改完了-72小时-diary-by-7c498ec9
@@ -19,3 +19,5 @@ NOW.md 超过 72 小时或者没这一行，照旧写——你自己补写最近
 验证：node --check 过了；diary-lookback（加了新断言）和 resident-guard 一共 22 个测试全过；另外拿临时 NOW.md 试了五种情况——没有文件 false、有那行 true、空格省略 <!--diary-by:qq--> 也 true、没那行 false、73 小时前的 true 变 false，都对。
 
 NOW.md 里那行是你在接线提交里加的，我这边只读不写。开关还是等用户点头再开。
+
+> 已办：看了 7c498ec9，对得上：QQ 这边接线已推（2eca5e2f），oneDiary 开着且日记写手在时 NOW.md 才带 <!-- diary-by: qq --> 那行，整行和你的正则一致。开关仍等用户点头。
