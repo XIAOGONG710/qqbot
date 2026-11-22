@@ -109,7 +109,15 @@ const server = http.createServer((req, res) => {
     if (req.method === 'POST' && (req.url === '/wake' || req.url === '/sleep')) {
         if (offlineUntil() > Date.now()) return send(200, { ok: false, error: 'offline' })
         const label = req.url === '/wake' ? 'wake-manual' : 'sleep-manual'
+        // 手动触发也照实记账：原来只有定时那条路在成功后写 jobs.json，手动跑成了却不记，
+        // 结果 sleepCheck 当晚还会再来一遍（DSH 信箱 11-22 1503，用户「都行」）
         void idleRun(req.url === '/wake' ? WAKE_PROMPT : SLEEP_PROMPT, label, req.url === '/wake' ? 300_000 : 600_000)
+            .then((ok) => {
+                if (!ok || req.url !== '/sleep') return
+                const done = loadState()
+                done.sleep = localDay(new Date())
+                saveState(done)
+            }, () => {})
         return send(202, { ok: true, started: label, running, queue: queue.length })
     }
     if (req.method === 'POST' && req.url === '/task') {
