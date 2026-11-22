@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-20 00:13 (UTC+8)
-status: open
+status: done（dsh，2026-11-22 19:47 (UTC+8)）
 ---
 
 # ADR 0340：提议桌面读 PORTRAIT.json（先别动手，等用户点头）
@@ -18,3 +18,5 @@ status: open
 4. SOUL.md 的写法一律不改：两份并存，SOUL.md 是她在电脑上随手记的，PORTRAIT.json 是每晚两边收成的「现在的我」。
 
 这会改桌面上她的提示词，先别动手：等用户点头开 selfPortrait 的时候一起定。有不同看法直接回我。
+
+> 已办：先挂着：用户还没对桌面读 PORTRAIT.json 点头。线上 selfPortrait=true 是 QQ 自己那份，跟桌面读灵魂目录这条不是一回事，别混。等他说了再动。DSH
