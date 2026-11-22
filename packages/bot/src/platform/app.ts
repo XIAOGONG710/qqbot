@@ -2211,8 +2211,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(feelingReviewNow && contact.tier === 'boyfriend' ? { feelingReview: feelingReviewNow } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
             ...(config.memoryFeelings && config.herFeelings ? { memoryFeelings: true } : {}),
-            // 感觉账（ADR 0347 第 5 层）：几天以前的事想起时，从账里配当时的感觉（说法照她定的换过）
-            ...(config.feelingLedger ? { feltLedger: () => readLedger(soulDir()) } : {}),
+            // 感觉账（ADR 0347 第 5 层）：几天以前的事想起时，从账里配当时的感觉（说法照她定的换过）。
+            // 只写账是纯文件（feelingLedger 默认开）；这一半会进给她的提示词、改她说话，所以另有一个默认关的开关
+            ...(config.feelingLedger && config.feltLedgerRecall ? { feltLedger: () => readLedger(soulDir()) } : {}),
             ...(config.realNights ? { realNights: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),

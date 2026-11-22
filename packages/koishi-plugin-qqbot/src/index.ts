@@ -292,6 +292,8 @@ export interface Config {
     desktopPromises: boolean;
     oneDiary: boolean;
     desktopFeelings: boolean;
+    feelingLedger: boolean;
+    feltLedgerRecall: boolean;
     desktopConflict: boolean;
     selfPursuits: boolean;
     speechNotes: boolean;
@@ -533,6 +535,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         desktopPromises: toggle('desktopPromises'),
         oneDiary: toggle('oneDiary'),
         desktopFeelings: toggle('desktopFeelings'),
+        feelingLedger: toggle('feelingLedger'),
+        feltLedgerRecall: toggle('feltLedgerRecall'),
         desktopConflict: toggle('desktopConflict'),
         selfPursuits: toggle('selfPursuits'),
         exemplars: toggle('exemplars'),
@@ -810,6 +814,8 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.desktopPromises !== undefined ? { desktopPromises: config.desktopPromises } : {}),
         ...(config.oneDiary !== undefined ? { oneDiary: config.oneDiary } : {}),
         ...(config.desktopFeelings !== undefined ? { desktopFeelings: config.desktopFeelings } : {}),
+        ...(config.feelingLedger !== undefined ? { feelingLedger: config.feelingLedger } : {}),
+        ...(config.feltLedgerRecall !== undefined ? { feltLedgerRecall: config.feltLedgerRecall } : {}),
         ...(config.desktopConflict !== undefined ? { desktopConflict: config.desktopConflict } : {}),
         ...(config.selfPursuits !== undefined ? { selfPursuits: config.selfPursuits } : {}),
         ...(config.speechNotes !== undefined ? { speechNotes: config.speechNotes } : {}),
