@@ -1126,6 +1126,19 @@ async function retain(cfg, content, bank, tags = ['dsh'], context = 'DSH') {
   if (!res.ok) throw new Error(`retain ${res.status}`)
 }
 
+/**
+ * 这个 agent 是不是 DSH 派出去的子 agent（记忆整理、subagent 工具、workflow 里跑的那种）。
+ * 子 agent 的预设也叫 linmengyao、HER_CHANNEL 也是 desktop，但它收到的「user」是委派提示词——
+ * 挂上记忆钩子就会被当成「他在桌面上说的话」写进 session-tails / desktop-recent（2026-11-22 那次）。
+ * `ctx.subagents.rootOf(agent)` 给的是它所在子 agent 树的根：根就是它自己，说明是他亲手开的那一场；
+ * 根是别人，说明它是别人派出来的。拿不到这个服务（旧版 DSH / 测试桩）就按不是子 agent 处理。
+ */
+function isChildAgent(ctx, agent) {
+  let root
+  try { root = ctx.get('subagents')?.rootOf?.(agent) } catch { return false }
+  return Boolean(root && typeof root.id === 'string' && root.id !== agent.id)
+}
+
 export function apply(ctx, config = {}) {
   const cfg = { ...DEFAULTS, ...config }
   const allow = new Set(Array.isArray(cfg.presets) ? cfg.presets : [])
@@ -1135,6 +1148,8 @@ export function apply(ctx, config = {}) {
     let preset = ''
     try { preset = ctx.get('agentPresets')?.composedPreset?.(agent.ctx) || '' } catch (e) { log(cfg, `created preset error ${e}`) }
     log(cfg, `agent created ${agent.id} preset=${preset || '(empty)'}`)
+    // 子 agent 一律不挂：它的「用户」是父 agent 的委派提示词，不是他在桌上说的话
+    if (isChildAgent(ctx, agent)) { log(cfg, `子 agent ${agent.id}：不挂记忆工具，也不写桌面痕迹`); return }
     // 只给她的预设挂记忆/灵魂工具；助手窗口（cordis）和其他预设不挂
     if (allow.size && (!preset || !allow.has(preset))) return
 

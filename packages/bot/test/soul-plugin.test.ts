@@ -39,7 +39,7 @@ before(async () => { plugin = await import(pathToFileURL(join(root, 'dsh-plugins
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-function boot(extra: Record<string, unknown> = {}) {
+function boot(extra: Record<string, unknown> = {}, subagents: { rootOf: (agent: unknown) => unknown } = { rootOf: agent => agent }) {
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-soul-'));
     dirs.push(dir);
     const f = (name: string) => join(dir, name);
@@ -53,7 +53,7 @@ function boot(extra: Record<string, unknown> = {}) {
     };
     const rootCtx = {
         on: (name: string, fn: (...args: unknown[]) => unknown) => { if (name === 'agent/created') handlers.created = fn; },
-        get: (key: string) => (key === 'agentPresets' ? { composedPreset: () => 'linmengyao' } : undefined),
+        get: (key: string) => (key === 'agentPresets' ? { composedPreset: () => 'linmengyao' } : key === 'subagents' ? subagents : undefined),
     };
     plugin.apply(rootCtx, {
         soulFile: f('SOUL.md'), ledgerFile: f('LEDGER.md'), journalFile: f('JOURNAL.md'), privateFile: f('PRIVATE.dat'), wishesFile: f('WISHES.md'),
@@ -1565,5 +1565,25 @@ describe('一个生活·第 5 层：开场不只读全量账', () => {
         assert.ok(shown.startsWith('第一段。\n\n第二段。'));
         assert.ok(!shown.includes('第三段'));
         assert.match(shown, /后面还有 2 段/);
+    });
+});
+
+describe('子 agent 不挂：它的「用户」是父 agent 的委派提示词，不是他在桌上说的话', () => {
+    test('他亲手开的那一场照挂（rootOf 回来就是它自己）', () => {
+        const h = boot();
+        assert.ok(h.tools.ledger_read, '该挂的工具在');
+        assert.ok('agent/turn-stopping' in h.handlers, '订阅了回合结束');
+    });
+
+    test('子 agent 一个工具都不挂，也不订阅回合结束', () => {
+        const h = boot({}, { rootOf: () => ({ id: 'session-lead-0000' }) });
+        assert.deepEqual(Object.keys(h.tools), []);
+        assert.ok(!('agent/turn-stopping' in h.handlers), '不订阅回合结束，就不会写桌面对话和收尾');
+        assert.ok(!('agent/pre-step' in h.handlers));
+    });
+
+    test('rootOf 抛错（agent 还没登记）：按不是子 agent 处理，照挂', () => {
+        const h = boot({}, { rootOf: () => { throw new Error('no live agent'); } });
+        assert.ok(h.tools.ledger_read);
     });
 });
