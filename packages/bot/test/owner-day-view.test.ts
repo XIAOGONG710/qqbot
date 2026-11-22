@@ -213,8 +213,8 @@ describe('时间块「这一段刚说的不再提醒」也看合并视图（owne
     test('别人的 chat 原样转交，不读桌面回合；没有男朋友档时原样给回', () => {
         const seen: (readonly unknown[])[] = [];
         const fake = {
-            describe: (_c: Contact, chat: readonly unknown[]) => { seen.push(chat); return undefined; },
-            openLoops: (_c: Contact, chat: readonly unknown[]) => { seen.push(chat); return { waiting: [], unanswered: [], unsettled: [] }; },
+            describe: (_c: Contact, chat: readonly unknown[], _now: Date) => { seen.push(chat); return undefined; },
+            openLoops: (_c: Contact, chat: readonly unknown[], _now: Date) => { seen.push(chat); return { waiting: [], unanswered: [], unsettled: [] }; },
             sync: async () => {},
         };
         let reads = 0;
