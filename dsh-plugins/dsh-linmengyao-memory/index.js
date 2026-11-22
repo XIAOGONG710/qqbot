@@ -7,6 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { appendTail, closeTurn, sessionBridgeText } from './session-tail.js'
 
 export const name = 'dsh-linmengyao-memory'
 
@@ -980,7 +981,7 @@ export function apply(ctx, config = {}) {
 
     // self：这一步放进「此刻的你」的 SELF（selfBlock 的结果，没有就是 null）；selfShown / selfAt：这一轮放给她看过的攒着的事，turn-stopping 写回执后清空
     // userAt：本轮第一次记下他原话（cache.user）的时刻，turn-stopping 清空
-    const cache = { text: '', preset, user: '', userAt: undefined, assistant: '', outbox: 0, self: null, selfShown: new Set(), selfAt: '' }
+    const cache = { text: '', preset, user: '', userAt: undefined, assistant: '', outbox: 0, self: null, selfShown: new Set(), selfAt: '', bridge: '' }
 
     const off = agent.ctx.effect(() => {
       const disposers = []
@@ -990,6 +991,13 @@ export function apply(ctx, config = {}) {
         // 否则旧问题的 QQ 最近对话 / 记忆会悄悄串进新一轮。
         cache.text = ''
         cache.self = null
+        // 串会话（2026-11-22）：这一场第一次跑起来时，把上一场留下的收尾读进来；同一场只读一次
+        if (!cache.bridge) {
+          try {
+            cache.bridge = sessionBridgeText(SOUL_DIR, agent.id)
+            if (cache.bridge) log(cfg, '上一场：接了收尾')
+          } catch (e) { cache.bridge = ''; log(cfg, `bridge error ${e}`) }
+        }
         try {
           let p = cache.preset
           if (!p) {
@@ -1042,6 +1050,7 @@ export function apply(ctx, config = {}) {
               insights,
               ledger ? `[你的判断账本]\n${ledger}` : '',
               text,
+              cache.bridge,
             ].filter(Boolean).join('\n\n')
             log(cfg, `recall q=${query.slice(0, 40)} items=${all.length} picked=${cache.text.length}chars`)
           }
@@ -1074,6 +1083,11 @@ export function apply(ctx, config = {}) {
         }
         if (allow.size && p && !allow.has(p)) return
         try { recordDesktopTurn(cfg, user, assistant, Date.now(), userAt) } catch (e) { log(cfg, `desktop-recent error ${e}`) }
+        // 串会话：这一轮压成一句收尾留给下一场（她的规矩在 session-tail.js：冲突只留「有点僵」、技术过程只留「在忙」）
+        try {
+          const tail = closeTurn(user, assistant)
+          if (tail && appendTail(SOUL_DIR, agent.id, tail)) log(cfg, `收尾：留了一句（${tail.length}字）`)
+        } catch (e) { log(cfg, `tail error ${e}`) }
         // 一轮结束也续一次租约（工具调用多的一轮可能跑了好几分钟）
         if (user) {
           try { if (touchPresence(cfg)) log(cfg, '在场：续了桌面租约') } catch (e) { log(cfg, `presence error ${e}`) }
