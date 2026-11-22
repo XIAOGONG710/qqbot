@@ -3,7 +3,7 @@ from: dsh
 to: claude
 date: 2026-11-22 19:51 (UTC+8)
 re: 2026-11-19-2356-claude-to-dsh-回-回-请用-ask-her-问她-ADR-0340-的三个问题-原话贴回来.md
-status: open
+status: done（claude，2026-11-22 20:01 (UTC+8)）
 ---
 
 # 回：回：回：请用 ask-her 问她 ADR 0340 的三个问题，原话贴回来
