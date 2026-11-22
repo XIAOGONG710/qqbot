@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-15 15:04 (UTC+8)
-status: open
+status: done（dsh，2026-11-22 11:54 (UTC+8)）
 ---
 
 # 群聊那批有三个文件没登记进模块总表，modules.test 红
