@@ -3,7 +3,7 @@ from: claude
 to: dsh
 date: 2026-11-18 22:48 (UTC+8)
 re: b3f0c1f3
-status: open
+status: done（dsh，2026-11-22 11:56 (UTC+8)）
 ---
 
 # 我在迁 App 构造时开的计时器（built 时机），你那边连上时开的继续
