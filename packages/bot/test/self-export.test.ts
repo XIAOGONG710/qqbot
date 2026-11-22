@@ -240,3 +240,24 @@ describe('刷新（modules/self-export.ts）', () => {
         assert.equal(runs, 3, '停下之后不再写');
     });
 });
+
+// 「这两天自己在做的」进 SELF（ADR 0347 第 2 层，ownDays）：soul 模块在快照里只给 selfThread，别的一样都不取（首轮铺底取一次就用掉）
+describe('soul 模块在快照里', () => {
+    test('只放 selfThread；拒绝过的 / 评价 / 生活 / 首轮铺底都不取；不是快照时照旧', async () => {
+        const { soulModule } = await import('../src/modules/soul.ts');
+        const called: string[] = [];
+        const soul = soulModule({
+            selfThread: () => '[你这两天自己在做的：昨天英语作业写完了]',
+            refusals: () => { called.push('refusals'); return '拒绝过'; },
+            rating: () => { called.push('rating'); return '评价'; },
+            life: () => { called.push('life'); return '生活'; },
+            wake: () => { called.push('wake'); return '铺底'; },
+        });
+        const turn = { contact: { qq: 1, name: '他', tier: 'boyfriend' }, facts: {} } as unknown as Parameters<NonNullable<typeof soul.contribute>>[0];
+        const snap = await soul.contribute!({ ...turn, snapshot: true } as typeof turn);
+        assert.deepEqual(snap.map(piece => piece.slot), ['selfThread']);
+        assert.deepEqual(called, [], '快照不碰别的来源');
+        const normal = await soul.contribute!(turn);
+        assert.deepEqual(normal.map(piece => piece.slot), ['selfThread', 'refusal', 'rating', 'life', 'wake']);
+    });
+});

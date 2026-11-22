@@ -29,6 +29,8 @@ export function soulModule(options: SoulOptions): Module {
             const pieces: Piece[] = [];
             const thread = !turn.initiate && !turn.thinking && !turn.facts.crisis ? options.selfThread() : undefined;
             if (thread) pieces.push({ slot: 'selfThread', text: thread });
+            // 「此刻的她」快照（ADR 0347 第 2 层）只要 selfThread 这一行：拒绝过的、评价、生活、首轮铺底都不取（首轮铺底取一次就用掉了，快照不能碰）
+            if (turn.snapshot) return pieces;
             const refusals = options.refusals();
             if (refusals) pieces.push({ slot: 'refusal', text: refusals });
             const rating = options.rating();

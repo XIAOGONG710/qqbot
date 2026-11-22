@@ -51,9 +51,9 @@ export const NOW_SLOTS = [
  * 「此刻的她」（SELF.json，ADR 0347 第 2 层，方案 docs/plans/2026-11-22-same-her-layer2-self.md 二、1）导出哪几个「此刻」行槽：
  * 关于她此刻的事实（在干嘛、身体、她那边、今天的打算、答应的、没了结的、心境、梦、最近的念头），不跟着他这一句话走、不教她怎么说话。
  * 每个都必须在 NOW_SLOTS 里（测试钉住）；先后照 NOW_SLOTS，不照这里。
- * 第 2 层之后「这两天自己在做的」（selfThread，ownDays）接上真实来源时加在这里，不在别处另拼（见 platform/contact.ts 的 snapshot）。
+ * 「这两天自己在做的」（selfThread：日记那句 + ownDays 那行）由 soul 模块在快照里给，和 QQ 提示词同一段（见 platform/contact.ts 的 snapshot）。
  */
-export const SELF_SLOTS = ['days', 'state', 'groundNote', 'body', 'unsettled', 'feeling', 'world', 'plans', 'promised', 'partnerBack', 'dreams', 'inner'] as const satisfies readonly NowSlot[];
+export const SELF_SLOTS = ['days', 'state', 'groundNote', 'body', 'unsettled', 'feeling', 'world', 'plans', 'promised', 'partnerBack', 'selfThread', 'dreams', 'inner'] as const satisfies readonly NowSlot[];
 
 /**
  * SELF 要的段落：只留 SELF_SLOTS 里的，按 NOW_SLOTS 的先后排（同一槽按给出的顺序，同 assemblePrompt）。

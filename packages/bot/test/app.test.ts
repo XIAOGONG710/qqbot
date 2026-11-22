@@ -3458,6 +3458,18 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
         };
         assert.doesNotMatch(await run(false), /你这两天自己在做的/);
         assert.ok((await run(true)).includes('[你这两天自己在做的：昨天'), '开着时有这一行，来自昨天的世界账');
+        // 再开 selfExport：SELF 的 selfThread 行和 QQ 那一轮提示词里那一段一字不差（soul 模块在快照里只给这一行）
+        rmSync(selfFile, { force: true });
+        const clock = new VirtualClock(day);
+        const prompts: string[] = [];
+        const both = setup(config({ ...life, autonomousLife: true, contacts: bf, ownDays: true, selfExport: true }), { 10001: [] }, { clock, generate: messages => { prompts.push(messages.map(m => m.content).join(String.fromCharCode(10))); return '嗯嗯'; } });
+        await until(() => existsSync(selfFile));
+        const thread = readSelf().lines.find(line => line.slot === 'selfThread');
+        assert.ok(thread?.text.includes('[你这两天自己在做的：昨天'), 'SELF 里有这一行');
+        await both.app.connected(SELF);
+        both.app.receive({ ...event(10001, 1, '嗯'), time: Math.floor(clock.now() / 1000) });
+        await replied(clock, both.sent);
+        assert.ok(prompts[0]!.includes(thread!.text), '和 QQ 提示词里那一段一字不差');
     });
 
     test('默认关：不写 SELF.json；只有他（男朋友档）的才写，名单里没有男朋友档不写', async () => {

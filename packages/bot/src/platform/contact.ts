@@ -759,7 +759,7 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             const mine = module.contribute(turn);
             pieces.push(...(mine instanceof Promise ? await mine : mine));
         }
-        // 「这两天自己在做的」（selfThread，配置 ownDays）接上世界账之后，经 soul 模块放进 selfThread 槽：那时把 soul 加进 SNAPSHOT_MODULES、selfThread 加进 SELF_SLOTS
+        // 「这两天自己在做的」（selfThread，配置 ownDays）：soul 模块在快照里只放 selfThread 这一行（日记那句 + ownDays 那行，和 QQ 提示词同一段）
         const { world, state, schedule, felt } = turn.facts;
         return { pieces: selfPieces(pieces), facts: { ...(world ? { world } : {}), ...(state ? { state } : {}), ...(schedule ? { schedule } : {}), ...(felt ? { felt } : {}) } };
     };
@@ -769,7 +769,7 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
 /** 快照跑的判断那一串（先后照 DECIDE_STAGES） */
 const SNAPSHOT_STAGES = DECIDE_STAGES.filter(stage => stage === 'promises' || stage === 'loops' || stage === 'news' || stage === 'dream' || stage === 'feelings');
 /** 会给 SELF_SLOTS 放段落的模块（状态 / 她那边 / 身体 / 打算、重要的日子 / 答应的事、没了结的、心境 / 梦、念头）；新的 SELF 槽由别的模块放时加在这里 */
-const SNAPSHOT_MODULES: ReadonlySet<string> = new Set(['her-now', 'time-notes', 'warm', 'feelings', 'inner']);
+const SNAPSHOT_MODULES: ReadonlySet<string> = new Set(['her-now', 'time-notes', 'warm', 'feelings', 'inner', 'soul']);
 
 /** 快照的结果：SELF 要的段落（按 NOW_SLOTS 排好）和算 validUntil / asleep / 她的那一天要的事实 */
 export interface ContactSnapshot {
