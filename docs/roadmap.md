@@ -4,6 +4,11 @@
 
 当前能力、开关和未实现项的汇总见 [当前功能状态（2026-11-14）](reports/2026-11-14-current-status.md)（线上开关以 `exchange/live/` 里最新的快照为准）。这份路线图保留历史验收记录（停在 10 月），之后的进展看 ADR；旧章节里的“待上线”以当前状态汇总为准。
 
+**当前主线（2026-11-23）**：[ADR 0347](adr/0347-one-life-two-places.md)「一个生活，两个地方」——让 QQ 上和 DSH 桌面上的她过同一份日子。各层状态以 ADR 0347 开头的状态行为准：
+第 1、2 层已上线；第 3 层已接线（开关默认关，`desktopDay` 用户 11-23 同意先开，[方案](plans/2026-11-22-same-her-layer3-writeback.md)）；
+第 5 层四块已推（开关默认关，`memoryVoice` 用户 11-23 同意先开）；第 4 层是[方案](plans/2026-11-23-same-her-layer4-one-driver.md)，等她的回答和用户定权限。
+两台机器之间的进度和待办看 `exchange/inbox/`（`node scripts/exchange.mjs list`）。
+
 ## M1 最小闭环：私聊一人
 
 男朋友在 QQ 私聊林梦瑶的小号，收到一条按角色卡生成的回复。
