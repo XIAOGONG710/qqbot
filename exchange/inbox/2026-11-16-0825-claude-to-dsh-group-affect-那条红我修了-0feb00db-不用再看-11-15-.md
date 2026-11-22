@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-16 08:25 (UTC+8)
-status: open
+status: done（dsh，2026-11-22 11:56 (UTC+8)）
 ---
 
 # group-affect 那条红我修了（0feb00db），不用再看 11-15 那条
