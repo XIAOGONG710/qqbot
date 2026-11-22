@@ -71,9 +71,9 @@ const timeInWindow = (value: unknown, now: number): value is string => {
     return Number.isFinite(at) && at <= now + FUTURE_GRACE_MS && at >= now - INBOX_MAX_AGE_MS;
 };
 
-function readState(path: string, log: (message: string) => void): InboxState {
-    const state = readJsonOr<InboxState>(path, { version: 2, line: 0, ids: [] }, message => log(`DSH 收件箱状态：${message}`), {
-        label: 'DSH 收件箱状态',
+function readState(path: string, log: (message: string) => void, label: string): InboxState {
+    const state = readJsonOr<InboxState>(path, { version: 2, line: 0, ids: [] }, message => log(`${label}状态：${message}`), {
+        label: `${label}状态`,
         validate: validState,
     });
     return { version: 2, line: state.version === 2 ? state.line : 0, ids: state.ids.slice(-KEEP_IDS) };
@@ -84,7 +84,7 @@ function writeState(path: string, state: InboxState): void {
     writeJsonAtomic(path, { version: 2, line: state.line, ids: state.ids.slice(-KEEP_IDS) });
 }
 
-function lines(path: string, from: number, log: (message: string) => void): { values: { text: string; line: number }[]; nextLine: number } {
+function lines(path: string, from: number, log: (message: string) => void, label: string): { values: { text: string; line: number }[]; nextLine: number } {
     if (!existsSync(path)) return { values: [], nextLine: from };
     try {
         const text = readFileSync(path, 'utf8');
@@ -99,7 +99,7 @@ function lines(path: string, from: number, log: (message: string) => void): { va
             nextLine: complete.length,
         };
     } catch (error) {
-        log(`DSH 收件箱：读取失败（${error instanceof Error ? error.message : String(error)}）`);
+        log(`${label}：读取失败（${error instanceof Error ? error.message : String(error)}）`);
         return { values: [], nextLine: from };
     }
 }
@@ -142,11 +142,15 @@ function parseWorld(value: unknown, now: number): DshWorldInboxEntry | undefined
     };
 }
 
-function consume<T extends { id: string; at: string }>(path: string, statePath: string, parse: (value: unknown, now: number) => T | undefined, apply: (entry: T) => void, now: number, log: (message: string) => void): number {
+/**
+ * 只追加收件箱的通用消费（DSH 的两个收件箱、桌面回执 memory/self-receipts.ts 共用）：按行游标、id 去重、校验；
+ * 小范围未来时间和落账失败都停在原行，下轮从这里接着来。label 只换日志里的名字（默认就是原来的「DSH 收件箱」）
+ */
+export function consumeInbox<T extends { id: string; at: string }>(path: string, statePath: string, parse: (value: unknown, now: number) => T | undefined, apply: (entry: T) => void, now: number, log: (message: string) => void, label = 'DSH 收件箱'): number {
     if (!existsSync(path)) return 0;
-    const state = readState(statePath, log);
+    const state = readState(statePath, log, label);
     const seen = new Set(state.ids);
-    const batch = lines(path, state.line, log);
+    const batch = lines(path, state.line, log, label);
     let nextLine = batch.nextLine;
     let added = 0;
     for (const row of batch.values) {
@@ -169,7 +173,7 @@ function consume<T extends { id: string; at: string }>(path: string, statePath: 
             state.ids.push(id);
             added++;
         } catch (error) {
-            log(`DSH 收件箱：${id} 应用失败（${error instanceof Error ? error.message : String(error)}）`);
+            log(`${label}：${id} 应用失败（${error instanceof Error ? error.message : String(error)}）`);
             // 已通过校验的事实不能因为一次落账失败永久丢失；停在这一行，下轮从这里重试。
             // 后续行也先不处理，保持收件箱的提交顺序。
             nextLine = row.line;
@@ -181,13 +185,13 @@ function consume<T extends { id: string; at: string }>(path: string, statePath: 
 }
 
 export function consumeDshTimelineInbox(path: string, statePath: string, now: Date, timeline: Timeline, log: (message: string) => void): number {
-    return consume(path, statePath, (value, at) => parseTimeline(value, at), entry => {
+    return consumeInbox(path, statePath, (value, at) => parseTimeline(value, at), entry => {
         timeline.record({ id: `dsh:${entry.id}`, at: new Date(entry.at), channel: 'desktop', kind: entry.kind, summary: entry.summary, ...(entry.ok === false ? { ok: false } : {}) });
     }, now.getTime(), log);
 }
 
 export function consumeDshWorldInbox(path: string, statePath: string, now: Date, world: WorldState, log: (message: string) => void): number {
-    return consume(path, statePath, (value, at) => parseWorld(value, at), entry => {
+    return consumeInbox(path, statePath, (value, at) => parseWorld(value, at), entry => {
         const draft: LifeEventDraft = {
             id: `dsh:${entry.id}`, kind: entry.kind, at: entry.at, source: 'external', result: entry.result,
             ...(entry.startedAt ? { startedAt: entry.startedAt } : {}), ...(entry.subject ? { subject: entry.subject } : {}),
@@ -199,3 +203,6 @@ export function consumeDshWorldInbox(path: string, statePath: string, now: Date,
         world.recordEvents([draft]);
     }, now.getTime(), log);
 }
+
+/** 给别的只追加收件箱（桌面回执 memory/self-receipts.ts）用同一套 id 和时间窗口的校验 */
+export { ID_RE as INBOX_ID_RE, timeInWindow as inboxTimeInWindow };

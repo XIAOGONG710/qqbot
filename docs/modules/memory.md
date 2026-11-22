@@ -23,6 +23,7 @@
 - `memory/memory-audit.ts`
 - `memory/timeline.ts`
 - `memory/dsh-inbox.ts`
+- `memory/self-receipts.ts`
 - `memory/dormancy.ts`
 - `memory/dormancy-commands.ts`
 

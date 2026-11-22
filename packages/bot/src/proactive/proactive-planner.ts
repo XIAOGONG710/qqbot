@@ -27,7 +27,7 @@ import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes } from '.././memory/ep
 import type { OpenAIMessage } from '../language/prompt.ts';
 import type { MacroNames } from '.././st/macros.ts';
 import {
-    blockReason, candidateLabel, candidatesOn, counts, CRISIS_PAUSE_REASON, DEFAULT_NEWS_KINDS, herDay, MAX_PROACTIVE_BUBBLES, newsKindsOf, occasionNote, PENDING_REASON, planFrom, recallTopic, unansweredCount, untoldNews,
+    blockReason, candidateLabel, candidatesOn, counts, CRISIS_PAUSE_REASON, DEFAULT_NEWS_KINDS, herDay, MAX_PROACTIVE_BUBBLES, newsKindsOf, occasionNote, PENDING_REASON, planFrom, recallTopic, unansweredCount, unsaidNews, untoldNews,
     UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type NewsKind, type ProactiveInput, type RescheduleItem, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import { activitiesFromInnerChoice, type ProactiveAgencyResult } from './agency.ts';
@@ -46,6 +46,7 @@ import { pendingMessages, pick } from '.././social/reply-timing.ts';
 import {
     doubtDue, innerLine as innerLineOf, learnedLine, LEARNED_KEPT, parseThought, pendingIntents, THINK_AFTER_CHAT_MS, THINK_AFTER_WAKE_MS, THINK_INTERVAL_MIN, THINK_MAX_PER_DAY, THINK_MIN_GAP_MS, THINK_RETRY_MS, thinkNote, THOUGHTS_KEPT, type InnerState,
 } from './inner.ts';
+import type { SelfPending } from '../life/self-types.ts';
 
 /** 记录留多少天 */
 const KEEP_DAYS = 30;
@@ -248,9 +249,28 @@ export interface Planner {
     fireNow(): Promise<string | undefined>;
     /** 她最近几个钟头心里在想什么，放进聊天提示词的一行（ADR 0101）；没开 innerLife、没有念头就没有 */
     innerLine(): string | undefined;
+    /**
+     * 攒着想跟他说、QQ 这边还没说出口的（ADR 0347 第 2 层，给 SELF.json 的 pending）：念头（想告诉他 / 想问他、没说过、6 小时内）、
+     * 她那边今天了结了还没说过的事（同 untoldNews 的口径，不限时机；猫和吃的照片不算，桌面上发不了照片）、到日子了的待跟进。
+     * 最多 limit 件（默认 SELF_PENDING_MAX），since 新的在前；危机暂停期里（deps.crisisPaused）、状态暂停或待恢复时为空
+     */
+    pendingForSelf(now: number, limit?: number): SelfPending[];
+    /** 状态读得到、计划器没停：回执要等它为真才消费（读不到时消费会把回执白白丢掉） */
+    selfReady(): boolean;
+    /** 桌面上说过了这个念头（回执）：和主动消息提交时一样打 told；返回改没改（没有这个念头、自己想想的、已经说过的不改） */
+    markTold(thoughtId: string): boolean;
+    /** 桌面上问过了这件待跟进（回执）：从待跟进里删掉；返回改没改 */
+    markAskedElsewhere(followUpId: string): boolean;
+    /** 桌面上说过了她那边的这件事（回执）：记进 elsewhere，之后 news 时机不发、不顺带说；返回改没改 */
+    markNewsElsewhere(newsId: string, at: Date): boolean;
+    /** 她那边的这件事桌面上说过没有（给聊天里的 decideAt.news，DecideCtx.toldElsewhere） */
+    toldElsewhere(newsId: string): boolean;
     /** 跑完当前这一轮（测试用） */
     readonly running: Promise<void>;
 }
+
+/** SELF.json 里攒着的最多几件（方案 二、2） */
+export const SELF_PENDING_MAX = 4;
 
 function waitUntilReal(at: number, signal: AbortSignal): Promise<void> {
     return new Promise(resolve => {
@@ -285,6 +305,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             deps.log(`主动：${reason}；原文件未重建（原因：${describeError(error)}）`);
             return {
                 poke() {}, stop() {}, fireNow: async () => reason, syncFollowUps: async () => {}, running: Promise.resolve(), innerLine: () => undefined,
+                pendingForSelf: () => [], selfReady: () => false, toldElsewhere: () => false,
+                markTold: () => { throw new Error(reason); }, markAskedElsewhere: () => { throw new Error(reason); }, markNewsElsewhere: () => { throw new Error(reason); },
                 status: () => ({ mode: deps.mode, paused: reason, today: 0 }),
             };
         }
@@ -297,6 +319,8 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
     let thinkRetryAt: number | undefined;
     /** 片段 id → 抽过了（true），或者抽失败了几次 */
     let extracted = state.extracted;
+    /** 她那边的事桌面上说过了的（ADR 0347 第 2 层回执）：事件 id → 时刻 */
+    let elsewhere: Record<string, string> = { ...state.elsewhere };
     let extracting: Promise<void> | undefined;
     const startedAt = now();
     let stopped = false;
@@ -349,7 +373,10 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             records = records.filter(r => Date.parse(r.at) >= keepFrom);
             // 抽过的片段只留最近的（片段 id 是 ep-<毫秒>）
             for (const id of Object.keys(extracted)) if (Number(id.slice(3)) < keepFrom) delete extracted[id];
-            const next: ProactiveState = { ...state, version: 1, records, followUps, extracted, ...(inner.thoughts.length || inner.lastThinkAt || inner.reflected?.length ? { inner } : {}) };
+            for (const [id, at] of Object.entries(elsewhere)) if (Date.parse(at) < keepFrom) delete elsewhere[id];
+            // 没有 elsewhere 时不写这一项（JSON 里没有 undefined），旧行为的文件逐字不变
+            const next: ProactiveState = { ...state, version: 1, records, followUps, extracted, elsewhere: Object.keys(elsewhere).length ? { ...elsewhere } : undefined, ...(inner.thoughts.length || inner.lastThinkAt || inner.reflected?.length ? { inner } : {}) };
+            if (!next.elsewhere) delete next.elsewhere;
             if (!validProactiveState(next)) throw new Error('拒绝写入不符合 schema 的主动消息状态');
             snapshot = next;
             writeJsonAtomic(path, next);
@@ -505,8 +532,70 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             ...(deps.together ? { together: deps.together } : {}),
             ...(deps.hisHours ? { hisHours: true } : {}),
             ...(deps.weather ? { rainingNow: (at: number) => rainingAt(deps.weather!(at)?.weather, new Date(at)) } : {}),
+            // 桌面上说过的她那边的事（ADR 0347 第 2 层）：只有消费过回执才有，没有时 input 和原来逐字一样
+            ...(Object.keys(elsewhere).length ? { elsewhere } : {}),
         };
     };
+
+    // ---------- 攒着想跟他说的 / 桌面回执（ADR 0347 第 2 层）----------
+
+    function pendingForSelf(at: number, limit = SELF_PENDING_MAX): SelfPending[] {
+        if (stopped || loading || deps.crisisPaused?.(at)) return [];
+        const iso = (ms: number) => new Date(ms).toISOString();
+        const found: SelfPending[] = [];
+        if (deps.inner) for (const t of pendingIntents(inner.thoughts, at)) {
+            if (t.goes === 'keep') continue;
+            found.push({ id: `inner:${t.id}`, kind: 'inner', goes: t.goes, text: t.text, since: t.at });
+        }
+        const today = formatDate(herDay(deps.schedule, new Date(at)));
+        if (deps.news) {
+            const history = deps.history.load(contact.qq).filter(m => Number.isFinite(Date.parse(m.time)) && Date.parse(m.time) <= at);
+            const kinds = newsKindsOf(deps.settings);
+            for (const item of deps.news(at)) {
+                // 照片类发不了（桌面上没有货架），不算攒着的话
+                if (!kinds.includes(item.kind) || item.kind === 'cat_photo' || item.kind === 'food_photo' || item.day !== today) continue;
+                if (!unsaidNews(item, at, { records, history, elsewhere })) continue;
+                found.push({ id: `news:${item.id}`, kind: 'news', text: item.what, since: iso(item.at) });
+            }
+        }
+        for (const f of followUps) {
+            if (f.date > today) continue;
+            // 从他说起这件事的那一段开始攒着（片段 id 是 ep-<毫秒>）
+            found.push({ id: `followUp:${f.id}`, kind: 'followUp', text: f.what, since: iso(Number(f.episode.slice(3))) });
+        }
+        return found.sort((a, b) => Date.parse(b.since) - Date.parse(a.since)).slice(0, Math.max(0, limit));
+    }
+
+    function markTold(thoughtId: string): boolean {
+        if (stopped || loading) throw new Error('主动消息已暂停或状态待恢复，回执先不落');
+        const thought = inner.thoughts.find(t => t.id === thoughtId);
+        if (!thought || thought.told || thought.goes === 'keep') return false;
+        inner = { ...inner, thoughts: inner.thoughts.map(t => (t.id === thoughtId ? { ...t, told: true as const } : t)) };
+        save();
+        deps.log(`内心${tag}：桌面上说过了一个念头，QQ 这边不再单独说`);
+        wake?.abort();
+        return true;
+    }
+
+    function markAskedElsewhere(followUpId: string): boolean {
+        if (stopped || loading) throw new Error('主动消息已暂停或状态待恢复，回执先不落');
+        if (!followUps.some(f => f.id === followUpId)) return false;
+        forget(followUpId, '桌面上问过了');
+        wake?.abort();
+        return true;
+    }
+
+    function markNewsElsewhere(newsId: string, at: Date): boolean {
+        if (stopped || loading) throw new Error('主动消息已暂停或状态待恢复，回执先不落');
+        // 先按状态 schema 核一遍再改：不合格的写进去会让 save() 拒绝写入、整个计划器暂停
+        const when = Number.isFinite(at.getTime()) ? at.toISOString() : undefined;
+        if (!when || !stateTimestamp(when) || !newsId.trim() || /[\x00-\x1f\x7f]/.test(newsId) || elsewhere[newsId]) return false;
+        elsewhere = { ...elsewhere, [newsId]: when };
+        save();
+        deps.log(`主动${tag}：她那边的一件事桌面上说过了，QQ 这边不再单发、不再顺带说`);
+        wake?.abort();
+        return true;
+    }
 
     function describe(candidate: Candidate): string {
         const day = formatDate(new Date(candidate.at)) === formatDate(new Date(now())) ? '今天' : '明天';
@@ -765,7 +854,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             if (loading) {
                 try {
                     mkdirSync(deps.dir, { recursive: true }); state = readProactiveState(path);
-                    records = state.records; followUps = state.followUps; inner = state.inner ?? { thoughts: [] }; extracted = state.extracted;
+                    records = state.records; followUps = state.followUps; inner = state.inner ?? { thoughts: [] }; extracted = state.extracted; elsewhere = { ...state.elsewhere };
                     loading = false; paused = undefined; gate.ok('read');
                     deps.log('主动：原状态读得到了，恢复计划（未清空去重事实）');
                 } catch (error) {
@@ -865,6 +954,12 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             lifecycle.abort();
             wake?.abort();
         },
+        pendingForSelf,
+        selfReady: () => !stopped && !loading,
+        markTold,
+        markAskedElsewhere,
+        markNewsElsewhere,
+        toldElsewhere: (newsId: string) => Boolean(elsewhere[newsId]),
         innerLine: () => (deps.inner && !stopped && !loading
             ? [innerLineOf(inner.thoughts, now()), learnedLine(inner.learned, now())].filter(Boolean).join('\n') || undefined
             : undefined),

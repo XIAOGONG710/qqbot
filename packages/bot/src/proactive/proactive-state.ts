@@ -14,6 +14,11 @@ export interface ProactiveState {
     extracted: Record<string, true | number>;
     /** 她的内心（ADR 0101）：开了 innerLife 才有 */
     inner?: InnerState;
+    /**
+     * 她那边的事在桌面上已经说过了（ADR 0347 第 2 层回执）：事件 id → 说的时刻。只有消费过桌面回执才有；
+     * blockReason 的 news、untoldNews、pendingForSelf、聊天里的 decideAt.news 都查它。按 KEEP_DAYS 修剪；旧文件没有这一项照常读
+     */
+    elsewhere?: Record<string, string>;
 }
 
 export const emptyProactiveState = (): ProactiveState => ({ version: 1, records: [], followUps: [], extracted: {} });
@@ -51,6 +56,7 @@ export function validProactiveState(value: unknown): value is ProactiveState {
         && Array.isArray(value.records) && value.records.every(validRecord) && unique(value.records)
         && Array.isArray(value.followUps) && value.followUps.every(validFollowUp) && unique(value.followUps)
         && (value.inner === undefined || validInnerState(value.inner))
+        && (value.elsewhere === undefined || (stateObject(value.elsewhere) && Object.entries(value.elsewhere).every(([key, at]) => id(key) && stateTimestamp(at))))
         && stateObject(value.extracted) && Object.entries(value.extracted).every(([key, attempts]) => episodeId(key) && (attempts === true || integer(attempts, 0, 2)));
 }
 

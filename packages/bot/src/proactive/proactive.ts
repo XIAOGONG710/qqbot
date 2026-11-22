@@ -206,6 +206,8 @@ export interface ProactiveInput {
     together?: (now: number) => boolean;
     /** 随口说件事 / 约他 / 问他意见按他平时在线的钟头排（ADR 0117） */
     hisHours?: boolean;
+    /** 她那边的事在桌面上已经说过了（ADR 0347 第 2 层回执，proactive-state.ts 的 elsewhere）：事件 id → 说的时刻；在里面的不排、不发、不顺带说 */
+    elsewhere?: Readonly<Record<string, string>>;
 }
 
 const MIN = 60_000;
@@ -677,7 +679,7 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
 
     // 她那边的事（ADR 0057）：了结后过一会儿；一件一条（id 带事情的 id）
     if (enabled.has('news')) {
-        for (const item of (input.news ?? []).filter(n => n.day === dayText)) {
+        for (const item of (input.news ?? []).filter(n => n.day === dayText && !input.elsewhere?.[n.id])) {
             add('news', Math.max(item.at, wake) + pick(seed(`news ${item.id}`), 'at', minutes(NEWS_MIN)), item.what, { news: item }, `:${item.id}`);
         }
     }
@@ -1051,6 +1053,8 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
         case 'news': {
             const item = input.news?.find(n => n.id === candidate.news!.id && n.day === candidate.day);
             if (!item) return '那件事没发生';
+            // 桌面上已经跟他说过了（ADR 0347 第 2 层回执）
+            if (input.elsewhere?.[item.id]) return ELSEWHERE_REASON;
             // 说“拍了张照片”却发不出照片会穿帮：货架里没有 / 刚发过 / 今天发够了就不发
             if (item.kind === 'cat_photo' && !input.photoReady?.('cat', now)) return '货架里没有猫的照片，或者这会儿不该发照片';
             if (item.kind === 'food_photo' && !input.photoReady?.('food', now, item.dish)) return '货架里没有这顿饭的照片，或者这会儿不该发照片';
@@ -1066,6 +1070,8 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
 export const MAX_PROACTIVE_BUBBLES = 2;
 /** 有没回的消息时不主动的原因（计划器和回复器都用） */
 export const PENDING_REASON = '有没回的消息，回复就好';
+/** 她那边的事在桌面上已经说过了（ADR 0347 第 2 层回执） */
+export const ELSEWHERE_REASON = '桌面上已经跟他说过了';
 export const CRISIS_PAUSE_REASON = '他最近说过想伤害自己的话，普通的主动消息先暂停';
 
 /** 顺带说没说成的事的时机：问候、找他说话的这几种（日子、下雨、待跟进各有要说的那一件） */
@@ -1076,11 +1082,20 @@ const CARRIES_NEWS: ReadonlySet<Occasion> = new Set(['morning', 'after_class', '
  * 那之后两人也没说过话——这一天后面的主动顺带说。10-11 下午断网，买到相机那条没发成，晚上的睡前只道晚安。
  * 发出去了、还等着再试的不算；那之后聊过的不算（聊天里多半说了，和 blockReason 一样）
  */
-export function untoldNews(candidate: Candidate, now: number, input: Pick<ProactiveInput, 'news' | 'records' | 'history'>): NewsItem[] {
+export function untoldNews(candidate: Candidate, now: number, input: Pick<ProactiveInput, 'news' | 'records' | 'history' | 'elsewhere'>): NewsItem[] {
     if (!CARRIES_NEWS.has(candidate.occasion)) return [];
-    return (input.news ?? []).filter(item => item.kind !== 'cat_photo' && item.kind !== 'small_thing' && item.kind !== 'food_photo' && item.day === candidate.day && item.at <= now
+    return (input.news ?? []).filter(item => item.kind !== 'cat_photo' && item.kind !== 'small_thing' && item.kind !== 'food_photo' && item.day === candidate.day && unsaidNews(item, now, input));
+}
+
+/**
+ * 她那边的一件事还没说出口：了结了、那条主动没发出去（发出去了、还等着再试的不算）、那之后两人没说过话（聊天里多半说了）、
+ * 桌面上也没说过（ADR 0347 第 2 层回执）。untoldNews 和计划器的 pendingForSelf 共用
+ */
+export function unsaidNews(item: NewsItem, now: number, input: Pick<ProactiveInput, 'records' | 'history' | 'elsewhere'>): boolean {
+    return item.at <= now
         && !input.records.some(r => r.id === `${item.day}:news:${item.id}` && (counts(r) || waitingRetry(r)))
-        && !input.history.some(m => Date.parse(m.time) >= item.at));
+        && !input.history.some(m => Date.parse(m.time) >= item.at)
+        && !input.elsewhere?.[item.id];
 }
 
 /**

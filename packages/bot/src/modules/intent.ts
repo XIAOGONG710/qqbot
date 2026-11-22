@@ -13,7 +13,7 @@
 // 小别扭 / 和好真的生效 = 最终的意图就是小别扭那一句（没被照片、被打断、更高的意图盖掉）：写 grievanceActive，是小别扭（不是和好）再写 sulk；记一行日志。有意图也记一行。
 // 阶梯本身原样不动；行为和迁移前 contact.ts 里的逐字一样（行为基线 intents 等场景核对）。
 
-import type { Module, Turn } from '../interpreter/interpreter.ts';
+import type { DecideCtx, Module, Turn } from '../interpreter/interpreter.ts';
 import { describeGrievance } from '../emotion/grievance.ts';
 import { describeIntent } from '../language/intent.ts';
 import { photoIntent } from '../vision/photos.ts';
@@ -70,12 +70,15 @@ export function intentModule(options: IntentModuleOptions = {}): Module {
         decideAt: {
             // 她那边的事还没说过（ADR 0057 调整；ADR 0336「判断那一串」2026-11-18 从流水线搬来，原位：挂着的事之后、assess 之前）：
             // 她的今天了结的、那之后她一句话都还没说过（主动那条发出去了也算说过）——这一轮顺带说。先只给男朋友档；作息经 DecideCtx.schedule（开了她自己的日子才有）
-            news: (turn, ctx) => {
+            // 桌面上已经说过的（ADR 0347 第 2 层回执，DecideCtx.toldElsewhere，开了 selfReceipts 才给）也算说过；不给就和原来一样。
+            // 写成交叉类型：DecideCtx 加上这个字段之前之后都编译得过
+            news: (turn, ctx: DecideCtx & { toldElsewhere?: (id: string) => boolean }) => {
                 const { contact, at: time, initiate } = turn;
+                const { toldElsewhere } = ctx;
                 const around = turn.facts.world;
                 const herSchedule = ctx.schedule;
                 const untold = around && herSchedule && contact.tier === 'boyfriend' && !initiate
-                    ? worldNews(around).filter(n => n.at <= time && formatDate(herDay(herSchedule, n.at)) === around.day
+                    ? worldNews(around).filter(n => n.at <= time && formatDate(herDay(herSchedule, n.at)) === around.day && !toldElsewhere?.(n.id)
                         && !turn.history.some(m => m.role === 'assistant' && m.time !== undefined && Date.parse(m.time) >= n.at.getTime())).map(n => n.what)
                     : [];
                 if (untold.length) ctx.log(`她那边的事还没跟他说过：${untold.join('、')}`);
