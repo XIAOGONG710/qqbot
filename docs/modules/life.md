@@ -45,6 +45,7 @@
 - `life/desktop-presence.ts`
 - `life/desktop-now.ts`
 - `life/desktop-timeline.ts`
+- `life/one-diary.ts`
 - `life/self-types.ts`
 - `life/self-export.ts`
 - `life/leave-note.ts`

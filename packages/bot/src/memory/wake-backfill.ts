@@ -2,6 +2,10 @@
 // 为什么：每轮都是拿他这一句去检索记忆，隔夜第一句和昨天的记忆没有词面交集 → 查不到 → 她像失忆。
 // 三条约束（用户定的）：只在离开 ≥6 小时时；≤300 字；内容来自她自己的日记（JOURNAL.md），不是我们写的人设简介。
 // 不做的事：不新增开关（挂在 lifeInPrompt 下）、不碰记忆库、不改召回逻辑。
+// 一本日记（ADR 0347 第 3 层，开关 oneDiary）开着时，调用方给 diaries（oneDiaryEntries 读的那一本），取最近一天排第一的那篇（当天日记 > 手写）；不给就照旧读 journal。
+
+import type { DiaryEntry } from '../life/diary-insights.ts';
+import { latestDiary } from '../life/one-diary.ts';
 
 /** 离开多久算「走了很久」 */
 export const WAKE_GAP_MS = 6 * 3_600_000;
@@ -15,6 +19,8 @@ export interface WakeBackfillInput {
     now: number;
     /** 她的日记全文（JOURNAL.md 的原文） */
     journal: string;
+    /** 一本日记（oneDiary）：给了就从这里取最后一篇，不看 journal；不给（undefined）和原来一样 */
+    diaries?: readonly DiaryEntry[];
     /** 日志用：不影响返回 */
     log?: (message: string) => void;
 }
@@ -51,7 +57,7 @@ export function wakeBackfill(input: WakeBackfillInput): string | undefined {
     const last = Date.parse(input.lastAt);
     if (!Number.isFinite(last)) return undefined;
     if (input.now - last < WAKE_GAP_MS) return undefined;
-    const entry = lastJournalEntry(input.journal);
+    const entry = input.diaries ? latestDiary(input.diaries) : lastJournalEntry(input.journal);
     if (!entry) return undefined;
     const hours = Math.floor((input.now - last) / 3_600_000);
     input.log?.(`首轮铺底：他走了 ${hours} 小时，带上 ${entry.date} 的日记（${[...entry.text].length} 字）`);

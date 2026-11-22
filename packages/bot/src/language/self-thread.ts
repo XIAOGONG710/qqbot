@@ -3,7 +3,8 @@
 // 这里给她一段「你自己最近过的日子」——来自她自己写的日记（JOURNAL.md 最后一段），
 // 只递素材和许可，用不用、怎么用由她定；不写成汇报，也不要求每轮都带。
 import { lastJournalEntry } from '../memory/wake-backfill.ts';
-import { parseJournal } from '../life/diary-insights.ts';
+import { parseJournal, type DiaryEntry } from '../life/diary-insights.ts';
+import { diaryOnDate, latestDiary } from '../life/one-diary.ts';
 
 export interface SelfThread {
     /** 从日记里摘的一两句，已经压短 */
@@ -14,7 +15,18 @@ export interface SelfThread {
 
 /** 日记最后一篇 → 一两句；没有日记、或只有标题返回 undefined */
 export function selfThread(journal: string, maxChars = 90): SelfThread | undefined {
-    const entry = lastJournalEntry(journal);
+    return threadOf(lastJournalEntry(journal), maxChars);
+}
+
+/**
+ * 一本日记（ADR 0347 第 3 层，开关 oneDiary）：从 oneDiaryEntries 读出来的那一本里取最近一天排第一的那篇（当天日记 > 手写），
+ * 再摘一两句，摘法和 selfThread 一样。开关关着时调用方照旧用 selfThread(JOURNAL.md 原文)。
+ */
+export function selfThreadFromDiaries(entries: readonly DiaryEntry[], maxChars = 90): SelfThread | undefined {
+    return threadOf(latestDiary(entries), maxChars);
+}
+
+function threadOf(entry: { date: string; text: string } | undefined, maxChars: number): SelfThread | undefined {
     if (!entry) return undefined;
     const sentences = entry.text.split(/(?<=[。！？!?])/).map(s => s.trim()).filter(Boolean);
     const picked: string[] = [];
@@ -51,4 +63,12 @@ export function journalOn(journal: string, selfDiary: readonly { at: number; tex
     if (!texts.length) return undefined;
     const joined = texts.join(' ／ ');
     return [...joined].length > maxChars ? `${[...joined].slice(0, maxChars).join('')}……` : joined;
+}
+
+/**
+ * journalOn 的一本日记版（开关 oneDiary）：那一天的当天日记在前，再是 JOURNAL.md 里手写的、<<日记>>；
+ * entries 用 oneDiaryEntries(dirs, now, windowFor(date, now)) 读，窗口要盖住那一天。
+ */
+export function journalOnDiaries(entries: readonly DiaryEntry[], date: string, maxChars = 220): string | undefined {
+    return diaryOnDate(entries, date, maxChars);
 }

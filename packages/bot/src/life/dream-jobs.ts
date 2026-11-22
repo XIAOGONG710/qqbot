@@ -15,6 +15,7 @@ import { worldHighlights } from '../world/highlights.ts';
 import type { WorldNow } from '../world/world.ts';
 import { appendDream, dreamPrompt, hasDream, inSleepHours, lastInsightAt, monthlyInsightPrompt, napPrompt, onlyFragment, recentDreams, saveInsight } from './dreams.ts';
 import { loadQuestion, questionPrompt, saveQuestion } from './learning-questions.ts';
+import { diaryTail, oneDiaryEntries } from './one-diary.ts';
 
 export interface DreamJobsDeps {
     /** 男朋友档的那一位（没有就什么都不做） */
@@ -33,6 +34,11 @@ export interface DreamJobsDeps {
     rememberSelfNote: (contact: Contact, text: string, kind: '记住') => Promise<unknown> | undefined;
     /** 她那边的世界（世界账）：做梦前读一次此刻的世界（结算到期的事），有世界账才给 */
     worldAt?: (at: Date) => unknown;
+    /**
+     * 一本日记（ADR 0347 第 3 层，开关 oneDiary）：开着时「日记尾巴」从 oneDiaryEntries 那一本取（当天日记 + 手写 + <<日记>>），
+     * 不再只读 JOURNAL.md；不给 / false 和原来一样
+     */
+    oneDiary?: boolean;
 }
 
 /** 白天的事最多往回看多久（做梦在夜里，午睡在下午：一天半够了） */
@@ -60,6 +66,13 @@ export function dreamDayEvents(events: readonly LifeEvent[], world: WorldNow | u
 
 export function dreamJobs(deps: DreamJobsDeps): { tick(): void } {
     const { owner, dataDir } = deps;
+    /** 日记最后 chars 个字：一本日记开着时从那一本取，否则照旧读 JOURNAL.md；读不到就是空的 */
+    const journalTail = (at: Date, chars: number): string => {
+        if (deps.oneDiary) {
+            try { return diaryTail(oneDiaryEntries({ soulDir: deps.soulDir(), dataDir }, at.getTime()), chars); } catch { return ''; }
+        }
+        try { return readFileSync(join(deps.soulDir(), 'JOURNAL.md'), 'utf8').slice(-chars); } catch { return ''; /* 没日记 */ }
+    };
     /** 做梦前读一次世界账（结算到期的事）和她的生活事件，取白天的素材 */
     const dayEvents = (at: Date, limit: number): string[] => dreamDayEvents(
         readLifeEvents(join(dataDir, 'world', 'events.json'), () => undefined),
@@ -78,8 +91,7 @@ export function dreamJobs(deps: DreamJobsDeps): { tick(): void } {
                 const state = loadNotesState(dataDir);
                 notes = state.notes.map(note => note.text).slice(-8).join('；');
             } catch { /* 没笔记就只用日记 */ }
-            let journal = '';
-            try { journal = readFileSync(join(deps.soulDir(), 'JOURNAL.md'), 'utf8').slice(-800); } catch { /* 没日记 */ }
+            const journal = journalTail(at, 800);
             const books = deps.character(owner.tier).books?.map(book => book.title).join('、') ?? '';
             const prompt = questionPrompt({ notes, journal, books, name: deps.character(owner.tier).name });
             const raw = await deps.generate(0.8)([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
@@ -148,8 +160,7 @@ export function dreamJobs(deps: DreamJobsDeps): { tick(): void } {
         try {
             // 白天的事（她自己做成的 + 世界账里今天已经发生的）+ 日记尾巴
             const own = dayEvents(at, 8);
-            let journal = '';
-            try { journal = readFileSync(join(deps.soulDir(), 'JOURNAL.md'), 'utf8').slice(-400); } catch { /* 没日记就算了 */ }
+            const journal = journalTail(at, 400);
             const lastFeelings = deps.lastFeelings();
             const fell = lastFeelings ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => `${item.cause}（${item.kind}）`) : [];
             const previous = recentDreams(dataDir, 3).map(item => item.dream);

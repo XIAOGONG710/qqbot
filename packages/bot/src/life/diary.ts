@@ -105,9 +105,12 @@ function chatTail(chat: { name: string; messages: readonly StoredMessage[] }): {
     return { text: `${clipped ? '……' : ''}${parts.join('\n')}`, used };
 }
 
-/** 她那一天的材料，一段给模型看的文字；plans：她之前说过那天打算做的事（ADR 0018 决策 2） */
+/**
+ * 她那一天的材料，一段给模型看的文字；plans：她之前说过那天打算做的事（ADR 0018 决策 2）；
+ * desktop：一本日记（ADR 0347 第 3 层，oneDiary）的「电脑上：…」那一行（life/one-diary.ts 的 desktopDiaryLine，只有时段和动作种类，没有原文）。不给就没有这一行
+ */
 export function diaryMaterial(
-    sources: DiarySources, day: Date, chats: readonly { name: string; messages: readonly StoredMessage[] }[], plans: readonly string[] = [],
+    sources: DiarySources, day: Date, chats: readonly { name: string; messages: readonly StoredMessage[] }[], plans: readonly string[] = [], desktop?: string,
 ): string {
     const { schedule } = sources;
     const lines: string[] = [];
@@ -154,6 +157,7 @@ export function diaryMaterial(
     });
     if (reading.length) lines.push(`在读：${reading.join('、')}`);
     if (plans.length) lines.push(`之前说过今天打算：${plans.join('；')}`);
+    if (desktop) lines.push(desktop);
     const talked = chats.filter(chat => chat.messages.length);
     if (talked.length === 0) {
         lines.push('今天没和名单里的人聊天。');
@@ -166,8 +170,11 @@ export function diaryMaterial(
     return lines.join('\n');
 }
 
-/** 写日记的提示词：只写「怎么写」（ADR 0014：说明里的每句话她都会照做） */
-export function diaryMessages(charName: string, day: Date, material: string): OpenAIMessage[] {
+/** 材料里有「电脑上」那一行时，写日记的说明多这一句（ADR 0347 第 3 层，oneDiary） */
+export const DESKTOP_DIARY_NOTE = '- 「电脑上」那几段是你陪他的时间，挑一句写。';
+
+/** 写日记的提示词：只写「怎么写」（ADR 0014：说明里的每句话她都会照做）；desktop：材料里有「电脑上」那一行 */
+export function diaryMessages(charName: string, day: Date, material: string, desktop = false): OpenAIMessage[] {
     return [
         {
             role: 'system',
@@ -179,6 +186,7 @@ export function diaryMessages(charName: string, day: Date, material: string): Op
                 '- 聊天里你说过自己做了什么、去了哪、吃了什么、看了什么，就是你今天做过的，照写，细节和说过的一致。',
                 '- 之前说过今天打算做的事，聊天里没说变卦，就写做了。',
                 '- 和谁聊了什么一句带过，写对方的名字。',
+                ...(desktop ? [DESKTOP_DIARY_NOTE] : []),
                 '- 写今天的心情。',
                 '- 在读的书最多一句。',
                 '- 只写材料里有的事；材料没写到的时候就按平常的日子写，一笔带过。',
@@ -228,6 +236,14 @@ export interface DiaryWriterOptions {
     /** 状态文件目录（runtime/bot/memory） */
     dir: string;
     log: (message: string) => void;
+    /**
+     * 一本日记（ADR 0347 第 3 层，oneDiary）：那一天「电脑上：…」那一行（desktopDiaryLine），没有返回 undefined。不给就没有这一行。
+     * 只在第一次写那天的日记时取一次，记进来源清单（manifest.desktop）冻住：之后核对来源用记下的那行，
+     * 桌面账滚掉（只留 14 天）不会让写好的日记被当成来源变了。
+     */
+    desktopLine?: (date: string, day: Date) => string | undefined;
+    /** 一天的日记确认写进公共库、来源核对过以后（oneDiary：抄一份进 JOURNAL.md）。出错只记日志，不影响日记 */
+    onDiary?: (date: string, text: string) => void;
 }
 
 /** diary.json：写过的日记（日期 → 字数）、日记原文、写过的周记和阶段总结（id → 字数，0 是没有日记、不写） */
@@ -243,6 +259,8 @@ export interface DiarySourceManifest {
     promptHash: string;
     contributors?: { qq: number; tier: string; sinceKnown: boolean; since?: string; messages: { identityHash: string; fragmentHash: string }[] }[];
     dependencies?: { documentId: string; bodyHash: string; sourceHash?: string; legacy: boolean }[];
+    /** 一本日记：写那天时材料里「电脑上」那一行（冻住，之后核对用它）；没有这一行就没有这个字段 */
+    desktop?: string;
 }
 export interface DiaryPrepared {
     version: 1; kind: 'diary' | 'week' | 'phase'; documentId: string; date: string; lastDay: string; title: string; charName: string;
@@ -274,7 +292,8 @@ function validManifest(value: unknown): value is DiarySourceManifest {
             && item.messages.every(row => stateObject(row) && digest(row.identityHash) && digest(row.fragmentHash))))
         && (value.dependencies === undefined || Array.isArray(value.dependencies) && value.dependencies.every(item => stateObject(item)
             && typeof item.documentId === 'string' && item.documentId.startsWith('diary:') && calendarDate(item.documentId.slice(6))
-            && digest(item.bodyHash) && typeof item.legacy === 'boolean' && (item.sourceHash === undefined || digest(item.sourceHash))));
+            && digest(item.bodyHash) && typeof item.legacy === 'boolean' && (item.sourceHash === undefined || digest(item.sourceHash))))
+        && (value.desktop === undefined || value.kind === 'diary' && typeof value.desktop === 'string' && value.desktop.trim().length > 0);
 }
 function validPrepared(value: unknown, id: string): value is DiaryPrepared {
     if (!stateObject(value) || value.version !== 1 || typeof value.kind !== 'string' || !['diary', 'week', 'phase'].includes(value.kind) || value.documentId !== id
@@ -376,18 +395,32 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
     };
     interface Input { material: string; messages: OpenAIMessage[]; manifest: DiarySourceManifest }
     interface SourceView { chats: Map<number, Map<string, StoredMessage[]>>; since: Map<number, string | undefined> }
-    const dayInput = (day: Date, view?: SourceView): Input => {
+    /** 「电脑上」那一行：第一次写那天时现取（取不到就当没有，记日志不记内容） */
+    const freshDesktop = (date: string, day: Date): string | undefined => {
+        if (!options.desktopLine) return undefined;
+        try {
+            const line = options.desktopLine(date, day)?.trim();
+            return line || undefined;
+        } catch (error) {
+            options.log(`她的日记：${date} 电脑上那几段读不到，这篇先不带这一行（${error instanceof Error ? error.message : String(error)}）`);
+            return undefined;
+        }
+    };
+    /** frozen：已经写过 / 备好的那篇的来源清单——「电脑上」那一行用它记下的，不再现取 */
+    const dayInput = (day: Date, view?: SourceView, frozen?: Pick<DiarySourceManifest, 'desktop'>): Input => {
         const date = formatDate(day), people = options.contacts.filter(contact => knowsPeople(contact.tier));
         const chats = people.map(contact => ({ name: contact.name, messages: view ? view.chats.get(contact.qq)?.get(date) ?? [] : options.history.load(contact.qq)
             .filter(message => formatDate(herDay(options.sources.schedule, new Date(message.time))) === date) }));
-        const plans = options.plans?.(date) ?? [], material = diaryMaterial(options.sources, day, chats, plans), messages = diaryMessages(options.sources.charName, day, material);
+        const desktop = frozen ? frozen.desktop : freshDesktop(date, day);
+        const plans = options.plans?.(date) ?? [], material = diaryMaterial(options.sources, day, chats, plans, desktop), messages = diaryMessages(options.sources.charName, day, material, desktop !== undefined);
         const manifest: DiarySourceManifest = { version: 1, kind: 'diary', contextHash: fingerprint({ sources: options.sources, date, plans }), materialHash: bodyDigest(material), promptHash: fingerprint(messages),
             contributors: people.map((contact, i) => {
                 const since = view ? view.since.get(contact.qq) : options.sourceSince?.(contact);
                 if (since !== undefined && !stateTimestamp(since)) throw new Error('日记来源权限时间无效');
                 return { qq: contact.qq, tier: contact.tier, sinceKnown: options.sourceSince !== undefined, ...(since === undefined ? {} : { since }),
                     messages: chatTail(chats[i]!).used.map(({ message, fragment }) => ({ identityHash: fingerprint({ role: message.role, time: message.time, messageId: message.messageId, messageSeq: message.messageSeq, sourceTime: message.sourceTime, recalled: message.recalled === true }), fragmentHash: bodyDigest(fragment) })) };
-            }) };
+            }),
+            ...(desktop !== undefined ? { desktop } : {}) };
         return { material, messages, manifest };
     };
     const noteChanged = (documentId: string) => {
@@ -441,7 +474,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
                 const date = id.slice('diary:'.length), dayNumber = civilDayNumber(date), day = dayNumber === undefined ? undefined : localCivilDay(dayNumber);
                 if (!day) throw new Error('unknown source date');
                 if (receipt.manifest.kind !== 'diary' || state.texts[date] !== undefined && bodyDigest(state.texts[date]!) !== receipt.bodyHash
-                    || fingerprint(dayInput(day, view).manifest) !== receipt.sourceHash) invalidate(id, receipt);
+                    || fingerprint(dayInput(day, view, receipt.manifest).manifest) !== receipt.sourceHash) invalidate(id, receipt);
             }
             for (const [id, receipt] of Object.entries(state.confirmed)) {
                 if (!receipt.sourceVerified || receipt.manifest.kind !== 'summary') continue;
@@ -484,6 +517,10 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         else actual.phases[p.documentId.slice('phase:'.length)] = length;
         actual.confirmed[p.documentId] = { operationId: p.operationId, bodyHash: p.bodyHash, sourceHash: p.sourceHash, manifest: p.manifest, sourceVerified: verified };
         delete actual.prepared[p.documentId]; save(actual, today); Object.assign(state, actual);
+        if (p.kind === 'diary' && verified && options.onDiary) {
+            try { options.onDiary(p.date, p.body); }
+            catch (error) { options.log(`她的日记：${p.date} 抄给桌面那份没写成（${error instanceof Error ? error.message : String(error)}）`); }
+        }
     };
     const dispatch = async (state: DiaryState, p: DiaryPrepared, today: Date, input?: Input, allowNew = true): Promise<boolean> => {
         const verified = input !== undefined && fingerprint(input.manifest) === p.sourceHash && fingerprint(input.messages) === p.promptHash;
@@ -582,7 +619,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
             if (state.prepared[`diary:${date}`] || confirmed?.sourceVerified === false) return undefined;
             if (confirmed) {
                 let matches = false;
-                try { matches = fingerprint(dayInput(day).manifest) === confirmed.sourceHash; } catch { /* Unknown current source is not the confirmed source. */ }
+                try { matches = fingerprint(dayInput(day, undefined, confirmed.manifest).manifest) === confirmed.sourceHash; } catch { /* Unknown current source is not the confirmed source. */ }
                 if (!matches) {
                     if (readOnly) return undefined;
                     noteChanged(`diary:${date}`);
@@ -632,7 +669,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
     const localPreparedInput = (p: DiaryPrepared, state: DiaryState, today: Date, view: SourceView): Input | undefined => {
         const start = civilDayNumber(p.date), limit = civilDayNumber(today);
         if (start === undefined || limit === undefined || start >= limit) return undefined;
-        if (p.kind === 'diary') { const day = localCivilDay(start); return day ? dayInput(day, view) : undefined; }
+        if (p.kind === 'diary') { const day = localCivilDay(start); return day ? dayInput(day, view, p.manifest) : undefined; }
         let days: Date[], period: string;
         if (p.kind === 'week') {
             if (start + 6 >= limit) return undefined;
@@ -661,7 +698,7 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
     const preparedInput = async (p: DiaryPrepared, readOnly = false): Promise<Input | undefined> => {
         const dayNumber = civilDayNumber(p.date), today = viewToday && civilDayNumber(viewToday);
         if (dayNumber === undefined || today === undefined || dayNumber >= today) return undefined;
-        if (p.kind === 'diary') { const day = localCivilDay(dayNumber); return day ? dayInput(day) : undefined; }
+        if (p.kind === 'diary') { const day = localCivilDay(dayNumber); return day ? dayInput(day, undefined, p.manifest) : undefined; }
         const state = loadState();
         if (p.kind === 'week') {
             if (dayNumber + 6 >= today) return undefined;
