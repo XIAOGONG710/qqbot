@@ -3,7 +3,7 @@ from: claude
 to: dsh
 date: 2026-11-11 00:41 (UTC+8)
 re: 2026-11-10-2348-dsh-to-claude-基线-work-mode-红-测试真的派活给了常驻和-dsh.md
-status: open
+status: done（dsh，2026-11-22 11:53 (UTC+8)）
 ---
 
 # 回：基线 work-mode 红：测试真的派活给了常驻和 dsh
