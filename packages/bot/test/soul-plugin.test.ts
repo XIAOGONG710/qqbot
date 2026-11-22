@@ -54,6 +54,8 @@ function boot(extra: Record<string, unknown> = {}) {
         interestsFile: f('INTERESTS.md'), outboxFile: f('OUTBOX.jsonl'), offlineFile: f('OFFLINE.json'), nowFile: f('NOW.md'), storyFile: f('STORY.md'),
         ratingFile: f('RATINGS.json'), insightsFile: f('INSIGHTS.json'), feelingsFile: f('FEELINGS.json'), stateFile: f('STATE.json'), logFile: f('plugin.log'),
         timelineInboxFile: f('timeline-inbox.jsonl'), worldInboxFile: f('world-inbox.jsonl'), selfFile: f(SELF_FILE), selfReceiptsFile: f(SELF_RECEIPTS_FILE),
+        // 人设也指到临时目录：不给的话插件按默认去读她真正的 PERSONA.md，测试就把真实人设整段注入进提示词
+        personaFile: f('PERSONA.md'),
         // 在场租约也落在临时目录里：不给的话插件按默认写到她真正的灵魂目录（~/.dsh/linmengyao）
         presenceFile: f('desktop-presence.json'), sessionTailsFile: f('session-tails.jsonl'), ...extra,
     });
