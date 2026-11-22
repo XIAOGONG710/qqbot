@@ -3,6 +3,7 @@
 // 为什么要反过来：以前 her-life.mjs 自己按另一套规则推进活动 / 心情，和 QQ 的作息 + 世界 + 心境对不上，
 // 她会前后矛盾（审查 #9）。
 import { renameSync, writeFileSync } from 'node:fs';
+import type { Activity } from './schedule.ts';
 
 /** 他最后一句在这个时间窗内，就说「和你聊天中」（Xavier 的中断层，2026-10-30） */
 export const CHATTING_WINDOW_MS = 10 * 60_000;
@@ -62,13 +63,67 @@ export function nowFresh(content: string, now: number, staleMs = NOW_STALE_MS): 
     return now - at <= staleMs;
 }
 
+/** 和你聊天中的时候，她作息上本来在干嘛（ADR 0347 第 3 层 desktopDay）：只说上课和睡觉这两种，别的不带 */
+const WAS_TEXT: Partial<Record<Activity['kind'], string>> = { class: '本来在上课', sleep: '本来该睡了' };
+
+/** 中断层的可选项（ADR 0347 第 3 层 desktopDay，方案 §2.2-1）；不给就和原来逐字一样 */
+export interface ChatContext {
+    /** 桌面上最后一轮的时刻：和 lastMessageAt（QQ 最后一句）取较晚的那个 */
+    desktopAt?: number;
+    /** 桌面在场（租约优先，desktop-presence.ts 的 presenceAt）：在就算聊着，不看时间窗 */
+    desktopWith?: boolean;
+    /** 作息上本来在干嘛：class / sleep 时写成「和你聊天中（本来在上课 / 本来该睡了）」 */
+    was?: Activity['kind'];
+}
+
+/** 两个时刻里较晚的那个；都没有就是 undefined（不是有限数的当没有） */
+export function laterOf(a: number | undefined, b: number | undefined): number | undefined {
+    const ok = (value: number | undefined): value is number => value !== undefined && Number.isFinite(value);
+    if (!ok(a)) return ok(b) ? b : undefined;
+    return ok(b) && b > a ? b : a;
+}
+
 /**
  * 中断层：他刚说过话的时候，别让她一边回消息一边「在看剧」。
  * 聊天期间的活动改成「和你聊天中」，聊完（超过窗口）自然回到原来的轨迹——不需要任何状态复原代码，
  * 因为下一次渲染会重新按作息算。
+ * 给了 context（desktopDay）：桌面最后一轮也算「刚说过话」（和 QQ 最后一句取较晚的），桌面在场也算聊着；
+ * 作息上本来在上课 / 睡觉就带上括号里那句。不给 context 和原来逐字一样。
  */
-export function activityWithChat(doing: string, lastMessageAt: number | undefined, now: number, windowMs = CHATTING_WINDOW_MS): string {
-    if (lastMessageAt === undefined || !Number.isFinite(lastMessageAt)) return doing;
-    if (now - lastMessageAt > windowMs || now < lastMessageAt) return doing;
-    return `和你聊天中`;
+export function activityWithChat(doing: string, lastMessageAt: number | undefined, now: number, windowMs = CHATTING_WINDOW_MS, context?: ChatContext): string {
+    const last = context ? laterOf(lastMessageAt, context.desktopAt) : lastMessageAt;
+    const recent = last !== undefined && Number.isFinite(last) && now - last <= windowMs && now >= last;
+    if (!recent && !context?.desktopWith) return doing;
+    const was = context?.was === undefined ? undefined : WAS_TEXT[context.was];
+    return was ? `和你聊天中（${was}）` : `和你聊天中`;
+}
+
+export interface NowDoingInput {
+    /** describeState 的原话（按作息 + 世界） */
+    base: string;
+    /** 作息上这一刻在干嘛 */
+    kind: Activity['kind'];
+    /** QQ 上最后一句 */
+    qqLastAt?: number;
+    /** 桌面上最后一轮（desktop-log 的 at） */
+    desktopLastAt?: number;
+    /** 桌面在场（presenceAt(...).with，租约优先、回合兜底） */
+    desktopWith?: boolean;
+    now: number;
+}
+
+/**
+ * NOW.md 的「在干嘛」和 asleep 行，desktopDay 开着时 App 用这个（关着时照旧调三个参数的 activityWithChat）。
+ * - doing：QQ 和桌面谁晚算谁；桌面在场也算聊着；本来在上课 / 睡觉带括号（QQ 上聊着也一样带）。
+ * - asleep：照旧按作息写，只有 QQ 上聊着才算醒着；**桌面上聊着不改成 no**——她是被叫起来的，不是醒了（方案 §2.2-1）。
+ */
+export function nowDoing(input: NowDoingInput): { doing: string; asleep: boolean } {
+    const { base, kind, now } = input;
+    const doing = activityWithChat(base, input.qqLastAt, now, CHATTING_WINDOW_MS, {
+        ...(input.desktopLastAt !== undefined ? { desktopAt: input.desktopLastAt } : {}),
+        ...(input.desktopWith ? { desktopWith: true } : {}),
+        was: kind,
+    });
+    const qqChatting = activityWithChat(base, input.qqLastAt, now) !== base;
+    return { doing, asleep: kind === 'sleep' && !qqChatting };
 }

@@ -3,6 +3,7 @@ import type { Executor } from '../executor/executor.ts';
 import { humanValuesFromAnchor } from '../human-values.ts';
 import { asleepSince } from '../life/bedtime.ts';
 import { bodyAt } from '../life/body.ts';
+import type { DesktopProactiveHooks } from '../life/desktop-now.ts';
 import { freshGuess, type guessesReader } from '../life/her-guesses.ts';
 import { saveHerPlan, windowAt } from '../life/her-plans.ts';
 import { needsAt, type loadNeedsAnchor } from '../life/needs.ts';
@@ -63,6 +64,11 @@ export interface PlannerHostDeps {
     watchedEntries: () => readonly Watched[];
     /** 测试 / 模拟器换掉的时钟和等待 */
     pipeline: Partial<Pick<ContactPipelineOptions, 'now' | 'waitUntil'>> | undefined;
+    /**
+     * 桌面上的时间（ADR 0347 第 3 层，开关 desktopDay，方案 §2.2-2）：App 只在 desktopDay 和 crossRecent 都开着时给（life/desktop-now.ts 的 desktopProactiveHooks）。
+     * 只接给 deviceOwner 那一位男朋友档（桌面记录是他的）；不给 = 和原来逐字一样
+     */
+    desktop?: DesktopProactiveHooks;
 }
 
 export interface PlannerHost {
@@ -73,7 +79,7 @@ export interface PlannerHost {
 }
 
 export function plannerHost(deps: PlannerHostDeps): PlannerHost {
-    const { config, log, exec, clockNow, cardFor, proactiveContacts, deviceOwner, responders, history, photos, worldCard, ledgerWorld, sharedWorld, needsAnchor, agencyShadow, weather, web, herGuessesNow, promises, dormancy, crisisState, bedtimes, watchedEntries, pipeline } = deps;
+    const { config, log, exec, clockNow, cardFor, proactiveContacts, deviceOwner, responders, history, photos, worldCard, ledgerWorld, sharedWorld, needsAnchor, agencyShadow, weather, web, herGuessesNow, promises, dormancy, crisisState, bedtimes, watchedEntries, pipeline, desktop } = deps;
     const planners = new Map<number, Planner>();
     function startPlanners(): void {
         if (planners.size || config.proactive === 'off') return;
@@ -88,6 +94,8 @@ export function plannerHost(deps: PlannerHostDeps): PlannerHost {
                 // 喂完猫拍的照片（ADR 0110）：货架里有猫的照片、这会儿也允许发才发
                 ...(config.hisHours && contact.tier === 'boyfriend' ? { hisHours: true } : {}),
                 ...(config.together && contact.tier === 'boyfriend' ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
+                // 他正在电脑前 / 刚在电脑上聊过（ADR 0347 第 3 层 desktopDay）：只给他（deviceOwner，男朋友档）
+                ...(desktop && contact.tier === 'boyfriend' && contact.qq === deviceOwner?.qq ? desktop : {}),
                 ...(photos && (config.photoShares || config.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
                 ...(config.innerLife ? { inner: true } : {}),
                 ...(config.innerLife && contact.qq === deviceOwner?.qq && config.adultSiteUrls?.length && needsAnchor ? {

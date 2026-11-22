@@ -28,7 +28,7 @@ import type { OpenAIMessage } from '../language/prompt.ts';
 import type { MacroNames } from '.././st/macros.ts';
 import {
     blockReason, candidateLabel, candidatesOn, counts, CRISIS_PAUSE_REASON, DEFAULT_NEWS_KINDS, herDay, MAX_PROACTIVE_BUBBLES, newsKindsOf, occasionNote, PENDING_REASON, planFrom, recallTopic, unansweredCount, unsaidNews, untoldNews,
-    UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type ImportantDay, type NewsItem, type NewsKind, type ProactiveInput, type RescheduleItem, type ProactiveRecord, type ProactiveSettings,
+    UNREACHABLE_MAX_TRIES, UNREACHABLE_RETRY_MS, type Candidate, type DesktopTurnText, type ImportantDay, type NewsItem, type NewsKind, type ProactiveInput, type RescheduleItem, type ProactiveRecord, type ProactiveSettings,
 } from './proactive.ts';
 import { activitiesFromInnerChoice, type ProactiveAgencyResult } from './agency.ts';
 import { adultSiteVisitDue } from './adult-sites.ts';
@@ -194,6 +194,10 @@ export interface PlannerDeps {
     together?: (now: number) => boolean;
     /** 随口说件事 / 约他 / 问他意见按他平时在线的钟头排（ADR 0117） */
     hisHours?: boolean;
+    /** 桌面在场 / 最后一轮 / 回合（ADR 0347 第 3 层 desktopDay）：原样交给 blockReason（ProactiveInput 同名三项）；不给就和原来一样 */
+    desktopWith?: (now: number) => boolean;
+    lastDesktopAt?: (now: number) => number | undefined;
+    desktopTurns?: (now: number) => readonly DesktopTurnText[];
     /** 现在是不是在危机信号的暂停期里（ADR 0068，crisis-state.ts）：普通主动消息不发，待跟进和重要的日子照旧 */
     crisisPaused?: (now: number) => boolean;
     /** 内心（ADR 0101，配置 innerLife）：每隔一阵她自己想一想，念头存在状态文件里；想告诉他 / 想问他的变成“心里惦记”的主动消息 */
@@ -531,6 +535,10 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             ...(deps.photoReady ? { photoReady: deps.photoReady } : {}),
             ...(deps.together ? { together: deps.together } : {}),
             ...(deps.hisHours ? { hisHours: true } : {}),
+            // 桌面上的时间（ADR 0347 第 3 层）：只有给了才有，没给时 input 和原来逐字一样
+            ...(deps.desktopWith ? { desktopWith: deps.desktopWith } : {}),
+            ...(deps.lastDesktopAt ? { lastDesktopAt: deps.lastDesktopAt } : {}),
+            ...(deps.desktopTurns ? { desktopTurns: deps.desktopTurns } : {}),
             ...(deps.weather ? { rainingNow: (at: number) => rainingAt(deps.weather!(at)?.weather, new Date(at)) } : {}),
             // 桌面上说过的她那边的事（ADR 0347 第 2 层）：只有消费过回执才有，没有时 input 和原来逐字一样
             ...(Object.keys(elsewhere).length ? { elsewhere } : {}),

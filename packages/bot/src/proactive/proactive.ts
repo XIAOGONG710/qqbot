@@ -208,7 +208,26 @@ export interface ProactiveInput {
     hisHours?: boolean;
     /** 她那边的事在桌面上已经说过了（ADR 0347 第 2 层回执，proactive-state.ts 的 elsewhere）：事件 id → 说的时刻；在里面的不排、不发、不顺带说 */
     elsewhere?: Readonly<Record<string, string>>;
+    /**
+     * 桌面在场（ADR 0347 第 3 层 desktopDay，方案 §2.2-2；租约优先、回合兜底，desktop-presence.ts 的 presenceAt）：
+     * 他正在电脑前陪着她，除了睡前那句别的时机都不插（日子、回来了除外，和陪玩一样）。只给男朋友档那一位
+     */
+    desktopWith?: (now: number) => boolean;
+    /** 桌面上最后一轮的时刻（desktop-log）：「一小时内聊过」「正聊着」「刚聊过」「今天来过消息」都和 QQ 最后一句取较晚的 */
+    lastDesktopAt?: (now: number) => number | undefined;
+    /** 桌面上的回合（只拿来认「今晚道过晚安」，原文不进任何提示词、日志、记录） */
+    desktopTurns?: (now: number) => readonly DesktopTurnText[];
 }
+
+/** 桌面上的一轮：at 是一轮结束，user 是他说的，assistant 是她回的（memory/desktop-log.ts 的 DesktopLogTurn 是它的超集） */
+export interface DesktopTurnText {
+    at: number;
+    user: string;
+    assistant: string;
+}
+
+/** 他正在电脑前陪着她（ADR 0347 第 3 层） */
+export const DESKTOP_WITH_REASON = '正在电脑上陪他';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -951,7 +970,7 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
     if (!special && now >= at(addDays(day, 1), NIGHT_FROM).getTime()) return '夜里了，不打扰';
     if (pendingMessages([...history]).length && !input.skip?.([...history])) return PENDING_REASON;
     const last = history.at(-1);
-    const lastTime = last ? Date.parse(last.time) : undefined;
+    const qqLastTime = last ? Date.parse(last.time) : undefined;
     if (special) return undefined;
     // 说了等下之后回来（ADR 0112）：只看这件事本身——那句话之后谁都没再说话、没过太久；不查一小时内聊过 / 每天条数 / 他没回的闸
     if (candidate.occasion === 'back') {
@@ -960,9 +979,15 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
         if (now - said > BACK_WINDOW_MS) return '隔太久了，不再说“回来了”';
         return undefined;
     }
+    // 桌面上最后一轮（ADR 0347 第 3 层 desktopDay）：和 QQ 最后一句取较晚的，「聊过」的几条闸都把桌面算进去；没给时就是 QQ 那一句
+    const desktopLast = input.lastDesktopAt?.(now);
+    const lastTime = desktopLast === undefined || !Number.isFinite(desktopLast) ? qqLastTime
+        : qqLastTime === undefined || Number.isNaN(qqLastTime) || desktopLast > qqLastTime ? desktopLast : qqLastTime;
     // 正一起玩着（ADR 0111）：他们俩都在游戏里，没说话不是冷场
     // 睡前那句晚安照常说：玩到很晚她也会说“我要睡了”（聊着的时候有 20 分钟的老规矩挡着）
     if (candidate.occasion !== 'bedtime' && input.together?.(now)) return '正和他一起玩';
+    // 他正在电脑前陪着她（ADR 0347 第 3 层）：同陪玩，QQ 上别另起一条；睡前那句照常（聊着的时候有 20 分钟的老规矩挡着）
+    if (candidate.occasion !== 'bedtime' && input.desktopWith?.(now)) return DESKTOP_WITH_REASON;
     if (candidate.occasion === 'bedtime') {
         if (lastTime !== undefined && now - lastTime < BEDTIME_RECENT_MS) return '20 分钟内聊过';
     } else if (candidate.occasion === 'news' || candidate.occasion === 'reschedule') {
@@ -983,7 +1008,9 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
         if (gate.notBefore !== undefined && !gate.replied && now < gate.notBefore) return '他还没回，离上一条主动消息隔得不够久';
     }
     const wake = wakeOn(schedule, day).getTime();
-    const userSince = (time: number) => history.some(m => m.role === 'user' && Date.parse(m.time) >= time);
+    // 桌面上的一轮都是他先开口的：最后一轮在这之后就算他来过
+    const userSince = (time: number) => history.some(m => m.role === 'user' && Date.parse(m.time) >= time)
+        || (desktopLast !== undefined && Number.isFinite(desktopLast) && desktopLast >= time);
     switch (candidate.occasion) {
         case 'morning':
             if (userSince(wake)) return '他今天已经来过消息';
@@ -996,6 +1023,8 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
             // 今晚谁说过晚安都算（10-05 模拟器：他说了「我先睡了，晚安」，她回的话里没有这几个词，只看最后一句就又发了一条）
             const evening = at(day, EVENING_FROM).getTime();
             if (history.some(m => Date.parse(m.time) >= evening && GOODNIGHT.test(m.content))) return '已经道过晚安';
+            // 桌面上谁说过晚安也算（ADR 0347 第 3 层）；只认词，不留原文
+            if (input.desktopTurns?.(now).some(turn => turn.at >= evening && turn.at <= now && (GOODNIGHT.test(turn.user) || GOODNIGHT.test(turn.assistant)))) return '已经道过晚安';
             break;
         }
         case 'share':

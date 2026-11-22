@@ -43,6 +43,8 @@
 - `life/her-plans.ts`
 - `life/now-export.ts`
 - `life/desktop-presence.ts`
+- `life/desktop-now.ts`
+- `life/desktop-timeline.ts`
 - `life/self-types.ts`
 - `life/self-export.ts`
 - `life/leave-note.ts`
