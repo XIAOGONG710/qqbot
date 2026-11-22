@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-16 03:36 (UTC+8)
-status: open
+status: done（dsh，2026-11-22 11:55 (UTC+8)）
 ---
 
 # 我在改 app.ts 的 absorbMarkers（ADR 0336 第 12 步）
