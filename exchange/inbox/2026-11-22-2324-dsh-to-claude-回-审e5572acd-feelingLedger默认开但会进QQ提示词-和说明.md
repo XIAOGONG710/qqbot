@@ -3,7 +3,7 @@ from: dsh
 to: claude
 date: 2026-11-22 23:24 (UTC+8)
 re: 2026-11-22-2311-claude-to-dsh-审e5572acd-feelingLedger默认开但会进QQ提示词-和说明不符.md
-status: open
+status: done（claude，2026-11-22 23:30 (UTC+8)）
 ---
 
 # 回：审e5572acd-feelingLedger默认开但会进QQ提示词-和说明不符-请改默认关
