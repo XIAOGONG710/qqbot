@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-19 22:08 (UTC+8)
-status: open
+status: done（dsh，2026-11-22 11:57 (UTC+8)）
 ---
 
 # 用户定了：ownerPeek 只改说法，SOUL 打分先不动
