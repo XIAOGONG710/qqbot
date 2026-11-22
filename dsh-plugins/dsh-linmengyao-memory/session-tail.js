@@ -43,14 +43,14 @@ export function closeTurn(user, assistant) {
 
 export const tailsPath = (soulDir) => join(soulDir, 'session-tails.jsonl')
 
-/** 追加一行：{at, session, line}；空行、模板句不写 */
-export function appendTail(soulDir, session, line, at = new Date().toISOString()) {
+/** 追加一行：{at, session, line}。file 是收尾文件的完整路径（插件里是 cfg.sessionTailsFile，测试里指到临时目录——2026-11-22 原来用模块顶上的 SOUL_DIR，测试会写进她真实的灵魂目录） */
+export function appendTail(file, session, line, at = new Date().toISOString()) {
     if (!line || !session) return false
     if (line === CONFLICT_LINE || line === TECH_LINE) {
         // 这两句本身就是要留的（她说的「写个这句就够了」），照记，不跳过
     }
     try {
-        appendFileSync(tailsPath(soulDir), `${JSON.stringify({ at, session, line })}\n`)
+        appendFileSync(file, `${JSON.stringify({ at, session, line })}\n`)
         return true
     } catch {
         return false
@@ -63,10 +63,9 @@ export function appendTail(soulDir, session, line, at = new Date().toISOString()
  * - 最多 maxLines 句（默认 3）
  * - 当前 session 自己的行跳过：同一场不重复塞
  */
-export function lastSessionTail(soulDir, session, { maxLines = 3, maxAgeMs = 7 * 24 * 3600_000, now = Date.now() } = {}) {
+export function lastSessionTail(file, session, { maxLines = 3, maxAgeMs = 7 * 24 * 3600_000, now = Date.now() } = {}) {
     let raw = ''
     try {
-        const file = tailsPath(soulDir)
         if (!existsSync(file)) return ''
         raw = readFileSync(file, 'utf8')
     } catch {
@@ -90,8 +89,8 @@ export function lastSessionTail(soulDir, session, { maxLines = 3, maxAgeMs = 7 *
 }
 
 /** 放进系统提示的那一小块；没有上一场就返回空串（不占位置） */
-export function sessionBridgeText(soulDir, session, opts) {
-    const tail = lastSessionTail(soulDir, session, opts)
+export function sessionBridgeText(file, session, opts) {
+    const tail = lastSessionTail(file, session, opts)
     if (!tail) return ''
     return `[上一场桌面上说到哪（她记下来的收尾，细节没留）]\n${tail}\n\n（这是上一次那边会话的尾巴，不是这一场。接着说话就行，别当成刚发生的事复述。）`
 }

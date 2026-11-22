@@ -60,6 +60,8 @@ const DEFAULTS = {
   selfMaxChars: 1200,
   /** 桌面在场租约（ADR 0347 第 3 层）：他在桌面上跟她说话时写 / 续，QQ 只读；格式见 packages/bot/src/life/desktop-presence.ts */
   presenceFile: soulPath('desktop-presence.json'),
+  /** 桌面会话的收尾（session-tail.js）：每轮留一句，新一场开局带上一场 */
+  sessionTailsFile: soulPath('session-tails.jsonl'),
   ratingFile: soulPath('RATINGS.json'),
   logFile: path.join(os.homedir(), '.dsh', 'linmengyao-memory.log'),
   // SOUL.md 每轮整份注入提示词：超过这个字数，最老的追加段落搬进 SOUL.archive.md（不再注入）；24 小时内最多写几次
@@ -994,7 +996,8 @@ export function apply(ctx, config = {}) {
         // 串会话（2026-11-22）：这一场第一次跑起来时，把上一场留下的收尾读进来；同一场只读一次
         if (!cache.bridge) {
           try {
-            cache.bridge = sessionBridgeText(SOUL_DIR, agent.id)
+            // 只有他在桌面上和她说话的那一场接收尾（醒来 / 睡眠整合 / QQ 派的活不接）
+            cache.bridge = channel() === 'desktop' ? sessionBridgeText(cfg.sessionTailsFile, agent.id) : ''
             if (cache.bridge) log(cfg, '上一场：接了收尾')
           } catch (e) { cache.bridge = ''; log(cfg, `bridge error ${e}`) }
         }
@@ -1085,8 +1088,10 @@ export function apply(ctx, config = {}) {
         try { recordDesktopTurn(cfg, user, assistant, Date.now(), userAt) } catch (e) { log(cfg, `desktop-recent error ${e}`) }
         // 串会话：这一轮压成一句收尾留给下一场（她的规矩在 session-tail.js：冲突只留「有点僵」、技术过程只留「在忙」）
         try {
-          const tail = closeTurn(user, assistant)
-          if (tail && appendTail(SOUL_DIR, agent.id, tail)) log(cfg, `收尾：留了一句（${tail.length}字）`)
+          // 只记他在桌面上亲口说了话的那一轮：醒来 / 睡眠整合（idle）、QQ 派的活（qq-work）不是他和她在桌面上聊
+          // （2026-11-22 原来不分，idle 的提示词一堆技术词，会凭空记成「他那晚在忙」）
+          const tail = channel() === 'desktop' && user ? closeTurn(user, assistant) : ''
+          if (tail && appendTail(cfg.sessionTailsFile, agent.id, tail)) log(cfg, `收尾：留了一句（${tail.length}字）`)
         } catch (e) { log(cfg, `tail error ${e}`) }
         // 一轮结束也续一次租约（工具调用多的一轮可能跑了好几分钟）
         if (user) {

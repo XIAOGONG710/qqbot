@@ -55,7 +55,7 @@ function boot(extra: Record<string, unknown> = {}) {
         ratingFile: f('RATINGS.json'), insightsFile: f('INSIGHTS.json'), feelingsFile: f('FEELINGS.json'), stateFile: f('STATE.json'), logFile: f('plugin.log'),
         timelineInboxFile: f('timeline-inbox.jsonl'), worldInboxFile: f('world-inbox.jsonl'), selfFile: f(SELF_FILE), selfReceiptsFile: f(SELF_RECEIPTS_FILE),
         // 在场租约也落在临时目录里：不给的话插件按默认写到她真正的灵魂目录（~/.dsh/linmengyao）
-        presenceFile: f('desktop-presence.json'), ...extra,
+        presenceFile: f('desktop-presence.json'), sessionTailsFile: f('session-tails.jsonl'), ...extra,
     });
     handlers.created!({ agent: { id: 'a1', ctx: agentCtx } });
     const text = (name: string) => readFileSync(f(name), 'utf8');
@@ -1362,5 +1362,40 @@ describe('一个生活·第 3 层：桌面在场租约（desktop-presence.json�
                 assert.equal(readLease(h.f('desktop-presence.json')).session, session);
             });
         } finally { fake.restore(); }
+    });
+});
+
+// 桌面会话串起来（DSH da7e1eb4，她 11-22 定的规矩）：收尾写进 cfg.sessionTailsFile（原来写死真实灵魂目录，测试会污染她的记忆）；
+// 只记 / 只接他在桌面上和她说话的那一场（醒来、睡眠整合、QQ 派的活不算）
+describe('桌面会话的收尾（session-tail）', () => {
+    const tailUrl = pathToFileURL(join(fileURLToPath(new URL('.', import.meta.url)), '../../../dsh-plugins/dsh-linmengyao-memory/session-tail.js')).href;
+    test('压一句：技术过程只留「在忙」，冲突只留「有点僵」；别的场次的最后几句，自己这一场的跳过、太旧的不拿', async () => {
+        const tail = await import(tailUrl) as { closeTurn: (u: string, a: string) => string; appendTail: (file: string, s: string, line: string, at?: string) => boolean; lastSessionTail: (file: string, s: string, opts?: { maxLines?: number; maxAgeMs?: number; now?: number }) => string };
+        assert.match(tail.closeTurn('帮我把这个提交推上去', '好了'), /在忙/);
+        assert.match(tail.closeTurn('你别说了', '哼'), /有点僵/);
+        assert.equal(tail.closeTurn('今天晚霞好看', '是吧我也看到了'), '是吧我也看到了');
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-tail-'));
+        dirs.push(dir);
+        const file = join(dir, 'session-tails.jsonl');
+        const now = Date.parse('2026-11-22T10:00:00Z');
+        tail.appendTail(file, 'old', '太久以前的', new Date(now - 8 * 86_400_000).toISOString());
+        tail.appendTail(file, 's1', '上一场说到晚霞', new Date(now - 3_600_000).toISOString());
+        tail.appendTail(file, 'me', '这一场自己的', new Date(now - 60_000).toISOString());
+        assert.equal(tail.lastSessionTail(file, 'me', { now }), '- 上一场说到晚霞');
+    });
+
+    test('他在桌面上说话的一轮才留收尾，写进配置给的文件；醒来 / 睡眠整合（idle）、QQ 派的活不留', async () => {
+        for (const channel of [undefined, 'idle', 'qq-work']) {
+            await withChannel(channel, async () => {
+                const h = boot();
+                await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: channel ? '整理今天的事，写进日志' : '今天晚霞好看' }] }, async () => undefined);
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'start' } });
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'chunk', chunk: { type: 'text-delta', text: '是吧我也看到了' } } });
+                await h.handlers['agent/turn-stopping']!();
+                const file = h.f('session-tails.jsonl');
+                if (channel) assert.equal(existsSync(file), false, `${channel} 不留收尾`);
+                else assert.match(readFileSync(file, 'utf8'), /是吧我也看到了/);
+            });
+        }
     });
 });
