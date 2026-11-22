@@ -58,12 +58,17 @@ const DEFAULTS = {
   selfStaleMs: 30 * 60 * 1000,
   /** 「此刻的你」整块（标题 + 各行 + 攒着的那段）最多这么多字，超了从后往前整行丢 */
   selfMaxChars: 1200,
-  /** 召回按她自己的口气说、带「你想起来的」标题和远近（ADR 0347 第 5 层）；false 就回到原样贴第三人称的事实 */
-  memoryVoice: true,
-  /** 几天以前的事想起来时，带上当时的感觉（ADR 0347 第 5 层，读 QQ 写的感觉账；疼和她妈那块的慌换说法，因为他难过的不附） */
-  memoryFeelings: true,
-  /** 开场不只读全量账（ADR 0347 第 5 层）：每场第一次拼提示词时账本只给最新几条、故事只给开头几段 */
-  openingBrief: true,
+  /**
+   * 召回按她自己的口气说、带「你想起来的」标题和远近（ADR 0347 第 5 层）；false 就回到原样贴第三人称的事实。
+   * 默认关：这一块改的是她嘴里的话，按仓库规矩要用户点头才在线上开（CLAUDE.md）。
+   */
+  memoryVoice: false,
+  /** 几天以前的事想起来时，带上当时的感觉（ADR 0347 第 5 层，读 QQ 写的感觉账；疼和她妈那块的慌换说法，因为他难过的不附）。默认关，同样要用户点头 */
+  memoryFeelings: false,
+  /** 开场不只读全量账（ADR 0347 第 5 层）：每场第一次拼提示词时账本只给最新几条、故事只给开头几段。默认关，同样要用户点头 */
+  openingBrief: false,
+  /** 她的名字：召回换人称时用（ADR 0347 第 5 层）。空着就从人设卡 data.name 取，取不到就原样不换 */
+  herName: '',
   /** 桌面在场租约（ADR 0347 第 3 层）：他在桌面上跟她说话时写 / 续，QQ 只读；格式见 packages/bot/src/life/desktop-presence.ts */
   presenceFile: soulPath('desktop-presence.json'),
   /** 桌面会话的收尾（session-tail.js）：每轮留一句，新一场开局带上一场 */
@@ -132,11 +137,26 @@ export const withoutMemoryMarks = text => String(text || '')
 const CLARITY_PREFIX = /^（((?:他一提才想起来，)?记不太清了)）/
 
 /**
+ * 事本身是什么时候发生的（ADR 0347 第 5 层「远近」）。
+ * 不看 mentionedAt：两个月前的事昨天提过一嘴，按最近提起算会说成「昨天」——那是错的（claude 2026-11-22 审 40f5e30e 指出）。
+ * 顺序：周记 / 日记 documentId 的日期 → occurredEnd → occurredStart → date；都没有就不说远近。
+ */
+const memoryHappenedAt = (item) => {
+  const document = MEMORY_DATED_DOCUMENT.exec(item.documentId || '')
+  if (document) return new Date(Number(document[2]), Number(document[3]) - 1, Number(document[4]) + (document[1] === 'week' ? 6 : 0))
+  for (const iso of [item.occurredEnd, item.occurredStart, item.date]) {
+    const at = memoryTime(iso)
+    if (at !== undefined) return new Date(at)
+  }
+  return undefined
+}
+
+/**
  * 多久以前的事（ADR 0347 第 5 层「远近」）：粗粒度就够——她 11-22 说「三个月以前的只留个大概」，
  * 不报精确天数，也不假装记得准。今天的事不说；不知道什么时候的不说。
  */
 export function memoryDistance(item, now = new Date()) {
-  const at = memoryLastTouched(item)
+  const at = memoryHappenedAt(item)
   if (!at) return ''
   const days = memoryDaysBetween(at, now)
   if (!(days > 0)) return ''
@@ -151,12 +171,28 @@ export function memoryDistance(item, now = new Date()) {
 /**
  * 召回的记忆改成她自己的口气：「林梦瑶……」→「我……」（ADR 0347 第 5 层）。
  * 只换人称，不改事实、不加没记过的东西：她 11-22 说「字都对，就是跟我隔一层」。
+ * 名字不写死在源码里（ADR 0343 评审清过一遍）：给了 name 才换，没给就原样返回。
  */
-export function memoryAsMine(text) {
+export function memoryAsMine(text, name) {
+  const who = String(name || '').trim()
+  if (!who) return String(text || '')
   return String(text || '')
-    .replaceAll('林梦瑶的妈妈', '我妈')
-    .replaceAll('林梦瑶的', '我的')
-    .replaceAll('林梦瑶', '我')
+    .replaceAll(`${who}的妈妈`, '我妈')
+    .replaceAll(`${who}的`, '我的')
+    .replaceAll(who, '我')
+}
+
+/** 她的名字：配置优先，其次人设卡 data.name，取不到就空（不换人称） */
+let cachedHerName
+const herNameOf = (cfg) => {
+  if (cfg.herName) return String(cfg.herName)
+  if (cachedHerName !== undefined) return cachedHerName
+  try {
+    cachedHerName = String(JSON.parse(fs.readFileSync(cfg.personaCardFile, 'utf8'))?.data?.name || '')
+  } catch {
+    cachedHerName = ''
+  }
+  return cachedHerName
 }
 
 /*
@@ -202,7 +238,8 @@ export function readFeelingLedger(file = soulPath(FEELING_LEDGER_FILE), now = Da
 
 /** 那天、那件事对得上的感觉（一条），说法照她的要求换过；没有就是 '' */
 export function feltThenNote(ledger, item, now = new Date()) {
-  const at = memoryLastTouched(item)
+  // 按事发生的日子配（不是最近被提起的日子）：昨天提过一嘴的事，感觉不在昨天
+  const at = memoryHappenedAt(item)
   if (!at || !ledger.length) return ''
   const day = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
   const same = ledger.filter(row => day(new Date(row.at)) === day(at) && !(row.aboutHim && FEELING_ABOUT_HIM_AWAY.has(row.kind)))
@@ -1156,14 +1193,15 @@ export function apply(ctx, config = {}) {
             const all = await recallAll(cfg, query)
             // 第 5 层：她自己的口气 + 多久以前（ADR 0347）。原来原样贴「林梦瑶……」，
             // 她说那读起来像在翻别人的日记；这里只换人称和加远近，事实一个字不加。
-            const voice = cfg.memoryVoice !== false
+            const voice = cfg.memoryVoice === true
             // 感觉账（ADR 0347 第 5 层）：几天以前的事那天感觉早散了、回想也记不下那么远，从账里配当时的感觉
             const felt = cfg.memoryFeelings === true ? readFeelingLedger() : []
+            const herName = herNameOf(cfg)
             let text = all.slice(0, cfg.pick).map((item) => {
               if (!voice) return `- ${item.text}`
               const raw = String(item.text || '')
               const clarity = CLARITY_PREFIX.exec(raw)?.[1] || ''
-              const body = memoryAsMine(clarity ? raw.slice(clarity.length + 2) : raw)
+              const body = memoryAsMine(clarity ? raw.slice(clarity.length + 2) : raw, herName)
               const note = [memoryDistance(item), clarity].filter(Boolean).join('，')
               const then = feltThenNote(felt, item)
               return `- ${note ? `（${note}）` : ''}${body}${then ? `\n  ${then}` : ''}`
@@ -1171,7 +1209,7 @@ export function apply(ctx, config = {}) {
             if (text.length > cfg.maxChars) text = text.slice(0, cfg.maxChars) + '…'
             const soul = readSoul(cfg)
             // 开场不只读全量账（ADR 0347 第 5 层）：整本账、整篇故事开场先收一收，翻的时候有工具
-            const brief = cache.firstStep && cfg.openingBrief !== false
+            const brief = cache.firstStep && cfg.openingBrief === true
             const ledger = readLedger(cfg)
             const story = readStory(cfg)
             const ledgerShown = brief ? openingLedger(ledger) : ledger

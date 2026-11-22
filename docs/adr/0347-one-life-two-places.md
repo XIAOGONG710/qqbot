@@ -1,6 +1,6 @@
 # ADR 0347：同一个她·一个生活，两个地方
 
-- 状态：**已采纳（方向）**；第 1 层已上线（2026-11-22，QQ / 常驻侧；DSH 桌面还没重启，插件那部分没生效）；第 2 层已上线（11-22 12:04 用户点头，线上开了 selfExport、selfReceipts；回执要等记忆插件装回 desktop profile 才有）；第 3 层已接线（2026-11-22，2eca5e2f；B–F 五块和地基都接进 App，开关 desktopDay / desktopReview / desktopPromises / oneDiary / desktopConflict 全部默认关，常驻那半 7c498ec9 也已推），打开哪几个要用户点头；第 5 层做了第一块（2026-11-22 22:2x，用户「嗯，可以」之后：DSH 召回改第一人称 +「你想起来的」标题 + 远近，开关 `memoryVoice` 默认开），感觉账与「附当时的感觉」待做；第 4 层待定
+- 状态：**已采纳（方向）**；第 1 层已上线（2026-11-22，QQ / 常驻侧；DSH 桌面还没重启，插件那部分没生效）；第 2 层已上线（11-22 12:04 用户点头，线上开了 selfExport、selfReceipts；回执要等记忆插件装回 desktop profile 才有）；第 3 层已接线（2026-11-22，2eca5e2f；B–F 五块和地基都接进 App，开关 desktopDay / desktopReview / desktopPromises / oneDiary / desktopConflict 全部默认关，常驻那半 7c498ec9 也已推），打开哪几个要用户点头；第 5 层四块已实现（2026-11-22 晚，用户「嗯，可以」「把差的这四块补上吧」之后；插件三个开关 `memoryVoice` / `memoryFeelings` / `openingBrief` 一律默认关，开要用户点头）；第 5 条第 5 项和桌面侧 `recallWork` 还没动；第 4 层待定
 - 日期：2026-11-22
 - 机制名：「一个生活」（one life）
 - 关联：[ADR 0176](0176-same-her-shared-memory.md)（共用他的 bank）、[ADR 0177](0177-same-her-recent-turns.md)（crossRecent）、[ADR 0179](0179-instruction-source.md)（指令只认他亲手打的字）、[ADR 0172](0172-work-mode-full-access.md)（整机权限）、[ADR 0174](0174-soul-module-stop-the-bleeding.md)（灵魂模块止血）、[ADR 0197](0197-feelings-shared-and-reviewed.md)（心境导出给桌面）、[ADR 0218](0218-memory-feelings.md)（回忆带着当时的感觉）、[ADR 0111](0111-together.md)（陪玩状态）、[ADR 0336](0336-interpreter-executor-modules.md)（解释器 / 执行器迁移）、[ADR 0345](0345-her-seat-as-dsh-router.md)、[ADR 0346](0346-her-identity-in-system-prompt.md)
@@ -117,10 +117,10 @@ DSH 那台拉代码后重启 Koishi（QQ 侧）、常驻进程（`scripts/start-
 
 | 做什么 | 怎么做 |
 |---|---|
-| 第一人称 | `memoryAsMine(text)`：「林梦瑶的妈妈」→「我妈」、「林梦瑶的」→「我的」、「林梦瑶」→「我」；只换人称，事实一个字不加 |
-| 远近 | `memoryDistance(item, now)`：昨天 / N天前 / 上周 / N周前 / N个月前 / 很久以前；今天和不知道什么时候的不说（她说「留个大概就行」，不报精确天数） |
+| 第一人称 | `memoryAsMine(text, name)`：「林梦瑶的妈妈」→「我妈」、「林梦瑶的」→「我的」、「林梦瑶」→「我」；只换人称，事实一个字不加 |
+| 远近 | `memoryDistance(item, now)`：昨天 / N天前 / 上周 / N周前 / N个月前 / 很久以前；今天和不知道什么时候的不说（她说「留个大概就行」，不报精确天数）。按事发生的日子算（周记 / 日记 documentId → occurredEnd → occurredStart → date），**不看 mentionedAt**：两个月前的事昨天提过一嘴不能说成「昨天」 |
 | 标题 | 召回块加 `[你想起来的]`；原来的 `- ${item.text}` 换成「（远近，记不太清了）我说……」 |
-| 开关 | `memoryVoice`，默认开；false 回到原样贴第三人称（回滚用） |
+| 开关 | `memoryVoice`，默认关（改她嘴里的话，开要用户点头）；true 才换人称，false 回到原样贴第三人称 |
 
 没动的：和「记不太清了」这条清晰度前缀合并成一处，不再各说一句。
 测试：`packages/bot/test/soul-plugin.test.ts` 加 4 条（口气 + 标题 + 远近、妈妈替换、远近分档、开关关掉回原样）；`baseline:fast` 41/41 逐字一致，`typecheck` 过。
@@ -140,10 +140,10 @@ DSH 那台拉代码后重启 Koishi（QQ 侧）、常驻进程（`scripts/start-
 | 感觉账 | 每次算完心境，把明显以上的感受追加一行到灵魂目录 `feeling-ledger.jsonl`；只追加、不回头改、不进提示词 | `packages/bot/src/emotion/feeling-ledger.ts`（`appendFeelings` / `readLedger` / `ledgerNote`），`platform/app.ts` 的 `onFeelings` | `feelingLedger`，默认开（只写文件、不改她说话，所以不像别的层默认关） |
 | 要不要原样带上 | 照她的话分两种：疼（`/痛经|来事|肚子疼|疼得|身上不舒服/`）→「身上不太舒服」；她妈那块的慌（`kind === 'worry'` 且 cause 带「妈」）→「心里一直悬着」。账里照记原文，只是召回时换说法 | 同上（`withholdOf` / `withheldCause`） | — |
 | 衰减 | 一条不删，只降粗：90 天以前（`COARSE_AFTER_DAYS`）只剩个大概，**开心、松口气不降**（「想起来还会笑的那种就留着」） | 同上（`readLedger` 里的 `coarse`） | — |
-| 召回附感觉 | QQ 侧（`memoryFeelings` 开着时）：先按当天的感受配，配不上再查账里同一天、对得上的那条（`sameThing`，共 2 个以上有意义的二字词），strong 优先；DSH 侧读同一份账，同一个判据 | `modules/memory.ts` 的 `feltForRecall`；插件 `readFeelingLedger` / `feltThenNote` | 插件 `memoryFeelings`，默认开 |
+| 召回附感觉 | QQ 侧（`memoryFeelings` 开着时）：先按当天的感受配，配不上再查账里同一天、对得上的那条（`sameThing`，共 2 个以上有意义的二字词），strong 优先；DSH 侧读同一份账，同一个判据 | `modules/memory.ts` 的 `feltForRecall`；插件 `readFeelingLedger` / `feltThenNote` | 插件 `memoryFeelings`，默认关 |
 | 护栏 | 因为他而难过 / 烦 / 担心的不附（`felt-then.ts` 的 `withoutGrudges`；账里还留 `aboutHim` 再挡一道）；只写感觉、不重复经过；写明「那是你当时的感觉，现在不一定还这样」 | 同上 | — |
 | 桌面上的事产生感受 | 他在电脑上说的几句话也进心境：说想她 / 要抱抱（joy）、问吃没吃让早点睡（joy，strength 1）、说他累或难受（worry）、冲她发火（annoyed）。只看他说的、六小时以前的旧账不重复算、普通的话不硬猜 | `packages/bot/src/social/desktop-affect.ts`（`desktopAffectOf` / `desktopAffects`），经 `desktopMood` 进 `modules/feelings.ts` 的 `extra` | `desktopFeelings`，默认关（要 `desktopDay` + `herFeelings`） |
-| 开场不读全量账 | 每场第一次拼提示词时，判断账本只给最新 5 条、故事只给开头 2 段，各带一句「更早的用 `ledger_read` 翻」「想起来再翻」；后面的步骤照旧 | 插件 `openingLedger` / `openingStory`，`cache.firstStep` 控制 | `openingBrief`，默认开 |
+| 开场不读全量账 | 每场第一次拼提示词时，判断账本只给最新 5 条、故事只给开头 2 段，各带一句「更早的用 `ledger_read` 翻」「想起来再翻」；后面的步骤照旧 | 插件 `openingLedger` / `openingStory`，`cache.firstStep` 控制 | `openingBrief`，默认关 |
 
 测试：`packages/bot/test/feeling-ledger.test.ts`（8 条：只追加 / 同日不重复 / faint 不收 / 坏文件不炸 / 疼换说法 / 妈那块只换 worry / 90 天降粗 / joy-relief 不降）、`test/desktop-affect.test.ts`（8 条）、`test/soul-plugin.test.ts` 新增 9 条（读账、配得上才配、疼和她妈换说法、因为他难过的不附、`memoryFeelings: false`、开场账本收口、账本短的不动、故事收口）。
 

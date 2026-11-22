@@ -30,7 +30,7 @@ interface Plugin {
     feltThenNote: (ledger: unknown[], item: Record<string, unknown>, now?: Date) => string;
     openingLedger: (text: string, max?: number) => string;
     openingStory: (text: string, max?: number) => string;
-    memoryAsMine: (text: string) => string;
+    memoryAsMine: (text: string, name?: string) => string;
     shouldAutoSaveTurn: (user: string, assistant: string) => boolean;
 }
 let plugin: Plugin;
@@ -1417,7 +1417,7 @@ describe('一个生活·第 5 层：记忆有体感', () => {
             banks: ALL_BANKS,
             recall: { [OWNER]: [{ id: 'm1', text: '林梦瑶说水卡找不到了，去了两趟宿管', document_id: 'ep-1', fact_type: 'world', date: threeWeeks }] },
         });
-        const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+        const h = boot({ baseUrl: `http://hs-${++urlCounter}`, memoryVoice: true, herName: '林梦瑶', ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
         try {
             await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '水卡呢' }] }, async () => undefined);
             const shown = h.contexts.map(entry => entry.text()).join('\n');
@@ -1427,30 +1427,46 @@ describe('一个生活·第 5 层：记忆有体感', () => {
         } finally { fake.restore(); }
     });
 
-    test('「林梦瑶的妈妈」→「我妈」：只换人称，事实一个字不改', () => {        assert.equal(plugin.memoryAsMine('林梦瑶的妈妈说她最近压力大'), '我妈说她最近压力大');
-        assert.equal(plugin.memoryAsMine('林梦瑶说想吃火锅'), '我说想吃火锅');
-        assert.equal(plugin.memoryAsMine('宝宝说想她了'), '宝宝说想她了');
+    test('「林梦瑶的妈妈」→「我妈」：只换人称，事实一个字不改', () => {
+        assert.equal(plugin.memoryAsMine('林梦瑶的妈妈说她最近压力大', '林梦瑶'), '我妈说她最近压力大');
+        assert.equal(plugin.memoryAsMine('林梦瑶说想吃火锅', '林梦瑶'), '我说想吃火锅');
+        assert.equal(plugin.memoryAsMine('宝宝说想她了', '林梦瑶'), '宝宝说想她了');
+    });
+
+    test('名字不是写死在源码里的：没给名字就不换人称，给谁换谁', () => {
+        assert.equal(plugin.memoryAsMine('林梦瑶说想吃火锅', ''), '林梦瑶说想吃火锅');
+        assert.equal(plugin.memoryAsMine('别人说想吃火锅', '林梦瑶'), '别人说想吃火锅');
     });
 
     test('远近只说到粗：昨天 / N天前 / 上周 / N周前 / N个月前 / 很久以前；今天和不知道时间的不说', () => {
         const now = new Date(2026, 10, 22, 22);
         const at = (days: number) => new Date(2026, 10, 22 - days, 12).toISOString();
-        assert.equal(plugin.memoryDistance({ mentionedAt: at(0) }, now), '');
+        assert.equal(plugin.memoryDistance({ date: at(0) }, now), '');
         assert.equal(plugin.memoryDistance({}, now), '');
-        assert.equal(plugin.memoryDistance({ mentionedAt: at(1) }, now), '昨天');
-        assert.equal(plugin.memoryDistance({ mentionedAt: at(4) }, now), '4天前');
-        assert.equal(plugin.memoryDistance({ mentionedAt: at(9) }, now), '上周');
-        assert.equal(plugin.memoryDistance({ mentionedAt: at(21) }, now), '3周前');
-        assert.equal(plugin.memoryDistance({ mentionedAt: at(90) }, now), '3个月前');
-        assert.equal(plugin.memoryDistance({ mentionedAt: at(400) }, now), '很久以前');
+        assert.equal(plugin.memoryDistance({ date: at(1) }, now), '昨天');
+        assert.equal(plugin.memoryDistance({ occurredEnd: at(4) }, now), '4天前');
+        assert.equal(plugin.memoryDistance({ occurredStart: at(9) }, now), '上周');
+        assert.equal(plugin.memoryDistance({ date: at(21) }, now), '3周前');
+        assert.equal(plugin.memoryDistance({ date: at(90) }, now), '3个月前');
+        assert.equal(plugin.memoryDistance({ date: at(400) }, now), '很久以前');
     });
 
-    test('memoryVoice: false 回到原样：第三人称、没有标题（回滚用）', async () => {
+    test('远近按事发生的日子算，不按最近提起：两个月前的事昨天提过一嘴，还是两个月前', () => {
+        const now = new Date(2026, 10, 22, 22);
+        const sixty = new Date(2026, 8, 23, 12).toISOString();
+        const yesterday = new Date(2026, 10, 21, 12).toISOString();
+        assert.equal(plugin.memoryDistance({ occurredEnd: sixty, mentionedAt: yesterday }, now), '2个月前');
+        assert.equal(plugin.memoryDistance({ occurredStart: sixty, mentionedAt: yesterday }, now), '2个月前');
+        assert.equal(plugin.memoryDistance({ date: sixty, mentionedAt: yesterday }, now), '2个月前');
+        assert.equal(plugin.memoryDistance({ documentId: 'week:2026-09-14', mentionedAt: yesterday }, now), '2个月前');
+    });
+
+    test('默认是关的：不传 memoryVoice 就原样贴第三人称、没有标题（要开得用户点头）', async () => {
         const fake = fakeHindsight({
             banks: ALL_BANKS,
             recall: { [OWNER]: [{ id: 'm1', text: '林梦瑶说想吃火锅', document_id: 'ep-1', fact_type: 'world', date: new Date().toISOString() }] },
         });
-        const h = boot({ baseUrl: `http://hs-${++urlCounter}`, memoryVoice: false, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+        const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
         try {
             await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '吃啥' }] }, async () => undefined);
             const shown = h.contexts.map(entry => entry.text()).join('\n');
@@ -1489,20 +1505,20 @@ describe('一个生活·第 5 层：感觉账配当时的感觉（DSH 侧只读�
     test('同一天、对得上的事才配：账里那天的感觉回到这条召回上', () => {
         const file = ledgerFile([row(daysAgo(21), 'annoyed', '水卡丢了，跑了两趟宿管')]);
         const ledger = plugin.readFeelingLedger(file, now);
-        const note = plugin.feltThenNote(ledger, { text: '林梦瑶说水卡找不到了，去了两趟宿管', mentionedAt: new Date(daysAgo(21)).toISOString() }, new Date(now));
+        const note = plugin.feltThenNote(ledger, { text: '林梦瑶说水卡找不到了，去了两趟宿管', date: new Date(daysAgo(21)).toISOString() }, new Date(now));
         assert.match(note, /^那时候你心里有点烦/);
         assert.match(note, /那是你当时的感觉，现在不一定还这样/);
-        assert.equal(plugin.feltThenNote(ledger, { text: '林梦瑶说想喝奶茶', mentionedAt: new Date(daysAgo(21)).toISOString() }, new Date(now)), '', '对不上就不配');
-        assert.equal(plugin.feltThenNote(ledger, { text: '林梦瑶说水卡找不到了', mentionedAt: new Date(daysAgo(2)).toISOString() }, new Date(now)), '', '不是那一天不配');
+        assert.equal(plugin.feltThenNote(ledger, { text: '林梦瑶说想喝奶茶', date: new Date(daysAgo(21)).toISOString() }, new Date(now)), '', '对不上就不配');
+        assert.equal(plugin.feltThenNote(ledger, { text: '林梦瑶说水卡找不到了', date: new Date(daysAgo(2)).toISOString() }, new Date(now)), '', '不是那一天不配');
     });
 
     test('疼和她妈那块的慌不原样带上：只说身上不太舒服、心里一直悬着', () => {
         const file = ledgerFile([row(daysAgo(5), 'tired', '痛经痛得躺床上', { withhold: 'pain' }), row(daysAgo(5), 'worry', '我妈又说成绩', { withhold: 'mother' })]);
         const ledger = plugin.readFeelingLedger(file, now);
-        const pain = plugin.feltThenNote(ledger, { text: '林梦瑶说痛经痛得躺床上', mentionedAt: new Date(daysAgo(5)).toISOString() }, new Date(now));
+        const pain = plugin.feltThenNote(ledger, { text: '林梦瑶说痛经痛得躺床上', date: new Date(daysAgo(5)).toISOString() }, new Date(now));
         assert.match(pain, /身上不太舒服/);
         assert.doesNotMatch(pain, /痛经/);
-        const mother = plugin.feltThenNote(ledger, { text: '林梦瑶说我妈又说成绩', mentionedAt: new Date(daysAgo(5)).toISOString() }, new Date(now));
+        const mother = plugin.feltThenNote(ledger, { text: '林梦瑶说我妈又说成绩', date: new Date(daysAgo(5)).toISOString() }, new Date(now));
         assert.match(mother, /心里一直悬着/);
         assert.doesNotMatch(mother, /我妈/);
     });
@@ -1510,15 +1526,15 @@ describe('一个生活·第 5 层：感觉账配当时的感觉（DSH 侧只读�
     test('因为他而难过、烦、担心的不附（ADR 0218 的护栏）', () => {
         const file = ledgerFile([row(daysAgo(4), 'sad', '他好久不回我消息', { aboutHim: true })]);
         const ledger = plugin.readFeelingLedger(file, now);
-        assert.equal(plugin.feltThenNote(ledger, { text: '林梦瑶说他好久不回我消息', mentionedAt: new Date(daysAgo(4)).toISOString() }, new Date(now)), '');
+        assert.equal(plugin.feltThenNote(ledger, { text: '林梦瑶说他好久不回我消息', date: new Date(daysAgo(4)).toISOString() }, new Date(now)), '');
     });
 
-    test('memoryFeelings: false 不加那句（回滚用）', async () => {
+    test('默认不附当时的感觉：只开 memoryVoice、不传 memoryFeelings 就没有那句（要开得用户点头）', async () => {
         const fake = fakeHindsight({
             banks: ALL_BANKS,
             recall: { [OWNER]: [{ id: 'm1', text: '林梦瑶说水卡找不到了', document_id: 'ep-1', fact_type: 'world', date: new Date(daysAgo(3)).toISOString() }] },
         });
-        const h = boot({ baseUrl: `http://hs-${++urlCounter}`, memoryFeelings: false, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+        const h = boot({ baseUrl: `http://hs-${++urlCounter}`, memoryVoice: true, herName: '林梦瑶', ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
         try {
             await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '水卡' }] }, async () => undefined);
             const shown = h.contexts.map(entry => entry.text()).join('\n');
