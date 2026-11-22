@@ -4,6 +4,8 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { appendDream, dreamPrompt, readDreams } from '../packages/bot/src/life/dreams.ts';
+import { dreamDayEvents } from '../packages/bot/src/life/dream-jobs.ts';
+import { readLifeEvents } from '../packages/bot/src/world/life-events.ts';
 
 const repo = process.cwd();
 const soul = join(process.env.USERPROFILE ?? '', '.dsh', 'linmengyao');
@@ -18,9 +20,9 @@ const persona = existsSync(join(soul, 'PERSONA.md')) ? readFileSync(join(soul, '
 let journal = '';
 try { journal = readFileSync(join(soul, 'JOURNAL.md'), 'utf8').slice(-800); } catch { /* 没日记 */ }
 // 白天的事：不再读 LIFE.json（ADR 0347 第 1 层：那是 DSH 这边第二套生活随机推出来的，拆掉了，没人再写）。
-// 对齐夜里那个（packages/bot/src/life/dream-jobs.ts 的 makeDream）：它读 <数据目录>/world/events.json 的 .text，
-// 但生活事件账（world/life-events.ts 的 LifeEvent）没有 text 字段，过滤完永远是空的——所以夜里的梦实际传的就是空的，这里照样给空。
-const events = [];
+// 对齐夜里那个（packages/bot/src/life/dream-jobs.ts 的 dreamDayEvents，2026-11-22 修好）：她自己做成了的事（生活事件里成功、有 subject 的）。
+// 世界账那一半要跑起整个世界才算得出来，脚本这里不给（夜里那个有）
+const events = dreamDayEvents(readLifeEvents(join(data, 'world', 'events.json'), () => undefined), undefined, new Date(), 8);
 const previous = readDreams(data).slice(-3).map(item => item.dream);
 
 const prompt = dreamPrompt({ events, feelings: [], journal, name: '林梦瑶', previous });

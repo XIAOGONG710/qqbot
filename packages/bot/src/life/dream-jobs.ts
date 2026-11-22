@@ -10,7 +10,9 @@ import { loadNotesState } from '../language/speech-notes.ts';
 import type { Contact } from '../platform/config.ts';
 import type { TierCard } from '../platform/contact.ts';
 import type { Log } from '../platform/log.ts';
-import { readLifeEvents } from '../world/life-events.ts';
+import { readLifeEvents, type LifeEvent } from '../world/life-events.ts';
+import { worldHighlights } from '../world/highlights.ts';
+import type { WorldNow } from '../world/world.ts';
 import { appendDream, dreamPrompt, hasDream, inSleepHours, lastInsightAt, monthlyInsightPrompt, napPrompt, onlyFragment, recentDreams, saveInsight } from './dreams.ts';
 import { loadQuestion, questionPrompt, saveQuestion } from './learning-questions.ts';
 
@@ -33,8 +35,36 @@ export interface DreamJobsDeps {
     worldAt?: (at: Date) => unknown;
 }
 
+/** 白天的事最多往回看多久（做梦在夜里，午睡在下午：一天半够了） */
+const DAY_EVENTS_WINDOW_MS = 36 * 3_600_000;
+
+/**
+ * 做梦用的「白天的事」（2026-11-22 修，用户：「修」）：原来读 world/events.json 每条的 .text，但生活事件（LifeEvent）没有 text 字段，
+ * 过滤完永远是空的；另一路写成了 `worldAt(at) ? [] : []`，也恒为空——夜里的梦、午睡的梦一直没有白天的素材。
+ * 现在：她自己做成了的事（生活事件里成功、有 subject、已经结束、一天半以内的）+ 世界账里今天已经发生的（worldHighlights，和 NOW.md「最近」同一份投影），
+ * 去重、旧到新、最多 limit 条。只要已经发生的，没有未来的打算。
+ */
+export function dreamDayEvents(events: readonly LifeEvent[], world: WorldNow | undefined, at: Date, limit: number): string[] {
+    const now = at.getTime();
+    const own = events
+        // 上课、吃饭这类事件的 subject 存的是编号（course-5、lunch、dinner），不是人话：只要带中文的
+        .filter(event => event.result === 'succeeded' && event.subject?.trim() && /\p{Script=Han}/u.test(event.subject))
+        .map(event => ({ at: Date.parse(event.endedAt), text: event.subject!.trim() }))
+        .filter(item => Number.isFinite(item.at) && item.at <= now && now - item.at <= DAY_EVENTS_WINDOW_MS);
+    const seen = worldHighlights(world, at, limit).map(item => ({ at: Date.parse(item.at), text: item.text }));
+    const merged = [...own, ...seen].sort((a, b) => a.at - b.at || a.text.localeCompare(b.text));
+    const out: string[] = [];
+    for (const item of merged) if (!out.includes(item.text)) out.push(item.text);
+    return out.slice(-limit);
+}
+
 export function dreamJobs(deps: DreamJobsDeps): { tick(): void } {
     const { owner, dataDir } = deps;
+    /** 做梦前读一次世界账（结算到期的事）和她的生活事件，取白天的素材 */
+    const dayEvents = (at: Date, limit: number): string[] => dreamDayEvents(
+        readLifeEvents(join(dataDir, 'world', 'events.json'), () => undefined),
+        deps.worldAt?.(at) as WorldNow | undefined, at, limit,
+    );
     /** 她学说话/翻日记时没想通的地方，挑一个留到聊天里问他（2026-10-31） */
     async function makeLearningQuestion(): Promise<void> {
         if (deps.stopped() || !owner) return;
@@ -77,9 +107,7 @@ export function dreamJobs(deps: DreamJobsDeps): { tick(): void } {
         for (const char of seed) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193) >>> 0; }
         if (hash % 100 >= 45) return;
         try {
-            const own = readLifeEvents(join(dataDir, 'world', 'events.json'), () => undefined)
-                .map(event => String((event as { text?: string }).text ?? ''))
-                .filter(text => text && !text.includes('跟我说')).slice(-5);
+            const own = dayEvents(at, 5);
             const lastFeelings = deps.lastFeelings();
             const fell = lastFeelings ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => `${item.cause}（${item.kind}）`) : [];
             const prompt = napPrompt({ events: own, feelings: fell, name: deps.character(owner.tier).name });
@@ -118,20 +146,14 @@ export function dreamJobs(deps: DreamJobsDeps): { tick(): void } {
         const date = at.toISOString().slice(0, 10);
         if (!inSleepHours(at.getHours()) || hasDream(date, dataDir)) return;
         try {
-            const events = deps.worldAt
-                ? (deps.worldAt(at) ? [] : [])
-                : [];
-            // 白天的事：她自己写的事件（不含「跟我说」）+ 日记尾巴
-            const own = readLifeEvents(join(dataDir, 'world', 'events.json'), () => undefined)
-                .map(event => String((event as { text?: string }).text ?? ''))
-                .filter(text => text && !text.includes('跟我说'))
-                .slice(-8);
+            // 白天的事（她自己做成的 + 世界账里今天已经发生的）+ 日记尾巴
+            const own = dayEvents(at, 8);
             let journal = '';
             try { journal = readFileSync(join(deps.soulDir(), 'JOURNAL.md'), 'utf8').slice(-400); } catch { /* 没日记就算了 */ }
             const lastFeelings = deps.lastFeelings();
             const fell = lastFeelings ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => `${item.cause}（${item.kind}）`) : [];
             const previous = recentDreams(dataDir, 3).map(item => item.dream);
-            const prompt = dreamPrompt({ events: [...own, ...events], feelings: fell, journal, name: deps.character(owner.tier).name, previous });
+            const prompt = dreamPrompt({ events: own, feelings: fell, journal, name: deps.character(owner.tier).name, previous });
             const raw = await deps.generate(0.95)([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
             const text = String(raw ?? '');
             const match = text.match(/\{[\s\S]*\}/);
