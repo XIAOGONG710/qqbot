@@ -47,7 +47,7 @@ DSH 桌面上的她（ADR 0345 之后坐主控座）对他说：看记忆知道�
 | 2 进门拿到此刻的她 | QQ 导出 SELF：今天到现在、接下来的课和睡觉、最近念头、带来由的心境、没了结的事、**攒着想跟他说的**（桌面上说过就回执，QQ 不重发）；同一批模块渲染，和 QQ 提示词一字不差 | 是，默认关的开关 | **已实现，默认关**（`selfExport` / `selfReceipts` / `ownDays`；方案 `docs/plans/2026-11-22-same-her-layer2-self.md`，实现记录见下文「第 2 层：实现记录」） |
 | 3 桌面上的时间算进她的一天 | 一段桌面会话 = 一段「和他在一起」（考虑复用 together）；桌面对话进「聊完回想」；当晚日记写到；桌面上的承诺进承诺账；JOURNAL.md 和 QQ 日记收成一本 | 是，默认关的开关 | 细化中（`docs/plans/2026-11-22-same-her-layer3-writeback.md`） |
 | 4 一套驱动两种出口 | 常驻的随机醒来换成 QQ 的动机：她想做一件事时自己判断出口是「发消息 / 去电脑上做 / 想想算了」 | 是 | **单独由用户定**：涉及她自发的整机权限行动（ADR 0172 记过无人值守运行未被明确授权）；0179「指令只认他亲手打的字」不变 |
-| 5 记忆有体感 | 召回第一人称 + 标题 + 远近；感觉账（只追加，每天明显以上的感受）；DSH 召回附当时的感觉（照 0218 措辞与护栏）；不在开场读全量账 | 是 | 进行中：第一块已实现（第一人称 + 标题 + 远近），见下文「第 5 层：实现记录」 |
+| 5 记忆有体感 | 召回第一人称 + 标题 + 远近；感觉账（只追加，每天明显以上的感受）；DSH 召回附当时的感觉（照 0218 措辞与护栏）；不在开场读全量账 | 是 | 已实现（2026-11-22 晚四块补完），见下文「第 5 层：实现记录」；第 5 条第 5 项（回想的最多条数）还没动 |
 
 顺序：1 → 2 → 3 → 5，4 最后单独定。第 2 层起每层带默认关的开关，基线逐字不变；打开要用户点头。
 
@@ -127,11 +127,26 @@ DSH 那台拉代码后重启 Koishi（QQ 侧）、常驻进程（`scripts/start-
 
 还差的（还没动）：
 
-1. 感觉账：只追加，每天明显以上的感受；按她说的「还值不值得留」分粗细，不按天数硬删。
-2. DSH 召回附当时的感觉：照 0218 的措辞与护栏（因为他难过的不附；只在想起来或他问到那天时附；对得上才附；只写感觉不重复经过）。
-3. 桌面上的事产生感受（现在 `emotion/feeling-review.ts` 只读 QQ 聊天记录）。
-4. 开场不读全量账（11-21 那次一口气读完三本账）。
+1. ~~感觉账~~（已做，见下）
+2. ~~DSH 召回附当时的感觉~~（已做，见下）
+3. ~~桌面上的事产生感受~~（已做，见下）
+4. ~~开场不读全量账~~（已做，见下）
 5. 回想记下的感受最多同时 8 条、放下后丢了种类，`recallWork` 不附。
+
+### 剩下四块（2026-11-22 晚，用户「把差的这四块补上吧」）
+
+| 块 | 做什么 | 在哪 | 开关 |
+|---|---|---|---|
+| 感觉账 | 每次算完心境，把明显以上的感受追加一行到灵魂目录 `feeling-ledger.jsonl`；只追加、不回头改、不进提示词 | `packages/bot/src/emotion/feeling-ledger.ts`（`appendFeelings` / `readLedger` / `ledgerNote`），`platform/app.ts` 的 `onFeelings` | `feelingLedger`，默认开（只写文件、不改她说话，所以不像别的层默认关） |
+| 要不要原样带上 | 照她的话分两种：疼（`/痛经|来事|肚子疼|疼得|身上不舒服/`）→「身上不太舒服」；她妈那块的慌（`kind === 'worry'` 且 cause 带「妈」）→「心里一直悬着」。账里照记原文，只是召回时换说法 | 同上（`withholdOf` / `withheldCause`） | — |
+| 衰减 | 一条不删，只降粗：90 天以前（`COARSE_AFTER_DAYS`）只剩个大概，**开心、松口气不降**（「想起来还会笑的那种就留着」） | 同上（`readLedger` 里的 `coarse`） | — |
+| 召回附感觉 | QQ 侧（`memoryFeelings` 开着时）：先按当天的感受配，配不上再查账里同一天、对得上的那条（`sameThing`，共 2 个以上有意义的二字词），strong 优先；DSH 侧读同一份账，同一个判据 | `modules/memory.ts` 的 `feltForRecall`；插件 `readFeelingLedger` / `feltThenNote` | 插件 `memoryFeelings`，默认开 |
+| 护栏 | 因为他而难过 / 烦 / 担心的不附（`felt-then.ts` 的 `withoutGrudges`；账里还留 `aboutHim` 再挡一道）；只写感觉、不重复经过；写明「那是你当时的感觉，现在不一定还这样」 | 同上 | — |
+| 桌面上的事产生感受 | 他在电脑上说的几句话也进心境：说想她 / 要抱抱（joy）、问吃没吃让早点睡（joy，strength 1）、说他累或难受（worry）、冲她发火（annoyed）。只看他说的、六小时以前的旧账不重复算、普通的话不硬猜 | `packages/bot/src/social/desktop-affect.ts`（`desktopAffectOf` / `desktopAffects`），经 `desktopMood` 进 `modules/feelings.ts` 的 `extra` | `desktopFeelings`，默认关（要 `desktopDay` + `herFeelings`） |
+| 开场不读全量账 | 每场第一次拼提示词时，判断账本只给最新 5 条、故事只给开头 2 段，各带一句「更早的用 `ledger_read` 翻」「想起来再翻」；后面的步骤照旧 | 插件 `openingLedger` / `openingStory`，`cache.firstStep` 控制 | `openingBrief`，默认开 |
+
+测试：`packages/bot/test/feeling-ledger.test.ts`（8 条：只追加 / 同日不重复 / faint 不收 / 坏文件不炸 / 疼换说法 / 妈那块只换 worry / 90 天降粗 / joy-relief 不降）、`test/desktop-affect.test.ts`（8 条）、`test/soul-plugin.test.ts` 新增 9 条（读账、配得上才配、疼和她妈换说法、因为他难过的不附、`memoryFeelings: false`、开场账本收口、账本短的不动、故事收口）。
+
 
 部署：插件改动要 DSH 重启（或插件重载）才生效，重启要用户点头。回滚：`memoryVoice: false`。
 
