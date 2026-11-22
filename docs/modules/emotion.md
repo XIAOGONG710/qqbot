@@ -12,6 +12,7 @@
 - `emotion/feeling-export.ts`
 - `emotion/feeling-review.ts`
 - `emotion/felt-then.ts`
+- `emotion/feeling-ledger.ts`
 - `emotion/moments.ts`
 - `emotion/grievance.ts`
 - `emotion/crisis.ts`
@@ -38,4 +39,4 @@
 
 ## 最相关的 ADR
 
-[ADR 0067](../adr/0067-disclosure-per-contact.md)、[ADR 0068](../adr/0068-crisis-response.md)、[ADR 0074](../adr/0074-small-grievance.md)、[ADR 0102](../adr/0102-feelings.md)、[ADR 0103](../adr/0103-her-no.md)、[ADR 0191](../adr/0191-crisis-concern-split.md)、[ADR 0192](../adr/0192-drop-strain-tier.md)、[ADR 0197](../adr/0197-feelings-shared-and-reviewed.md)、[ADR 0218](../adr/0218-memory-feelings.md)、[ADR 0073](../adr/0073-feedback-channel.md)、[ADR 0327](../adr/0327-moment-cli-safe-writes.md)、[ADR 0328](../adr/0328-emotion-evidence-and-recovery.md)
+[ADR 0067](../adr/0067-disclosure-per-contact.md)、[ADR 0068](../adr/0068-crisis-response.md)、[ADR 0074](../adr/0074-small-grievance.md)、[ADR 0102](../adr/0102-feelings.md)、[ADR 0103](../adr/0103-her-no.md)、[ADR 0191](../adr/0191-crisis-concern-split.md)、[ADR 0192](../adr/0192-drop-strain-tier.md)、[ADR 0197](../adr/0197-feelings-shared-and-reviewed.md)、[ADR 0218](../adr/0218-memory-feelings.md)、[ADR 0347](../adr/0347-one-life-two-places.md)、[ADR 0073](../adr/0073-feedback-channel.md)、[ADR 0327](../adr/0327-moment-cli-safe-writes.md)、[ADR 0328](../adr/0328-emotion-evidence-and-recovery.md)

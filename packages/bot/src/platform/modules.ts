@@ -239,11 +239,11 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'emotion', name: '心境与安全',
         scope: '她的心境（开心 / 难过 / 流泪）、小别扭和和好、危机最小规则、按联系人披露她是程序、反馈通道、作者写下的大事。心境、别扭、拒绝与反馈受下列配置控制；危机与身份披露底线不设关闭开关。',
-        files: ['emotion/affect.ts', 'emotion/express.ts', 'emotion/feelings.ts', 'emotion/feeling-export.ts', 'emotion/feeling-review.ts', 'emotion/felt-then.ts', 'emotion/moments.ts', 'emotion/grievance.ts', 'emotion/crisis.ts', 'emotion/crisis-state.ts', 'emotion/disclosure.ts', 'emotion/feedback.ts', 'emotion/feedback-digest.ts', 'emotion/feedback-digest-cli.ts', 'modules/warm.ts', 'modules/feelings.ts'],
+        files: ['emotion/affect.ts', 'emotion/express.ts', 'emotion/feelings.ts', 'emotion/feeling-export.ts', 'emotion/feeling-review.ts', 'emotion/felt-then.ts', 'emotion/feeling-ledger.ts', 'emotion/moments.ts', 'emotion/grievance.ts', 'emotion/crisis.ts', 'emotion/crisis-state.ts', 'emotion/disclosure.ts', 'emotion/feedback.ts', 'emotion/feedback-digest.ts', 'emotion/feedback-digest-cli.ts', 'modules/warm.ts', 'modules/feelings.ts'],
         groups: [],
         featureKeys: ['herFeelings', 'grievance', 'herNo', 'feedbackCommands'],
         metrics: '周报日志计数里的「心境」「会拒绝」；危机相关永远是最高优先级，没有“指标”，只有测试和 ADR 0068 的底线',
-        adrs: ['0067', '0068', '0074', '0102', '0103', '0191', '0192', '0197', '0218', '0073', '0327', '0328'],
+        adrs: ['0067', '0068', '0074', '0102', '0103', '0191', '0192', '0197', '0218', '0347', '0073', '0327', '0328'],
     },
     {
         id: 'proactive', name: '主动找他',
@@ -265,10 +265,10 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'social', name: '在 QQ 上的样子（社交）',
         scope: '什么时候看到、打字多久、一次发几条；图片表情和照片货架；戳一戳、已读、在线状态、说说、签名、“正在输入”、撤回；听语音看图。',
-        files: ['social/responder.ts', 'modules/media-offers.ts', 'social/silence.ts', 'social/outbox.ts', 'social/others.ts', 'social/reply-timing.ts', 'social/rate-limit.ts', 'social/strangers.ts', 'social/private-admission.ts', 'social/group-chat.ts', 'social/group-room.ts', 'social/group-people.ts', 'social/group-affect.ts', 'social/group-impression.ts', 'social/group-import.ts', 'social/group-memory.ts', 'social/group-style.ts', 'social/group-self.ts', 'social/group-opportunity.ts', 'social/async-gate.ts', 'social/stickers.ts', 'social/sticker-favorites.ts', 'social/sticker-sources.ts', 'social/pokes.ts', 'social/presence.ts', 'social/presence-owner.ts', 'social/qzone.ts', 'social/qzone-feed.ts', 'social/qzone-feeds3.ts', 'social/qzone-remote.ts', 'social/qzone-strangers.ts', 'social/account.ts', 'social/quote-reply.ts', 'social/external-drafts.ts', 'social/external-platforms.ts', 'social/official-adapter.ts'],
+        files: ['social/responder.ts', 'modules/media-offers.ts', 'social/silence.ts', 'social/outbox.ts', 'social/others.ts', 'social/reply-timing.ts', 'social/rate-limit.ts', 'social/strangers.ts', 'social/private-admission.ts', 'social/group-chat.ts', 'social/group-room.ts', 'social/group-people.ts', 'social/group-affect.ts', 'social/group-impression.ts', 'social/group-import.ts', 'social/group-memory.ts', 'social/group-style.ts', 'social/group-self.ts', 'social/group-opportunity.ts', 'social/desktop-affect.ts', 'social/async-gate.ts', 'social/stickers.ts', 'social/sticker-favorites.ts', 'social/sticker-sources.ts', 'social/pokes.ts', 'social/presence.ts', 'social/presence-owner.ts', 'social/qzone.ts', 'social/qzone-feed.ts', 'social/qzone-feeds3.ts', 'social/qzone-remote.ts', 'social/qzone-strangers.ts', 'social/account.ts', 'social/quote-reply.ts', 'social/external-drafts.ts', 'social/external-platforms.ts', 'social/official-adapter.ts'],
         groups: ['照片和表情', '在 QQ 上的样子'],
         metrics: '周报「说话的样子」里的延迟、「表情和语气」',
-        adrs: ['0063', '0075', '0077', '0083', '0105', '0109', '0136', '0142', '0143', '0144', '0173', '0174', '0209', '0210', '0311'],
+        adrs: ['0063', '0075', '0077', '0083', '0105', '0109', '0136', '0142', '0143', '0144', '0173', '0174', '0209', '0210', '0311', '0347'],
     },
     {
         id: 'bilibili', name: '外部世界：B 站',

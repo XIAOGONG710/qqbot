@@ -48,6 +48,7 @@
 | `acquaintances` | 认识的人（B 站上再见到认得） | [ADR 0163](../adr/0163-acquaintances.md) |
 | `ownDays` | 「这两天自己在做的」用世界账里真发生的事 | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `oneDiary` | 一本日记（当天日记由 QQ 写，抄一份给桌面） | [ADR 0347](../adr/0347-one-life-two-places.md) |
+| `desktopFeelings` | 桌面上的事也进心境（他在电脑上说想她、关心她、说难受、冲她发火） | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `desktopConflict` | 他在她上课 / 睡觉时叫她上电脑：她知道本来在干嘛 | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `selfPursuits` | 她自己定追求（每晚想一次，自己放下 / 提新的） | [ADR 0178](../adr/0178-self-set-pursuits.md) |
 | `diaryInsights` | 她每晚翻自己的日记，写下对自己的认识（「我发现自己……」，要有两天以上的依据） | [ADR 0194](../adr/0194-diary-insights.md) |
@@ -66,6 +67,7 @@
 | `worldThreads` | 她那边的事有后续（拌嘴第二天和好、淋雨第二天嗓子发紧……一天最多一条；闹心的事有冷却期；要日常小事和小起伏） | [ADR 0216](../adr/0216-world-threads.md) |
 | `diaryLookback` | 翻回去看自己的日记（他问到前几天的事，她那天写的日记也给她，说法对得上） | [ADR 0217](../adr/0217-diary-lookback.md) |
 | `memoryFeelings` | 回忆带着当时的感觉（想起某天的事时附一句她那天有依据的感觉；因为他而难过 / 烦的不附；要心境） | [ADR 0218](../adr/0218-memory-feelings.md) |
+| `feelingLedger` | 感觉账（只追加，每天明显以上的感受记一行，几天后回想配得上当时的感觉；疼和她妈那块的慌不原样带上） | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `realNights` | 昨晚真的怎么睡的（早上困不困看她几点说睡了、半夜有没有被吵醒，不按课表；被吵醒有起床气） | [ADR 0219](../adr/0219-real-nights.md) |
 | `menu` | 每顿吃什么（每天随机） | [ADR 0125](../adr/0125-menu.md) |
 | `pursuits` | 她自己的追求 | [ADR 0104](../adr/0104-pursuits.md) |
