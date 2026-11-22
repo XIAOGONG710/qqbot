@@ -9,6 +9,7 @@
 import { homeworkSprints, type ActionAppointment, type ActionContext, type ActionIntent, type TypedActionKind } from '../life/actions.ts';
 import type { ActionQueue, QueuedAction } from './action-queue.ts';
 import { asleepSince } from '../life/bedtime.ts';
+import { DESKTOP_SUBJECT } from '../life/desktop-conflict.ts';
 import type { BodyNow } from '../life/body.ts';
 import { dayPlan, type Plans } from '../life/day-plan.ts';
 import type { ReadingBook } from '../life/her-days.ts';
@@ -45,6 +46,12 @@ export interface LifeSources {
     needsAnchor?: NeedsSnapshot;
     /** 真人式状态（ADR 0222）：只给空闲行动做轻量效用修正；硬事件不读这条回调。 */
     humanValuesAt?: (context: { at: Date; needs: NeedsSnapshot }) => Pick<HumanValues, 'motivation' | 'boredom'> | undefined;
+    /**
+     * 他叫她上电脑的那几段（ADR 0347 第 3 层，开关 desktopConflict，life/desktop-conflict.ts 的 desktopBusySpans 算）：
+     * 和洗澡、喂猫一样占着时间——排着的空闲活动在这一段开始那一刻停（revise 的 shorten，和聊天里说过的事改写某一段同一条路），
+     * 开始以后才排上的去掉，排的时候跳过。睡觉、上课、课间、约好的见面、饭点在它前面判，不动。不传就和原来逐字一样
+     */
+    desktopBusy?: () => readonly { start: Date; end: Date }[];
 }
 
 /** 这一刻：要排的行动，或者跳到哪（赶去上课、洗澡、喂猫这类不记成行动的，和短得排不下的空当） */
@@ -146,6 +153,15 @@ export function busySpans(now: WorldNow | undefined): { start: Date; end: Date; 
  */
 export function dayBusy(sources: Pick<LifeSources, 'schedule' | 'worldAt'>, at: Date): { start: Date; end: Date; text: string }[] {
     return busySpans(dayWorld(sources, at));
+}
+
+/** dayBusy 再加上桌面那几段（desktopConflict）；没传 desktopBusy 或是空的，原样返回 dayBusy 的结果 */
+function busyWithDesktop(sources: Pick<LifeSources, 'schedule' | 'worldAt' | 'desktopBusy'>, at: Date): { start: Date; end: Date; text: string }[] {
+    const spans = dayBusy(sources, at);
+    const desktop = sources.desktopBusy?.().filter(span => span.end > span.start);
+    if (!desktop?.length) return spans;
+    return [...spans, ...desktop.map(span => ({ start: span.start, end: span.end, text: DESKTOP_SUBJECT }))]
+        .sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 
 
@@ -269,7 +285,7 @@ export function chooseAt(at: Date, sources: LifeSources): Choice {
             ? { intent: { id: lifeActionId(at, 'eat'), kind: 'eat', startedAt: at, ...(target ? { target } : {}) }, why: `${target ? '和朋友吃' : ''}${meal.kind === 'lunch' ? '午饭' : '晚饭'}` }
             : { skipTo: meal.end, why: '饭吃到一半' };
     }
-    const blocks = dayBusy(sources, at);
+    const blocks = busyWithDesktop(sources, at);
     const busy = blocks.find(s => at >= s.start && at < s.end);
     if (busy) return { skipTo: busy.end, why: busy.text };
 
@@ -445,7 +461,7 @@ export function lifeExecutor(sources: LifeSources, queue: ActionQueue, options: 
                 const appointments = appointmentActions(fixed, cursor, new Date(cursor.getTime() + 24 * 60 * 60_000));
                 const context: ActionContext = {
                     schedule: sources.schedule, books: sources.books, events: sources.events(), appointments,
-                    busy: [...dayBusy(sources, cursor), ...appointments.map(item => ({ start: item.start, end: item.end }))],
+                    busy: [...busyWithDesktop(sources, cursor), ...appointments.map(item => ({ start: item.start, end: item.end }))],
                     ...(world ? { world } : {}),
                 };
                 const verdict = queue.schedule(choice.intent, context);
@@ -527,7 +543,7 @@ function changePoints(sources: LifeSources, start: Date, end: Date): Date[] {
     const times = [
         ...(sources.bedtimes?.() ?? []),
         ...sources.events().filter(event => event.source === 'conversation').map(event => Date.parse(event.endedAt)),
-        ...dayBusy(sources, start).map(span => span.start.getTime()),
+        ...busyWithDesktop(sources, start).map(span => span.start.getTime()),
         ...appointmentActions(sources, start, end).map(item => item.start.getTime()),
         ...rainOnsets(sources, start, end),
     ].filter(inside);

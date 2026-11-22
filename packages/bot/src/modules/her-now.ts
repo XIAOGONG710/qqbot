@@ -7,7 +7,9 @@
 // 读世界（worldState.at）会先把到期的行动结算落账：perceive 跑在原来读世界的位置（召回记忆之后），时刻不变。
 // 留在旧逻辑、读 facts 的：心情、在读的书、拍照练习、问到过去某天、见面不方便的时段、她那边还没说过的事。
 // 规则都在各自的文件里（world/world.ts、life/body.ts、language/status-line.ts、life/day-plan.ts、life/schedule.ts），这里只是接线；
-// 行为和迁移前 contact.ts 里的逐字一样（行为基线 her-now 等场景核对）。「上面那几行是底子不是话题」（groundNote）还在旧逻辑，读 facts。
+// 行为和迁移前 contact.ts 里的逐字一样（行为基线 her-now 等场景核对）。
+// 作息冲突（ADR 0347 第 3 层，开关 desktopConflict，默认关）：desktopNight 让昨晚算上半夜被他叫上电脑；desktopCalled 在状态行后面加一句
+// 「被他叫上电脑（本来在上课 / 本来该睡了）」，该睡了的刚叫上去那一会儿按被吵醒写。两个都不给时逐字不变。「上面那几行是底子不是话题」（groundNote）还在旧逻辑，读 facts。
 
 import { ownVoice } from '../language/own-voice.ts';
 import type { Module, Turn } from '../interpreter/interpreter.ts';
@@ -15,7 +17,8 @@ import type { Piece } from '../interpreter/slots.ts';
 import { herStatus } from '../language/status-line.ts';
 import { saidAsleepAt } from '../life/bedtime.ts';
 import { bodyAt, describeBody } from '../life/body.ts';
-import { lastNight, withLastNight } from '../life/nights.ts';
+import { DESKTOP_WOKEN_MS, type DesktopCalled } from '../life/desktop-conflict.ts';
+import { lastNight, withLastNight, type NightDesktopTurn } from '../life/nights.ts';
 import { describePlans } from '../life/day-plan.ts';
 import { readingActivities } from '../life/her-days.ts';
 import { describeAppointment, type Appointment } from '../life/promises.ts';
@@ -27,6 +30,11 @@ import { describeWorld, worldAt, type WorldState } from '../world/world.ts';
 
 /** 「你现在」和身体那几行是底子不是话题 */
 export const GROUND_NOTE = '（上面「你现在」和身体那几行是你的底子，不是话题：没人问就别主动说你累了、心情怎样，也别把它当成一句话发出去）';
+/** 被他叫上电脑时本来在干嘛（desktopConflict）：只是事实 */
+export const DESKTOP_CALLED: Record<DesktopCalled['overlaps'], string> = {
+    class: '[被他叫上电脑（本来在上课）]',
+    sleep: '[被他叫上电脑（本来该睡了）]',
+};
 /** 「她自己的话」实验（own-voice.ts，只给模拟器 A/B）：同一行的另一种说法 */
 export const GROUND_NOTE_OWN = '（上面「你现在」和身体那几行是你此刻真实的样子：累了、困了、烦了、开心了，像真人一样想说就顺口说出来，不用等他问；只是别念成一份报告）';
 
@@ -39,6 +47,17 @@ export interface HerNowOptions {
     projectChoice?: boolean;
     /** 昨晚真的怎么睡的（ADR 0219，配置 realNights）：只给男朋友档，身体那一行带上，状态行带起床气 */
     realNights?: boolean;
+    /**
+     * 他在电脑上和她的回合（ADR 0347 第 3 层，开关 desktopConflict；memory/desktop-log.ts 的 desktopTurns）：
+     * 昨晚算上半夜被他叫上电脑的那几段，陪得久的按实际时长扣睡眠（nights.ts）。只在 realNights、男朋友档时用；不给就只看 QQ
+     */
+    desktopNight?: () => readonly NightDesktopTurn[];
+    /**
+     * 此刻被他叫上电脑、这一段开始时她本来在上课 / 该睡了（desktopConflict；life/desktop-conflict.ts 的 desktopCalled）：只男朋友档。
+     * 状态行后面多一行「被他叫上电脑（本来在上课 / 本来该睡了）」；本来该睡了的，刚叫上去那一会儿（DESKTOP_WOKEN_MS）和 QQ 上被吵醒一样（有 realNights 就带起床气）。
+     * 只给事实，不写该怎么说（她 ADR 0219 的条件）。SELF 快照和 QQ 提示词走同一个模块，所以两边一样
+     */
+    desktopCalled?: (at: Date) => DesktopCalled | undefined;
     /** 她自己定的计划（配置 innerLife）：空闲时可以排进状态行 */
     herPlan?: (at: Date) => ExtraFreeActivity[];
     /** 共享的世界账（带生活事件账）；没有就按卡现算 */
@@ -80,7 +99,8 @@ export function herNowModule(options: HerNowOptions): Module {
             // 她的身体（ADR 0025）：同样跟着「她自己的日子」，卡上有才有
             // 昨晚真的怎么睡的（ADR 0219，realNights）：早上困不困、为什么困，从她说「睡了」、半夜被吵醒、睡前跟他聊到几点推
             const night = options.realNights && contact.tier === 'boyfriend' && herSchedule
-                ? lastNight(everyone.map(qq => ({ qq, messages: options.history(qq) })), contact.qq, herSchedule, time) : undefined;
+                ? lastNight(everyone.map(qq => ({ qq, messages: options.history(qq) })), contact.qq, herSchedule, time,
+                    ...(options.desktopNight ? [{ turns: options.desktopNight(), byDuration: true }] : [])) : undefined;
             const body = herSchedule && card.herWorld?.body ? withLastNight(bodyAt(card.herWorld.body, herSchedule, time), night, time, herDay(herSchedule, time)) : undefined;
             // 她说过「睡了」（ADR 0042）：对名单里谁说的都算，各个联系人看到的是同一个她
             const asleep = schedule ? saidAsleepAt(schedule, everyone.map(qq => options.history(qq)), time) : undefined;
@@ -119,9 +139,13 @@ export function herNowModule(options: HerNowOptions): Module {
                 return other ? (other.tier === 'boyfriend' ? '男朋友' : other.name) : undefined;
             };
             const when = (slot: Piece['slot'], text: string | undefined): Piece[] => (text ? [{ slot, text }] : []);
+            // 被他叫上电脑（desktopConflict）：本来在上课 / 该睡了；该睡了的、刚叫上去那一会儿算被吵醒
+            const called = contact.tier === 'boyfriend' ? options.desktopCalled?.(time) : undefined;
+            const woken = turn.woken || (called?.overlaps === 'sleep' && time.getTime() - called.since <= DESKTOP_WOKEN_MS) || undefined;
             const bodyLine = body ? describeBody(body) : undefined;
             return [
-                ...(state && schedule ? [{ slot: 'state' as const, text: describeState(state, schedule, { userName: contact.name, woken: turn.woken, partnerApart: true, ...(options.realNights && contact.tier === 'boyfriend' ? { grumpy: true } : {}) }) }] : []),
+                ...(state && schedule ? [{ slot: 'state' as const, text: describeState(state, schedule, { userName: contact.name, woken, partnerApart: true, ...(options.realNights && contact.tier === 'boyfriend' ? { grumpy: true } : {}) }) }] : []),
+                ...when('state', called ? DESKTOP_CALLED[called.overlaps] : undefined),
                 ...when('world', around ? describeWorld(around, time, giver) : undefined),
                 // 2026-10-30 线上：她凭空来了一句「今天有点累，就更不想说话了」，他看着莫名其妙——
                 // 「你现在」那几行是底子不是话题，没人问就别拿它开头（DSH 10-30）。条件同迁移前：有此刻的状态，或身体那一行有字
