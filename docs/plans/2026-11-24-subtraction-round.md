@@ -25,7 +25,8 @@
 
 1. **fewerRules 转不转正**（推荐：转正）。它定了另外 11 个开关的去留：转正就整族删形状 7 个、`texture`、`tailCap`、`idioms`、`exemplars`；回退就保留 `shape` 一个、把 6 个分项并进来。
 2. **删从没上过线、也没人在等的开关和代码**（推荐：删）：`shortReplies`（ADR 0091 已被形状取代）、`hisHours`、`photoShares`、`reactions`、`foodPhotos`、`unlistedFriends`；
-   大块的 `aiPhotos`（独立生图 + 审查 + 人工审核，20 天没配过）、`realTransport`（没有数据源）单独问，推荐也删、需要时从 git 拿回来。
+   大块的 `aiPhotos`（独立生图 + 审查 + 人工审核，20 天没配过；src 约 1430 行 + 测试约 1010 行 + Koishi 控制台的审核页）、`realTransport`（没有数据源；`world/transport.ts` 一个文件）单独问。
+   `realTransport` 推荐删；`aiPhotos` 是 11-04 专门做的一整套（含控制台审核），推荐**先留**，等用户说还打不打算配生图服务。
 3. **死键 `ownerPeek`**（推荐：删）：唯一读它的 `peekRefused` 没有调用者，开不开都一样；11-19 定过先留着，所以再问一次。
 4. **「只想一想」的上限改成数调用、只给男朋友档**（推荐：改）。现在上限数的是留下的念头，重生成、丢掉的不算；每次是整份提示词 + 思考，走聊天通道，是后台里最贵的一项；
    进提示词的只有最近 6 小时最后 2 条。这是她想事情的频率，改之前先 `ask-her`。ADR 0101「费用可忽略」的说法要跟着改。
