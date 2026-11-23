@@ -156,12 +156,11 @@ import { bodyAt } from '.././life/body.ts';
 import { useWorldNeeds, worldState, type WorldNow } from '.././world/world.ts';
 import { ownDaysLine, recentDayHighlights, worldHighlights } from '.././world/highlights.ts';
 import { consumeSelfReceipts } from '.././memory/self-receipts.ts';
-import { desktopLogPath, desktopTurns, ingestDesktopRecent } from '.././memory/desktop-log.ts';
-import { desktopNowSource, desktopPresence, desktopProactiveHooks, lastDesktopTurnAt, outboxDesktopBlock } from '.././life/desktop-now.ts';
-import { DESKTOP_SESSION_KIND, DESKTOP_SESSION_PREFIX, recordDesktopSessions } from '.././life/desktop-timeline.ts';
-import { DESKTOP_LOOKBACK_MS, desktopBusySpans, desktopCalled, desktopWorldEvents, type DesktopCalled, type DesktopSpan } from '.././life/desktop-conflict.ts';
-import { desktopMessages, desktopPromiseTurns, ownerDayHistory, ownerDayKeeper, type OwnerDayHistoryOptions } from '.././memory/owner-day-view.ts';
-import { appendDayDiary, desktopDiaryLine, oneDiaryEntries, windowFor } from '.././life/one-diary.ts';
+import { desktopTurns } from '.././memory/desktop-log.ts';
+import { desktopPresence, desktopProactiveHooks, lastDesktopTurnAt, outboxDesktopBlock } from '.././life/desktop-now.ts';
+import { desktopHost } from '.././life/desktop-host.ts';
+import { desktopPromiseTurns, ownerDayHistory, ownerDayKeeper, type OwnerDayHistoryOptions } from '.././memory/owner-day-view.ts';
+import { appendDayDiary, oneDiaryEntries, windowFor } from '.././life/one-diary.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
 import { lifeExecutor } from '.././world/life-selector.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/diary.ts';
@@ -640,46 +639,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 现实数据（真实天气、空气质量、日照、法定日历、交通）：取数器、读口、立刻取的那一次、停法和日志在 world/reality-feeds.ts（ADR 0336 收尾）；定时刷新挂在 world-upkeep 模块
     const realities = realityFeeds({ config, worldCard, ledgerWorld, worldNow, stopped: () => stopped, lifetime, log });
     const weather = realities.weather;
-    // 桌面上的时间算进她的一天（ADR 0347 第 3 层，方案 docs/plans/2026-11-22-same-her-layer3-writeback.md §2.7）：都只给名单里第一个男朋友档
-    // （同下面的 deviceOwner，这里先按同一条规则取，生活执行器要用）。desktopDay 要 crossRecent（桌面回合靠它那条路传过来）；
-    // 另外四个开关各自再要 desktopDay / feelingReview / herDays / 长期记忆，依赖不齐就当没开。都关着时这里什么都不建，和原来逐字一样
-    const desktopOwner = config.contacts.find(c => c.tier === 'boyfriend');
-    const desktopSource = config.desktopDay && config.crossRecent && desktopOwner
-        ? desktopNowSource({ dataDir: config.dataDir, soulDir: soulDir(), log }) : undefined;
-    if (config.desktopDay && !desktopSource) log(`桌面上的时间：desktopDay 开着，但${!config.crossRecent ? ' crossRecent 没开（桌面回合靠它传过来）' : '名单里没有男朋友档'}，不起作用`);
-    else if (desktopSource) log(`桌面上的时间：开（只给 ${desktopOwner!.qq}；他在电脑前主动消息不打扰、留话先留着，NOW.md 知道${config.timeline ? '，会话记进时间线' : ''}）`);
-    if (config.desktopReview && !(desktopSource && config.feelingReview && config.herFeelings)) log(`桌面上的对话进回想：desktopReview 开着，但${!desktopSource ? ' desktopDay 没起作用' : ' feelingReview / herFeelings 没开'}，不起作用`);
-    // 作息冲突（desktopConflict）：要 desktopDay、herDays；被叫上电脑那一行和昨晚那段只在名单里只有一个男朋友档时给（her-now 只按档位认人，不能让别的男朋友档看到他的桌面）
-    const desktopConflictOn = Boolean(desktopSource && config.desktopConflict && config.herDays);
-    const desktopConflictHerNow = desktopConflictOn && config.contacts.filter(c => c.tier === 'boyfriend').length === 1;
-    if (config.desktopConflict && !desktopConflictOn) log(`作息冲突：desktopConflict 开着，但${!desktopSource ? ' desktopDay 没起作用' : ' herDays 没开'}，不起作用`);
-    else if (desktopConflictOn && !desktopConflictHerNow) log('作息冲突：名单里不止一个男朋友档，「被他叫上电脑」那一行和昨晚那段不给（只记世界事件、占她的时间）');
-    // 30 秒一拍（DSH 收件箱那一拍）刷新的桌面缓存：生活选择器的忙碌段、当聊天记录用的桌面回合（她在电脑上说「睡了」也算说过）。用的地方不读文件
-    let desktopBusyCache: readonly DesktopSpan[] = [];
-    let desktopChatCache: readonly StoredMessage[] = [];
-    // 桌面上的事也进心境（desktopFeelings，ADR 0347 第 5 层）单用一份：desktopChatCache 还管「电脑上说睡了也算」，那是 desktopConflict 的事，不能跟着它开
-    let desktopMoodCache: readonly StoredMessage[] = [];
-    const desktopMoodOn = Boolean(desktopSource && config.desktopFeelings && config.herFeelings);
-    const refreshDesktopCaches = (now: number): void => {
-        if (!desktopSource || (!desktopConflictOn && !desktopMoodOn)) return;
-        const turns = desktopSource.turns(now);
-        if (desktopConflictOn) {
-            desktopBusyCache = desktopBusySpans({ turns, lease: desktopSource.lease(), now });
-            desktopChatCache = desktopMessages(turns);
-        }
-        if (desktopMoodOn) desktopMoodCache = desktopMessages(turns);
-    };
-    refreshDesktopCaches(worldNow());
-    /** 此刻他在电脑前、这一段开始时她本来在上课 / 该睡了（desktopConflict，给 her-now）：按他那一档卡上的作息；说过「睡了」也算该睡了 */
-    function desktopCalledAt(at: Date): DesktopCalled | undefined {
-        const schedule = desktopOwner ? cardFor(desktopOwner.tier).character.schedule : undefined;
-        if (!desktopSource || !schedule) return undefined;
-        const now = at.getTime();
-        return desktopCalled({
-            turns: desktopSource.turns(now), lease: desktopSource.lease(), now,
-            stateAt: time => stateAt(schedule, time), asleep: time => Boolean(asleepSince(schedule, bedtimes(schedule, now), time)),
-        });
-    }
+    // 桌面上的时间算进她的一天（ADR 0347 第 3 层）：开没开、缓存、「被他叫上电脑」、收桌面记录、记世界事件都在 life/desktop-host.ts（ADR 0336 收尾）；
+    // 都只给名单里第一个男朋友档，都关着时什么都不建，和原来逐字一样
+    const desktop = desktopHost({ config, soulDir: soulDir(), worldNow, cardFor, bedtimes: (schedule, now) => bedtimes(schedule, now), files: exec.files, log });
+    const desktopSource = desktop.source;
     // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
     const lifeQueue = config.autonomousLife && ledgerWorld ? actionQueue(join(config.dataDir, 'world', 'action-queue.json'), log) : undefined;
     const lifeStartedAt = new Date(worldNow());
@@ -719,9 +682,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     let loadAppointments: ((from: Date, to: Date) => readonly Appointment[]) | undefined;
     let appointmentsAvailable = () => true;
     let appointmentPlanningPaused = false;
-    // 作息冲突开着时，她在电脑上说的「睡了」也算（desktopChatCache，30 秒刷新一次；关着是空的，和原来一样）
+    // 作息冲突开着时，她在电脑上说的「睡了」也算（desktop.chat()，30 秒刷新一次；关着是空的，和原来一样）
     const bedtimesSince = (schedule: Schedule, since: number) => (loadChat
-        ? saidBedtimes([...config.contacts.map(c => loadChat!(c.qq)), ...(desktopChatCache.length ? [desktopChatCache] : [])], schedule, since) : []);
+        ? saidBedtimes([...config.contacts.map(c => loadChat!(c.qq)), ...(desktop.chat().length ? [desktop.chat()] : [])], schedule, since) : []);
     const bedtimes = (schedule: Schedule, now: number) => bedtimesSince(schedule, now - 86_400_000);
     const lifeRunner = lifeQueue && worldCard && ledgerWorld
         ? lifeExecutor({
@@ -732,7 +695,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             bedtimes: () => bedtimes(worldCard.schedule!, worldNow()),
             appointmentsBetween: (from, to) => loadAppointments?.(from, to) ?? [],
             // 他叫她上电脑的那几段占着她的时间（desktopConflict）：缓存的，选择器里不读文件
-            ...(desktopConflictOn ? { desktopBusy: () => desktopBusyCache } : {}),
+            ...(desktop.conflictOn ? { desktopBusy: () => desktop.busy() } : {}),
             ...(needsAnchor ? {
                 needsAnchor,
                 humanValuesAt: ({ at, needs }) => {
@@ -1023,9 +986,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
             ...(config.realNights ? { realNights: true } : {}), ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
             // 作息冲突（ADR 0347 第 3 层 desktopConflict）：昨晚算上半夜被他叫上电脑（realNights 开着才用）；此刻被叫上电脑、本来在上课 / 该睡了。只男朋友档（her-now 自己判档位）
-            ...(desktopConflictHerNow ? {
+            ...(desktop.conflictHerNow ? {
                 desktopNight: () => desktopSource!.turns(exec.now()),
-                desktopCalled: (at: Date) => desktopCalledAt(at),
+                desktopCalled: (at: Date) => desktop.calledAt(at),
             } : {}),
         },
         // 她自己记下的东西（DSH：说话习惯、聊天回顾、日记里发现的自己、读完看完的想法、没想完的问题、她猜的事）：各自的开关开着才给读取；只给男朋友档
@@ -1316,17 +1279,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 );
                 if (count) log(`DSH：收进世界事件 ${count} 条`);
             }
-            // 桌面记录（ADR 0347 第 3 层，desktopDay）：把插件整份重写的 desktop-recent.jsonl 收进 QQ 自己的 desktop-log.jsonl；
-            // 收完刷新作息冲突的缓存、把结束了的会话记进时间线（只有时长和动作类别）、空闲时间那部分记成世界事件（desktopConflict）
-            if (desktopSource) {
-                const memoryDir = join(config.dataDir, 'memory');
-                // 旧账读不了时它会抛（不覆盖 14 天的记录）：单独接住，别连带后面的回执一起失败
-                try { ingestDesktopRecent({ recentFile: desktopRecentPath(memoryDir), logFile: desktopLogPath(config.dataDir), now: now.getTime(), log }); }
-                catch (error) { log(`桌面记录：这次没收（${error instanceof Error ? error.message : String(error)}）`); }
-                refreshDesktopCaches(now.getTime());
-                if (timeline) recordDesktopSessions(timeline, { turns: desktopSource.turns(now.getTime()), lease: desktopSource.lease(), now: now.getTime() }, log);
-                recordDesktopWorld(now.getTime());
-            }
+            // 桌面记录（ADR 0347 第 3 层，desktopDay）：收进 QQ 自己的 desktop-log.jsonl、刷新缓存、会话进时间线、空闲时间进世界（life/desktop-host.ts）
+            desktop.syncInbox(now);
             // 桌面回执（ADR 0347 第 2 层，selfReceipts）：她在桌面上把攒着的话说出口了，计划器记成说过了，QQ 不再重发；收到了就刷新一次 SELF
             const owner = deviceOwner;
             const planner = owner && config.selfExport && config.selfReceipts ? plannerOf(owner.qq) : undefined;
@@ -1342,51 +1296,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             log(`DSH：收件箱同步失败（${error instanceof Error ? error.message : String(error)}）`);
         }
     };
-    // 作息冲突的世界事件（desktopConflict）只记打开开关以后开始的会话：第一次打开时记下那一刻，重启照旧从那一刻算（不会一打开就把两天的会话灌进去）
-    const desktopWorldSince = (() => {
-        if (!desktopConflictOn || !sharedWorld) return undefined;
-        const file = join(config.dataDir, 'world', 'desktop-conflict-since.json');
-        try {
-            const saved = (JSON.parse(exec.files.read(file)) as { since?: unknown } | null)?.since;
-            const at = typeof saved === 'string' ? Date.parse(saved) : NaN;
-            if (Number.isFinite(at)) return at;
-        } catch { /* 第一次打开（或文件坏了）：从现在算 */ }
-        const since = worldNow();
-        try { exec.files.mkdir(dirname(file)); exec.files.write(file, JSON.stringify({ since: new Date(since).toISOString() })); }
-        catch (error) { log(`作息冲突：打开的时刻没记下（${error instanceof Error ? error.message : String(error)}），这次从现在算`); }
-        return since;
-    })();
-    /** 结束了的桌面会话里空闲时间的那部分记成世界事件（desktopConflict）：先读一次世界（结算、把排着的空闲活动停在会话开始），再算还空着的分钟 */
-    // 读世界会先推进生活（排到现在）：约定来源接上之前（搭 App 时那一次同步）不读，免得把赴约时段排成普通休闲
-    let desktopWorldReady = false;
-    function recordDesktopWorld(now: number): void {
-        if (!desktopWorldReady || !desktopSource || !desktopConflictOn || !sharedWorld || !worldCard?.schedule || desktopWorldSince === undefined) return;
-        const schedule = worldCard.schedule;
-        try {
-            const events = sharedWorld.events();
-            const said = bedtimesSince(schedule, now - DESKTOP_LOOKBACK_MS - 86_400_000);
-            const did = (timeline?.read() ?? [])
-                .filter(entry => entry.channel === 'desktop' && entry.ok !== false && entry.kind !== DESKTOP_SESSION_KIND && !entry.id?.startsWith(DESKTOP_SESSION_PREFIX))
-                .map(entry => Date.parse(entry.at)).filter(Number.isFinite);
-            const drafts = desktopWorldEvents({
-                turns: desktopSource.turns(now), lease: desktopSource.lease(), now,
-                stateAt: at => stateAt(schedule, at), asleep: at => Boolean(asleepSince(schedule, said, at)),
-                events, ...(lifeQueue ? { pending: lifeQueue.pending() } : {}), did, since: desktopWorldSince,
-                ...(desktopOwner ? { contact: desktopOwner.qq } : {}),
-            });
-            if (!drafts.length) return;
-            sharedWorld.recordEvents(drafts);
-            log(`作息冲突：桌面上陪他的空闲时间记进世界 ${drafts.length} 件（${drafts.map(draft => `${Math.round((Date.parse(draft.at) - Date.parse(draft.startedAt!)) / 60_000)} 分钟`).join('、')}）`);
-        } catch (error) {
-            log(`作息冲突：世界事件这次没记（${error instanceof Error ? error.message : String(error)}）`);
-        }
-    }
-    function desktopDiaryLineFor(date: string, diarySchedule: Schedule): string | undefined {
-        return desktopDiaryLine({
-            date, dayOf: at => formatDate(herDay(diarySchedule, at)),
-            turns: desktopTurns(config.dataDir, worldNow()),
-        });
-    }
+    // 作息冲突的世界事件（desktopConflict）只记打开开关以后开始的会话：打开的那一刻在这里读 / 记下（life/desktop-host.ts），先后同原来
+    desktop.attachWorld({ sharedWorld, timeline, lifeQueue, worldCard, bedtimesSince });
     // 之后每 30 秒再收一次：由 dsh-inbox 模块声明（ADR 0336 第 6 步，App 搭好时开）
     if (dshEnabled && (timeline || sharedWorld)) syncDshInboxes();
     const identity = config.identityLedger ? new Identity({ repoRoot, dataDir: config.dataDir, now: clockNow, log }) : undefined;
@@ -1578,7 +1489,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 桌面上答应的事（ADR 0347 第 3 层 desktopPromises，要 desktopDay 和长期记忆）：只把他那一位的聊天换成 QQ + 电脑上合并的一份；
     // 桌面记录读不了就让它抛，承诺账照「暂不可确认」暂停，不悄悄少几句（memory/owner-day-view.ts）
     const ownerDay: OwnerDayHistoryOptions | undefined = desktopSource && config.desktopPromises && memory
-        ? { ownerQq: desktopOwner!.qq, desktop: () => desktopPromiseTurns(desktopTurns(config.dataDir, worldNow())) } : undefined;
+        ? { ownerQq: desktop.owner!.qq, desktop: () => desktopPromiseTurns(desktopTurns(config.dataDir, worldNow())) } : undefined;
     if (config.desktopPromises && !ownerDay) log(`桌面上答应的事：desktopPromises 开着，但${!desktopSource ? ' desktopDay 没起作用' : '长期记忆没开'}，不起作用`);
     const keeper = memory
         ? promiseKeeper({
@@ -1600,7 +1511,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     appointmentsAvailable = () => promises?.available() ?? true;
     // 约定来源已经接上以后再第一次推进生活；否则启动瞬间会把赴约时段排成普通休闲。
     noteHerDay?.(new Date(exec.now()));
-    desktopWorldReady = true;
+    desktop.worldReady();
     if (promises) log(`她答应的事：名单里的人每段聊天结束后抽一次，到了日子在时间块里提醒${ownerDay ? '；他在电脑上说的也算（desktopPromises）' : ''}`);
     // 一本日记（ADR 0347 第 3 层 oneDiary）：当天日记只由 QQ 写，selfDirectedMemory 开着也写（周记、阶段总结跟着回来）；
     // 写完抄一份进 JOURNAL.md（「## 日期（当天）」，一天一次），desktopDay 也开着时只带她愿意公开的桌面选记
@@ -1625,7 +1536,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             dir: join(config.dataDir, 'memory'),
             log,
             ...(config.oneDiary ? { onDiary: (date: string, text: string) => { if (appendDayDiary(soulDir(), date, text)) log(`她的日记：${date} 抄了一份进 JOURNAL.md（一本日记）`); } } : {}),
-            ...(config.oneDiary && desktopSource ? { desktopLine: (date: string) => desktopDiaryLineFor(date, diaryCard.schedule!) } : {}),
+            ...(config.oneDiary && desktopSource ? { desktopLine: (date: string) => desktop.diaryLine(date, diaryCard.schedule!) } : {}),
         })
         : undefined;
     if (memory) log(config.selfDirectedMemory && !config.oneDiary
@@ -2121,7 +2032,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 群里的遭遇也进心境（2026-11-14）：有人在群里夸她、冲她发火、说想不开，私聊里她也带着
             ...(config.herFeelings && (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0 ? { groupMood: () => groupFeel?.appraisals() ?? [] } : {}),
             // 桌面上的事也进心境（ADR 0347 第 5 层）：他在电脑上说想她、关心她、说难受、冲她发火，QQ 这边心里也带着
-            ...(desktopMoodOn ? { desktopMood: () => desktopAffects(desktopMoodCache, worldNow()) } : {}),
+            ...(desktop.moodOn ? { desktopMood: () => desktopAffects(desktop.mood(), worldNow()) } : {}),
             // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
             ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => {
                 lastFeelings = report;

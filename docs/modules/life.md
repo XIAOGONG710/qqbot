@@ -47,6 +47,7 @@
 - `life/desktop-timeline.ts`
 - `life/one-diary.ts`
 - `life/desktop-conflict.ts`
+- `life/desktop-host.ts`
 - `life/self-types.ts`
 - `life/self-export.ts`
 - `life/leave-note.ts`
