@@ -50,6 +50,7 @@
 - `life/desktop-host.ts`
 - `life/self-types.ts`
 - `life/self-export.ts`
+- `life/self-export-host.ts`
 - `life/leave-note.ts`
 - `life/dreams.ts`
 - `life/dream-jobs.ts`
