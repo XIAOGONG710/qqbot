@@ -62,9 +62,6 @@ export function youFor(character: Character, contacts: readonly Contact[]) {
     return (text: string | undefined) => text && secondPerson(text, character.name, women);
 }
 
-/** 召回的结果（还没拼上要点和那一天）：她的名字已换成「你」 */
-export type Recalled = Omit<MemoryPieces, 'summary' | 'recap'>;
-
 /** 召回（decideAt.recall）：照搬迁移前联系人流水线里那一串，await 的位置和日志的先后不变 */
 async function recall(turn: Turn, ctx: DecideCtx): Promise<void> {
     const options = ctx.recall;

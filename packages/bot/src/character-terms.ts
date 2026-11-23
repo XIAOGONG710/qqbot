@@ -39,11 +39,6 @@ export function catAlternative(): string {
     return current.cat ? `${escape(current.cat)}|` : '';
 }
 
-/** 家所在城市的 alternation（「|家乡」这样的后缀）；没有就是空串 */
-export function homeAlternative(): string {
-    return current.home ? `|${escape(current.home)}` : '';
-}
-
 /** 城市名的 alternation（「|城市A|城市B」这样的后缀）；没有就是空串 */
 export function cityAlternatives(): string {
     return current.cities.map(city => `|${escape(city)}`).join('');

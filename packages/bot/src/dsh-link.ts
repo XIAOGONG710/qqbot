@@ -1,4 +1,4 @@
-import { chatCompletion, type Fetch, type LlmDeps, type LlmOptions } from './language/llm.ts';
+import { chatCompletion, type LlmDeps, type LlmOptions } from './language/llm.ts';
 import { HUMAN_TREND_KEYS, type HumanValues, type HumanValueTrends } from './human-values.ts';
 import { catName } from './character-terms.ts';
 import type { DevelopmentSummary } from './life/development.ts';
@@ -310,5 +310,3 @@ export function createDshLink(options: LlmOptions, deps: DshLinkDeps = {}): DshL
 export function dshOptionsFromLlm(llm: LlmOptions, overrides: Partial<Pick<LlmOptions, 'baseUrl' | 'model' | 'timeoutMs'>> = {}): LlmOptions {
     return { ...llm, ...overrides };
 }
-
-export type DshFetch = Fetch;
