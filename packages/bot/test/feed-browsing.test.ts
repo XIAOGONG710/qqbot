@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { feedDue, feedFactEntry, feedFacts, feedOnce, loadFeed, saveFeed, trimFeed } from '../src/bilibili/feed-browsing.ts';
+import { feedDue, feedFactEntry, feedFacts, feedOnce, loadFeed, trimFeed } from '../src/bilibili/feed-browsing.ts';
 import type { BiliFetch } from '../src/bilibili/bilibili-view.ts';
 
 const dirs: string[] = [];

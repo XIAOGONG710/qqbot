@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { calendarFetcher, parseHolidayApi, useRealCalendar } from '../src/world/calendar.ts';
 import { describeWorld, summarizeWorld, worldAt } from '../src/world/world.ts';

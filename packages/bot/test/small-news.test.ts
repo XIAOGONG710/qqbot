@@ -14,7 +14,6 @@ import { syntheticCardPattern } from './fixtures/card.ts';
 const pattern = syntheticCardPattern;
 const boyfriend = loadTierCard(pattern, 'boyfriend', { everydayLife: true }).character;
 const schedule = boyfriend.schedule!;
-const dayText = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 /** 那一天快结束时的世界快照 */
 const endOf = (d: Date): WorldNow => worldAt(boyfriend.herWorld!, schedule, new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 30))!;
 const groups = new Map(EVERYDAY_EVENT_DEFS.map(def => [def.id, def.group] as const));

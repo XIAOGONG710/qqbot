@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, test } from 'node:test';
+import { describe, test } from 'node:test';
 import {
     appraisals, asksAfterHer, CLEAR, criedRecently, describeFeelings, FAINT, feelingsAt, feelsLow, STRONG, validMoment, validMoments, voicedKinds,
     type Appraisal, type Felt, type Moment,

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { loadTierCard } from '../src/platform/contact.ts';
 import { inCooldown, loadThreadsFrom, THREAD_COOLDOWN_DAYS, THREADS, threadStepsFor } from '../src/world/threads.ts';

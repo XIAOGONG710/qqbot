@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { startApp } from '../src/platform/app.ts';
 import { parseGroups, type AppConfig } from '../src/platform/config.ts';
@@ -405,7 +405,7 @@ describe('群聊：进应用', () => {
     });
 
     test('认不出的 @ 不瞎换，照旧发文字、不带引用', async () => {
-        const { app: a, sentRich, sentGroup } = app('on', false, { generate: async () => '@路人甲 你说呢' });        await a.connected(SELF);
+        const { app: a, sentGroup } = app('on', false, { generate: async () => '@路人甲 你说呢' });        await a.connected(SELF);
         a.receiveGroup(said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 你看呢')]));
         await until(() => sentGroup.length > 0);
         a.stop();

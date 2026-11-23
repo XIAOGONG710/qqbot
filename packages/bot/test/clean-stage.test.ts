@@ -16,7 +16,6 @@ import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 // 清理顺序表和草稿（ADR 0336「生成之后那一段」第 8、9 步）：行为基线 media / candidates / devices / review 场景逐字不变，这里核对表本身、媒体清理的模块和设备指令跟着哪一稿走
 const turnOf = (facts: Turn['facts'] = {}): Turn => ({ contact: { qq: 1, name: '阿明', tier: 'boyfriend' }, at: new Date('2026-11-20T20:00:00+08:00'), history: [], thinking: false, facts });
 const ID = '0123456789ab';
-const OTHER = 'ba9876543210';
 
 describe('清理顺序表（ADR 0336 第 9 步）', () => {
     test('顺序照迁移前的手写顺序：图片表情 → 照片 → 只发表情', () => {

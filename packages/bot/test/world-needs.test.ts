@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { summarizeWorld, useWorldNeeds, worldAt } from '../src/world/world.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
-import { resolve } from 'node:path';
 import { syntheticCardPath } from './fixtures/card.ts';
 
 const at = (iso: string) => new Date(`${iso}+08:00`);

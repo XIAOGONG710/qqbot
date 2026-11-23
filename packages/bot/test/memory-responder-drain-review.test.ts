@@ -7,7 +7,6 @@ const NOW = Date.parse('2026-11-05T12:00:00Z');
 function gate<T>() { let release!: (value: T) => void; const promise = new Promise<T>(resolve => { release = resolve; }); return { promise, release }; }
 // 等待上限只决定多久算失败、不影响断言；2 秒在整套测试并行跑、机器忙时会偶发超时（11-15 两次），放宽到 10 秒
 async function until(check: () => boolean) { const end = Date.now() + 10_000; while (!check()) { if (Date.now() > end) assert.fail('合成等待超时'); await new Promise(resolve => setTimeout(resolve, 2)); } }
-const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 async function bounded(task: Promise<unknown>) { let timer: ReturnType<typeof setTimeout> | undefined; try { return await Promise.race([task.then(() => true, () => true), new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), 200); })]); } finally { clearTimeout(timer); } }
 function fixture(patch: Partial<ResponderDeps> = {}) {
     const stored: StoredMessage[] = []; const sent: string[] = [];

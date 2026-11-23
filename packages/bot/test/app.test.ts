@@ -6,7 +6,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { after, afterEach, before, describe, mock, test } from 'node:test';
 import { setWorkMode } from '../src/platform/work-mode.ts';
 import { startApp, type App, type AppOptions, type Transport } from '../src/platform/app.ts';
-import { PEEK_OFF_NOTICE } from '../src/platform/private-space.ts';
 import type { PromptManifest } from '../src/platform/prompt-manifest.ts';
 import { SELF_SLOTS } from '../src/interpreter/slots.ts';
 import { compareSelf } from '../../../scripts/prompt-manifest-diff.mjs';

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { ABOUT_DAY_INTENT, CONTROL_INTENT, DECLINED_INVITE_INTENT, CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing, distressCarried, needsCareText, DISTRESS_CARRY_MS } from '../src/language/intent.ts';
+import { ABOUT_DAY_INTENT, CONTROL_INTENT, DECLINED_INVITE_INTENT, CRISIS_CONCERN_INTENT, CRISIS_HELP_INTENT, CRISIS_IMMINENT_HELP_INTENT, CRISIS_IMMINENT_INTENT, CRISIS_INTENT, CRISIS_MARK, describeIntent, isEndingTurn, PRESSED_INTENT, saysOwnThing, distressCarried, needsCareText } from '../src/language/intent.ts';
 import type { Schedule, State } from '../src/life/schedule.ts';
 
 const now = new Date('2026-10-06T20:00:00+08:00');

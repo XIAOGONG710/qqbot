@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import { bodyAt, describeBody } from '../src/life/body.ts';

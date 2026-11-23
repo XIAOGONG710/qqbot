@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { StoredMessage } from '../src/memory/history.ts';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
@@ -18,7 +18,6 @@ const dirs: string[] = [];
 const temp = () => { const dir = mkdtempSync(join(tmpdir(), 'qqbot-takes-')); dirs.push(dir); return dir; };
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
-const repoRoot = resolve(import.meta.dirname, '../../..');
 const card = loadTierCard(syntheticCardPattern, 'boyfriend');
 const schedule = card.character.schedule!;
 const NOW = new Date(2026, 9, 30, 22, 30);

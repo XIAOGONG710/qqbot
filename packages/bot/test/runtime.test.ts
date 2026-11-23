@@ -7,7 +7,7 @@ import { cardKey, loadConfig, parseAppConfig } from '../src/platform/config.ts';
 import { MEDIA_TIMEOUTS } from '../src/vision/media.ts';
 import { currentTierHistory, TierRecord } from '../src/memory/tier-record.ts';
 import { ChatHistory, type StoredMessage } from '../src/memory/history.ts';
-import { isPrivateFriendMessage, segmentsToText, type MessageEvent } from '../src/platform/onebot.ts';
+import { isPrivateFriendMessage, segmentsToText } from '../src/platform/onebot.ts';
 import { unlistedName } from '../src/platform/app.ts';
 import type { PromptResult } from '../src/language/prompt.ts';
 import { cleanUpReply, MAX_BUBBLES, splitReply } from '../src/language/reply.ts';

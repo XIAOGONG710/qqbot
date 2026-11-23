@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { airQualityCategory, airQualityFetcher, parseOpenMeteoAirQuality, useRealAirQuality } from '../src/world/air-quality.ts';
 import { describeWorld, worldAt } from '../src/world/world.ts';

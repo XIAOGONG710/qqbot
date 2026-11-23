@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { feltDayNote, feltDuring, feltNoteFor, feltThen, sameThing, withoutGrudges } from '../src/emotion/felt-then.ts';
 import { appraisals, type Appraisal } from '../src/emotion/feelings.ts';

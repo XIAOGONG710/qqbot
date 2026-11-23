@@ -505,7 +505,7 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
             msg('2026-10-07T20:01:00', 'assistant', '加油！对了你国庆回不回家'),
             msg('2026-10-07T20:02:00', 'user', '今天食堂的菜好咸'),
         ];
-        const { keeper, logs, asked, setNow, cleanup } = setup(history, [
+        const { keeper, logs, asked, cleanup } = setup(history, [
             JSON.stringify({
                 add: [],
                 waiting: [{ what: '阿明周四下午字节面试', date: '2026-10-08' }],

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { appendDream, dreamAppraisals, dreamNoteLine, dreamPrompt, hasDream, inSleepHours, lastNightDream, onlyFragment, readDreams } from '../src/life/dreams.ts';
+import { appendDream, dreamAppraisals, dreamNoteLine, dreamPrompt, hasDream, inSleepHours, onlyFragment, readDreams } from '../src/life/dreams.ts';
 
 const dir = () => mkdtempSync(join(tmpdir(), 'qqbot-dream-'));
 const dream = (at: number, date = '2026-10-31') => ({ date, dream: '梦见他在收拾行李，我站在门口没说话。', feel: { kind: 'worry' as const, strength: 1 as const, why: '梦见他要走' }, at });
