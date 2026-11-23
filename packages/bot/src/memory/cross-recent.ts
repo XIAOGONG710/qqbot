@@ -61,13 +61,19 @@ export function readDesktopTurns(file: string, now: number, windowMs = CROSS_WIN
 const hhmm = (at: number): string => { const d = new Date(at); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 const clip = (text: string, max: number): string => { const flat = text.replace(/\s+/g, ' ').trim(); return [...flat].length > max ? `${[...flat].slice(0, max).join('')}…` : flat; };
 
+/**
+ * 桌面上她写给记账用的记号（ADR 0347 第 3 层 7a57cbf7：日记选记、承诺记账、改口）：桌面插件不去掉，QQ 那边从 desktop-log 里认它们。
+ * 放进 QQ 提示词时去掉——不然 QQ 上的她会照着学，把【我答应并记下：…】原样发给他（QQ 的出口检查只认 <<…>>）
+ */
+export const DESKTOP_CHOICE_MARK = /【(?:聊完还在想，也想写进今天的日记|我答应并记下|我改主意了)[：:][^【】\r\n]*】/g;
+
 /** 放进 QQ 提示词的一段：他刚才在电脑上（DSH）和她的最近几轮；没有（或都超过窗口）返回 undefined */
 export function desktopBlock(file: string, now: number, options: { maxTurns?: number; windowMs?: number } = {}): string | undefined {
     const turns = readDesktopTurns(file, now, options.windowMs).slice(-(options.maxTurns ?? DESKTOP_MAX_TURNS));
     if (!turns.length) return undefined;
     const lines = turns.flatMap(turn => [
         `${hhmm(turn.at)} 他：${clip(turn.user, CROSS_LINE_CHARS)}`,
-        `${hhmm(turn.at)} 你：${clip(turn.assistant, CROSS_LINE_CHARS)}`,
+        `${hhmm(turn.at)} 你：${clip(turn.assistant.replace(DESKTOP_CHOICE_MARK, ''), CROSS_LINE_CHARS)}`,
     ]);
     return `[你刚才在电脑上（DSH）和他的对话——同一个他、同一个你；接着聊就行，不用复述，也别说成「我在电脑上看到」]\n${lines.join('\n')}`;
 }

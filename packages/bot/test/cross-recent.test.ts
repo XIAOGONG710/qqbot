@@ -44,6 +44,16 @@ describe('QQ 这边读桌面对话（ADR 0177）', () => {
         assert.deepEqual(turns.map(turn => turn.user), ['一个半小时前', '十分钟前']);
     });
 
+    // 7a57cbf7 让她在桌面上用【…】给日记选记、给承诺记账；QQ 从 desktop-log 认它们，但放进 QQ 提示词时要去掉，免得 QQ 上的她照着发给他
+    test('desktopBlock：她在桌面上写的记账记号（日记选记 / 我答应并记下 / 我改主意了）不进 QQ 提示词，别的话照留', () => {
+        const file = desktopRecentPath(tmp());
+        writeFileSync(file, row(min(10), '周六陪我去看展吧', '好呀【我答应并记下：周六下午陪他看展】到时候叫我') + row(min(5), '算了改天', '行【我改主意了：周六不去看展了】【聊完还在想，也想写进今天的日记：差点去看展】'));
+        const block = desktopBlock(file, NOW)!;
+        assert.ok(!/【/.test(block), block);
+        assert.match(block, /你：好呀到时候叫我/);
+        assert.match(block, /你：行$/m);
+    });
+
     test('desktopBlock：最多放最近 3 轮；每句超长截断；带时刻；说明是同一个他、同一个你', () => {
         const file = desktopRecentPath(tmp());
         writeFileSync(file, row(min(50), '第一', '回一') + row(min(40), '第二', '回二') + row(min(30), '第三', '回三') + row(min(20), '很长的一句'.repeat(60), '好'));
