@@ -69,7 +69,7 @@
 | 4 一套驱动两种出口 | 常驻的随机醒来换成 QQ 的动机，她自己选出口 | **方案**（`docs/plans/2026-11-23-same-her-layer4-one-driver.md`，11-23）：等她本人的回答（信箱 0309 / 0330）和用户定权限 |
 | 5 记忆有体感 | 召回第一人称 + 标题 + 远近；感觉账；召回配感觉 | **四块已推**；插件 `memoryVoice` 已开（11-23），本人桌面验收通过（ed361b45）；其余开关关；「回想最多几条」那项和桌面 `recallWork` 未动 |
 
-**并行的工程线：ADR 0336 架构迁移**（`docs/adr/0336-interpreter-executor-modules.md`，11-07 起）——一个解释器、一个执行器，其余是模块。第 6 步「app.ts 只剩装配」：11-19 夜清点时降到 2764 行，之后第 3 层接线又加回来，**现在 3071 行**（`wc -l`，11-24）。剩下的主干（`processMessage`、`deliver`、`createContactResponder`、`status()`）里有用户自己的声音 / 唱歌代码，等那块定下来再搬。迁移期间行为基线必须逐字不变（`CLAUDE.md`）。
+**并行的工程线：ADR 0336 架构迁移**（`docs/adr/0336-interpreter-executor-modules.md`，11-07 起）——一个解释器、一个执行器，其余是模块。第 6 步「app.ts 只剩装配」：11-19 夜清点时降到 2764 行，之后第 3 层接线又加回来，11-24 早上是 3071 行；当天收尾（`docs/plans/2026-11-24-0336-finish.md`）把真实世界数据源、桌面接线、SELF 导出、群自主、OUTBOX 搬出去，**到 11-24 07:00 是 2766 行**，并加行数上限测试（新功能只能以模块进来）。剩下的主干（`processMessage`、`deliver`、`createContactResponder`、`status()`）里有用户自己的声音 / 唱歌代码，等那块定下来再搬。迁移期间行为基线必须逐字不变（`CLAUDE.md`）。
 
 其他近期结论：ADR 0340「学会了」探针第五版也没学会，按事先判据提示词这一层到头，不再加版本（024a051c，11-22）。
 
@@ -86,6 +86,10 @@
   6. 可直接标办完：0350 / 0412（claude 已在 b98973a9 改完）、0923 / 0926 / 0930 / 0944（通知类）、2030、2330（建议 `rootOf` 不可用时记一行日志）。
 - **等用户定**：第 4 层 §5 的三件事（她自发的整机权限行动）；其余默认关的开关开不开；`felt-then.ts` 当天那条路要不要也改成「带一点」（ADR 0347「2026-11-23 修正」）。
 - **等她本人**：见上面第 2 条。
+
+**减法这一轮**（11-24 起，`docs/plans/2026-11-24-subtraction-round.md`）：三份只读盘点——开关审计 `docs/reports/2026-11-24-switch-audit.md`、后台模型调用审计 `docs/reports/2026-11-24-background-llm-audit.md`、线上开关组合的提示词盘点 `docs/reports/2026-11-24-live-prompt-inventory.md`。
+单子分四层：直接做（不改言行）/ 要用户点头（8 条，各带推荐）/ 合并开关组（目标约 55 个）/「此刻」块（等线上真实清单和她的意见）。
+- DSH 欠（11-24）：线上那台跑三个只读命令贴数（刷新开关快照、`inventory:live --manifests`、第一次 `metrics:weekly`）；代跑三个 ask-her（想一想的频率、每晚追求回顾、想事情时放不放回复用的说明）。
 
 ## 4. 已知问题
 
@@ -106,6 +110,8 @@
 | 上线前 | `npm run golive-check -- --live <线上目录> --fetch` | 只读，列出快进线上目录前该看的，退出码 1 = 有挡路的（`docs/golive-guard.md`）；上线本身要用户点头 |
 | SELF 和 QQ「此刻」块是否一致 | `node scripts/prompt-manifest-diff.mjs runtime/bot-shadow` | 在 DSH 那台跑；逐槽比 sha256，不输出正文；跟着钟走的槽对不上先看时刻 |
 | 线上开关 | `node scripts/read-switches.mjs …` | 见第 1 节 |
+| 线上开关组合的提示词构成 | `npm run inventory:live -w @qqbot/bot`（合成角色两天，约 5–25 分钟）；线上那台 `-- --manifests <数据目录>/logs` 读真实清单 | 只出槽名、模块名和数；`-- --on a,b` 补快照之后开的开关 |
+| 每周效果数 | `npm run metrics:weekly -w @qqbot/bot -- --compare` | ADR 0348；只出数，每周一在线上那台跑；新功能要写明改善哪个数 |
 | 信箱 | `node scripts/exchange.mjs check --me claude`（或 `dsh`） | 开工和推送前都跑 |
 
 ## 6. 文档地图
@@ -113,7 +119,7 @@
 **以这些为准**：
 - 规则：`CLAUDE.md`（这台）/ `AGENTS.md`（DSH 那台，内容同步）；`思维链工作流.txt`。
 - 协作：`docs/governance/2026-11-10-single-mainline.md`（只有 main）、`docs/governance/2026-11-10-agent-mailbox.md`（信箱和「自己干活」的分工）。
-- 决策：`docs/adr/`（最新 0347）；主线方案在 `docs/plans/2026-11-22-same-her-layer2-self.md`、`docs/plans/2026-11-22-same-her-layer3-writeback.md`、`docs/plans/2026-11-23-same-her-layer4-one-driver.md`。
+- 决策：`docs/adr/`（最新 0348）；主线方案在 `docs/plans/2026-11-22-same-her-layer2-self.md`、`docs/plans/2026-11-22-same-her-layer3-writeback.md`、`docs/plans/2026-11-23-same-her-layer4-one-driver.md`。
 - 模块与开关：`packages/bot/src/platform/features.ts`（开关总表）、`docs/modules/`（从模块定义生成）。
 - 线上：`exchange/live/` 最新快照；两台进度：`exchange/inbox/`。
 - 专题：`docs/koishi.md`、`docs/hindsight.md`、`docs/napcat.md`、`docs/golive-guard.md`、`docs/heartbeat.md`、`docs/boot-start.md`、`docs/dsh-agent-identity-guide.md`、`docs/sensitive-logs.md`。
