@@ -121,6 +121,8 @@ DSH 那台拉代码后重启 Koishi（QQ 侧）、常驻进程（`scripts/start-
 - 3edb1c02：第 5 层的 `desktopFeelings` 要读桌面对话，原来缓存只跟着 `desktopConflict` 刷新，单开它是空的，所以给心境单开了一份缓存。同一个提交还修了 `feelingsAt` 的来源白名单漏掉 `desktop` 的问题。
 - 8d2ea533（DSH）：DSH 派的记忆整理子 agent（mnemon-review / mnemon-run）创建时也带着她的预设，被插件当成「他在桌面上说话」，往 session-tails.jsonl 写了十几行假收尾。现在子 agent 一律不挂记忆钩子。DSH 查过，desktop-recent / desktop-log 没被写过，所以假话没有进 QQ。
 
+2026-11-23 DSH 实机核实：桌面 profile 已装记忆插件，插件与 Koishi 共用 runtime/bot-shadow/memory/owner-bank.json，文件有 desktopFile。Koishi 启动日志确认 desktopDay 生效。12:45:30 桌面回合按生产代码算出的 id 在 QQ 账本中命中，账本于 12:45:42 写入。桌面配置已打开 memoryVoice 并重启 DSH，日志确认插件重新加载。合成测试已验证召回标题、人称和远近；待下一轮本人桌面聊天确认实际召回块，以及本轮在场时 NOW.md 和离开后的主动消息。
+
 上线前提（2026-11-23 待 DSH 核实）：DSH 那台的 owner-bank.json 里没有 `desktopFile`，桌面回合从来没被记过。可能的原因有三个：记忆插件没装进 desktop profile、Koishi 的数据目录和插件读的路径不是同一个、crossRecent 没生效。查清之前开 `desktopDay` 也收不到东西。
 
 上线：用户 11-23 同意先开 `desktopDay`（和第 5 层的 `memoryVoice` 一起），其余四个照旧关着。验收是在桌面上聊几句，然后确认三件事：desktop-recent 多出几行；QQ 的 desktop-log 30 秒内收进来；NOW.md 那段时间写「和你聊天中」，他走开 10 分钟以后主动消息恢复。
