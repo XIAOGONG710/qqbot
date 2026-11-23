@@ -167,12 +167,12 @@ import { lifeExecutor } from '.././world/life-selector.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/diary.ts';
 import { takeIntimateLine } from '.././language/intimacy.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from '.././life/schedule.ts';
-import { useRealWeather, weatherFetcher, type WeatherFetcherStatus } from '.././world/weather.ts';
-import { parseWeatherObservation, readWeatherEvidenceLedger, reconciledWeather, userWeatherEvidence } from '.././world/weather-evidence.ts';
-import { airQualityFetcher, useRealAirQuality, type AirQualityFetcherStatus } from '.././world/air-quality.ts';
-import { daylightFetcher, useRealDaylight, type DaylightFetcherStatus } from '.././world/daylight.ts';
-import { calendarFetcher, useRealCalendar, type CalendarStatus } from '.././world/calendar.ts';
-import { transportFetcher, useRealTransport, type TransportFetcherStatus } from '.././world/transport.ts';
+import type { WeatherFetcherStatus } from '.././world/weather.ts';
+import type { AirQualityFetcherStatus } from '.././world/air-quality.ts';
+import type { DaylightFetcherStatus } from '.././world/daylight.ts';
+import type { CalendarStatus } from '.././world/calendar.ts';
+import type { TransportFetcherStatus } from '.././world/transport.ts';
+import { realityFeeds } from '.././world/reality-feeds.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { loadMemes, memesPath } from '.././language/memes.ts';
 import { loadWatched, watchedPath, type Watched } from '.././language/watching.ts';
@@ -227,16 +227,8 @@ const LIFE_TICK_MS = 10 * 60_000;
 
 /** 写一次长期记忆的间隔 */
 export const MEMORY_SYNC_MS = 5 * 60_000;
-/** 真实天气多久取一次（ADR 0048） */
-export const WEATHER_REFRESH_MS = 30 * 60_000;
-/** 真实空气质量多久取一次（ADR 0227） */
-export const AIR_QUALITY_REFRESH_MS = 30 * 60_000;
-/** 真实日照多久取一次（ADR 0228） */
-export const DAYLIGHT_REFRESH_MS = 6 * 60 * 60_000;
-/** 现实法定日历多久取一次（ADR 0231） */
-export const CALENDAR_REFRESH_MS = 12 * 60 * 60_000;
-/** 现实交通刷新周期；供应商失败时继续使用仍在有效期内的旧缓存。 */
-export const TRANSPORT_REFRESH_MS = 30 * 60_000;
+/** 现实数据多久取一次：定义搬到 world/reality-feeds.ts，这里照旧导出（测试从这里取） */
+export { AIR_QUALITY_REFRESH_MS, CALENDAR_REFRESH_MS, DAYLIGHT_REFRESH_MS, TRANSPORT_REFRESH_MS, WEATHER_REFRESH_MS } from '.././world/reality-feeds.ts';
 
 /** 入口提供的收发 */
 export interface Transport extends PresenceTransport {
@@ -645,71 +637,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const ledgerWorld = worldCard
         ? worldState(worldCard.herWorld!, worldCard.schedule!, log, join(config.dataDir, 'world'), worldNow)
         : undefined;
-    // 真实天气（ADR 0048 / 0338）：当前天气须经软件实况与现场观察裁决；取不到就保持未知，不用模拟天气冒充现实。
-    const weatherPlaces = worldCard?.herWorld?.weather?.places;
-    const weather = config.realWeather && worldCard && weatherPlaces
-        ? weatherFetcher({ dir: join(config.dataDir, 'weather'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow })
-        : undefined;
-    const weatherEvidence = weather ? readWeatherEvidenceLedger(join(config.dataDir, 'weather', 'evidence.json'), log) : undefined;
-    const weatherReality = weather && weatherEvidence ? reconciledWeather(weather, weatherEvidence) : weather;
-    useRealWeather(weatherReality);
-    const ownRealityRefresh = (
-        source: { refresh(): Promise<void> } | undefined,
-        refreshes: Set<Promise<void>>,
-    ): Promise<void> | undefined => {
-        if (stopped || !source) return undefined;
-        let resolveOwned!: () => void;
-        let rejectOwned!: (reason?: unknown) => void;
-        const owned = new Promise<void>((resolve, reject) => { resolveOwned = resolve; rejectOwned = reject; });
-        refreshes.add(owned);
-        const finished = () => { refreshes.delete(owned); };
-        void owned.then(finished, finished);
-        try { void source.refresh().then(resolveOwned, rejectOwned); }
-        catch (error) { rejectOwned(error); }
-        return owned;
-    };
-    // A refresh owns both cities and may still publish caches after its first
-    // await. Keep that whole round inside this App's data-directory lease.
-    const weatherRefreshes = new Set<Promise<void>>();
-    const refreshWeather = () => ownRealityRefresh(weather, weatherRefreshes);
-    void refreshWeather();
-    lifetime.own('weather', () => { useRealWeather(undefined); return [...weatherRefreshes]; });
-    if (worldCard) log(`真实天气：${weather ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；当前事实过期或冲突时保持未知）`
-        : !config.realWeather ? '关（配置 realWeather: false），按日期生成' : '关（卡上没写 weather.places），按日期生成'}`);
-    const airQuality = config.realAirQuality === true && worldCard && weatherPlaces ? airQualityFetcher({ dir: join(config.dataDir, 'air-quality'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
-    useRealAirQuality(airQuality);
-    const airQualityRefreshes = new Set<Promise<void>>();
-    const refreshAirQuality = () => ownRealityRefresh(airQuality, airQualityRefreshes);
-    void refreshAirQuality();
-    lifetime.own('air-quality', () => { useRealAirQuality(undefined); return [...airQualityRefreshes]; });
-    if (worldCard) log(`真实空气质量：${airQuality ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}当前观测，每 ${AIR_QUALITY_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realAirQuality !== true ? '关（配置 realAirQuality: false）' : '关（卡上没写 weather.places）')}`);
-    const daylight = config.realDaylight === true && worldCard && weatherPlaces ? daylightFetcher({ dir: join(config.dataDir, 'daylight'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
-    useRealDaylight(daylight);
-    const daylightRefreshes = new Set<Promise<void>>();
-    const refreshDaylight = () => ownRealityRefresh(daylight, daylightRefreshes);
-    void refreshDaylight();
-    lifetime.own('daylight', () => { useRealDaylight(undefined); return [...daylightRefreshes]; });
-    if (worldCard) log(`真实日照：${daylight ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}日出日落，每 ${DAYLIGHT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realDaylight !== true ? '关（配置 realDaylight: false）' : '关（卡上没写 weather.places）')}`);
-    const calendar = config.realCalendar === true && worldCard ? calendarFetcher({ dir: join(config.dataDir, 'calendar'), log, now: worldNow }) : undefined;
-    useRealCalendar(calendar);
-    const calendarRefreshes = new Set<Promise<void>>();
-    const refreshCalendar = () => ownRealityRefresh(calendar, calendarRefreshes);
-    void refreshCalendar();
-    lifetime.own('calendar', () => { useRealCalendar(undefined); return [...calendarRefreshes]; });
-    if (worldCard) log(`现实法定日历：${calendar ? `开（当前年和下一年，每 ${CALENDAR_REFRESH_MS / 60_000} 小时取一次；取不到不写进世界）` : '关（配置 realCalendar: false）'}`);
-    const transportConfig = config.realTransport ?? DEFAULTS.realTransport;
-    const worldTransport = transportConfig.enabled && worldCard && weatherPlaces ? transportFetcher({
-        dir: join(config.dataDir, 'transport'), log, now: worldNow,
-        // 地点和天气一样从卡上读（weather.places，ADR 0334）
-        locations: [weatherPlaces.school, weatherPlaces.home].map(place => ({ id: place.id, name: place.name })),
-        endpoint: transportConfig.endpoint, source: transportConfig.source,
-    }) : undefined;
-    useRealTransport(worldTransport);
-    const transportRefreshes = new Set<Promise<void>>();
-    const refreshTransport = () => ownRealityRefresh(worldTransport, transportRefreshes);
-    void refreshTransport();
-    lifetime.own('transport', () => { useRealTransport(undefined); return [...transportRefreshes]; });
-    if (worldCard) log(`现实交通：${worldTransport ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}，每 ${TRANSPORT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (!transportConfig.enabled ? '关（配置 realTransport.enabled: false）' : '关（卡上没写 weather.places）')}`);
+    // 现实数据（真实天气、空气质量、日照、法定日历、交通）：取数器、读口、立刻取的那一次、停法和日志在 world/reality-feeds.ts（ADR 0336 收尾）；定时刷新挂在 world-upkeep 模块
+    const realities = realityFeeds({ config, worldCard, ledgerWorld, worldNow, stopped: () => stopped, lifetime, log });
+    const weather = realities.weather;
     // 桌面上的时间算进她的一天（ADR 0347 第 3 层，方案 docs/plans/2026-11-22-same-her-layer3-writeback.md §2.7）：都只给名单里第一个男朋友档
     // （同下面的 deviceOwner，这里先按同一条规则取，生活执行器要用）。desktopDay 要 crossRecent（桌面回合靠它那条路传过来）；
     // 另外四个开关各自再要 desktopDay / feelingReview / herDays / 长期记忆，依赖不齐就当没开。都关着时这里什么都不建，和原来逐字一样
@@ -987,11 +917,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 她那边的世界的后台维护、DSH 收件箱、口味（ADR 0336 第 6 步）：只有定时任务，App 搭好时开，先后同原来（排在所有 built 的最前面）。
     // 取数器、世界影子、生活执行器都在上面建好了；收件箱、口味在后面才建，到点再取
     const worldUpkeep = worldUpkeepModule({
-        ...(weather ? { weather: { every: WEATHER_REFRESH_MS, run: () => void refreshWeather() } } : {}),
-        ...(airQuality ? { airQuality: { every: AIR_QUALITY_REFRESH_MS, run: () => void refreshAirQuality() } } : {}),
-        ...(daylight ? { daylight: { every: DAYLIGHT_REFRESH_MS, run: () => void refreshDaylight() } } : {}),
-        ...(calendar ? { calendar: { every: CALENDAR_REFRESH_MS, run: () => void refreshCalendar() } } : {}),
-        ...(worldTransport ? { transport: { every: TRANSPORT_REFRESH_MS, run: () => void refreshTransport() } } : {}),
+        ...realities.upkeep,
         ...(agencyShadow ? { agencyShadow: { every: 5 * 60_000, run: observeAgencyShadow } } : {}),
         ...(lifeRunner || observeAiPhotoWorld ? { life: { every: LIFE_TICK_MS, run: () => {
             sharedWorld?.events();
@@ -2673,22 +2599,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 能让她动电脑的只有他亲手打的字（ADR 0179）：用原始消息判断，不用处理后的文本——看过的图、听过的语音会被换成一段文字，和他亲手打的混在一起
         const typed = event.user_id === deviceOwner?.qq && isTypedByHim(event.message);
         if (typed) lastUserText.set(event.user_id, text); else lastUserText.delete(event.user_id);
-        if (typed && weatherEvidence && weatherPlaces && worldCard && ledgerWorld) {
-            const parsed = parseWeatherObservation(text);
-            if (parsed) {
-                const at = new Date(accepted.time);
-                const current = ledgerWorld.at(worldCard.herWorld!, worldCard.schedule!, at);
-                const location = parsed.target === 'user' ? 'user'
-                    : parsed.target === 'school' ? weatherPlaces.school.id
-                        : parsed.target === 'home' ? weatherPlaces.home.id
-                            : current ? (current.atSchool ? weatherPlaces.school.id : weatherPlaces.home.id) : undefined;
-                const evidence = location ? userWeatherEvidence(location, parsed.condition, at) : undefined;
-                if (evidence && weatherEvidence.append(evidence)) {
-                    log(`[${event.user_id}] 天气证据：记下${parsed.target === 'user' ? '他所在地' : '她所在地'}的现场观察（有效 60 分钟，不记原话）`);
-                    planners.get(event.user_id)?.poke();
-                }
-            }
-        }
+        if (typed && realities.noteUserWeather(event.user_id, text, accepted.time)) planners.get(event.user_id)?.poke();
         if (event.user_id === deviceOwner?.qq && !typed && readWorkMode(config.dataDir, event.user_id) === 'work') tellOwner(NOT_TYPED_NOTICE);
         // 工作模式：不进普通聊天回复器，交给 headless 的她干活，干完再回（工具桥）
         if (event.user_id === deviceOwner?.qq && typed && !text.startsWith('/') && readWorkMode(config.dataDir, event.user_id) === 'work') {
@@ -3024,11 +2935,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 ...(Object.keys(extras).length ? { extras } : {}),
                 ...(config.memory ? { memory: { baseUrl: config.memory.baseUrl, health, ...memory!.status() } } : {}),
                 ...(mobileCompanion ? { mobileCompanion: { enabled: true, ...mobileCompanion.runtime.status() } } : { mobileCompanion: { enabled: false, connected: false, queued: 0, maxQueuedPerClient: MAX_QUEUED_PER_CLIENT } }),
-                ...(weather ? { weather: weather.status() } : {}),
-                ...(airQuality ? { airQuality: airQuality.status() } : {}),
-                ...(daylight ? { daylight: daylight.status() } : {}),
-                ...(calendar ? { calendar: calendar.status() } : {}),
-                ...(worldTransport ? { transport: worldTransport.status() } : {}),
+                ...realities.status(),
                 externalPlatforms: config.externalPlatforms ?? DEFAULTS.externalPlatforms,
                 externalDrafts: externalDraftStore.summary(),
                 dsh: { enabled: dshEnabled, ...(dshProbe ? { lastProbe: { ok: dshProbe.ok, at: dshProbe.at, model: dshProbe.model, latencyMs: dshProbe.latencyMs } } : {}) },

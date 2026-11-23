@@ -30,6 +30,7 @@
 - `world/daylight.ts`
 - `world/calendar.ts`
 - `world/transport.ts`
+- `world/reality-feeds.ts`
 - `world/threads.ts`
 - `world/festivals.ts`
 - `world/npc.ts`
