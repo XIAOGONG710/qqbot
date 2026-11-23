@@ -75,8 +75,8 @@ import { stickerReads as openStickerReads } from '.././vision/sticker-reads.ts';
 import type { Responder, ResponderStatus } from '.././social/responder.ts';
 import { contextSummarizer } from '.././language/context-window.ts';
 import { createContactResponder as createPipeline, loadTierCard, type ContactPipelineOptions, type TierCard } from './contact.ts';
-import { groupLog, type GroupDecisionTrace } from '.././social/group-chat.ts';
-import { groupOpportunity, type GroupMotiveDecision } from '.././social/group-opportunity.ts';
+import { groupLog } from '.././social/group-chat.ts';
+import { groupAgencyWiring, type GroupAgencyHooks } from '.././social/group-agency-wiring.ts';
 import { privateGroupBulletinRecall, privateGroupBulletinTarget, privateGroupScheduleRecall } from '../social/group-memory.ts';
 import { groupPeople } from '.././social/group-people.ts';
 import { groupRoom } from '.././social/group-room.ts';
@@ -202,7 +202,6 @@ import { humanStateAt } from '.././human-projection.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
 import { PHOTO_REVIEW_MAX_THUMBNAIL_BYTES } from '@qqbot/mobile-companion/photo-review';
 import { MAX_QUEUED_PER_CLIENT } from '@qqbot/mobile-companion/runtime';
-import { defendWishFrom } from '../social/group-self.ts';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { journalOn, journalOnDiaries, selfThread, selfThreadFromDiaries, selfThreadLine } from '.././language/self-thread.ts';
 import { leaveAnnouncer } from '.././life/leave-note.ts';
@@ -419,11 +418,7 @@ export interface AppOptions {
     /** 测试用：仓库根（休眠封存从这里复制角色目录、设定账本从这里核对）；不给按本文件位置往上推。测试给合成的根，就不会把真实角色复制出来 */
     repoRoot?: string;
     /** 群自主的模拟钩子（仅 sim 用，线上不传）：替换动机快照、收集决策痕迹、给群聊一个假时钟 */
-    groupAgencyHooks?: {
-        motiveOverride?: GroupMotiveDecision;
-        onDecision?: (trace: GroupDecisionTrace) => void;
-        now?: () => number;
-    };
+    groupAgencyHooks?: GroupAgencyHooks;
 }
 
 /** 名单外的人在提示词里的称呼（{{user}}）：QQ 昵称，没有就叫「对方」 */
@@ -2392,25 +2387,19 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     groupFeel = groupsOn ? groupAffect(config.dataDir) : undefined;
     // 群里的那一摊（攒一批再说、开口、点歌、戳、点赞、印象）在 social/group-room.ts；群消息经解释器的 group-room 模块进来（ADR 0336 第 6 步）。
     // 群记录、群里认识的人、群里的遭遇私聊那边也读，留在这里建
-    // 群自主（ADR 0343）：快照只在这里取、 observe/record 仍由 App 独占；模拟钩子不传时与原来逐字一致
-    const agencyHooks = groupAgencyHooks;
-    const groupWorldNow = agencyHooks?.now ?? worldNow;
-    const agencyActive = (config.groupAgency ?? 'off') !== 'off' || Boolean(agencyHooks?.motiveOverride);
-    const agencyMotive = agencyActive ? (): GroupMotiveDecision =>
-        agencyHooks?.motiveOverride ?? groupOpportunity(new Date(groupWorldNow()), agencyShadow) : undefined;
-    const groupBoyfriend = config.contacts.find(c => c.tier === 'boyfriend');
+    // 群自主（ADR 0343）：群里的时钟、表达机会的快照、决策痕迹、他要不要她出头在 social/group-agency-wiring.ts（ADR 0336 收尾）
+    const agency = groupAgencyWiring({ config, hooks: groupAgencyHooks, worldNow, agencyShadow, history: qq => history.load(qq) });
     const groupChat = groupRoom({
-        config, exec, transport, log, worldNow: groupWorldNow, reading, dormancy, cardFor, sendOwnedNotice, sing, repoRoot,
+        config, exec, transport, log, worldNow: agency.worldNow, reading, dormancy, cardFor, sendOwnedNotice, sing, repoRoot,
         groupsOn, groupLogs, groupPeopleBook, groupFeel, groupSongRequests, songRequestLifetime,
         stopped: () => stopped, selfId: () => selfIdKnown, lastFeelings: () => lastFeelings,
         plainTextOf, singBusyLine: () => pickLine(SING_LINES.busy),
         // 群里她也有自己（ADR 0341）：她那边用带结算的世界账；重启后私聊还没算过心境时读落盘的那份
         ...(sharedWorld ? { worldFor: (card: TierCard, at: Date) => card.character.herWorld && card.character.schedule ? sharedWorld.at(card.character.herWorld, card.character.schedule, at) : undefined } : {}),
         savedFeelings: () => readSavedFeelings(soulDir()),
-        ...(agencyMotive ? { groupOpportunity: agencyMotive } : {}),
-        ...(agencyHooks?.onDecision ? { onDecision: agencyHooks.onDecision } : {}),
-        // 群里有人损他，她出不出头先看他自己的意思（groupAgency B，她 11-22：「你不想我掺和我就装没看见」）：他在私聊里最近说的那句
-        ...(config.groupAgency !== 'off' && groupBoyfriend ? { defendWish: () => defendWishFrom(history.load(groupBoyfriend.qq)) } : {}),
+        ...(agency.groupOpportunity ? { groupOpportunity: agency.groupOpportunity } : {}),
+        ...(agency.onDecision ? { onDecision: agency.onDecision } : {}),
+        ...(agency.defendWish ? { defendWish: agency.defendWish } : {}),
     });
 
 
