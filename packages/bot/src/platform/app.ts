@@ -2196,7 +2196,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         quoteLookup: qq => quoteLookup(qq), forwardLookup: qq => forwardLookup(qq), markCrisis, syncRecalledMemory, deviceOwner, plainTextOf, inbox, log,
     });
     lifetime.own('incoming', () => incoming.stop());
-    const { activeIncoming, claimIncoming, releaseIncoming, bufferedIncoming, bufferedIncomingIds, eventIdentity, validIncomingEvent, tracksIncoming, stageEvent, incomingFailure, prepareReceived, recoverIncoming, queueIncomingRecovery } = incoming;
+    const { activeIncoming, claimIncoming, releaseIncoming, bufferedIncoming, bufferedIncomingIds, eventIdentity, validIncomingEvent, tracksIncoming, stageEvent, incomingFailure, prepareReceived, queueIncomingRecovery } = incoming;
     let privateSongReference: { song: string; at: number } | undefined;
     const groupSongRequests = new Map<number, { song: string; at: number }>();
     const songRequestLifetime = 5 * 60_000;

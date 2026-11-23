@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import { acquireLock, HEARTBEAT_STALE_MS, isProcessAlive, startHeartbeat } from '../src/platform/lock.ts';
+import { acquireLock, HEARTBEAT_STALE_MS, isProcessAlive } from '../src/platform/lock.ts';
 
 describe('单实例锁', () => {
     let dir = '';
@@ -82,24 +82,19 @@ describe('心跳：卡死/PID 复用的进程挡住启动时要能接管（2026-
         assert.throws(() => acquireLock(path, 111, () => true, { path: beat }), /已有一个 bot 在运行/);
     });
 
-    test('startHeartbeat 会写时间戳', () => {
-        const stop = startHeartbeat(beat, 10_000);
-        assert.ok(Number(readFileSync(beat, 'utf8')) > 0);
-        stop();
-    });
 });
 
-// 2026-10-30 线上：锁文件被别的启动流程删掉、进程还在跑 → 下一次启动会起第二个实例
-test('心跳顺带把锁补回来', () => {
+// 2026-10-30 线上：锁文件被别的启动流程删掉、进程还在跑 → 下一次启动会起第二个实例。
+// 当时靠心跳把锁文件补回来；11-05（54cbd680）起持锁的进程一直握着协调库的写事务，锁文件没了也起不了第二个——这里钉住这一点（心跳写者已删）
+test('持锁时锁文件被删：第二个实例仍然拿不到（协调租约忙）', () => {
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-lock-keep-'));
-    const hb = join(dir, 'bot.lock.hb');
     const lockFile = join(dir, 'bot.lock');
-    const stop = startHeartbeat(hb, 10_000, lockFile, 4242);
-    assert.equal(readFileSync(lockFile, 'utf8'), '4242', '第一次心跳就把锁写上');
-    rmSync(lockFile);
-    stop();
-    const stop2 = startHeartbeat(hb, 10_000, lockFile, 4242);
-    assert.equal(readFileSync(lockFile, 'utf8'), '4242', '锁被删了，下一次心跳补回来');
-    stop2();
-    try { rmSync(dir, { recursive: true, force: true }); } catch { /* Windows 可能删不掉 */ }
+    const release = acquireLock(lockFile);
+    try {
+        rmSync(lockFile);
+        assert.throws(() => acquireLock(lockFile, 4242, () => true), /协调租约忙/);
+    } finally {
+        release();
+        try { rmSync(dir, { recursive: true, force: true }); } catch { /* Windows 可能删不掉 */ }
+    }
 });

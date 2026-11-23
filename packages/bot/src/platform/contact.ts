@@ -12,13 +12,11 @@ import { selfPieces, type Piece, type PlacedPiece } from '../interpreter/slots.t
 import { promptManifest, type ManifestInput, type PromptManifest } from './prompt-manifest.ts';
 import { dirname, join } from 'node:path';
 import { noteCharacterTerms } from '../character-terms.ts';
-import { UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
-import { isClose, sourceLabel, startsConversation, todayStart } from '.././emotion/disclosure.ts';
+import { UNLISTED_TIER, type AppConfig, type Contact } from './config.ts';
 import { crisisFallback } from '.././language/exit-check.ts';
 import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
-import { chatCompletion, completionMaxTokens, forExtraction } from '.././language/llm.ts';
+import { chatCompletion, completionMaxTokens } from '.././language/llm.ts';
 import type { Log } from './log.ts';
-import { CLEAR_DAYS } from '.././memory/fading.ts';
 import type { LongTermMemory } from '.././memory/long-term.ts';
 import { buildPrompt, type ChatMessage, type OpenAIMessage, type PromptResult } from '.././language/prompt.ts';
 import { cleanUpReply } from '.././language/reply.ts';
@@ -47,14 +45,11 @@ import { appraisals, type Appraisal, type Felt, type Moment } from '.././emotion
 import type { LedgerEntry } from '../emotion/feeling-ledger.ts';
 import type { FeelingsReport } from '../emotion/feeling-export.ts';
 
-import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '.././life/people.ts';
 import { type PromiseKeeper } from '.././life/promises.ts';
 import { herDay, type ExtraFreeActivity } from '.././life/schedule.ts';
 import type { Summarizer, TurnWindow } from '.././language/context-window.ts';
 import { estimateTokens } from '.././language/tokens.ts';
-import { selfThreadLine } from '.././language/self-thread.ts';
 import { feltDayNote, feltDuring } from '.././emotion/felt-then.ts';
-import { lastNight, withLastNight } from '.././life/nights.ts';
 import type { HumanValues } from '.././human-values.ts';
 import type { PhotoKind, PhotoShelf } from '.././vision/photos.ts';
 import type { StickerShelf } from '.././social/stickers.ts';
@@ -460,7 +455,6 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             if (perceived instanceof Promise) await perceived;
             // 她此刻（她那边 ADR 0021、身体 ADR 0025、状态行 ADR 0042 等）是解释器的模块（modules/her-now.ts）：perceive 时写进 turn.facts，
             // 经 turnModules 放进 state、world、body、plans、partnerBack 槽；下面的旧逻辑读 facts
-            const { body: bodyNow } = turn.facts;
             // assess 之前原位取的几样（ADR 0336「判断那一串」），先后照旧，写进 turn.facts 给意图阶梯和放段落的模块读：
             // - 他问到过去的某一天（ADR 0032）那天的流水账：记忆模块的 decideAt.recap（流水账经 DecideCtx.recapOf 按这一档的卡算）
             // - 她在 QQ 上的样子（ADR 0083）、她答应的事（ADR 0018）：time-notes 模块的 decideAt.promises
