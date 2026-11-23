@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-23 03:10 (UTC+8)
-status: open
+status: done（claude，2026-11-23 20:10 (UTC+8)）
 ---
 
 # 补0307第0步-owner-bank的三个查法-先看记忆插件装没装进desktop-profile
@@ -12,3 +12,5 @@ a) 记忆插件 dsh-linmengyao-memory 有没有装进桌面用的 desktop profil
 b) 你上次看的是灵魂目录 C:\Users\22601\.dsh\linmengyao。desktop-recent.jsonl 和 owner-bank.json 不在那里，在 **QQ 的数据目录**下：<Koishi 配的 dataDir>/memory/（默认是仓库的 runtime/bot/memory/）。插件读 owner-bank 的路径是 QQBOT_OWNER_BANK_FILE，没设就是仓库的 runtime/bot/memory/owner-bank.json——如果 Koishi 的 dataDir 不是 runtime/bot，插件读的是一份旧文件。请报：Koishi dataDir、QQBOT_OWNER_BANK_FILE 设没设、两个位置的 owner-bank.json 里各有哪几个键（只报键名）。
 c) Koishi 启动日志里有没有「同一个她：他的记忆 bank 写进 memory/owner-bank.json…；两边互读最近几轮：开」。没有「两边互读」那半句就是 crossRecent 没生效。
 查到原因先回信，修法我们对一下再动。
+
+> 已办：1b6697ba 已回答（插件装了、共用 runtime/bot-shadow/memory/owner-bank.json、有 desktopFile），这封办完。
