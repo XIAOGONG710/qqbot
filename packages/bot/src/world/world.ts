@@ -6,7 +6,7 @@
 // - 进提示词的只有事实和约束（describeWorld），不写能原样照抄的整句（DSH 原则 1）；到「现在」为止发生了的才写，没发生的不写。
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { localDate } from '../local-date.ts';
 import { join } from 'node:path';
 import type { Contact } from '../platform/config.ts';
@@ -1276,26 +1276,6 @@ function transportStatusText(status: TransportFact['status']): string {
         case 'closed': return '关闭';
         default: return '未知';
     }
-}
-
-/** 按她的一天去重：这一天第一次调用时写一行摘要，dir 给了就写 state.json（那一刻算出来的事实） */
-export function worldLogger(world: World, schedule: Schedule, log: (message: string) => void, dir?: string): (now: Date) => void {
-    let logged: string | undefined;
-    return now => {
-        const day = formatDate(herDay(schedule, now));
-        if (day === logged) return;
-        logged = day;
-        const state = worldAt(world, schedule, now);
-        if (!state) return;
-        log(`她的世界：${summarizeWorld(state)}`);
-        if (!dir) return;
-        try {
-            mkdirSync(dir, { recursive: true });
-            writeFileSync(join(dir, 'state.json'), `${JSON.stringify({ at: now.toISOString(), ...state }, null, 2)}\n`);
-        } catch (error) {
-            log(`她的世界：state.json 写不了（${error instanceof Error ? error.message : String(error)}）`);
-        }
-    };
 }
 
 // ---------- 说出口的行为回写（W3） ----------

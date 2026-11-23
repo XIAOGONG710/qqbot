@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 import type { Schedule } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import type { LifeEventDraft } from '../src/world/life-events.ts';
-import { describeWorld, occupationAt, parseWorld, recapDay, simulateWorld, worldAt, worldLogger, worldNews, worldState, type World, type WorldAction } from '../src/world/world.ts';
+import { describeWorld, occupationAt, parseWorld, recapDay, simulateWorld, worldAt, worldNews, worldState, type World, type WorldAction } from '../src/world/world.ts';
 import { busySpans } from '../src/world/life-selector.ts';
 import { syntheticCardPath } from './fixtures/card.ts';
 
@@ -141,24 +141,6 @@ describe('「你那边」进时间块（ADR 0021 W2）', () => {
         assert.match(text, /作业：\d 份作业还没写（明天交）|作业：作业还没写（明天交）/);
     });
 
-    test('每天第一次写一行摘要和 state.json，同一天不重复', () => {
-        const dir = mkdtempSync(join(tmpdir(), 'world-'));
-        try {
-            const logs: string[] = [];
-            const note = worldLogger(world, schedule, message => logs.push(message), dir);
-            note(at('2026-10-11T12:00:00'));
-            note(at('2026-10-11T21:00:00'));
-            note(at('2026-10-12T01:59:00'));
-            assert.equal(logs.length, 1);
-            assert.match(logs[0]!, /^她的世界：今天（10-11）：/);
-            const state = JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8'));
-            assert.equal(state.day, '2026-10-11');
-            note(at('2026-10-12T09:00:00'));
-            assert.equal(logs.length, 2);
-        } finally {
-            rmSync(dir, { recursive: true, force: true });
-        }
-    });
 });
 
 describe('说出口的行为回写世界（ADR 0027 W3）', () => {
