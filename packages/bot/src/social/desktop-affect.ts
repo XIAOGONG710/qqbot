@@ -16,8 +16,22 @@ const WARM = /想你|想抱|抱抱|亲一下|喜欢你|爱你|mua/i;
 const CARE = /吃了没|吃了吗|吃饭没|吃饭了没|吃饭了吗|吃点|早点睡|睡觉吧|别熬|别太累|喝水|累不累|注意身体/;
 /** 他自己难受（累、被骂、不舒服）：她跟着担心 */
 const HIS_TROUBLE = /累死|好累|太累|被骂|难受|不舒服|头疼|发烧|睡不着|烦死了/;
+/**
+ * 是他自己难受，不是问她、劝她（11-23 claude 审 6bd84cee：「别太累了」「你好累吗」「你哪里不舒服」原来都记成了他难受）：
+ * 命中的词前面几个字里有「你」「别」，或者后面紧跟着「吗 / 么 / 不」（问句），都不算
+ */
+function hisOwnTrouble(said: string): boolean {
+    const hit = HIS_TROUBLE.exec(said);
+    if (!hit) return false;
+    const before = said.slice(Math.max(0, hit.index - 4), hit.index);
+    const after = said.slice(hit.index + hit[0].length, hit.index + hit[0].length + 2);
+    return !/你|别/.test(before) && !/^[吗么不]/.test(after);
+}
+
 /** 他冲她发火 */
-const RUDE = /别烦|烦不烦|闭嘴|滚(?:吧|开)|你烦不烦|有病/;
+const RUDE = /别烦|烦不烦|闭嘴|滚(?:吧|开)|你烦不烦/;
+/** 「你有病吧」多半是斗嘴：照记，但只算一点 */
+const TEASY = /有病/;
 
 /**
  * 桌面上的这些话说过的、在她心里算事的：一条消息最多算一件事（先凶后暖按最重的算）。
@@ -33,7 +47,8 @@ export function desktopAffectOf(message: Pick<StoredMessage, 'role' | 'content' 
     if (!said.trim()) return undefined;
     const stamp = `${at}`;
     if (RUDE.test(said)) return { id: `desktop:rude:${stamp}`, at, kind: 'annoyed', strength: 2, cause: '他在电脑上冲你发火', source: 'desktop', aboutHim: true };
-    if (HIS_TROUBLE.test(said)) return { id: `desktop:trouble:${stamp}`, at, kind: 'worry', strength: 2, cause: '他在电脑上说难受', source: 'desktop', aboutHim: true };
+    if (TEASY.test(said)) return { id: `desktop:rude:${stamp}`, at, kind: 'annoyed', strength: 1, cause: '他在电脑上冲你发火', source: 'desktop', aboutHim: true };
+    if (hisOwnTrouble(said)) return { id: `desktop:trouble:${stamp}`, at, kind: 'worry', strength: 2, cause: '他在电脑上说难受', source: 'desktop', aboutHim: true };
     if (WARM.test(said)) return { id: `desktop:warm:${stamp}`, at, kind: 'joy', strength: 2, cause: '他在电脑上说想你', source: 'desktop', aboutHim: true };
     if (CARE.test(said)) return { id: `desktop:care:${stamp}`, at, kind: 'joy', strength: 1, cause: '他在电脑上关心你', source: 'desktop', aboutHim: true };
     return undefined;

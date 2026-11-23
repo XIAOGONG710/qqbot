@@ -213,7 +213,8 @@ const FEELING_LEDGER_FILE = 'feeling-ledger.jsonl'
 const FEELING_COARSE_AFTER_DAYS = 90
 const FEELING_LOOSE = new Set(['joy', 'relief'])
 const FEELING_NAME = { joy: '开心', relief: '松了口气', worry: '担心', sad: '难过', annoyed: '烦', tired: '累' }
-const FEELING_ABOUT_HIM_AWAY = new Set(['sad', 'annoyed', 'worry'])
+/** 因为他而起的难过 / 烦 / 担心：她 11-22「会带一点……堵一会儿就过去了」——附，但最多到「有点」（和 QQ 的 ledgerNote 一样） */
+const FEELING_ABOUT_HIM_SOFTENED = new Set(['sad', 'annoyed', 'worry'])
 const FEELING_STOP = new Set(['这个', '那个', '什么', '怎么', '我们', '你们', '他们', '现在', '时候', '有点', '觉得', '就是', '因为', '所以', '但是', '还是', '已经', '自己', '事情', '一个', '一下'])
 
 /** 有意义的二字词（对得上用；和 QQ 侧 sameThing 一个意思：共 2 个以上才算同一件事） */
@@ -249,7 +250,7 @@ export function feltThenNote(ledger, item, now = new Date()) {
   const at = memoryHappenedAt(item)
   if (!at || !ledger.length) return ''
   const day = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-  const same = ledger.filter(row => day(new Date(row.at)) === day(at) && !(row.aboutHim && FEELING_ABOUT_HIM_AWAY.has(row.kind)))
+  const same = ledger.filter(row => day(new Date(row.at)) === day(at))
   if (!same.length) return ''
   const mine = feelingGrams(item.text)
   const fits = same.map((row) => {
@@ -260,8 +261,11 @@ export function feltThenNote(ledger, item, now = new Date()) {
   }).filter(hit => hit.shared >= 2).sort((a, b) => (b.row.level === 'strong' ? 1 : 0) - (a.row.level === 'strong' ? 1 : 0) || b.shared - a.shared)
   if (!fits.length) return ''
   const row = fits[0].row
-  const what = row.withhold === 'pain' ? '身上不太舒服' : row.withhold === 'mother' ? '心里一直悬着' : FEELING_NAME[row.kind]
-  return `那时候你心里${row.coarse ? '只记得个大概：' : ''}${row.level === 'strong' ? '很' : '有点'}${what}（那是你当时的感觉，现在不一定还这样）`
+  // 疼 / 她妈那块的慌只说换过的那句、不带程度；因为他而起的最多到「有点」（规则同 QQ 的 ledgerNote）
+  const withheld = row.withhold === 'pain' ? '身上不太舒服' : row.withhold === 'mother' ? '心里一直悬着' : ''
+  const softened = row.aboutHim && FEELING_ABOUT_HIM_SOFTENED.has(row.kind)
+  const said = withheld || `${row.level === 'strong' && !softened ? '很' : '有点'}${FEELING_NAME[row.kind]}`
+  return `那时候你心里${row.coarse ? '只记得个大概：' : ''}${said}（那是你当时的感觉，现在不一定还这样）`
 }
 
 /*

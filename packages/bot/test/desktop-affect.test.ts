@@ -64,3 +64,17 @@ test('桌面来的评估进得了心境（feelingsAt 认 desktop 来源）', asy
     assert.equal(felt[0]?.source, 'desktop');
     assert.equal(felt[0]?.cause, '他在电脑上说想你');
 });
+
+// 11-23 审 6bd84cee：关心她、问她的话原来记成了「他在电脑上说难受」
+test('他自己难受才算；劝她、问她的不算（别太累了 / 你好累吗 / 你哪里不舒服）；「有病」只算一点', () => {
+    const now = Date.parse('2026-11-04T20:30:00+08:00');
+    const say = (content: string) => desktopAffectOf({ role: 'user', content, time: new Date(now - 60_000).toISOString() }, now);
+    assert.equal(say('今天好累啊')?.cause, '他在电脑上说难受');
+    assert.equal(say('我头疼')?.cause, '他在电脑上说难受');
+    assert.equal(say('别太累了')?.cause, '他在电脑上关心你', '劝她是关心');
+    assert.equal(say('你好累吗'), undefined, '问她的不算他难受');
+    assert.equal(say('你哪里不舒服'), undefined);
+    assert.equal(say('不舒服吗'), undefined, '问句不算');
+    assert.equal(say('你有病吧哈哈')?.strength, 1);
+    assert.equal(say('闭嘴')?.strength, 2);
+});

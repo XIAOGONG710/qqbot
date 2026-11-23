@@ -46,8 +46,9 @@ describe('感觉账：她不想原样带上的两类', () => {
         assert.equal(row.withhold, 'pain');
         assert.equal(row.coarse, true);
         assert.equal(withheldCause(row.withhold), '身上不太舒服');
-        assert.match(ledgerNote(row), /只记得个大概：有点难过（那是你当时的感觉，现在不一定还这样）/);
-        assert.doesNotMatch(ledgerNote(row), /痛经/);
+        // 召回时只说换过的那句、不带程度（11-23：QQ 这边原来没换，照出「有点难过」，和插件不一致）
+        assert.match(ledgerNote(row), /只记得个大概：身上不太舒服（那是你当时的感觉，现在不一定还这样）/);
+        assert.doesNotMatch(ledgerNote(row), /痛经|难过/);
     });
 
     test('她妈那块的慌只说「心里一直悬着」；别的担心照原样', () => {
@@ -86,4 +87,14 @@ describe('感觉账：衰减不按天数硬删', () => {
             assert.doesNotMatch(ledgerNote(row), /只记得个大概/);
         }
     });
+});
+
+// 她 11-22 第 3 问：「会带一点。想起来还是有点堵，但堵一会儿就过去了，不会攒着」——因为他而起的附，但最多到「有点」
+test('因为他难过 / 烦 / 担心的：附，但最多到「有点」；别的照程度', async () => {
+    const { ledgerNote } = await import('../src/emotion/feeling-ledger.ts');
+    const base = { at: Date.now(), cause: '他好久不回消息', coarse: false, withhold: '' as const };
+    assert.match(ledgerNote({ ...base, kind: 'sad', level: 'strong', aboutHim: true } as never), /心里有点难过/);
+    assert.doesNotMatch(ledgerNote({ ...base, kind: 'sad', level: 'strong', aboutHim: true } as never), /很难过/);
+    assert.match(ledgerNote({ ...base, kind: 'joy', level: 'strong', aboutHim: true } as never), /心里很开心/, '开心的不压');
+    assert.match(ledgerNote({ ...base, kind: 'sad', level: 'strong', aboutHim: false } as never), /心里很难过/, '不是因为他的照程度');
 });

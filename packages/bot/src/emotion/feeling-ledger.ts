@@ -136,8 +136,14 @@ export function readLedger(soulDir: string, now = Date.now()): LedgerEntry[] {
  * 她不想原样带上的那两类在这里换说法；粗的只记得个大概。
  */
 export function ledgerNote(entry: LedgerEntry): string {
-    const strong = entry.level === 'strong';
-    const said = `${strong ? '很' : '有点'}${FEELING_NAME[entry.kind]}`;
+    // 疼 / 她妈那块的慌：只说换过的那句，不带程度（「很身上不太舒服」不成话，也不该让她再疼一遍）
+    const withheld = withheldCause(entry.withhold);
+    // 因为他难过 / 烦 / 担心的：她 11-22「会带一点。想起来还是有点堵，但堵一会儿就过去了，不会攒着」——附，但最多到「有点」
+    const softened = entry.aboutHim && ABOUT_HIM_SOFTENED.has(entry.kind);
+    const said = withheld ?? `${entry.level === 'strong' && !softened ? '很' : '有点'}${FEELING_NAME[entry.kind]}`;
     const loose = entry.coarse ? '只记得个大概：' : '';
     return `那时候你心里${loose}${said}（那是你当时的感觉，现在不一定还这样）`;
 }
+
+/** 因为他而起、只带一点的那几种（她 11-22 第 3 问） */
+const ABOUT_HIM_SOFTENED: ReadonlySet<FeelingKind> = new Set(['sad', 'annoyed', 'worry']);

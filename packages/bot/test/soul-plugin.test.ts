@@ -1526,10 +1526,13 @@ describe('一个生活·第 5 层：感觉账配当时的感觉（DSH 侧只读�
         assert.doesNotMatch(mother, /我妈/);
     });
 
-    test('因为他而难过、烦、担心的不附（ADR 0218 的护栏）', () => {
-        const file = ledgerFile([row(daysAgo(4), 'sad', '他好久不回我消息', { aboutHim: true })]);
+    // 原来照 ADR 0218 的护栏整条不附；她 11-22 第 3 问说「会带一点……堵一会儿就过去了」，两边统一成附、最多到「有点」（和 QQ 的 ledgerNote 一样）
+    test('因为他而难过、烦、担心的：附，但最多到「有点」', () => {
+        const file = ledgerFile([row(daysAgo(4), 'sad', '他好久不回我消息', { aboutHim: true, level: 'strong' })]);
         const ledger = plugin.readFeelingLedger(file, now);
-        assert.equal(plugin.feltThenNote(ledger, { text: '林梦瑶说他好久不回我消息', date: new Date(daysAgo(4)).toISOString() }, new Date(now)), '');
+        const note = plugin.feltThenNote(ledger, { text: '林梦瑶说他好久不回我消息', date: new Date(daysAgo(4)).toISOString() }, new Date(now));
+        assert.match(note, /那时候你心里有点难过/);
+        assert.doesNotMatch(note, /很难过/);
     });
 
     test('默认不附当时的感觉：只开 memoryVoice、不传 memoryFeelings 就没有那句（要开得用户点头）', async () => {
