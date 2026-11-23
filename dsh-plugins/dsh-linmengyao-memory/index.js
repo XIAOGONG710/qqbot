@@ -48,6 +48,13 @@ const DEFAULTS = {
   /** QQ 那边每次她翻完日记写的「对自己的认识」（ADR 0194）；超过 insightsStaleMs 没刷新就不用（QQ 没在跑 / 开关关掉了） */
   insightsFile: soulPath('INSIGHTS.json'),
   insightsStaleMs: 6 * 60 * 60 * 1000,
+  /**
+   * 「我现在的样子」（ADR 0340）：她每晚在 QQ 那边整份重写的那一份，QQ 写 PORTRAIT.json，这里只读，和 QQ 提示词里那一段一字不差。
+   * 用户 2026-11-23 点头让桌面也带着；默认关，要开等她本人的话（exchange 0330）和用户。超过 portraitStaleMs 没刷新就不用
+   */
+  portraitFromQQ: false,
+  portraitFile: soulPath('PORTRAIT.json'),
+  portraitStaleMs: 6 * 60 * 60 * 1000,
   /** QQ 那边每次给他算完心境写的（ADR 0197）；超过 feelingsStaleMs 没刷新就不用 */
   feelingsFile: soulPath('FEELINGS.json'),
   feelingsStaleMs: 3 * 60 * 60 * 1000,
@@ -929,6 +936,26 @@ export function insightsBlock(cfg, query, now = Date.now(), max = 3) {
   return `[你对自己的了解（是你自己慢慢发现的，不是设定；他这句话正好聊到，才顺着自然带一下，别硬提，别当口头禅，也别提是怎么发现的）：\n${picked.map((item) => `- ${item.note.text}`).join('\n')}]`
 }
 
+/**
+ * 「我现在的样子」（ADR 0340，同一个她）：QQ 那边每晚她自己重写、每小时刷新时间戳的 PORTRAIT.json；这里只读。
+ * 渲染和 QQ 的 portraitLine（packages/bot/src/life/self-portrait.ts）逐字一致——两边带的是同一份「现在的我」。
+ * 标记不对 / 超过 portraitStaleMs 没刷新 / 时间在未来 / 读不懂 / 过不了绊线：当没有。只在桌面上他自己和她说话的回合放。
+ */
+export function portraitBlock(cfg, now = Date.now()) {
+  if (channel() !== 'desktop') return ''
+  try {
+    const data = JSON.parse(fs.readFileSync(cfg.portraitFile, 'utf8'))
+    if (!data || data.kind !== 'qq-self-portrait' || typeof data.text !== 'string' || !Number.isFinite(data.at)) return ''
+    const generated = Date.parse(data.generatedAt)
+    if (!Number.isFinite(generated) || now - generated > cfg.portraitStaleMs || generated > now + 60_000) return ''
+    if (!data.text.trim() || data.text.length > 4000 || soulTripwire(data.text) || /<<|>>/.test(data.text)) return ''
+    const why = typeof data.why === 'string' && data.why && !soulTripwire(data.why) ? data.why : ''
+    const d = new Date(data.at)
+    const day = `${d.getMonth() + 1} 月 ${d.getDate()} 日`
+    return `[你现在的样子（你自己写的，${day}晚上改过；是你慢慢变成的样子，不是设定。说话习惯、口味、看法跟上面设定里写的不一样时，按这份来；名字、年龄、爸妈、家、学校、经历、他在哪边这些事实还是以设定为准。自然地做这样的自己，别提这份东西）：\n${data.text}${why ? `\n（${day}改的：${why}）` : ''}]`
+  } catch { return '' }
+}
+
 /** 「她现在在干嘛」：QQ 那边每 10 分钟渲染一次；超过 nowStaleMs 没更新就不注入，只记一行 */
 function readNowLine(cfg) {
   try {
@@ -1232,13 +1259,18 @@ export function apply(ctx, config = {}) {
             // 「她现在在干嘛」只从 readNowLine 一条路进（带过期判断，下面的 sp.context）：原来这里还有一条直接读 NOW.md 的，
             // 同一份状态注入两遍，而且这一条不看过期——QQ 没在跑时旧状态照样冒充现在（任务书 S7）
             const insights = insightsBlock(cfg, query)
+            // 「我现在的样子」（ADR 0340，portraitFromQQ）：和 QQ 同一份。带上它时 SOUL.md 换个标题——那是她在电脑上随手追加的，
+            // 「现在的我」以这份为准（ADR 0340「SOUL.md 和这份怎么并」：两份并存，不会两边各有一个现在的我）
+            const portrait = cfg.portraitFromQQ === true ? portraitBlock(cfg) : ''
+            if (portrait) log(cfg, '我现在的样子：这一轮带上了 QQ 那份（日志不记内容）')
             const feelings = cache.self ? '' : feelingsBlock(cfg)
             if (feelings) log(cfg, '心境：这一轮放了 QQ 那边算的心境（日志不记内容）')
             if (insights) log(cfg, `自我认识：这一轮放了 ${insights.split('\n').length - 1} 条（日志不记内容）`)
             cache.text = [
+              portrait,
               storyShown ? `[你走到现在的故事]\n${storyShown}` : '',
               qqRecentBlock(cfg),
-              soul ? `[你现在的自我]\n${soul}` : '',
+              soul ? `${portrait ? '[你在电脑上随手记下的关于自己的话（按时间追加，旧的不一定还对；现在的样子以上面那份为准）]' : '[你现在的自我]'}\n${soul}` : '',
               feelings,
               insights,
               ledgerShown ? `[你的判断账本]\n${ledgerShown}` : '',
