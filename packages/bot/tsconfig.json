@@ -1,4 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
+  // 11-24 死代码清理之后 src 和 test 都是干净的：没人读的 import / 局部变量直接报错，免得又攒起来
+  "compilerOptions": { "noUnusedLocals": true },
   "include": ["src", "test"]
 }
