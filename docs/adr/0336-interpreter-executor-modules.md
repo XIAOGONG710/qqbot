@@ -1581,6 +1581,16 @@ app.ts 从 3317 行到 2764 行（今晚 9 个提交；全量测试除串行基�
 - `createContactResponder`（拼提示词的接线，约 300 行）：里面有她的声音（语音条）那一段，同上。
 - `status()`、手机伴侣、`connected` 的那一串：照旧。
 
+### 第 6 步：app.ts 长回去的那一截搬出去，立行数上限（2026-11-24）
+
+- 11-20 到 11-23 的 16 个新功能提交直接在 `createApp` 里接线，app.ts 从 2764 行长回 3071 行（清单、先后和风险见 `docs/plans/2026-11-24-0336-finish.md`）。
+- 照第 6 步「原样搬、依赖交进去」的做法搬出六块，每块单独提交、41 个场景逐字一致：
+  现实数据取数器（`world/reality-feeds.ts`）、桌面那一摊（`life/desktop-host.ts`）、SELF.json 导出和回执（`life/self-export-host.ts`）、
+  NOW.md 导出和 ownDays（`life/now-host.ts`）、群自主的钩子（`social/group-agency-wiring.ts`）、主动留话那一拍（`social/outbox-host.ts`）。
+  基线没碰到的（桌面、SELF、ownDays、outbox 开关都默认关）另用一次性的对照：同一份配置把这些开关全开、`Math.random` 固定种子，搬之前和搬之后的日志、提示词、数据目录和灵魂目录逐字一致（只差心跳文件和毫秒级的时刻）。
+- app.ts 3071 → 2764 行（六个提交 `72193101`…`6f01bf47`）；另有 `30901fd1`（fewerRules 开着时不建口头习惯模块，省一次后台调用）加了两行，2766 行。
+- 守线：`test/app-size.test.ts` 给 app.ts 定行数上限 2770 行，只许降不许升；新功能做成模块或宿主文件，app.ts 里只留建它、登记停法、调用。
+
 ## 附：提示词指纹清单（2026-11-22，研究 `docs/research/2026-11-22-private-companion-v2.md` 五、建议 1）
 
 拆模块之后，「这一段是哪个模块放的、哪一步改了它」要能不碰正文地看出来，第 2 层（ADR 0347）的「SELF 和 QQ『此刻』块一字不差」也要能不开敏感日志地验。做法：
