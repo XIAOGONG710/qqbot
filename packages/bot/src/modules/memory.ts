@@ -34,7 +34,7 @@ import type { DecideCtx, Module, Turn } from '../interpreter/interpreter.ts';
 import type { Piece, Slot } from '../interpreter/slots.ts';
 import { disclosureRules, isClose, sourceLabel, startsConversation, todayStart } from '../emotion/disclosure.ts';
 import { feltNoteFor, sameThing } from '../emotion/felt-then.ts';
-import { ledgerNote, type LedgerEntry } from '../emotion/feeling-ledger.ts';
+import { ledgerNote } from '../emotion/feeling-ledger.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '../life/people.ts';
 import { initiateQuery, PERSON_RECALLED, secondPerson } from '../memory/long-term.ts';
 import { recentChat } from '../memory/fading.ts';

@@ -8,12 +8,10 @@
 // 说明写事实（“猫趴在宿舍楼下的自行车棚顶上晒太阳”），不要写她的台词或情绪；照片都按“以前拍的”说，说明里别带“今天 / 刚刚”。
 // 只收 jpg / png / webp，不超过 PHOTO_MAX_BYTES（当前 12 MiB）；同一张图重复加返回已有条目，缺失的缓存会恢复。
 
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { PHOTO_KINDS, photoKindName, photoShelf, type PhotoKind } from '../vision/photos.ts';
 import { liveDataDir } from './data-dir.ts';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
 const one = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 const dir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? liveDataDir());

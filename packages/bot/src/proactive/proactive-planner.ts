@@ -34,7 +34,7 @@ import { activitiesFromInnerChoice, type ProactiveAgencyResult } from './agency.
 import { adultSiteVisitDue } from './adult-sites.ts';
 import type { Drive, ShadowActivityCandidate } from '../life/motivation.ts';
 import type { BodyNow } from '../life/body.ts';
-import { newObstacles, obstaclesBetween, OBSTACLE_KINDS, type ObstacleFacts, type ObstacleKind } from '.././world/obstacles.ts';
+import { newObstacles, obstaclesBetween, OBSTACLE_KINDS, type ObstacleFacts } from '.././world/obstacles.ts';
 import { MEET_LEAD_MINUTES, type Appointment } from '../life/promises.ts';
 import { PromiseStateUnavailable } from '../life/promise-state.ts';
 import type { InitiateOutcome, Responder } from '.././social/responder.ts';

@@ -53,7 +53,6 @@ export function realAirQuality(): RealAirQuality | undefined { return current; }
 const MIN_HOURS = 12;
 const MAX_HOURS = 24 * 14;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
-const DAY_MS = 86_400_000;
 const pad = (n: number) => String(n).padStart(2, '0');
 const hourKey = (time: Date) => `${time.getFullYear()}-${pad(time.getMonth() + 1)}-${pad(time.getDate())}T${pad(time.getHours())}`;
 const dateOf = (time: Date) => hourKey(time).slice(0, 10);

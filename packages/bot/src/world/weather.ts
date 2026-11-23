@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { cacheAgeMs } from './cache-freshness.ts';
 import { sanitizeExternalError } from './external-error.ts';
-import { calendarDate, stateObject, stateTimestamp } from '../memory/state-schema.ts';
+import { calendarDate, stateTimestamp } from '../memory/state-schema.ts';
 import { localDate } from '../local-date.ts';
 
 /** 取天气的一个地方（卡上的 weather.places.school / home）：id 是缓存文件名（<id>.json），改了就从头取 */
@@ -295,18 +295,6 @@ function validHourly(hours: unknown): Record<string, HourWeather> {
 
 function validHourKey(key: string): boolean {
     return /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])$/.test(key) && calendarDate(key.slice(0, 10));
-}
-
-interface LegacyStore extends Omit<WeatherStore, 'fetchedAt'> { fetchedAt?: string }
-function validStore(value: unknown): value is LegacyStore {
-    if (!stateObject(value) || typeof value.since !== 'string' || !calendarDate(value.since)
-        || !(value.fetchedAt === undefined || value.fetchedAt === '' || stateTimestamp(value.fetchedAt)) || !stateObject(value.hours)) return false;
-    // 历史缓存不受供应商单次响应 14 天的限制；旧观察不能因轮转而丢失。
-    return Object.entries(value.hours).every(([key, hour]) => validHourKey(key) && stateObject(hour)
-        && typeof hour.t === 'number' && Number.isFinite(hour.t) && hour.t >= -100 && hour.t <= 100
-        && typeof hour.p === 'number' && Number.isFinite(hour.p) && hour.p >= 0 && hour.p <= 1000
-        && typeof hour.c === 'number' && Number.isInteger(hour.c) && hour.c >= 0 && hour.c <= 99
-        && (hour.o === undefined || hour.o === 1));
 }
 
 /** AbortSignal 是协作取消；另设竞速保证不合作的注入供应商也不会永久锁住 inFlight。 */

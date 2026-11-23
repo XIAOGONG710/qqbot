@@ -2,7 +2,7 @@
 // 只读：拿一页推荐 → 排一次会话（停 / 划走）→ 存今天刷到的（标题 / 分区 / 停留秒数），不播视频、不点赞、不评论。
 // dryRun 只写 presence/drafts.md，不进状态文件；读不到（风控 / 签名变了）只记一行。
 
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fetchRecommend, planSession, sessionSize } from './bilibili-feed.ts';
 import type { BiliFetch } from './bilibili-view.ts';

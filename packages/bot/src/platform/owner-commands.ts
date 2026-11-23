@@ -126,7 +126,6 @@ export function ownerCommands(deps: OwnerCommandsDeps): OwnerCommands {
             log(`[${event.user_id}] 命令检查：${JSON.stringify(plain)}`);
             if (plain === '/dsh' || plain === '/工作') {
                 // 不机械切换：先挂起，让她自己答应/拒绝/提条件；反复催会让她烦
-                const previous = readWorkMode(config.dataDir, event.user_id);
                 setWorkMode(config.dataDir, event.user_id, 'pending');
                 log(`[${event.user_id}] 收到 /dsh：等她决定`);
             } else if (plain === '/QQ' || plain === '/qq' || plain === '/回聊') {

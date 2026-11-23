@@ -12,7 +12,7 @@
 // 查到的事实只在这一轮的提示词里，不写进长期记忆（她之后聊到会不会记住，由聊天本身决定）。
 
 import { lookup as dnsLookup } from 'node:dns/promises';
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { dirname, join } from 'node:path';
 import { clip } from '.././memory/timeline.ts';
@@ -244,13 +244,6 @@ const SEARCH_CHAT = /搜到|查到|搜了|查了|没搜|没查|搜索|找一下|
 const PRIVATE_TOPIC = /土豆|(?:我|你|咱俩|我们|咱们)(?:自己|俩|拍的|住哪|在哪住|的?(?:家里|宿舍|照片|手机号|身份证|存档|聊天记录|私事))|(?:私人|私聊|聊天)(?:照片|记录|存档)|(?:上次|刚才)那张照片/;
 const PLOT_TOPIC = /剧情|剧透|结局|后续情节|这[部集]剧|这部(?:电影|番|动漫)|那部剧|烂尾|编剧|主角.*(?:死|黑化)/;
 const DEICTIC = /^(?:这个|那个|这张|那张|这幅|那幅|它|刚才那(?:个|张|幅)?)(?:吗|吧)?$/;
-const stripTrigger = (t: string) => t
-    .replace(/^(?:宝宝|瑶瑶|梦瑶)?[\s,，]*/, '')
-    .replace(/^(?:那|你|麻烦|帮我|帮忙|给我|去|再|先|能不能|可以|要不|快|看看|试试)*/, '')
-    .replace(/^(?:上网|网上)?(?:搜|查|搜索|百度|谷歌|google)(?:一下|一搜|搜|索|查|下)?/, '')
-    .replace(/[~～啊呀吧嘛呢]+$/g, '')
-    .trim();
-
 export function planExplicit(said: string, context?: string): LookupPlan | undefined {
     const url = URL_RE.exec(said)?.[0];
     if (url) {

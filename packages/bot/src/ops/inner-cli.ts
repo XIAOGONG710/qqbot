@@ -3,12 +3,10 @@
 // 日志里默认只记字数（敏感调试关着），想看她在想什么就用这个。不改任何文件。
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import { validInnerState, type InnerState } from '../proactive/inner.ts';
 import { liveDataDir } from './data-dir.ts';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
 const one = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 const dir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? join(liveDataDir(), 'proactive'));

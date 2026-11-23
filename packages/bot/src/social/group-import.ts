@@ -11,7 +11,7 @@
 //   4) QQ 导出的两行一条：2026-11-01 20:13:02 老王(123456) 换行 内容
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import type { GroupEntry } from './group-chat.ts';
 import { groupPeople } from './group-people.ts';
 

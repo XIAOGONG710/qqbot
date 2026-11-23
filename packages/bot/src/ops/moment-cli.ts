@@ -6,8 +6,7 @@
 // 来由要像她自己能说的一句事实（“高数小测没考好”），不要写她的情绪或台词；事情是作者定的，别让她经历作者没批准的大事。
 
 import { mkdirSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { writeJsonAtomic } from '../memory/json-file.ts';
 import { appraisals, FEELING_KINDS, FEELING_NAME, feelingsAt, validMoments, type Moment } from '../emotion/feelings.ts';
 import { momentsPath } from '../emotion/moments.ts';
@@ -15,7 +14,6 @@ import { calendarDate, stateTimestamp } from '../memory/state-schema.ts';
 import { DatabaseSync } from 'node:sqlite';
 import { liveDataDir } from './data-dir.ts';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
 class CommandError extends Error {}
 

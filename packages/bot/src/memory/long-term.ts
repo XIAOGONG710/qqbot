@@ -649,10 +649,6 @@ export class LongTermMemory {
         }
     }
 
-    #recalledDocuments(history: StoredMessage[]): string[] {
-        return splitEpisodes(history).filter(episode => episode.messages.some(message => message.recalled === true)).map(episode => episode.id);
-    }
-
     #observeRevisions(contact: MemoryContact, names: MacroNames, history: StoredMessage[], temporal: Set<string> = new Set(), episodes = splitEpisodes(history)): void {
         this.#markRecalls(contact, history, episodes);
         const state = this.#load(contact);

@@ -6,7 +6,7 @@ import { localDate } from '../local-date.ts';
 import { join } from 'node:path';
 import { watchedFacts } from '../language/watching.ts';
 import type { BotConfig, Contact } from '../platform/config.ts';
-import { createContactResponder, replySkip, type ContactPipelineOptions, type TierCard } from '../platform/contact.ts';
+import { createContactResponder, replySkip, type TierCard } from '../platform/contact.ts';
 import { jokesTurnModule } from '../modules/jokes.ts';
 import { idiomsTurnModule } from '../modules/idioms.ts';
 import { buildTurnModules } from '../platform/turn-modules.ts';

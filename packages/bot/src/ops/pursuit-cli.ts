@@ -6,13 +6,11 @@
 // 写的是 <数据目录>/pursuits.json（默认线上 Koishi 配置的 dataDir）。别替她定一个作者没说过的未来：毕业以后做什么、家里的期待这类悬着的问题不是追求。
 
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { writeJsonAtomic } from '../memory/json-file.ts';
 import { BUILTIN_PURSUITS, mergePursuits, pursuitsPath, validPursuits, type Pursuit, type PursuitStatus } from '../life/pursuits.ts';
 import { liveDataDir } from './data-dir.ts';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
 const one = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 const dir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? liveDataDir());

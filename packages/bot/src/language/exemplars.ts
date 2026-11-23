@@ -21,8 +21,6 @@ export interface PickOptions {
     k?: number;
 }
 
-const BIGRAM = /[\p{Script=Han}A-Za-z0-9]{2}/gu;
-
 /** 两字词集合：中文按字滑动取二元组，英文数字按词 */
 function bigrams(text: string): Set<string> {
     const clean = text.replace(/[^\p{Script=Han}A-Za-z0-9]/gu, '');

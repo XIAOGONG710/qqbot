@@ -1319,7 +1319,6 @@ export interface WorldState {
 }
 
 const ACTION_KINDS = new Set<WorldActionKind>(['feed_cat', 'pick_parcel', 'finish_homework', 'family_call', 'receive_money']);
-const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const LOCAL_MINUTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 /** 全局世界状态：events.json 是事实源；actions.json 是旧版本可读的成功动作投影。 */

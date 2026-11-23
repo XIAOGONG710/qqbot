@@ -3,12 +3,10 @@
 // 数据目录默认线上 Koishi 配置的 dataDir；QQ 号默认读 config.json 里第一个男朋友档联系人，读不到就要自己给 --qq
 
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import { weeklyReport, writeWeeklyReport } from '../platform/weekly-report.ts';
 import { liveDataDir } from './data-dir.ts';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
 const one = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 const dataDir = resolve(process.env.INIT_CWD ?? process.cwd(), one('--dir') ?? liveDataDir());

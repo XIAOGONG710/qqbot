@@ -6,13 +6,11 @@
 // 过期是按“最近一次在榜上出现”算的，手动加的从加的那天起算，之后不在榜上就会过期；想长期留着，隔一阵再 add 一次。
 // 手动加的也过敏感词（政治、灾难、案件、低俗、骂人的一律不收）和长度检查。
 
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { loadMemes, MEME_BLOCK, memesPath, updateMemes, trimMemes, type MemeEntry } from '../language/memes.ts';
 import { parseMemeArgs } from './meme-cli-args.ts';
 import { liveDataDir } from './data-dir.ts';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 let parsed: ReturnType<typeof parseMemeArgs>;
 try { parsed = parseMemeArgs(process.argv.slice(2)); }
 catch (error) { console.error(error instanceof Error ? error.message : '参数无效'); process.exit(2); }
