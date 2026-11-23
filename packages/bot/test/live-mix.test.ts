@@ -1,0 +1,73 @@
+// 线上组合盘点（test/inventory/live-mix.ts）的解析和统计；整套两天的跑法约 5 分钟，不放进 npm test，用 npm run inventory:live 跑。
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { inventory, latestSnapshot, liveSwitches, NOT_COPIED, withAlsoOn } from './inventory/live-mix.ts';
+import type { PromptManifest } from '../src/platform/prompt-manifest.ts';
+
+const YAML = `plugins:
+  server:abc:
+    port: 5140
+  qqbot:xyz:
+    contacts:
+      - qq: 1
+        name: 合成
+        tier: boyfriend
+    dataDir: runtime/x
+    schedule: true
+    jokes: false
+    proactive: 'on'
+    festivals: greet
+    identityLedger: true
+    deviceControl: 'on'
+    notAThing: true
+    llm:
+      model: m
+`;
+
+test('只搬 DEFAULTS 认识、同类型的键；碰真实资料 / 起服务的不搬', () => {
+    const live = liveSwitches(YAML, 'x.yaml');
+    assert.deepEqual(live.config, { schedule: true, jokes: false, proactive: 'on', festivals: 'greet' });
+    assert.deepEqual(live.on, ['festivals', 'proactive', 'schedule']);
+    assert.deepEqual(live.unknown, ['notAThing']);
+    for (const key of ['contacts', 'dataDir', 'identityLedger', 'deviceControl', 'llm']) assert.ok(live.skipped.includes(key), key);
+    assert.ok(NOT_COPIED.identityLedger);
+});
+
+test('快照之后补开的开关：布尔开 true、档位开 on；没有的开关报错', () => {
+    const live = withAlsoOn(liveSwitches(YAML), ['jokes', 'groupChat']);
+    assert.equal(live.config.jokes, true);
+    assert.equal(live.config.groupChat, 'on');
+    assert.deepEqual(live.alsoOn, ['jokes', 'groupChat']);
+    assert.throws(() => withAlsoOn(liveSwitches(YAML), ['noSuchSwitch']), /没有这个开关/);
+});
+
+test('仓库里最新的线上快照能解析，开着的开关配置都认识', () => {
+    const live = liveSwitches(readFileSync(latestSnapshot(), 'utf8'));
+    assert.ok(live.on.length > 50, `开着 ${live.on.length} 个`);
+    // 插件自己的块（群、手机伴侣）不归 App 配置；多出别的说明快照里有已经删掉的开关，盘点会漏
+    assert.deepEqual(live.unknown.filter(key => !['groups', 'mobileCompanion'].includes(key)), []);
+});
+
+const piece = (slot: string, module: string, chars: number, list: 'main' | 'history' | 'now' = 'now', omitted = false) =>
+    ({ slot, module, list, chars, sha256: 'x', ...(omitted ? { omitted: true as const } : {}) });
+const manifest = (kind: PromptManifest['kind'], chars: number, pieces: ReturnType<typeof piece>[]): PromptManifest =>
+    ({ v: 1, qq: 1, at: '2026-12-14T08:00:00.000Z', kind, pieces, chars, messages: { count: 1, sha256: 'x', list: [] } });
+
+test('统计：槽按出现轮数和总字数，同一轮同槽多段只算一轮；按这一轮是什么分开；模型调用按用途数', () => {
+    const inv = inventory([
+        manifest('reply', 1000, [piece('time', 'time-block', 60), piece('world', 'her-now', 200), piece('world', 'her-now', 50)]),
+        manifest('think', 600, [piece('time', 'time-block', 40), piece('feeling', 'feelings', 30, 'now', true)]),
+    ], '@ 12-14 08:00 llm #1 chat model=a\n@ 12-14 08:01 llm #2 background model=a\n@ 12-14 08:02 llm #3 chat model=a\n');
+    assert.deepEqual(inv.rounds, { total: 2, reply: 1, initiate: 0, think: 1, fallback: 0 });
+    assert.deepEqual(inv.chars, { avg: 800, max: 1000, min: 600 });
+    const world = inv.slots.find(s => s.slot === 'world')!;
+    assert.equal(world.rounds, 1);
+    assert.equal(world.chars, 250);
+    assert.equal(inv.slots[0]!.slot, 'world');
+    assert.equal(inv.slots.find(s => s.slot === 'feeling')!.omitted, 1);
+    assert.equal(inv.piecesPerRound.now, 2);
+    assert.deepEqual(inv.byKind.find(k => k.kind === 'reply'), { kind: 'reply', rounds: 1, avgChars: 1000, avgNow: 3, maxNow: 3 });
+    assert.deepEqual(inv.llmPurposes, { chat: 2, background: 1 });
+});

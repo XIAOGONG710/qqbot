@@ -22,6 +22,7 @@ import { createDeviceControl } from '../../src/platform/device-actions.ts';
 import { DEVICE_MAX_VOLUME, linksOf, type startDeviceService } from '../../src/platform/device-service.ts';
 import { FAKE_MEMORY_PREFIX, FAKE_MEMORY_URL, fakeHindsight, type FakeMemory } from './fake-memory.ts';
 import { stickerShelf, type StickerShelf } from '../../src/social/stickers.ts';
+import type { PromptManifest } from '../../src/platform/prompt-manifest.ts';
 
 // 快照里的时刻、作息、「今天」都按本地时间算：进程时区固定在 Asia/Shanghai（同配置的 timeZone），不随跑测试的机器变。
 // 基线只在 baseline.test.ts 自己的测试进程里跑（node --test 每个文件一个进程），这里改了不影响别的测试文件。
@@ -65,6 +66,8 @@ export interface Scenario {
      * 他发来的表情，下载、看图、判断都是假的、都说收）把这几张收进来——编号按图片内容的哈希、索引由收藏库自己写。配置里还要开 stickers: 'send'
      */
     stickers?: { description: string; tags: string[] }[];
+    /** 提示词指纹清单（platform/prompt-manifest.ts）：给了就交给 App，每次给联系人生成前收到一份；基线场景都不给，快照不变（线上组合盘点 test/inventory/live-mix.ts 用） */
+    manifest?: (manifest: PromptManifest) => void;
     script: (driver: Driver) => Promise<void>;
 }
 
@@ -315,6 +318,7 @@ export async function runScenario(scenario: Scenario): Promise<string> {
             observe: action => { if (action.kind === 'llm') observed = action; },
             ...(scenario.devices ? { startDevices: fakeDevices(scenario.devices.readyAfterMs, record) } : {}),
             ...(stickers ? { stickers } : {}),
+            ...(scenario.manifest ? { promptManifest: scenario.manifest } : {}),
             pipeline: {
                 generate: async (messages, _log, use) => {
                     const index = ++llmCalls;
