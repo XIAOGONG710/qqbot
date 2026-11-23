@@ -1,7 +1,7 @@
 // 线上一起开着、但从没一起测过的组合（docs/reports/2026-11-24-switch-audit.md「依赖组合」）：fewerRules（ADR 0342，线上 true）
 // 和 idioms（口头习惯）、exemplars（真人例子）、deliberate（认真问时深思）。
-// 这里只把**现在的**行为钉住（不改生产代码）：少规矩开着时，这三样的段落都在 RULE_SLOTS 里，被丢掉；
-// 但口头习惯的后台抽取照样调模型、深思照样换模型——审计说的「只花钱不生效」「只剩换模型」就是这样，测试名里写明。
+// 这里把行为钉住：少规矩开着时，这三样的段落都在 RULE_SLOTS 里，被丢掉；
+// 口头习惯的后台抽取原来照样调模型（审计说的「只花钱不生效」），11-24 起 fewerRules 开着就不建这个模块、不再调；深思照样换模型（「只剩换模型」），测试名里写明。
 // 真的 App（行为基线的 harness：合成角色、假模型、假时钟），只开要看的那一个开关（其余按生产默认），开 / 关 fewerRules 各跑一遍，
 // 按提示词指纹清单（槽）和快照正文比。种子和行为基线的 idioms / exemplars 场景同一种写法，只是短。
 
@@ -99,12 +99,12 @@ describe('fewerRules × idioms（ADR 0138）', () => {
         assert.ok(r.out.includes('[他平时爱说「笑死」「绝了」'));
     });
 
-    test('开着 fewerRules：口头习惯那段一轮都不进提示词，但后台照样调模型学（线上只花钱不生效）', async () => {
+    test('开着 fewerRules：口头习惯那段一轮都不进提示词，后台也不调模型学（学了用不上，省掉）', async () => {
         const r = await run(idioms(true));
         assert.ok(r.manifests.length >= 6, '回复照常');
         assert.equal(r.slots('idiom'), 0);
         assert.ok(!r.out.includes('[他平时爱说'));
-        assert.ok(r.out.includes('请找出他说话的**口头习惯**'), '后台抽取仍然调了模型');
+        assert.ok(!r.out.includes('请找出他说话的**口头习惯**'), '后台抽取不再调模型');
     });
 });
 

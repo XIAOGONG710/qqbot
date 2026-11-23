@@ -808,7 +808,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     lifetime.own('jokes', () => jokes?.stop?.());
     // 他的口头习惯（ADR 0138）：解释器的模块（modules/idioms.ts）；派生数据存 <数据目录>/idioms/<QQ>.json。
     // 不收进去的词：联系人和角色的名字、卡上的禁用词
-    const idioms = config.idioms ? idiomsModule({
+    // 少规矩（ADR 0342）开着时 idiom 槽整类不放（RULE_SLOTS），危机回合它自己也让路：学了也用不上，模块不建（后台学习那次模型调用省掉）
+    if (config.idioms && config.fewerRules) log('口头习惯：fewerRules 开着，段落不放，学习也不跑');
+    const idioms = config.idioms && !config.fewerRules ? idiomsModule({
         exec, dataDir: config.dataDir, log, contacts: config.contacts, llm: config.llm,
         charName: contact => cardFor(contact.tier).character.name, history: qq => history.load(qq),
         blocked: contact => {
