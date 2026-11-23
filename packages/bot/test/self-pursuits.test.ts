@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { mergePursuits, pursuitsPath, pursuitsReader } from '../src/life/pursuits.ts';
 import {
-    applyDecision, describeForOwner, emptySelfState, KEEP_NOTES, loadSelfState, MAX_ATTEMPTS_PER_DAY, MAX_SELF_ACTIVE, parseDecision, PROPOSAL_COOLDOWN_MS,
-    proposalProblem, reflectIfDue, reflectionDue, reflectionMessages, saveSelfState, selfAwareReader, STATUS_COOLDOWN_MS, withSelf, type Decision,
+    applyDecision, emptySelfState, KEEP_NOTES, loadSelfState, MAX_ATTEMPTS_PER_DAY, MAX_SELF_ACTIVE, parseDecision, PROPOSAL_COOLDOWN_MS, proposalProblem,
+    reflectIfDue, reflectionDue, reflectionMessages, saveSelfState, selfAwareReader, STATUS_COOLDOWN_MS, withSelf, type Decision,
 } from '../src/life/self-pursuits.ts';
 
 const dirs: string[] = [];
@@ -121,7 +121,6 @@ describe('她的想法落地：放下 / 暂停 / 恢复 / 记进度 / 提新的'
         const dir = tmp();
         saveSelfState(dir, state);
         assert.deepEqual(loadSelfState(dir).notes.camera, state.notes.camera, '落盘后读得回来');
-        assert.match(describeForOwner(list, state, NIGHT), /别挂科——.*（作者给的）\n {3}她最近记的：晚上刷了两套题，还是怕期末/);
     });
 
     test('按题目放下（她写的是题目不是 id）', () => {
@@ -268,22 +267,5 @@ describe('读法：作者的 + 她的决定 + 她自己加的', () => {
         writeFileSync(join(dir, 'pursuits-self.json'), JSON.stringify({ pursuits: [{ id: 1 }, 'x'], overrides: { camera: { status: '乱写' } }, rejected: 'no' }));
         assert.deepEqual(loadSelfState(dir).pursuits, []);
         assert.deepEqual(loadSelfState(dir).overrides, {});
-    });
-});
-
-describe('/追求：他只能看', () => {
-    test('列出在追的（标明作者给的 / 她自己定的）、放下的和原因、想过没成的；说明他改不了；以「（」开头', () => {
-        const state = emptySelfState();
-        applyDecision(state, base, propose('学吉他', '一直想会弹一首完整的歌'), NIGHT - 10 * DAY);
-        applyDecision(state, base, { ...none(), drop: [{ id: 'camera', why: '最近没心思拍' }], notes: [{ id: state.pursuits[0]!.id, text: '练了三个和弦' }] }, NIGHT - 5 * DAY);
-        applyDecision(state, base, propose('准备考研', '想换个方向'), NIGHT);
-        const text = describeForOwner(withSelf(base, state), state, NIGHT);
-        assert.ok(text.startsWith('（') && text.endsWith('）'));
-        assert.match(text, /别挂科——.*（作者给的）/);
-        assert.match(text, /学吉他——一直想会弹一首完整的歌（她自己定的，10 天前）/);
-        assert.match(text, /她最近记的：练了三个和弦/);
-        assert.match(text, /用新相机拍出自己满意的东西（放下了：最近没心思拍）/);
-        assert.match(text, /她想过、但没成的：\n- 准备考研（人生方向类/);
-        assert.match(text, /你只能看，不能改；她随时可以改主意/);
     });
 });

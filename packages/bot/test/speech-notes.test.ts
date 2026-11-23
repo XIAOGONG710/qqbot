@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import type { Exemplar } from '../src/language/exemplars.ts';
 import {
-    MAX_ACTIVE, MAX_ADD, MAX_RETIRE, applyNotesDecision, describeNotesForOwner, emptyNotesState, herTurns, hisLines, loadNotesState, noteProblem,
-    parseNotesDecision, pickSamples, recentExchanges, reflectIfDue, reflectionDue, reflectionMessages, saveNotesState, sharedRun, speechNotesLine, speechNotesPath,
-    speechNotesReader, speechStats, statsLine, type Guard, type NotesState, type SpeechNote,
+    MAX_ACTIVE, MAX_ADD, MAX_RETIRE, applyNotesDecision, emptyNotesState, herTurns, hisLines, loadNotesState, noteProblem, parseNotesDecision, pickSamples,
+    recentExchanges, reflectIfDue, reflectionDue, reflectionMessages, saveNotesState, sharedRun, speechNotesLine, speechNotesPath, speechNotesReader, speechStats,
+    statsLine, type Guard, type NotesState, type SpeechNote,
 } from '../src/language/speech-notes.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 
@@ -276,12 +276,6 @@ describe('什么时候想、想的时候看到什么', () => {
         assert.doesNotMatch(prompts2[0]!, /最近标过的/);
     });
 
-    test('describeNotesForOwner：带上他标过几次那一行（放在「他只能看」前面）', () => {
-        const owner = describeNotesForOwner(stateWith(note('n1', '我发现我爱先反问一句再回答')), NIGHT, '他标过的（最近 14 天）：像真人 2 次、这句像 AI 1 次。');
-        assert.match(owner, /他标过的（最近 14 天）：像真人 2 次、这句像 AI 1 次。\n\n这些是她自己的观察/);
-        assert.doesNotMatch(describeNotesForOwner(stateWith(note('n1', '我发现我爱先反问一句再回答')), NIGHT), /他标过的/);
-    });
-
     test('reflectIfDue：没到点 / 最近说话太少，不调模型、不记尝试', async () => {
         const dir = tmp();
         let calls = 0;
@@ -363,22 +357,5 @@ describe('放进提示词、给他看', () => {
         assert.deepEqual(read().map(item => item.id), ['n1']);
         saveNotesState(dir, stateWith(note('n1', '我发现我爱先反问一句再回答'), note('n2', '我发现回很短的时候心里其实在笑')));
         assert.deepEqual(read().map(item => item.id), ['n1', 'n2']);
-    });
-
-    test('describeNotesForOwner：「（」开头的运维提示；列出笔记、放下的、没成的、上次数出来的样子；明说只能看不能改', () => {
-        const state: NotesState = {
-            ...stateWith(note('n1', '我发现我爱先反问一句再回答', NIGHT - 2 * 86_400_000)),
-            retired: [{ at: NIGHT, text: '我发现我总说哈哈', why: '最近不这样了' }],
-            rejected: [{ at: NIGHT, text: '我发现我总学他说', reason: '引用了他说过的话——学的是你自己的说话方式，不是他的' }],
-            lastStats: speechStats([['怎么了', '又加班吗？']])!, lastReflectionAt: NIGHT,
-        };
-        const text = describeNotesForOwner(state, NIGHT);
-        assert.ok(text.startsWith('（') && text.endsWith('）'));
-        assert.match(text, /她自己总结的说话习惯（1 条）：\n1\. 我发现我爱先反问一句再回答（2 天前）/);
-        assert.match(text, /她放下的：\n- 我发现我总说哈哈（最近不这样了）/);
-        assert.match(text, /她想写、但没成的：\n- 我发现我总学他说（引用了他说过的话/);
-        assert.match(text, /一次回 2 条；每条中位 5 个字/);
-        assert.match(text, /你只能看，不能改；她随时可以放下/);
-        assert.match(describeNotesForOwner(emptyNotesState(), NIGHT), /她还没有记下说话习惯/);
     });
 });

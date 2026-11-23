@@ -430,30 +430,3 @@ export async function reviewIfDue(deps: ReviewDeps): Promise<ReviewResult> {
         return { ran: true, error: detail };
     }
 }
-
-// ───────── 给他看 ─────────
-
-/** /心境 的回复：以「（」开头（运维提示，不进聊天记录）；他只能看，不能改。current 是最近一次给他算的心境（可以没有） */
-export function describeFeelingsForOwner(
-    current: { at: number; felt: ReadonlyArray<{ kind: FeelingKind; level: string; cause: string; source: string }> } | undefined,
-    state: ReviewState, now: number, reviewOn: boolean,
-): string {
-    const ago = (at: number) => { const minutes = Math.round((now - at) / 60_000); return minutes < 1 ? '刚刚' : minutes < 90 ? `${minutes} 分钟前` : `${Math.round(minutes / 60)} 小时前`; };
-    const sourceName = (source: string) => (source === 'world' ? '她那边的事' : source === 'him' ? '他的态度' : source === 'self' ? '她自己回想的' : '作者写下的事');
-    const levelName = (level: string) => (level === 'strong' ? '很重' : level === 'clear' ? '明显' : '隐约');
-    const shown = current?.felt.filter(item => item.level !== 'faint') ?? [];
-    const lines = [
-        current
-            ? (shown.length ? `她此刻的心境（${ago(current.at)}算的）：\n${shown.map(item => `- ${FEELING_NAME[item.kind]}·${levelName(item.level)}：${item.cause}（${sourceName(item.source)}）`).join('\n')}` : `她此刻没有明显的感受（${ago(current.at)}算的）。`)
-            : '最近还没有给她算过心境（她回你的时候才算）。',
-        ...(reviewOn
-            ? [
-                state.items.length ? `她聊完自己回想、指出了依据的（${state.items.length} 条）：\n${state.items.map(item => `- ${FEELING_NAME[item.kind]}·${item.strength === 2 ? '明显' : '小事'}：${item.cause}（${ago(item.at)}的事；依据 ${item.evidence.join('、')}）`).join('\n')}` : '她还没有聊完回想出来的感受（一段聊天结束半小时后想一次，最近要有 8 条以上聊天、其中有 4 条以上是新的才会想）。',
-                ...(state.retired.length ? [`她放下的：\n${state.retired.slice(-5).map(item => `- ${item.text}（${item.why}）`).join('\n')}`] : []),
-                ...(state.rejected.length ? [`她想记、但没成的：\n${state.rejected.slice(-5).map(item => `- ${item.text}（${item.reason}）`).join('\n')}`] : []),
-            ]
-            : []),
-        '这些都是从事实里算出来的，不是演的；你只能看，不能改。',
-    ];
-    return `（${lines.join('\n\n')}）`;
-}

@@ -5,12 +5,14 @@
 // 连同他前面说的话存下来；每晚想说话习惯的时候她会看到最近几条，**作为他的感受，不是规定**——想不想变、怎么变她自己定。
 // 不在代码里按这个反馈改她的话、不设字数；只是让她看见。
 //
-// 存在 <数据目录>/speech-feedback.json：最多 60 条；同一次说的话再标一次，后一次覆盖前一次。这些是他私聊里的话，只进每晚想的那一次提示词，
+// 存在 <数据目录>/speech-feedback.json：最多 60 条。这些是他私聊里的话，只进每晚想的那一次提示词，
 // 不进聊天时的提示词；她写的笔记仍然不能引他说过的话（ADR 0193 的防线，理由里的话也算他说的）。
+//
+// 2026-10-31 指令收敛后 `/像AI` `/像真人` 不再执行，11-19 删了走不到的指令分支，11-24 删了只给它们用的
+// 解析、取上一轮、写入、回执、/说话习惯 那一行（docs/reports/2026-11-24-dead-code.md）。现在只读：每晚想的时候还会看到 14 天内的旧标记。
 
-import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
-import type { StoredMessage } from '../memory/history.ts';
-import { NOT_SPEECH, clip, isObject, num } from './speech-notes.ts';
+import { readJsonOr } from '../memory/json-file.ts';
+import { clip, isObject, num } from './speech-notes.ts';
 import { join } from 'node:path';
 
 export const SPEECH_FEEDBACK_FILE = 'speech-feedback.json';
@@ -21,8 +23,6 @@ export const FEEDBACK_KEEP = 60;
 /** 每晚想的时候看最近多少天的、每一类最多几条 */
 export const FEEDBACK_WINDOW_MS = 14 * 86_400_000;
 export const FEEDBACK_SHOW = 5;
-/** 她最近一次说话离现在超过这么久，就不当成他指的那句 */
-export const TURN_MAX_AGE_MS = 12 * 3_600_000;
 /** 他说的话最多带几条、她说的话最多存几条、每条最多多少字、理由最多多少字 */
 export const HIS_MAX = 3;
 export const HERS_MAX = 6;
@@ -42,34 +42,6 @@ export interface FeedbackEntry {
 
 export interface FeedbackBundle { human: FeedbackEntry[]; ai: FeedbackEntry[] }
 
-/** `/像AI` / `/像ai` / `/像真人`，后面可以跟一句理由；不是这种格式返回 undefined */
-export function parseFeedbackCommand(plain: string | undefined): { label: FeedbackLabel; why?: string } | undefined {
-    const match = /^\/像(AI|ai|Ai|真人)(?:[\s：:，,]+(.{1,200}))?$/s.exec((plain ?? '').trim());
-    if (!match) return undefined;
-    const why = clip(match[2], WHY_CHARS);
-    return { label: match[1] === '真人' ? 'human' : 'ai', ...(why ? { why } : {}) };
-}
-
-/**
- * 她最近一次说话（连着发的几条）和它前面他说的话。他后面又说了还没回的，不算——他标的是她说过的话。
- * 运维写进记录的行（B 站私信、戳一戳……）不算她说话。她最近一次说话在 12 小时以前，就当没有（他大概不是指它）。
- */
-export function lastTurn(messages: readonly StoredMessage[], now: number): { his: string[]; hers: string[]; at: number } | undefined {
-    let end = messages.length - 1;
-    while (end >= 0 && (messages[end]!.role === 'user' || NOT_SPEECH.test(messages[end]!.content))) end--;
-    if (end < 0) return undefined;
-    let start = end;
-    while (start - 1 >= 0 && (messages[start - 1]!.role === 'assistant')) start--;
-    const hers = messages.slice(start, end + 1).filter(message => !NOT_SPEECH.test(message.content) && message.content.trim()).map(message => message.content.trim());
-    if (!hers.length) return undefined;
-    const at = Date.parse(messages[end]!.time);
-    if (!Number.isFinite(at) || now - at > TURN_MAX_AGE_MS || at > now + 60_000) return undefined;
-    let from = start;
-    while (from - 1 >= 0 && messages[from - 1]!.role === 'user') from--;
-    const his = messages.slice(from, start).map(message => message.content.trim()).filter(Boolean).slice(-HIS_MAX);
-    return { his: his.map(text => clip(text, LINE_CHARS)), hers: hers.slice(-HERS_MAX).map(text => clip(text, LINE_CHARS)), at };
-}
-
 export function loadFeedback(dataDir: string): FeedbackEntry[] {
     const raw = readJsonOr<unknown>(speechFeedbackPath(dataDir), {});
     if (!isObject(raw) || !Array.isArray(raw.entries)) return [];
@@ -81,16 +53,6 @@ export function loadFeedback(dataDir: string): FeedbackEntry[] {
         const why = typeof item.why === 'string' ? clip(item.why, WHY_CHARS) : '';
         return [{ at: num(item.at), label: item.label, his: strings(item.his, HIS_MAX), hers, ...(why ? { why } : {}) }];
     }).slice(-FEEDBACK_KEEP);
-}
-
-const sameTurn = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((text, i) => text === b[i]);
-
-/** 记一次；同一次说的话已经标过就覆盖（后一次算数）。返回现在一共几条 */
-export function recordFeedback(dataDir: string, entry: FeedbackEntry): number {
-    const kept = loadFeedback(dataDir).filter(old => !sameTurn(old.hers, entry.hers));
-    const next = [...kept, entry].slice(-FEEDBACK_KEEP);
-    writeJsonAtomic(speechFeedbackPath(dataDir), { entries: next });
-    return next.length;
 }
 
 /** 每晚想的时候看的：最近 14 天、每一类最近 5 条（旧到新） */
@@ -115,15 +77,4 @@ export function feedbackBlock(bundle: FeedbackBundle, user: string): string {
         part('他觉得「像真人」的：', bundle.human),
         part('他觉得「这句像 AI」的：', bundle.ai),
     ].filter(Boolean).join('\n\n');
-}
-
-/** 命令回给他的话：以「（」开头（运维提示，不进聊天记录） */
-export function feedbackReceipt(label: FeedbackLabel, hers: readonly string[], total: number): string {
-    const shown = hers.map(text => clip(text, 20)).join(' / ');
-    return `（记下了：她刚才的「${shown}」标成「${label === 'human' ? '像真人' : '这句像 AI'}」。每晚她想说话习惯的时候会看到——是你的感受，不是规定，变不变她自己定。现在一共记着 ${total} 条。）`;
-}
-
-export function describeFeedbackForOwner(entries: readonly FeedbackEntry[], now: number): string {
-    const fresh = entries.filter(entry => entry.at >= now - FEEDBACK_WINDOW_MS && entry.at <= now + 60_000);
-    return `他标过的（最近 14 天）：像真人 ${fresh.filter(entry => entry.label === 'human').length} 次、这句像 AI ${fresh.filter(entry => entry.label === 'ai').length} 次。`;
 }

@@ -49,7 +49,6 @@
 - `language/speaking.ts`
 - `language/speech-notes.ts`
 - `language/speech-feedback.ts`
-- `language/speech-trend.ts`
 - `language/tropes.ts`
 - `language/watching.ts`
 - `language/texture.ts`

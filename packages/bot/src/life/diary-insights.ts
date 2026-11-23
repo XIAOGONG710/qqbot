@@ -397,21 +397,6 @@ export function writeInsightsExport(soulDir: string, notes: readonly Insight[], 
     return true;
 }
 
-/** /自我认识 的回复：以「（」开头（运维提示，不进聊天记录）；他只能看，不能改 */
-export function describeInsightsForOwner(state: InsightsState, now: number): string {
-    const ago = (at: number) => { const days = Math.floor((now - at) / 86_400_000); return days <= 0 ? '今天' : `${days} 天前`; };
-    const lines = [
-        state.notes.length
-            ? `她翻日记时发现的自己（${state.notes.length} 条）：\n${state.notes.map((note, i) => `${i + 1}. ${note.text}（依据：${note.dates.join('、') || '没记'}；${ago(note.at)}）`).join('\n')}`
-            : '她还没有记下对自己的认识（夜里 22 点到凌晨 3 点之间翻一次日记，近 14 天里至少要有 3 篇、分在 2 个日子以上，而且有新日记才会想）。',
-        ...(state.retired.length ? [`她放下的：\n${state.retired.slice(-5).map(item => `- ${item.text}（${item.why}）`).join('\n')}`] : []),
-        ...(state.rejected.length ? [`她想写、但没成的：\n${state.rejected.slice(-5).map(item => `- ${item.text}（${item.reason}）`).join('\n')}`] : []),
-        ...(state.lastWindow ? [`上次想的时候翻了 ${state.lastWindow.entries} 篇日记，分在 ${state.lastWindow.dates} 个日子（${state.lastReflectionAt ? ago(state.lastReflectionAt) : ''}）。她看的是公开的日记，不看私密日记。`] : []),
-        '这些是她自己的观察，你只能看，不能改；她随时可以放下。',
-    ];
-    return `（${lines.join('\n\n')}）`;
-}
-
 /** 给提示词用的读法：按修改时间缓存（每轮提示词都会读）；读不了就当她还没记过 */
 export function insightsReader(dataDir: string): () => Insight[] {
     let cached: { key: string; notes: Insight[] } | undefined;

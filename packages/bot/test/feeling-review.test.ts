@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
-    FRESH_MS, KEEP_MS, MAX_ACTIVE, MAX_ADD, MAX_ATTEMPTS_PER_DAY, MAX_MESSAGES, MAX_RETIRE, MIN_GAP_MS, SETTLE_MS, applyReviewDecision, describeFeelingsForOwner,
-    emptyReviewState, loadReviewState, parseReviewDecision, reviewAppraisals, reviewDue, reviewIfDue, reviewMaterial, reviewMessages, reviewPath, reviewProblem,
-    reviewReader, saveReviewState, hisWords, type Evidence, type ReviewDesktopTurn, type ReviewGuard, type ReviewItem, type ReviewState,
+    FRESH_MS, KEEP_MS, MAX_ACTIVE, MAX_ADD, MAX_ATTEMPTS_PER_DAY, MAX_MESSAGES, MAX_RETIRE, MIN_GAP_MS, SETTLE_MS, applyReviewDecision, emptyReviewState,
+    loadReviewState, parseReviewDecision, reviewAppraisals, reviewDue, reviewIfDue, reviewMaterial, reviewMessages, reviewPath, reviewProblem, reviewReader,
+    saveReviewState, hisWords, type Evidence, type ReviewDesktopTurn, type ReviewGuard, type ReviewItem, type ReviewState,
 } from '../src/emotion/feeling-review.ts';
 import { describeFeelings, feelingsAt } from '../src/emotion/feelings.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
@@ -328,26 +328,6 @@ describe('变成心境、给他看', () => {
         assert.equal(state.lastWindow, undefined);
     });
 
-    test('/心境 的回复：以「（」开头；此刻的心境和来由、她自己回想记下的（带依据）、放下的、没成的；开关关着不列回想；他只能看', () => {
-        const state: ReviewState = {
-            ...stateWith(item('r-1', { cause: '被他晾了一晚上有点难过', aboutHim: true, evidence: ['m1', 'm3'], at: NOW - 2 * HOUR })),
-            retired: [{ at: NOW, text: '旧的烦', why: '后来聊开了' }], rejected: [{ at: NOW, text: '想记没成的', reason: '依据「m99」不在给你看的材料里' }],
-        };
-        const current = { at: NOW - 20 * MIN, felt: [{ kind: 'sad' as const, level: 'clear', cause: '被他晾了一晚上有点难过', source: 'self' }, { kind: 'joy' as const, level: 'faint', cause: '小事', source: 'world' }] };
-        const text = describeFeelingsForOwner(current, state, NOW, true);
-        assert.ok(text.startsWith('（') && text.endsWith('）'));
-        assert.match(text, /她此刻的心境（20 分钟前算的）：\n- 难过·明显：被他晾了一晚上有点难过（她自己回想的）/);
-        assert.doesNotMatch(text, /小事（/, '隐约的不列');
-        assert.match(text, /她聊完自己回想、指出了依据的（1 条）：\n- 难过·明显：被他晾了一晚上有点难过（2 小时前的事；依据 m1、m3）/);
-        assert.match(text, /她放下的：\n- 旧的烦（后来聊开了）/);
-        assert.match(text, /她想记、但没成的：\n- 想记没成的（依据「m99」不在给你看的材料里）/);
-        assert.match(text, /你只能看，不能改/);
-        const off = describeFeelingsForOwner(current, state, NOW, false);
-        assert.doesNotMatch(off, /自己回想、指出了依据/);
-        assert.match(describeFeelingsForOwner(undefined, emptyReviewState(), NOW, true), /最近还没有给她算过心境/);
-        assert.match(describeFeelingsForOwner({ at: NOW, felt: [] }, emptyReviewState(), NOW, true), /她此刻没有明显的感受（刚刚算的）/);
-        assert.match(describeFeelingsForOwner({ at: NOW, felt: [] }, emptyReviewState(), NOW, true), /她还没有聊完回想出来的感受/);
-    });
 });
 
 // ADR 0347 第 3 层（开关 desktopReview）：桌面上的回合进聊完回想。没给 desktop 就和以前逐字一样。

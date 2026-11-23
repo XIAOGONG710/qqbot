@@ -441,20 +441,6 @@ export function speechNotesLine(notes: readonly SpeechNote[], said: string | und
     return `[你自己总结过的说话习惯（是你自己的观察，不是规定；看情况自然地用，不用每条都用，也别提这是笔记）：\n${picked.join('\n')}]`;
 }
 
-/** /说话习惯 的回复：以「（」开头（运维提示，不进聊天记录）；他只能看，不能改 */
-export function describeNotesForOwner(state: NotesState, now: number, feedbackLine?: string): string {
-    const ago = (at: number) => { const days = Math.floor((now - at) / 86_400_000); return days <= 0 ? '今天' : `${days} 天前`; };
-    const lines = [
-        state.notes.length ? `她自己总结的说话习惯（${state.notes.length} 条）：\n${state.notes.map((note, i) => `${i + 1}. ${note.text}（${ago(note.at)}）`).join('\n')}` : '她还没有记下说话习惯（夜里 22 点到凌晨 3 点之间想一次，最近说话够多才会想）。',
-        ...(state.retired.length ? [`她放下的：\n${state.retired.slice(-5).map(item => `- ${item.text}（${item.why}）`).join('\n')}`] : []),
-        ...(state.rejected.length ? [`她想写、但没成的：\n${state.rejected.slice(-5).map(item => `- ${item.text}（${item.reason}）`).join('\n')}`] : []),
-        ...(state.lastStats ? [`上次想的时候，数出来她这几天说话的样子：${statsLine(state.lastStats)}（${state.lastReflectionAt ? ago(state.lastReflectionAt) : ''}）`] : []),
-        ...(feedbackLine ? [feedbackLine] : []),
-        '这些是她自己的观察，你只能看，不能改；她随时可以放下。',
-    ];
-    return `（${lines.join('\n\n')}）`;
-}
-
 /** 给提示词用的读法：按修改时间缓存（每轮提示词都会读）；读不了就当她还没记过 */
 export function speechNotesReader(dataDir: string): () => SpeechNote[] {
     let cached: { key: string; notes: SpeechNote[] } | undefined;

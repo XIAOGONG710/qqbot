@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
-    ENTRY_CHARS, MATERIAL_CHARS, MAX_ACTIVE, MAX_ADD, MAX_RETIRE, SELF_DIARY_KEEP, applyInsightsDecision, describeInsightsForOwner, emptyInsightsState,
-    fitEntries, insightProblem, insightsLine, insightsPath, insightsReader, loadInsightsState, loadSelfDiary, parseInsightsDecision, parseJournal, readDiaries,
-    recordSelfDiary, reflectIfDue, reflectionMessages, saveInsightsState, selfDiaryPath, topicalGrams, writeInsightsExport, insightsExportPath, INSIGHTS_EXPORT_KIND,
-    type DiaryEntry, type Insight, type InsightGuard, type InsightsState,
+    ENTRY_CHARS, MATERIAL_CHARS, MAX_ACTIVE, MAX_ADD, MAX_RETIRE, SELF_DIARY_KEEP, applyInsightsDecision, emptyInsightsState, fitEntries, insightProblem,
+    insightsLine, insightsPath, insightsReader, loadInsightsState, loadSelfDiary, parseInsightsDecision, parseJournal, readDiaries, recordSelfDiary, reflectIfDue,
+    reflectionMessages, saveInsightsState, selfDiaryPath, topicalGrams, writeInsightsExport, insightsExportPath, INSIGHTS_EXPORT_KIND, type DiaryEntry,
+    type Insight, type InsightGuard, type InsightsState,
 } from '../src/life/diary-insights.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 
@@ -396,24 +396,6 @@ describe('放进提示词 / 给他看', () => {
         assert.match(two, /正好聊到，才顺着自然带一下，别硬提/);
         const many = insightsLine([...notes, insight('i-5', '我发现自己下雨天走路特别慢', undefined, NIGHT), insight('i-6', '我发现自己下雨天总想吃热的', undefined, NIGHT - 5)], '下雨天了')!;
         assert.equal(many.split('\n').filter(line => line.startsWith('- ')).length, 3, '最多 3 条');
-    });
-
-    test('describeInsightsForOwner：以「（」开头；列依据；放下的、没成的、上次看了几篇；他只能看', () => {
-        const state: InsightsState = {
-            ...stateWith(insight('i-1', '我发现自己一个人安安静静弄东西的时候最踏实', ['2026-10-27', '2026-10-29'], NIGHT - 2 * 86_400_000)),
-            retired: [{ at: NIGHT, text: '旧的认识', why: '后来不是了' }],
-            rejected: [{ at: NIGHT, text: '想写没成的', reason: '写到了别人（鸽鸽）——这里只写你自己' }],
-            lastWindow: { entries: 3, dates: 3, newest: 'x' }, lastReflectionAt: NIGHT,
-        };
-        const text = describeInsightsForOwner(state, NIGHT);
-        assert.ok(text.startsWith('（') && text.endsWith('）'));
-        assert.match(text, /1\. 我发现自己一个人安安静静弄东西的时候最踏实（依据：2026-10-27、2026-10-29；2 天前）/);
-        assert.match(text, /旧的认识（后来不是了）/);
-        assert.match(text, /想写没成的（写到了别人（鸽鸽）/);
-        assert.match(text, /翻了 3 篇日记，分在 3 个日子/);
-        assert.match(text, /不看私密日记/);
-        assert.match(text, /你只能看，不能改/);
-        assert.match(describeInsightsForOwner(emptyInsightsState(), NIGHT), /还没有记下对自己的认识/);
     });
 
     test('insightsReader：按修改时间缓存；文件变了就重读；没有文件是空的', () => {

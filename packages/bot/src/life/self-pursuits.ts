@@ -318,25 +318,8 @@ export async function reflectIfDue(deps: ReflectDeps): Promise<ReflectResult> {
     }
 }
 
-// ───────── 给他看（只读） ─────────
-
-/** /追求 的回复：以「（」开头（运维提示，不进聊天记录）；他只能看，不能改 */
-export function describeForOwner(list: readonly Pursuit[], state: SelfState, now: number): string {
-    const ago = (at: number) => { const days = Math.floor((now - at) / 86_400_000); return days <= 0 ? '今天' : `${days} 天前`; };
-    const active = list.filter(item => item.status === 'active');
-    const other = list.filter(item => item.status !== 'active');
-    const status = { active: '在做', paused: '先放着', dropped: '放下了', done: '做完了' } as const;
-    const lines = [
-        active.length ? `她现在在追的：\n${active.map((item, i) => `${i + 1}. ${item.title}——${item.why}${item.source === 'self' ? `（她自己定的，${ago(item.proposedAt ?? now)}）` : '（作者给的）'}${item.notes?.length ? `\n   她最近记的：${item.notes.at(-1)!.text}` : ''}`).join('\n')}` : '她现在没有在追的事。',
-        ...(other.length ? [`别的：\n${other.map(item => `- ${item.title}（${status[item.status]}${state.overrides[item.id] ? `：${state.overrides[item.id]!.why}` : item.endedWhy ? `：${item.endedWhy}` : ''}）`).join('\n')}`] : []),
-        ...(state.rejected.length ? [`她想过、但没成的：\n${state.rejected.slice(-5).map(item => `- ${item.title}（${item.reason}）`).join('\n')}`] : []),
-        '这些是她自己定的，你只能看，不能改；她随时可以改主意。',
-    ];
-    return `（${lines.join('\n\n')}）`;
-}
-
 /**
- * 给提示词和 /追求 用的读法：作者的文件 + 内置（authorReader，pursuits.ts）套上她自己的决定，再接上她自己加的。
+ * 给提示词用的读法：作者的文件 + 内置（authorReader，pursuits.ts）套上她自己的决定，再接上她自己加的。
  * 她的文件按修改时间缓存（每轮提示词都会读）；读不了就当她还没想过。
  */
 export function selfAwareReader(dataDir: string, authorReader: () => Pursuit[]): () => Pursuit[] {
