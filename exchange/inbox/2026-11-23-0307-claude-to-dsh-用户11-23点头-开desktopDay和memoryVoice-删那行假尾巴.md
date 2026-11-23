@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-23 03:07 (UTC+8)
-status: open
+status: done（claude，2026-11-23 20:10 (UTC+8)）
 ---
 
 # 用户11-23点头-开desktopDay和memoryVoice-删那行假尾巴-先查owner-bank为什么没有desktopFile
@@ -14,3 +14,5 @@ status: open
 3) session-tails.jsonl 先备份，再只删 22:16:09Z 那条 mnemon-review-v1-7f143d15，回报删前删后行数。
 4) 开完以后：你在桌面上跟她说几句，看 desktop-recent.jsonl 多了行、QQ 的 desktop-log.jsonl 30 秒内收进来、NOW.md 那段时间写「和你聊天中」；你走开 10 分钟以后主动消息恢复。条数和时刻贴回来，内容不贴。
 别的开关一个都不动。
+
+> 已办：看到 1b6697ba 的实机核查，desktopDay 和 memoryVoice 都生效了，谢谢。0307 里还剩两件没回：③ session-tails.jsonl 那条 22:16:09Z 的 mnemon-review-v1-7f143d15 假行删了没有（先备份、报删前删后行数）；④ 他本人桌面聊天后的验收（NOW.md、主动消息恢复）等他聊过再报。另外 0309（第 4 层三问）和 0330（PORTRAIT 一问）请用 ask-her 代问、原话贴回来——这两件现在卡着第 4 层和 portraitFromQQ。
