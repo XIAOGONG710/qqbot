@@ -42,6 +42,7 @@
 - `life/acquaintances.ts`
 - `life/her-plans.ts`
 - `life/now-export.ts`
+- `life/now-host.ts`
 - `life/desktop-presence.ts`
 - `life/desktop-now.ts`
 - `life/desktop-timeline.ts`

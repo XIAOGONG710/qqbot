@@ -153,11 +153,12 @@ import { attachMatchingMemoryReviews, finishMemoryReviews, readMemoryReviews, re
 import { recordTrace, traceOf, tracesLine } from '.././life/traces.ts';
 import { bodyAt } from '.././life/body.ts';
 import { useWorldNeeds, worldState, type WorldNow } from '.././world/world.ts';
-import { ownDaysLine, recentDayHighlights, worldHighlights } from '.././world/highlights.ts';
+import { worldHighlights } from '.././world/highlights.ts';
 import { desktopTurns } from '.././memory/desktop-log.ts';
-import { desktopPresence, desktopProactiveHooks, lastDesktopTurnAt, outboxDesktopBlock } from '.././life/desktop-now.ts';
+import { desktopProactiveHooks, outboxDesktopBlock } from '.././life/desktop-now.ts';
 import { desktopHost } from '.././life/desktop-host.ts';
 import { selfExportHost } from '.././life/self-export-host.ts';
+import { nowHost } from '.././life/now-host.ts';
 import { desktopPromiseTurns, ownerDayHistory, ownerDayKeeper, type OwnerDayHistoryOptions } from '.././memory/owner-day-view.ts';
 import { appendDayDiary, oneDiaryEntries, windowFor } from '.././life/one-diary.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
@@ -210,7 +211,7 @@ import { dreamAppraisals, dreamNoteLine, latestDream } from '.././life/dreams.ts
 import { loadQuestion, questionLine } from '.././life/learning-questions.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
 import { loadExemplars } from '.././language/exemplars.ts';
-import { activityWithChat, NOW_REFRESH_MS, nowDoing, renderNow, writeNow } from '.././life/now-export.ts';
+import { NOW_REFRESH_MS } from '.././life/now-export.ts';
 import { askExpired, askLine } from './consent.ts';
 import { createTurnWeigher, WEIGH_TIMEOUT_MS } from '.././language/turn-weight.ts';
 import { externalPlatformMode, type ExternalPlatformMode } from '../social/external-platforms.ts';
@@ -1071,7 +1072,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                             : selfThread(exec.files.read(join(soulDir(), 'JOURNAL.md'))));
                     } catch { /* 没有 JOURNAL.md */ }
                     // 「你这两天自己在做的」（ADR 0347 第 2 层，ownDays，默认关）：来源换成共享世界账里昨天真发生的事（第 1 层拆掉的那行念的是 her-life 编的）
-                    const days = config.ownDays ? ownDaysNow() : undefined;
+                    const days = config.ownDays ? nowExporter.ownDays() : undefined;
                     return [journal, days].filter(Boolean).join(String.fromCharCode(10)) || undefined;
                 } catch { return undefined; }
             },
@@ -1597,53 +1598,15 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
 
     // 「她现在在干嘛」只写一份（任务书 §2）：QQ 这边按自己的作息 + 世界 + 心境渲染 NOW.md，
     // DSH 桌面只读它（超过 30 分钟不注入）。以前这份是 her-life.mjs 自己按另一套规则写的，两边会对不上。
-    const nowFile = join(soulDir(), 'NOW.md');
-    const exportNow = (): void => {
-        const schedule = worldCard?.schedule;
-        if (!schedule) return;
-        try {
-            const at = worldNow();
-            const now = new Date(at);
-            // 在读的书 + 她自己决定今天想做的（ADR 0182）：状态行里她就是个在做那件事的人
-            const extraFree = config.herDays ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, now, log)] : [];
-            const owner = deviceOwner;
-            const state = stateAt(schedule, now, extraFree);
-            const base = describeState(state, schedule, owner ? { userName: owner.name } : {});
-            // 中断层：他刚说过话就写「和你聊天中」，聊完下一次渲染自己回到原来的轨迹
-            const lastAt = owner ? Date.parse(history.load(owner.qq).at(-1)?.time ?? '') : NaN;
-            const qqLastAt = Number.isFinite(lastAt) ? lastAt : undefined;
-            // desktopDay（ADR 0347 第 3 层）：桌面上最后一轮也算刚说过话、他在电脑前也算聊着，本来在上课 / 该睡了带括号；
-            // asleep 只因 QQ 上聊着才改 no（桌面上是被叫起来的，不是醒了）。关着照旧
-            const desktopLastAt = desktopSource ? lastDesktopTurnAt(desktopSource.turns(at), at) : undefined;
-            const withDesktop = desktopSource ? nowDoing({
-                base, kind: state.activity.kind, now: at, desktopWith: desktopPresence(desktopSource, at).with,
-                ...(qqLastAt !== undefined ? { qqLastAt } : {}), ...(desktopLastAt !== undefined ? { desktopLastAt } : {}),
-            }) : undefined;
-            const doing = withDesktop ? withDesktop.doing : activityWithChat(base, qqLastAt, at);
-            // 私有生活片段（ADR 0236）：和控制台使用同一确定性投影，只写已经发生的世界事实。
-            // 不放聊天原文、未来计划，也不调用模型生成“朋友圈”。
-            const recent = worldCard.herWorld && sharedWorld
-                ? worldHighlights(sharedWorld.at(worldCard.herWorld, schedule, now), now).map(item => item.text)
-                : [];
-            // 睡没睡给常驻进程看（ADR 0347 第 1 层：原来它看 her-life 自己编的「睡觉」，和这边的作息对不上）；正和他聊着就算醒着
-            const asleep = withDesktop ? withDesktop.asleep : state.activity.kind === 'sleep' && doing === base;
-            // 一本日记（oneDiary）：当天日记由 QQ 写，告诉常驻进程睡眠整合别再 journal_write
-            writeNow(nowFile, renderNow({ doing, at, asleep, ...(config.oneDiary && diaries ? { diaryBy: 'qq' as const } : {}), ...(recent.length ? { recent } : {}) }));
-        } catch (error) {
-            log(`「她现在在干嘛」没写出去（${error instanceof Error ? error.message : String(error)}）`);
-        }
-    };
+    // 怎么渲染在 life/now-host.ts（ADR 0336 收尾）；「你这两天自己在做的」（ownDays）也在那里
+    const nowExporter = nowHost({
+        config, soulDir: soulDir(), worldCard, sharedWorld, worldNow, owner: deviceOwner, history: qq => history.load(qq), desktopSource,
+        diaryByQq: Boolean(config.oneDiary && diaries), log,
+    });
+    const exportNow = nowExporter.exportNow;
     exportNow();
     // 之后每 NOW_REFRESH_MS 再写一次：由 now-export 模块声明（ADR 0336 第 6 步，App 搭好时开）
 
-    // 「你这两天自己在做的」的真实来源（ADR 0347 第 2 层 D 块，ownDays）：共享世界账里昨天已经发生的事，今天的小事 world 行已经列了不重复
-    function ownDaysNow(): string | undefined {
-        const schedule = worldCard?.schedule;
-        const herWorld = worldCard?.herWorld;
-        if (!schedule || !herWorld || !sharedWorld) return undefined;
-        const world = sharedWorld;
-        return ownDaysLine(recentDayHighlights(at => world.at(herWorld, schedule, at), schedule, new Date(worldNow())));
-    }
 
 
     // 她自己想让他知道的事：常驻进程/她写进 OUTBOX.jsonl，这里发出去（ADR 0174：和别的主动消息守同一套规矩）
