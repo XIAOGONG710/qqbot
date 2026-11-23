@@ -35,6 +35,10 @@
 7. ~~网络热梗 6 小时 → 12 小时~~：撤回。6 小时是用户 10-30 自己要的（「再让她频繁上网学习」，ee3dbeb0），文件头没跟着改才看着像不一致；已改文件头。用户想省这笔再说。
 8. **她自己定追求的每晚反思**（推荐：撤，先 `ask-her`）：追求的文字早就不进提示词，唯一残余是她暂停作者给的两条时心境来由跟着没。
 
+9. **做好了但从没接线的 8 个文件**（死代码报告 `docs/reports/2026-11-24-dead-code.md`；只有测试 import）：bilibili-asr、bilibili-inbox、bilibili-limit、bilibili-schema、expression-judgement、official-adapter、evidence-registry、information-sources（推荐：删，要用时从 git 拿回）。
+   同报告里的 `language/intimacy.ts`（`/亲热` 写入的一半随指令收敛没了，读旧文件那行还接在 app.ts）推荐连那一行一起删；`addSoulRating`（ADR 0336 记着「留给用户定」）、`EXTERNAL_PLATFORM_CAPABILITIES` 跟外部平台功能一起定。
+   死代码这一轮已经直接删掉的（没有调用方、类型检查能证明）：约 550 行，见报告。
+
 ## 三、合并（一、二做完再开始，一组一个提交，基线逐字不变）
 
 按开关审计「可以合成一个的几组」：主动时机 10 个并进 `proactive`、夜间自省 7 个并成一个、B 站 9 个并成一个模式、真实世界 4 个并成一个、QQ 表层 5 个并成一个、
