@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { readSource } from '../../character-tools/src/source.ts';
 import { addAiPhotoReference, aiPhotoPreview, aiPhotoRuntimeStatus, characterPaths, consoleData, listAiPhotoDrafts, listAiPhotoReferences, listExternalDrafts, publicCharacterError, removeAiPhotoReference, reviewAiPhoto, reviewExternalDraft, runConsoleHealthCheck, saveCharacter, setConsoleState } from '../src/console.ts';

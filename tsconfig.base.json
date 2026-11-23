@@ -9,6 +9,8 @@
     "types": ["node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    // 11-24 死代码清理之后各包都干净：没人读的 import / 局部变量直接报错，免得又攒起来
+    "noUnusedLocals": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
