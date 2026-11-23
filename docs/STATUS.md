@@ -118,7 +118,7 @@
 **以这些为准**：
 - 规则：`CLAUDE.md`（这台）/ `AGENTS.md`（DSH 那台，内容同步）；`思维链工作流.txt`。
 - 协作：`docs/governance/2026-11-10-single-mainline.md`（只有 main）、`docs/governance/2026-11-10-agent-mailbox.md`（信箱和「自己干活」的分工）。
-- 决策：`docs/adr/`（最新 0348）；主线方案在 `docs/plans/2026-11-22-same-her-layer2-self.md`、`docs/plans/2026-11-22-same-her-layer3-writeback.md`、`docs/plans/2026-11-23-same-her-layer4-one-driver.md`。
+- 决策：`docs/adr/`（最新 0348）；**哪份还算数先看 `docs/adr/MAP.md`**（每份的开关在线上开没开，按快照；文件头的状态常常过时）；主线方案在 `docs/plans/2026-11-22-same-her-layer2-self.md`、`docs/plans/2026-11-22-same-her-layer3-writeback.md`、`docs/plans/2026-11-23-same-her-layer4-one-driver.md`。
 - 模块与开关：`packages/bot/src/platform/features.ts`（开关总表）、`docs/modules/`（从模块定义生成）。
 - 线上：`exchange/live/` 最新快照；两台进度：`exchange/inbox/`。
 - 专题：`docs/koishi.md`、`docs/hindsight.md`、`docs/napcat.md`、`docs/golive-guard.md`、`docs/heartbeat.md`、`docs/boot-start.md`、`docs/dsh-agent-identity-guide.md`、`docs/sensitive-logs.md`。

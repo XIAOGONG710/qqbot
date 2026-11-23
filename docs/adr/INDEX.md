@@ -2,6 +2,8 @@
 
 > 治理约定（用户 2026-11-20 拍板）：两个 checkout 的 ADR 编号曾撞车——旧 `qqbot-dsh-control` 的 0340=stateTypo / 0341=memory_keep，新 main 的 0340=selfPortrait / 0341=群自主 / 0342=fewerRules。**不重编号历史**（会破坏引用链与基线注释），全文统一用机制名引用，编号只在带 checkout 名时出现。本 INDEX 登记**新 main（真相源）**的编号归属，防止再撞。
 
+> 全部 ADR 一张表（标题、文件里的状态、管的开关和线上开没开）：[MAP.md](MAP.md)，`node scripts/adr-map.mjs --out docs/adr/MAP.md` 生成。
+
 ## 近期编号（新 main）
 
 | 编号 | 机制名 | 标题 | 状态 |
