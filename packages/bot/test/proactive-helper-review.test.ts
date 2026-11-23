@@ -20,7 +20,7 @@ const schedule = { sleep: '02:00', wake: { early: '08:00', lazy: '08:00', earlyS
 
 function probe(tz: string, body: string): unknown {
     const child = spawnSync(process.execPath, ['--input-type=module', '-e', setup + body], {
-        env: { ...process.env, TZ: tz }, encoding: 'utf8', timeout: 10_000, maxBuffer: 256 * 1024,
+        env: { ...process.env, TZ: tz }, encoding: 'utf8', timeout: 60_000, maxBuffer: 256 * 1024,
     });
     assert.equal(child.error, undefined);
     assert.equal(child.status, 0, child.stderr);

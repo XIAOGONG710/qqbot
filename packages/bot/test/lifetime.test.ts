@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import { appLifetime } from '../src/platform/lifetime.ts';
 
@@ -89,7 +89,12 @@ describe('统一停止的登记表', () => {
 describe('App 只用这一份登记（源码）', () => {
     const app = readFileSync(new URL('../src/platform/app.ts', import.meta.url), 'utf8');
     const order = [...app.slice(app.indexOf('const STOP_ORDER = ['), app.indexOf('] as const;')).matchAll(/'([a-z-]+)'/g)].map(match => match[1]!);
-    const owned = new Set([...app.matchAll(/lifetime\.(?:own\('([a-z-]+)'|handOver\(\[[^\]]*\], '([a-z-]+)')/g)].map(match => (match[1] ?? match[2])!));
+    // 登记的地方：app.ts 和从它搬出去、拿着同一份 lifetime 的宿主文件（ADR 0336 收尾：world/reality-feeds.ts 等）
+    const hosts = readdirSync(new URL('../src/', import.meta.url), { recursive: true, encoding: 'utf8' })
+        .filter(path => path.endsWith('.ts') && !path.endsWith('lifetime.ts'))
+        .map(path => readFileSync(new URL(`../src/${path.split('\\').join('/')}`, import.meta.url), 'utf8'))
+        .filter(text => text.includes('lifetime.own(') || text.includes('lifetime.handOver('));
+    const owned = new Set(hosts.flatMap(text => [...text.matchAll(/lifetime\.(?:own\('([a-z-]+)'|handOver\(\[[^\]]*\], '([a-z-]+)')/g)].map(match => (match[1] ?? match[2])!)));
 
     test('不再有构造收尾登记和手写的停止清单；stop() 只按先后表停', () => {
         assert.doesNotMatch(app, /construction\.|appConstruction|releaseLock/);

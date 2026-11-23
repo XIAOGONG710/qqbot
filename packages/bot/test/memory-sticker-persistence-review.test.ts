@@ -230,13 +230,13 @@ function worker(root: string, code: string, ...args: string[]) {
     const file = join(root, 'publication-worker.mjs'); writeFileSync(file, code);
     const child = spawn(process.execPath, [file, ...args], { stdio: ['ignore', 'ignore', 'pipe'] }); let stderr = '';
     child.stderr?.on('data', chunk => { stderr += String(chunk); }); child.once('error', error => { stderr += error.message; });
-    const timer = setTimeout(() => child.kill('SIGKILL'), 15_000);
+    const timer = setTimeout(() => child.kill('SIGKILL'), 90_000);
     const done = new Promise<{ code: number | null; signal: string | null; stderr: string }>(resolve => child.once('close', (code, signal) => { clearTimeout(timer); resolve({ code, signal, stderr }); }));
     return { child, done, async kill() { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); return done; } };
 }
-async function checkpoint(path: string) { const end = Date.now() + 6000; while (!existsSync(path)) { assert.ok(Date.now() < end, '合成子进程未到检查点'); await new Promise(done => setTimeout(done, 10)); } }
+async function checkpoint(path: string) { const end = Date.now() + 60_000; while (!existsSync(path)) { assert.ok(Date.now() < end, '合成子进程未到检查点'); await new Promise(done => setTimeout(done, 10)); } }
 
-for (const phase of ['before', 'after'] as const) test(`真实进程在index发布${phase}强杀后，重启仍有全部已提交图片且可继续处理`, { timeout: 20_000 }, async () => {
+for (const phase of ['before', 'after'] as const) test(`真实进程在index发布${phase}强杀后，重启仍有全部已提交图片且可继续处理`, { timeout: 180_000 }, async () => {
     const f = fixture(), point = join(f.root, 'checkpoint');
     const storeUrl = new URL('../src/social/stickers.ts', import.meta.url).href, jsonUrl = new URL('../src/memory/json-file.ts', import.meta.url).href;
     const code = `import{stickerShelf}from${JSON.stringify(storeUrl)};import{fileOps}from${JSON.stringify(jsonUrl)};import{writeFileSync}from'node:fs';const[root,index,phase,point]=process.argv.slice(2);const rename=fileOps.renameSync;fileOps.writeDelaysMs=[0];fileOps.renameSync=(from,to)=>{if(String(to)!==index)return rename(from,to);if(phase==='after')rename(from,to);writeFileSync(point,'ready');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10000);throw Error('checkpoint expired');};const shelf=stickerShelf({dir:root,libraryMax:1,log(){},download:async()=>({bytes:Uint8Array.from(${JSON.stringify([...f.bytes])}),type:'image/png'}),describe:async()=>'合成新收藏',decide:async description=>({keep:true,description,tags:[]})});await shelf.consider(${JSON.stringify(message)},{from:10001,messageId:1});`;

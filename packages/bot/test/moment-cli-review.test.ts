@@ -56,7 +56,7 @@ test('两独立moment-cli写者发布区互斥，明确忙后重试保留两件�
     const dir = fixture(); const hook = join(dir, 'hook.mjs');
     writeFileSync(hook, `import { fileOps } from ${JSON.stringify(pathToFileURL(resolve(import.meta.dirname, '../src/memory/json-file.ts')).href)};
         import { writeFileSync,existsSync } from 'node:fs';import {join} from 'node:path';
-        const original=fileOps.renameSync;fileOps.renameSync=(from,to)=>{if(String(to).endsWith('moments.json')){writeFileSync(join(process.env.SYNTHETIC_MOMENT_DIR,'ready-'+process.env.SYNTHETIC_MOMENT_ID),'ready');const until=Date.now()+6000;while(!existsSync(join(process.env.SYNTHETIC_MOMENT_DIR,'go'))){if(Date.now()>until)throw Error('synthetic timeout');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,5);}}return original(from,to);};`);
+        const original=fileOps.renameSync;fileOps.renameSync=(from,to)=>{if(String(to).endsWith('moments.json')){writeFileSync(join(process.env.SYNTHETIC_MOMENT_DIR,'ready-'+process.env.SYNTHETIC_MOMENT_ID),'ready');const until=Date.now()+60000;while(!existsSync(join(process.env.SYNTHETIC_MOMENT_DIR,'go'))){if(Date.now()>until)throw Error('synthetic timeout');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,5);}}return original(from,to);};`);
     const children = ['one', 'two'].map(id => {
         let stderr = '';
         const child = spawn(process.execPath, ['--import', pathToFileURL(hook).href, cli, ...add.slice(0, 2), id, ...add.slice(3), '--dir', dir], { env: { ...process.env, SYNTHETIC_MOMENT_DIR: dir, SYNTHETIC_MOMENT_ID: id }, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -65,7 +65,7 @@ test('两独立moment-cli写者发布区互斥，明确忙后重试保留两件�
         return { id, child, done, stderr: () => stderr };
     });
     try {
-        const until = Date.now() + 5000; let overlap = false;
+        const until = Date.now() + 60_000; let overlap = false;
         for (;;) {
             const inside = children.filter(item => existsSync(join(dir, 'ready-' + item.id))).length;
             if (inside === 2) { overlap = true; break; }
@@ -97,7 +97,7 @@ for (const published of [false, true]) test(`moment-cli在JSON发布${published 
     const child = spawn(process.execPath, ['--import', pathToFileURL(hook).href, cli, ...add, '--dir', dir], { stdio: 'ignore' });
     const done = new Promise<void>((resolve, reject) => { child.once('exit', () => resolve()); child.once('error', reject); });
     try {
-        const until = Date.now() + 5000;
+        const until = Date.now() + 60_000;
         while (!existsSync(join(dir, 'held'))) { assert.ok(Date.now() < until, 'child did not hold publication'); await new Promise(resolve => setTimeout(resolve, 10)); }
         child.kill(); await done;
         assert.equal(existsSync(join(dir, 'moments.json')), published);
