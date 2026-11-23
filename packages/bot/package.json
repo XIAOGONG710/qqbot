@@ -26,8 +26,10 @@
     "ai-photo:audit": "node src/ops/ai-photo-storage-cli.ts",
     "eval:companion": "node src/ops/companion-eval-cli.ts",
     "eval:personhood": "node src/ops/personhood-eval-cli.ts",
+    "metrics:weekly": "node src/ops/weekly-metrics-cli.ts",
     "verify:cross-end": "node src/ops/cross-end-drill-cli.ts",
     "baseline:fast": "node --import ./test/time-zone-setup.ts test/baseline/parallel.ts",
+    "inventory:live": "node --import ./test/time-zone-setup.ts test/inventory/live-mix.ts",
     "test": "node --import ./test/time-zone-setup.ts --test \"test/**/*.test.ts\""
   },
   "dependencies": {
