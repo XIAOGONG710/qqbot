@@ -13,7 +13,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AppConfig, Contact } from '../../src/platform/config.ts';
 import { DEFAULTS } from '../../src/platform/config.ts';
-import type { PromptManifest } from '../../src/platform/prompt-manifest.ts';
+import { MANIFEST_FILE, type PromptManifest } from '../../src/platform/prompt-manifest.ts';
 import { runScenario, type LlmCall, type Replier, type Scenario } from '../baseline/harness.ts';
 import { SCENARIOS } from '../baseline/scenarios.ts';
 
@@ -142,7 +142,11 @@ export function liveMixScenario(config: Partial<AppConfig>, manifest: (m: Prompt
     };
 }
 
-export interface SlotStat { slot: string; module: string; list: string; rounds: number; chars: number; omitted: number }
+export interface SlotStat {
+    slot: string; module: string; list: string; rounds: number; chars: number; omitted: number;
+    /** 出现在哪种轮次里各几轮（回他 / 主动找他 / 只想一想） */
+    kinds: { reply: number; initiate: number; think: number };
+}
 export interface Inventory {
     rounds: { total: number; reply: number; initiate: number; think: number; fallback: number };
     chars: { avg: number; max: number; min: number };
@@ -167,8 +171,8 @@ export function inventory(manifests: readonly PromptManifest[], transcript = '')
         const seenModule = new Set<string>();
         for (const p of m.pieces) {
             const key = `${p.list}|${p.slot}`;
-            const stat = slots.get(key) ?? { slot: p.slot, module: p.module, list: p.list, rounds: 0, chars: 0, omitted: 0 };
-            if (!seenSlot.has(key)) { stat.rounds++; seenSlot.add(key); }
+            const stat = slots.get(key) ?? { slot: p.slot, module: p.module, list: p.list, rounds: 0, chars: 0, omitted: 0, kinds: { reply: 0, initiate: 0, think: 0 } };
+            if (!seenSlot.has(key)) { stat.rounds++; stat.kinds[m.kind]++; seenSlot.add(key); }
             stat.chars += p.chars;
             if (p.omitted) stat.omitted++;
             slots.set(key, stat);
@@ -209,14 +213,19 @@ export function inventory(manifests: readonly PromptManifest[], transcript = '')
     };
 }
 
-export function renderReport(live: LiveSwitches, inv: Inventory): string {
+export function renderReport(live: LiveSwitches | { manifests: string }, inv: Inventory): string {
     const n = inv.rounds.total || 1;
+    const head = 'manifests' in live
+        ? [`# 线上提示词盘点（真实指纹清单）`, '', `清单：\`${live.manifests}\`（只有槽、模块、字数，没有正文）。`]
+        : [
+            '# 线上开关组合的提示词盘点（合成角色）',
+            '',
+            `快照：\`${live.source}\`；照搬 ${Object.keys(live.config).length} 个键，开着 ${live.on.length} 个。`,
+            ...(live.alsoOn?.length ? [`快照之后补开：${live.alsoOn.join('、')}。`] : []),
+            `没搬：${live.skipped.join('、') || '无'}。DEFAULTS 不认识的键：${live.unknown.join('、') || '无'}。`,
+        ];
     const out: string[] = [
-        '# 线上开关组合的提示词盘点（合成角色）',
-        '',
-        `快照：\`${live.source}\`；照搬 ${Object.keys(live.config).length} 个键，开着 ${live.on.length} 个。`,
-        ...(live.alsoOn?.length ? [`快照之后补开：${live.alsoOn.join('、')}。`] : []),
-        `没搬：${live.skipped.join('、') || '无'}。DEFAULTS 不认识的键：${live.unknown.join('、') || '无'}。`,
+        ...head,
         '',
         `## 轮次`,
         '',
@@ -236,9 +245,9 @@ export function renderReport(live: LiveSwitches, inv: Inventory): string {
         '',
         '## 槽（按总字数排）',
         '',
-        '| 表 | 槽 | 模块 | 出现轮数 | 占比 | 平均字数（出现时） | 被挤掉 |',
-        '|---|---|---|---|---|---|---|',
-        ...inv.slots.map(s => `| ${s.list} | ${s.slot} | ${s.module} | ${s.rounds} | ${Math.round((s.rounds / n) * 100)}% | ${Math.round(s.chars / Math.max(1, s.rounds))} | ${s.omitted || ''} |`),
+        '| 表 | 槽 | 模块 | 出现轮数 | 占比 | 回他/主动/想 | 平均字数（出现时） | 被挤掉 |',
+        '|---|---|---|---|---|---|---|---|',
+        ...inv.slots.map(s => `| ${s.list} | ${s.slot} | ${s.module} | ${s.rounds} | ${Math.round((s.rounds / n) * 100)}% | ${s.kinds.reply}/${s.kinds.initiate}/${s.kinds.think} | ${Math.round(s.chars / Math.max(1, s.rounds))} | ${s.omitted || ''} |`),
         '',
         '## 模块（按总字数排）',
         '',
@@ -269,11 +278,30 @@ export async function runLiveMix(snapshotPath = latestSnapshot(), also: readonly
     return { live, inv: inventory(manifests, transcript), manifests };
 }
 
+/** 一个目录里的 prompt-manifest-*.jsonl 全读进来；坏行跳过 */
+export function readManifests(dir: string): PromptManifest[] {
+    const out: PromptManifest[] = [];
+    for (const name of readdirSync(dir).filter(file => MANIFEST_FILE.test(file)).sort()) {
+        for (const line of readFileSync(join(dir, name), 'utf8').split('\n')) {
+            if (!line.trim()) continue;
+            try {
+                const row = JSON.parse(line) as PromptManifest;
+                if (Array.isArray(row.pieces) && typeof row.kind === 'string') out.push(row);
+            } catch { /* 写到一半的行 */ }
+        }
+    }
+    return out;
+}
+
 const invoked = process.argv[1] ? resolve(process.argv[1]) : undefined;
 if (invoked === fileURLToPath(import.meta.url)) {
     const arg = (name: string) => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
     const also = (arg('--on') ?? '').split(',').map(x => x.trim()).filter(Boolean);
-    const { live, inv } = await runLiveMix(arg('--snapshot') ? resolve(arg('--snapshot')!) : undefined, also);
+    const dir = arg('--manifests');
+    // 线上那台：直接读真实的指纹清单（<数据目录>/logs/prompt-manifest-*.jsonl），不跑合成的两天；报告里只有槽名、模块名和数
+    const { live, inv } = dir
+        ? { live: { manifests: dir }, inv: inventory(readManifests(resolve(dir))) }
+        : await runLiveMix(arg('--snapshot') ? resolve(arg('--snapshot')!) : undefined, also);
     const md = renderReport(live, inv);
     const mdOut = arg('--md');
     const jsonOut = arg('--json');

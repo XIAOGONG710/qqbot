@@ -71,3 +71,22 @@ test('统计：槽按出现轮数和总字数，同一轮同槽多段只算一�
     assert.deepEqual(inv.byKind.find(k => k.kind === 'reply'), { kind: 'reply', rounds: 1, avgChars: 1000, avgNow: 3, maxNow: 3 });
     assert.deepEqual(inv.llmPurposes, { chat: 2, background: 1 });
 });
+
+test('线上那台：读目录里的指纹清单文件，别的文件和坏行跳过；统计按轮次分', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { readManifests } = await import('./inventory/live-mix.ts');
+    const dir = mkdtempSync(join(tmpdir(), 'live-mix-'));
+    try {
+        const a = manifest('reply', 900, [piece('workJudge', 'work-mode', 120)]);
+        const b = manifest('think', 500, [piece('workJudge', 'work-mode', 120)]);
+        writeFileSync(join(dir, 'prompt-manifest-2026-12-14.jsonl'), `${JSON.stringify(a)}\n{坏行\n${JSON.stringify(b)}\n`);
+        writeFileSync(join(dir, 'other.jsonl'), `${JSON.stringify(a)}\n`);
+        const rows = readManifests(dir);
+        assert.equal(rows.length, 2);
+        assert.deepEqual(inventory(rows).slots[0]!.kinds, { reply: 1, initiate: 0, think: 1 });
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
