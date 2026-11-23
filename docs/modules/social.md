@@ -10,6 +10,7 @@
 - `modules/media-offers.ts`
 - `social/silence.ts`
 - `social/outbox.ts`
+- `social/outbox-host.ts`
 - `social/others.ts`
 - `social/reply-timing.ts`
 - `social/rate-limit.ts`

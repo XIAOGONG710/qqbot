@@ -53,7 +53,7 @@ import type { Log } from './log.ts';
 import { appLifetime, type Lifetime } from './lifetime.ts';
 import { ChatHistory, type StoredMessage } from '.././memory/history.ts';
 import { describeError } from '../memory/transient-io.ts';
-import { asleepSince, saidBedtimes } from '.././life/bedtime.ts';
+import { saidBedtimes } from '.././life/bedtime.ts';
 import { type HistoryMessage } from '.././memory/backfill.ts';
 import { segmentsToText, type GroupMessageEvent, type MessageEvent, type PokeEvent, type RecallEvent, type Segment } from './onebot.ts';
 import { isSticker, MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
@@ -88,11 +88,10 @@ import { groupAffect } from '.././social/group-affect.ts';
 import { currentTierHistory, TierRecord } from '.././memory/tier-record.ts';
 import { HindsightClient } from '.././memory/hindsight.ts';
 import { noteFromInfo, recentSilence, recordSilence, silenceReplyCue, type SilenceInfo } from '.././social/silence.ts';
-import { drainOutbox } from '.././social/outbox.ts';
+import { outboxHost } from '.././social/outbox-host.ts';
 import { revokeOwnerBank, writeOwnerBank } from '.././memory/owner-bank.ts';
 import { desktopBlock, desktopRecentPath } from '.././memory/cross-recent.ts';
-import { inspectReply, stripInternalMarkers, summarizeIssues, tidyQuestionMarks, type ExitIssue } from '.././language/exit-check.ts';
-import { ODD_BODY_WORDS, STILTED_WORDS } from '.././language/expression.ts';
+import { stripInternalMarkers, tidyQuestionMarks } from '.././language/exit-check.ts';
 import { startHeartbeat } from './heartbeat.ts';
 import { createFeedbackChannel } from '.././emotion/feedback.ts';
 import { readWorkMode, setWorkMode, WORK_MARKER } from './work-mode.ts';
@@ -155,7 +154,7 @@ import { bodyAt } from '.././life/body.ts';
 import { useWorldNeeds, worldState, type WorldNow } from '.././world/world.ts';
 import { worldHighlights } from '.././world/highlights.ts';
 import { desktopTurns } from '.././memory/desktop-log.ts';
-import { desktopProactiveHooks, outboxDesktopBlock } from '.././life/desktop-now.ts';
+import { desktopProactiveHooks } from '.././life/desktop-now.ts';
 import { desktopHost } from '.././life/desktop-host.ts';
 import { selfExportHost } from '.././life/self-export-host.ts';
 import { nowHost } from '.././life/now-host.ts';
@@ -1605,40 +1604,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
 
 
     // 她自己想让他知道的事：常驻进程/她写进 OUTBOX.jsonl，这里发出去（ADR 0174：和别的主动消息守同一套规矩）
-    const outboxFile = process.env.QQBOT_OUTBOX ?? join(soulDir(), 'OUTBOX.jsonl');
-    const OUTBOX_BLOCKING = new Set<ExitIssue['kind']>(['banned', 'promise', 'media', 'script', 'text-intimacy']);
-    let outboxBusy = false;
-    let outboxBlockedBy: string | undefined;
-    // 每 30 秒一拍：由 outbox 模块声明（ADR 0336 第 6 步，App 搭好时开）
-    const outboxTick = (): void => {
-        const owner = deviceOwner;
-        if (!owner || outboxBusy) return;
-        const { character } = cardFor(owner.tier);
-        outboxBusy = true;
-        void drainOutbox({
-            file: outboxFile,
-            stateFile: join(config.dataDir, 'outbox-state.json'),
-            now: () => clockNow().getTime(),
-            blocked: now => crisisState.pausedAt(owner.qq, now) ? '他最近说过想伤害自己的话，普通主动消息暂停 48 小时'
-                : dormancy?.isDormant() ? '休眠中'
-                : character.schedule && asleepSince(character.schedule, bedtimes(character.schedule, now), new Date(now)) ? '她睡了'
-                // 他就在电脑前（desktopDay）：先留着，走了 10 分钟以上再发
-                : desktopSource ? outboxDesktopBlock(desktopSource, now)
-                : undefined,
-            inspect: text => {
-                const issues = inspectReply(text, [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS]).filter(issue => OUTBOX_BLOCKING.has(issue.kind));
-                return issues.length ? summarizeIssues(issues) : undefined;
-            },
-            send: text => transport.sendPrivateText(owner.qq, text),
-            record: (text, messageId, at) => history.append(owner.qq, { time: new Date(at).toISOString(), role: 'assistant', content: text, messageId }),
-            log,
-        }).then(result => {
-            if (result.blockedBy !== outboxBlockedBy) {
-                outboxBlockedBy = result.blockedBy;
-                if (result.blockedBy) log(`主动留话：先留着不发（${result.blockedBy}）`);
-            }
-        }).catch(error => log(`主动留话出错：${error instanceof Error ? error.message : String(error)}`)).finally(() => { outboxBusy = false; });
-    };
+    // 怎么发、什么时候先留着在 social/outbox-host.ts（ADR 0336 收尾）；每 30 秒一拍由 outbox 模块声明（App 搭好时开）
+    const outboxTick = outboxHost({
+        config, owner: deviceOwner, file: process.env.QQBOT_OUTBOX ?? join(soulDir(), 'OUTBOX.jsonl'), cardFor, now: () => clockNow().getTime(),
+        crisisPaused: (qq, now) => crisisState.pausedAt(qq, now), dormant: () => Boolean(dormancy?.isDormant()), bedtimes, desktopSource,
+        send: (qq, text) => transport.sendPrivateText(qq, text), record: (qq, message) => history.append(qq, message), log,
+    }).tick;
 
     // 追求（ADR 0104）：作者的文件 + 内置；开了 selfPursuits（ADR 0178）再套上她自己的决定、接上她自己加的
     const authorPursuits = pursuitsReader(config.dataDir, log);
