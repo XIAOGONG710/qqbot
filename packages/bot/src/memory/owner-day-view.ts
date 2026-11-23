@@ -30,6 +30,17 @@ export interface OwnerDayTurn extends PresenceTurn {
     assistant: string;
 }
 
+const PROMISE_CHOICE = /【(?:我答应并记下|我改主意了)[：:][^【】\r\n]+】/g;
+
+/** 承诺账只看她自己说出口的记账句和改口句。聊天正文不能代替这些句子。 */
+export function desktopPromiseTurns(turns: readonly OwnerDayTurn[]): OwnerDayTurn[] {
+    return turns.flatMap(turn => {
+        const assistant = [...turn.assistant.matchAll(PROMISE_CHOICE)]
+            .map(match => match[0]).join('\n');
+        return assistant ? [{ ...turn, assistant }] : [];
+    });
+}
+
 interface Timed { message: StoredMessage; ms: number }
 
 const stamp = (ms: number): { time: string; ms: number } => {

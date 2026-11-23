@@ -27,6 +27,7 @@ import { createTransientGate, describeError, isTransientIoError, TransientStateE
 import { ModelUnreachable } from '../language/llm.ts';
 import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes, type Episode } from '.././memory/episodes.ts';
 import { dueLoops, isFeeling, loopForgotten, type DueLoops, type LoopKind, type OpenLoop } from './open-loops.ts';
+import { DESKTOP_PREFIX } from '../memory/owner-day-view.ts';
 import type { OpenAIMessage } from '../language/prompt.ts';
 import { formatDate, herDay, type Schedule } from './schedule.ts';
 import type { MacroNames } from '.././st/macros.ts';
@@ -78,7 +79,7 @@ const DAY_MS = 86_400_000;
 const LOOP_LABELS: Record<LoopKind, string> = { waiting: '等结果', unanswered: '没回答', unsettled: '没了结' };
 
 /** 抽取的提示词：系统说明 + 还没做的事、还挂着的事和这一段聊天（转写同长期记忆，带日期行） */
-export function promisePrompt(transcript: string, pending: readonly HerPromise[], names: MacroNames, loops: readonly OpenLoop[] = []): OpenAIMessage[] {
+export function promisePrompt(transcript: string, pending: readonly HerPromise[], names: MacroNames, loops: readonly OpenLoop[] = [], desktop = false): OpenAIMessage[] {
     const { char, user } = names;
     const system = [
         `你在帮一个聊天程序记「${char}答应过的事」。下面是${char}和${user}的一段 QQ 私聊记录，${char}是 AI 扮演的女大学生，${user}是真人。`,
@@ -106,6 +107,12 @@ export function promisePrompt(transcript: string, pending: readonly HerPromise[]
             + `amount 写金额（整数元）；说了是给她买相机的写 "forCamera":true。这是唯一可以记${user}做的事的一类，at 是${char}收下时那句话。`,
         `只看${char}的已完成事实陈述；计划、将来时、猜测、玩笑、否定句、${user}做的事（收钱除外）都不要。at 必须是那句${char}消息的本地分钟 YYYY-MM-DDTHH:mm；`,
         '取快递可把物品、写作业可把课程写进 subject，没说清不填；喂猫只有明确说见到或没见到时才写 seen。',
+        ...(desktop ? [
+            '本段带「电脑上」的消息来自桌面。桌面只从她本人写的「我答应并记下：」提取 add；他的文字、玩笑、随口应声、犹豫，以及「我改主意了：」都不能增加承诺。',
+            '桌面上说「我改主意了：」只能在明确告诉他不再做哪件已记的事时，把与原事项明确对应的 id 放进 resolved。她没有亲口说的变更不算；若有新承诺，仍须另有「我答应并记下：」。',
+            '对于桌面来源，不抽 waiting、unanswered、unsettled 或 world，也不从他的话推断她改了主意。QQ 来源仍按原来的规则。',
+            '本段每句有「证据 N」编号。每条 add 要另给整数 evidence，指向她答应的那句；resolved 改用 {"id":"p-1","evidence":N}，指向她亲口改口或 QQ 中确认了结的那句。没有这样的证据就不要记。',
+        ] : []),
         '只输出一个 JSON 对象，不要别的文字，例如：',
         '{"add":[{"what":"给他讲《三体》的结局","date":null},{"what":"去拍银杏","date":"2026-10-10"},'
             + '{"what":"和他去东门吃麻辣烫","date":"2026-10-16","meet":{"time":"18:00","where":"东门口"}}],'
@@ -138,7 +145,7 @@ export interface ExtractedPromises {
 }
 
 /** 模型的输出 → 结构；不是要的格式就抛错（下次再抽） */
-export function parsePromises(text: string): ExtractedPromises {
+export function parsePromises(text: string, evidence?: readonly StoredMessage[]): ExtractedPromises {
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
     if (start < 0 || end < start) throw new Error('模型输出里没有 JSON');
@@ -166,7 +173,19 @@ export function parsePromises(text: string): ExtractedPromises {
     // 挂着的事只记事实：写成情绪的丢掉（ADR 0023）
     const feelings: string[] = [];
     const facts = <T extends { what: string }>(list: T[]) => list.filter(item => (isFeeling(item.what) ? (feelings.push(item.what), false) : true));
-    const resolved = (Array.isArray(data.resolved) ? data.resolved : []).filter((id): id is string => typeof id === 'string');
+    const source = (item: Record<string, unknown>) => {
+        const index = item.evidence;
+        return typeof index === 'number' && Number.isInteger(index) && index >= 1 ? evidence?.[index - 1] : undefined;
+    };
+    const resolved = (Array.isArray(data.resolved) ? data.resolved : []).flatMap(item => {
+        if (!evidence) return typeof item === 'string' ? [item] : [];
+        if (!item || typeof item !== 'object' || typeof item.id !== 'string') return [];
+        const message = source(item);
+        if (!message) return [];
+        if (message.content.startsWith(DESKTOP_PREFIX)
+            && (message.role !== 'assistant' || !message.content.includes('【我改主意了'))) return [];
+        return [item.id as string];
+    });
     const kinds = new Set<WorldActionKind>(['feed_cat', 'pick_parcel', 'finish_homework', 'family_call', 'receive_money']);
     const world = (Array.isArray(data.world) ? data.world : []).flatMap(item => {
         if (!item || typeof item !== 'object') return [];
@@ -187,6 +206,11 @@ export function parsePromises(text: string): ExtractedPromises {
     });
     // 约好的见面（ADR 0047）：要有日子和几点才算
     const add = (Array.isArray(data.add) ? data.add : []).flatMap(item => {
+        if (evidence) {
+            const message = item && typeof item === 'object' ? source(item) : undefined;
+            if (message?.role !== 'assistant' || message.content.startsWith(DESKTOP_PREFIX)
+                && !message.content.includes('【我答应并记下')) return [];
+        }
         const [base] = items([item]);
         if (!base) return [];
         const meet = base.date ? meetOf((item as Record<string, unknown> | null)?.meet) : undefined;
@@ -250,6 +274,18 @@ const earlyIn = (episode: string) => (p: HerPromise) => Boolean(p.early && p.epi
 const messagesDigest = (messages: readonly StoredMessage[]) => createHash('sha256').update(JSON.stringify(messages.map(message => [
     message.role, message.time, message.content, message.messageId ?? null, message.sourceTime ?? null, message.messageSeq ?? null, message.recalled === true,
 ]))).digest('hex');
+const desktopPromiseEvidence = (episode: Episode) => episode.messages.some(
+    message => message.role === 'assistant' && /^（电脑上）【(?:我答应并记下|我改主意了)[：:]/.test(message.content),
+) ? episode.messages : undefined;
+
+function promiseTranscript(episode: Episode, names: MacroNames, evidence?: readonly StoredMessage[]): string {
+    if (!evidence) return episodeTranscript(episode, names);
+    return episodeTranscript({
+        ...episode,
+        messages: evidence.map((message, index) => ({ ...message, content: `【证据 ${index + 1}】${message.content}` })),
+    }, names);
+}
+
 const sourceDigest = (episode: Episode, count = episode.messages.length) => messagesDigest(episode.messages.slice(0, count));
 
 /**
@@ -604,10 +640,11 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             // 这一段先抽出来的约见面不给模型（整段抽是这一段的定论，抽完整个替换）
             const pending = evidence.baseline.promises.filter(p => !earlyIn(episode.id)(p));
             try {
-                const raw = await extract(promisePrompt(episodeTranscript(episode, names), pending, names, evidence.baseline.loops));
+                const desktopEvidence = desktopPromiseEvidence(episode);
+                const raw = await extract(promisePrompt(promiseTranscript(episode, names, desktopEvidence), pending, names, evidence.baseline.loops, Boolean(desktopEvidence)));
                 if (stopped) return;
                 if (!evidenceCurrent(contact, episode, evidence, day)) return;
-                result = parsePromises(raw);
+                result = parsePromises(raw, desktopEvidence);
             } catch (error) {
                 if (stopped) return;
                 if (!evidenceCurrent(contact, episode, evidence, day)) return;
@@ -709,10 +746,11 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             const previousEarly = state.promises.filter(earlyIn(open.id));
             try {
                 const pending = evidence.baseline.promises.filter(p => !earlyIn(open.id)(p));
-                const raw = await extract(promisePrompt(episodeTranscript(open, names), pending, names, evidence.baseline.loops));
+                const desktopEvidence = desktopPromiseEvidence(open);
+                const raw = await extract(promisePrompt(promiseTranscript(open, names, desktopEvidence), pending, names, evidence.baseline.loops, Boolean(desktopEvidence)));
                 if (stopped) return;
                 if (!evidenceCurrent(contact, open, evidence, day)) return;
-                const result = parsePromises(raw);
+                const result = parsePromises(raw, desktopEvidence);
                 if (paused.has(path(contact))) return;
                 state = structuredClone(evidence.baseline);
                 // 旧片段落盘的见面也可以在聊天中立即取消；只在本次抽取成功后释放占用。

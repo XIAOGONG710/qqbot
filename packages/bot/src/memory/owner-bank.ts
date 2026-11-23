@@ -22,6 +22,8 @@ export interface OwnerBankInfo {
     recalledFile?: string;
     /** DSH 桌面对话回合写、QQ 读的文件（desktop-recent.jsonl） */
     desktopFile?: string;
+    desktopDiary?: true;
+    desktopPromises?: true;
     /** 写入时间（ISO），只给人看 */
     writtenAt?: string;
 }
@@ -37,7 +39,8 @@ export function writeOwnerBank(memoryDir: string, info: Omit<OwnerBankInfo, 'wri
     const path = ownerBankPath(memoryDir);
     const current = readJsonOr<Partial<OwnerBankInfo>>(path, {});
     if (current.ownerBank === info.ownerBank && current.commonBank === info.commonBank && current.legacyBank === info.legacyBank
-        && current.chatFile === info.chatFile && current.recalledFile === info.recalledFile && current.desktopFile === info.desktopFile) return false;
+        && current.chatFile === info.chatFile && current.recalledFile === info.recalledFile && current.desktopFile === info.desktopFile
+        && current.desktopDiary === info.desktopDiary && current.desktopPromises === info.desktopPromises) return false;
     writeJsonAtomic(path, { ...info, writtenAt: now().toISOString() });
     return true;
 }
@@ -62,6 +65,8 @@ export function readOwnerBank(memoryDir: string): OwnerBankInfo | undefined {
             ...(typeof value.chatFile === 'string' ? { chatFile: value.chatFile } : {}),
             ...(typeof value.recalledFile === 'string' ? { recalledFile: value.recalledFile } : {}),
             ...(typeof value.desktopFile === 'string' ? { desktopFile: value.desktopFile } : {}),
+            ...(value.desktopDiary === true ? { desktopDiary: true as const } : {}),
+            ...(value.desktopPromises === true ? { desktopPromises: true as const } : {}),
             ...(value.writtenAt ? { writtenAt: value.writtenAt } : {}),
         }
         : undefined;

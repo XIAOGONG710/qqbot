@@ -8,7 +8,7 @@ import type { StoredMessage } from '../src/memory/history.ts';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
 import { splitEpisodes } from '../src/memory/episodes.ts';
 import { desktopLogId, desktopLogPath, desktopTurns } from '../src/memory/desktop-log.ts';
-import { DESKTOP_PREFIX, desktopMessages, ownerDayHistory, ownerDayKeeper, ownerDayView, type OwnerDayTurn } from '../src/memory/owner-day-view.ts';
+import { DESKTOP_PREFIX, desktopMessages, desktopPromiseTurns, ownerDayHistory, ownerDayKeeper, ownerDayView, type OwnerDayTurn } from '../src/memory/owner-day-view.ts';
 import { TURN_LEAD_MS } from '../src/life/desktop-presence.ts';
 import { promiseKeeper } from '../src/life/promises.ts';
 import type { Schedule } from '../src/life/schedule.ts';
@@ -130,7 +130,7 @@ describe('接上承诺账（假模型、临时目录）', () => {
         mkdirSync(join(dataDir, 'memory'), { recursive: true });
         const now = at('2026-11-22T23:00:00');
         // 桌面账本：desktop-log.ts 的落盘格式
-        const desktopRow = { v: 1, at: new Date(at('2026-11-22T21:10:00')).toISOString(), userAt: new Date(at('2026-11-22T21:09:00')).toISOString(), user: '报告还差一节', assistant: '明天帮你看完' };
+        const desktopRow = { v: 1, at: new Date(at('2026-11-22T21:10:00')).toISOString(), userAt: new Date(at('2026-11-22T21:09:00')).toISOString(), user: '报告还差一节', assistant: '【我答应并记下：明天帮你看完】' };
         const id = desktopLogId(at('2026-11-22T21:10:00'), desktopRow.user, desktopRow.assistant);
         writeFileSync(desktopLogPath(dataDir), `${JSON.stringify({ ...desktopRow, id })}\n`);
         const histories: Record<number, StoredMessage[]> = {
@@ -144,7 +144,7 @@ describe('接上承诺账（假模型、临时目录）', () => {
             contacts: [amin, xiaoyu],
             history: options.wrap ? ownerDayHistory(base, {
                 ownerQq: amin.qq,
-                desktop: () => { if (options.desktopThrows) throw new Error('EBUSY'); return desktopTurns(dataDir, now); },
+                desktop: () => { if (options.desktopThrows) throw new Error('EBUSY'); return desktopPromiseTurns(desktopTurns(dataDir, now)); },
             }) : base,
             names: () => names,
             schedule,
@@ -161,7 +161,7 @@ describe('接上承诺账（假模型、临时目录）', () => {
         await keeper.sync();
         assert.equal(asked.length, 2);
         const [boyfriend, classmate] = [asked.find(a => a.transcript.includes('我开电脑了')), asked.find(a => a.transcript.includes('明天交作业吗'))];
-        assert.ok(boyfriend?.transcript.includes(`${DESKTOP_PREFIX}明天帮你看完`), boyfriend?.transcript);
+        assert.ok(boyfriend?.transcript.includes(`${DESKTOP_PREFIX}【我答应并记下：明天帮你看完】`), boyfriend?.transcript);
         assert.ok(boyfriend?.transcript.includes(`${DESKTOP_PREFIX}报告还差一节`));
         assert.ok(classmate && !classmate.transcript.includes(DESKTOP_PREFIX), classmate?.transcript);
     });
@@ -230,4 +230,16 @@ describe('时间块「这一段刚说的不再提醒」也看合并视图（owne
         assert.equal(seen.at(-1)!.length, 4);
         assert.equal(ownerDayKeeper(fake, { ownerQq: undefined, desktop: () => desktop }), fake);
     });
+});
+
+test('只有她自己留下的明确承诺和亲口改口才能进入桌面承诺抽取', () => {
+    const samples = [
+        { at: 1, user: '你答应了，我替你记', assistant: '再说吧' },
+        { at: 2, user: '想好了吗', assistant: '我答应：明天给你讲结局。' },
+        { at: 3, user: '好', assistant: '【我答应并记下：明天给你讲结局。】' },
+        { at: 4, user: '你改主意了吧', assistant: '我考虑一下' },
+        { at: 6, user: '说好了啊', assistant: '【我答应并记下：这里被截断' },
+        { at: 5, user: '还讲吗', assistant: '【我改主意了：明天不讲结局了。】' },
+    ];
+    assert.deepEqual(desktopPromiseTurns(samples), [samples[2], samples[5]]);
 });

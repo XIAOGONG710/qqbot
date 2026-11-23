@@ -107,7 +107,7 @@ function chatTail(chat: { name: string; messages: readonly StoredMessage[] }): {
 
 /**
  * 她那一天的材料，一段给模型看的文字；plans：她之前说过那天打算做的事（ADR 0018 决策 2）；
- * desktop：一本日记（ADR 0347 第 3 层，oneDiary）的「电脑上：…」那一行（life/one-diary.ts 的 desktopDiaryLine，只有时段和动作种类，没有原文）。不给就没有这一行
+ * desktop：一本日记（ADR 0347 第 3 层，oneDiary）的「电脑上：…」那一行（life/one-diary.ts 的 desktopDiaryLine，只带她自己选写的公开摘要）。不给就没有这一行
  */
 export function diaryMaterial(
     sources: DiarySources, day: Date, chats: readonly { name: string; messages: readonly StoredMessage[] }[], plans: readonly string[] = [], desktop?: string,
@@ -171,7 +171,7 @@ export function diaryMaterial(
 }
 
 /** 材料里有「电脑上」那一行时，写日记的说明多这一句（ADR 0347 第 3 层，oneDiary） */
-export const DESKTOP_DIARY_NOTE = '- 「电脑上」那几段是你陪他的时间，挑一句写。';
+export const DESKTOP_DIARY_NOTE = '- 「电脑上你想留下的事」是你聊完还在想、也愿意写的公开选记。你可以选用或略过；只写选记里已有的事，不补对话原文或细节。';
 
 /** 写日记的提示词：只写「怎么写」（ADR 0014：说明里的每句话她都会照做）；desktop：材料里有「电脑上」那一行 */
 export function diaryMessages(charName: string, day: Date, material: string, desktop = false): OpenAIMessage[] {

@@ -22,6 +22,23 @@ const msg = (iso: string, role: 'user' | 'assistant', content: string): StoredMe
 const promise = (extra: Partial<HerPromise>): HerPromise => ({ id: 'p-1', what: '给他讲结局', said: '2026-10-05', episode: 'ep-1', ...extra });
 
 describe('她答应的事：抽取（ADR 0018 决策 2）', () => {
+    test('有桌面选记时，模型的新增和改口必须指回她自己的对应原话', () => {
+        const evidence = [
+            msg('2026-10-05T20:01:00', 'user', '（电脑上）你不是答应了吗'),
+            msg('2026-10-05T20:02:00', 'assistant', '（电脑上）【我答应并记下：下次给你讲结局】'),
+            msg('2026-10-05T20:03:00', 'assistant', '（电脑上）【我改主意了：原来答应讲另一篇，还是不讲了】'),
+        ];
+        const result = parsePromises(JSON.stringify({
+            add: [
+                { what: '猜的', evidence: 1 }, { what: '没证据' },
+                { what: '给他讲结局', evidence: 2 }, { what: '把改口当新约定', evidence: 3 },
+            ],
+            resolved: ['p-1', { id: 'p-2', evidence: 1 }, { id: 'p-3', evidence: 2 }, { id: 'p-4', evidence: 3 }],
+        }), evidence);
+        assert.deepEqual(result.add, [{ what: '给他讲结局' }]);
+        assert.deepEqual(result.resolved, ['p-4']);
+    });
+
     test('提示词：她要做的事、做不到的不抽、日期换算、还没做的给 id', () => {
         const [system, user] = promisePrompt('—— 2026年10月5日 ——\n林梦瑶 (20:00): 下次给你讲', [promise({ date: '2026-10-10', what: '去拍银杏' })], names);
         for (const rule of ['林梦瑶自己说的、她之后要做的事', '发照片', '打电话', '寄东西', 'YYYY-MM-DD', 'date 写 null', 'resolved', '凌晨（0 点到 5 点）还没睡时说的「明天」']) {

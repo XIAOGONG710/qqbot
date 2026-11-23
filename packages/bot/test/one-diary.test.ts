@@ -120,34 +120,19 @@ describe('一本日记：「电脑上」那一行', () => {
         // 别的日子
         turn('2026-11-20T10:00:00+08:00'),
     ];
-    const actions = [
-        { at: T('2026-11-21T14:30:00+08:00'), kind: 'search', summary: USER },
-        { at: T('2026-11-21T15:10:00+08:00'), kind: 'write', summary: USER },
-        { at: T('2026-11-21T15:20:00+08:00'), kind: 'memory_save', summary: '记下了一件值得长期记住的事' },
-        { at: T('2026-11-21T15:30:00+08:00'), kind: 'zzz_unknown', summary: USER },
-    ];
-    const overlap = (at: Date) => (at.getHours() >= 23 ? 'sleep' as const : 'free' as const);
-
-    test('时段 + 动作种类 + 本来该睡了；别的日子的不算', () => {
-        const line = desktopDiaryLine({ date: '2026-11-21', dayOf, turns, actions, overlap });
-        assert.equal(line, '电脑上：14:10–16:05 陪他（中间帮他查了资料、写了东西）；23:40–00:30 他叫你上电脑聊了会儿（本来该睡了）');
-        assert.equal(desktopDiaryLine({ date: '2026-11-21', dayOf, turns: turns.slice(0, 4) }), '电脑上：14:10–16:05 陪他聊了会儿');
-        assert.equal(desktopDiaryLine({ date: '2026-11-21', dayOf, turns: turns.slice(0, 1), overlap: () => 'class' }), '电脑上：14:10–14:20 陪他聊了会儿（本来在上课）');
-        assert.equal(desktopDiaryLine({ date: '2026-11-19', dayOf, turns, actions }), undefined);
-        assert.equal(desktopDiaryLine({ date: '2026-11-21', dayOf, turns: [] }), undefined);
-    });
-
-    test('材料里没有一个 8 字片段来自他（或她）在电脑上的原话、也没有时间线的 summary', () => {
-        const line = desktopDiaryLine({ date: '2026-11-21', dayOf, turns, actions, overlap })!;
-        const material = diaryMaterial(sources, new Date(2026, 10, 21), [], [], line);
-        assert.ok(material.includes(line));
-        for (const text of [USER, HER]) {
-            const chars = [...text];
-            for (let i = 0; i + 8 <= chars.length; i++) {
-                const slice = chars.slice(i, i + 8).join('');
-                assert.ok(!material.includes(slice), `材料里出现了桌面原文片段「${slice}」`);
-            }
-        }
+    test('只带她主动选记的摘要，按她的一天归档', () => {
+        const line = desktopDiaryLine({
+            date: '2026-11-21', dayOf,
+            turns: [
+                ...turns,
+                { ...turn('2026-11-21T13:01:00+08:00'), assistant: '【聊完还在想，也想写进今天的日记：被截断的摘要' },
+                { ...turn('2026-11-22T00:35:00+08:00'), assistant: '刚才的话我还在想。 【聊完还在想，也想写进今天的日记：原来我有点怕跟人说再见。】' },
+                { ...turn('2026-11-22T10:00:00+08:00'), assistant: '【聊完还在想，也想写进今天的日记：隔天的事。】' },
+                { ...turn('2026-11-21T13:00:00+08:00'), user: '【聊完还在想，也想写进今天的日记：他替我写的。】' },
+            ],
+        });
+        assert.equal(line, '电脑上你想留下的事：原来我有点怕跟人说再见。');
+        assert.equal(desktopDiaryLine({ date: '2026-11-21', dayOf, turns }), undefined);
     });
 
     test('不给 desktop 时材料、提示词和原来逐字一样；给了才多那一句说明', () => {

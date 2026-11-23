@@ -160,7 +160,7 @@ import { desktopLogPath, desktopTurns, ingestDesktopRecent } from '.././memory/d
 import { desktopNowSource, desktopPresence, desktopProactiveHooks, lastDesktopTurnAt, outboxDesktopBlock } from '.././life/desktop-now.ts';
 import { DESKTOP_SESSION_KIND, DESKTOP_SESSION_PREFIX, recordDesktopSessions } from '.././life/desktop-timeline.ts';
 import { DESKTOP_LOOKBACK_MS, desktopBusySpans, desktopCalled, desktopWorldEvents, type DesktopCalled, type DesktopSpan } from '.././life/desktop-conflict.ts';
-import { desktopMessages, ownerDayHistory, ownerDayKeeper, type OwnerDayHistoryOptions } from '.././memory/owner-day-view.ts';
+import { desktopMessages, desktopPromiseTurns, ownerDayHistory, ownerDayKeeper, type OwnerDayHistoryOptions } from '.././memory/owner-day-view.ts';
 import { appendDayDiary, desktopDiaryLine, oneDiaryEntries, windowFor } from '.././life/one-diary.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
 import { lifeExecutor } from '.././world/life-selector.ts';
@@ -1455,17 +1455,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             log(`作息冲突：世界事件这次没记（${error instanceof Error ? error.message : String(error)}）`);
         }
     }
-    /**
-     * 一本日记那天「电脑上：…」那一行（oneDiary + desktopDay）：会话由桌面回合的时刻切，动作类别来自时间线里 desktop 渠道的条目（只取时刻和 kind），
-     * 本来在干嘛按他那一档卡上的作息。不读桌面原文、不读 summary（日记进公共库）。桌面记录读不了就抛，diaryWriter 记日志、这篇不带这一行
-     */
     function desktopDiaryLineFor(date: string, diarySchedule: Schedule): string | undefined {
-        const ownerSchedule = desktopOwner ? cardFor(desktopOwner.tier).character.schedule : undefined;
         return desktopDiaryLine({
             date, dayOf: at => formatDate(herDay(diarySchedule, at)),
             turns: desktopTurns(config.dataDir, worldNow()),
-            actions: (timeline?.read() ?? []).filter(entry => entry.channel === 'desktop').map(entry => ({ at: Date.parse(entry.at), kind: entry.kind })),
-            ...(ownerSchedule ? { overlap: (at: Date) => stateAt(ownerSchedule, at).activity.kind } : {}),
         });
     }
     // 之后每 30 秒再收一次：由 dsh-inbox 模块声明（ADR 0336 第 6 步，App 搭好时开）
@@ -1642,7 +1635,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     try {
         if (memory && deviceOwner) {
             const crossFiles = config.crossRecent ? { chatFile: join(config.dataDir, 'chats', `${deviceOwner.qq}.jsonl`), recalledFile: join(config.dataDir, 'chats', `${deviceOwner.qq}.recalled.json`), desktopFile: desktopRecentPath(join(config.dataDir, 'memory')) } : {};
-            if (writeOwnerBank(join(config.dataDir, 'memory'), { ownerBank: memory.bankId(deviceOwner), commonBank: memory.commonBankId(), legacyBank: config.memory!.bankPrefix, ...crossFiles })) log(`同一个她：他的记忆 bank 写进 memory/owner-bank.json（DSH 桌面上的她读它）${config.crossRecent ? '；两边互读最近几轮：开' : ''}`);
+            if (writeOwnerBank(join(config.dataDir, 'memory'), { ownerBank: memory.bankId(deviceOwner), commonBank: memory.commonBankId(), legacyBank: config.memory!.bankPrefix, ...crossFiles,
+                ...(desktopSource && config.oneDiary ? { desktopDiary: true as const } : {}),
+                ...(desktopSource && config.desktopPromises ? { desktopPromises: true as const } : {}), })) log(`同一个她：他的记忆 bank 写进 memory/owner-bank.json（DSH 桌面上的她读它）${config.crossRecent ? '；两边互读最近几轮：开' : ''}`);
         } else if (revokeOwnerBank(join(config.dataDir, 'memory'), memory ? 'owner_missing' : 'memory_disabled')) {
             log(`同一个她：owner-bank.json 已撤销（${memory ? '没有设备 owner' : '长期记忆已关闭'}）`);
         }
@@ -1657,7 +1652,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 桌面上答应的事（ADR 0347 第 3 层 desktopPromises，要 desktopDay 和长期记忆）：只把他那一位的聊天换成 QQ + 电脑上合并的一份；
     // 桌面记录读不了就让它抛，承诺账照「暂不可确认」暂停，不悄悄少几句（memory/owner-day-view.ts）
     const ownerDay: OwnerDayHistoryOptions | undefined = desktopSource && config.desktopPromises && memory
-        ? { ownerQq: desktopOwner!.qq, desktop: () => desktopTurns(config.dataDir, worldNow()) } : undefined;
+        ? { ownerQq: desktopOwner!.qq, desktop: () => desktopPromiseTurns(desktopTurns(config.dataDir, worldNow())) } : undefined;
     if (config.desktopPromises && !ownerDay) log(`桌面上答应的事：desktopPromises 开着，但${!desktopSource ? ' desktopDay 没起作用' : '长期记忆没开'}，不起作用`);
     const keeper = memory
         ? promiseKeeper({
@@ -1682,7 +1677,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     desktopWorldReady = true;
     if (promises) log(`她答应的事：名单里的人每段聊天结束后抽一次，到了日子在时间块里提醒${ownerDay ? '；他在电脑上说的也算（desktopPromises）' : ''}`);
     // 一本日记（ADR 0347 第 3 层 oneDiary）：当天日记只由 QQ 写，selfDirectedMemory 开着也写（周记、阶段总结跟着回来）；
-    // 写完抄一份进 JOURNAL.md（「## 日期（当天）」，一天一次），desktopDay 也开着时材料多一行「电脑上：…」（只有时段和动作类别）
+    // 写完抄一份进 JOURNAL.md（「## 日期（当天）」，一天一次），desktopDay 也开着时只带她愿意公开的桌面选记
     const writesDiary = config.oneDiary || !config.selfDirectedMemory;
     const diaries = writesDiary && memory && diaryCard
         ? diaryWriter({

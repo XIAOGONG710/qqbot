@@ -546,6 +546,8 @@ export function ownerBanks(cfg) {
     const sameContact = chatFile && recalledFile && path.basename(chatFile, '.jsonl') === path.basename(recalledFile, '.recalled.json')
     return {
       owner: data.ownerBank,
+      ...(data.desktopDiary === true ? { desktopDiary: true } : {}),
+      ...(data.desktopPromises === true ? { desktopPromises: true } : {}),
       common: ok(data.commonBank) ? data.commonBank : `${cfg.prefix}-common`,
       legacy: ok(data.legacyBank) ? data.legacyBank : cfg.prefix,
       ...Object.fromEntries([
@@ -1346,7 +1348,16 @@ export function apply(ctx, config = {}) {
         disposers.push(sp.context({
           name: 'linmengyao-memory',
           order: 90,
-          text: () => cache.text || '',
+          text: () => {
+            if (channel() !== 'desktop') return cache.text || ''
+            const owner = ownerBanks(cfg)
+            if (!owner?.desktopFile || (!owner.desktopDiary && !owner.desktopPromises)) return cache.text || ''
+            return [
+              cache.text,
+              owner.desktopDiary ? '电脑上聊过的事，只有聊完还在想、且你自己愿意写进公开日记时，才用「【聊完还在想，也想写进今天的日记：一句你自己写的公开摘要】」选记。可以一条也不选；闲聊、斗嘴、私密内容及聊天原话就留在这里。' : '',
+              owner.desktopPromises ? '电脑上只有你确实答应而且自己决定记下的事，才用「【我答应并记下：具体的事和说好的时间】」亲自记下。随口应声、玩笑和还在考虑的不写；后来想定了可以再答应并记下。已经记过的事若改主意，亲口告诉他，用「【我改主意了：原来答应的事和你的决定】」告诉他。' : '',
+            ].filter(Boolean).join('\n\n')
+          },
         }))
         // 人设来自 QQ 那边的卡（ADR 0179 / 任务书 §1）：这里只读渲染物，别的地方不许再写一份
         disposers.push(sp.context({

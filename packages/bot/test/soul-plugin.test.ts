@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, before, describe, test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { insightsLine, writeInsightsExport, type Insight } from '../src/life/diary-insights.ts';
@@ -1409,6 +1409,24 @@ describe('桌面会话的收尾（session-tail）', () => {
             });
         }
     });
+});
+
+test('桌面两种自选写回的说明分别跟开关走，QQ 派活不带', async () => {
+    const file = ownerFile(undefined);
+    const h = boot({ ownerBankFile: file });
+    const base = { ownerBank: OWNER, desktopFile: join(dirname(file), 'desktop-recent.jsonl') };
+    const prompt = () => h.contexts.map(entry => entry.text()).join('\n');
+    await withChannel(undefined, () => {
+        writeFileSync(file, JSON.stringify(base));
+        assert.doesNotMatch(prompt(), /聊完还在想，也想写进今天的日记|我答应并记下/);
+        writeFileSync(file, JSON.stringify({ ...base, desktopDiary: true }));
+        assert.match(prompt(), /聊完还在想，也想写进今天的日记/);
+        assert.doesNotMatch(prompt(), /我答应并记下/);
+        writeFileSync(file, JSON.stringify({ ...base, desktopPromises: true }));
+        assert.match(prompt(), /我答应并记下/);
+        assert.doesNotMatch(prompt(), /聊完还在想，也想写进今天的日记/);
+    });
+    await withChannel('qq-work', () => assert.doesNotMatch(prompt(), /我答应并记下/));
 });
 
 // ───────── 一个生活·第 5 层：记忆有体感（ADR 0347）─────────
