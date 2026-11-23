@@ -4,7 +4,7 @@
 //
 // 用法：node scripts/prompt-manifest-diff.mjs <数据目录> [--self <SELF.json 路径>] [--qq <他的 QQ>]
 //   数据目录是 Koishi 配置里的 dataDir（线上是 runtime/bot-shadow）；SELF.json 默认在灵魂目录（QQBOT_SOUL_DIR，默认 ~/.dsh/linmengyao）；
-//   --qq 不给就用清单里最近一次不是「想一想」的那一份。全部一致退出码 0，否则 1。
+//   --qq 不给就用清单里最近一次回他 / 主动找他的那一份。全部一致退出码 0，否则 1。
 
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url';
 const MANIFEST_FILE = /^prompt-manifest-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 const sha256 = text => createHash('sha256').update(String(text), 'utf8').digest('hex');
 
-/** 清单里最近的一份（按文件日期、文件里的先后）：给了 qq 只看他的；「想一想」（think）的不算，那不是聊天的提示词 */
+/** 清单里最近的一份（按文件日期、文件里的先后）：给了 qq 只看他的；只认回他 / 主动找他（reply / initiate）——想一想不是聊天的提示词，群里开口 / 审稿重写 / 挑候选（v2）没有「此刻」块的段落 */
 export function latestManifest(logsDir, { qq } = {}) {
     let names = [];
     try { names = readdirSync(logsDir).filter(name => MANIFEST_FILE.test(name)).sort(); } catch { return undefined; }
@@ -25,7 +25,7 @@ export function latestManifest(logsDir, { qq } = {}) {
         for (const line of lines.reverse()) {
             let entry;
             try { entry = JSON.parse(line); } catch { continue; }
-            if (!entry || !Array.isArray(entry.pieces) || entry.kind === 'think') continue;
+            if (!entry || !Array.isArray(entry.pieces) || (entry.kind !== 'reply' && entry.kind !== 'initiate')) continue;
             if (qq !== undefined && entry.qq !== qq) continue;
             return entry;
         }

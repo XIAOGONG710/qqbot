@@ -357,6 +357,15 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
     let promptSource: OpenAIMessage[] | undefined;
     /** 每份拼好的提示词对应的清单材料（提示词指纹清单，onManifest 给了才有）：回复器调 onPrompt 时按同一个对象取出、算好交出去 */
     const manifestParts = new WeakMap<object, Pick<ManifestInput, 'at' | 'kind' | 'placed'>>();
+    /** 交一份清单（onManifest 给了才算）：回他 / 主动 / 想一想按上面的材料，审稿重写和挑候选只有消息。算或交出错只记一句，不挡回复 */
+    const noteManifest = (input: Omit<ManifestInput, 'qq'>) => {
+        if (!options.onManifest) return;
+        try {
+            options.onManifest(promptManifest({ qq: contact.qq, ...input }));
+        } catch (error) {
+            log(`提示词指纹清单没记下（${error instanceof Error ? error.message : String(error)}），不影响回复`);
+        }
+    };
     // 刚想起的公共记忆（ADR 0017）、从前（ADR 0022，modules/past.ts）、刚说起的她身边的人（ADR 0033）：接下来两轮没有新线索也沿用，追问时不忘。
     // 不记在这里，每轮从聊天记录往回推（lingering，ADR 0039）：记在内存里的话，重启以后追问「她好了没」就接不上了
     // 他问到过去的某一天（ADR 0032）：那天她那边的事，按这一档的卡算；只到 RECAP_DAYS 天前（ADR 0018：7 天内记得清楚）
@@ -600,6 +609,8 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             const plan = turnNow ? candidatePlan(options.turnModules ?? [], turnNow) : undefined;
             if (!plan) return generate(messages, log, useNow());
             // 同一份提示词生成几个，挑扣分最少的（ADR 0041，modules/candidates.ts）：每一个都清理之后再交给模块打分（只清理，不动选中的那一稿）；返回原文，挑中的那个由回复器再清理一次、成为选中的那一稿
+            // 提示词指纹清单：记一行 candidate（同一份消息、生成了几个），这一轮的 reply / initiate 行照旧
+            noteManifest({ at: turnNow!.at, kind: 'candidate', messages, calls: plan.count });
             const all = await Promise.all(Array.from({ length: plan.count }, () => generate(messages, log, useNow())));
             return all[plan.choose(all.map(raw => draftOf(raw).text), log)]!;
         },
@@ -616,8 +627,12 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
         review: async (reply, messages, reviewContext) => {
             // 审稿从选中的那一稿开始：模块只改字；重写出来的那一稿先放在一边，模块说采用了（accept）才换成选中的，危机回合（dropDevices）选中的不带设备指令
             let rewrite: Draft | undefined;
+            /** 审稿走到哪一步了：重写的清单记是哪一步要的 */
+            let stageNow: ReviewStage | undefined;
             const regenerate = async (note: string) => {
-                rewrite = draftOf(await generate(postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names), log, useNow()));
+                const sent = postProcessPrompt([...messages, { role: 'system', content: note }], llm.promptPostProcessing, names);
+                noteManifest({ at: turnNow?.at ?? new Date(now()), kind: 'review', messages: sent, ...(stageNow ? { stage: stageNow } : {}) });
+                rewrite = draftOf(await generate(sent, log, useNow()));
                 return rewrite.text;
             };
             const onRewriteAccepted = () => { chosen = rewrite; };
@@ -627,7 +642,10 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
                 regenerate, accept: onRewriteAccepted, dropDevices: () => { chosen = chosen && { text: chosen.text }; }, scratch: {}, log, names, ...(promptSource ? { promptSource } : {}),
                 ...(reviewContext?.initiating ? { initiating: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}),
             };
-            const at = (stage: ReviewStage, text: string) => (turnNow ? reviewStage(options.turnModules ?? [], stage, text, turnNow, reviewCtx) : { text });
+            const at = (stage: ReviewStage, text: string) => {
+                stageNow = stage;
+                return turnNow ? reviewStage(options.turnModules ?? [], stage, text, turnNow, reviewCtx) : { text };
+            };
             // 逐条事实检查（ADR 0137）是解释器的模块（modules/review-facts.ts），开着 factCheck 时挂在 facts / factsFinal：先于出口检查；主动找他时删光了就 stop，这轮不发
             let atFacts = at('facts', reply);
             if (atFacts instanceof Promise) atFacts = await atFacts;
@@ -715,15 +733,11 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             const parts = manifestParts.get(prompt);
             if (!parts) return;
             manifestParts.delete(prompt);
-            try {
-                options.onManifest!(promptManifest({
-                    qq: contact.qq, ...parts, messages: prompt.messages,
-                    ...(prompt.omittedAfterHistory ? { omittedAfterHistory: prompt.omittedAfterHistory } : {}),
-                    fallback: prompt.fallbackReply != null,
-                }));
-            } catch (error) {
-                log(`提示词指纹清单没记下（${error instanceof Error ? error.message : String(error)}），不影响回复`);
-            }
+            noteManifest({
+                ...parts, messages: prompt.messages,
+                ...(prompt.omittedAfterHistory ? { omittedAfterHistory: prompt.omittedAfterHistory } : {}),
+                fallback: prompt.fallbackReply != null,
+            });
         } : options.onPrompt,
         ...(options.sensitive ? { sensitive: options.sensitive } : {}),
     });

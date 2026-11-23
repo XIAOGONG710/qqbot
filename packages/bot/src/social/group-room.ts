@@ -28,6 +28,7 @@ import { stateAt } from '../life/schedule.ts';
 import { worldAt, type WorldNow } from '../world/world.ts';
 import { FEELINGS_STALE_MS } from '../emotion/feeling-export.ts';
 import type { GroupMotiveDecision } from './group-opportunity.ts';
+import { promptManifest, type PromptManifest } from '../platform/prompt-manifest.ts';
 
 export interface GroupRoomDeps {
     config: AppConfig;
@@ -68,6 +69,8 @@ export interface GroupRoomDeps {
     onDecision?: (trace: GroupDecisionTrace) => void;
     /** 群自主（groupAgency B）：他在私聊里说过要不要她在群里替他出头（group-self.ts 的 defendWishFrom）；不给就是没说过 */
     defendWish?: () => DefendWish | undefined;
+    /** 提示词指纹清单（platform/prompt-manifest.ts）：每次在群里开口前交一份（kind group，qq 记群号；只有消息的条数、字数、sha256，没有正文）。不给就不算 */
+    promptManifest?: (manifest: PromptManifest) => void;
 }
 
 export interface GroupRoom {
@@ -496,6 +499,14 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         const messages = [{ role: 'system' as const, content: system }, {
             role: 'user' as const, content: transcript + '\n\n' + (recalled ? recalled + '\n\n' : '') + note,
         }];
+        // 提示词指纹清单：群里的提示词不按槽拼，只记消息（条数、字数、sha256）和为什么开口；算或交出错只记一句，不挡她说话
+        if (deps.promptManifest) {
+            try {
+                deps.promptManifest(promptManifest({ qq: group.id, at: new Date(worldNow()), kind: 'group', messages, reason }));
+            } catch (error) {
+                log(`[群 ${group.id}] 提示词指纹清单没记下（${error instanceof Error ? error.message : String(error)}），不影响说话`);
+            }
+        }
         const raw = await exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: Math.min(config.llm.temperature, 1.1) }, messages }, log);
         // 这一档的禁用词（群里叫不出「宝宝」这类黏的叫法）：带了的那条不发
         // 她定的线：带她自己时（groupOwn）或群自主开着时都拦；有人想不开时不拦（劝人的话常带「挂科」「成绩」，保命在前）

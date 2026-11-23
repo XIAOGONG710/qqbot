@@ -1,5 +1,6 @@
 // 提示词指纹清单（platform/prompt-manifest.ts；研究 docs/research/2026-11-22-private-companion-v2.md 五、建议 1）：
-// 段落带模块（解释器 contributeTurn 标）、真正放进去的段落（slots.ts 的 placedPieces）、算清单、联系人流水线每次生成交一份、按天写 / 删旧的、私人文件名单。
+// 段落带模块（解释器 contributeTurn 标）、真正放进去的段落（slots.ts 的 placedPieces）、算清单、联系人流水线每次生成交一份
+// （含审稿重写、挑候选）、群里开口交一份、按天写 / 删旧的、私人文件名单。
 // 只用合成角色和编的段落（ADR 0333）。
 
 import assert from 'node:assert/strict';
@@ -13,8 +14,12 @@ import { assemblePrompt, placedPieces, type Piece, type PlacedPiece } from '../s
 import { useFewerRules } from '../src/language/fewer-rules.ts';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
+import { realFiles } from '../src/executor/executor.ts';
+import type { AppConfig } from '../src/platform/config.ts';
 import { createContactResponder, loadTierCard } from '../src/platform/contact.ts';
-import { createPromptManifestLog, expiredManifests, MANIFEST_KEEP_DAYS, manifestFileName, promptManifest, type PromptManifest } from '../src/platform/prompt-manifest.ts';
+import { createPromptManifestLog, expiredManifests, MANIFEST_KEEP_DAYS, MANIFEST_VERSION, manifestFileName, promptManifest, type PromptManifest } from '../src/platform/prompt-manifest.ts';
+import { groupLog } from '../src/social/group-chat.ts';
+import { groupRoom, type GroupRoomDeps } from '../src/social/group-room.ts';
 import { isPrivateFile } from '../src/platform/private-space.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import { syntheticCardPattern } from './fixtures/card.ts';
@@ -83,7 +88,8 @@ describe('算清单（promptManifest）', () => {
 
     test('每段：槽、模块、表、字数、正文的 sha256；最终消息：条数、每条的、整份的；时刻是 ISO', () => {
         const manifest = promptManifest({ qq: 10001, at: new Date('2026-11-22T21:03:00+08:00'), kind: 'reply', placed: placed(), messages });
-        assert.equal(manifest.v, 1);
+        assert.equal(manifest.v, MANIFEST_VERSION);
+        assert.equal(MANIFEST_VERSION, 2);
         assert.equal(manifest.qq, 10001);
         assert.equal(manifest.at, '2026-11-22T13:03:00.000Z');
         assert.equal(manifest.kind, 'reply');
@@ -124,13 +130,15 @@ describe('算清单（promptManifest）', () => {
 
 describe('联系人流水线：每次生成交一份清单', () => {
     const NOW = Date.parse('2026-11-22T21:03:00+08:00');
-    const run = async (withManifest: boolean) => {
+    const run = async (withManifest: boolean, extra: Module[] = []) => {
         const rows: StoredMessage[] = [];
         const prompts: OpenAIMessage[][] = [];
+        /** 每次真调模型时的消息（挑候选、审稿重写都在这里） */
+        const calls: OpenAIMessage[][] = [];
         const manifests: PromptManifest[] = [];
         // 记下每个模块这一轮真给了什么（清单里的哈希要对得上它们）
         const given: { module: string; piece: Piece }[] = [];
-        const spied = modules().map(module => (module.contribute ? { ...module, contribute: (turn: Turn) => {
+        const spied = [...modules(), ...extra].map(module => (module.contribute ? { ...module, contribute: (turn: Turn) => {
             const list = module.contribute!(turn) as readonly Piece[];
             given.push(...list.map(piece => ({ module: module.id, piece })));
             return list;
@@ -144,13 +152,13 @@ describe('联系人流水线：每次生成交一份清单', () => {
             now: () => NOW, log: () => {}, settle: { quietMs: 0, maxMs: 0 }, retryAfterMs: [],
             turnModules: spied,
             send: async () => 101,
-            generate: async () => '在呢',
+            generate: async messages => { calls.push(messages); return '在呢'; },
             onPrompt: prompt => { prompts.push(prompt.messages); },
             ...(withManifest ? { onManifest: (manifest: PromptManifest) => { manifests.push(manifest); } } : {}),
         });
         try { responder.receive('在吗', 1, new Date(NOW)); await responder.whenIdle(); }
         finally { responder.stop(); }
-        return { prompts, manifests, given, rows };
+        return { prompts, manifests, given, rows, calls };
     };
 
     test('一次回复一份：联系人、时刻、回他；每段的槽 / 模块 / 哈希对得上模块真给的；最终消息的哈希对得上 onPrompt 拿到的那份', async () => {
@@ -182,6 +190,103 @@ describe('联系人流水线：每次生成交一份清单', () => {
         const on = await run(true);
         assert.deepEqual(on.prompts, off.prompts);
         assert.deepEqual(on.rows.map(row => [row.role, row.content]), off.rows.map(row => [row.role, row.content]));
+        assert.equal(off.manifests.length, 0);
+    });
+
+    // 挑候选（ADR 0041）：同一份提示词生成三个、挑第二个；审稿在 shape 那一步要一次重写（末尾加一条说明）并采用
+    const NOTE = '[合成的重写说明：再短一点，别用感叹号]';
+    const pickAndRewrite = (): Module[] => [
+        { id: 'pick', candidates: () => ({ count: 3, choose: () => 1 }) },
+        { id: 'rewriter', reviewAt: { shape: async (_text, _turn, ctx) => { const again = await ctx.regenerate(NOTE); ctx.accept(); return again; } } },
+    ];
+
+    test('挑候选一行 candidate、审稿重写一行 review：没有段落，只有真发给模型的那份消息的条数 / 字数 / sha256', async () => {
+        const { manifests, calls, prompts } = await run(true, pickAndRewrite());
+        assert.deepEqual(manifests.map(m => m.kind), ['reply', 'candidate', 'review']);
+        assert.equal(calls.length, 4, '三个候选 + 一次重写');
+        const [reply, candidate, review] = manifests as [PromptManifest, PromptManifest, PromptManifest];
+        // 挑候选：同一份消息（整份哈希和回他那行一样）、生成了几个；时刻是这一轮的
+        assert.deepEqual(candidate.pieces, []);
+        assert.equal(candidate.calls, 3);
+        assert.equal(candidate.at, reply.at);
+        assert.equal(candidate.messages.sha256, reply.messages.sha256);
+        assert.deepEqual(candidate.messages.list, calls[0]!.map(m => ({ role: m.role, chars: m.content.length, sha256: hash(m.content) })));
+        // 审稿重写：哪一步要的、真发出去的那份（多了末尾那条说明）
+        assert.deepEqual(review.pieces, []);
+        assert.equal(review.stage, 'shape');
+        assert.equal(review.at, reply.at);
+        assert.deepEqual(review.messages.list, calls[3]!.map(m => ({ role: m.role, chars: m.content.length, sha256: hash(m.content) })));
+        assert.equal(review.messages.count, prompts[0]!.length + 1);
+        assert.equal(review.messages.list.at(-1)!.sha256, hash(NOTE));
+        assert.equal(review.chars, calls[3]!.reduce((sum, m) => sum + m.content.length, 0));
+        for (const m of [reply, candidate]) assert.equal(m.stage, undefined);
+        // 没有正文
+        const json = JSON.stringify(manifests);
+        for (const content of calls.flat().map(m => m.content)) assert.ok(!json.includes(content), '清单里没有消息正文');
+        for (const secret of ['在吗', '再短一点', '感叹号']) assert.ok(!json.includes(secret), secret);
+    });
+
+    test('挑候选、审稿重写时给不给清单，提示词、每次调模型的消息、发出去的都一样', async () => {
+        const off = await run(false, pickAndRewrite());
+        const on = await run(true, pickAndRewrite());
+        assert.deepEqual(on.prompts, off.prompts);
+        assert.deepEqual(on.calls, off.calls);
+        assert.deepEqual(on.rows.map(row => [row.role, row.content]), off.rows.map(row => [row.role, row.content]));
+    });
+});
+
+describe('群里开口：每次交一份（kind group）', () => {
+    const card = loadTierCard(syntheticCardPattern, 'classmate-open');
+    const AT = Date.parse('2026-11-20T16:00:00+08:00');
+    async function speak(withManifest: boolean) {
+        const dataDir = tmp();
+        const calls: OpenAIMessage[][] = [];
+        const sent: string[] = [];
+        const manifests: PromptManifest[] = [];
+        const config = {
+            dataDir, schedule: false, herDays: false, herFeelings: false, pokeOut: false, profileLikes: false,
+            groupChat: 'on', groupOwn: 'off', groups: [{ id: 555, name: '合成宿舍群' }], contacts: [], llm: { temperature: 1 },
+        } as unknown as AppConfig;
+        const deps = {
+            config, log: () => {}, worldNow: () => AT, reading: undefined, dormancy: undefined,
+            exec: { files: realFiles, llm: async (request: { messages: OpenAIMessage[] }) => { calls.push(request.messages); return '在上课呢'; } },
+            transport: { sendGroupText: async (_g: number, text: string) => { sent.push(text); return 9000 + sent.length; } },
+            cardFor: () => card, sendOwnedNotice: async () => {}, sing: async () => ({}), repoRoot: dataDir,
+            groupsOn: true, groupLogs: groupLog(dataDir), groupPeopleBook: undefined, groupFeel: undefined, groupSongRequests: new Map(), songRequestLifetime: 0,
+            stopped: () => false, selfId: () => 20000, lastFeelings: () => undefined, plainTextOf: () => undefined, singBusyLine: () => '',
+            ...(withManifest ? { promptManifest: (m: PromptManifest) => { manifests.push(m); } } : {}),
+        } as unknown as GroupRoomDeps;
+        groupRoom(deps).receive({
+            post_type: 'message', message_type: 'group', sub_type: 'normal', self_id: 20000, user_id: 30001, group_id: 555, message_id: 7777,
+            time: Math.floor(AT / 1000), message: [{ type: 'at', data: { qq: '20000' } }, { type: 'text', data: { text: ' 你在干嘛呀合成问题' } }], raw_message: '',
+            sender: { user_id: 30001, card: '老王', nickname: '老王' },
+        } as never);
+        const deadline = Date.now() + 5000;
+        while (!sent.length && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+        return { calls, sent, manifests };
+    }
+
+    test('群号、为什么开口、真发给模型的消息（条数 / 字数 / sha256），没有段落、没有正文', async () => {
+        const { calls, manifests } = await speak(true);
+        assert.equal(calls.length, 1);
+        assert.equal(manifests.length, 1);
+        const [m] = manifests as [PromptManifest];
+        assert.equal(m.kind, 'group');
+        assert.equal(m.qq, 555);
+        assert.equal(m.reason, 'mentioned');
+        assert.equal(m.at, new Date(AT).toISOString());
+        assert.deepEqual(m.pieces, []);
+        assert.deepEqual(m.messages.list, calls[0]!.map(x => ({ role: x.role, chars: x.content.length, sha256: hash(x.content) })));
+        const json = JSON.stringify(m);
+        for (const content of calls[0]!.map(x => x.content)) assert.ok(!json.includes(content));
+        for (const secret of ['合成问题', '老王', '合成宿舍群', card.character.name]) assert.ok(!json.includes(secret), secret);
+    });
+
+    test('给不给清单，群里的提示词和发出去的一样', async () => {
+        const off = await speak(false);
+        const on = await speak(true);
+        assert.deepEqual(on.calls, off.calls);
+        assert.deepEqual(on.sent, off.sent);
         assert.equal(off.manifests.length, 0);
     });
 });
@@ -246,13 +351,17 @@ describe('scripts/prompt-manifest-diff.mjs：SELF.json 逐行比清单的哈希'
     const writeManifests = (dir: string, entries: object[], day = '2026-11-22') => writeFileSync(join(dir, manifestFileName(day)), `${entries.map(e => JSON.stringify(e)).join('\n')}\n坏的一行\n`);
     const piece = (slot: string, text: string, module = 'her-now') => ({ slot, module, list: 'now', chars: text.length, sha256: hash(text) });
 
-    test('取最近一份（给了 QQ 只看他的；想一想的不算）；按槽比：一致 / 不一致 / 只在 SELF / 只在提示词；只输出槽名和状态，不输出正文', () => {
+    test('取最近一份（给了 QQ 只看他的；只认回他 / 主动，想一想、审稿重写、挑候选、群里的不算）；按槽比：一致 / 不一致 / 只在 SELF / 只在提示词；只输出槽名和状态，不输出正文', () => {
         const dir = tmp();
         writeManifests(dir, [{ v: 1, qq: 10001, at: 'old', kind: 'reply', pieces: [] }], '2026-11-21');
         writeManifests(dir, [
             { v: 1, qq: 10001, at: '2026-11-22T13:00:00.000Z', kind: 'reply', pieces: [piece('time', '[九点]', 'time-block'), piece('state', '[你现在：在宿舍]'), piece('feeling', '[心境：有点闷]', 'feelings'), piece('inner', '[想吃火锅]', 'inner')] },
             { v: 1, qq: 10002, at: '2026-11-22T13:01:00.000Z', kind: 'reply', pieces: [] },
             { v: 1, qq: 10001, at: '2026-11-22T13:02:00.000Z', kind: 'think', pieces: [] },
+            // v2 的几种没有「此刻」块的段落，也不算
+            { v: 2, qq: 10001, at: '2026-11-22T13:03:00.000Z', kind: 'review', stage: 'shape', pieces: [] },
+            { v: 2, qq: 10001, at: '2026-11-22T13:03:00.000Z', kind: 'candidate', calls: 3, pieces: [] },
+            { v: 2, qq: 10001, at: '2026-11-22T13:04:00.000Z', kind: 'group', reason: 'mentioned', pieces: [] },
         ]);
         const manifest = latestManifest(dir, { qq: 10001 });
         assert.equal(manifest?.at, '2026-11-22T13:00:00.000Z');

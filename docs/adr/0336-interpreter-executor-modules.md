@@ -1598,9 +1598,13 @@ app.ts 从 3317 行到 2764 行（今晚 9 个提交；全量测试除串行基�
 - `Piece` 多一个可选的 `module`：解释器 `contributeTurn` 收段落时标上模块 id；拼提示词只看 `slot` 和 `text`，模块名不进提示词。
 - `slots.ts` 的 `placedPieces`：和 `assemblePrompt` 同一个筛法（少规矩、危机回合）、同一个先后，给出真正放进去的段落；`contributeTurn` 的第三个参数 `onPlaced` 要的时候交出来。
 - 联系人流水线（`platform/contact.ts`）给了 `onManifest` 才算：按同一份提示词对象（WeakMap），在回复器调 `onPrompt` 的那一刻算清单（`platform/prompt-manifest.ts` 的 `promptManifest`）。诊断只认这一份冻结的清单，不另拼一份。
-- 清单一行：`{ v, qq, at, kind: reply|initiate|think, pieces: [{ slot, module, list, chars, sha256, omitted? }], chars, messages: { count, sha256, list: [{ role, chars, sha256 }] }, omittedAfterHistory?, fallback? }`。被预算挤掉的段按 `buildPrompt` 的省略次序标 `omitted`。没有正文。
+- 清单一行：`{ v, qq, at, kind: reply|initiate|think|group|review|candidate, pieces: [{ slot, module, list, chars, sha256, omitted? }], chars, messages: { count, sha256, list: [{ role, chars, sha256 }] }, omittedAfterHistory?, fallback?, reason?, stage?, calls? }`。被预算挤掉的段按 `buildPrompt` 的省略次序标 `omitted`。没有正文。
 - 落盘是宿主的事（同按天日志）：`platform/main.ts`、Koishi 插件给 App 一个 `promptManifest`，写 `<数据目录>/logs/prompt-manifest-<YYYY-MM-DD>.jsonl`，只追加，保留 14 天（每天第一次写时删更早的）。默认就写，不看 `QQBOT_SENSITIVE_LOGS`。
 - 行为基线不变：基线的 harness 不给 `promptManifest`，App 自己不写这个文件，数据目录快照逐字不变；联系人流水线没给 `onManifest` 时 `onPrompt` 原样传。
 - 哈希也算私人的：短行（时间、状态）能按 sha256 穷举回去，所以文件名规则进了 `private-space.ts` 的 `PRIVATE_PATTERNS`（迁移 / 存档不带）和 `scripts/ginka-guard.mjs`（不给第三方）。
 - 核对 SELF：`node scripts/prompt-manifest-diff.mjs <数据目录> [--self <SELF.json>] [--qq <他>]`，逐槽比 sha256，只输出槽名、模块和对不对得上。两边不是同一时刻算的，跟着钟走的槽对不上先看时刻。
-- 还没覆盖：群聊的提示词（不走联系人流水线）、审稿重写和挑候选（同一份提示词加一条说明 / 多生成几次，不另记）。
+- 不按槽拼的也记（11-24，`v: 2`；旧的行是 `v: 1`）：这几种 `pieces` 是空的，只有真发给模型的消息的条数 / 字数 / sha256。
+  - `group`：群里开口（`social/group-room.ts` 的 `speakInGroup`，App 把同一个 `promptManifest` 给群那一摊），`qq` 记群号，`reason` 记为什么开口（被 @、接话、冷场冒一句……）；
+  - `review`：审稿重写（联系人流水线的 `regenerate`：同一份提示词末尾加一条说明再生成），`stage` 记审稿哪一步要的（`REVIEW_STAGES`）；
+  - `candidate`：挑候选（ADR 0041，同一份提示词生成 `calls` 个挑一个），那一轮的 reply / initiate 行照旧有，`messages.sha256` 和它一样。
+  `scripts/prompt-manifest-diff.mjs` 只认 reply / initiate；线上盘点（`test/inventory/live-mix.ts`）的字数、段数、槽占比只按 reply / initiate / think 算，另外三种单独数（审稿按哪一步、挑候选共生成几个、群里按为什么开口）。

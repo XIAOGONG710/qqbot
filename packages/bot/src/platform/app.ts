@@ -408,7 +408,7 @@ export interface AppOptions {
     /** 敏感调试开关（ADR 0070 第 8 项）；不传按环境变量 QQBOT_SENSITIVE_LOGS（默认关） */
     sensitive?: SensitiveSwitch;
     /**
-     * 提示词指纹清单（platform/prompt-manifest.ts）：每次给联系人生成前交一份清单（槽、模块、字数、sha256，没有正文）。
+     * 提示词指纹清单（platform/prompt-manifest.ts）：每次给联系人生成前（含审稿重写、挑候选）、在群里开口前交一份清单（槽、模块、字数、sha256，没有正文）。
      * 宿主给（platform/main.ts、Koishi 插件按天写进 <数据目录>/logs，默认就写，不看敏感开关）；不给就不算（测试、行为基线、模拟器）
      */
     promptManifest?: (manifest: PromptManifest) => void;
@@ -2373,6 +2373,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ...(agency.groupOpportunity ? { groupOpportunity: agency.groupOpportunity } : {}),
         ...(agency.onDecision ? { onDecision: agency.onDecision } : {}),
         ...(agency.defendWish ? { defendWish: agency.defendWish } : {}),
+        ...(promptManifest ? { promptManifest } : {}),
     });
 
 

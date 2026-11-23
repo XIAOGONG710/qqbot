@@ -1,7 +1,8 @@
 // 提示词指纹清单（研究 docs/research/2026-11-22-private-companion-v2.md 五、建议 1；ADR 0336 附「提示词指纹清单」）。
-// 每次生成（回他、主动找他、想一想）冻结一份「这一份提示词里放了什么」，**不含任何正文**：
+// 每次生成（回他、主动找他、想一想；v2 起还有群里开口、审稿重写、挑候选）冻结一份「这一份提示词里放了什么」，**不含任何正文**：
 //   每段的槽、产出它的模块、在哪张表（main 之后 / 聊天记录之后 / 「此刻」块）、字数、正文的 sha256，
 //   加上这一轮的联系人、时刻、最终发给模型的消息条数、每条的角色 / 字数 / sha256 和整份的 sha256。
+//   不按槽拼的提示词（群里开口、审稿重写、挑候选）没有段落（pieces 是空的），只记最终的消息。
 // 用处：
 //   1. ADR 0347 第 2 层验收「SELF 的行和 QQ『此刻』块一字不差」：逐行比 sha256，不开敏感日志、不碰正文（scripts/prompt-manifest-diff.mjs）；
 //   2. ADR 0336 后面拆模块时，看出哪个模块改了哪个槽；
@@ -17,15 +18,24 @@ import type { PlacedPiece } from '../interpreter/slots.ts';
 import type { OpenAIMessage } from '../language/prompt.ts';
 import type { Log } from './log.ts';
 
-export const MANIFEST_VERSION = 1;
+/** 2：多了 group / review / candidate 三种（pieces 为空）和 reason / stage / calls；1 的行只有 reply / initiate / think，别的字段一样 */
+export const MANIFEST_VERSION = 2;
 /** 留几天（含今天）：够看一周多的变化，又不会越积越多 */
 export const MANIFEST_KEEP_DAYS = 14;
 /** 清单文件名：prompt-manifest-<本地日期>.jsonl */
 export const MANIFEST_FILE = /^prompt-manifest-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 export const manifestFileName = (day: string): string => `prompt-manifest-${day}.jsonl`;
 
-/** 这一次生成是什么：回他、主动找他、只想一想（内心，ADR 0101） */
-export type ManifestKind = 'reply' | 'initiate' | 'think';
+/**
+ * 这一次生成是什么：
+ * - 按槽拼的（联系人流水线 buildPrompt，有 pieces）：回他、主动找他、只想一想（内心，ADR 0101）；
+ * - 不按槽拼的（pieces 为空，只记消息）：群里开口（social/group-room.ts；qq 记群号、reason 记为什么开口）、
+ *   审稿重写（同一份提示词末尾加一条说明再生成一次；stage 记审稿哪一步要的）、
+ *   挑候选（同一份提示词生成 calls 个挑一个，ADR 0041；那一轮的 reply / initiate 行照旧有，messages.sha256 和它一样）
+ */
+export const SLOT_KINDS = ['reply', 'initiate', 'think'] as const;
+export const MANIFEST_KINDS = [...SLOT_KINDS, 'group', 'review', 'candidate'] as const;
+export type ManifestKind = (typeof MANIFEST_KINDS)[number];
 
 /** 一段：槽、模块、在哪张表、字数、正文的 sha256；被预算挤掉的（buildPrompt 的 omittedAfterHistory）标 omitted */
 export interface ManifestPiece {
@@ -41,7 +51,9 @@ export interface ManifestPiece {
 export interface ManifestMessage { role: string; chars: number; sha256: string }
 
 export interface PromptManifest {
-    v: typeof MANIFEST_VERSION;
+    /** 旧的行是 1（见 MANIFEST_VERSION） */
+    v: 1 | typeof MANIFEST_VERSION;
+    /** 联系人的 QQ；群里开口（group）时是群号 */
     qq: number;
     /** 这一轮的时刻（ISO） */
     at: string;
@@ -55,6 +67,12 @@ export interface PromptManifest {
     omittedAfterHistory?: number;
     /** 预算放不下、没调模型直接回了固定的话 */
     fallback?: true;
+    /** group：为什么开口（被 @、接话、冷场冒一句……，social/group-chat.ts 的 SpeakReason） */
+    reason?: string;
+    /** review：审稿哪一步要的重写（interpreter.ts 的 REVIEW_STAGES） */
+    stage?: string;
+    /** candidate：同一份提示词生成了几个 */
+    calls?: number;
 }
 
 export const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
@@ -63,12 +81,15 @@ export interface ManifestInput {
     qq: number;
     at: Date;
     kind: ManifestKind;
-    /** 真正放进去的段落（slots.ts 的 placedPieces；模块由解释器标上） */
-    placed: readonly PlacedPiece[];
+    /** 真正放进去的段落（slots.ts 的 placedPieces；模块由解释器标上）；不按槽拼的不给 */
+    placed?: readonly PlacedPiece[];
     /** 最终发给模型的消息 */
     messages: readonly OpenAIMessage[];
     omittedAfterHistory?: number;
     fallback?: boolean;
+    reason?: string;
+    stage?: string;
+    calls?: number;
 }
 
 /**
@@ -76,15 +97,16 @@ export interface ManifestInput {
  * 这里按同样的次序把对应的段标 omitted（「此刻」块整条被挤掉时，它的每一行都标）
  */
 export function promptManifest(input: ManifestInput): PromptManifest {
+    const placed = input.placed ?? [];
     const omitted = new Set<PlacedPiece>();
     const skip = input.omittedAfterHistory ?? 0;
     if (skip > 0) {
-        const history = input.placed.filter(item => item.list === 'history' && item.piece.text);
-        const now = input.placed.filter(item => item.list === 'now');
+        const history = placed.filter(item => item.list === 'history' && item.piece.text);
+        const now = placed.filter(item => item.list === 'now');
         const candidates: PlacedPiece[][] = [...history.map(item => [item]), ...(now.length ? [now] : [])];
         for (const group of candidates.slice(0, skip)) for (const item of group) omitted.add(item);
     }
-    const pieces = input.placed.map((item): ManifestPiece => ({
+    const pieces = placed.map((item): ManifestPiece => ({
         slot: item.piece.slot,
         module: item.piece.module ?? '?',
         list: item.list,
@@ -103,6 +125,9 @@ export function promptManifest(input: ManifestInput): PromptManifest {
         messages: { count: list.length, sha256: sha256(JSON.stringify(input.messages.map(({ role, content }) => [role, content]))), list },
         ...(input.omittedAfterHistory ? { omittedAfterHistory: input.omittedAfterHistory } : {}),
         ...(input.fallback ? { fallback: true as const } : {}),
+        ...(input.reason ? { reason: input.reason } : {}),
+        ...(input.stage ? { stage: input.stage } : {}),
+        ...(input.calls ? { calls: input.calls } : {}),
     };
 }
 
