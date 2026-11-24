@@ -981,10 +981,14 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     if (world.money) {
         const past = timeline.ledger.filter(e => e.at <= now);
         const paid = lastPayday(world.money, day);
+        // 一笔账的「她的一天」只可能是它那个日历日或前一天：早于今天 0 点、不早于后天 0 点的肯定不是今天，先按时刻筛掉，
+        // 剩下的再按她的一天算（只为快，结果一样；账从开学记起，每算一刻都把整本账过一遍 herDay 太慢）
+        const todayFrom = day.getTime(), todayUntil = addDays(day, 2).getTime();
         result.money = {
             balance: past.reduce((sum, e) => sum + e.amount, world.money.start),
             nextPay: nextPayday(world.money, day),
-            today: past.filter(e => e.kind === 'spend' && formatDate(herDay(schedule, e.at)) === date).map(e => ({ what: e.what, amount: -e.amount })),
+            today: past.filter(e => e.kind === 'spend' && e.at.getTime() >= todayFrom && e.at.getTime() < todayUntil
+                && formatDate(herDay(schedule, e.at)) === date).map(e => ({ what: e.what, amount: -e.amount })),
             askedHome: past.filter(e => e.what === '跟家里要的' && e.at >= paid).reduce((sum, e) => sum + e.amount, 0),
             detail: world.money.detail,
         };
