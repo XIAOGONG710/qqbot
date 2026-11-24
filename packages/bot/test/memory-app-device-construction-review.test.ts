@@ -24,7 +24,7 @@ function failedConstruction() {
         for (const tier of ['boyfriend', 'boyfriend-open', 'classmate']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
             contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic-construction', timeoutMs: 1000, recallTimeoutMs: 100 },
-            contextTurns: 1, deviceControl: 'on', schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+            contextTurns: 1, deviceControl: 'on', schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         globalThis.setInterval = ((_callback: unknown, _ms: unknown) => { const timer = { unref() { return this; } } as ReturnType<typeof setInterval>; timers.add(timer); return timer; }) as typeof setInterval;
         globalThis.clearInterval = ((timer: ReturnType<typeof setInterval>) => { timers.delete(timer); }) as typeof clearInterval;
         fileOps.readDelaysMs = [0];
@@ -94,10 +94,11 @@ for (const fail of [false, true]) test(`构造失败持有租约直至已派天�
         for (const tier of ['boyfriend', 'boyfriend-open', 'classmate']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify(card));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
             contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic-weather-construction', timeoutMs: 1000, recallTimeoutMs: 100 },
-            contextTurns: 1, schedule: false, moody: false, speechCheck: false, herDays: true, realWeather: true, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+            contextTurns: 1, schedule: false, moody: false, speechCheck: false, herDays: true, realWorld: true, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         globalThis.setInterval = (() => { const timer = { unref() { return this; } } as ReturnType<typeof setInterval>; timers.add(timer); return timer; }) as typeof setInterval;
         globalThis.clearInterval = ((timer: ReturnType<typeof setInterval>) => { timers.delete(timer); }) as typeof clearInterval;
         globalThis.fetch = async input => {
+            if (!String(input).includes('hourly=')) throw new Error('synthetic: 只看天气（realWorld 也起了空气、日照、日历，这里一律不通）');
             const url = new URL(String(input)); assert.equal(url.origin, 'https://api.open-meteo.com');
             calls++; if (calls === 1) await held.promise;
             if (fail) throw new Error('synthetic weather unavailable');

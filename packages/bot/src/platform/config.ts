@@ -64,10 +64,6 @@ export const DEFAULTS = {
     pokeOut: false,
     feedbackCommands: false,
     realWorld: true,
-    realWeather: true,
-    realAirQuality: false,
-    realDaylight: false,
-    realCalendar: false,
     festivals: 'off' as FestivalMode,
     qqSurface: false,
     readReceipts: false,
@@ -226,6 +222,10 @@ export const LEGACY_DEFAULTS = {
     projectChoice: false,
     lifeInPrompt: false,
     readStickers: false,
+    realWeather: true,
+    realAirQuality: false,
+    realDaylight: false,
+    realCalendar: false,
 } as const;
 
 /** 开关合并的输入映射用的默认值：DEFAULTS 加上 AppConfig 里已经删掉的旧键（parseAppConfig、Koishi 迁移、盘点、adr-map 都用这份） */
@@ -667,14 +667,6 @@ export interface AppConfig {
     /** 真实天气（ADR 0048）：她的世界里的天气按学校那边（在学校）/ 老家（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
     /** 真实世界（开关合并，设计第二节 4）：天气、空气质量、日照、法定日历四路真实数据，取不到照旧按日期生成。默认开 */
     realWorld?: boolean;
-    /** @deprecated 已并进 realWorld（开关合并）：输入只有旧键时原样、否则由 realWorld 派生；新代码读 realWorld */
-    realWeather: boolean;
-    /** @deprecated 已并进 realWorld（开关合并）：输入只有旧键时原样、否则由 realWorld 派生；新代码读 realWorld。真实空气质量（ADR 0227）：只取当前已观测小时，失败或过期不写进世界；默认关。 */
-    realAirQuality?: boolean;
-    /** @deprecated 已并进 realWorld（开关合并）：输入只有旧键时原样、否则由 realWorld 派生；新代码读 realWorld。真实日照（ADR 0228）：只取公开日出 / 日落，失败或过期不写进世界；默认关。 */
-    realDaylight?: boolean;
-    /** @deprecated 已并进 realWorld（开关合并）：输入只有旧键时原样、否则由 realWorld 派生；新代码读 realWorld。现实法定日历（ADR 0231）：只读节假日 / 调休工作日，失败或过期不写进世界；默认关。 */
-    realCalendar?: boolean;
     /**
      * 听语音、看图上的字（ADR 0052）：他发的语音用 QQ 自带的语音转文字、照片和截图用 NapCat 的 OCR 取上面的字，写进聊天记录；
      * 转不出来、超时照旧「[语音]」「[图片]」。默认是
@@ -938,10 +930,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         pokeOut: bool(file, 'pokeOut', '', DEFAULTS.pokeOut),
         feedbackCommands: bool(file, 'feedbackCommands', '', DEFAULTS.feedbackCommands),
         realWorld: bool(file, 'realWorld', '', DEFAULTS.realWorld),
-        realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
-        realAirQuality: bool(file, 'realAirQuality', '', DEFAULTS.realAirQuality),
-        realDaylight: bool(file, 'realDaylight', '', DEFAULTS.realDaylight),
-        realCalendar: bool(file, 'realCalendar', '', DEFAULTS.realCalendar),
         festivals: festivalMode(file.festivals),
         qqSurface: bool(file, 'qqSurface', '', DEFAULTS.qqSurface),
         readReceipts: bool(file, 'readReceipts', '', DEFAULTS.readReceipts),

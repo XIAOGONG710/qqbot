@@ -28,7 +28,7 @@ function fixture(root: string, dataDir: string, mode: 'dryRun' | 'on') {
   llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
   contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], bilibiliAccount: true, bilibiliAtUid: 456, bilibiliReplies: mode,
   acquaintances: true, timeline: true, jokes: false, schedule: false, moody: false, speechCheck: false,
-  herDays: false, realWeather: false, proactive: 'off', media: false,
+  herDays: false, realWorld: false, proactive: 'off', media: false,
  }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
 }
 

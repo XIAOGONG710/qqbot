@@ -41,7 +41,7 @@ function fixture() {
         characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
         contacts: [{ qq: PEER, tier: 'classmate', name: '合成联系人' }],
         recalls: true, media: true, schedule: false, herDays: false, moody: false, speechCheck: false,
-        realWeather: false, proactive: 'off',
+        realWorld: false, proactive: 'off',
     }, root, { QQBOT_LLM_API_KEY: 'synthetic-only-key' });
     return { root, dataDir, config };
 }

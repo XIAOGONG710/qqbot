@@ -33,7 +33,7 @@ async function fixture(mode: 'held' | 'reentrant' | 'throw' | 'probe' | 'advice'
     const dsh = mode === 'probe' || mode === 'advice';
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
         contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], memoryAudit: !dsh, dsh: { enabled: dsh }, jokes: false,
-        schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+        schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
     globalThis.fetch = async () => { throw new Error('unexpected synthetic network'); };
     const cleanup = async () => { release(); await app?.stop(); await settle(); globalThis.fetch = oldFetch; globals[linkKey] = oldLink; assert.equal(dirname(resolve(root)), resolve(tmpdir())); assert.ok(basename(root).startsWith('qqbot-app-tell-owner-test-')); rmSync(root, { recursive: true, force: true }); };
     try {

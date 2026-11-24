@@ -20,7 +20,7 @@ for (const command of ['remove', 'add'] as const) test(`真实App在作者CLI ${
         saveMemes(memesPath(dataDir), { version: 1, refreshedAt: now.toISOString(), entries: [{ term, meaning: oldMeaning, example: '', confidence: 'high', firstSeen: day, lastSeen: day, seen: 1 }] });
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'card-{tier}.json'), dataDir,
             contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], memes: true, bilibiliAccount: false,
-            schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic' });
+            schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic' });
         app = startApp({ config, sensitive: { on: () => false, describe: () => '' }, log: () => {}, transport: { friendHistory: async () => [], sendPrivateText: async () => ++sent + 900 },
             pipeline: { now: () => now.getTime(), settle: { quietMs: 0, maxMs: 0 }, generate: async messages => { prompts.push(messages); return '合成回应'; } } });
         await app.connected(20000);

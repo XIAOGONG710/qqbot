@@ -66,7 +66,7 @@ describe('引用回复进应用（ADR 0081）', () => {
             characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }],
             schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false,
-            grievance: false, feedbackCommands: false, realWeather: false, media: true,
+            grievance: false, feedbackCommands: false, realWorld: false, media: true,
             candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir,
         } as unknown as AppConfig; // 其余字段（后加的开关）都是未设 = 关
         const seen: string[] = [];
@@ -99,7 +99,7 @@ describe('引用回复进应用（ADR 0081）', () => {
             characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }],
             schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false,
-            grievance: false, feedbackCommands: false, realWeather: false, media: true,
+            grievance: false, feedbackCommands: false, realWorld: false, media: true,
             candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir,
         } as unknown as AppConfig;
         const seen: string[] = [];

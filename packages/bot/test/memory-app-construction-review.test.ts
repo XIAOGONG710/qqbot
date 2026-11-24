@@ -19,7 +19,7 @@ test('真实App在memoryTimer之后构造EIO失败：释放租约之前关闭已
         for (const tier of ['classmate', 'classmate-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
             contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic-construction', timeoutMs: 100, recallTimeoutMs: 100 },
-            contextTurns: 1, schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+            contextTurns: 1, schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         globalThis.fetch = async () => { networkCalls++; throw new Error('Network prohibited in synthetic construction fixture'); };
         globalThis.setInterval = ((callback: (...args: unknown[]) => void, ms: number, ...args: unknown[]) => {
             const timer = originalSet(callback, ms, ...args); timers.push({ timer, name: callback.name, ms, cleared: false }); return timer;

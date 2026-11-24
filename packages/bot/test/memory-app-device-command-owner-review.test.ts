@@ -22,7 +22,7 @@ async function fixture(kind: 'reply' | 'capture', mode: 'success' | 'failure' | 
     for (const tier of ['boyfriend', 'boyfriend-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
         contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], deviceControl: 'on', jokes: false,
-        schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false, recalls: true }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+        schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false, recalls: true }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
     const service = { control: { menu: () => '', parse: (text: string) => ({ reply: text, proposals: [], rejected: [] }), commit: () => undefined }, hub: {},
         owner: () => kind === 'reply' ? { kind: 'reply', text: 'SYNTHETIC_DEVICE_REPLY' } : { kind: 'capture', run: async () => { captureEntered = true; if (mode === 'capture-held') await capture.promise; return { kind: 'reply', text: 'SYNTHETIC_CAPTURE_REPLY' }; } }, stop: async () => {} } as unknown as DeviceService;
     globalThis.fetch = async () => { throw new Error('unexpected synthetic network'); };

@@ -47,7 +47,7 @@ function fixture(options: { memory?: boolean; dormant?: boolean; previousTier?: 
     const tier = options.dormant ? 'boyfriend' : 'classmate';
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
         contacts: [{ qq: PEER, name: '合成联系人', tier }], ...(options.memory === false ? {} : { memory: { baseUrl: 'http://synthetic.invalid', timeoutMs: 1000, recallTimeoutMs: 100, bankPrefix: 'synthetic' } }),
-        recalls: true, media: true, dormancy: options.dormant === true, schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off',
+        recalls: true, media: true, dormancy: options.dormant === true, schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off',
     }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
     const at = Math.floor(Date.now() / 1000) - 120; const history = new ChatHistory(dataDir);
     for (let i = 1; i <= OPEN_EPISODE_STEP; i++) history.append(PEER, { role: 'user', time: new Date((at + i) * 1000).toISOString(), messageId: i, messageSeq: String(81000 + i), content: i === OPEN_EPISODE_STEP ? MARKER : `合成消息${i}` });

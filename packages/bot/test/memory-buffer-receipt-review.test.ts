@@ -18,7 +18,7 @@ test('补回缓冲的已持久receipt遇一次入口读EIO后保留，自动恢�
         llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic', timeoutMs: 1000 },
         characterCard: join(root, 'card-{tier}.json'), dataDir,
         contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], recalls: true, media: false,
-        schedule: false, herDays: false, moody: false, speechCheck: false, realWeather: false, proactive: 'off', feedbackCommands: false,
+        schedule: false, herDays: false, moody: false, speechCheck: false, realWorld: false, proactive: 'off', feedbackCommands: false,
     }, root, { QQBOT_LLM_API_KEY: 'synthetic' });
     const marker = 'SYNTHETIC_BUFFERED_USER_FACT';
     const prompts: string[] = [], sent: string[] = [], logs: string[] = [];

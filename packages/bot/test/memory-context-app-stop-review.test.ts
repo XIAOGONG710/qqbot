@@ -20,7 +20,7 @@ for (const failure of [false, true]) test(`真实App.stop收尾后不合作摘�
         for (const tier of ['classmate', 'classmate-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
             contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic-context-stop', timeoutMs: 1000, recallTimeoutMs: 100 },
-            contextTurns: 1, schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+            contextTurns: 1, schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         const history = new ChatHistory(dataDir);
         for (let i = 0; i < 12; i++) history.append(10001, { role: i % 2 ? 'assistant' : 'user', content: `合成过去事实${i}`, time: new Date(now - (12 - i) * 1000).toISOString(), messageId: i + 1 });
         globalThis.fetch = async input => {

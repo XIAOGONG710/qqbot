@@ -133,7 +133,7 @@ function appFixture() {
     const root = temp(), dataDir = join(root, 'bot'); mkdirSync(dataDir);
     for (const tier of ['classmate', 'classmate-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
     const raw = { llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
-        contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], schedule: false, herDays: false, moody: false, speechCheck: false, realWeather: false, proactive: 'off' };
+        contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], schedule: false, herDays: false, moody: false, speechCheck: false, realWorld: false, proactive: 'off' };
     return { root, dataDir, raw };
 }
 function app(f: ReturnType<typeof appFixture>, withMemory: boolean): App {

@@ -25,7 +25,7 @@ test('危机状态首次发布失败但磁盘在正常停机前恢复：释放�
         const config = parseAppConfig({
             llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
             contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], schedule: false, moody: false, speechCheck: false,
-            herDays: false, realWeather: false, proactive: 'off', media: false, jokes: false,
+            herDays: false, realWorld: false, proactive: 'off', media: false, jokes: false,
         }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         fileOps.writeDelaysMs = [0];
         fileOps.renameSync = ((from, to) => {

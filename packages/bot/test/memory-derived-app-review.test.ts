@@ -47,7 +47,7 @@ async function fixture(content = `合成乙 ${POISON}`) {
     for (const tier of ['classmate', 'classmate-open', 'boyfriend', 'boyfriend-open']) writeFileSync(join(root, `${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, '{tier}.json'), dataDir, contacts: [OWNER, A, B],
         memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic', timeoutMs: 1000, recallTimeoutMs: 100 }, recalls: true,
-        schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off',
+        schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off',
     }, root, { QQBOT_LLM_API_KEY: 'synthetic' });
     const history = new ChatHistory(dataDir), time = new Date(Date.now() - 3600_000).toISOString();
     if (!content.includes(POISON)) {

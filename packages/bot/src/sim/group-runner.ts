@@ -82,7 +82,7 @@ export function groupSimConfig(dataDir: string, scenario: GroupScenario, options
         dsh: { enabled: false },
         characterCard: options.characterCard,
         contacts: [{ qq: GROUP_SIM.boyfriendQq, name: scenario.boyfriend, tier: 'boyfriend', knowsBot: true }],
-        realWeather: false,
+        realWorld: false,
         proactive: 'off',
         dataDir,
         ...(options.base.timeZone ? { timeZone: options.base.timeZone } : {}),

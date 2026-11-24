@@ -67,7 +67,7 @@ describe('进应用：转发问 NapCat、语音没发成就用文字', () => {
             characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }],
             schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false,
-            grievance: false, feedbackCommands: false, realWeather: false, media: true,
+            grievance: false, feedbackCommands: false, realWorld: false, media: true,
             candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir,
         } as unknown as AppConfig;
         const seen: string[] = [];

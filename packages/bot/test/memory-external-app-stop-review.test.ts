@@ -20,7 +20,7 @@ function fixture() {
     const card = { spec: 'chara_card_v2', data: { name: '合成角色', extensions: { qqbot: { schedule, world: { startDay: '2026-11-01', awayHolidays: [], people: [], events: [] } } } } };
     for (const tier of ['boyfriend', 'boyfriend-open', 'classmate', 'classmate-open', 'stranger', 'stranger-open']) writeFileSync(join(root, `${tier}.json`), JSON.stringify(card));
     function start(transport: Partial<Transport>, browse = true): App {
-        const config = parseAppConfig({ dataDir, characterCard: join(root, '{tier}.json'), llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, contacts: [{ qq: 10001, name: '合成甲', tier: 'boyfriend' }], herDays: true, schedule: false, realWeather: false, moody: false, speechCheck: false, proactive: 'off', bilibili: browse ? 'on' : 'off', onlineStatus: !browse }, root, { QQBOT_LLM_API_KEY: 'synthetic' });
+        const config = parseAppConfig({ dataDir, characterCard: join(root, '{tier}.json'), llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, contacts: [{ qq: 10001, name: '合成甲', tier: 'boyfriend' }], herDays: true, schedule: false, realWorld: false, moody: false, speechCheck: false, proactive: 'off', bilibili: browse ? 'on' : 'off', onlineStatus: !browse }, root, { QQBOT_LLM_API_KEY: 'synthetic' });
         return startApp({ config, log() {}, sensitive: { on: () => false, describe: () => '' },
             transport: { friendHistory: async () => [], sendPrivateText: async () => 1, ...transport },
             pipeline: { now: clock.now, waitUntil: clock.waitUntil, settle: { quietMs: 0, maxMs: 0 }, generate: async () => '这个猫咪回头看也太逗了' },

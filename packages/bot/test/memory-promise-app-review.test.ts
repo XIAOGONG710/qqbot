@@ -28,7 +28,7 @@ function fixture(content = '好，18点合成门口见') {
     for (const tier of ['classmate', 'classmate-open', 'boyfriend', 'boyfriend-open']) writeFileSync(join(root, `${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色', extensions: { qqbot: { schedule } } } }));
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, '{tier}.json'), dataDir, contacts: [A, B],
         memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic', timeoutMs: 100, recallTimeoutMs: 50 }, recalls: true, schedule: true, moody: false,
-        speechCheck: false, herDays: false, realWeather: false, proactive: 'off' }, root, { QQBOT_LLM_API_KEY: 'synthetic' });
+        speechCheck: false, herDays: false, realWorld: false, proactive: 'off' }, root, { QQBOT_LLM_API_KEY: 'synthetic' });
     const history = new ChatHistory(dataDir);
     history.append(A.qq, { role: 'assistant', time: at('17:30').toISOString(), content: '今晚18点一起去门口吃个饭吗？', messageId: 1 });
     history.append(A.qq, { role: 'user', time: at('17:31').toISOString(), content, messageId: 2 });

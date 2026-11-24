@@ -26,7 +26,7 @@ test('真实App停止等待QQ ACK及历史收尾，同进程不能抢旧锁，�
         llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' },
         characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
         contacts: [{ qq: 10001, name: '合成联系人', tier: 'classmate' }],
-        schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false,
+        schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false,
     }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
     const start = (waiting: boolean) => {
         const transport: Transport = { friendHistory: async () => [], sendPrivateText: async (_peer, text) => { sent.push(text); return waiting ? held : 9902; } };

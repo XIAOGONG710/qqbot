@@ -33,7 +33,7 @@ function config(root: string, dataDir: string) {
     return parseAppConfig({
         llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
         contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], timeline: true, webLookup: 'explicit',
-        schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false,
+        schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false,
         jokes: false,
     }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
 }

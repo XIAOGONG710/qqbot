@@ -60,7 +60,7 @@ test('真实App移除全部schedule后不能让已完成日记绕过不可核验
         for (const tier of ['classmate', 'classmate-open']) writeFileSync(join(f.root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(f.root, 'synthetic-{tier}.json'), dataDir: f.dataDir,
             contacts: [A], memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic', timeoutMs: 1000, recallTimeoutMs: 100 },
-            schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, f.root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+            schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, f.root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         globalThis.fetch = async (input, init) => {
             const url = new URL(String(input)); assert.equal(url.origin, 'http://synthetic.invalid');
             if (!init?.method || init.method === 'GET') {
@@ -106,7 +106,7 @@ test('无writer且没有authored intent的正常App仍可读取公共QQ原始事
         for (const tier of ['classmate', 'classmate-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
             contacts: [A], memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic', timeoutMs: 1000, recallTimeoutMs: 100 },
-            schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+            schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         globalThis.fetch = async input => {
             const url = new URL(String(input)); assert.equal(url.origin, 'http://synthetic.invalid');
             if (url.pathname.endsWith('/memories/recall')) return Response.json({ results: [{ id: 'safe', type: 'experience', text: 'SYNTHETIC_SAFE_OTHER_QQ_FACT', document_id: '2222222222222222:ep-1', mentioned_at: now.toISOString() }] });

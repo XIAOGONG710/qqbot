@@ -28,7 +28,7 @@ export const CALENDAR_REFRESH_MS = 12 * 60 * 60_000;
 type FeedStop = 'weather' | 'air-quality' | 'daylight' | 'calendar';
 
 export interface RealityFeedsDeps {
-    config: Pick<AppConfig, 'dataDir' | 'realWeather' | 'realAirQuality' | 'realDaylight' | 'realCalendar'>;
+    config: Pick<AppConfig, 'dataDir' | 'realWorld'>;
     /** 她的世界用的那张卡（名单里最亲的、卡上有作息和世界的那一档）；没有就什么都不取、也不记日志 */
     worldCard: Character | undefined;
     /** 世界账（记他说的现场天气时判断她在学校还是家里） */
@@ -60,7 +60,7 @@ export interface RealityFeeds {
 export function realityFeeds({ config, worldCard, ledgerWorld, worldNow, stopped, lifetime, log }: RealityFeedsDeps): RealityFeeds {
     // 真实天气（ADR 0048 / 0338）：当前天气须经软件实况与现场观察裁决；取不到就保持未知，不用模拟天气冒充现实。
     const weatherPlaces = worldCard?.herWorld?.weather?.places;
-    const weather = config.realWeather && worldCard && weatherPlaces
+    const weather = config.realWorld && worldCard && weatherPlaces
         ? weatherFetcher({ dir: join(config.dataDir, 'weather'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow })
         : undefined;
     const weatherEvidence = weather ? readWeatherEvidenceLedger(join(config.dataDir, 'weather', 'evidence.json'), log) : undefined;
@@ -88,28 +88,28 @@ export function realityFeeds({ config, worldCard, ledgerWorld, worldNow, stopped
     void refreshWeather();
     lifetime.own('weather', () => { useRealWeather(undefined); return [...weatherRefreshes]; });
     if (worldCard) log(`真实天气：${weather ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}逐小时，每 ${WEATHER_REFRESH_MS / 60_000} 分钟取一次；当前事实过期或冲突时保持未知）`
-        : !config.realWeather ? '关（配置 realWeather: false），按日期生成' : '关（卡上没写 weather.places），按日期生成'}`);
-    const airQuality = config.realAirQuality === true && worldCard && weatherPlaces ? airQualityFetcher({ dir: join(config.dataDir, 'air-quality'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
+        : !config.realWorld ? '关（配置 realWorld: false），按日期生成' : '关（卡上没写 weather.places），按日期生成'}`);
+    const airQuality = config.realWorld === true && worldCard && weatherPlaces ? airQualityFetcher({ dir: join(config.dataDir, 'air-quality'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
     useRealAirQuality(airQuality);
     const airQualityRefreshes = new Set<Promise<void>>();
     const refreshAirQuality = () => ownRealityRefresh(airQuality, airQualityRefreshes);
     void refreshAirQuality();
     lifetime.own('air-quality', () => { useRealAirQuality(undefined); return [...airQualityRefreshes]; });
-    if (worldCard) log(`真实空气质量：${airQuality ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}当前观测，每 ${AIR_QUALITY_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realAirQuality !== true ? '关（配置 realAirQuality: false）' : '关（卡上没写 weather.places）')}`);
-    const daylight = config.realDaylight === true && worldCard && weatherPlaces ? daylightFetcher({ dir: join(config.dataDir, 'daylight'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
+    if (worldCard) log(`真实空气质量：${airQuality ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}当前观测，每 ${AIR_QUALITY_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realWorld !== true ? '关（配置 realWorld: false）' : '关（卡上没写 weather.places）')}`);
+    const daylight = config.realWorld === true && worldCard && weatherPlaces ? daylightFetcher({ dir: join(config.dataDir, 'daylight'), places: [weatherPlaces.school, weatherPlaces.home], log, now: worldNow }) : undefined;
     useRealDaylight(daylight);
     const daylightRefreshes = new Set<Promise<void>>();
     const refreshDaylight = () => ownRealityRefresh(daylight, daylightRefreshes);
     void refreshDaylight();
     lifetime.own('daylight', () => { useRealDaylight(undefined); return [...daylightRefreshes]; });
-    if (worldCard) log(`真实日照：${daylight ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}日出日落，每 ${DAYLIGHT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realDaylight !== true ? '关（配置 realDaylight: false）' : '关（卡上没写 weather.places）')}`);
-    const calendar = config.realCalendar === true && worldCard ? calendarFetcher({ dir: join(config.dataDir, 'calendar'), log, now: worldNow }) : undefined;
+    if (worldCard) log(`真实日照：${daylight ? `开（${weatherPlaces!.school.name} / ${weatherPlaces!.home.name}日出日落，每 ${DAYLIGHT_REFRESH_MS / 60_000} 分钟取一次；取不到不写进世界）` : (config.realWorld !== true ? '关（配置 realWorld: false）' : '关（卡上没写 weather.places）')}`);
+    const calendar = config.realWorld === true && worldCard ? calendarFetcher({ dir: join(config.dataDir, 'calendar'), log, now: worldNow }) : undefined;
     useRealCalendar(calendar);
     const calendarRefreshes = new Set<Promise<void>>();
     const refreshCalendar = () => ownRealityRefresh(calendar, calendarRefreshes);
     void refreshCalendar();
     lifetime.own('calendar', () => { useRealCalendar(undefined); return [...calendarRefreshes]; });
-    if (worldCard) log(`现实法定日历：${calendar ? `开（当前年和下一年，每 ${CALENDAR_REFRESH_MS / 60_000} 小时取一次；取不到不写进世界）` : '关（配置 realCalendar: false）'}`);
+    if (worldCard) log(`现实法定日历：${calendar ? `开（当前年和下一年，每 ${CALENDAR_REFRESH_MS / 60_000} 小时取一次；取不到不写进世界）` : '关（配置 realWorld: false）'}`);
 
     return {
         weather,

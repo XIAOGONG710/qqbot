@@ -98,7 +98,7 @@ export function baselineConfig(dataDir: string, contacts: Contact[], overrides: 
         prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
         characterCard: syntheticCardPattern,
         contacts,
-        realWeather: false,
+        realWorld: false,
         dataDir,
         timeZone: 'Asia/Shanghai',
         ...overrides,

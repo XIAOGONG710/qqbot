@@ -30,10 +30,11 @@ function fixture(holdAt: number, fail = false, onFetch?: (app: App, index: numbe
         const card = { spec: 'chara_card_v2', data: { name: '合成角色', extensions: { qqbot: { schedule, world: { startDay: '2026-11-01', awayHolidays: [], people: [], events: [], weather: SYNTHETIC_WEATHER } } } } };
         for (const tier of ['boyfriend', 'boyfriend-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify(card));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
-            contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], schedule: false, moody: false, speechCheck: false, herDays: true, realWeather: true, realAirQuality: false, realDaylight: false, realCalendar: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+            contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], schedule: false, moody: false, speechCheck: false, herDays: true, realWorld: true, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         globalThis.setInterval = ((callback: () => void, ms: number) => { const timer = { unref() { return this; } } as ReturnType<typeof setInterval>; timers.set(timer, { callback, ms }); return timer; }) as typeof setInterval;
         globalThis.clearInterval = ((timer: ReturnType<typeof setInterval>) => { timers.delete(timer); }) as typeof clearInterval;
         globalThis.fetch = async input => {
+            if (!String(input).includes('hourly=')) throw new Error('synthetic: 只看天气（realWorld 也起了空气、日照、日历，这里一律不通）');
             assert.equal(new URL(String(input)).origin, 'https://api.open-meteo.com', '所有外部请求必须被合成供应商拦截');
             const index = ++calls;
             if (onFetch && index === holdAt) { assert.ok(app); onFetch(app, index); }
