@@ -11,7 +11,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { MEDIA_TIMEOUTS } from '.././vision/media.ts';
 import { FESTIVAL_MODES, type FestivalMode } from '.././world/festivals.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from '.././language/fact-check.ts';
-import { ACCOUNT_MODES, QQ_FRIEND_GATES, type ControlMode, type FriendGate } from '.././social/account.ts';
+import { ACCOUNT_MODES, type ControlMode, type FriendGate } from '.././social/account.ts';
 import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '.././social/presence.ts';
 import { PROACTIVE_MODES, type ProactiveMode } from '.././proactive/proactive.ts';
 import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '.././st/prompt-converters.ts';
@@ -153,7 +153,6 @@ export const DEFAULTS = {
     qqAllowFriends: [] as readonly number[],
     qqAllowGroups: [] as readonly number[],
     qqDangerous: false,
-    qqFriendGate: 'off' as FriendGate,
     typingStatus: false,
     selfRecall: false,
     /** 她自己决定记不记：关掉自动记忆同步和自动日记，只认她回复里的标记 */
@@ -227,6 +226,7 @@ export const LEGACY_DEFAULTS = {
     qzonePeek: 'off' as PresenceMode,
     qzoneStrangers: 'off' as PresenceMode,
     factHim: false,
+    qqFriendGate: 'off' as FriendGate,
 } as const;
 
 /** 开关合并的输入映射用的默认值：DEFAULTS 加上 AppConfig 里已经删掉的旧键（parseAppConfig、Koishi 迁移、盘点、adr-map 都用这份） */
@@ -594,8 +594,6 @@ export interface AppConfig {
     qqAllowGroups?: readonly number[];
     /** 危险动作闸（踢人 / 禁言 / 删好友 / 群发 / 建群）：默认关 */
     qqDangerous?: boolean;
-    /** @deprecated 已并进 qqControl（开关合并）：输入只有旧键时原样、否则由 qqControl 派生；新代码读 qqControl。好友申请怎么处理（ADR 0142）：off 不碰 / allow 名单内自动同意、其余留给人 / all 名单内同意、名单外驳回。默认 off */
-    qqFriendGate?: FriendGate;
     /** 她打字的这段时间，对方的 QQ 上显示「对方正在输入…」（ADR 0077；NapCat 的 set_input_status）。默认关 */
     typingStatus: boolean;
     /** @deprecated 已并进 qqSurface（开关合并）：输入只有旧键时原样、否则由 qqSurface 派生；新代码读 qqSurface。她打错字想改口时，一部分改成撤回重发（先发打错的，几秒后撤回再发对的；NapCat 的 delete_msg，ADR 0086）。默认关 */
@@ -1029,7 +1027,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qqAllowFriends: qqList(file.qqAllowFriends, 'qqAllowFriends'),
         qqAllowGroups: qqList(file.qqAllowGroups, 'qqAllowGroups'),
         qqDangerous: bool(file, 'qqDangerous', '', DEFAULTS.qqDangerous),
-        qqFriendGate: oneOf(file.qqFriendGate, 'qqFriendGate', QQ_FRIEND_GATES, DEFAULTS.qqFriendGate),
         typingStatus: bool(file, 'typingStatus', '', DEFAULTS.typingStatus),
         selfRecall: bool(file, 'selfRecall', '', DEFAULTS.selfRecall),
         selfDirectedMemory: bool(file, 'selfDirectedMemory', '', DEFAULTS.selfDirectedMemory),

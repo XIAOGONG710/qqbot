@@ -17,7 +17,7 @@ async function fixture(mode: 'success' | 'failure' | 'reentrant' | 'throw') {
     const schedule = { sleep: '02:00', wake: { early: '08:00', lazy: '08:00', earlySlot: '1' }, periods: { '1': { start: '08:00', end: '09:00' } }, semester: { start: '2026-09-01', weeks: 52 }, holidays: [], makeups: [], kinds: { hard: {}, water: {}, machine: {}, pe: {} }, courses: [], free: { morning: ['合成休闲'], afternoon: ['合成休闲'], evening: ['合成休闲'], afternoonFrom: '12:00', eveningFrom: '18:00' }, where: '合成地点' };
     for (const tier of ['boyfriend', 'boyfriend-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色', extensions: { qqbot: { schedule } } } }));
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
-        contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], qqControl: 'on', qqFriendGate: 'allow', qqAllowFriends: [10001],
+        contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], qqControl: 'on', qqAllowFriends: [10001],
         jokes: false, schedule: true, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
     globalThis.fetch = async () => { throw new Error('unexpected synthetic network'); };
     const cleanup = async () => { release(); await app?.stop(); await settle(); globalThis.fetch = oldFetch; assert.equal(dirname(resolve(root)), resolve(tmpdir())); assert.ok(basename(root).startsWith('qqbot-app-friend-request-owner-')); rmSync(root, { recursive: true, force: true }); };

@@ -263,7 +263,7 @@ export interface App {
     receivePoke(event: PokeEvent): void;
     /** 名单里的人撤回了一条消息（ADR 0082，配置 recalls）：还没回的话记成「[撤回了一条消息]」；其余的忽略 */
     receiveRecall(event: RecallEvent): void;
-    /** 有人申请加她（ADR 0142，配置 qqFriendGate）：名单内同意；名单外按档留着或驳回。不认识的申请不碰 */
+    /** 有人申请加她（ADR 0142，qqControl 是 on 时）：名单内同意；名单外留着。不认识的申请不碰 */
     receiveFriendRequest(input: { userId: number; flag: string; comment?: string }): void;
     /** 群里别人发的一条（ADR 0210，配置 groupChat + groups）：只在名单里的群看、该开口时才说；不在名单的群什么都不做 */
     receiveGroup(event: GroupMessageEvent): void;
@@ -2526,8 +2526,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         })
         : undefined;
     if (accountMode !== 'off' && !account) log('账号控制面：入口没给通用 OneBot 调用，控制面没有启动');
-    if ((config.qqFriendGate ?? 'off') !== 'off' && accountMode !== 'on') log('好友申请：要 qqControl 设为 on 才处理，现在没生效');
-    else if ((config.qqFriendGate ?? 'off') !== 'off') log(`好友申请：${config.qqFriendGate === 'all' ? '名单内同意、名单外驳回' : '只自动同意名单内的'}（名单 ${(config.qqAllowFriends ?? []).join('、') || '空'}）`);
+    if (accountMode === 'on') log(`好友申请：只自动同意名单内的（名单 ${(config.qqAllowFriends ?? []).join('、') || '空'}）`);
 
     // 群消息、好友申请、戳、撤回不经这里：解释器直接交给 group-room / friend-requests / pokes / recalls 模块（ADR 0336 第 6 步）
     const legacy: Omit<App, 'receiveGroup' | 'receiveFriendRequest' | 'receivePoke' | 'receiveRecall'> = {

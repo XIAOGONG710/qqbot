@@ -3197,9 +3197,9 @@ describe('账号控制面与好友申请（ADR 0142）', () => {
     const collect = () => async (action: string, params: Record<string, unknown>): Promise<unknown> => { calls.push({ action, params }); return {}; };
     const settle = () => new Promise(resolve => setTimeout(resolve, 20));
 
-    test('qqControl on + 名单内：自动同意；名单外 allow：留着不动', async () => {
+    test('qqControl on + 名单内：自动同意；名单外：留着不动', async () => {
         calls.length = 0;
-        const cfg = config({ qqControl: 'on', qqAllowFriends: [10001], qqFriendGate: 'allow' });
+        const cfg = config({ qqControl: 'on', qqAllowFriends: [10001] });
         const { app } = setup(cfg, {}, { extra: { callAction: collect() } });
         app.receiveFriendRequest({ userId: 10001, flag: 'f1' });
         app.receiveFriendRequest({ userId: 20002, flag: 'f2' });
@@ -3207,16 +3207,9 @@ describe('账号控制面与好友申请（ADR 0142）', () => {
         assert.deepEqual(calls, [{ action: 'set_friend_add_request', params: { flag: 'f1', approve: true } }]);
     });
 
-    test('qqFriendGate all：名单外驳回；gate off：一个都不发', async () => {
+    test('好友申请跟着 qqControl（开关合并）：只读（read）时一个都不发', async () => {
         calls.length = 0;
-        const all = config({ qqControl: 'on', qqAllowFriends: [10001], qqFriendGate: 'all' });
-        const { app } = setup(all, {}, { extra: { callAction: collect() } });
-        app.receiveFriendRequest({ userId: 20002, flag: 'f3' });
-        await settle();
-        assert.deepEqual(calls, [{ action: 'set_friend_add_request', params: { flag: 'f3', approve: false } }]);
-
-        calls.length = 0;
-        const off = config({ qqControl: 'on', qqAllowFriends: [10001], qqFriendGate: 'off' });
+        const off = config({ qqControl: 'read', qqAllowFriends: [10001] });
         const quiet = setup(off, {}, { extra: { callAction: collect() } }).app;
         quiet.receiveFriendRequest({ userId: 10001, flag: 'f4' });
         await settle();
