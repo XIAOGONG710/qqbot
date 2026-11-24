@@ -76,9 +76,9 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         speechCheck: false,
         herDays: false,
         autonomousLife: false,
-        grievance: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, curious: false, smallNews: false, memes: false, watching: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, everydayLife: false, worldDrama: false, pursuits: false, deliberateModel: 'deepseek-v4-pro', dormancy: false, timeline: false, webLookup: 'off', tastes: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        grievance: false, pokes: false, bilibili: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, curious: false, smallNews: false, memes: false, watching: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, everydayLife: false, worldDrama: false, pursuits: false, deliberateModel: 'deepseek-v4-pro', dormancy: false, timeline: false, webLookup: 'off', tastes: false, bilibiliAtName: '', bilibiliAtUid: 0, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
-        realWorld: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false,
+        realWorld: false, festivals: 'off', typingStatus: false, rhythm: false,
         media: true,
         candidates: 1,
         contextTurns: 0,
@@ -2406,26 +2406,22 @@ describe('戳一戳（ADR 0079，配置 pokes）', () => {
         assert.equal(logs.filter(l => l.includes('已经戳过 3 下')).length, 2);
     });
 
-    test('戳回去（配置 pokeBack）：算数的戳里按概率她也戳回去一下，隔一两秒；5 分钟里不戳第二次；关着或戳没算数就不戳', async () => {
+    test('戳回去（跟着 pokes，开关合并：原 pokeBack）：算数的戳里按概率她也戳回去一下，隔一两秒；5 分钟里不戳第二次；戳没算数就不戳', async () => {
         // 找两个有「戳回去」的通知时间（按人和时间定，同一下每次一样）
         const times: number[] = [];
         for (let back = 0; back < 40 && times.length < 2; back++) if (pokeBackPlan(10001, nowSec() - back)) times.push(nowSec() - back);
         assert.equal(times.length, 2, '40 个时间里该有两个');
         const poke = (time: number): PokeEvent => ({ ...pokeFrom(10001), time });
         const called: number[] = [];
-        const cfg = config({ contacts: bf, pokes: true, pokeBack: true });
+        const cfg = config({ contacts: bf, pokes: true });
         const on = setup(cfg, {}, { pokeFriend: async userId => { called.push(userId); } });
-        const offCalled: number[] = [];
-        const off = setup(config({ contacts: bf, pokes: true }), {}, { pokeFriend: async userId => { offCalled.push(userId); } });
-        const failing = setup(config({ contacts: bf, pokes: true, pokeBack: true }), {}, { pokeFriend: async () => { throw new Error('packet 服务不可用'); } });
+        const failing = setup(config({ contacts: bf, pokes: true }), {}, { pokeFriend: async () => { throw new Error('packet 服务不可用'); } });
         on.app.receivePoke(poke(times[0]!));
         on.app.receivePoke(poke(times[1]!));
-        off.app.receivePoke(poke(times[0]!));
         failing.app.receivePoke(poke(times[0]!));
         await new Promise(r => setTimeout(r, POKE_BACK_DELAY_MS[1] + 400));
         assert.deepEqual(called, [10001], '5 分钟里只戳一次');
         assert.ok(on.logs.includes('[10001] 戳回去了'), on.logs.join('|'));
-        assert.deepEqual(offCalled, [], '关着不戳');
         assert.equal(failing.sent.length, 1);
         assert.ok(failing.logs.some(l => l.startsWith('[10001] 戳回去失败：packet 服务不可用')), '失败只记日志，文字回复照常：' + failing.logs.join('|'));
     });
@@ -2488,7 +2484,7 @@ describe('打错字撤回重发（ADR 0086）：整条线接通', () => {
         assert.ok(reply, '找到了一句会撤回重发的话');
         const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
         const deleted: number[] = [];
-        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }], schedule: true, selfRecall: true });
+        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }], schedule: true, qqSurface: true });
         const { app, sent, logs } = setup(cfg, {}, { clock, generate: () => reply, deleteMessage: async id => { deleted.push(id); } });
         app.receive({ ...event(10001, 1, '你哪天去'), time: Math.floor(clock.now() / 1000) });
         const deadline = Date.now() + 20000;
@@ -2519,7 +2515,7 @@ describe('已读回执、表情回应（ADR 0083）：整条线接通', () => {
         const run = async (readReceipts: boolean) => {
             const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
             const marked: number[] = [];
-            const cfg = config({ contacts: bf, schedule: true, readReceipts });
+            const cfg = config({ contacts: bf, schedule: true, qqSurface: readReceipts });
             const { app, sent } = setup(cfg, {}, { clock, markRead: async userId => { marked.push(userId); } });
             app.receive({ ...event(10001, 1, '在吗'), time: Math.floor(clock.now() / 1000) });
             await drive(clock, () => sent.length === 1);
@@ -2532,7 +2528,7 @@ describe('已读回执、表情回应（ADR 0083）：整条线接通', () => {
 
     test('她已经道了晚安、他只回「嗯嗯」：不回，只已读（表情回应 reactions 11-24 删了）', async () => {
         const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
-        const cfg = config({ contacts: bf, schedule: true, readReceipts: true });
+        const cfg = config({ contacts: bf, schedule: true, qqSurface: true });
         const now = clock.now();
         const history = new ChatHistory(cfg.dataDir);
         history.append(10001, { time: new Date(now - 300_000).toISOString(), role: 'user', content: '我要睡了', messageId: 11 });
@@ -2551,7 +2547,7 @@ describe('存在感（ADR 0083）：接进应用', () => {
     test('开着 onlineStatus：第一次连上就按她此刻在干什么设状态（周六下午空闲 → 在线）；一个开关都没开就不起；没有作息不起', async () => {
         const calls: string[] = [];
         const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
-        const on = setup(config({ contacts: bf, schedule: true, herDays: true, onlineStatus: true }), { 10001: [] }, { clock, setOnlineStatus: async (status, ext) => { calls.push(`${status}/${ext}`); } });
+        const on = setup(config({ contacts: bf, schedule: true, herDays: true, qqPresence: true }), { 10001: [] }, { clock, setOnlineStatus: async (status, ext) => { calls.push(`${status}/${ext}`); } });
         await on.app.connected(SELF);
         await until(() => calls.length === 1);
         assert.deepEqual(calls, ['10/0']);
@@ -2568,7 +2564,7 @@ describe('存在感（ADR 0083）：接进应用', () => {
         assert.deepEqual(idle, [], '开关没开不动');
         assert.ok(!none.logs.some(l => l.startsWith('存在感')));
 
-        const noWorld = setup(config({ contacts: bf, schedule: true, herDays: false, onlineStatus: true }), { 10001: [] }, { clock: new VirtualClock(new Date(2026, 9, 10, 15, 0)), setOnlineStatus: async () => { throw new Error('不该调'); } });
+        const noWorld = setup(config({ contacts: bf, schedule: true, herDays: false, qqPresence: true }), { 10001: [] }, { clock: new VirtualClock(new Date(2026, 9, 10, 15, 0)), setOnlineStatus: async () => { throw new Error('不该调'); } });
         await noWorld.app.connected(SELF);
         await new Promise(r => setTimeout(r, 100));
         assert.ok(noWorld.logs.some(l => l.includes('存在感：没有作息')), noWorld.logs.join('|'));
@@ -2594,7 +2590,7 @@ describe('主动戳他（ADR 0087）：接进应用', () => {
         const night = planNight();
         const run = async (pokeOut: boolean, lastRole: 'assistant' | 'user', wait = 5000) => {
             const poked: number[] = [];
-            const cfg = config({ contacts: bf, schedule: true, herDays: true, pokeOut });
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, qqPresence: pokeOut });
             const store = new ChatHistory(cfg.dataDir);
             store.append(10001, { time: new Date(night.getTime() - 180 * 60_000).toISOString(), role: 'user', content: '在吗', messageId: 1 });
             store.append(10001, { time: new Date(night.getTime() - 170 * 60_000).toISOString(), role: lastRole, content: lastRole === 'assistant' ? '在呀' : '嗯嗯', messageId: 2 });
@@ -2885,8 +2881,8 @@ describe('全开冒烟（整包上线用）', () => {
             const note = (name: string) => async (...args: unknown[]) => { calls.push(name + ':' + args.join('/')); };
             const bili = async (): Promise<{ ok: boolean; status: number; text: () => Promise<string> }> => ({ ok: true, status: 200, text: async () => JSON.stringify({ code: 0, data: { list: [] } }) });
             const cfg = config({
-                contacts: bf, schedule: true, herDays: true, pokes: true, pokeBack: true, pokeOut: true, recalls: true, readReceipts: true,
-                onlineStatus: true, profileLikes: true, qzone: 'dryRun', bilibili: 'dryRun', typingStatus: true, selfRecall: true,
+                contacts: bf, schedule: true, herDays: true, pokes: true, recalls: true, qqSurface: true, qqPresence: true,
+                qzone: 'dryRun', bilibili: 'dryRun', typingStatus: true,
                 rhythm: true, festivals: 'greet',
                 herFeelings: true, herNo: true, proactiveInvite: true, photos: true, together: true, comeBack: true, relationship: true, jokes: true, interruptions: true, proactiveAsk: true, weeklyReport: true, jealousy: true, proactiveRoom: true, curious: true, smallNews: true, memes: true, watching: true, everydayLife: true, pursuits: true, grievance: true,
             });

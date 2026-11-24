@@ -130,7 +130,7 @@ describe('群里那一摊：定时看一眼', () => {
         const lines: string[] = [];
         let clock = freeAt.getTime();
         const config = {
-            dataDir, schedule: true, herDays: false, herFeelings: false, pokeOut: false, profileLikes: false,
+            dataDir, schedule: true, herDays: false, herFeelings: false, qqPresence: false,
             groupChat: options.groupChat ?? 'on', groupOwn: mode, groups: [{ id: 555, name: '合成宿舍群' }], contacts: [],
             llm: { temperature: 1 },
         } as unknown as AppConfig;

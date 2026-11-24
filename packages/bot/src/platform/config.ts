@@ -59,13 +59,10 @@ export const DEFAULTS = {
     grievance: false,
     pokes: false,
     recalls: false,
-    pokeBack: false,
-    pokeOut: false,
     feedbackCommands: false,
     realWorld: true,
     festivals: 'off' as FestivalMode,
     qqSurface: false,
-    readReceipts: false,
     bilibili: 'off' as PresenceMode,
     bilibiliCommentKeywords: [] as readonly string[],
     proactiveReach: false,
@@ -119,8 +116,6 @@ export const DEFAULTS = {
     bilibiliAtName: '',
     bilibiliAtUid: 0,
     qqPresence: false,
-    onlineStatus: false,
-    profileLikes: false,
     qzone: 'off' as PresenceMode,
     qzoneVisibility: 'friends' as QzoneVisibility,
     groupChat: 'off' as GroupChatMode,
@@ -131,7 +126,6 @@ export const DEFAULTS = {
     qqAllowGroups: [] as readonly number[],
     qqDangerous: false,
     typingStatus: false,
-    selfRecall: false,
     /** 她自己决定记不记：关掉自动记忆同步和自动日记，只认她回复里的标记 */
     selfDirectedMemory: false,
     /** 他连着发了几条她都没回、过了一会儿，用「（」开头的运维提示告诉他原因（谁的决定：作息 / 她 / 故障）；也能随时发 /为什么 问（ADR 0173） */
@@ -222,6 +216,12 @@ export const LEGACY_DEFAULTS = {
     identityLedger: false,
     memoryAudit: false,
     memoryReconcile: false,
+    readReceipts: false,
+    selfRecall: false,
+    onlineStatus: false,
+    profileLikes: false,
+    pokeOut: false,
+    pokeBack: false,
 } as const;
 
 /** 开关合并的输入映射用的默认值：DEFAULTS 加上 AppConfig 里已经删掉的旧键（parseAppConfig、Koishi 迁移、盘点、adr-map 都用这份） */
@@ -291,10 +291,6 @@ export interface AppConfig {
     pokes: boolean;
     /** 撤回（ADR 0082）：他撤回一条她还没回的消息，她看到的是「[撤回了一条消息]」而不是原文（危机的话除外）。默认关 */
     recalls: boolean;
-    /** @deprecated 已并进 pokes（开关合并）：输入只有旧键时原样、否则由 pokes 派生；新代码读 pokes。戳回去（ADR 0079 补）：开着 pokes 时，算数的戳里约 40% 她也戳回去一下（NapCat 的 friend_poke，要它的 packet 服务可用）。默认关 */
-    pokeBack: boolean;
-    /** @deprecated 已并进 qqPresence（开关合并）：输入只有旧键时原样、否则由 qqPresence 派生；新代码读 qqPresence。主动戳他（ADR 0087）：男朋友档，聊天安静了一阵、最后一条是她说的时，一周最多 3 次她戳他一下（NapCat 的 friend_poke）。默认关 */
-    pokeOut: boolean;
     /**
      * 反馈通道（ADR 0073）：男朋友档对她的话回一个字「假」或「像」，记进 feedback/YYYY-MM.jsonl，不当聊天、她不回应。默认关
      */
@@ -526,15 +522,9 @@ export interface AppConfig {
     /** 已读回执（ADR 0083）：她看到他的消息的那一刻标已读（NapCat mark_private_msg_as_read），睡着时保持未读。默认关 */
     /** 回复时在 QQ 上的小动作（开关合并，设计第二节 5）：标已读、打错字撤回重发。默认关 */
     qqSurface?: boolean;
-    /** @deprecated 已并进 qqSurface（开关合并）：输入只有旧键时原样、否则由 qqSurface 派生；新代码读 qqSurface */
-    readReceipts: boolean;
     /** 在线状态（ADR 0083）：睡着「睡觉中」、上课「学习中」、听歌中、其余在线（set_online_status）。默认关 */
     /** 不聊天时在 QQ 上的存在感（开关合并，设计第二节 5）：在线状态、资料卡点赞、主动戳他。默认关 */
     qqPresence?: boolean;
-    /** @deprecated 已并进 qqPresence（开关合并）：输入只有旧键时原样、否则由 qqPresence 派生；新代码读 qqPresence */
-    onlineStatus: boolean;
-    /** @deprecated 已并进 qqPresence（开关合并）：输入只有旧键时原样、否则由 qqPresence 派生；新代码读 qqPresence。资料卡点赞（ADR 0083）：约 80% 的日子给男朋友档点 1–5 个赞（send_like）。默认关 */
-    profileLikes: boolean;
     /** QQ 空间说说（ADR 0083）：一周两三条，用最低隐私档的卡写（send_qzone_msg）；dryRun 只写草稿不发。默认关 */
     qzone: PresenceMode;
     /** 说说谁能看：friends 仅好友（默认）/ public 所有人（可能进「空友爱看」被陌生人看到） */
@@ -557,8 +547,6 @@ export interface AppConfig {
     qqDangerous?: boolean;
     /** 她打字的这段时间，对方的 QQ 上显示「对方正在输入…」（ADR 0077；NapCat 的 set_input_status）。默认关 */
     typingStatus: boolean;
-    /** @deprecated 已并进 qqSurface（开关合并）：输入只有旧键时原样、否则由 qqSurface 派生；新代码读 qqSurface。她打错字想改口时，一部分改成撤回重发（先发打错的，几秒后撤回再发对的；NapCat 的 delete_msg，ADR 0086）。默认关 */
-    selfRecall: boolean;
     /** 回复节奏（ADR 0075）：打字时间按字数（0.6 秒 + 每字 0.18 秒）、回之前「看 + 想」一会儿；热聊中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒） */
     rhythm: boolean;
     /** 她自己决定记不记：关掉自动记忆同步和自动日记，只认她回复里的 `<<记住：…>>` / `<<日记：…>>` 标记 */
@@ -887,13 +875,10 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         grievance: bool(file, 'grievance', '', DEFAULTS.grievance),
         pokes: bool(file, 'pokes', '', DEFAULTS.pokes),
         recalls: bool(file, 'recalls', '', DEFAULTS.recalls),
-        pokeBack: bool(file, 'pokeBack', '', DEFAULTS.pokeBack),
-        pokeOut: bool(file, 'pokeOut', '', DEFAULTS.pokeOut),
         feedbackCommands: bool(file, 'feedbackCommands', '', DEFAULTS.feedbackCommands),
         realWorld: bool(file, 'realWorld', '', DEFAULTS.realWorld),
         festivals: festivalMode(file.festivals),
         qqSurface: bool(file, 'qqSurface', '', DEFAULTS.qqSurface),
-        readReceipts: bool(file, 'readReceipts', '', DEFAULTS.readReceipts),
         bilibili: oneOf(file.bilibili, 'bilibili', PRESENCE_MODES, DEFAULTS.bilibili),
         bilibiliCommentKeywords: bilibiliCommentKeywords(file.bilibiliCommentKeywords),
         proactiveReach: bool(file, 'proactiveReach', '', DEFAULTS.proactiveReach),
@@ -941,8 +926,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
         qqPresence: bool(file, 'qqPresence', '', DEFAULTS.qqPresence),
-        onlineStatus: bool(file, 'onlineStatus', '', DEFAULTS.onlineStatus),
-        profileLikes: bool(file, 'profileLikes', '', DEFAULTS.profileLikes),
         qzone: oneOf(file.qzone, 'qzone', PRESENCE_MODES, DEFAULTS.qzone),
         qzoneVisibility: oneOf(file.qzoneVisibility, 'qzoneVisibility', QZONE_VISIBILITIES, DEFAULTS.qzoneVisibility),
         groupChat: oneOf(file.groupChat, 'groupChat', GROUP_CHAT_MODES, DEFAULTS.groupChat),
@@ -954,7 +937,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qqAllowGroups: qqList(file.qqAllowGroups, 'qqAllowGroups'),
         qqDangerous: bool(file, 'qqDangerous', '', DEFAULTS.qqDangerous),
         typingStatus: bool(file, 'typingStatus', '', DEFAULTS.typingStatus),
-        selfRecall: bool(file, 'selfRecall', '', DEFAULTS.selfRecall),
         selfDirectedMemory: bool(file, 'selfDirectedMemory', '', DEFAULTS.selfDirectedMemory),
         silenceNotice: bool(file, 'silenceNotice', '', DEFAULTS.silenceNotice),
         oneLife: oneOf(file.oneLife, 'oneLife', ONE_LIFE_MODES, DEFAULTS.oneLife),

@@ -90,7 +90,7 @@ describe('存在感起不起', () => {
     });
 
     test('开了但没有作息（herDays 关、卡上没作息）：记一行原因，不起', () => {
-        const h = harness({ config: { onlineStatus: true }, worldCard: null });
+        const h = harness({ config: { qqPresence: true }, worldCard: null });
         h.owner.start();
         assert.match(h.logs[0]!, /存在感：没有作息/);
         assert.equal(existsSync(join(h.dir, 'presence')), false);
@@ -98,27 +98,27 @@ describe('存在感起不起', () => {
     });
 
     test('开了在线状态：起来就按作息挂一次在线状态；再 start 不重起；selfNote 可用', async () => {
-        const h = harness({ config: { onlineStatus: true } });
+        const h = harness({ config: { qqPresence: true } });
         h.owner.start();
         h.owner.start();
         await flush();
         assert.equal(h.calls.filter(c => c.startsWith('status:')).length, 1);
         assert.equal(h.logs.filter(l => l.startsWith('存在感：')).length, 1);
-        assert.match(h.logs.find(l => l.startsWith('存在感：'))!, /^存在感：在线状态$/);
+        assert.match(h.logs.find(l => l.startsWith('存在感：'))!, /^存在感：在线状态、资料卡点赞、主动戳他$/, '三项都跟着 qqPresence（开关合并）');
         assert.equal(existsSync(join(h.dir, 'presence', 'presence.json')), true);
         assert.equal(h.owner.selfNote(Date.now()), undefined, '还没真改签名、没发说说，没有可说的');
         await h.owner.stop();
     });
 
     test('休眠中：起了也什么都不动', async () => {
-        const h = harness({ config: { onlineStatus: true }, dormant: true });
+        const h = harness({ config: { qqPresence: true }, dormant: true });
         h.owner.start();
         await flush();
         assert.deepEqual(h.calls, []);
     });
 
     test('reapply：醒来、重连后重新挂一次在线状态', async () => {
-        const h = harness({ config: { onlineStatus: true } });
+        const h = harness({ config: { qqPresence: true } });
         h.owner.start();
         await flush();
         h.owner.reapply();
@@ -143,12 +143,12 @@ describe('说说用哪张卡（隐私：公开的地方用最低隐私档）', (
     });
 
     test('两张都读不了：不写说说（其余照起），日志说明', () => {
-        const h = harness({ config: { qzone: 'on', onlineStatus: true }, cardFor: () => { throw new Error('读不了'); } });
+        const h = harness({ config: { qzone: 'on', qqPresence: true }, cardFor: () => { throw new Error('读不了'); } });
         h.owner.start();
         assert.deepEqual(h.cardsAsked, ['stranger', 'classmate']);
         assert.ok(h.logs.includes('存在感：陌生人档和同学档的卡都读不了，不写说说'));
         // qzone 开着时签名、翻空间等跟着起（开关合并），只是没有说说
-        assert.equal(h.logs.at(-1), '存在感：在线状态、个性签名（真改）、翻空间（记进提示词）、看好友空间（记进提示词）、刷陌生人（记进提示词 + 留样本）', '起来的清单里没有说说');
+        assert.equal(h.logs.at(-1), '存在感：在线状态、资料卡点赞、主动戳他、个性签名（真改）、翻空间（记进提示词）、看好友空间（记进提示词）、刷陌生人（记进提示词 + 留样本）', '起来的清单里没有说说');
     });
 });
 
@@ -186,7 +186,7 @@ describe('名单：点赞、看空间、戳他', () => {
 
     test('只戳男朋友档的人；戳完记进聊天记录', async () => {
         const now = pokeMoment();
-        const h = harness({ config: { pokeOut: true }, now, rows: quietRows(now) });
+        const h = harness({ config: { qqPresence: true }, now, rows: quietRows(now) });
         h.owner.start();
         await flush();
         assert.deepEqual(h.calls.filter(c => c.startsWith('poke:')), [`poke:${HIM.qq}`]);
@@ -197,7 +197,7 @@ describe('名单：点赞、看空间、戳他', () => {
     test('在危机暂停里不戳他', async () => {
         const now = pokeMoment();
         const asked: number[] = [];
-        const h = harness({ config: { pokeOut: true }, now, rows: quietRows(now), paused: qq => { asked.push(qq); return true; } });
+        const h = harness({ config: { qqPresence: true }, now, rows: quietRows(now), paused: qq => { asked.push(qq); return true; } });
         h.owner.start();
         await flush();
         assert.deepEqual(asked, [HIM.qq]);
@@ -207,7 +207,7 @@ describe('名单：点赞、看空间、戳他', () => {
 
     test('聊天没安静下来（最后一条是他说的）不戳', async () => {
         const now = pokeMoment();
-        const h = harness({ config: { pokeOut: true }, now, rows: [{ time: new Date(now - 5 * 3_600_000).toISOString(), role: 'user', content: '在忙吗', messageId: 1 }] });
+        const h = harness({ config: { qqPresence: true }, now, rows: [{ time: new Date(now - 5 * 3_600_000).toISOString(), role: 'user', content: '在忙吗', messageId: 1 }] });
         h.owner.start();
         await flush();
         assert.deepEqual(h.calls.filter(c => c.startsWith('poke:')), []);

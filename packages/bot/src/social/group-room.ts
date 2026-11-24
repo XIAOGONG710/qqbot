@@ -549,7 +549,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         // 接完话的小动作：顺手戳一下、给资料卡点个赞（不冲男朋友、危机回合不做）
         const caller = quotedTarget?.from;
         if (caller && caller !== bf?.qq && reason !== 'crisis') {
-            const plan = config.pokeOut ? groupPokePlan(`${group.id}:${caller}:${worldNow()}`, lastGroupPoke.get(caller), worldNow()) : undefined;
+            const plan = config.qqPresence ? groupPokePlan(`${group.id}:${caller}:${worldNow()}`, lastGroupPoke.get(caller), worldNow()) : undefined;
             if (plan) {
                 lastGroupPoke.set(caller, worldNow());
                 void pokeInGroup(group.id, caller, plan.delayMs);
@@ -576,7 +576,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
 
     /** 给群里认识的人点一次资料卡赞：一个群友一天最多一次，说得少的不点 */
     function likeGroupMember(groupId: number, qq: number): void {
-        if (!config.profileLikes || !transport.sendLike || !groupPeopleBook) return;
+        if (!config.qqPresence || !transport.sendLike || !groupPeopleBook) return;
         const person = groupPeopleBook.load(groupId).find(item => item.qq === qq);
         if (!person || person.msgs < 5) return;
         const day = new Date(worldNow()).toDateString();

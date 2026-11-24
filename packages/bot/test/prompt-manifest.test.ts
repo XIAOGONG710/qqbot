@@ -244,7 +244,7 @@ describe('群里开口：每次交一份（kind group）', () => {
         const sent: string[] = [];
         const manifests: PromptManifest[] = [];
         const config = {
-            dataDir, schedule: false, herDays: false, herFeelings: false, pokeOut: false, profileLikes: false,
+            dataDir, schedule: false, herDays: false, herFeelings: false, qqPresence: false,
             groupChat: 'on', groupOwn: 'off', groups: [{ id: 555, name: '合成宿舍群' }], contacts: [], llm: { temperature: 1 },
         } as unknown as AppConfig;
         const deps = {

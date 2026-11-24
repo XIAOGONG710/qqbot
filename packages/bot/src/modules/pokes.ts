@@ -9,7 +9,7 @@ import { POKE_BACK_COOLDOWN_MS, POKE_MAX_AGE_MS, POKE_MAX_IN_WINDOW, pokeBackPla
 // 他戳她一下：名单里的人、她没睡着没在上课、5 分钟里没戳太多，就当成他发来的一条消息交给私聊那边回，顺便戳回去。
 // 原来是 app.ts 里 App 的 receivePoke，ADR 0336 第 6 步原样搬成解释器的模块（接 poke 事件）。
 export interface PokeDeps {
-    config: Pick<AppConfig, 'pokes' | 'pokeBack' | 'contacts' | 'schedule'>;
+    config: Pick<AppConfig, 'pokes' | 'contacts' | 'schedule'>;
     stopped: () => boolean;
     /** 正在补回漏掉的消息：这时的戳不理（同原来） */
     syncing: () => boolean;
@@ -61,7 +61,7 @@ export function pokesModule(depsNow: () => PokeDeps): Module {
                 log(`[${contact.qq}] 戳了她一下`);
                 deps.onMessage(pokeMessage(event));
                 // 她也戳回去一下（比文字回复早一点）；失败只记一行，不影响回复
-                const back = config.pokeBack && pokeFriend ? pokeBackPlan(contact.qq, event.time) : undefined;
+                const back = pokeFriend ? pokeBackPlan(contact.qq, event.time) : undefined;
                 const lastBack = lastPokeBack.get(contact.qq);
                 if (back && pokeFriend && (lastBack === undefined || now - lastBack >= POKE_BACK_COOLDOWN_MS)) {
                     lastPokeBack.set(contact.qq, now);

@@ -376,8 +376,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(fromKoishi(before0009).pokes, false);
         assert.equal(fromKoishi({ ...minimal, pokes: true }).pokes, true);
         assert.equal('pokes' in (Config.simplify(Config(minimal as never)) as object), false);
-        assert.equal(fromKoishi(minimal).pokeBack, false);
-        assert.equal(fromKoishi({ ...minimal, pokes: true, pokeBack: true }).pokeBack, true);
+        assert.equal('pokeBack' in fromKoishi({ ...minimal, pokes: true, pokeBack: true }), false, '戳回去跟着 pokes（开关合并），app 只读 pokes');
         assert.equal('pokeBack' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
@@ -389,7 +388,8 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
     });
 
     test('存在感（ADR 0083）：旧配置没有这些项时全是关；开了照样传过去；等于默认值时不写进 koishi.yml；写错的模式报错', () => {
-        for (const key of ['readReceipts', 'onlineStatus', 'profileLikes'] as const) {
+        // 已读、在线状态、点赞并进 qqSurface / qqPresence（开关合并）
+        for (const key of ['qqSurface', 'qqPresence'] as const) {
             assert.equal(fromKoishi(minimal)[key], false, key);
             assert.equal(fromKoishi(before0009)[key], false, key);
             assert.equal(fromKoishi({ ...minimal, [key]: true })[key], true, key);

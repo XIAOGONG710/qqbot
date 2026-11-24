@@ -1891,7 +1891,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 带小黄脸的发送失败（QQ / NapCat 不收那个 face 段）就去掉表情再发一次纯文字，免得整轮回复失败、重试几次后不回了（ADR 0051）；
             // 超时不重发：可能已经发出去了，再发就重复
             // 她打字的这段时间对方那边显示「正在输入…」（ADR 0077，配置 typingStatus，默认关）；出错只记一次日志，不影响发送
-            ...(config.selfRecall && transport.deleteMessage ? { recallOwn: (messageId: number) => transport.deleteMessage!(messageId) } : {}),
+            ...(config.qqSurface && transport.deleteMessage ? { recallOwn: (messageId: number) => transport.deleteMessage!(messageId) } : {}),
             ...(config.typingStatus && transport.setInputStatus ? { typing: (userId: number) => {
                 void sendOwnedNotice(() => transport.setInputStatus!(userId), () => {}, error => {
                     if (!typingFailed) {
@@ -1903,7 +1903,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 她在 QQ 上的样子（签名、最近发的说说）进时间块（ADR 0083）
             selfNote: (now: number) => herPresence.selfNote(now),
             // 已读回执（ADR 0083）：失败只记第一次，不影响回复
-            ...(config.readReceipts && transport.markRead ? { markRead: (userId: number) => {
+            ...(config.qqSurface && transport.markRead ? { markRead: (userId: number) => {
                 void sendOwnedNotice(() => transport.markRead!(userId), () => {}, error => failOnce('已读回执', userId, error));
             } } : {}),
             // 发给他（deviceOwner）的一条发出去之后，「此刻的她」稍后刷新一次（ADR 0347 第 2 层；selfExport 关着时就是原来那个函数）

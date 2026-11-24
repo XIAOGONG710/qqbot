@@ -63,7 +63,7 @@ async function run(groupOwn: GroupOwnMode, hours: number, mention = false) {
             logs.append(GROUP.id, { time: new Date(freeAt - 5 * HOUR - (6 - i) * 60_000).toISOString(), from: 30001 + (i % 2), name: i % 2 ? '小李' : '老王', content: `闲聊 ${i}`, messageId: 6000 + i });
         }
         const config: AppConfig = baselineConfig(dataDir, [{ qq: 10001, name: '阿明', tier: 'boyfriend' }], {
-            schedule: true, moody: false, speechCheck: false, herDays: false, herFeelings: false, proactive: 'off', pokeOut: false, profileLikes: false,
+            schedule: true, moody: false, speechCheck: false, herDays: false, herFeelings: false, proactive: 'off', qqPresence: false,
             groupChat: 'on', groups: [GROUP], groupOwn,
         });
         const app = startApp({
