@@ -19,7 +19,14 @@
 | 3 | 线上开着、没有测试的 6 个开关补测试 | 只加测试 | 已做（70adb399） |
 | 4 | 每周效果数 `metrics:weekly`（ADR 0348） | 只读、只出数 | 已做（dcdd9dd6）；线上那台每周一跑 `-- --compare` |
 
-## 二、要用户点头（改线上开关、删功能代码、或费用取舍）
+## 二、要用户点头
+
+> **用户 2026-11-24 拍板：「按你的推荐来，第二节都照推荐办」。** 落实：
+> - 1 fewerRules 转正 → 删被它架空的形状族 7 个、`texture`、`tailCap`、`idioms`、`exemplars`（线上本来就不生效；基线里用到它们的场景快照跟着变，单独提交写明）。
+> - 2 删 `shortReplies` `hisHours` `photoShares` `reactions` `foodPhotos` `unlistedFriends` `realTransport`；`aiPhotos` 先留。3 删 `ownerPeek`。
+> - 4、8 改她想事情的频率 / 撤每晚追求回顾：照推荐先 ask-her（已托 DSH，信箱 11-24），她同意再做。
+> - 5、6 抽取和事实检查审稿关思考：照推荐先在模拟器对一轮（要模型 key，托 DSH），再定。
+> - 9 删 8 个没接线的文件和 /亲热 残余；`addSoulRating`、`EXTERNAL_PLATFORM_CAPABILITIES` 没给推荐，照旧留。（改线上开关、删功能代码、或费用取舍）
 
 推荐写在前面；用户没说的按推荐走之前，先在这里等一句话。
 
