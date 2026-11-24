@@ -25,6 +25,14 @@ test('渲染：不含示例对话（那是 QQ 才用的语气锚）', () => {
     assert.ok(!text.includes('<START>'));
 });
 
+test('桌面私聊把玩笑当作偶尔的选择，累了或认真问事就直接回应', () => {
+    const text = renderPersona({ card, names });
+    assert.match(text, /自己也觉得好玩.*顺着他刚说的一个细节拐一下.*说完就停/);
+    assert.match(text, /他累了、难受，或者在认真说事、正经问你，就直接回应/);
+    assert.equal(text.split('它明天早八啊').length - 1, 1);
+    assert.match(text, /参考这个拐法，话还是用你自己的/);
+});
+
 test('渲染：空字段跳过、结果确定', () => {
     const text = renderPersona({ card: { description: '只有一个字段' }, names });
     assert.ok(text.includes('只有一个字段'));
