@@ -25,6 +25,9 @@ export const VISION_PROVIDERS = ['deepseek'] as const;
 
 /** 图片表情分阶段开关（ADR 0063）：先只收藏核对，再允许真实发送。 */
 export const STICKER_MODES = ['off', 'collect', 'send'] as const;
+/** 深思三档（开关合并，设计第二节 10）：off 关 / keywords 关键词认出的认真轮次 / routed 再加小模型判轻重 */
+export const DELIBERATION_MODES = ['off', 'keywords', 'routed'] as const;
+export type DeliberationMode = (typeof DELIBERATION_MODES)[number];
 export type StickerMode = (typeof STICKER_MODES)[number];
 
 /** 名单里能用的档位（ADR 0003），从亲到疏 */
@@ -121,6 +124,7 @@ export const DEFAULTS = {
     /** 她每天回顾聊天（ADR 0221）：每晚看今天和他的聊天里数得出来的几处（他说她说错、他只回嗯、连问、说太长、同一件事说好几遍），她自己判断、记一句；私人空间 */
     chatReview: false,
     pursuits: false,
+    deliberation: 'off' as DeliberationMode,
     deliberate: false,
     deliberateModel: 'deepseek-v4-pro',
     identityLedger: false,
@@ -506,6 +510,9 @@ export interface AppConfig {
      * 深思（ADR 0151）：他认真问她的轮次（很大很抽象的问题、问想法 / 原因 / 要她给主意、他明着让她讲、追着要答案、说她不像真人）不套字数和条数、
      * 换成 deliberateModel 的更强模型（同一个接口，开思考）、提示词只留一句“先想清楚再回”。危机 / 小别扭 / 亲近 / 发图等别的轮次不动。更慢（几秒到十几秒）、更贵。默认关
      */
+    /** 深思（ADR 0151 / 0202，开关合并）：off / keywords / routed，见 DELIBERATION_MODES。deliberate、depthRouting 由它派生 */
+    deliberation?: DeliberationMode;
+    /** @deprecated 已并进 deliberation（开关合并）：输入只有旧键时原样、否则由 deliberation 派生；新代码读 deliberation */
     deliberate: boolean;
     /** 深思轮次用的模型名，默认 deepseek-v4-pro（和聊天用的同一个接口） */
     deliberateModel: string;
@@ -616,7 +623,7 @@ export interface AppConfig {
     feelingReview?: boolean;
     /** 记忆对账（ADR 0201）：默认关；开着时每 6 小时（发现缺了就 10 分钟后再查）对一次，缺的片段重新写；刚写进去的 2 小时内不算缺 */
     memoryReconcile?: boolean;
-    /** 语义路由（ADR 0202）：默认关；要 deliberate 开着。开着时，关键词没认出来的轮次多一次小调用（不开思考、几十个 token、3 秒超时），分类说沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思 */
+    /** @deprecated 已并进 deliberation（开关合并）：输入只有旧键时原样、否则由 deliberation 派生；新代码读 deliberation。语义路由（ADR 0202）：默认关；要 deliberate 开着。开着时，关键词没认出来的轮次多一次小调用（不开思考、几十个 token、3 秒超时），分类说沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思 */
     depthRouting?: boolean;
     /** @deprecated 已并进 factCheck（开关合并）：输入只有旧键时原样、否则由 factCheck 派生；新代码读 factCheck。事实检查多查一类（ADR 0203）：默认关；要 factCheck 开着（log 只记、fix 带说明重写）。审稿是同一次调用，只是多一类规则 */
     factHim?: boolean;
@@ -966,6 +973,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         realNights: bool(file, 'realNights', '', DEFAULTS.realNights),
         chatReview: bool(file, 'chatReview', '', DEFAULTS.chatReview),
         pursuits: bool(file, 'pursuits', '', DEFAULTS.pursuits),
+        deliberation: oneOf(file.deliberation, 'deliberation', DELIBERATION_MODES, DEFAULTS.deliberation),
         deliberate: bool(file, 'deliberate', '', DEFAULTS.deliberate),
         deliberateModel: deliberateModel(file.deliberateModel),
         identityLedger: bool(file, 'identityLedger', '', DEFAULTS.identityLedger),

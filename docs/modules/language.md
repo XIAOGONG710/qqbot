@@ -120,7 +120,7 @@
 
 | 配置 | 功能 | ADR |
 | --- | --- | --- |
-| `deliberate` | 认真问她时深思（更强的模型、不套字数） | [ADR 0151](../adr/0151-deliberate.md) |
+| `deliberation` | 认真问她时深思（更强的模型、不套字数）（模式）（并进来的：`deliberate` 认真问她时深思（更强的模型、不套字数）（[ADR 0151](../adr/0151-deliberate.md)）；`depthRouting` 语义路由：关键词没认出来的轮次，问小模型这一句是轻是重——沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思（要 deliberate 开着）（[ADR 0202](../adr/0202-depth-routing.md)）） | [ADR 0151](../adr/0151-deliberate.md) |
 | `rhythm` | 回复节奏（看想 / 打字时间） | [ADR 0075](../adr/0075-reply-rhythm.md) |
 | `lagTail` | 回复延迟的长尾 | [ADR 0105](../adr/0105-reply-lag-tail.md) |
 | `herNo` | 会拒绝 | [ADR 0103](../adr/0103-her-no.md) |
@@ -138,7 +138,6 @@
 | `jealousy` | 吃醋（最轻一档） | [ADR 0123](../adr/0123-jealousy.md) |
 | `curious` | 会追问（问他刚说的那件事） | [ADR 0126](../adr/0126-curious.md) |
 | `chatReview` | 她每天回顾聊天（每晚看今天数得出来的几处：他说她说错、只回嗯、连问、太长、重复，她自己判断、记一句；私人空间） | [ADR 0221](../adr/0221-chat-review.md) |
-| `depthRouting` | 语义路由：关键词没认出来的轮次，问小模型这一句是轻是重——沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思（要 deliberate 开着） | [ADR 0202](../adr/0202-depth-routing.md) |
 | `memes` | 知道网上的热梗 | [ADR 0129](../adr/0129-memes.md) |
 
 ## 看它有没有变好

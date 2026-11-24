@@ -18,7 +18,7 @@ import { attachCompanionWebSocket, type CompanionWebSocketLike } from '@qqbot/mo
 import { createCompanionKoaActionPollHandler, createCompanionKoaEnvelopeHandler, createCompanionKoaMediaHandler } from '@qqbot/mobile-companion/koa';
 import type { HistoryMessage } from '../../bot/src/memory/backfill.ts';
 import type { WebMode } from '../../bot/src/platform/web.ts';
-import { CONTACT_TIERS, configSwitchNotes, DEFAULTS, parseAppConfig, type AppConfig, type ContactTier, type StickerMode } from '../../bot/src/platform/config.ts';
+import { CONTACT_TIERS, configSwitchNotes, DEFAULTS, parseAppConfig, type AppConfig, type ContactTier, type DeliberationMode, type StickerMode } from '../../bot/src/platform/config.ts';
 import { createLog, type Log } from '../../bot/src/platform/log.ts';
 import { createPromptManifestLog } from '../../bot/src/platform/prompt-manifest.ts';
 import { FEATURES, featureDetail, type FeatureDef } from '../../bot/src/platform/features.ts';
@@ -238,7 +238,9 @@ export interface Config {
     realNights: boolean;
     chatReview: boolean;
     pursuits: boolean;
-    deliberate: boolean;
+    deliberation: DeliberationMode;
+    /** 已并进 deliberation（开关合并），koishi.yml 里还写着才有 */
+    deliberate?: boolean;
     deliberateModel: string;
     identityLedger: boolean;
     memoryAudit: boolean;
@@ -307,7 +309,8 @@ export interface Config {
     fewerRules: boolean;
     feelingReview: boolean;
     memoryReconcile: boolean;
-    depthRouting: boolean;
+    /** 已并进 deliberation（开关合并），koishi.yml 里还写着才有 */
+    depthRouting?: boolean;
     /** 已并进 factCheck（开关合并），koishi.yml 里还写着才有 */
     factHim?: boolean;
     /** 已并进 media（开关合并），koishi.yml 里还写着才有 */
@@ -443,7 +446,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         worldThreads: toggle('worldThreads'),
         worldDrama: toggle('worldDrama'),
         pursuits: toggle('pursuits'),
-        deliberate: toggle('deliberate'),
+        deliberation: choice('deliberation'),
+        deliberate: legacy(),
         deliberateModel: Schema.string().default(DEFAULTS.deliberateModel)
             .description('深思轮次用的模型名（和聊天用的同一个接口）。默认 deepseek-v4-pro'),
         identityLedger: toggle('identityLedger'),
@@ -519,7 +523,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         fewerRules: toggle('fewerRules'),
         feelingReview: toggle('feelingReview'),
         memoryReconcile: toggle('memoryReconcile'),
-        depthRouting: toggle('depthRouting'),
+        depthRouting: legacy(),
         readStickers: legacy(),
         factHim: legacy(),
         openQuestions: toggle('openQuestions'),

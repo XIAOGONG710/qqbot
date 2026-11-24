@@ -97,6 +97,15 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
     //    新装默认：两个都没写时 feelingLedger 从开变成跟着 herFeelings（默认关），没有心境本来就没有账，行为不变。
     //    feltLedgerRecall 并进 memoryFeelings 那一半阻塞（线上关着，并进来 = 给线上开了），不在这里
     follows('herFeelings', BOOL, ['feelingLedger'], { ignorable: (_, input) => input.herFeelings !== true }),
+    // 9. 深思（10）：新名字、三档。布尔合并（depthRouting 跟着 deliberate）会让 RICH 场景每轮多一次小模型判轻重，所以分三档：
+    //    off 关 / keywords 关键词认出的认真轮次走深思 / routed 再加小模型判轻重。换名是因为旧 koishi.yml 的 deliberate: true 过不了下拉框。
+    //    deliberate 关着时 depthRouting 本来不起作用（app.ts 的 turnWeigher），ignorable；所以旧键总能表达
+    {
+        key: 'deliberation', values: ['off', 'keywords', 'routed'], legacy: ['deliberate', 'depthRouting'],
+        fromLegacy: input => input.deliberate !== true ? 'off' : input.depthRouting === true ? 'routed' : 'keywords',
+        toLegacy: value => ({ deliberate: value !== 'off', depthRouting: value === 'routed' }),
+        ignorable: (key, input) => key === 'depthRouting' && input.deliberate !== true,
+    },
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */

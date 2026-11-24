@@ -155,7 +155,7 @@
 | [0148](0148-device-control.md) | 她对他的电脑和手机的有限控制——取件模式、分档、他触发的看屏幕 | 已实现，未上线、未在真机上验证（分支 `claude/human-videos`；开关 `deviceControl`，… | `deviceControl` 开 |
 | [0149](0149-answer-then-continue.md) | 被问直接问题时，答完再接着说（shapeAsk） | 已上线 2026-10-25 21:59（`bb3f77e`；`koishi.yml` 里 `shapeAsk: tru… |  |
 | [0150](0150-long-answers.md) | 被认真问想法 / 原因时说长一点（shapeLong） | 已上线 2026-10-25 21:59（`bb3f77e`；`koishi.yml` 里 `shapeLong: tr… |  |
-| [0151](0151-deliberate.md) | 认真问她时深思——换更强的模型、不套字数、只留一句「先想清楚」（deliberate） | 已上线 2026-10-25 21:59（`bb3f77e`；`koishi.yml` 里 `deliberate: t… | `deliberate` 开 |
+| [0151](0151-deliberate.md) | 认真问她时深思——换更强的模型、不套字数、只留一句「先想清楚」（deliberate） | 已上线 2026-10-25 21:59（`bb3f77e`；`koishi.yml` 里 `deliberate: t… | `deliberation`（原 `deliberate`） 开 |
 | [0152](0152-small-thing-why.md) | 小事主动讲的时候，先定下「为什么说」，不许编反转、不许说给他看没有的东西 | 已上线 2026-10-25 21:59（随 `bb3f77e`；改的是 `smallNews`（ADR 0127）那一… |  |
 | [0153](0153-fluff.md) | 消息里的废话——量过、在人设里试了一句话，没做代码 | 调研 + 人设措辞的重放，没有代码改动（人设要用户裁决，措辞待批） |  |
 | [0154](0154-persona-tuning-funny.md) | 人设微调——搞笑女、会想事情、看场合嘴硬、说话带废话 | 已上线 2026-10-25 21:59（`bb3f77e`；人设与重新生成的 13 张角色卡随合并生效；回退：`git… |  |
@@ -196,7 +196,7 @@
 | [0199](0199-history-migration.md) | 把 VM 时期的素材并进她现在住的机器（一次性的迁移工具） | 工具已实现并测过；DSH 已在他那台机器上跑完（10-30 18:43）。不是开关，不是常驻功能 |  |
 | [0200](0200-private-space.md) | 她的私人空间——她自己学出来的东西，默认不给他看 | 已实现。新开关 `ownerPeek`，默认关（私人空间默认就在）。DSH 那台机器拉取后重启 Koishi 生效；生效… |  |
 | [0201](0201-memory-reconcile.md) | 记忆对账——「记着写过」不等于 Hindsight 里真有 | 已实现，新开关 `memoryReconcile`，默认关。DSH 那台机器拉取、在 `koishi.yml` 里加 `… | `memoryReconcile` 开 |
-| [0202](0202-depth-routing.md) | 语义路由——让「认真的时刻」不再靠关键词认 | 已实现，新开关 `depthRouting`，默认关；要 `deliberate` 开着才起作用。DSH 那台机器拉取、… | `depthRouting` 开 |
+| [0202](0202-depth-routing.md) | 语义路由——让「认真的时刻」不再靠关键词认 | 已实现，新开关 `depthRouting`，默认关；要 `deliberate` 开着才起作用。DSH 那台机器拉取、… | `deliberation`（原 `depthRouting`） 开 |
 | [0203](0203-fact-check-him.md) | 事实检查多查一类——她替他说的事 | 已实现，新开关 `factHim`，默认关；要 `factCheck` 开着（`log` 只记、`fix` 带说明重写）… | `factCheck`（原 `factHim`） 开 |
 | [0204](0204-reading-takes.md) | 她读完 / 看完之后自己想的 | 已实现，新开关 `readingTakes`，默认关；要名单里有男朋友档。DSH 那台机器拉取、在 `koishi.ym… | `readingTakes` 开 |
 | [0205](0205-trope-shares.md) | 几种“一看就是 AI”的说法——只数给她看，不禁 | 已实现，没有新开关：只是给已有的两处多一句数字——每晚想说话习惯（`speechNotes`）的提示词，和 `/说话趋势… |  |

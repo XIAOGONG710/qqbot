@@ -162,6 +162,7 @@ describe('真表：已经并了的组', () => {
         bilibili: 'on',
         watching: true,
         herFeelings: true,
+        deliberation: 'routed',
     };
     const env = { QQBOT_LLM_API_KEY: 'k' };
     const base = {
