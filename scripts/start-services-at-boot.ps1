@@ -58,8 +58,14 @@ function Find-Processes([string]$name, [string]$pattern) {
 function Start-Hidden([string]$script, [string]$label) {
     $out = Join-Path $bootDir "$label-$stamp.out"
     $err = Join-Path $bootDir "$label-$stamp.err"
+    $argsForScript = @()
+    if ($script -match '^start-(napcat|hindsight|koishi)\.ps1$') {
+        $argsForScript = @('-Service', $Matches[1])
+        $script = 'start-managed-service.ps1'
+    }
+    $launchArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f (Join-Path $repoRoot "scripts\$script"))) + $argsForScript
     Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -WorkingDirectory $repoRoot `
-        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f (Join-Path $repoRoot "scripts\$script"))) `
+        -ArgumentList $launchArgs `
         -RedirectStandardOutput $out -RedirectStandardError $err | Out-Null
 }
 

@@ -24,6 +24,7 @@ import { backupEntries, backupHealth, configuredDataDir } from './backup-state.m
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const once = process.argv.includes('--once');
+const localOnly = once && process.argv.includes('--local-only');
 const LOG = join(root, 'runtime', 'services-watchdog.log');
 const MAINTENANCE = join(process.env.TEMP ?? tmpdir(), 'qqbot-maintenance');
 const EVERY_MS = 60_000;
@@ -62,7 +63,7 @@ const HINDSIGHT_URL = process.env.QQBOT_HINDSIGHT_URL ?? 'http://127.0.0.1:8899'
 const HINDSIGHT_PORT = Number(new URL(HINDSIGHT_URL).port || 8899);
 
 async function hindsightHealthy() {
-    for (const path of ['/tree', '/health']) {
+    for (const path of localOnly ? ['/health'] : ['/tree', '/health']) {
         try {
             const res = await fetch(`${HINDSIGHT_URL}${path}`, { signal: AbortSignal.timeout(5000) });
             if (res.ok) return true;
@@ -205,12 +206,13 @@ function startControlPlane(hindsightPort) {
     }, 20_000).unref();
 }
 
-function openWindow(script) {
-    const file = join(root, 'scripts', script);
+function openWindow(service) {
+    const file = join(root, 'scripts', 'start-managed-service.ps1').replaceAll("'", "''");
+    const cwd = root.replaceAll("'", "''");
     const child = spawn('powershell.exe', ['-NoProfile', '-Command',
-        `Start-Process powershell.exe -ArgumentList '-NoExit','-ExecutionPolicy','Bypass','-File','${file}' -WorkingDirectory '${root}'`],
+        `Start-Process powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','"${file}"','-Service','${service}' -WorkingDirectory '${cwd}' -WindowStyle Hidden`],
     { stdio: 'ignore', windowsHide: true });
-    child.on('error', error => say(`开窗口失败（${script}）：${error.message}`));
+    child.on('error', error => say(`开窗口失败（${service}）：${error.message}`));
     child.unref();
 }
 
@@ -263,16 +265,37 @@ function allowed(service) {
 
 async function check() {
     const procs = processes();
-    if (!procs) return say('这次查不了进程（PowerShell 起不来，多半内存不够），下一分钟再查');
+    if (!procs) {
+        if (once) throw new Error('无法读取服务进程');
+        return say('这次查不了进程（PowerShell 起不来，多半内存不够），下一分钟再查');
+    }
     const napcatUp = await portOpen(3001);
     const hindsightUp = await hindsightHealthy();
-    const net = await netUp();
+    const net = localOnly ? undefined : await netUp();
     // 10-30 修：这里原来是 /qqbot\\node_modules\\koishi/，目录改成 qqbot-dsh-control 之后不再匹配——
     // 守护每分钟都以为「没有 Koishi 进程」，于是不停拉起新实例（最多同时四个），她的回复重复、他的话在记录里也是两遍。
     const koishiProcs = procs.filter(p => p.name === 'node.exe' && /node_modules[\\/]koishi[\\/]/.test(p.cmd));
     const connection = koishiConnection();
+    const running = service => procs.some(p => p.name === 'powershell.exe'
+        && (p.cmd.includes(`start-${service}.ps1`)
+            || (p.cmd.includes('start-managed-service.ps1') && new RegExp(`-Service\\s+"?${service}(?:"|\\s|$)`, 'i').test(p.cmd))));
     if (!napcatUp) napcatUpSince = Infinity;
     else if (napcatUpSince === Infinity) napcatUpSince = Date.now();
+    const status = {
+        napcat: napcatUp,
+        hindsight: hindsightUp,
+        koishi: koishiProcs.length > 0
+            && !(connection?.state === 'disconnected' && napcatUp && Date.now() - napcatUpSince >= KOISHI_STALE_MS
+                && Date.now() - Date.parse(connection.at) >= KOISHI_STALE_MS),
+    };
+    if (once) {
+        console.log(JSON.stringify({ ...status, net, koishiProcesses: koishiProcs.length,
+            koishiListening: await portOpen(5140), lastConnection: connection, maintenance: existsSync(MAINTENANCE),
+            watchdog: procs.some(p => p.pid !== process.pid && p.name === 'node.exe' && /services-watchdog\.mjs/i.test(p.cmd) && !/\s--once(?:\s|$)/.test(p.cmd)),
+            launchers: { napcat: running('napcat'), hindsight: running('hindsight'), koishi: running('koishi') },
+        }));
+        return;
+    }
 
     // 记忆服务：连续多久不通 / 有没有已经通知过（重启会清 bad.hindsight，所以单独记）
     if (hindsightUp) {
@@ -287,17 +310,6 @@ async function check() {
     } else if (!memoryAlerted && Date.now() - memoryDownSince >= MEMORY_ALERT_MINUTES * 60_000) {
         memoryAlerted = true;
         await notifyMemory('down', Math.round((Date.now() - memoryDownSince) / 60_000));
-    }
-    const status = {
-        napcat: napcatUp,
-        hindsight: hindsightUp,
-        koishi: koishiProcs.length > 0
-            && !(connection?.state === 'disconnected' && napcatUp && Date.now() - napcatUpSince >= KOISHI_STALE_MS
-                && Date.now() - Date.parse(connection.at) >= KOISHI_STALE_MS),
-    };
-    if (once) {
-        console.log(JSON.stringify({ ...status, net, koishiProcesses: koishiProcs.length, lastConnection: connection, maintenance: existsSync(MAINTENANCE) }));
-        return;
     }
     watchNet(net);
     for (const service of Object.keys(status)) {
@@ -321,18 +333,18 @@ async function check() {
     }
     if (existsSync(MAINTENANCE)) return;
 
-    if (bad.napcat >= 2 && !procs.some(p => p.name === 'powershell.exe' && /start-napcat\.ps1/.test(p.cmd)) && allowed('napcat')) {
+    if (bad.napcat >= 2 && !running('napcat') && allowed('napcat')) {
         say('napcat：3001 端口两分钟没在听，也没有 start-napcat 的窗口，拉起 NapCat');
-        openWindow('start-napcat.ps1');
+        openWindow('napcat');
         bad.napcat = 0;
     }
     // 10-30：判断「进程在不在」改成认 python 起的 hindsight_api（原来只认 hindsight-api.exe，永远判成「在」，
     // 今天 16:03 API 被停掉、79 分钟没人拉起就是这么来的）
     const hindsightProcs = procs.filter(p => p.name === 'hindsight-api.exe' || (p.name === 'python.exe' && /hindsight[_-]?api/i.test(p.cmd)));
-    if (bad.hindsight >= 2 && hindsightProcs.length === 0 && allowed('hindsight')) {
+    if (bad.hindsight >= 2 && hindsightProcs.length === 0 && !running('hindsight') && allowed('hindsight')) {
         say('hindsight：/health 两分钟不通，也没有 hindsight_api 进程，拉起 Hindsight（先停掉孤儿守护进程）');
         kill(procs.filter(p => p.name === 'node.exe' && /hindsight-watchdog/.test(p.cmd)).map(p => p.pid));
-        openWindow('start-hindsight.ps1');
+        openWindow('hindsight');
         bad.hindsight = 0;
     } else if (bad.hindsight >= 6 && hindsightProcs.length && allowed('hindsight')) {
         // 2026-11-01：进程卡在模型初始化——python 在、端口永远不听。以前只看「进程在不在」，
@@ -340,7 +352,7 @@ async function check() {
         say('hindsight：/health 六分钟不通，但 python 进程还在（卡在初始化），掐掉重拉');
         kill(hindsightProcs.map(p => p.pid));
         kill(procs.filter(p => p.name === 'node.exe' && /hindsight-watchdog/.test(p.cmd)).map(p => p.pid));
-        openWindow('start-hindsight.ps1');
+        openWindow('hindsight');
         bad.hindsight = 0;
     }
     // 记忆控制台（2026-11-02 用户：「添加个启动入口」）：Hindsight 活着、9999 没开、五分钟内没试过，就起一次
@@ -353,7 +365,7 @@ async function check() {
             startControlPlane(HINDSIGHT_PORT);
         }
     }
-    if (bad.koishi >= 2 && allowed('koishi')) {
+    if (bad.koishi >= 2 && (koishiProcs.length || !running('koishi')) && allowed('koishi')) {
         if (koishiProcs.length) {
             say(`koishi：NapCat 好了 3 分钟以上，Koishi 最后一次连接还是断开（${connection?.at}），停掉 Koishi 再拉起`);
             kill(koishiProcs.filter(p => /bin\.js/.test(p.cmd)).map(p => p.pid));
@@ -361,7 +373,7 @@ async function check() {
         } else {
             say('koishi：两分钟没有 Koishi 进程，拉起 Koishi');
         }
-        openWindow('start-koishi.ps1');
+        openWindow('koishi');
         bad.koishi = 0;
     }
 }
