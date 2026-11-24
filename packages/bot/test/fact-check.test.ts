@@ -84,8 +84,9 @@ describe('审稿的输入输出', () => {
 });
 
 describe('第三类 about-him：她替他说的、没有依据的事（ADR 0203，factHim）', () => {
-    test('默认关', () => {
-        assert.equal(DEFAULTS.factHim, false);
+    test('默认关；并进 factCheck（开关合并）：factCheck 开着就也查这一类，没有单独的 factHim', () => {
+        assert.equal(DEFAULTS.factCheck, 'off');
+        assert.equal('factHim' in DEFAULTS, false);
     });
 
     test('auditRules：默认只有前两类和原来的输出说明；开着时多一段第三类 + 不该列的几种 + 输出说明里多了 about-him，原来的输出说明只出现一次', () => {

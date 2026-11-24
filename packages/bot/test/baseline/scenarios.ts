@@ -1239,7 +1239,7 @@ export const SCENARIOS: readonly Scenario[] = [
                 + '她回复里的 <<记住>>（单独一行的气泡发送前处理）和 <<日记>>（普通气泡发出去时处理，本地也留一份）、危机回合（重写后还不过发固定兜底、重写后通过）',
             start: '2026-12-10T19:00:00+08:00',
             contacts: [boyfriend],
-            config: { factCheck: 'fix', factHim: true, selfDirectedMemory: true, diaryInsights: true, proactive: 'on', proactiveReach: true, comeBack: true },
+            config: { factCheck: 'fix', selfDirectedMemory: true, diaryInsights: true, proactive: 'on', proactiveReach: true, comeBack: true },
             memory: {
                 recall: [
                     { bank: boyfriend.qq, query: '第一次约会的地方', results: [

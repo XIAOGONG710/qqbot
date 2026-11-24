@@ -196,8 +196,6 @@ export const DEFAULTS = {
     memoryReconcile: false,
     /** 语义路由（ADR 0202）：关键词没认出来的轮次问一次小模型这一句是轻是重，值得认真的也走深思。要 deliberate 开着才起作用 */
     depthRouting: false,
-    /** 事实检查多查一类（ADR 0203）：她替他说的、聊天 / 记忆里没有依据的事（「你数学不差」「你高中刷那么多题」）。要 factCheck 开着 */
-    factHim: false,
     /** 看懂他发的表情包（ADR 0206）：没有名字的图片表情用看图模型先抄图上的字、再说画面，聊天记录里是「[动画表情：……]」而不是只有「[动画表情]」。要 media 和 vision 开着；只对名单里的人 */
     readStickers: false,
     /** 她读完 / 看完之后自己想的（ADR 0204）：每晚想一次，有话想说才写一句落在具体情节 / 说法上的看法，存在私人空间里；聊到那本书 / 视频或问起“最近看了什么”才放进提示词 */
@@ -228,6 +226,7 @@ export const LEGACY_DEFAULTS = {
     qzoneBrowse: 'off' as PresenceMode,
     qzonePeek: 'off' as PresenceMode,
     qzoneStrangers: 'off' as PresenceMode,
+    factHim: false,
 } as const;
 
 /** 开关合并的输入映射用的默认值：DEFAULTS 加上 AppConfig 里已经删掉的旧键（parseAppConfig、Koishi 迁移、盘点、adr-map 都用这份） */
@@ -656,8 +655,6 @@ export interface AppConfig {
     memoryReconcile?: boolean;
     /** @deprecated 已并进 deliberation（开关合并）：输入只有旧键时原样、否则由 deliberation 派生；新代码读 deliberation。语义路由（ADR 0202）：默认关；要 deliberate 开着。开着时，关键词没认出来的轮次多一次小调用（不开思考、几十个 token、3 秒超时），分类说沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思 */
     depthRouting?: boolean;
-    /** @deprecated 已并进 factCheck（开关合并）：输入只有旧键时原样、否则由 factCheck 派生；新代码读 factCheck。事实检查多查一类（ADR 0203）：默认关；要 factCheck 开着（log 只记、fix 带说明重写）。审稿是同一次调用，只是多一类规则 */
-    factHim?: boolean;
     /** @deprecated 已并进 media（开关合并）：输入只有旧键时原样、否则由 media 派生；新代码读 media。看懂他发的表情包（ADR 0206）：默认关；要 media 和看图模型（vision）开着，只对名单里的人。读过的缓存在 stickers/read-cache.json，同一张只读一次 */
     readStickers?: boolean;
     /** 她读完 / 看完之后自己想的（ADR 0204）：默认关；要名单里有男朋友档。每晚 22 点以后想一次，有话想说才写，没想法就空着；存在 reading-takes.json（她的私人空间，没有命令念给他） */
@@ -1056,7 +1053,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         feelingReview: bool(file, 'feelingReview', '', DEFAULTS.feelingReview),
         memoryReconcile: bool(file, 'memoryReconcile', '', DEFAULTS.memoryReconcile),
         depthRouting: bool(file, 'depthRouting', '', DEFAULTS.depthRouting),
-        factHim: bool(file, 'factHim', '', DEFAULTS.factHim),
         readStickers: bool(file, 'readStickers', '', DEFAULTS.readStickers),
         readingTakes: bool(file, 'readingTakes', '', DEFAULTS.readingTakes),
         hisReactions: bool(file, 'hisReactions', '', DEFAULTS.hisReactions),

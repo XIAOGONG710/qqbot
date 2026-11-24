@@ -1107,7 +1107,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ...(config.quoteReply ? { quote: {} } : {}),
         // 逐条事实检查（ADR 0137 / 0203）：factCheck 是 log / fix 时挂；审稿经执行器，同一个模型、温度 0，日志用这个联系人的（ctx.log 已带 [QQ]）
         ...(config.factCheck !== 'off' ? { factCheck: {
-            mode: config.factCheck, ...(config.factHim ? { aboutHim: true } : {}),
+            mode: config.factCheck, aboutHim: true,
             audit: (messages, scopedLog) => exec.llm({ purpose: 'chat', config: { ...forExtraction(config.llm), temperature: 0 }, messages }, scopedLog),
         } } : {}),
         // 话说到一半（ADR 0141）：跟着 speechCheck
