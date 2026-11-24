@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { adrMap, liveValues, readAdr } from './adr-map.mjs';
+import { adrMap, liveValues, onOff, readAdr } from './adr-map.mjs';
 
 test('读 ADR 头：标题去掉编号前缀，状态去加粗、截断、竖线换掉', () => {
     const { title, status } = readAdr('# ADR 0129：她知道梗 | 网上\n\n- 状态：**已实现，未上线**（2026-10-23）\n');
@@ -27,4 +27,14 @@ test('开关按 adr 字段挂上，线上值以快照为准；同号两份标出
 
 test('快照取 qqbot 插件那一块', () => {
     assert.deepEqual(liveValues('plugins:\n  server:a:\n    port: 1\n  qqbot:b:\n    contacts: []\n    memes: true\n'), { contacts: [], memes: true });
+});
+
+test('{ enabled } 对象看 enabled；被 fewerRules 强制关掉的标出来', () => {
+    assert.equal(onOff({ enabled: true, baseUrl: 'x' }), '开');
+    assert.equal(onOff({ enabled: false }), '关');
+    const files = [{ name: '0091-shape.md', text: '# ADR 0091：形状\n' }, { name: '0223-dsh.md', text: '# ADR 0223：dsh\n' }];
+    const features = [{ key: 'shape', adr: '0091' }, { key: 'dsh', adr: '0223' }];
+    const md = adrMap(files, features, { shape: true, dsh: { enabled: true } }, '', new Set(['shape']));
+    assert.match(md, /`shape` 关（被 fewerRules 关掉）/);
+    assert.match(md, /`dsh` 开/);
 });

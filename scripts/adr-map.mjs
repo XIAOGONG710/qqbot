@@ -26,13 +26,19 @@ export function liveValues(yamlText) {
     return plugin;
 }
 
-const onOff = value => value === undefined ? '默认' : value === true || (typeof value === 'string' && value !== 'off' && value !== '') ? '开' : '关';
+/** 快照里的值 → 开 / 关 / 默认；{ enabled } 这种对象（dsh、memory、vision）看 enabled */
+export const onOff = value => {
+    if (value === undefined) return '默认';
+    if (value !== null && typeof value === 'object') return value.enabled === true ? '开' : '关';
+    return value === true || (typeof value === 'string' && value !== 'off' && value !== '') ? '开' : '关';
+};
 
 /**
  * files：[{ name, text }]；features：[{ key, adr }]；live：快照里的值（键 → 值），没有快照给 undefined。
  * 返回 markdown。
  */
-export function adrMap(files, features, live, source = '') {
+// forcedOff：线上开着、但启动时被别的开关强制关掉的（fewerRules 的 relaxStyle），标「关（被 fewerRules 关掉）」
+export function adrMap(files, features, live, source = '', forcedOff = new Set()) {
     const rows = [];
     const seen = new Map();
     for (const { name, text } of files) {
@@ -41,7 +47,11 @@ export function adrMap(files, features, live, source = '') {
         seen.set(number, [...(seen.get(number) ?? []), name]);
         const { title, status } = readAdr(text);
         const switches = features.filter(f => f.adr === number).map(f => f.key);
-        const liveText = switches.map(key => `\`${key}\`${live ? ` ${onOff(live[key])}` : ''}`).join('、');
+        const liveText = switches.map(key => {
+            if (!live) return `\`${key}\``;
+            const state = onOff(live[key]);
+            return `\`${key}\` ${state === '开' && forcedOff.has(key) ? '关（被 fewerRules 关掉）' : state}`;
+        }).join('、');
         rows.push(`| [${number}](${name}) | ${title} | ${status} | ${liveText} |`);
     }
     const dup = [...seen].filter(([, names]) => names.length > 1);
@@ -68,7 +78,12 @@ if (invoked === fileURLToPath(import.meta.url)) {
     const liveDir = join(REPO, 'exchange', 'live');
     const snapshot = readdirSync(liveDir).filter(name => /^koishi-.*\.ya?ml$/.test(name)).sort().at(-1);
     const live = snapshot ? liveValues(readFileSync(join(liveDir, snapshot), 'utf8')) : undefined;
-    const md = adrMap(files, FEATURES, live, snapshot ? `exchange/live/${snapshot}` : '');
+    // 少规矩（fewerRules）开着时，启动时 relaxStyle 把只管说话风格的那几个强制关掉：线上实际是关的
+    const { relaxStyle } = await import(new URL('../packages/bot/src/language/fewer-rules.ts', import.meta.url).href);
+    const forcedOff = live && onOff(live.fewerRules) === '开'
+        ? new Set(Object.entries(relaxStyle({})).filter(([, value]) => value === false).map(([key]) => key))
+        : new Set();
+    const md = adrMap(files, FEATURES, live, snapshot ? `exchange/live/${snapshot}` : '', forcedOff);
     const out = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : undefined;
     if (out) { writeFileSync(resolve(out), md); console.log(`写了 ${out}：${files.length} 份`); } else process.stdout.write(md);
 }
