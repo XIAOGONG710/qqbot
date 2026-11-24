@@ -1,6 +1,8 @@
 // 上线前检查的纯函数部分（ADR 0070 第 17 项）：把「这次要上的提交里有什么」分类，给出该问用户、该先做什么的清单。
 // 任务书 T3a：再加一条机器能拦的——代码 / 脚本要重启生效，距上一次「行为变化」的重启不足 48 小时就挡路（修故障 / 安全用 safety 放行）。
 
+import { SWITCH_DEFAULTS } from '../platform/config.ts';
+import { SWITCH_MERGES, unrepresentableSwitches, writtenLegacy, type SwitchMerge } from '../platform/switch-merge.ts';
 import { BEHAVIOR_GAP_MS, type RestartEntry } from './restart-log.ts';
 
 export interface ChangeSet { cards: string[]; code: string[]; scripts: string[]; docs: string[]; other: string[] }
@@ -30,6 +32,19 @@ export interface GoLiveInput {
     now?: Date;
     /** 重启记录文件是不是读到了任何一行（空的会提示，因为那样拦不住任何事） */
     restartLogEmpty?: boolean;
+    /** 线上 koishi.yml 里 qqbot 那一块的开关合并预检（switchMergeCheck）；读不到 koishi.yml 是 'unreadable'，没查是 undefined */
+    switches?: SwitchMergeCheck | 'unreadable';
+}
+
+/** 开关合并预检：部署后插件会把哪几组旧键改写成新键（migrateSwitches）、哪几组新键表达不了（parseAppConfig 会拒绝启动） */
+export interface SwitchMergeCheck { migrating: string[]; unrepresentable: string[] }
+
+export function switchMergeCheck(qqbot: Readonly<Record<string, unknown>>, merges: readonly SwitchMerge[] = SWITCH_MERGES): SwitchMergeCheck {
+    const unrepresentable = unrepresentableSwitches(qqbot, SWITCH_DEFAULTS, merges);
+    const bad = new Set(unrepresentable.map(line => line.slice(0, line.indexOf('：'))));
+    const migrating = merges.filter(merge => writtenLegacy(merge, qqbot).length && !bad.has(merge.key))
+        .map(merge => `${merge.key}（${writtenLegacy(merge, qqbot).join('、')}）`);
+    return { migrating, unrepresentable };
 }
 
 export interface GoLiveReport { blockers: string[]; notes: string[]; asks: string[] }
@@ -68,6 +83,12 @@ export function goLiveReport(input: GoLiveInput, options: { cardsApproved?: bool
         notes.push(`代码或脚本改动 ${code.length + scripts.length} 个文件：下次重启才生效（守护自己拉起也算）。重启前要用户当次点头，并在 exchange/handoff 写一行「我要在 hh:mm 重启，原因」`);
     } else if (docs.length) {
         notes.push('只有文档和测试的改动：不用重启');
+    }
+    if (input.switches === 'unreadable') {
+        notes.push('读不到线上的 koishi.yml（runtime/koishi/koishi.yml）：开关合并预检没做，部署前手动核一遍（docs/plans/2026-11-24-switch-merge-design.md）');
+    } else if (input.switches) {
+        for (const line of input.switches.unrepresentable) blockers.push(`开关合并：koishi.yml 里这一组旧键新键表达不了，新代码启动会报「配置有误」——先在控制台按新键改：${line}`);
+        if (input.switches.migrating.length) notes.push(`开关合并：重启后插件会把 koishi.yml 里这 ${input.switches.migrating.length} 组旧键改写成新键（值等价）：${input.switches.migrating.join('；')}。改写 koishi.yml 前先备份一份`);
     }
     const asks = [
         '用户在当前会话里点头了吗（合入 main 和上线是两次授权）？',

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { classifyChanges, goLiveReport } from '../src/ops/golive-check.ts';
+import { classifyChanges, goLiveReport, switchMergeCheck } from '../src/ops/golive-check.ts';
+import { LIVE_2026_11_20, LIVE_LATER_ON } from './fixtures/live-switches.ts';
 import { exposedListeners, parseListeners } from '../src/ops/listeners.ts';
 
 describe('本机监听检查（ADR 0070 第 12 项）', () => {
@@ -48,5 +49,31 @@ describe('上线前检查（ADR 0070 第 17 项）', () => {
         assert.equal(docsOnly.blockers.length, 0);
         assert.match(docsOnly.notes.join(), /不用重启/);
         assert.match(goLiveReport({ ...base, changes: classifyChanges(['packages/bot/src/a.ts']) }).notes.join(), /下次重启才生效/);
+    });
+});
+
+describe('上线前的开关合并预检（golive-check switchMergeCheck）', () => {
+    const base = { liveHead: 'a1', targetHead: 'b2', dirty: false, commits: ['b2 x'], exposed: [], changes: classifyChanges(['packages/bot/src/a.ts']) };
+
+    test('线上那套旧键（11-20 快照 + 之后补开的）：每一组都能迁，没有挡路的；提示会改写 koishi.yml、先备份', () => {
+        const check = switchMergeCheck({ ...LIVE_2026_11_20, ...LIVE_LATER_ON });
+        assert.deepEqual(check.unrepresentable, []);
+        assert.ok(check.migrating.length > 10, `${check.migrating.length} 组`);
+        assert.ok(check.migrating.some(line => line.startsWith('oneLife（')));
+        const report = goLiveReport({ ...base, switches: check });
+        assert.equal(report.blockers.length, 0);
+        assert.match(report.notes.join('\n'), /改写成新键.*先备份/);
+    });
+
+    test('表达不了的组合（私信只写草稿、B 站真发）：挡路，说清是哪一组', () => {
+        const check = switchMergeCheck({ bilibili: 'on', bilibiliAccount: true, bilibiliDm: 'dryRun' });
+        assert.equal(check.unrepresentable.length, 1);
+        assert.equal(check.migrating.some(line => line.startsWith('bilibili（')), false, '表达不了的不算会迁的');
+        assert.match(goLiveReport({ ...base, switches: check }).blockers.join(), /新键表达不了.*bilibiliDm=dryRun/);
+    });
+
+    test('已经全是新键：不迁也不挡；读不到 koishi.yml：提示手动核', () => {
+        assert.deepEqual(switchMergeCheck({ qzone: 'on', bilibili: 'on' }), { migrating: [], unrepresentable: [] });
+        assert.match(goLiveReport({ ...base, switches: 'unreadable' }).notes.join(), /开关合并预检没做/);
     });
 });

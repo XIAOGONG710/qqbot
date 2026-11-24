@@ -1,7 +1,9 @@
 // node src/ops/golive-check-cli.ts [--live <线上目录>] [--target origin/main] [--fetch] [--cards-ok] [--safety "<理由>"] [--restarts <重启记录，默认 <线上目录>/线上数据目录/restarts.log>]
 // 只读：不切分支、不改文件、不重启。把「快进线上目录之前该看的」一次列出来。退出码 1 = 有挡路的。
 import { execFileSync, spawnSync } from 'node:child_process';
-import { classifyChanges, goLiveReport } from './golive-check.ts';
+import { classifyChanges, goLiveReport, switchMergeCheck } from './golive-check.ts';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { lastBehaviorRestart, readRestartLog } from './restart-log.ts';
 import { exposedListeners, LISTENERS_POWERSHELL, parseListeners } from './listeners.ts';
@@ -22,8 +24,17 @@ const dirty = git('status', '--porcelain').length > 0;
 const shell = spawnSync('powershell', ['-NoProfile', '-Command', LISTENERS_POWERSHELL], { encoding: 'utf8' });
 const exposed = shell.status === 0 ? exposedListeners(parseListeners(shell.stdout)) : [];
 const restarts = readRestartLog(option('--restarts', join(liveDataDir(live), 'restarts.log')));
+// 开关合并预检：读线上 koishi.yml 里 qqbot 那一块（只看开关键，不打印任何值以外的东西）
+const switches = (() => {
+    try {
+        const yaml = createRequire(import.meta.url)('js-yaml') as { load(text: string): unknown };
+        const root = yaml.load(readFileSync(join(live, 'runtime', 'koishi', 'koishi.yml'), 'utf8')) as { plugins?: Record<string, unknown> } | undefined;
+        const qqbot = Object.values(root?.plugins ?? {}).find((p): p is Record<string, unknown> => Boolean(p && typeof p === 'object' && 'contacts' in p));
+        return qqbot ? switchMergeCheck(qqbot) : 'unreadable' as const;
+    } catch { return 'unreadable' as const; }
+})();
 const safety = args.includes('--safety') ? args[args.indexOf('--safety') + 1] : undefined;
-const report = goLiveReport({ liveHead, targetHead, dirty, commits, changes: classifyChanges(files), exposed, lastBehaviorRestart: lastBehaviorRestart(restarts), restartLogEmpty: restarts.length === 0 }, { cardsApproved: args.includes('--cards-ok'), ...(safety ? { safety } : {}) });
+const report = goLiveReport({ liveHead, targetHead, dirty, commits, changes: classifyChanges(files), exposed, lastBehaviorRestart: lastBehaviorRestart(restarts), restartLogEmpty: restarts.length === 0, switches }, { cardsApproved: args.includes('--cards-ok'), ...(safety ? { safety } : {}) });
 
 console.log(`线上目录 ${live}`);
 for (const commit of commits.slice(0, 30)) console.log(`  ${commit}`);
