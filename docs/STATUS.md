@@ -106,8 +106,8 @@
 
 | 要查什么 | 命令 | 备注 |
 | --- | --- | --- |
-| 全量测试 | `npm test` | 约 11 分钟，基线场景并行跑；只用合成角色（ADR 0333） |
-| 只核行为基线 | `npm run baseline:fast -w @qqbot/bot`（`-- --only 名字,名字` 只跑几个） | 41 个场景，对 `packages/bot/test/baseline/snapshots/` 逐字比；**不要为了过而 `UPDATE_BASELINE=1`** |
+| 全量测试 | `npm test` | 约 8–9 分钟（11-24 simulateWorld 缓存之后；之前约 11 分钟），基线场景并行跑；只用合成角色（ADR 0333） |
+| 只核行为基线 | `npm run baseline:fast -w @qqbot/bot`（约 3 分钟；`-- --only 名字,名字` 只跑几个） | 41 个场景，对 `packages/bot/test/baseline/snapshots/` 逐字比；**不要为了过而 `UPDATE_BASELINE=1`** |
 | 真实角色资料 | `npm run test:real` | 只在改了转换器或真实 `source/` 后本机跑 |
 | 上线前 | `npm run golive-check -- --live <线上目录> --fetch` | 只读，列出快进线上目录前该看的，退出码 1 = 有挡路的（`docs/golive-guard.md`）；上线本身要用户点头 |
 | SELF 和 QQ「此刻」块是否一致 | `node scripts/prompt-manifest-diff.mjs runtime/bot-shadow` | 在 DSH 那台跑；逐槽比 sha256，不输出正文；跟着钟走的槽对不上先看时刻 |
