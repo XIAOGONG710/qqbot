@@ -293,7 +293,6 @@ export async function runScenario(scenario: Scenario): Promise<string> {
                 return sent();
             },
             markRead: async userId => { call('markRead', [userId]); },
-            reactMessage: async (messageId, emojiId) => { call('reactMessage', [messageId, emojiId]); },
             setInputStatus: async (userId, eventType) => { call('setInputStatus', eventType === undefined ? [userId] : [userId, eventType]); },
             deleteMessage: async messageId => { call('deleteMessage', [messageId]); },
             pokeFriend: async userId => { call('pokeFriend', [userId]); },

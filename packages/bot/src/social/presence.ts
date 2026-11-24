@@ -11,7 +11,6 @@ import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { feedDigest, type QzoneFeed, type QzoneItem } from './qzone-feed.ts';
 import { sampleLines, strangerDigest, type StrangerFeed } from './qzone-strangers.ts';
 import { pick } from './reply-timing.ts';
-import { markSignature } from './strangers.ts';
 import { logBody } from '../platform/sensitive.ts';
 import { formatDate, herDay, stateAt, type Activity, type ExtraFreeActivity, type Schedule } from '../life/schedule.ts';
 
@@ -115,15 +114,6 @@ export function signatureFor(input: { day: string; festival?: string; rainy?: bo
     if (wish) return wish;
     const pool = [...SIGNATURES, ...(input.rainy ? RAINY_SIGNATURES : [])].filter(text => text !== input.last);
     return pool[pick(input.day, 'signature', [0, pool.length - 1])]!;
-}
-
-// ───────── 表情回应 ─────────
-
-/** 给他那条消息点的表情回应（QQ 小黄脸的 id）：笑的点笑哭，亲密的点爱心，其余在赞和爱心之间按消息 id 定 */
-export function reactionEmoji(text: string, messageId: number): number {
-    if (/哈哈|hh|笑死|草|绷不住|xswl/i.test(text)) return 182;
-    if (/爱你|想你|mua|亲亲|抱抱|宝宝|晚安/.test(text)) return 66;
-    return pick(String(messageId), 'react', [0, 99]) < 70 ? 76 : 66;
 }
 
 // ───────── 主动戳他 ─────────
@@ -236,8 +226,6 @@ interface PresenceFile {
 export interface PresenceOptions {
     /** 休眠中（ADR 0161）：这一次整个不做（在线状态、点赞、签名、说说、戳他都不动） */
     paused?: () => boolean;
-    /** 陌生人私聊开着（ADR 0209）：换签名时也带上「（AI）」，陌生人从签名知道她是 AI */
-    aiMark?: boolean;
     flags: { onlineStatus: boolean; profileLikes: boolean; signature: PresenceMode; qzone: PresenceMode; qzoneVisibility: QzoneVisibility; pokeOut?: boolean; qzoneBrowse?: PresenceMode; qzonePeek?: PresenceMode; qzoneStrangers?: PresenceMode };
     transport: PresenceTransport;
     schedule: Schedule;
@@ -505,7 +493,7 @@ export function createPresence(options: PresenceOptions): Presence {
             day, ...(festival ? { festival } : {}),
             ...(options.rainy?.(t) ? { rainy: true } : {}), last: state.signature.text.replace('（AI）', ''),
         });
-        const text = options.aiMark ? markSignature(picked) : picked;
+        const text = picked;
         if (flags.signature === 'dryRun') {
             draft(`${new Date(t).toLocaleString('zh-CN')} 个性签名（草稿，没改）`, text);
             state.signature = { text, at: t, next: signatureDueAt(t), draft: true };

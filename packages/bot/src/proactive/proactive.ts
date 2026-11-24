@@ -9,7 +9,6 @@ import { localDate } from '../local-date.ts';
 // 没连上模型的（断网）不算错过：记录里带 retryAt 的候选按那个时刻再排，最多 UNREACHABLE_MAX_TRIES 次，只在同一天里。
 
 import { expired, firstAsk, partText, whenText, type FollowUp } from './follow-ups.ts';
-import { catName } from '../character-terms.ts';
 import { INNER_DELAY_MIN, INNER_MAX_PER_DAY, type InnerThought } from './inner.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import type { ObstacleKind } from '.././world/obstacles.ts';
@@ -200,12 +199,8 @@ export interface ProactiveInput {
     inner?: readonly InnerThought[];
     /** 约好之后出了事、想改约的（ADR 0066）：到点时障碍没了、约没了就不发 */
     reschedules?: readonly RescheduleItem[];
-    /** 货架里有这一类照片、这会儿也允许发（ADR 0110，photos.ts 的 has + photoAllowance）：没有就不发“拍了张照片”那条 */
-    photoReady?: (kind: 'cat' | 'food', now: number, dish?: string) => boolean;
     /** 此刻是不是正和他一起玩（ADR 0111，together.ts）：是就不插别的主动消息（日子除外） */
     together?: (now: number) => boolean;
-    /** 随口说件事 / 约他 / 问他意见按他平时在线的钟头排（ADR 0117） */
-    hisHours?: boolean;
     /** 她那边的事在桌面上已经说过了（ADR 0347 第 2 层回执，proactive-state.ts 的 elsewhere）：事件 id → 说的时刻；在里面的不排、不发、不顺带说 */
     elsewhere?: Readonly<Record<string, string>>;
     /**
@@ -447,50 +442,6 @@ export function withCurious(settings: ProactiveSettings): ProactiveSettings {
 }
 
 /**
- * 按他平时在线的钟头排（ADR 0117，配置 hisHours）：真人会记得“他这个点一般没空 / 在睡”。
- * 他最近 HIS_HOURS_DAYS 天里每个钟头（本地时间）说话的占比；至少 HIS_HOURS_MIN 条才算有规律（太少就不挪）。
- * 随口说件事 / 约他 / 问他意见这三种本来就没有固定钟点，如果挑在占比低于 LOW_HOUR 的钟头，就挪到它自己时间窗内最近的、占比不低于 GOOD_HOUR 的钟头（分钟保留）；窗口里没有好钟头就不动。
- * 早安 / 下课 / 睡前这些跟着她自己的作息走的不挪。线上他的在线钟头被调试占满，规律不明显时这条等于没开。
- */
-export const HIS_HOURS_DAYS = 21;
-export const HIS_HOURS_MIN = 60;
-const LOW_HOUR = 0.015;
-const GOOD_HOUR = 0.04;
-
-/** 他每个钟头（本地）说话的占比（相邻钟头各借 1/4 做平滑）；数据太少返回 undefined */
-export function hisHourWeights(history: readonly StoredMessage[], day: Date): number[] | undefined {
-    const end = startOfDay(day).getTime();
-    const start = end - HIS_HOURS_DAYS * 24 * HOUR;
-    const counts = new Array<number>(24).fill(0);
-    let total = 0;
-    for (const message of history) {
-        if (message.role !== 'user') continue;
-        const time = Date.parse(message.time);
-        if (Number.isNaN(time) || time < start || time >= end) continue;
-        counts[new Date(time).getHours()]!++;
-        total++;
-    }
-    if (total < HIS_HOURS_MIN) return undefined;
-    return counts.map((n, h) => (n + 0.25 * (counts[(h + 23) % 24]! + counts[(h + 1) % 24]!)) / (total * 1.5));
-}
-
-/** 把候选时刻挪到窗口里离它最近的好钟头；不用挪 / 窗口里没有好钟头返回 undefined */
-export function moveToHisHours(time: number, weights: readonly number[], from: number, until: number, seedText: string): number | undefined {
-    if (weights[new Date(time).getHours()]! >= LOW_HOUR) return undefined;
-    let best: { hour: number; at: number; distance: number } | undefined;
-    const base = new Date(time);
-    for (let hour = 0; hour < 24; hour++) {
-        if (weights[hour]! < GOOD_HOUR) continue;
-        const target = localDate(base.getFullYear(), base.getMonth(), base.getDate(), hour, base.getMinutes(), base.getSeconds(), base.getMilliseconds()).getTime();
-        if (target < from || target >= until) continue;
-        const distance = Math.abs(target - time);
-        if (!best || distance < best.distance) best = { hour, at: target, distance };
-    }
-    void seedText;
-    return best?.at;
-}
-
-/**
  * 说了“等下”之后自己回来（ADR 0112，配置 comeBack）：她最后一句是“等下 / 我去拿个东西 / 弄完这张再说”这类短暂离开，他没接话——过几分钟她回来说一声“回来了”，顺带说刚才那件事怎么样了。
  * 为什么：真人说了等下就会回来；原来她说完“等下”就没有下文，要等他再开口。线上 676 条她的话里只有 3 条这样的话，所以收益小——但有了追求（ADR 0104：修片先弄完这一小段）、日常小事（ADR 0106）之后会多起来。
  * 不算每天的主动条数、不受“他没回就停”的闸管（这是接着刚才那句话，不是新找他）；他在这几分钟里说了话、她又说了话，就不回来了。
@@ -509,27 +460,7 @@ export const BACK_MIN: [number, number] = [4, 14];
 /** 超过这么久才轮到就不回来了（bot 停着、断线之后）：太晚了再说“回来了”不对 */
 const BACK_WINDOW_MS = 40 * MIN;
 
-/**
- * 打开 photoShares（ADR 0110，要 photos 开着）：喂完猫见到它之后，有的日子她拍了张照片发给他（news 的新一类 cat_photo）。
- * 加 news 时机和 cat_photo 这一类，不改角色卡；其余的事件类照卡上的
- */
-export function withCatPhoto(settings: ProactiveSettings): ProactiveSettings {
-    return {
-        ...settings,
-        occasions: [...new Set<Occasion>([...settings.occasions, 'news'])],
-        newsKinds: [...new Set<NewsKind>([...newsKindsOf(settings), 'cat_photo'])],
-    };
-}
-
 /** 打开 smallNews（ADR 0127，要 everydayLife 开着）：今天碰到的一件小事，她过一会儿随口告诉他（news 的新一类 small_thing）；不改角色卡 */
-export function withFoodShares(settings: ProactiveSettings): ProactiveSettings {
-    return {
-        ...settings,
-        occasions: [...new Set<Occasion>([...settings.occasions, 'news'])],
-        newsKinds: [...new Set<NewsKind>([...newsKindsOf(settings), 'food_photo'])],
-    };
-}
-
 export function withSmallNews(settings: ProactiveSettings): ProactiveSettings {
     return {
         ...settings,
@@ -586,10 +517,6 @@ const minutes = ([a, b]: [number, number]): [number, number] => [a * MIN, b * MI
 function at(day: Date, time: string): Date {
     const [h, m] = time.split(':').map(Number);
     return localDate(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
-}
-
-function startOfDay(date: Date): Date {
-    return localDate(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 function addDays(day: Date, n: number): Date {
@@ -796,20 +723,6 @@ export function candidatesOn(day: Date, input: ProactiveInput): Candidate[] {
             for (let i = list.length - 1; i >= 0; i--) {
                 const candidate = list[i]!;
                 if ((candidate.occasion === 'news' && candidate.news && LIGHT_NEWS.has(candidate.news.kind)) || (candidate.occasion === 'inner' && candidate.inner?.goes === 'tell')) list.splice(i, 1);
-            }
-        }
-    }
-
-    // 按他平时在线的钟头挪（ADR 0117，配置 hisHours）：随口说件事 / 约他 / 问他意见这三种本来就没有固定钟点，别挑在他平时几乎不在的钟头
-    if (input.hisHours) {
-        const weights = hisHourWeights(input.history, day);
-        if (weights) {
-            const windows: Partial<Record<Occasion, [string, string]>> = { share: [SHARE_FROM, SHARE_UNTIL], invite: [INVITE_FROM, INVITE_UNTIL], ask: [ASK_FROM, ASK_UNTIL] };
-            for (const candidate of list) {
-                const window = windows[candidate.occasion];
-                if (!window) continue;
-                const moved = moveToHisHours(candidate.at, weights, at(day, window[0]).getTime(), at(day, window[1]).getTime(), `${seed(candidate.occasion)} hours`);
-                if (moved !== undefined && moved !== candidate.at) { candidate.at = moved; candidate.reason += '（挪到他平时在线的钟头）'; }
             }
         }
     }
@@ -1085,8 +998,8 @@ export function blockReason(candidate: Candidate, now: number, input: ProactiveI
             // 桌面上已经跟他说过了（ADR 0347 第 2 层回执）
             if (input.elsewhere?.[item.id]) return ELSEWHERE_REASON;
             // 说“拍了张照片”却发不出照片会穿帮：货架里没有 / 刚发过 / 今天发够了就不发
-            if (item.kind === 'cat_photo' && !input.photoReady?.('cat', now)) return '货架里没有猫的照片，或者这会儿不该发照片';
-            if (item.kind === 'food_photo' && !input.photoReady?.('food', now, item.dish)) return '货架里没有这顿饭的照片，或者这会儿不该发照片';
+            // 主动发照片（ADR 0110 photoShares / 0128 foodPhotos）从没上过线，11-24 删了（减法单子 二.2）：卡上写了这两类也不发
+            if (item.kind === 'cat_photo' || item.kind === 'food_photo') return '照片不主动发';
             // 那之后聊过：聊天里多半已经说了（状态行里有），不再单发一条
             if (history.some(m => Date.parse(m.time) >= item.at)) return '那之后聊过了';
             break;
@@ -1153,11 +1066,10 @@ export function occasionNote(candidate: Candidate, userName: string, untold: rea
             // 闺蜜病了（头一天）：她从对方那里得知；只说这一件，不借机求安慰、不编病情
             friend_sick: () => `你刚得知${candidate.news!.what}，想跟${userName}说一声：就说这一件（看「你那边」那一行里的朋友），不要他回应或安慰你；病得怎么样、有没有去看、你做了什么，那一行里没写的不编`,
             unwell: () => `你今天${candidate.news!.what}，想跟${userName}说一声：只是告诉他，不是要他哄你、关心你，也不要他回应；说到哪一步照「你的身体」那一行，没写的细节不编`,
-            // 喂完猫拍了张照片（ADR 0110）：先一句话带一下，另起一行单独发照片（提示词里列了编号）；照片是以前拍的，别说“现在”；不要他回应
-            cat_photo: () => `你刚下楼喂了${catName()}，还拍了它一张照片，想发给${userName}看：先用一句话带一下（喂它这件事看「你那边」${catName()}那一行，没写的细节不编），然后另起一行单独发照片（那句话要有点自己的感觉：${LEAD_NOTE}）；别问他想不想看`,
-            // 吃饭时拍了张照片（ADR 0128）：先一句话带一下，另起一行单独发照片（提示词里列了编号，只有这道菜的）；不要他回应
-            food_photo: () => `你${candidate.news!.what}，吃饭时拍了张照片，想发给${userName}看：先用一句话带一下（说是哪一顿、吃的什么，看「你那边」吃的那一行，没写的细节不编；那句话要有点自己的感觉：${LEAD_NOTE}），然后另起一行单独发照片；别问他想不想看`,
             // 今天碰到的一件小事（ADR 0127）：随口说，不要他回应；细节只用那一行里写的
+            // 照片类在 blockReason 里就挡掉了，走不到这里
+            cat_photo: () => '',
+            food_photo: () => '',
             small_thing: () => `你今天碰到一件小事：${candidate.news!.what}。${SMALL_PURPOSE[candidate.news!.feel ?? ''] ?? ''}想跟${userName}说一句：就说这一件（看「你那边」今天的小事那一行），一两句，别铺开讲；${SMALL_NO_TWIST}${LEAD_NOTE}`,
         })[candidate.news!.kind](),
         // 只从她自己的生活事实里挑（不是刚刷到的视频、帖子：旧项目的教训，ADR 0013 决策 2）；不问「在干嘛」，说完不用他回应

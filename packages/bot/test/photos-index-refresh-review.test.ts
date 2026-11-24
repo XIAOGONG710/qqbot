@@ -7,13 +7,13 @@ import { fileOps } from '../src/memory/json-file.ts';
 import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { PHOTO_INDEX_LOCK_FILE } from '../src/vision/photo-index-lock.ts';
-import { photoShelf, PHOTO_HISTORY_PREFIX, PHOTO_TARGET, type FoodSource, type PhotoCandidate, type PhotoSource } from '../src/vision/photos.ts';
+import { photoShelf, PHOTO_HISTORY_PREFIX, PHOTO_TARGET, type PhotoCandidate, type PhotoSource } from '../src/vision/photos.ts';
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 const fixture = () => {
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-photo-refresh-')); dirs.push(dir);
     const root = join(dir, 'shelf');
-    const make = (source?: PhotoSource, foodSource?: FoodSource) => photoShelf({ dir: root, log: () => {}, now: () => new Date('2026-11-05T12:00:00Z'), source, foodSource, pauseMs: 0 });
+    const make = (source?: PhotoSource) => photoShelf({ dir: root, log: () => {}, now: () => new Date('2026-11-05T12:00:00Z'), source, pauseMs: 0 });
     const file = (n: number) => { const path = join(dir, `${n}.jpg`); writeFileSync(path, `synthetic-${n}`); return path; };
     return { root, make, file };
 };
@@ -82,15 +82,8 @@ test('异步下载期间其它实例填满容量，迟到结果正常跳过且�
     await pending; assert.equal(a.list('cat').length, PHOTO_TARGET.cat);
 });
 
-test('food异步提交使用fresh菜名容量，拒绝结果的seen更新也保留其它新增', async () => {
-    const f = fixture(); const food: FoodSource = { search: async dish => [{ kind: 'food', title: 'synthetic-food', series: dish, pageUrl: 'https://example.org', imageUrl: 'https://example.org/image', width: 3000, height: 2000, license: 'CC0', artist: '' }],
-        download: async () => ({ bytes: new Uint8Array(80 * 1024).fill(7), type: 'image/jpeg' }), judge: async () => ({ keep: true, caption: '合成饭照' }) };
-    let ready!: () => void; let release!: () => void; const waiting = new Promise<void>(done => { ready = done; }); const wait = new Promise<void>(done => { release = done; });
-    const original = food.download; food.download = async url => { ready(); await wait; return original(url); };
-    const a = f.make(undefined, food); const b = f.make(); a.add(f.file(1), 'food', '合成菜甲旧照', '合成菜甲');
-    const pending = a.discoverFood(['合成菜甲']); await waiting;
-    try { b.add(f.file(2), 'food', '合成菜甲最后空位', '合成菜甲'); b.add(f.file(3), 'food', '合成菜乙', '合成菜乙'); } finally { release(); }
-    await pending; assert.equal(a.list('food', '合成菜甲').length, 2); assert.equal(a.list('food', '合成菜乙').length, 1);
+test('拒绝结果的seen更新也保留其它新增', async () => {
+    const f = fixture(); const b = f.make();
     const rejecting = source('cat-a', 8); const hold = gate(rejecting); rejecting.judge = async () => ({ keep: false, caption: '' });
     const c = f.make(rejecting); const rejection = c.discover(); await hold.ready;
     try { b.add(f.file(4), 'view', '拒绝结果等待期间新增'); } finally { hold.release(); }
@@ -129,17 +122,16 @@ test('两个独立进程同时add及used都保留，JSON仍是事实源', async 
     } finally { clearTimeout(timer); for (const { child } of workers) if (child.exitCode === null) child.kill(); await Promise.allSettled(workers.map(item => item.done)); }
 });
 
-test('普通和食物发现遇明确SQLite忙时返回retry，释放后正常恢复；CLI明确提示重试', async () => {
-    for (const food of [false, true]) {
+test('发现遇明确SQLite忙时返回retry，释放后正常恢复；CLI明确提示重试', async () => {
+    {
         const f = fixture(); const provider = source('cat-a', 9);
-        const foodProvider: FoodSource = { ...provider, search: async dish => (await provider.search('cat')).map(item => ({ ...item, kind: 'food', series: dish })), judge: async () => ({ keep: true, caption: '合成饭照' }) };
-        const shelf = food ? f.make(undefined, foodProvider) : f.make(provider);
+        const shelf = f.make(provider);
         mkdirSync(f.root, { recursive: true }); const lock = new DatabaseSync(join(f.root, PHOTO_INDEX_LOCK_FILE)); lock.exec('BEGIN IMMEDIATE');
         try {
-            assert.equal(await (food ? shelf.discoverFood(['合成菜']) : shelf.discover()), 'retry');
+            assert.equal(await shelf.discover(), 'retry');
             assert.throws(() => shelf.add(f.file(1), 'cat', '合成猫'), /忙.*重试/);
         } finally { lock.exec('ROLLBACK'); lock.close(); }
-        assert.equal(await (food ? shelf.discoverFood(['合成菜']) : shelf.discover()), 'done'); assert.equal(shelf.list().length, 1);
+        assert.equal(await shelf.discover(), 'done'); assert.equal(shelf.list().length, 1);
     }
 });
 

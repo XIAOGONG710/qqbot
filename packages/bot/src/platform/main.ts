@@ -1,6 +1,6 @@
 // 独立入口：npm start -w @qqbot/bot（Koishi 路线验收之前保持可用，ADR 0008）
 // 配置见 config.ts。回复名单（contacts）里的人的直接私聊，每人按自己的档位用对应的角色卡和世界书（ADR 0003）；
-// 名单外的好友私聊用 unlisted 档（配置 unlistedFriends 可关）。群聊、群临时会话不回复。编排在 app.ts，这里只管连 NapCat。
+// 名单外的好友私聊不回。群聊、群临时会话不回复。编排在 app.ts，这里只管连 NapCat。
 
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +10,7 @@ import { createLog } from './log.ts';
 import { createPromptManifestLog } from './prompt-manifest.ts';
 import type { HistoryMessage } from '.././memory/backfill.ts';
 import { ocrLines } from '.././vision/media.ts';
-import { assertKernelOk, isFriendRecall, isGroupMessage, isPokeAtMe, isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
+import { isFriendRecall, isGroupMessage, isPokeAtMe, isPrivateFriendMessage, OneBotClient, type OneBotEvent } from './onebot.ts';
 import { configuredImageDescriber, STICKER_VISION_PROMPT } from '.././vision/vision.ts';
 import { stickerDecider, stickerShelf } from '.././social/stickers.ts';
 import { qqFavorites } from '.././social/sticker-favorites.ts';
@@ -56,7 +56,6 @@ const app = startApp({
         deleteMessage: async messageId => { await client.call('delete_msg', { message_id: messageId }); },
         pokeFriend: async userId => { await client.call('friend_poke', { user_id: String(userId) }); },
         markRead: async userId => { await client.call('mark_private_msg_as_read', { user_id: String(userId) }); },
-        reactMessage: async (messageId, emojiId) => { assertKernelOk('set_msg_emoji_like', await client.call('set_msg_emoji_like', { message_id: messageId, emoji_id: String(emojiId), set: true })); },
         setOnlineStatus: async (status, ext) => { await client.call('set_online_status', { status, ext_status: ext, battery_status: 0 }); },
         sendLike: async (userId, times) => { await client.call('send_like', { user_id: String(userId), times }); },
         setSignature: async text => { await client.call('set_self_longnick', { longNick: text }); },

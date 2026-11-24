@@ -70,7 +70,7 @@ export interface ResponderDeps {
      * initiate：她主动找他（ADR 0011）：note 是这次为什么找（写进时间块之后），topic 是召回时想知道什么（ADR 0012）；
      * 返回的 note 接在「生成回复」那行日志后面
      */
-    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string; think?: boolean; photo?: 'cat' | 'food'; photoDish?: string }; offlineSince?: number }) => BuiltPrompt | Promise<BuiltPrompt>;
+    buildPrompt: (history: ChatMessage[], context: { woken?: boolean; initiate?: { note: string; topic: string; think?: boolean }; offlineSince?: number }) => BuiltPrompt | Promise<BuiltPrompt>;
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     clean: (reply: string) => string;
     /** 出口检查（ADR 0006）：清理之后、拆条之前，可能带说明重写一次；不传就不查。initiating = 她主动找他（这轮可以整条不发） */
@@ -96,8 +96,6 @@ export interface ResponderDeps {
     hesitate?: boolean;
     /** 她「看到」他的消息的那一刻（ADR 0083，配置 readReceipts）：让他那边的消息从未读变成已读。不等结果、出错也不影响回复；不传就不标 */
     markRead?: () => void;
-    /** 她看到了却决定不回（看心情不回、收尾后的附和）：给他最后一条消息点个表情回应（ADR 0083，配置 reactions）；不传就什么都不做 */
-    react?: (messageId: number, text: string) => void;
     /** 实际发送内容与聊天记录表示不同时转换（图片表情编号 -> 可读描述）。 */
     historyContent?: (sent: string, messageId?: number) => string;
     /** 只剥掉内部标记（<<记住>> / <<日记>>…），判断一条气泡是不是只有标记；和 historyContent 分开：那个是发送确认之后才调用的 */
@@ -162,10 +160,6 @@ export interface InitiateRequest {
     commit: (parts: string[]) => void;
     /** 这句话本来就是固定的习惯说法，出口检查不按“最近说过一模一样的”去掉（B 站私信之后的提醒，ADR 0089） */
     allowRepeat?: boolean;
-    /** 这一条要带一张照片（ADR 0110，喂完猫拍的）：回复器让货架的这一类照片进提示词，并允许输出一行 <photo:编号> */
-    photo?: 'cat' | 'food';
-    /** 带的是吃的照片时，是哪道菜（ADR 0128）：货架里只拿这道菜的 */
-    photoDish?: string;
     /** 她想了想可以决定先不发：模型只输出「不发」两个字就记成没发（催他回，ADR 0100） */
     canDecline?: boolean;
     /** 只想一想（ADR 0101，内心）：生成之后不清理、不检查、不发送、不 commit，把模型原文还给调用方；占用回复器的方式和主动找他一样（正在回消息、有没回的消息就不想） */
@@ -408,10 +402,8 @@ export function createResponder(deps: ResponderDeps): Responder {
             const skip = timing.skip(stored);
             if (skip) {
                 deps.log(skip);
-                // 看到了不回：已读不回，再点个表情回应（最后一条是真消息才点；戳一戳那种合成的 id 不点）
+                // 看到了不回：已读不回
                 deps.markRead?.();
-                const last = stored.slice(seen).findLast(m => m.role === 'user');
-                if (deps.react && last?.messageId !== undefined && last.messageId < 2 ** 32) deps.react(last.messageId, last.content);
                 skipped = { at: now(), reason: skip };
                 deps.onSilence?.({ phase: 'skipped', reason: skip });
                 seen = stored.length;
@@ -598,7 +590,7 @@ export function createResponder(deps: ResponderDeps): Responder {
         const input = stored.length;
         const startedAt = now();
         setPhase({ phase: 'initiating', reason: request.label });
-        const prompt = await initiateWork(async () => deps.buildPrompt(initiateHistory(stored).map(({ role, content, time }) => ({ role, content, time })), { initiate: { note: request.note, topic: request.topic, ...(request.think ? { think: true } : {}), ...(request.photo ? { photo: request.photo } : {}), ...(request.photoDish ? { photoDish: request.photoDish } : {}) } }), request.signal);
+        const prompt = await initiateWork(async () => deps.buildPrompt(initiateHistory(stored).map(({ role, content, time }) => ({ role, content, time })), { initiate: { note: request.note, topic: request.topic, ...(request.think ? { think: true } : {}) } }), request.signal);
         checkInitiate(request.signal);
         if (prompt.fallbackReply) return { result: 'skipped', reason: '提示词超出预算' };
         deps.onPrompt?.(prompt);

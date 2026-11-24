@@ -174,7 +174,7 @@ export function runConsoleHealthCheck(data: ConsoleData = consoleData()): Consol
         add('外部顾问', !dsh.enabled ? 'off' : dsh.lastProbe?.ok ? 'ok' : 'attention', !dsh.enabled ? '未启用' : dsh.lastProbe?.ok ? '最近探测正常' : '已启用，等待一次成功探测');
         const phone = status.mobileCompanion;
         add('手机伴侣', !phone?.enabled ? 'off' : phone.connected ? 'ok' : 'attention', !phone?.enabled ? '未启用' : phone.connected ? '设备已连接' : phone.pairedClientId ? '设备已配对，等待重连' : '等待配对');
-        const worldModules = [status.weather, status.airQuality, status.daylight, status.calendar, status.transport].filter(Boolean);
+        const worldModules = [status.weather, status.airQuality, status.daylight, status.calendar].filter(Boolean);
         const worldText = JSON.stringify(worldModules);
         const worldAttention = /"stale":true|"error":/.test(worldText);
         add('现实世界', !worldModules.length ? 'off' : worldAttention ? 'attention' : 'ok', !worldModules.length ? '未启用' : worldAttention ? '有缓存过期或取数失败' : '已接入的模块状态正常');

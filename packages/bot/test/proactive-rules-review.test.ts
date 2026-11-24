@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { blockReason, candidatesOn, inviteDeclined, moveToHisHours, parseDates, parseProactive, planFrom, unansweredCount, withBack, withReach, type ProactiveInput, type ProactiveRecord } from '../src/proactive/proactive.ts';
+import { blockReason, candidatesOn, inviteDeclined, parseDates, parseProactive, planFrom, unansweredCount, withBack, withReach, type ProactiveInput, type ProactiveRecord } from '../src/proactive/proactive.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 import type { Schedule } from '../src/life/schedule.ts';
 import { localDate } from '../src/local-date.ts';
@@ -30,16 +30,6 @@ test('合法 afternoon 待跟进同样阻止问他意见，上午事件不阻止
     const follow = { id: 'f', what: '面试', date: candidate.day, time: 'afternoon', episode: 'ep-1' };
     assert.equal(blockReason(candidate, candidate.at, input({ followUps: [follow] })), '他下午 / 晚上有事，不问');
     assert.equal(blockReason(candidate, candidate.at, input({ followUps: [{ ...follow, time: 'morning' }] })), undefined);
-});
-
-test('挪在线钟头保留本地分钟、秒和毫秒，兼容非整小时偏移', () => {
-    const previous = process.env.TZ;
-    try {
-        process.env.TZ = 'Asia/Kathmandu';
-        const time = new Date(2026, 10, 10, 15, 40, 12, 345).getTime();
-        const weights = Array<number>(24).fill(0); weights[18] = 1;
-        assert.equal(moveToHisHours(time, weights, new Date(2026, 10, 10, 14).getTime(), new Date(2026, 10, 10, 21).getTime(), 'x'), new Date(2026, 10, 10, 18, 40, 12, 345).getTime());
-    } finally { if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous; }
 });
 
 test('日子拒绝永远不会出现的公历月日、农历31日，保留闰日和农历三十', () => {

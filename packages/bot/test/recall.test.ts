@@ -59,7 +59,7 @@ describe('撤回（ADR 0082）：进应用', () => {
             prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
             characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' }],
-            unlistedFriends: false, schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false,
+            schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false,
             lifeInPrompt: false, grievance: false, recalls, feedbackCommands: false, realWeather: false, media: true,
             candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir,
         } as unknown as AppConfig; // 其余字段（后加的开关）都是未设 = 关

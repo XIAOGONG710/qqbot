@@ -9,8 +9,6 @@ import { describeLength, lengthHint } from '../language/expression.ts';
 import type { Log } from '../platform/log.ts';
 
 export interface LengthModuleOptions {
-    /** 说话更短（配置 shortReplies）：「回句短的」的说法和概率跟着变 */
-    shortReplies?: boolean;
     /** 同联系人流水线的日志，前面加 [QQ] */
     log: Log;
 }
@@ -23,11 +21,10 @@ export function lengthModule(options: LengthModuleOptions): Module {
             if (facts.crisis || facts.shape || facts.cue || facts.stickerOnly || facts.photo || facts.interruption || turn.thinking || facts.deliberate) return [];
             const length = lengthHint({
                 history: turn.history, intent: facts.intent, initiating: Boolean(turn.initiate), low: Boolean(facts.low),
-                aboutPerson: Boolean(facts.aboutPeople), shortReplies: options.shortReplies,
             });
             if (!length) return [];
             options.log(`[${turn.contact.qq}] 这一轮说话：${length === 'short' ? '回句短的' : '话多一点'}`);
-            return [{ slot: 'length', text: describeLength(length, options.shortReplies) }];
+            return [{ slot: 'length', text: describeLength(length) }];
         },
     };
 }

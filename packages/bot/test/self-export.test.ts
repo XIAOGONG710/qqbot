@@ -131,7 +131,7 @@ describe('快照（platform/contact.ts 的 snapshot）', () => {
         const history = (qq: number) => store.get(qq) ?? [];
         const turnModules = buildTurnModules({
             log, now: () => at.getTime(), history, contacts: () => [he], worldState: () => undefined, appointmentsAt: () => undefined, promises: () => undefined,
-            schedule: true, herDays: true, grievance: false, shortReplies: false, lagTail: false, lifeInPrompt: false, intent: {}, shape: {},
+            schedule: true, herDays: true, grievance: false, lagTail: false, lifeInPrompt: false, intent: {}, shape: {},
             innerLine: () => '[你最近心里在想的：合成的念头]',
         });
         return createContactResponder({

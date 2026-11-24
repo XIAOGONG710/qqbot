@@ -1,6 +1,7 @@
 # ADR 0200：她的私人空间——她自己学出来的东西，默认不给他看
 
 - 状态：**已实现**。新开关 `ownerPeek`，**默认关**（私人空间默认就在）。DSH 那台机器拉取后重启 Koishi 生效；生效后 `/追求` `/说话习惯` `/心境` `/自我认识` 四条命令不再念她的东西
+- 2026-11-24：开关 `ownerPeek` 和 `peekRefused` / `PEEK_OFF_NOTICE` 没有调用者，用户拍板删了（[减法单子 二.3](../plans/2026-11-24-subtraction-round.md)）；私人文件清单照旧。
 - 日期：2026-10-30
 - **2026-11-19 补记**：10-31 指令收敛后这四条命令一律回「这些指令已经不用了」，11-19（ADR 0336 第 6 步）删了 app.ts 里走不到的那段，`ownerPeek` 从此不起作用。用户定：开关先留着，只把配置页的说法改成「已不起作用」。私人文件清单（迁移、导出不带）照旧有效。
 - 关联：[ADR 0193](0193-nightly-speech-notes.md)（说话习惯）、[ADR 0194](0194-diary-insights.md)（翻日记的自我认识）、[ADR 0197](0197-feelings-shared-and-reviewed.md)（心境回想）、[ADR 0178](0178-self-set-pursuits.md)（她自己定追求）、[ADR 0199](0199-history-migration.md)（迁移不带私人文件）

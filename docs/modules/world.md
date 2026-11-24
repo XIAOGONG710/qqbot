@@ -27,7 +27,6 @@
 - `world/air-quality.ts`
 - `world/daylight.ts`
 - `world/calendar.ts`
-- `world/transport.ts`
 - `world/reality-feeds.ts`
 - `world/threads.ts`
 - `world/festivals.ts`
@@ -76,7 +75,6 @@
 | `readingTakes` | 她读完 / 看完之后自己想的（每晚一次，有话想说才写；私人空间，聊到那本书 / 视频才放进提示词） | [ADR 0204](../adr/0204-reading-takes.md) |
 | `herGuesses` | 她猜的事和后来的结果（每晚她自己挑哪句算数、对照世界账看对没对；私人空间，聊到同一类事才放进提示词） | [ADR 0213](../adr/0213-her-guesses.md) |
 | `openQuestions` | 她没想完的问题（他问她答「不知道」的，夜里她自己想一遍，想出什么写什么；私人空间，他再问到同一件事才放进提示词） | [ADR 0207](../adr/0207-open-questions.md) |
-| `ownerPeek` | （已不起作用，开不开都一样）原来管他能不能用 /追求 /说话习惯 /心境 /自我认识 看她私人的东西；这四条 10-31 起停用了 | [ADR 0200](../adr/0200-private-space.md) |
 | `grievance` | 小别扭 / 和好 | [ADR 0074](../adr/0074-small-grievance.md) |
 | `npcAsks` | 闺蜜约人 / 改约 | [ADR 0061](../adr/0061-friends-ask-and-back-out.md) |
 | `festivals` | 公共节日（模式）：off 关闭；notes 让她知道今天或快到的节日，时间块可提前几天提醒；greet 还会在新年零点、除夕、平安夜、情人节、元宵、520、七夕、端午、中秋，通过「重要的日子」时机主动说一句。默认关。 | [ADR 0076](../adr/0076-festivals-and-winter-break.md) |

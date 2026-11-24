@@ -3,7 +3,7 @@ import { test, mock } from 'node:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { COMMONS_MAX_BYTES, commonsSearch, commonsFoodSearch, parseCommons, parseCommonsFood, judgePhoto, judgeFood, type CommonsFetch } from '../src/vision/photo-sources.ts';
+import { COMMONS_MAX_BYTES, commonsSearch, parseCommons, judgePhoto, type CommonsFetch } from '../src/vision/photo-sources.ts';
 import { photoShelf } from '../src/vision/photos.ts';
 
 const page = (extra: Record<string, unknown> = {}, meta: Record<string, unknown> = {}) => ({ title: 'File:Synthetic 1.jpg', imageinfo: [{
@@ -12,7 +12,7 @@ const page = (extra: Record<string, unknown> = {}, meta: Record<string, unknown>
  extmetadata: { LicenseShortName: { value: 'CC0' }, Artist: { value: 'Synthetic author' }, ...meta }, ...extra,
 }] });
 const body = (...pages: unknown[]) => ({ query: { pages: Object.fromEntries(pages.map((p, i) => [i, p])) } });
-const parsers = [(value: unknown) => parseCommons('cat', value), (value: unknown) => parseCommonsFood('炒饭', value)];
+const parsers = [(value: unknown) => parseCommons('cat', value)];
 
 test('畸形Commons页不使整批崩溃，有限整数尺寸和字符串授权元数据才被接受', () => {
  for (const parse of parsers) {
@@ -36,25 +36,23 @@ test('来源页必须可追溯到Commons，缺页地址由标题生成，授权�
  }
 });
 
-test('继承的种类或菜名不是搜索词，坏翻页参数在请求前拒绝', async () => {
+test('继承的种类不是搜索词，坏翻页参数在请求前拒绝', async () => {
  let calls = 0;
  const fetch: CommonsFetch = async () => { calls++; return { ok: true, status: 200, json: async () => body(page()) }; };
- const search = commonsSearch({ fetch }); const food = commonsFoodSearch({ fetch });
+ const search = commonsSearch({ fetch });
  for (const key of ['constructor', '__proto__', 'toString']) {
   assert.deepEqual(await search(key as 'cat'), []);
-  assert.deepEqual(await food(key), []);
  }
  assert.equal(calls, 0);
  for (const offset of [-1, Infinity, NaN, 0.5]) {
   await assert.rejects(search('cat', offset));
-  await assert.rejects(food('炒饭', offset));
  }
  for (const timeoutMs of [0, NaN, Infinity, 2_147_483_648]) await assert.rejects(commonsSearch({ fetch, timeoutMs })('cat'));
  assert.equal(calls, 0);
 });
 
 test('忽略abort的fetch和json仍按deadline结束，超时后可重试，不回显供应商正文', async () => {
- for (const create of [commonsSearch, commonsFoodSearch]) {
+ {
   for (const phase of ['fetch', 'json']) {
    let resolve!: (value: unknown) => void;
    const held = new Promise<unknown>(r => { resolve = r; });
@@ -63,9 +61,8 @@ test('忽略abort的fetch和json仍按deadline结束，超时后可重试，不�
     if (++attempt === 1 && phase === 'fetch') await held;
     return { ok: true, status: 200, json: async () => { if (attempt === 1 && phase === 'json') await held; return body(page()); } };
    };
-   const search: (input: string) => Promise<unknown[]> = create === commonsSearch
-    ? (input => commonsSearch({ fetch, timeoutMs: 10 })(input as 'cat')) : commonsFoodSearch({ fetch, timeoutMs: 10 });
-   const input = create === commonsSearch ? 'cat' : '炒饭';
+   const search = (input: string) => commonsSearch({ fetch, timeoutMs: 10 })(input as 'cat');
+   const input = 'cat';
    const result = await Promise.race([search(input).then(() => 'resolved', error => String(error)), new Promise<string>(r => setTimeout(() => r('hung'), 150))]);
    resolve(undefined);
    assert.match(result, /超时/);
@@ -109,7 +106,7 @@ test('默认Commons读取限制响应字节，超大/卡住/非成功响应释�
 
 test('Commons返回API错误时可重试，不当成永久空结果，错误正文不回显', async () => {
  const fetch: CommonsFetch = async () => ({ ok: true, status: 200, json: async () => ({ error: { code: 'maxlag', info: 'PRIVATE-ERROR-MARKER' } }) });
- for (const search of [() => commonsSearch({ fetch })('cat'), () => commonsFoodSearch({ fetch })('炒饭')]) {
+ for (const search of [() => commonsSearch({ fetch })('cat')]) {
   await assert.rejects(search, error => error instanceof Error && /接口返回错误/.test(error.message) && !error.message.includes('PRIVATE-ERROR-MARKER'));
  }
 });
@@ -117,10 +114,9 @@ test('Commons返回API错误时可重试，不当成永久空结果，错误正�
 test('看图的说明必须是字符串，不能把数组拼成合法说明', () => {
  const common = { 水印: false, 清晰: true, 说明: ['一只三花猫蹲在草地上'] };
  assert.equal(judgePhoto('cat', JSON.stringify({ ...common, 人物: false, 猫: true, 三花: true })).keep, false);
- assert.equal(judgeFood('炒饭', JSON.stringify({ ...common, 人脸: false, 招牌: false, 是这道菜: true, 一份饭: true, 实拍: true })).keep, false);
 });
 
-test('来源的脱敏暂时错误仍使普通和食物货架安排重试', async () => {
+test('来源的脱敏暂时错误仍使货架安排重试', async () => {
  const dir = mkdtempSync(join(tmpdir(), 'qqbot-photo-source-retry-'));
  const unused = async (): Promise<never> => { throw new Error('不应下载或识图'); };
  try {
@@ -133,10 +129,8 @@ test('来源的脱敏暂时错误仍使普通和食物货架安排重试', async
    const logs: string[] = [];
    const shelf = photoShelf({ dir: join(dir, String(i)), log: message => logs.push(message),
     source: { search: commonsSearch({ fetch }), download: unused, judge: unused },
-    foodSource: { search: commonsFoodSearch({ fetch }), download: unused, judge: unused },
    });
    assert.equal(await shelf.discover(), 'retry');
-   assert.equal(await shelf.discoverFood(['炒饭']), 'retry');
    assert.ok(logs.every(message => !message.includes('PRIVATE-')));
   }
  } finally { rmSync(dir, { recursive: true, force: true }); }

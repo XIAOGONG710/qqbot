@@ -31,7 +31,7 @@
 | [0021](0021-her-world.md) | 她的世界——身边会自己变的东西（W0–W2） | W0–W2 已实现并上线；W3 见 [ADR 0027](0027-world-writeback.md)；W4–W6 … |  |
 | [0022](0022-her-past.md) | 她的过去——作者定稿的自传进资料，有线索才想起 | 第 1、2 步实现，真模型验证通过，待上线（2026-10-07） |  |
 | [0023](0023-open-loops.md) | 挂着的事——在等他说的、她问了没答的、说好没成的 | 采用，真模型验证通过，待上线（2026-10-07；作者 10-06 裁决 + 用户 10-07 授权按推荐推进，见文末… |  |
-| [0024](0024-expression-layer.md) | 表达层——长短不一、打错字再改口 | 实现，真模型验证通过，待上线（2026-10-07） | `shortReplies` 关 |
+| [0024](0024-expression-layer.md) | 表达层——长短不一、打错字再改口 | 实现，真模型验证通过，待上线（2026-10-07） |  |
 | [0025](0025-her-body.md) | 她的身体——困、累、饿、生理期、小感冒 | 实现，真模型验证通过，待上线（2026-10-07） |  |
 | [0026](0026-diary-of-her-day.md) | 日记写进她自己的一天 | 实现，真模型验证通过，待上线（2026-10-07） |  |
 | [0027](0027-world-writeback.md) | 说出口的行为回写她的世界（W3） | 已实现、真模型验证并上线（2026-10-07 21:31） |  |
@@ -89,7 +89,7 @@
 | [0080](0080-share-cards.md) | 他分享的链接、转发的聊天记录、发的文件，她看得懂 | 已实现，未上线（分支 `claude/share-cards`；没有配置开关——只改他发来这几种消息时聊天记录里写成什么… |  |
 | [0081](0081-quote-reply-read.md) | 他引用她的某句话再回，她看得到被引用的是哪句 | 已实现，未上线（分支 `claude/quote-read`；没有配置开关；上线要重启 Koishi，需要用户当次点头） |  |
 | [0082](0082-recalls.md) | 他撤回一条消息，她看到的是「撤回了一条消息」 | 已实现，未上线、未在真 QQ 上验证（分支 `claude/recall`；配置 `recalls` 默认关） | `recalls` 开 |
-| [0083](0083-presence.md) | 她在 QQ 上「有个人在」——已读、在线状态、表情回应、点赞、签名、说说 | 已实现，未上线、未在真 QQ 上验证（分支 `claude/presence`；六个开关各自独立、默认全关；说说和签名另… | `readReceipts` 开、`reactions` 关、`onlineStatus` 开、`profileLikes` 开、`signature` 开、`qzone` 开 |
+| [0083](0083-presence.md) | 她在 QQ 上「有个人在」——已读、在线状态、表情回应、点赞、签名、说说 | 已实现，未上线、未在真 QQ 上验证（分支 `claude/presence`；六个开关各自独立、默认全关；说说和签名另… | `readReceipts` 开、`onlineStatus` 开、`profileLikes` 开、`signature` 开、`qzone` 开 |
 | [0084](0084-bilibili-browsing.md) | 她刷 B 站，刷到一个真视频，发给他 | 已实现，未上线、未开启（分支 `claude/bilibili`；配置 `bilibili` = off / dryRu… | `bilibili` 开 |
 | [0085](0085-napcat-probe.md) | NapCat 探针——在你在场时一次验完「没在真 QQ 上试过」的那些动作 | 已实现，2026-10-19 在线上跑过两次（见「确认记录」）（分支 `claude/napcat-probe`；脚本 … |  |
 | [0086](0086-self-recall.md) | 打错字时，有时撤回重发，而不只是补一条「*对的词」 | 已实现，未上线、未开启（分支 `claude/self-recall`；配置 `selfRecall`，默认关） | `selfRecall` 开 |
@@ -116,14 +116,14 @@
 | [0107](0107-invite-to-play.md) | 约他一起玩（主动时机 `invite`，配置 `proactiveInvite`，默认关） | 已实现，未上线（2026-10-22；配置 `proactiveInvite`；默认关）。上线 = `koishi.ym… | `proactiveInvite` 开 |
 | [0108](0108-proactive-opener.md) | 主动开口不先叫名字 | 已实现，未上线（2026-10-22；提示词措辞，没有开关；上线 = 落地代码 + 重启；回滚 = `git rever… |  |
 | [0109](0109-photo-shelf.md) | 照片货架——她自己从网上找高清图发给他（配置 `photos`，默认关） | 已实现，未上线（2026-10-22；配置 `photos`；默认关）。上线 = `koishi.yml` 里加 `ph… | `photos` 开 |
-| [0110](0110-photo-shares.md) | 她主动发照片——喂完土豆拍了一张（配置 `photoShares`，默认关） | 已实现，未上线（2026-10-22；配置 `photoShares`，要 `photos` 和主动消息开着；默认关）。… | `photoShares` 默认 |
+| [0110](0110-photo-shares.md) | 她主动发照片——喂完土豆拍了一张（配置 `photoShares`，默认关） | 已删（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtractio… |  |
 | [0111](0111-together.md) | 陪玩状态——答应邀约后的两三个小时她正和他一起玩（配置 `together`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `together` 开 |
 | [0112](0112-come-back.md) | 说了“等下”之后自己回来（主动时机 `back`，配置 `comeBack`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `comeBack` 开 |
 | [0113](0113-relationship-stage.md) | 关系阶段——聊得多了她更放得开（配置 `relationship`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `relationship` 开 |
 | [0114](0114-running-jokes.md) | 小梗回头提（配置 `jokes`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `jokes` 开 |
 | [0115](0115-interruptions.md) | 被第三方打断（配置 `interruptions`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `interruptions` 开 |
 | [0116](0116-ask-opinion.md) | 问问他的意见（主动时机 `ask`，配置 `proactiveAsk`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `proactiveAsk` 开 |
-| [0117](0117-his-hours.md) | 按他平时在线的钟头排（配置 `hisHours`，默认关） | 已实现，未上线（2026-10-22；配置 `hisHours`，要主动消息开着；默认关）。上线 = `koishi.y… | `hisHours` 默认 |
+| [0117](0117-his-hours.md) | 按他平时在线的钟头排（配置 `hisHours`，默认关） | 已删（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtractio… |  |
 | [0118](0118-weekly-report.md) | 周报——每周自动出一份“她离真人还差多少”的数字（配置 `weeklyReport`，默认关） | 已实现，未上线（2026-10-22；配置 `weeklyReport`；默认关）。上线 = `koishi.yml` … | `weeklyReport` 开 |
 | [0119](0119-consistency-check.md) | 前后一致性检查（只读工具，不进运行时） | 已实现（2026-10-22；工具 `node src/ops/consistency-cli.ts`；没有开关，不改运… |  |
 | [0120](0120-status-dashboard.md) | 控制台“状态”页重做——按模块分组的功能开关仪表盘 | 已实现，未上线（2026-10-23；没有配置开关）。上线 = 随下一次落地重启后页面自动变（页面文件从仓库直接读）；回… |  |
@@ -134,7 +134,7 @@
 | [0125](0125-menu.md) | 每顿吃什么（配置 `menu`，默认关） | 已实现，未上线（2026-10-23；配置 `menu`；默认关）。上线 = `koishi.yml` 里加 `menu… | `menu` 开 |
 | [0126](0126-curious.md) | 会追问（配置 `curious`，默认关） | 已实现，未上线（2026-10-23；配置 `curious`；默认关）。上线 = `koishi.yml` 里加 `c… | `curious` 开 |
 | [0127](0127-small-news.md) | 她会主动讲今天的小事（配置 `smallNews`，默认关，要 `everydayLife` 和主动消息开着） | 已实现，未上线（2026-10-23；配置 `smallNews`；默认关）。上线 = `koishi.yml` 里加 … | `smallNews` 开 |
-| [0128](0128-food-photos.md) | 吃的照片（配置 `foodPhotos`，默认关，要 `photos` 和 `menu` 开着） | 已关闭（上线于 2026-10-23 夜，2026-10-25 用户看了货架里的 5 张吃的照片说太假，`foodPho… | `foodPhotos` 关 |
+| [0128](0128-food-photos.md) | 吃的照片（配置 `foodPhotos`，默认关，要 `photos` 和 `menu` 开着） | 已删（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtractio… |  |
 | [0129](0129-memes.md) | 她知道网上现在流行的梗（配置 `memes`，默认关；要 `bilibiliAccount` 开着才会自己去学） | 已实现，未上线（2026-10-23；配置 `memes`；默认关）。上线 = `koishi.yml` 里加 `mem… | `memes` 开 |
 | [0130](0130-watching.md) | 她自己在 B 站看东西、形成看法（配置 `watching`，默认关；要 `bilibiliAccount`，想法变成念头要 `innerLife`） | 已实现，未上线（2026-10-23；配置 `watching`；默认关）。上线 = `koishi.yml` 里加 `… | `watching` 开 |
 | [0131](0131-texture.md) | 说话的质感（配置 `texture`，默认关） | 已实现，未上线（2026-10-23；配置 `texture`；默认关）。上线 = `koishi.yml` 里加 `t… | `texture` 关（被 fewerRules 关掉） |
@@ -194,7 +194,7 @@
 | [0197](0197-feelings-shared-and-reviewed.md) | 心境——桌面上的她读同一份；她聊完回想一下，记下有依据的感受（`feelingReview`） | 已实现，默认关，没有上线。第一部分（桌面读同一份）随 `herFeelings`；第二部分（聊完回想）是新开关 `fee… | `feelingReview` 开 |
 | [0198](0198-read-through-fixes.md) | 通读一个晚上的聊天，修两个"一眼像 AI"的毛病（质感的"先嗯一声"、他低落的延续） | 已实现，不是新开关——都是对已上线功能的修正：质感（ADR 0131，`texture`）、意图（ADR 0019 的 … |  |
 | [0199](0199-history-migration.md) | 把 VM 时期的素材并进她现在住的机器（一次性的迁移工具） | 工具已实现并测过；DSH 已在他那台机器上跑完（10-30 18:43）。不是开关，不是常驻功能 |  |
-| [0200](0200-private-space.md) | 她的私人空间——她自己学出来的东西，默认不给他看 | 已实现。新开关 `ownerPeek`，默认关（私人空间默认就在）。DSH 那台机器拉取后重启 Koishi 生效；生效… | `ownerPeek` 开 |
+| [0200](0200-private-space.md) | 她的私人空间——她自己学出来的东西，默认不给他看 | 已实现。新开关 `ownerPeek`，默认关（私人空间默认就在）。DSH 那台机器拉取后重启 Koishi 生效；生效… |  |
 | [0201](0201-memory-reconcile.md) | 记忆对账——「记着写过」不等于 Hindsight 里真有 | 已实现，新开关 `memoryReconcile`，默认关。DSH 那台机器拉取、在 `koishi.yml` 里加 `… | `memoryReconcile` 开 |
 | [0202](0202-depth-routing.md) | 语义路由——让「认真的时刻」不再靠关键词认 | 已实现，新开关 `depthRouting`，默认关；要 `deliberate` 开着才起作用。DSH 那台机器拉取、… | `depthRouting` 开 |
 | [0203](0203-fact-check-him.md) | 事实检查多查一类——她替他说的事 | 已实现，新开关 `factHim`，默认关；要 `factCheck` 开着（`log` 只记、`fix` 带说明重写）… | `factHim` 开 |
@@ -203,7 +203,7 @@
 | [0206](0206-read-his-stickers.md) | 他发来的表情包，她看得懂（`readStickers`） | 已实现，默认关，未上线（分支 `claude/self-pursuits`；全量测试见文末） | `readStickers` 开 |
 | [0207](0207-open-questions.md) | 她没想完的问题 | 已实现，新开关 `openQuestions`，默认关；要名单里有男朋友档。DSH 那台机器拉取、在 `koishi.y… | `openQuestions` 开 |
 | [0208](0208-doubt-and-her-own-existence.md) | 她可以怀疑自己，也知道自己存在的真实情况 | 已实现，没有新开关（改的是她独处想事情的提示、卡里「被问是不是 AI」那一段和两个场景）；已合进 `dsh/qq-con… |  |
-| [0209](0209-strangers.md) | 陌生人私聊——签名写明是 AI、每天上限、只打招呼先不回、未成年人不陪 | 已实现，开关还是原来的 `unlistedFriends`（默认关）；开不开、什么时候开由用户定。开了以后先看几天日志里… | `unlistedFriends` 关 |
+| [0209](0209-strangers.md) | 陌生人私聊——签名写明是 AI、每天上限、只打招呼先不回、未成年人不陪 | 已删（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtractio… |  |
 | [0210](0210-group-chat.md) | 群聊——只在名单里的群说话，基本潜水 | 已实现，新开关 `groupChat`（`off` / `dryRun` / `on`，默认 `off`）+ 群名单 `… | `groupChat` 开 |
 | [0211](0211-world-drama.md) | 日子里的小起伏（worldDrama） | 已实现，开关 `worldDrama`（默认关；2026-11-02 用户要求开着） | `worldDrama` 开 |
 | [0212](0212-his-reactions.md) | 看他的反应——她主动说自己的事，他接不接，她自己拿捏（hisReactions） | 已实现，新开关 `hisReactions`，默认关；只男朋友档，要 `proactive` 开着。DSH 那台机器拉取… | `hisReactions` 开 |

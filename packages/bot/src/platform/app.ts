@@ -1,4 +1,4 @@
-// 一个 bot 的编排：名单里每人一个回复器（contact.ts），名单外的好友按 unlisted 档（可关），连上 NapCat 时补回漏掉的消息再 catchUp，
+// 一个 bot 的编排：名单里每人一个回复器（contact.ts，名单外的不回），连上 NapCat 时补回漏掉的消息再 catchUp，
 // 定时写长期记忆，记下换档，同一个数据目录只跑一个。群聊、群临时会话由入口过滤掉，不进这里。
 // 主动消息（ADR 0011）：配置 proactive 不是 off、作息开着、卡上写了 proactive 的名单联系人，各一个计划器（proactive-planner.ts）；
 // 第一次补回完才开始排（之前的聊天记录不全），聊天记录变了就让它重新算。
@@ -124,7 +124,7 @@ import { removeFaces } from '.././language/qq-faces.ts';
 import { LongTermMemory, type MemoryEvent } from '.././memory/long-term.ts';
 import { withFestivalActivities, withFestivals } from '.././world/festivals.ts';
 import { type ProactiveMode } from '.././proactive/proactive.ts';
-import { reactionEmoji, type PresenceTransport } from '.././social/presence.ts';
+import { type PresenceTransport } from '.././social/presence.ts';
 import { presenceOwner } from '.././social/presence-owner.ts';
 import { type BiliFetch } from '.././bilibili/bilibili.ts';
 import type { BiliAccount, BiliRequest } from '.././bilibili/bilibili-account.ts';
@@ -168,7 +168,6 @@ import type { WeatherFetcherStatus } from '.././world/weather.ts';
 import type { AirQualityFetcherStatus } from '.././world/air-quality.ts';
 import type { DaylightFetcherStatus } from '.././world/daylight.ts';
 import type { CalendarStatus } from '.././world/calendar.ts';
-import type { TransportFetcherStatus } from '.././world/transport.ts';
 import { realityFeeds } from '.././world/reality-feeds.ts';
 import { featureStatuses, type FeatureStatus } from './features.ts';
 import { loadMemes, memesPath } from '.././language/memes.ts';
@@ -181,7 +180,7 @@ import { incomingReceipts } from './incoming.ts';
 import { missedMessages } from './missed-messages.ts';
 import { privateAdmission } from '.././social/private-admission.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
-import { photoShelf, PHOTO_HISTORY_PREFIX, type FoodSource, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
+import { photoShelf, PHOTO_HISTORY_PREFIX, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
 import { STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import type { PromptManifest } from './prompt-manifest.ts';
@@ -224,7 +223,7 @@ const LIFE_TICK_MS = 10 * 60_000;
 /** 写一次长期记忆的间隔 */
 export const MEMORY_SYNC_MS = 5 * 60_000;
 /** 现实数据多久取一次：定义搬到 world/reality-feeds.ts，这里照旧导出（测试从这里取） */
-export { AIR_QUALITY_REFRESH_MS, CALENDAR_REFRESH_MS, DAYLIGHT_REFRESH_MS, TRANSPORT_REFRESH_MS, WEATHER_REFRESH_MS } from '.././world/reality-feeds.ts';
+export { AIR_QUALITY_REFRESH_MS, CALENDAR_REFRESH_MS, DAYLIGHT_REFRESH_MS, WEATHER_REFRESH_MS } from '.././world/reality-feeds.ts';
 
 /** 入口提供的收发 */
 export interface Transport extends PresenceTransport {
@@ -240,8 +239,6 @@ export interface Transport extends PresenceTransport {
     sendPrivateCard?(userId: number, cardJson: string): Promise<number>;
     /** 标已读（NapCat mark_private_msg_as_read，配置 readReceipts，ADR 0083）；没有就不标 */
     markRead?(userId: number): Promise<void>;
-    /** 给某条消息点表情回应（NapCat set_msg_emoji_like，配置 reactions，ADR 0083）；没有就不点 */
-    reactMessage?(messageId: number, emojiId: number): Promise<void>;
     /** 让对方那边显示「正在输入…」（配置 typingStatus，ADR 0077）；没有就不显示 */
     setInputStatus?(userId: number, eventType?: number): Promise<void>;
     /** 撤回自己发出去的一条（NapCat 的 delete_msg，配置 selfRecall，ADR 0086）；没有就不撤回 */
@@ -289,8 +286,6 @@ export interface ContactStatus {
     knowsBot?: boolean;
     /** 实际用的卡：档位名，或承认版「<档位>-open」（ADR 0067） */
     card: string;
-    /** 名单外的好友（按 unlisted 档临时建的回复器） */
-    unlisted: boolean;
     /** 从什么时候起是这一档（tiers.json）；没换过档就没有 */
     tierSince?: string;
     /** 最近一次危机信号的时间和分级（不记内容），以及普通主动消息是否仍暂停；没触发过就没有。 */
@@ -310,7 +305,6 @@ export interface AppStatus {
     /** 进程此刻实际在用的时区（ADR 0331）：作息、饭点、日界都按它算；状态页据此显示她那边的本地时间 */
     timeZone: string;
     contacts: ContactStatus[];
-    unlistedFriends: boolean;
     schedule: boolean;
     /** 看心情不回（ADR 0013）开没开；作息关着时不起作用 */
     moody: boolean;
@@ -337,8 +331,6 @@ export interface AppStatus {
     daylight?: DaylightFetcherStatus;
     /** 现实法定日历缓存的新鲜度和覆盖年份。 */
     calendar?: CalendarStatus;
-    /** 现实交通缓存的新鲜度和地点摘要；不含端点和凭据。 */
-    transport?: TransportFetcherStatus;
     /** 外部内容平台接入模式。 */
     externalPlatforms: { tieba: ExternalPlatformMode; douyin: ExternalPlatformMode; xiaohongshu: ExternalPlatformMode };
     /** 外部平台统一草稿箱的计数摘要。 */
@@ -386,8 +378,6 @@ export interface AppOptions {
     stickers?: StickerShelf;
     /** 照片货架的网络来源（ADR 0109：她自己从网上找高清图）；运行入口按配置建（看图没配置就没有），测试可给假的 */
     photoSource?: PhotoSource;
-    /** 吃的照片的来源（ADR 0128，photo-sources.ts 的 webFoodSource）；不给就没有吃的照片 */
-    foodSource?: FoodSource;
     /** 照片找到一半被限流 / 断网打断后多久再试（毫秒，默认 PHOTO_RETRY_MS；测试用） */
     photoRetryMs?: number;
     /** 允许发图片表情的轮次里抽中发的概率（不写按 STICKER_TURN_CHANCE；测试用）*/
@@ -419,11 +409,6 @@ export interface AppOptions {
     groupAgencyHooks?: GroupAgencyHooks;
 }
 
-/** 名单外的人在提示词里的称呼（{{user}}）：QQ 昵称，没有就叫「对方」 */
-export function unlistedName(nickname: string | undefined): string {
-    return nickname?.trim() || '对方';
-}
-
 /**
  * App.stop 的先后（ADR 0336 第 6 步统一停止；构造失败时按登记先后停）。原来手写在 stop() 里的先后原样搬过来：
  * 先置 stopped；日记、答应的事先于长期记忆停（它们收尾时还要写记忆），口味也在模块之前；解释器停各模块（关定时任务）；
@@ -438,8 +423,8 @@ const STOP_ORDER = [
     'passive-reads', 'sticker-work', 'account-guard', 'notices',
     'context', 'incoming', 'photo-discovery', 'crisis', 'pokes', 'heartbeat',
     'reading', 'reading-unlisted', 'planners', 'responders',
-    'presence', 'browsing', 'replies', 'risk', 'food-retry', 'devices', 'photo-retry',
-    'weather', 'air-quality', 'daylight', 'calendar', 'transport', 'world-needs',
+    'presence', 'browsing', 'replies', 'risk', 'devices', 'photo-retry',
+    'weather', 'air-quality', 'daylight', 'calendar', 'world-needs',
 ] as const;
 type StopName = typeof STOP_ORDER[number];
 
@@ -458,7 +443,7 @@ export function startApp(options: AppOptions): App {
     catch (error) { lifetime.rollback(); throw error; }
 }
 
-function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, foodSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), promptManifest, observe, repoRoot: repoRootOverride, groupAgencyHooks }: AppOptions, lifetime: Lifetime<StopName>): App {
+function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), promptManifest, observe, repoRoot: repoRootOverride, groupAgencyHooks }: AppOptions, lifetime: Lifetime<StopName>): App {
     // 碰外部的都经执行器（ADR 0336 第 3 步）：QQ 动作、调模型、时钟和计时器、设备登记（第 8 步：设备服务下面才异步起，登记时现取）
     const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}), ...(workRunner ? { processes: { work: workRunner } } : {}), devices: () => devicesHost.service()?.control });
     const transport = exec.qq;
@@ -603,7 +588,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     };
     // 先把要用到的都读一遍，缺文件立刻报错
     const tiersInUse = new Set<Tier>(config.contacts.map(c => c.tier));
-    if (config.unlistedFriends) tiersInUse.add(UNLISTED_TIER);
     // 知道她是程序的联系人平时用原卡，危机回合要换的承认版 <档位>-open 也先读一遍：缺文件就启动报错，和 knowsBot 不是 true 那一侧一样（原来只在危机那一刻 log 一行，
     // 然后原卡的“不承认、绕开”和意图行的“如实承认”同时进提示词；DSH 10-15 复核 0067 问题 1）
     const crisisOpenTiers = config.contacts.filter(c => c.tier !== UNLISTED_TIER && c.knowsBot === true).map(c => `${c.tier}-open`);
@@ -612,7 +596,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         log(`档位 ${tier}：角色 ${character.name}，世界书 ${character.world || '无'}（${worldInfo.length} 条）`);
     }
     const whitelist = config.contacts.map(c => `${c.qq}（${c.name}，${c.tier}，${c.knowsBot === true ? '知道她是程序' : '按不知道处理：被认真问到会承认'}）`).join('、');
-    log(`名单：${whitelist}；名单外的好友${config.unlistedFriends ? '按 unlisted 档回复' : '不回复'}`);
+    log(`名单：${whitelist}；名单外的好友不回复`);
     log(`出口检查：做不到的事、禁用词${config.speechCheck ? '、说话的毛病（助手腔、算账、怪对方没说、重复、一段里叮嘱两遍、话说到一半就停）' : '（说话的毛病不查，配置 speechCheck: false）'}`);
     // 她自己的日子同一天对所有人一样；摘要和状态页用名单里最亲的、卡上有心情或书的那一档（书按档位裁过，这里只用书名和进度）
     const herDaysCard = config.herDays
@@ -948,7 +932,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         promises: () => promises ?? undefined,
         mediaDiscovery: () => ({
             ...(photos ? { photos: discoverPhotos } : {}),
-            ...(photos && foodSource && config.foodPhotos ? { food: discoverFoodPhotos } : {}),
             ...(collectingStickers ? { stickers: discoverStickers } : {}),
         }),
         syncedJobs: {
@@ -961,7 +944,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         herDays: config.herDays,
         // 危机信号（ADR 0068）和小别扭 / 和好的起因（ADR 0074，配置 grievance）：assess 的最前面，意图阶梯和后面的判断都读
         grievance: config.grievance,
-        shortReplies: config.shortReplies,
         // 时间块（ADR 0004 / 0105）：断网很久才回那一句跟着 lagTail
         lagTail: config.lagTail,
         // 她这几天拍照修图（配置 lifeInPrompt，要有生活执行器）
@@ -1193,7 +1175,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
     const photoDiscovery = new AbortController();
     lifetime.own('photo-discovery', () => photoDiscovery.abort());
-    const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, signal: photoDiscovery.signal, ...(photoSource ? { source: photoSource } : {}), ...(config.foodPhotos && foodSource ? { foodSource } : {}) }) : undefined;
+    const photos = config.photos && transport.sendPrivateImage ? photoShelf({ dir: join(config.dataDir, 'photos'), log, signal: photoDiscovery.signal, ...(photoSource ? { source: photoSource } : {}) }) : undefined;
     if (config.photos) {
         const have = photos?.status();
         log(photos ? `照片货架：开（本地 ${have!.count} 张：猫 ${have!.byKind.cat}、风景 ${have!.byKind.view}、她的片子 ${have!.byKind.work}；${photoSource ? '她自己去网上找（CC0 / 公有领域，看图把关，每 6 小时一次）' : '网络来源没开（看图没配置），只有手动加的'}；只对男朋友档；没有照片就什么都不做）` : '照片货架：配置开着，但发图片的通道没准备好，不工作');
@@ -1662,8 +1644,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     if (config.herGuesses) log(!deviceOwner ? '她猜的事：herGuesses 开着，但名单里没有男朋友档，不起作用' : !(sharedWorld && worldCard) ? '她猜的事：herGuesses 开着，但没有她那边的世界（世界账），对不上结果，不起作用' : `她猜的事：开（白天留意她像在猜结果的话，每晚 22 点以后她自己挑哪句算数、对照世界账看对没对；私人空间，没有命令念给他${config.innerLife ? '；刚对上的那件她下次一个人想事情时会想到' : ''}）`);
     if (config.silenceNotice) log(deviceOwner ? '没回时告诉他原因：开（随正常回复解释，不另发通知）' : '没回时告诉他原因：开着，但名单里没有男朋友档，不解释');
 
-    /** 名单外临时建了回复器的好友（状态页要显示称呼和档位） */
-    const unlisted = new Map<number, Contact>();
     /** 他提给她、等她点头的请求（看屏幕 / 摄像头……）：她写 <<同意>> 才做，写 <<拒绝：原因>> 就作罢（2026-10-30） */
     const pendingAsk = new Map<number, { label: string; at: number; run: () => Promise<{ kind: string; text?: string }> }>();
 
@@ -1870,7 +1850,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(sharedWorld ? { worldState: sharedWorld } : {}),
             ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
             ...(config.rhythm ? { rhythm: true } : {}),
-            ...(config.shortReplies ? { shortReplies: true } : {}),
             // 她自己决定今天想做什么（ADR 0182）：和「在读的书」一起当额外的空闲活动，每次现取
             ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
             // 她理解人的话（10-30）：他这句话和以前被纠正过的事撞上时提醒她
@@ -1955,13 +1934,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             } } : {}),
             // 她在 QQ 上的样子（签名、最近发的说说）进时间块（ADR 0083）
             selfNote: (now: number) => herPresence.selfNote(now),
-            // 已读回执 / 表情回应（ADR 0083）：失败只记第一次，不影响回复
+            // 已读回执（ADR 0083）：失败只记第一次，不影响回复
             ...(config.readReceipts && transport.markRead ? { markRead: (userId: number) => {
                 void sendOwnedNotice(() => transport.markRead!(userId), () => {}, error => failOnce('已读回执', userId, error));
-            } } : {}),
-            ...(config.reactions && transport.reactMessage ? { react: (userId: number, messageId: number, text: string) => {
-                void sendOwnedNotice(() => transport.reactMessage!(messageId, reactionEmoji(text, messageId)),
-                    () => log(`[${userId}] 看到了没回，点了个表情回应`), error => failOnce('表情回应', userId, error));
             } } : {}),
             // 发给他（deviceOwner）的一条发出去之后，「此刻的她」稍后刷新一次（ADR 0347 第 2 层；selfExport 关着时就是原来那个函数）
             send: selfHost.afterSentToOwner(contact, async (userId, text, sendOptions) => {
@@ -2085,7 +2060,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     /** 主动消息的计划器：第一次补回完才建 */
     // 主动消息的计划器（第一次补回完才建）：在 proactive/planner-host.ts（ADR 0336 第 6 步）；计划器表由它持有，停法照旧在这里登记
     const proactivePlanners = plannerHost({
-        config, log, exec, clockNow, cardFor, proactiveContacts, deviceOwner, responders, history, photos, worldCard, ledgerWorld, sharedWorld, needsAnchor,
+        config, log, exec, clockNow, cardFor, proactiveContacts, deviceOwner, responders, history, worldCard, ledgerWorld, sharedWorld, needsAnchor,
         agencyShadow, weather, web, herGuessesNow, promises, dormancy, crisisState, bedtimes, watchedEntries: () => watchedEntries, pipeline,
         // 他在电脑前 / 刚在电脑上聊过（ADR 0347 第 3 层 desktopDay）：planner-host 只接给 deviceOwner 那一位
         ...(desktopSource ? { desktop: desktopProactiveHooks(desktopSource) } : {}),
@@ -2133,14 +2108,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         config, stopped: () => stopped, log, exec, passive, bilibiliAccountSource, bilibiliFetch, vision, worldCard, bedtimes,
         watchedFile, setWatched: entries => { watchedEntries = entries; }, memesFile,
     });
-    // 照片货架的发现与重试（ADR 0110 / 0128）：在 vision/photo-discovery.ts（ADR 0336 第 6 步）；两个重试计时器的停法照旧在这里登记
+    // 照片货架的发现与重试（ADR 0110）：在 vision/photo-discovery.ts（ADR 0336 第 6 步）；重试计时器的停法照旧在这里登记
     const shelfDiscovery = photoShelfDiscovery({
-        photos, hasFoodSource: Boolean(foodSource), config, stopped: () => stopped,
-        menu: () => cardFor('boyfriend').character.herWorld?.menu, menuFrom, exec, retryMs: photoRetryMs, log,
+        photos, stopped: () => stopped, exec, retryMs: photoRetryMs, log,
     });
-    lifetime.own('food-retry', () => shelfDiscovery.cancelFoodRetry());
     lifetime.own('photo-retry', () => shelfDiscovery.cancelPhotoRetry());
-    const { discoverPhotos, discoverFoodPhotos } = shelfDiscovery;
+    const { discoverPhotos } = shelfDiscovery;
     const discoverStickers = () => { if (collectingStickers) void ownStickerWork(signal => collectingStickers.discover({ signal })); };
     /** Hindsight 健康检查的结果（状态页用到时才探，见 status()） */
     let health: MemoryEvent | undefined;
@@ -2168,9 +2141,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
 
     /** 每人一条：要听、要看的消息读完才进聊天记录，后面来的排在它后面（顺序不乱；读是一收到就开始读，不排队） */
     const inbox = new Map<number, Promise<void>>();
-    // 谁的私聊她回、陌生人的规矩和个性签名（ADR 0209）：在 social/private-admission.ts（ADR 0336 第 6 步）
-    const admission = privateAdmission({ config, transport, responders, unlisted, createResponder: contact => createContactResponder(contact), tierRecord, history, unlistedName, worldNow, log });
-    const { strangers, ensureAiSignature } = admission;
+    // 谁的私聊她回（只有名单里的人）：在 social/private-admission.ts（ADR 0336 第 6 步）
+    const admission = privateAdmission({ responders, log });
     const pokeLimiter = createPokeLimiter();
     const lastPokeBack = new Map<number, number>();
     const pokeTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -2595,7 +2567,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             if (syncPromise) return syncPromise;
             connectedAt = new Date();
             selfIdKnown = selfId;
-            if (strangers) void ensureAiSignature(selfId);
             syncing = true;
             const currentSync = syncMissed(selfId);
             syncPromise = currentSync;
@@ -2617,7 +2588,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                     syncFollowUps();
                     discoverStickers();
                     discoverPhotos();
-                    discoverFoodPhotos();
                     void groupChat.syncNames();
                     void refreshMemeJob();
                     if (!dormancy?.isDormant()) void watchJob();
@@ -2655,7 +2625,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 控制台、测试时钟和导给 DSH 的 NOW.md 必须共用同一个“现在”。
             // 否则使用虚拟时钟（或宿主注入时钟）时，两端会看到不同的生活片段。
             const now = new Date(worldNow());
-            const contactStatus = (contact: Contact, isUnlisted: boolean): ContactStatus => {
+            const contactStatus = (contact: Contact): ContactStatus => {
                 const last = history.load(contact.qq).at(-1);
                 const since = tierRecord.since(contact.qq);
                 const { character } = cardFor(contact.tier);
@@ -2667,7 +2637,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                     tier: contact.tier,
                     ...(contact.knowsBot !== undefined ? { knowsBot: contact.knowsBot } : {}),
                     card: cardKey(contact),
-                    unlisted: isUnlisted,
                     ...(since ? { tierSince: since.toISOString() } : {}),
                     ...(crisisState.last(contact.qq) ? { crisis: {
                         at: new Date(crisisState.last(contact.qq)!.at).toISOString(),
@@ -2705,11 +2674,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             return {
                 runtime,
                 timeZone: processTimeZone(),
-                contacts: [
-                    ...config.contacts.map(contact => contactStatus(contact, false)),
-                    ...[...unlisted.values()].map(contact => contactStatus(contact, true)),
-                ],
-                unlistedFriends: config.unlistedFriends,
+                contacts: config.contacts.map(contact => contactStatus(contact)),
                 schedule: config.schedule,
                 moody: config.moody,
                 speechCheck: config.speechCheck,

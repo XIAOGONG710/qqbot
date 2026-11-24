@@ -55,14 +55,14 @@ describe('这一轮发不发照片（modules/media-offers.ts 的 decideAt.photo�
         assert.equal(decide(turnOf('发张照片看看'), ctxOf(['work', 'view']).ctx).photo, 'view');
     });
 
-    test('吃的：只拿她最近那一顿那道菜的，写 photoDish；主动那条自己带着哪一类和菜名', () => {
+    test('吃的：只拿她最近那一顿那道菜的，写 photoDish；主动那条不带照片', () => {
         const eaten = ctxOf(['food:合成炒饭']);
         assert.deepEqual(decide(turnOf('看看你吃的什么，拍张照片', { world: world('合成炒饭') }), eaten.ctx), { world: world('合成炒饭'), photo: 'food', photoDish: '合成炒饭' });
         assert.deepEqual(eaten.asked.at(-1), ['food', '合成炒饭']);
         const other = decide(turnOf('看看你吃的什么，拍张照片', { world: world('合成面') }), ctxOf(['food:合成炒饭']).ctx);
         assert.equal(other.photo, undefined, '货架里只有别的菜：不发');
-        const initiating = turnOf('在吗', {}, { initiate: { note: '喂完猫拍的', photo: 'food', photoDish: '合成炒饭' } as NonNullable<Turn['initiate']> });
-        assert.equal(decide(initiating, ctxOf(['food:合成炒饭']).ctx).photoDish, '合成炒饭');
+        const initiating = turnOf('看看你吃的什么，拍张照片', { world: world('合成炒饭') }, { initiate: { note: '想他了', topic: '想他' } as NonNullable<Turn['initiate']> });
+        assert.equal(decide(initiating, ctxOf(['food:合成炒饭']).ctx).photo, undefined);
     });
 
     test('不是男朋友档、只想一想、危机、小别扭、他难过、没有货架：不看', () => {

@@ -85,11 +85,10 @@ export interface TurnModuleDeps {
     appointmentsAt: NonNullable<HerNowOptions['appointmentsAt']>;
     /** 约定（他提到见面），每次现取 */
     promises: NonNullable<MeetupModuleOptions['promises']>;
-    /** 作息、她自己的日子、小别扭、说话更短、断网长尾、生活账进提示词（拍照修图）：都是构造时就定的开关 */
+    /** 作息、她自己的日子、小别扭、断网长尾、生活账进提示词（拍照修图）：都是构造时就定的开关 */
     schedule: boolean;
     herDays: boolean;
     grievance: boolean;
-    shortReplies: boolean;
     lagTail: boolean;
     lifeInPrompt: boolean;
     intent: IntentModuleOptions;
@@ -178,7 +177,7 @@ export function buildTurnModules(d: TurnModuleDeps): Module[] {
         ...(d.devices ? [devicesModule(d.devices)] : []),
         ...(d.consent ? [consentModule(d.consent)] : []),
         shapeModule({ ...d.shape, log }),
-        lengthModule({ shortReplies: d.shortReplies, log }),
+        lengthModule({ log }),
         ...(d.quote ? [quoteModule({ history: d.history, ...d.quote, log })] : []),
         initiateNoteModule(),
         reviewFinalizeModule(),

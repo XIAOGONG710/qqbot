@@ -14,14 +14,13 @@ export interface WorldUpkeep {
     airQuality?: Job;
     daylight?: Job;
     calendar?: Job;
-    transport?: Job;
     agencyShadow?: Job;
     life?: Job;
 }
 
 export function worldUpkeepModule(jobs: WorldUpkeep): Module {
     const schedules: ScheduleSpec[] = [];
-    for (const job of [jobs.weather, jobs.airQuality, jobs.daylight, jobs.calendar, jobs.transport, jobs.agencyShadow, jobs.life]) {
+    for (const job of [jobs.weather, jobs.airQuality, jobs.daylight, jobs.calendar, jobs.agencyShadow, jobs.life]) {
         if (job) schedules.push({ every: job.every, run: job.run, start: 'built' });
     }
     return { id: 'world-upkeep', schedules };

@@ -30,7 +30,7 @@ import { VirtualClock } from '../src/sim/scenario.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
 import { STICKER_DISCOVERY_INTERVAL_MS, type StickerEntry, type StickerShelf } from '../src/social/stickers.ts';
-import { FOOD_DISCOVERY_INTERVAL_MS, FOOD_MISS_RETRY_MS, PHOTO_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, type FoodSource, type PhotoSource } from '../src/vision/photos.ts';
+import { PHOTO_DISCOVERY_INTERVAL_MS, photoAllowance, photoShelf, type PhotoSource } from '../src/vision/photos.ts';
 import { CRISIS_FALLBACK } from '../src/language/exit-check.ts';
 import { CRISIS_MARK } from '../src/language/intent.ts';
 import { createDeviceControl } from '../src/platform/device-actions.ts';
@@ -71,24 +71,21 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
         characterCard: syntheticCardPattern,
         contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }],
-        unlistedFriends: false,
         schedule: false,
         moody: false,
         speechCheck: false,
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, photos: false, photoShares: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, hisHours: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, foodPhotos: false, memes: false, watching: false, texture: false, biliStickers: false, quoteReply: false, factCheck: 'off', idioms: false, tailCap: false, deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, worldDrama: false, pursuits: false, shapeSplit: false, shapeAsk: false, shapeLong: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, acquaintances: false, bilibiliAtName: '', bilibiliAtUid: 0, reactions: false, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, memes: false, watching: false, texture: false, biliStickers: false, quoteReply: false, factCheck: 'off', idioms: false, tailCap: false, deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, worldDrama: false, pursuits: false, shapeSplit: false, shapeAsk: false, shapeLong: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, acquaintances: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
-        realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false, shortReplies: false,
+        realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false,
         media: true,
         candidates: 1,
         contextTurns: 0,
         contextContacts: [],
         proactive: 'off',
         dataDir,
-        // 线上默认是关（ADR 0200）；这里默认开着，好让下面各条 /追求 /说话习惯 /心境 /自我认识 的测试照旧测「念出来」，关着的情形有专门一条
-        ownerPeek: true,
         timeZone: 'Asia/Shanghai',
         ...overrides,
     };
@@ -126,7 +123,7 @@ test('silenceNotice：自然问才解释小事，私密原因不进入正常回�
     }
 });
 
-function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { sing?: AppOptions['sing']; photoSource?: PhotoSource; foodSource?: FoodSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; imageRecognition?: ImageDescriber; imageSearch?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; reactMessage?: (messageId: number, emojiId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; repoRoot?: string; extra?: Partial<Transport>; promptManifest?: AppOptions['promptManifest'] } = {}) {
+function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, options: { sing?: AppOptions['sing']; photoSource?: PhotoSource; photoRetryMs?: number; retryAfterMs?: readonly number[]; holdHistory?: Promise<void>; clock?: VirtualClock; media?: MediaReader; vision?: ImageDescriber; imageRecognition?: ImageDescriber; imageSearch?: ImageDescriber; stickers?: StickerShelf; stickerChance?: number; stickerOnlyChance?: number; generate?: (messages: readonly { content: string }[], use?: { model: string }) => string; mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>; sensitive?: SensitiveSwitch; pokeFriend?: (userId: number) => Promise<void>; setInputStatus?: (userId: number) => Promise<void>; markRead?: (userId: number) => Promise<void>; setOnlineStatus?: (status: number, ext: number) => Promise<void>; deleteMessage?: (messageId: number) => Promise<void>; bilibiliFetch?: BiliFetch; bilibiliRequest?: BiliRequest; startDevices?: StartDevices; workRunner?: AppOptions['workRunner']; repoRoot?: string; extra?: Partial<Transport>; promptManifest?: AppOptions['promptManifest'] } = {}) {
     const sent: string[] = [];
     const images: string[] = [];
     const logs: string[] = [];
@@ -137,7 +134,6 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.markRead ? { markRead: options.markRead } : {}),
         ...(options.setOnlineStatus ? { setOnlineStatus: options.setOnlineStatus } : {}),
         ...(options.deleteMessage ? { deleteMessage: options.deleteMessage } : {}),
-        ...(options.reactMessage ? { reactMessage: options.reactMessage } : {}),
         ...(options.extra ?? {}),
         sendPrivateText: async (userId, text) => { sent.push(`${userId}:${text}`); return nextId++; },
         sendPrivateImage: async (userId, file, summary) => { images.push(`${userId}:${file}:${summary}`); return options.extra?.sendPrivateImage ? options.extra.sendPrivateImage(userId, file, summary) : nextId++; },
@@ -162,7 +158,6 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         ...(options.stickers ? { stickers: options.stickers } : {}),
         ...(options.photoSource ? { photoSource: options.photoSource } : {}),
         ...(options.sing ? { sing: options.sing } : {}),
-        ...(options.foodSource ? { foodSource: options.foodSource } : {}),
         ...(options.photoRetryMs !== undefined ? { photoRetryMs: options.photoRetryMs } : {}),
         ...(options.stickerChance !== undefined ? { stickerChance: options.stickerChance } : {}),
         ...(options.stickerOnlyChance !== undefined ? { stickerOnlyChance: options.stickerOnlyChance } : {}),
@@ -774,11 +769,10 @@ describe('编排（app.ts）', () => {
     test('货架发现：每次补完先扫，周期只注册一次，停止后不再扫描', async t => {
         const start = new Date(2026, 10, 18, 6);
         t.mock.timers.enable({ apis: ['Date'], now: start });
-        const periods = [PHOTO_DISCOVERY_INTERVAL_MS, FOOD_DISCOVERY_INTERVAL_MS, STICKER_DISCOVERY_INTERVAL_MS];
+        const periods = [PHOTO_DISCOVERY_INTERVAL_MS, STICKER_DISCOVERY_INTERVAL_MS];
         const registrations: number[] = [];
         const active = new Map<ReturnType<typeof setInterval>, () => void>();
         let photoScans = 0, stickerScans = 0;
-        const foodSearches: string[] = [];
         const schedule = globalThis.setInterval;
         const cancel = globalThis.clearInterval;
         t.mock.method(globalThis, 'setInterval', (run: () => void, period: number) => {
@@ -795,7 +789,6 @@ describe('编排（app.ts）', () => {
             download: async () => { throw new Error('unexpected download'); },
             judge: async () => { throw new Error('unexpected photo judgment'); },
         };
-        const foodSource: FoodSource = { ...photos, search: async dish => { foodSearches.push(dish); return []; } };
         const stickers: StickerShelf = {
             consider: async () => undefined, discover: async () => { stickerScans++; },
             prompt: () => undefined, clean: text => text, resolve: () => undefined,
@@ -803,42 +796,40 @@ describe('编排（app.ts）', () => {
         };
         let releaseHistory!: () => void;
         const holdHistory = new Promise<void>(resolve => { releaseHistory = resolve; });
-        const cfg = config({ photos: true, foodPhotos: true, menu: true, stickers: 'collect',
+        const cfg = config({ photos: true, menu: true, stickers: 'collect',
             contacts: [{ qq: 10001, name: '合成人甲', tier: 'boyfriend' }] });
-        const { app, asked, sent, images } = setup(cfg, { 10001: [] }, { photoSource: photos, foodSource, stickers, holdHistory });
-        const counts = () => [photoScans, stickerScans, foodSearches.length];
+        const { app, asked, sent, images } = setup(cfg, { 10001: [] }, { photoSource: photos, stickers, holdHistory });
+        const counts = () => [photoScans, stickerScans];
         const settle = () => new Promise<void>(resolve => setImmediate(resolve));
         const connected = app.connected(SELF);
         try {
             await until(() => asked.length === 1);
             const duplicate = app.connected(SELF);
-            assert.deepEqual(counts(), [0, 0, 0]);
+            assert.deepEqual(counts(), [0, 0]);
             assert.deepEqual(registrations, []);
             releaseHistory();
             await Promise.all([connected, duplicate]);
             await settle();
-            const firstFood = foodSearches.slice();
-            assert.ok(firstFood.length > 0);
-            assert.deepEqual(counts(), [1, 1, firstFood.length]);
+            assert.deepEqual(counts(), [1, 1]);
             assert.deepEqual(registrations, periods);
 
-            t.mock.timers.setTime(start.getTime() + FOOD_MISS_RETRY_MS);
+            t.mock.timers.setTime(start.getTime() + 6 * 60 * 60_000);
             await app.connected(SELF);
             await settle();
-            assert.deepEqual(counts(), [2, 2, firstFood.length * 2]);
+            assert.deepEqual(counts(), [2, 2]);
             assert.deepEqual(registrations, periods);
 
-            t.mock.timers.setTime(start.getTime() + 2 * FOOD_MISS_RETRY_MS);
+            t.mock.timers.setTime(start.getTime() + 2 * 6 * 60 * 60_000);
             for (const run of active.values()) run();
             await settle();
-            assert.deepEqual(counts(), [3, 3, firstFood.length * 3]);
+            assert.deepEqual(counts(), [3, 3]);
 
             await app.stop();
             assert.equal(active.size, 0);
             await app.connected(SELF);
             for (const run of active.values()) run();
             await settle();
-            assert.deepEqual(counts(), [3, 3, firstFood.length * 3]);
+            assert.deepEqual(counts(), [3, 3]);
             assert.deepEqual(sent, []);
             assert.deepEqual(images, []);
         } finally { releaseHistory(); await connected; await app.stop(); }
@@ -1529,56 +1520,29 @@ describe('编排（app.ts）', () => {
         assert.equal(existsSync(join(offCfg.dataDir, 'self-diary.json')), false, '关着不留');
     });
 
-    test('名单外：开关关着时忽略；开着时按 unlisted 档、用 QQ 昵称回复', async () => {
+    test('名单外的私聊一律忽略（名单外好友 unlistedFriends 11-24 删了）', async () => {
         const off = setup(config());
         off.app.receive(event(99999, 1, '你好', '小周'));
         await new Promise(r => setTimeout(r, 50));
         assert.deepEqual(off.sent, []);
         assert.ok(off.logs.includes('忽略 QQ 99999 的私聊（不在名单）'));
-
-        const cfg = config({ unlistedFriends: true });
-        const on = setup(cfg, {}, { extra: { setSignature: async () => {} } });
-        // ADR 0209：签名写明是 AI 之后才回陌生人；只打招呼的先不回，所以这里说点什么
-        await on.app.connected(SELF);
-        await until(() => on.logs.some(l => l.includes('个性签名写明了她是 AI')));
-        on.app.receive(event(99999, 1, '你好，想问个事', ' 小周 '));
-        await until(() => on.sent.length > 0);
-        assert.deepEqual(on.sent, ['99999:好']);
-        assert.ok(on.logs.includes('QQ 99999（小周）不在名单，按 unlisted 档回复'));
-        assert.equal(JSON.parse(readFileSync(join(cfg.dataDir, 'tiers.json'), 'utf8'))['99999'].tier, 'unlisted');
     });
 
-    test('名单外：打开后每人 10 分钟最多接收 30 条，超出的不进聊天记录也不调用模型', async () => {
-        const cfg = config({ unlistedFriends: true });
-        let generated = 0;
-        const on = setup(cfg, {}, { generate: () => { generated++; return '好'; }, extra: { setSignature: async () => {} } });
-        await on.app.connected(SELF);
-        await until(() => on.logs.some(l => l.includes('个性签名写明了她是 AI')));
-        for (let i = 1; i <= 31; i++) on.app.receive(event(99999, i, `第${i}条`, '小周'));
-        await until(() => on.logs.some(line => line.includes('名单外好友个人限流')));
-        assert.equal(new ChatHistory(cfg.dataDir).load(99999).filter(message => message.role === 'user').length, 30);
-        assert.ok(generated < 31, '限流消息没有触发生成');
-        assert.ok(on.logs.some(line => line === '忽略 QQ 99999 的私聊（名单外好友个人限流；约 10 分钟后恢复）'));
-    });
-
-    test('状态（控制台用，ADR 0010）：每人的档位、回复器状态、最后一条是谁发的，名单外的好友也在；不含聊天内容；作息开着时有「她现在在干什么」', async () => {
-        const cfg = config({ unlistedFriends: true, schedule: true, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }] });
-        const { app, logs } = setup(cfg, {}, { extra: { setSignature: async () => {} } });
+    test('状态（控制台用，ADR 0010）：每人的档位、回复器状态、最后一条是谁发的；不含聊天内容；作息开着时有「她现在在干什么」', async () => {
+        const cfg = config({ schedule: true, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }] });
+        const { app } = setup(cfg);
         let status = app.status();
-        assert.deepEqual(status.contacts.map(c => [c.qq, c.tier, c.unlisted, c.responder.phase, c.last]), [[10001, 'classmate', false, 'idle', undefined]]);
+        assert.deepEqual(status.contacts.map(c => [c.qq, c.tier, c.responder.phase, c.last]), [[10001, 'classmate', 'idle', undefined]]);
         assert.equal(typeof status.contacts[0]!.now, 'string');
         assert.equal(status.schedule, true);
         assert.equal(status.memory, undefined);
 
         await app.connected(SELF);
-        await until(() => logs.some(l => l.includes('个性签名写明了她是 AI')));
-        app.receive(event(99999, 1, '你好', '小周'));
-        await until(() => app.status().contacts.length === 2);
+        app.receive(event(10001, 1, '你好'));
+        await until(() => app.status().contacts[0]!.last !== undefined);
         status = app.status();
-        const stranger = status.contacts[1]!;
-        assert.deepEqual([stranger.qq, stranger.name, stranger.tier, stranger.unlisted], [99999, '小周', 'unlisted', true]);
         // 作息按现在的时间算，她可能已经回了，也可能在等
-        assert.ok(stranger.last && ['user', 'assistant'].includes(stranger.last.from));
+        assert.ok(['user', 'assistant'].includes(status.contacts[0]!.last!.from));
         assert.doesNotMatch(JSON.stringify(status), /你好/, '不含聊天内容');
     });
 
@@ -2129,23 +2093,6 @@ describe('他发的语音、图片（ADR 0052，假 NapCat）', () => {
         assert.deepEqual(chat(cfg, 10001).filter(message => message.startsWith('user:')), ['user:[语音：第一条]', 'user:[语音：第二条]']);
     });
 
-    test('看图只给名单里的人（用户 10-10）：名单外好友发来的照片不送看图模型，照旧只认图上的字', async () => {
-        const cfg = config({ unlistedFriends: true });
-        const fake = napcat({}, { 'https://x/cat.jpg': ['猫粮'], 'https://x/dog.jpg': ['狗粮'] });
-        const described: string[] = [];
-        const vision = { describe: async ({ url }: { url: string }) => { described.push(url); return '一只猫趴在窗台上'; } };
-        const { app, sent, logs } = setup(cfg, { 10001: [], 20002: [] }, { media: fake.media, vision, extra: { setSignature: async () => {} } });
-        await app.connected(SELF);
-        await until(() => logs.some(l => l.includes('个性签名写明了她是 AI')));
-        app.receive(mediaEvent(10001, 1, photoSegment('https://x/cat.jpg')));
-        app.receive(mediaEvent(20002, 2, photoSegment('https://x/dog.jpg')));
-        await until(() => sent.length >= 2);
-        assert.deepEqual(described, ['https://x/cat.jpg'], '只看了名单里的人发的');
-        assert.match(chat(cfg, 10001).find(m => m.startsWith('user:'))!, /一只猫趴在窗台上/);
-        assert.doesNotMatch(chat(cfg, 20002).find(m => m.startsWith('user:'))!, /猫|窗台/);
-        assert.deepEqual(fake.calls.ocr.sort(), ['https://x/cat.jpg', 'https://x/dog.jpg'], 'OCR 两边照旧');
-    });
-
     test('表情包不跑 OCR、照旧用名字；转不出来的语音照旧「[语音]」；配置关了什么都不调', async () => {
         const cfg = config();
         const fake = napcat({}, { 'https://x/a.gif': ['哈哈'] });
@@ -2488,7 +2435,7 @@ describe('戳一戳（ADR 0079，配置 pokes）', () => {
     });
 
     test('不理：不在名单的人、旧的通知（断线后补推）；5 分钟里第 4 下起不理，日志只记次数', async () => {
-        const cfg = config({ contacts: bf, pokes: true, unlistedFriends: true });
+        const cfg = config({ contacts: bf, pokes: true });
         const { app, sent, logs } = setup(cfg);
         app.receivePoke(pokeFrom(99999));
         app.receivePoke(pokeFrom(10001, 120));
@@ -2625,30 +2572,19 @@ describe('已读回执、表情回应（ADR 0083）：整条线接通', () => {
         assert.deepEqual(await run(false), []);
     });
 
-    test('她已经道了晚安、他只回「嗯嗯」：不回，但已读 + 点个表情回应（reactions 开着）；reactions 关着只已读', async () => {
-        const run = async (reactions: boolean) => {
-            const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
-            const cfg = config({ contacts: bf, schedule: true, readReceipts: true, reactions });
-            const now = clock.now();
-            const history = new ChatHistory(cfg.dataDir);
-            history.append(10001, { time: new Date(now - 300_000).toISOString(), role: 'user', content: '我要睡了', messageId: 11 });
-            history.append(10001, { time: new Date(now - 240_000).toISOString(), role: 'assistant', content: '晚安啦', messageId: 12 });
-            const marked: number[] = [];
-            const reacted: [number, number][] = [];
-            const { app, sent, logs } = setup(cfg, {}, { clock, markRead: async userId => { marked.push(userId); }, reactMessage: async (messageId, emojiId) => { reacted.push([messageId, emojiId]); } });
-            app.receive({ ...event(10001, 13, '嗯嗯'), time: Math.floor(now / 1000) });
-            await drive(clock, () => logs.some(l => l.includes('她已经收尾')));
-            assert.equal(sent.length, 0, '不回');
-            return { marked, reacted };
-        };
-        const on = await run(true);
-        assert.deepEqual(on.marked, [10001]);
-        assert.equal(on.reacted.length, 1);
-        assert.equal(on.reacted[0]![0], 13, '点的是他最后那一条');
-        assert.ok([66, 76].includes(on.reacted[0]![1]));
-        const off = await run(false);
-        assert.deepEqual(off.marked, [10001]);
-        assert.deepEqual(off.reacted, []);
+    test('她已经道了晚安、他只回「嗯嗯」：不回，只已读（表情回应 reactions 11-24 删了）', async () => {
+        const clock = new VirtualClock(new Date(2026, 9, 10, 15, 0));
+        const cfg = config({ contacts: bf, schedule: true, readReceipts: true });
+        const now = clock.now();
+        const history = new ChatHistory(cfg.dataDir);
+        history.append(10001, { time: new Date(now - 300_000).toISOString(), role: 'user', content: '我要睡了', messageId: 11 });
+        history.append(10001, { time: new Date(now - 240_000).toISOString(), role: 'assistant', content: '晚安啦', messageId: 12 });
+        const marked: number[] = [];
+        const { app, sent, logs } = setup(cfg, {}, { clock, markRead: async userId => { marked.push(userId); } });
+        app.receive({ ...event(10001, 13, '嗯嗯'), time: Math.floor(now / 1000) });
+        await drive(clock, () => logs.some(l => l.includes('她已经收尾')));
+        assert.equal(sent.length, 0, '不回');
+        assert.deepEqual(marked, [10001]);
     });
 });
 
@@ -2994,14 +2930,14 @@ describe('全开冒烟（整包上线用）', () => {
             const note = (name: string) => async (...args: unknown[]) => { calls.push(name + ':' + args.join('/')); };
             const bili = async (): Promise<{ ok: boolean; status: number; text: () => Promise<string> }> => ({ ok: true, status: 200, text: async () => JSON.stringify({ code: 0, data: { list: [] } }) });
             const cfg = config({
-                contacts: bf, schedule: true, herDays: true, pokes: true, pokeBack: true, pokeOut: true, recalls: true, readReceipts: true, reactions: true,
+                contacts: bf, schedule: true, herDays: true, pokes: true, pokeBack: true, pokeOut: true, recalls: true, readReceipts: true,
                 onlineStatus: true, profileLikes: true, signature: 'dryRun', qzone: 'dryRun', bilibili: 'dryRun', typingStatus: true, selfRecall: true,
-                rhythm: true, shortReplies: true, festivals: 'greet', npcAsks: true,
-                herFeelings: true, herNo: true, proactiveInvite: true, photos: true, photoShares: true, together: true, comeBack: true, relationship: true, jokes: true, interruptions: true, proactiveAsk: true, hisHours: true, weeklyReport: true, jealousy: true, proactiveRoom: true, menu: true, curious: true, smallNews: true, foodPhotos: true, memes: true, watching: true, texture: true, biliStickers: true, lagTail: true, everydayLife: true, pursuits: true, shape: true, shapeAgenda: true, shapeFiller: true, shapeFeel: true, shapeSplit: true, grievance: true,
+                rhythm: true, festivals: 'greet', npcAsks: true,
+                herFeelings: true, herNo: true, proactiveInvite: true, photos: true, together: true, comeBack: true, relationship: true, jokes: true, interruptions: true, proactiveAsk: true, weeklyReport: true, jealousy: true, proactiveRoom: true, menu: true, curious: true, smallNews: true, memes: true, watching: true, texture: true, biliStickers: true, lagTail: true, everydayLife: true, pursuits: true, shape: true, shapeAgenda: true, shapeFiller: true, shapeFeel: true, shapeSplit: true, grievance: true,
             });
             const { app, sent, logs } = setup(cfg, { 10001: [] }, {
                 clock, generate: () => '在呢，刚忙完', bilibiliFetch: bili,
-                setOnlineStatus: note('status'), markRead: note('read'), reactMessage: note('react'), setInputStatus: note('typing'),
+                setOnlineStatus: note('status'), markRead: note('read'), setInputStatus: note('typing'),
                 deleteMessage: note('delete'), pokeFriend: note('poke'),
                 extra: { sendLike: note('like'), setSignature: note('signature'), postQzone: async () => 'tid' },
             });

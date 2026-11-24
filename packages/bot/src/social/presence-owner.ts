@@ -84,7 +84,6 @@ export function presenceOwner(deps: PresenceOwnerDeps): PresenceOwner {
         if (config.qzone !== 'off' && !qzone) log('存在感：陌生人档和同学档的卡都读不了，不写说说');
         presence = createPresence({
             ...(dormancy ? { paused: () => dormancy.isDormant() } : {}),
-            ...(config.unlistedFriends ? { aiMark: true } : {}),
             flags: { onlineStatus: config.onlineStatus, profileLikes: config.profileLikes, signature: config.signature, qzone: qzone ? config.qzone : 'off', qzoneVisibility: config.qzoneVisibility, pokeOut: config.pokeOut, qzoneBrowse: config.qzoneBrowse, qzonePeek: config.qzonePeek, qzoneStrangers: config.qzoneStrangers },
             transport, schedule, extraFree,
             likeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),

@@ -18,7 +18,6 @@ import { readWeatherStore } from '../world/weather.ts';
 import { readAirQualityStore } from '../world/air-quality.ts';
 import { readDaylightStore } from '../world/daylight.ts';
 import { readCalendarStore } from '../world/calendar.ts';
-import { readTransportStore } from '../world/transport.ts';
 import { readWorldActions } from '../world/world.ts';
 import { readCommonMemoryState, readContactMemoryState } from '../memory/long-term.ts';
 import { readDiaryState } from '../life/diary.ts';
@@ -79,7 +78,7 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
             }
         }
         // 其余只确认是合法 JSON（它们各自的读取函数在对应模块里，坏了会隔离后重建）
-        for (const dir of ['memory', 'proactive', 'promises', 'weather', 'air-quality', 'daylight', 'calendar', 'transport']) {
+        for (const dir of ['memory', 'proactive', 'promises', 'weather', 'air-quality', 'daylight', 'calendar']) {
             const folder = join(copy, dir);
             if (!existsSync(folder)) continue;
             for (const name of readdirSync(folder).filter(file => file.endsWith('.json'))) {
@@ -91,7 +90,6 @@ export function checkStates(dataDir: string, now: Date = new Date()): StateCheck
                     if (dir === 'air-quality' && /^[a-z][a-z0-9_-]*\.json$/.test(name)) { readAirQualityStore(path, undefined, 'throw'); return '空气质量缓存 schema 通过'; }
                     if (dir === 'daylight' && /^[a-z][a-z0-9_-]*\.json$/.test(name)) { readDaylightStore(path, undefined, 'throw'); return '日照缓存 schema 通过'; }
                     if (dir === 'calendar' && name === 'calendar.json') { readCalendarStore(path, undefined, 'throw'); return '法定日历缓存 schema 通过'; }
-                    if (dir === 'transport' && name === 'transport.json') { readTransportStore(path, undefined, 'throw'); return '交通缓存 schema 通过'; }
                     if (dir === 'memory' && name === 'common.json') { readCommonMemoryState(path); return '公共记忆进度 schema 通过'; }
                     if (dir === 'memory' && /^[1-9]\d*-[a-z_]+\.json$/.test(name)) { readContactMemoryState(path); return '联系人记忆进度 schema 通过'; }
                     if (dir === 'memory' && name === 'diary.json') { readDiaryState(path); return '日记进度 schema 通过'; }

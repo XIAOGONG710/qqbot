@@ -20,7 +20,6 @@ import { realWeather, type DayWeather, type WeatherPlace } from './weather.ts';
 import { bodyAt, parseBody, unwell, type Body, type BodyNow } from '../life/body.ts';
 import type { NeedsSnapshot } from '../life/needs.ts';
 import { realCalendar, type PublicCalendarDay } from './calendar.ts';
-import { realTransport, type TransportFact } from './transport.ts';
 import { DEFAULT_NEWS_KINDS, type NewsKind } from '../proactive/proactive.ts';
 import { EVERYDAY_EVENT_DEFS, EVERYDAY_MAX_PER_DAY, quizEvents, type EventFeel } from '../life/everyday.ts';
 import { readLifeEvents, writeLifeEvents, type LifeEvent, type LifeEventDraft } from './life-events.ts';
@@ -196,8 +195,6 @@ export interface WorldNow {
     holiday?: { name: string; start: string; end: string; where?: string; home?: boolean };
     /** 国家法定日历：休假或调休上班；不改学校课表，只作为现实背景。 */
     publicHoliday?: PublicCalendarDay;
-    /** 现实交通 / 公共服务状态；只写结构化状态，不把供应商正文带进提示词。 */
-    transport?: TransportFact;
     /** 由同一份 needs 锚点投影出的身体需要；不另存当前分数。 */
     needs?: NeedsSnapshot;
     cat?: {
@@ -290,7 +287,7 @@ export const FOOD_PHOTO_CHANCE = 0.18;
 const FOOD_PHOTO_DELAY_MIN: [number, number] = [6, 18];
 
 /**
- * 吃饭时拍了张照片想发给他（ADR 0128，配置 foodPhotos，要 menu 开着）：每顿按“日期 + 哪一顿”取哈希，约 FOOD_PHOTO_CHANCE 的顿数有；
+ * 吃饭时拍了张照片（ADR 0128；原来主动发给他的 foodPhotos 11-24 删了，现在只给 AI 生活照草稿和他的反应用）：每顿按“日期 + 哪一顿”取哈希，约 FOOD_PHOTO_CHANCE 的顿数有；
  * 了结的时刻 = 饭点开始之后几分钟。菜名跟着走，发的时候只拿这道菜的照片
  */
 function newsFoodPhoto(now: WorldNow): WorldNews[] {
@@ -920,10 +917,6 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     if (airQuality) result.airQuality = airQuality;
     const daylight = place ? realDaylight()?.day(place, date, now) : undefined;
     if (daylight) result.daylight = daylight;
-    let transport: TransportFact | undefined;
-    try { transport = place ? realTransport()?.day(place, now) : undefined; }
-    catch { /* 供应商故障不能阻塞世界快照；本轮不写交通事实。 */ }
-    if (transport) result.transport = transport;
     const needs = worldNeeds()?.at(now);
     if (needs) result.needs = needs;
     if (world.cat && record.cat) {
@@ -1019,7 +1012,6 @@ export function describeWorld(now: WorldNow, at: Date, giver?: (qq: number) => s
     if (now.publicHoliday) parts.push(now.publicHoliday.kind === 'holiday'
         ? `法定日历：${now.publicHoliday.name}（休）`
         : `法定日历：${now.publicHoliday.name}（调休上班）`);
-    if (now.transport) parts.push(`交通：${transportStatusText(now.transport.status)}`);
     if (now.cat) {
         const { today } = now.cat;
         // 昨天的也写上（第一批：今天喂过时不写昨天，他问「昨天喂了吗」她编了个「昨天没去」）
@@ -1321,7 +1313,6 @@ export function summarizeWorld(now: WorldNow): string {
         now.daylight ? `日照 ${now.daylight.phase}` : undefined,
         now.holiday ? `放假 ${now.holiday.name}` : undefined,
         now.publicHoliday ? `法定日历 ${now.publicHoliday.kind === 'holiday' ? '休' : '班'}（${now.publicHoliday.name}）` : undefined,
-        now.transport ? `交通 ${transportStatusText(now.transport.status)}` : undefined,
         now.needs ? `需要 精力 ${now.needs.energy}、饥饿 ${now.needs.hunger}、压力 ${now.needs.stress}` : undefined,
         now.atSchool ? undefined : '不在学校',
         now.cat ? `${now.cat.name} 猫粮够 ${now.cat.foodDays} 天` : undefined,
@@ -1330,15 +1321,6 @@ export function summarizeWorld(now: WorldNow): string {
         now.cameraFund?.camera?.state === 'bought' ? `相机已买（${now.cameraFund.camera.what}）` : now.cameraFund ? `相机基金 ${now.cameraFund.saved}/${now.cameraFund.goal}` : undefined,
     ].filter(Boolean);
     return `今天（${now.day.slice(5)}）：${bits.join('；')}`;
-}
-
-function transportStatusText(status: TransportFact['status']): string {
-    switch (status) {
-        case 'normal': return '正常';
-        case 'delayed': return '延误';
-        case 'closed': return '关闭';
-        default: return '未知';
-    }
 }
 
 // ---------- 说出口的行为回写（W3） ----------

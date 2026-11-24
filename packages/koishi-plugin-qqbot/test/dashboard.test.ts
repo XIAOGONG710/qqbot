@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
-import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, QZONE_PEEK, SHORT_REPLIES, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
+import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, QZONE_PEEK, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
 import { aiPhotoRuntimeRows, attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, lifeTrend, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText, timeZoneLine } from '../client/dashboard.js';
 
@@ -39,7 +39,7 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
     });
 
     test('试点开关的面板标签和说明取自模块，不改变开关状态', () => {
-        for (const def of [SILENCE_NOTICE, SHORT_REPLIES, TAIL_CAP]) {
+        for (const def of [SILENCE_NOTICE, TAIL_CAP]) {
             for (const on of [false, true]) {
                 const item = featureStatuses({ [def.key]: on }).find(feature => feature.key === def.key)!;
                 assert.equal(item.label, def.label);
@@ -397,31 +397,22 @@ describe('客户端的纯函数', () => {
             weather: { provider: 'open-meteo', fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { hours: 24 }, qingdao: { hours: 24 } } },
             airQuality: { provider: 'open-meteo-air-quality', fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { hours: 24 } } },
             daylight: { provider: 'open-meteo-daylight', fetchedAt: '2026-11-03T00:00:00.000Z', places: { jinan: { days: 16 } } },
-            transport: { provider: 'generic-transport', fetchedAt: '2026-11-03T00:00:00.000Z', source: 'secret-provider', locations: {
-                jinan: { status: 'normal', observedAt: '2026-11-03T00:00:00.000Z', detail: '内部线路详情' },
-                qingdao: { status: 'delayed', observedAt: '2026-11-03T00:00:00.000Z' },
-            } },
             calendar: { provider: 'holiday.ailcc.com', fetchedAt: '2026-11-03T00:00:00.000Z', years: [2026, 2027] },
         });
         assert.equal(healthy.text, '正常');
         assert.equal(healthy.healthy, true);
         assert.match(healthy.detail, /天气正常（2 个地方；48 小时；来源 Open-Meteo；更新 \d+月\d+日 \d{2}:\d{2}）/);
-        assert.match(healthy.detail, /交通正常（2 个地方；来源 自定义交通数据；更新 \d+月\d+日 \d{2}:\d{2}）/);
         assert.match(healthy.detail, /法定日历正常（覆盖 2026、2027 年；来源 法定日历服务；更新 \d+月\d+日 \d{2}:\d{2}）/);
-        assert.doesNotMatch(healthy.detail, /secret-provider|内部线路详情|delayed|2026-11-03|T00/);
+        assert.doesNotMatch(healthy.detail, /2026-11-03|T00/);
         const warning = realWorldStatus({
             weather: { places: { jinan: { hours: 0, error: 'secret upstream response' } } },
-            transport: { source: 'token=provider-secret', locations: {
-                jinan: { error: 'Authorization: Bearer secret-token', detail: '供应商原文' },
-                qingdao: { status: 'normal', observedAt: '2026-11-02T00:00:00.000Z', stale: true },
-            } },
+            daylight: { places: { jinan: { days: 0, error: 'Authorization: Bearer secret-token' } } },
             calendar: { years: [2026, 2027], staleYears: [2027], error: 'token=secret' },
         });
         assert.equal(warning.text, '3 项需检查');
         assert.equal(warning.type, 'warning');
-        assert.match(warning.detail, /天气1 个地点失败.*交通1 个地点失败.*法定日历获取失败/);
-        assert.doesNotMatch(warning.detail, /secret|token|Authorization|供应商原文/);
-        assert.match(realWorldStatus({ transport: { locations: {} } }).detail, /交通等待取数/);
+        assert.match(warning.detail, /天气1 个地点失败.*日照1 个地点失败.*法定日历获取失败/);
+        assert.doesNotMatch(warning.detail, /secret|token|Authorization/);
         const unknown = realWorldStatus({
             weather: { provider: 'token=hidden-provider', fetchedAt: 'bad-time', places: { private_site: { hours: 1 } } },
         });

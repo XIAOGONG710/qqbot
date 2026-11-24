@@ -232,8 +232,6 @@ export interface Scenario {
     grievance: boolean;
     /** 默认 false：回复节奏（ADR 0075，配置 rhythm）；模拟器里的虚拟时钟照样走 */
     rhythm: boolean;
-    /** 默认 false：更短的回复（候选 5，配置 shortReplies） */
-    shortReplies: boolean;
     /** 默认 false：形状控制（ADR 0091，配置 shape）；run.ts 的 --shape 对所有场景打开 */
     shape: boolean;
     /** 默认 false：带自己的小事（ADR 0094，配置 shapeAgenda，要 shape 开着）；run.ts 的 --agenda 对所有场景打开 */
@@ -296,8 +294,6 @@ export interface Scenario {
     stickers?: { id: string; description: string; tags: string[] }[];
     /** 预置的小梗（ADR 0114，配置 jokes）：写了才打开；跑场景时不去抽，直接用这几个 */
     jokes?: { phrase: string; origin: string }[];
-    /** 默认 false：按他平时在线的钟头排（ADR 0117，配置 hisHours） */
-    hisHours: boolean;
     /** 默认 false：问问他的意见（ADR 0116，配置 proactiveAsk） */
     proactiveAsk: boolean;
     /** 默认 false：被第三方打断（ADR 0115，配置 interruptions） */
@@ -318,8 +314,6 @@ export interface Scenario {
     watched?: { title: string; owner: string; tname: string; excerpt: string; hot?: string[] }[];
     /** 预置的网络热梗（ADR 0129，配置 memes）：写了才打开；跑场景时不去学，直接用这几个 */
     memes?: { term: string; meaning: string }[];
-    /** 默认 false：吃的照片（ADR 0128，配置 foodPhotos；要 photos 和 menu）；photos 里写 kind food + dish */
-    foodPhotos: boolean;
     /** 默认 false：她会主动讲今天的小事（ADR 0127，配置 smallNews；要 everydayLife）；proactive 场景用 */
     smallNews: boolean;
     /** 默认 false：会追问（ADR 0126，配置 curious） */
@@ -337,8 +331,6 @@ export interface Scenario {
     comeBack: boolean;
     /** 默认 false：陪玩状态（ADR 0111，配置 together） */
     together: boolean;
-    /** 默认 false：她主动发照片（ADR 0110，配置 photoShares，要 photos 和 proactive）；喂完猫见到它的日子里约 35% 的天 */
-    photoShares: boolean;
     /** 假的照片货架（ADR 0109）：真的 shelf 代码，文件是几个字节的假图（模拟器不发图，气泡里是 <photo:编号>）。只有写了才给回复器，并打开 photos */
     photos?: { kind: 'cat' | 'view' | 'work' | 'food'; caption: string; dish?: string }[];
     /** 允许发图片表情的轮次里抽中发的概率（0–1），不写按线上的 STICKER_TURN_CHANCE；写 1 = 允许的轮次都发（测选哪张用） */
@@ -436,14 +428,12 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         lifeInPrompt: s.lifeInPrompt === true,
         grievance: s.grievance === true,
         rhythm: s.rhythm === true,
-        shortReplies: s.shortReplies === true,
         shape: s.shape === true,
         shapeAgenda: s.shapeAgenda === true,
         shapeFiller: s.shapeFiller === true,
         shapeFeel: s.shapeFeel === true,
         proactiveReach: s.proactiveReach === true,
         proactiveInvite: s.proactiveInvite === true,
-        photoShares: s.photoShares === true,
         together: s.together === true,
         comeBack: s.comeBack === true,
         relationship: s.relationship === true,
@@ -462,11 +452,9 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         factCheck: s.factCheck === undefined ? 'off' : FACT_CHECK_MODES.includes(s.factCheck as FactCheckMode) ? s.factCheck as FactCheckMode : fail(`factCheck 应为 ${FACT_CHECK_MODES.join(' / ')} 之一`),
         ...(typeof s.quoteShare === 'number' && s.quoteShare >= 0 && s.quoteShare <= 1 ? { quoteShare: s.quoteShare } : {}),
         smallNews: s.smallNews === true,
-        foodPhotos: s.foodPhotos === true,
         ...(typeof s.menuFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.menuFrom) ? { menuFrom: s.menuFrom } : {}),
         interruptions: s.interruptions === true,
         proactiveAsk: s.proactiveAsk === true,
-        hisHours: s.hisHours === true,
         ...(Array.isArray(s.jokes) && s.jokes.length ? { jokes: (s.jokes as { phrase?: unknown; origin?: unknown }[]).filter(j => typeof j.phrase === 'string' && typeof j.origin === 'string').map(j => ({ phrase: j.phrase as string, origin: j.origin as string })) } : {}),
         ...(Array.isArray(s.watched) && s.watched.length ? { watched: (s.watched as Record<string, unknown>[]).filter(w => typeof w.title === 'string' && typeof w.excerpt === 'string').map(w => ({ title: w.title as string, owner: typeof w.owner === 'string' ? w.owner : 'UP', tname: typeof w.tname === 'string' ? w.tname : '日常', excerpt: w.excerpt as string, ...(Array.isArray(w.hot) ? { hot: (w.hot as unknown[]).filter((h): h is string => typeof h === 'string') } : {}) })) } : {}),
         ...(Array.isArray(s.memes) && s.memes.length ? { memes: (s.memes as { term?: unknown; meaning?: unknown }[]).filter(m => typeof m.term === 'string' && typeof m.meaning === 'string').map(m => ({ term: m.term as string, meaning: m.meaning as string })) } : {}),

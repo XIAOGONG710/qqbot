@@ -55,12 +55,6 @@ export function observeWorldNow(now: WorldNow, observedAt: Date): WorldEvent[] {
         events.push(event(`society-holiday:${now.day}:${keyPart(holiday.name)}`, 'society', 'society.public_holiday.observed', observedAt,
             { day: now.day, name: holiday.name, kind: holiday.kind }, ['self', 'space:current']));
     }
-    if (now.transport) {
-        const transport = now.transport;
-        // 不记录 location/detail：地点可能是个人行程，detail 也可能来自第三方正文。
-        events.push(event(`world-transport:${hour}:${transport.status}`, 'world', 'world.transport.status.observed', observedAt,
-            { status: transport.status, observed: transport.observedAt }, ['self', 'space:current']));
-    }
     events.push(event(`sandbox-presence:${now.day}:${now.atSchool ? 'school' : 'home'}`, 'sandbox', 'sandbox.presence.context', observedAt,
         { day: now.day, place: now.atSchool ? 'school' : 'home' }, ['self', 'space:current']));
     return events;

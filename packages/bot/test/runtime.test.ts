@@ -8,7 +8,6 @@ import { MEDIA_TIMEOUTS } from '../src/vision/media.ts';
 import { currentTierHistory, TierRecord } from '../src/memory/tier-record.ts';
 import { ChatHistory, type StoredMessage } from '../src/memory/history.ts';
 import { isPrivateFriendMessage, segmentsToText } from '../src/platform/onebot.ts';
-import { unlistedName } from '../src/platform/app.ts';
 import type { PromptResult } from '../src/language/prompt.ts';
 import { cleanUpReply, MAX_BUBBLES, splitReply } from '../src/language/reply.ts';
 import { createResponder, DEFAULT_SETTLE, HESITATE_CHANCE, HESITATE_PAUSE_MS, PART_GAP_MS, RETRY_AFTER_MS, TYPING_REFRESH_MS, type InitiateRequest, type ReplyTiming, type ResponderDeps } from '../src/social/responder.ts';
@@ -81,12 +80,6 @@ describe('OneBot 消息', () => {
         ]), '你看[动画表情][图片][表情][语音][戳一戳]'); // 11-02：认不出的段不再写英文类型名
         assert.equal(segmentsToText('纯文本'), '纯文本');
     });
-    test('名单外的人用 QQ 昵称称呼，没有昵称叫「对方」', () => {
-        assert.equal(unlistedName(' 小周 '), '小周');
-        assert.equal(unlistedName(''), '对方');
-        assert.equal(unlistedName(undefined), '对方');
-    });
-
     test('只认直接私聊（sub_type friend），群临时会话和群消息不算', () => {
         const base = {
             post_type: 'message', message_type: 'private', sub_type: 'friend', self_id: 2, user_id: 1,
@@ -1073,8 +1066,6 @@ describe('配置', () => {
         assert.throws(() => withContacts([{ qq: 1, name: 'a' }]), /contacts\[0\]\.tier/);
         assert.throws(() => withContacts([{ qq: 1, name: 'a', tier: 'unlisted' }]), /contacts\[0\]\.tier/);
         assert.throws(() => withConfig({ ...valid, characterCard: 'characters/linmengyao/st/linmengyao.json' }, key), /\{tier\}/);
-        assert.equal(withConfig(valid, key).unlistedFriends, false);
-        assert.equal(withConfig({ ...valid, unlistedFriends: false }, key).unlistedFriends, false);
         assert.equal(withConfig(valid, key).schedule, true);
         assert.equal(withConfig({ ...valid, schedule: false }, key).schedule, false);
     });
@@ -1107,26 +1098,15 @@ describe('配置', () => {
         assert.throws(() => withConfig(rest, { QQBOT_LLM_API_KEY: 'k' }), /配置缺少 onebot/);
     });
 
-    test('现实交通默认关闭；开启时只接受不含凭据的公网 HTTPS 端点', () => {
+    test('删掉的开关（减法单子 11-24）还写在旧配置里：照样能读，不报错、不进配置', () => {
         const { onebot: _, ...rest } = valid;
-        const env = { QQBOT_LLM_API_KEY: 'k' };
-        assert.deepEqual(parseAppConfig(rest, 'C:/repo', env).realTransport, { enabled: false });
-        assert.deepEqual(parseAppConfig({ ...rest, realTransport: {
-            enabled: true, endpoint: 'https://transport.example.test/status?city=all', source: '公共交通源',
-        } }, 'C:/repo', env).realTransport, {
-            enabled: true, endpoint: 'https://transport.example.test/status?city=all', source: '公共交通源',
-        });
-        for (const endpoint of [
-            'http://transport.example.test/status',
-            'https://user:pass@transport.example.test/status',
-            'https://transport.example.test/status#secret',
-            'https://transport.example.test/status?api_key=secret',
-            'https://localhost/status',
-            'https://127.0.0.1/status',
-            'https://192.168.1.2/status',
-            'https://[::1]/status',
-        ]) assert.throws(() => parseAppConfig({ ...rest, realTransport: { enabled: true, endpoint, source: '测试' } }, 'C:/repo', env), /realTransport\.endpoint/);
-        assert.throws(() => parseAppConfig({ ...rest, realTransport: { enabled: true, endpoint: 'https://transport.example.test', source: 'bad/source' } }, 'C:/repo', env), /realTransport\.source/);
+        const leftovers = {
+            shortReplies: true, hisHours: true, photoShares: true, reactions: true, foodPhotos: true, unlistedFriends: true, ownerPeek: true,
+            realTransport: { enabled: true, endpoint: 'http://127.0.0.1/bad', source: 'bad/source' },
+        };
+        const config = parseAppConfig({ ...rest, ...leftovers }, 'C:/repo', { QQBOT_LLM_API_KEY: 'k' });
+        for (const key of Object.keys(leftovers)) assert.equal(key in config, false, key);
+        assert.deepEqual(config, parseAppConfig(rest, 'C:/repo', { QQBOT_LLM_API_KEY: 'k' }));
     });
 
     test('B 站账号层（ADR 0089）：默认全关、昵称和 uid 空；写了就读进来；类型不对报错', () => {

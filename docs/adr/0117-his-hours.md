@@ -1,6 +1,6 @@
 # ADR 0117：按他平时在线的钟头排（配置 `hisHours`，默认关）
 
-- 状态：**已实现，未上线**（2026-10-22；配置 `hisHours`，要主动消息开着；默认关）。上线 = `koishi.yml` 里加 `hisHours: true` + 重启；回滚 = 改回 false + 重启（不存状态）
+- 状态：**已删**（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtraction-round.md)：从没上过线，开关 `hisHours` 和代码一起删了；要用时从 git 拿回）。原来的状态：**已实现，未上线**（2026-10-22；配置 `hisHours`，要主动消息开着；默认关）。上线 = `koishi.yml` 里加 `hisHours: true` + 重启；回滚 = 改回 false + 重启（不存状态）
 - 日期：2026-10-22
 - 关联：[ADR 0011](0011-proactive-messages.md)、[ADR 0096](0096-split-and-share.md)、[ADR 0107](0107-invite-to-play.md)、[ADR 0116](0116-ask-opinion.md)
 - 用户提出：2026-10-22「把 A 全部做完」（A10）

@@ -229,7 +229,6 @@ export const StatusTab = defineComponent({
                 ['她的时区', status ? (timeZoneLine(status.timeZone, data.updatedAt) ? [h('span', null, timeZoneLine(status.timeZone, data.updatedAt))] : [tag('重启 Koishi 后才有', 'info')]) : [tag('—', 'info')]],
                 ['按心情回复', status ? [status.moody && status.schedule ? tag('已启用', 'success') : tag('未启用', 'info')] : [tag('—', 'info')]],
                 ['说话检查', status ? [status.speechCheck === false ? tag('未启用', 'info') : tag('已启用', 'success')] : [tag('—', 'info')]],
-                ['陌生好友', status ? [status.unlistedFriends ? tag('也回复', 'warning') : tag('不回复', 'info')] : [tag('—', 'info')]],
                 ['主动联系', status ? [tag(...(PROACTIVE_MODES[status.proactive ?? 'off'] ?? ['未启用', 'info']))] : [tag('—', 'info')]],
             ] : [
                 ['插件', data.running ? [tag('运行正常', 'success')] : [tag('未运行', 'danger')]],

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
-import { parseCommons, parseCommonsFood } from '../src/vision/photo-sources.ts';
+import { parseCommons } from '../src/vision/photo-sources.ts';
 import { readMedia, OCR_MAX_CHARS, VOICE_MAX_CHARS } from '../src/vision/media.ts';
 import { segmentsToText } from '../src/platform/onebot.ts';
 
@@ -35,7 +35,6 @@ test('HTML标签、嵌套左尖括号和空标签保留既有语义', () => {
         ['<><tag>甲</tag><>', '<>甲<>'], ['<<>', ''], ['未闭合<<<', '未闭合<<<'],
     ]) {
         assert.equal(parseCommons('cat', body(input!))[0]!.artist, expected);
-        assert.equal(parseCommonsFood('合成菜', body(input!))[0]!.artist, expected);
     }
 });
 

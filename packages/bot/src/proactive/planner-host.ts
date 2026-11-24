@@ -22,14 +22,13 @@ import { replySkip, type ContactPipelineOptions, type TierCard } from '../platfo
 import type { Log } from '../platform/log.ts';
 import type { WebLookup } from '../platform/web.ts';
 import type { Responder } from '../social/responder.ts';
-import { photoAllowance, type PhotoShelf } from '../vision/photos.ts';
 import type { readAgencyShadow } from '../world/agency-shadow.ts';
 import type { settlingWorld } from '../world/action-queue.ts';
 import type { weatherFetcher } from '../world/weather.ts';
 import type { worldState } from '../world/world.ts';
 import { readAdultSite } from './adult-sites.ts';
 import { proactiveAgency } from './agency.ts';
-import { newsKindsOf, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withReach, withRoom, withSmallNews } from './proactive.ts';
+import { newsKindsOf, withAsk, withBack, withCurious, withInner, withInvite, withReach, withRoom, withSmallNews } from './proactive.ts';
 import { createProactivePlanner, newsFrom, reschedulesFrom, type Planner } from './proactive-planner.ts';
 
 // 主动消息的计划器（ADR 0011 起）：第一次补回完才建，名单里有作息、卡上开了主动的人各一个；
@@ -47,7 +46,6 @@ export interface PlannerHostDeps {
     deviceOwner: Contact | undefined;
     responders: ReadonlyMap<number, Responder>;
     history: ReturnType<typeof currentTierHistory>;
-    photos: PhotoShelf | undefined;
     worldCard: TierCard['character'] | undefined;
     ledgerWorld: ReturnType<typeof worldState> | undefined;
     sharedWorld: ReturnType<typeof settlingWorld> | undefined;
@@ -79,24 +77,21 @@ export interface PlannerHost {
 }
 
 export function plannerHost(deps: PlannerHostDeps): PlannerHost {
-    const { config, log, exec, clockNow, cardFor, proactiveContacts, deviceOwner, responders, history, photos, worldCard, ledgerWorld, sharedWorld, needsAnchor, agencyShadow, weather, web, herGuessesNow, promises, dormancy, crisisState, bedtimes, watchedEntries, pipeline, desktop } = deps;
+    const { config, log, exec, clockNow, cardFor, proactiveContacts, deviceOwner, responders, history, worldCard, ledgerWorld, sharedWorld, needsAnchor, agencyShadow, weather, web, herGuessesNow, promises, dormancy, crisisState, bedtimes, watchedEntries, pipeline, desktop } = deps;
     const planners = new Map<number, Planner>();
     function startPlanners(): void {
         if (planners.size || config.proactive === 'off') return;
         for (const contact of proactiveContacts) {
             const { character } = cardFor(contact.tier);
-            const plannerSettings = [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite, config.proactiveAsk && withAsk, config.photos && config.photoShares && photos && contact.tier === 'boyfriend' && withCatPhoto, config.comeBack && withBack, config.proactiveRoom && withRoom, contact.tier === 'boyfriend' && config.curious && withCurious, config.menu && config.foodPhotos && photos && contact.tier === 'boyfriend' && withFoodShares, contact.tier === 'boyfriend' && config.everydayLife && config.smallNews && withSmallNews]
+            const plannerSettings = [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite, config.proactiveAsk && withAsk, config.comeBack && withBack, config.proactiveRoom && withRoom, contact.tier === 'boyfriend' && config.curious && withCurious, contact.tier === 'boyfriend' && config.everydayLife && config.smallNews && withSmallNews]
                 .reduce((settings, overlay) => (overlay ? overlay(settings) : settings), character.proactive!);
             planners.set(contact.qq, createProactivePlanner({
                 contact,
                 schedule: character.schedule!,
                 settings: plannerSettings,
-                // 喂完猫拍的照片（ADR 0110）：货架里有猫的照片、这会儿也允许发才发
-                ...(config.hisHours && contact.tier === 'boyfriend' ? { hisHours: true } : {}),
                 ...(config.together && contact.tier === 'boyfriend' ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
                 // 他正在电脑前 / 刚在电脑上聊过（ADR 0347 第 3 层 desktopDay）：只给他（deviceOwner，男朋友档）
                 ...(desktop && contact.tier === 'boyfriend' && contact.qq === deviceOwner?.qq ? desktop : {}),
-                ...(photos && (config.photoShares || config.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
                 ...(config.innerLife ? { inner: true } : {}),
                 ...(config.innerLife && contact.qq === deviceOwner?.qq && config.adultSiteUrls?.length && needsAnchor ? {
                     adultSiteVisit: {

@@ -33,14 +33,6 @@ export const PHOTO_DISCOVERY_INTERVAL_MS = 6 * 60 * 60_000;
 /** 被限流 / 断网打断后多久再试、最多试几次（Wikimedia 的 Retry-After 有的是 10 分钟） */
 export const PHOTO_RETRY_MS = 15 * 60_000;
 export const PHOTO_RETRY_MAX = 6;
-/** 每道菜攒几张（吃的照片，ADR 0128）：同一道菜轮着发，不用多 */
-export const FOOD_PER_DISH = 2;
-/** 多久给今天明天的菜找一次照片 */
-export const FOOD_DISCOVERY_INTERVAL_MS = 2 * 60 * 60_000;
-/** 找一道菜的照片，一轮最多看几张 */
-export const FOOD_TRIES_PER_DISH = 4;
-/** 一道菜搜不到新的以后多久再搜（毫秒；重启后重新计） */
-export const FOOD_MISS_RETRY_MS = 6 * 60 * 60_000;
 /** 搜索结果翻页的起点：一页都没有新的就翻下一页 */
 const PAGE_OFFSETS = [0, 30, 60] as const;
 /** 两次下载之间歇一下：Wikimedia 对快速连续的请求回 429 */
@@ -110,13 +102,6 @@ export interface PhotoSource {
     judge(image: { bytes: Uint8Array; type: string }, kind: PhotoKind): Promise<PhotoJudgement>;
 }
 
-/** 吃的照片的网络来源（ADR 0128）：按菜名搜，不按种类 */
-export interface FoodSource {
-    search(dish: string, offset?: number): Promise<PhotoCandidate[]>;
-    download(url: string): Promise<{ bytes: Uint8Array; type: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' }>;
-    judge(image: { bytes: Uint8Array; type: string }, dish: string): Promise<PhotoJudgement>;
-}
-
 export interface PhotoEntry {
     id: string;
     /** 货架目录里的文件名 */
@@ -162,8 +147,6 @@ export interface PhotoShelf {
     status(): { count: number; byKind: Record<PhotoKind, number> };
     /** 从网络来源找新的（没配来源就什么都不做）；同一时刻只跑一个。返回 retry = 这一轮被限流 / 断网打断了，调用方过一会儿再来 */
     discover(): Promise<'done' | 'retry'>;
-    /** 给这几道菜各找照片（ADR 0128，没配 foodSource 就什么都不做）；已经有够的、刚搜过没有的跳过。返回 retry 同 discover */
-    discoverFood(dishes: readonly string[]): Promise<'done' | 'retry'>;
 }
 
 export interface PhotoShelfOptions {
@@ -174,8 +157,6 @@ export interface PhotoShelfOptions {
     signal?: AbortSignal;
     /** 网络来源（photo-sources.ts + 下载 + 看图）；不给就只有作者手动加的 */
     source?: PhotoSource;
-    /** 吃的照片的来源（ADR 0128，photo-sources.ts 的 webFoodSource）；不给就没有吃的照片 */
-    foodSource?: FoodSource;
     /** 两次下载之间歇多久（毫秒，默认 PHOTO_DOWNLOAD_GAP_MS；Wikimedia 限流，测试里给 0） */
     pauseMs?: number;
 }
@@ -275,8 +256,6 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
     const receipts = new Map<string, string>();
 
     let discovering = false;
-    let discoveringFood = false;
-    const foodMissAt = new Map<string, number>();
     const extFor = (type: string) => (type === 'image/png' ? '.png' : type === 'image/webp' ? '.webp' : type === 'image/gif' ? '.gif' : '.jpg');
     const withSeen = (fresh: PhotoIndex, title: string): PhotoIndex => ({ ...fresh, seen: [...fresh.seen.filter(t => t !== title), title].slice(-SEEN_KEPT) });
     const markSeen = (title: string) => mutate(fresh => ({ next: withSeen(fresh, title), value: undefined }));
@@ -389,87 +368,6 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                 return 'retry';
             } finally {
                 discovering = false;
-            }
-        },
-        async discoverFood(dishes) {
-            const source = options.foodSource;
-            if (!source || discoveringFood || stopped()) return 'done';
-            discoveringFood = true;
-            let outcome: 'done' | 'retry' = 'done';
-            let downloaded = 0;
-            try {
-                for (const dish of [...new Set(dishes)]) {
-                    if (stopped()) return 'done';
-                    refresh();
-                    if (present('food', dish).length >= FOOD_PER_DISH) continue;
-                    const missedAt = foodMissAt.get(dish);
-                    if (missedAt !== undefined && now().getTime() - missedAt < FOOD_MISS_RETRY_MS) continue;
-                    const seenKey = (title: string) => `${dish}|${title}`;
-                    let fresh: PhotoCandidate[] = [];
-                    for (const offset of PAGE_OFFSETS) {
-                        if (stopped()) return 'done';
-                        let found: PhotoCandidate[];
-                        try { found = await source.search(dish, offset); } catch (error) {
-                            if (stopped()) return 'done';
-                            const reason = error instanceof Error ? error.message : String(error);
-                            options.log(`照片货架：找「${dish}」的照片失败（${reason}），下次再试`);
-                            if (TRANSIENT.test(reason)) outcome = 'retry';
-                            break;
-                        }
-                        if (stopped()) return 'done';
-                        refresh();
-                        fresh = found.filter(c => eligible(index, c, seenKey(c.title)));
-                        if (fresh.length) break;
-                        if (!found.length) break;
-                    }
-                    if (!fresh.length) { if (outcome !== 'retry') foodMissAt.set(dish, now().getTime()); continue; }
-                    let tried = 0;
-                    for (const candidate of fresh) {
-                        if (stopped()) return 'done';
-                        if (tried >= FOOD_TRIES_PER_DISH || present('food', dish).length >= FOOD_PER_DISH) break;
-                        if (downloaded > 0) await new Promise(resolve => setTimeout(resolve, options.pauseMs ?? PHOTO_DOWNLOAD_GAP_MS));
-                        if (stopped()) return 'done';
-                        tried++;
-                        downloaded++;
-                        try {
-                            const image = await source.download(candidate.imageUrl);
-                            if (stopped()) return 'done';
-                            if (image.bytes.length < MIN_BYTES / 2) { markSeen(seenKey(candidate.title)); options.log(`照片货架：${candidate.title} 文件太小，不收`); continue; }
-                            if (image.bytes.length > PHOTO_MAX_BYTES) { markSeen(seenKey(candidate.title)); options.log(`照片货架：${candidate.title} 太大，不收`); continue; }
-                            const judged = await source.judge(image, dish);
-                            if (stopped()) return 'done';
-                            if (judged.keep !== true) { markSeen(seenKey(candidate.title)); options.log(`照片货架：不收 ${candidate.title}（${dish}：${judged.reason ?? '没通过'}）`); continue; }
-                            if (typeof judged.caption !== 'string' || !judged.caption.trim()) throw new Error('照片说明无效');
-                            const id = createHash('sha256').update(image.bytes).digest('hex').slice(0, 12);
-                            const file = `${id}${extFor(image.type)}`;
-                            const entry: PhotoEntry = {
-                                id, file, kind: 'food', dish, caption: judged.caption, addedAt: now().toISOString(), used: 0,
-                                origin: { title: candidate.title, page: candidate.pageUrl, license: candidate.license, artist: candidate.artist, series: dish },
-                            };
-                            if (commitCandidate(entry, candidate, image.bytes, seenKey(candidate.title), FOOD_PER_DISH) === 'added') {
-                                options.log(`照片货架：收了一张「${dish}」（${id}；${candidate.width}×${candidate.height}，${candidate.license}；${candidate.title}）`);
-                            }
-                        } catch (error) {
-                            if (stopped()) return 'done';
-                            if (error instanceof PhotoStateWriteError) throw error;
-                            const reason = error instanceof Error ? error.message : String(error);
-                            if (TRANSIENT.test(reason)) {
-                                options.log(`照片货架：处理 ${candidate.title} 时遇到暂时的错误（${reason}），这一轮先停，下次再来`);
-                                return 'retry';
-                            }
-                            markSeen(seenKey(candidate.title));
-                            options.log(`照片货架：处理 ${candidate.title} 失败（${reason}），以后不再试这张`);
-                        }
-                    }
-                }
-                return outcome;
-            } catch (error) {
-                if (stopped()) return 'done';
-                if (!retryableLock(error)) throw error;
-                options.log('照片货架：索引协调锁繁忙，吃的照片稍后重试');
-                return 'retry';
-            } finally {
-                discoveringFood = false;
             }
         },
         add(source, kind, caption, dish) {

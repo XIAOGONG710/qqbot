@@ -1,6 +1,7 @@
 # ADR 0024：表达层——长短不一、打错字再改口
 
 - 状态：实现，真模型验证通过，待上线（2026-10-07）
+- 2026-11-24：10-19 加的「更短的回复」（开关 `shortReplies`，候选 5）从没上过线，用户拍板删了（[减法单子 二.2](../plans/2026-11-24-subtraction-round.md)）；长短照上线前的老样子（35%、老措辞）。
 - 日期：2026-10-07
 - 关联：DSH 侧 [最高标准](../research/2026-10-06-dsh/highest-standard.md) 五·3「表达层」、[归档与审批](../research/2026-10-06-dsh/README.md)（「缺的是长度方差、错别字、改口」）、
   [ADR 0007](0007-schedule-and-reply-timing.md)（分条、打字时间）、[ADR 0013](0013-old-project-advice.md)（看心情不回）、[ADR 0019](0019-today-layer.md)（意图行）、[ADR 0025](0025-her-body.md)（身体）

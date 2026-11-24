@@ -186,14 +186,10 @@ export interface PlannerDeps {
     news?: (now: number) => NewsItem[];
     /** 约好之后她这边出了事、想改约的（ADR 0066，reschedulesFrom） */
     reschedule?: (now: number) => RescheduleItem[];
-    /** 货架里有这一类照片、这会儿也允许发（ADR 0110）；不给 = 不发“拍了张照片”那一类 */
-    photoReady?: (kind: 'cat' | 'food', now: number, dish?: string) => boolean;
     /** 她最近在 B 站看过的东西（ADR 0130，配置 watching）：想事情时多一个“你怎么想”的题目；没有就 undefined */
     watchedFacts?: () => { id: string; text: string } | undefined;
     /** 此刻是不是正和他一起玩（ADR 0111）：是就不插别的主动消息 */
     together?: (now: number) => boolean;
-    /** 随口说件事 / 约他 / 问他意见按他平时在线的钟头排（ADR 0117） */
-    hisHours?: boolean;
     /** 桌面在场 / 最后一轮 / 回合（ADR 0347 第 3 层 desktopDay）：原样交给 blockReason（ProactiveInput 同名三项）；不给就和原来一样 */
     desktopWith?: (now: number) => boolean;
     lastDesktopAt?: (now: number) => number | undefined;
@@ -532,9 +528,7 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
             // 只认卡上开了的事件类（ADR 0064 决策 6）：没开的类即使调用方给了也不排
             ...(deps.news ? { news: deps.news(now()).filter(item => newsKindsOf(deps.settings).includes(item.kind)) } : {}),
             ...(deps.reschedule ? { reschedules: reschedulesNow() } : {}),
-            ...(deps.photoReady ? { photoReady: deps.photoReady } : {}),
             ...(deps.together ? { together: deps.together } : {}),
-            ...(deps.hisHours ? { hisHours: true } : {}),
             // 桌面上的时间（ADR 0347 第 3 层）：只有给了才有，没给时 input 和原来逐字一样
             ...(deps.desktopWith ? { desktopWith: deps.desktopWith } : {}),
             ...(deps.lastDesktopAt ? { lastDesktopAt: deps.lastDesktopAt } : {}),
@@ -662,8 +656,6 @@ export function createProactivePlanner(deps: PlannerDeps): Planner {
                 topic: recallTopic(candidate, contact.name),
                 maxBubbles: MAX_PROACTIVE_BUBBLES,
                 ...(agency || candidate.occasion === 'reach' || candidate.occasion === 'invite' || candidate.occasion === 'ask' || seen.canDecline ? { canDecline: true } : {}),
-                ...(candidate.news?.kind === 'cat_photo' ? { photo: 'cat' as const } : {}),
-                ...(candidate.news?.kind === 'food_photo' && candidate.news.dish ? { photo: 'food' as const, photoDish: candidate.news.dish } : {}),
                 dryRun,
                 signal: lifecycle.signal,
                 // 先记后发

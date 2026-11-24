@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import {
     SLEEPING, STUDYING, cleanQzoneText, createPresence, LIKE_CHANCE, LISTENING, ONLINE, onlineStatusFor, pickQzonePhoto, POKE_OUT_CHANCE, POKE_OUT_LATEST, pokeOutPlan, QZONE_CHANCE, QZONE_MAX_CHARS,
-    describeSelf, likePlan, qzonePlan, reactionEmoji, SIGNATURES, signatureDueAt, signatureFor, type PresenceOptions, type PresenceTransport,
+    describeSelf, likePlan, qzonePlan, SIGNATURES, signatureDueAt, signatureFor, type PresenceOptions, type PresenceTransport,
 } from '../src/social/presence.ts';
 import { formatDate, herDay, stateAt } from '../src/life/schedule.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
@@ -63,13 +63,6 @@ describe('点赞、签名、表情回应、说说的规则（ADR 0083）', () =>
         assert.ok(Array.from({ length: 30 }, (_, i) => new Date(signatureDueAt(base + i * 12_345_678)).getHours()).every(hour => hour >= 10 && hour <= 22), '换签名的钟点在白天');
         const rainy = new Set(Array.from({ length: 200 }, (_, i) => signatureFor({ day: `d${i}`, rainy: true })));
         assert.ok([...rainy].some(sig => sig.includes('雨')));
-    });
-
-    test('表情回应：笑的点笑哭，亲密的点爱心，其余赞或爱心', () => {
-        assert.equal(reactionEmoji('哈哈哈', 5), 182);
-        assert.equal(reactionEmoji('晚安宝宝', 5), 66);
-        assert.ok([76, 66].includes(reactionEmoji('嗯嗯', 7)));
-        assert.equal(reactionEmoji('嗯嗯', 7), reactionEmoji('嗯嗯', 7));
     });
 
     test('说说：约 QZONE_CHANCE 的日子发；工作日晚上、周末白天到晚上', () => {

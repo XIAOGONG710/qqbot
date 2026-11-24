@@ -1,6 +1,6 @@
 # ADR 0110：她主动发照片——喂完土豆拍了一张（配置 `photoShares`，默认关）
 
-- 状态：**已实现，未上线**（2026-10-22；配置 `photoShares`，要 `photos` 和主动消息开着；默认关）。上线 = `koishi.yml` 里加 `photoShares: true` + 重启；回滚 = 改回 false + 重启
+- 状态：**已删**（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtraction-round.md)：从没上过线，开关 `photoShares` 和代码一起删了；要用时从 git 拿回）。原来的状态：**已实现，未上线**（2026-10-22；配置 `photoShares`，要 `photos` 和主动消息开着；默认关）。上线 = `koishi.yml` 里加 `photoShares: true` + 重启；回滚 = 改回 false + 重启
 - 日期：2026-10-22
 - 关联：[ADR 0109](0109-photo-shelf.md)（照片货架）、[ADR 0057](0057-her-news.md)、[ADR 0064](0064-her-own-events-as-reasons.md)（她那边的事成为开口理由）、[ADR 0106](0106-everyday-life.md)
 - 用户提出：2026-10-22「把 A 全部做完」（A2）

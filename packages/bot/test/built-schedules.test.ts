@@ -31,9 +31,9 @@ describe('App 搭好时就开的那几个定时任务', () => {
         assert.deepEqual(memorySyncModule(undefined, 1).schedules, []);
     });
 
-    test('世界维护按天气 → 空气 → 日照 → 日历 → 交通 → 世界影子 → 生活的先后、给了哪样挂哪样；DSH 信箱 30 秒；口味每小时一次外加两分钟后一次性的一次', () => {
+    test('世界维护按天气 → 空气 → 日照 → 日历 → 世界影子 → 生活的先后、给了哪样挂哪样；DSH 信箱 30 秒；口味每小时一次外加两分钟后一次性的一次', () => {
         const job = (every: number) => ({ every, run: () => {} });
-        const world = worldUpkeepModule({ life: job(7), transport: job(5), weather: job(1), agencyShadow: job(6), daylight: job(3) });
+        const world = worldUpkeepModule({ life: job(7), calendar: job(5), weather: job(1), agencyShadow: job(6), daylight: job(3) });
         assert.deepEqual(world.schedules!.map(schedule => [schedule.every, schedule.start]), [[1, 'built'], [3, 'built'], [5, 'built'], [6, 'built'], [7, 'built']]);
         assert.deepEqual(worldUpkeepModule({}).schedules, []);
         assert.deepEqual(dshInboxModule(() => {}).schedules!.map(schedule => [schedule.every, schedule.start]), [[30_000, 'built']]);

@@ -199,7 +199,7 @@ describe('planner-host：桌面三项只接给 deviceOwner 那一位男朋友档
                 config, log: () => {}, exec: { llm: async () => '', now: clock.now } as never, clockNow: () => new Date(clock.now()),
                 cardFor: () => ({ character: { ...boyfriend, proactive: { occasions: ['morning'], dailyMax: 2, unansweredMax: 1 } } }) as unknown as TierCard,
                 proactiveContacts: [owner, other], deviceOwner: owner, responders: new Map([[owner.qq, responder], [other.qq, responder]]),
-                history: { load: () => [] } as never, photos: undefined, worldCard: undefined, ledgerWorld: undefined, sharedWorld: undefined,
+                history: { load: () => [] } as never, worldCard: undefined, ledgerWorld: undefined, sharedWorld: undefined,
                 needsAnchor: undefined, agencyShadow: undefined, weather: undefined, web: undefined, herGuessesNow: undefined, promises: undefined,
                 dormancy: undefined, crisisState: { pausedAt: () => false }, bedtimes: () => [], watchedEntries: () => [],
                 pipeline: { now: clock.now, waitUntil: clock.waitUntil },

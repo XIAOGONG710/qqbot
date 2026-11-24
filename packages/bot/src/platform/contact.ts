@@ -146,11 +146,10 @@ export interface ContactPipelineOptions {
     typing?: (userId: number) => void;
     /** 撤回自己发出去的一条（配置 selfRecall，ADR 0086）：打错字改口的，一部分改成撤回重发；不给就一律补一条「*对的词」 */
     recallOwn?: (messageId: number) => Promise<void>;
-    /** 她看到他的消息的那一刻标已读 / 看到了不回时给他最后一条点表情回应（ADR 0083，配置 readReceipts / reactions）；不给就不做 */
+    /** 她看到他的消息的那一刻标已读（ADR 0083，配置 readReceipts）；不给就不做 */
     markRead?: (userId: number) => void;
     /** 提示词时间块里「她在 QQ 上的样子」那一行（签名、最近发的说说，ADR 0083）；不给就没有 */
     selfNote?: (now: number) => string | undefined;
-    react?: (userId: number, messageId: number, text: string) => void;
     /** 图片表情收藏：给模型列可选编号、校验输出；实际发送由 app.ts 的 send 接线。 */
     stickers?: StickerShelf;
     /** 照片货架（ADR 0109，配置 photos）：他要看猫 / 风景 / 她的片子时，货架里有就发；只对男朋友档 */
@@ -222,8 +221,6 @@ export interface ContactPipelineOptions {
     projectChoice?: boolean;
     /** 回复节奏（ADR 0075，配置 rhythm）：打字时间按字数、回之前有「看 + 想」；不开就是上线前的老样子（0.8 秒 + 每字 0.1 秒） */
     rhythm?: boolean;
-    /** 更短的回复（ADR 0024 的 10-19 调整，配置 shortReplies）：回很短的概率 0.5、认真接话的轮次让路、新措辞；不开就是上线前的老样子（0.35、老措辞） */
-    shortReplies?: boolean;
     /** 她自己决定今天想做的事（ADR 0182）：和「在读的书」一起当额外的空闲活动，状态行和「你今天的打算」都带上 */
     herPlan?: (at: Date) => ExtraFreeActivity[];
     /**
@@ -679,7 +676,6 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
         ...(options.typing ? { typing: options.typing } : {}),
         ...(options.recallOwn ? { recallOwn: options.recallOwn } : {}),
         ...(options.markRead ? { markRead: () => options.markRead!(contact.qq) } : {}),
-        ...(options.react ? { react: (messageId: number, text: string) => options.react!(contact.qq, messageId, text) } : {}),
         ...(options.historyContent ? { stripMarkers: (sent: string) => options.historyContent!(sent) } : {}),
         ...(options.historyContent || options.stickers || options.photos || options.sentHistory ? { historyContent: (sent: string, messageId?: number) => {
             const snapshot = messageId === undefined ? undefined : options.sentHistory?.(sent, messageId);

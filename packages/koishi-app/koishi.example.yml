@@ -29,7 +29,6 @@ plugins:
       - qq: 10001
         name: 他的称呼
         tier: boyfriend
-    unlistedFriends: false
     llm:
       baseUrl: https://api.deepseek.com
       model: deepseek-flash

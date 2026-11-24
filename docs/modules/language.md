@@ -133,7 +133,6 @@
 | `shapeLong` | 被认真问想法时说长一点 | [ADR 0150](../adr/0150-long-answers.md) |
 | `deliberate` | 认真问她时深思（更强的模型、不套字数） | [ADR 0151](../adr/0151-deliberate.md) |
 | `shapeFeel` | 情绪轮（先说自己的小情绪） | [ADR 0099](../adr/0099-too-smooth.md) |
-| `shortReplies` | 说话更短：约一半的轮次只回很短的一句（老样子 35%）；他在难受、说担心的事（报告被打回、没过）、问起她的朋友时不加（10-19 调整，候选 5）。 | [ADR 0024](../adr/0024-expression-layer.md) |
 | `rhythm` | 回复节奏（看想 / 打字时间） | [ADR 0075](../adr/0075-reply-rhythm.md) |
 | `lagTail` | 回复延迟的长尾 | [ADR 0105](../adr/0105-reply-lag-tail.md) |
 | `herNo` | 会拒绝 | [ADR 0103](../adr/0103-her-no.md) |

@@ -113,6 +113,6 @@ describe('App 只用这一份登记（源码）', () => {
         assert.equal(order[0], 'stopped');
         assert.ok(at('diaries') < at('memory') && at('promises') < at('memory'));
         assert.ok(at('jokes') < at('modules') && at('idioms') < at('modules'));
-        assert.deepEqual(order.slice(-6), ['weather', 'air-quality', 'daylight', 'calendar', 'transport', 'world-needs']);
+        assert.deepEqual(order.slice(-5), ['weather', 'air-quality', 'daylight', 'calendar', 'world-needs']);
     });
 });

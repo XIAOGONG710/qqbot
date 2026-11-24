@@ -13,18 +13,14 @@ test('world observation projects existing environmental facts without third-part
         daylight: { sunrise: '2026-11-16T06:30', sunset: '2026-11-16T17:20', phase: '白天', real: true },
         holiday: { name: '校庆假', start: '2026-11-16', end: '2026-11-16', home: false },
         publicHoliday: { date: '2026-11-16', name: '调休', kind: 'workday', real: true },
-        transport: { location: 'campus-gate', status: 'delayed', observedAt: at.toISOString(), source: 'provider', detail: '第三方详情', real: true },
         parcels: [], homework: [], events: [],
     };
     const events = observeWorldNow(now, at);
     assert.deepEqual(events.map(event => [event.source, event.kind]), [
         ['world', 'world.weather.observed'], ['world', 'world.air.quality.observed'], ['world', 'world.daylight.phase.observed'],
         ['sandbox', 'sandbox.holiday.context'], ['society', 'society.public_holiday.observed'],
-        ['world', 'world.transport.status.observed'], ['sandbox', 'sandbox.presence.context'],
+        ['sandbox', 'sandbox.presence.context'],
     ]);
-    const transport = events.find(event => event.kind === 'world.transport.status.observed')!;
-    assert.deepEqual(transport.details, { status: 'delayed', observed: at.toISOString() });
-    assert.doesNotMatch(JSON.stringify(events), /campus-gate|第三方详情/);
 });
 
 test('world observation uses stable ids within an hour and records a changed local context separately', () => {

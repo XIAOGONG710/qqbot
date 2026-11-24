@@ -21,8 +21,7 @@ QQ 机器人的核心：按 SillyTavern 角色卡 + 世界书拼提示词，调 
      （`boyfriend` / `bestie` / `girl_friend` / `known` / `classmate` / `stranger`）；每个号的聊天记录分开存。
      可选的 `persona` 是一两句“他是谁”（例如「同专业，坐你后排」），放在 ST 人设描述（`personaDescription`）的位置，可以用 `{{user}}` `{{char}}`。
      可选的 `intro` 是别人提起他时她知道的一两句（[ADR 0016](../../docs/adr/0016-people-she-knows.md)）：名单里别人的话里出现他的称呼时给她看，没写就是不认识
-   - `unlistedFriends`：名单外的好友私聊时是否用 `unlisted` 档回复（被认真问到时承认是 AI），默认 `false`；`{{user}}` 用对方的 QQ 昵称。
-     明确打开后仍有固定保护线：每个名单外好友 10 分钟最多 30 条、全部名单外好友合计最多 100 条；超过时忽略并写不含正文的日志。名单联系人不受影响
+     名单外的好友私聊一律不回（原来的 `unlistedFriends` 开关 2026-11-24 删了，旧配置里还写着也不影响）
    - `schedule`：按角色卡上的作息（[ADR 0007](../../docs/adr/0007-schedule-and-reply-timing.md)）决定她现在在干什么、什么时候看到消息、打字多久，默认 `true`。
      开着时她凌晨睡觉不回、上课晚回；深夜测试时设成 `false`，随时几秒内回
    - `timeZone`：她的时区（[ADR 0331](../../docs/adr/0331-her-time-zone.md)），作息、饭点、日记的日界都按它算，跟机器的系统时区无关；默认 `"Asia/Shanghai"`。启动时设给整个进程（`process.env.TZ`）。Koishi 控制台里是下拉（全部 IANA 时区，可搜索，也可选「其他」手填），保存即生效。

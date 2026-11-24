@@ -13,7 +13,7 @@ import { buildTurnModules } from '../platform/turn-modules.ts';
 import type { DeviceControl } from '../platform/device-actions.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../platform/sensitive.ts';
 import { withFestivalActivities, withFestivals } from '../world/festivals.ts';
-import { photoAllowance, photoShelf } from '../vision/photos.ts';
+import { photoShelf } from '../vision/photos.ts';
 import { togetherNow } from '../language/together.ts';
 import { STICKER_ONLY_SHARE, stickerShelf } from '../social/stickers.ts';
 import { MEET_MINUTES, promiseKeeper } from '../life/promises.ts';
@@ -32,7 +32,7 @@ import type { OpenAIMessage, PromptResult } from '../language/prompt.ts';
 import { inspectReply, summarizeIssues } from '../language/exit-check.ts';
 import { describeSpeechIssue, inspectSpeech, speechContext, type SpeechContext } from '../language/speech-check.ts';
 import { EPISODE_GAP_MS } from '../memory/episodes.ts';
-import { herDay, newsKindsOf, withAsk, withBack, withCatPhoto, withCurious, withFoodShares, withInner, withInvite, withReach, withRoom, withSmallNews } from '../proactive/proactive.ts';
+import { herDay, newsKindsOf, withAsk, withBack, withCurious, withInner, withInvite, withReach, withRoom, withSmallNews } from '../proactive/proactive.ts';
 import type { Moment } from '../emotion/feelings.ts';
 import { mergePursuits, type Pursuit } from '../life/pursuits.ts';
 import { dmMessageId, dmNote, nudgeNote, videoNote, videoTopic } from '../bilibili/bilibili.ts';
@@ -505,7 +505,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ...(sharedWorld ? { worldState: sharedWorld } : {}),
         ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}),
         ...(scenario.rhythm ? { rhythm: true } : {}),
-        ...(scenario.shortReplies ? { shortReplies: true } : {}),
         // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
         ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
         ...(scenario.quoteReply ? { quoteReply: true } : {}),
@@ -523,7 +522,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             schedule: scenario.schedule,
             herDays: options.herDays ?? false,
             grievance: Boolean(scenario.grievance),
-            shortReplies: Boolean(scenario.shortReplies),
             lagTail: Boolean(scenario.lagTail),
             lifeInPrompt: Boolean(scenario.lifeInPrompt && scenario.autonomous),
             intent: {
@@ -665,12 +663,11 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
     const withInned = withReached && scenario.innerLife ? withInner(withReached) : withReached;
     const withInvitedOnly = withInned && scenario.proactiveInvite ? withInvite(withInned) : withInned;
     const withInvited = withInvitedOnly && scenario.proactiveAsk ? withAsk(withInvitedOnly) : withInvitedOnly;
-    const withPhotoShare = withInvited && scenario.photoShares && scenario.photos ? withCatPhoto(withInvited) : withInvited;
-    const withBacked = withPhotoShare && scenario.comeBack ? withBack(withPhotoShare) : withPhotoShare;
+    const withBacked = withInvited && scenario.comeBack ? withBack(withInvited) : withInvited;
     const withRoomed = withBacked && scenario.proactiveRoom ? withRoom(withBacked) : withBacked;
     const withCurioused = withRoomed && scenario.curious ? withCurious(withRoomed) : withRoomed;
     const withSmalled = withCurioused && scenario.smallNews ? withSmallNews(withCurioused) : withCurioused;
-    const proactiveSettings = withSmalled && scenario.foodPhotos && scenario.menu && scenario.photos ? withFoodShares(withSmalled) : withSmalled;
+    const proactiveSettings = withSmalled;
     const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
         ? owners.keep(createProactivePlanner({
             contact,
@@ -678,9 +675,7 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             settings: proactiveSettings,
             ...(scenario.innerLife ? { inner: true } : {}),
             ...(scenario.innerLife && scenario.watched?.length ? { watchedFacts: () => { const d = new Date(clock.now()); const day = formatDate(d); return watchedFacts(scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })), d); } } : {}),
-            ...(scenario.hisHours ? { hisHours: true } : {}),
             ...(scenario.together ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
-            ...(photos && (scenario.photoShares || scenario.foodPhotos) ? { photoReady: (kind: 'cat' | 'food', at: number, dish?: string) => photos.has(kind, dish) && photoAllowance(history.load(contact.qq), at).allowed } : {}),
             dates: character.dates,
             mode: 'on',
             history,

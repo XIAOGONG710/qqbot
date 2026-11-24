@@ -203,8 +203,8 @@ describe('看他的反应：计划器', () => {
     async function run(withReactions: boolean): Promise<{ requests: InitiateRequest[]; logs: string[] }> {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-his-reactions-'));
         dirs.push(dir);
-        // 两天前她发了吃饭的照片，他说「别老发吃的了」
-        const past = build([{ at: t(10, 22, 19), text: '今天食堂的麻辣烫好吃', occasion: 'news', newsId: 'food_photo:2026-10-22:dinner', replies: ['别老发吃的了'] }]);
+        // 两天前她随口说了吃的，他说「别老发吃的了」（原来用吃饭的照片，foodPhotos 11-24 删了，换成今天的小事）
+        const past = build([{ at: t(10, 22, 19), text: '今天食堂的麻辣烫好吃', occasion: 'news', newsId: 'small:2026-10-22:ed_canteen_new', replies: ['别老发吃的了'] }]);
         const history: StoredMessage[] = [
             ...past.history,
             { time: iso(t(10, 24, 14, 0)), role: 'user', content: '我先去忙了' },
@@ -214,10 +214,10 @@ describe('看他的反应：计划器', () => {
         const clock = new VirtualClock(new Date(t(10, 24, 18, 0)));
         const requests: InitiateRequest[] = [];
         const logs: string[] = [];
-        const item: NewsItem = { id: 'food_photo:2026-10-24:dinner', kind: 'food_photo', day: '2026-10-24', at: t(10, 24, 18, 40), what: '晚饭吃的番茄炒蛋', dish: '番茄炒蛋' };
+        const item: NewsItem = { id: 'small:2026-10-24:ed_canteen_aunt', kind: 'small_thing', day: '2026-10-24', at: t(10, 24, 18, 40), what: '晚饭吃的番茄炒蛋，食堂阿姨多给了半勺' };
         planner = createProactivePlanner({
             contact: { qq: 10001, name: '阿明', tier: 'boyfriend' },
-            schedule, settings: { occasions: ['news'], newsKinds: ['food_photo'], dailyMax: 3, unansweredMax: 2 }, dates: [], mode: 'dryRun',
+            schedule, settings: { occasions: ['news'], newsKinds: ['small_thing'], dailyMax: 3, unansweredMax: 2 }, dates: [], mode: 'dryRun',
             history: { load: () => history },
             responder: {
                 initiate: async (request: InitiateRequest): Promise<InitiateOutcome> => {
@@ -229,7 +229,6 @@ describe('看他的反应：计划器', () => {
             dir, log: message => logs.push(message), now: clock.now, waitUntil: clock.waitUntil,
             names: { user: '阿明', char: '林梦瑶' },
             news: () => [item],
-            photoReady: () => true,
             ...(withReactions ? { reactions: { names: [] } } : {}),
         });
         for (let i = 0; i < 20; i++) {
@@ -242,7 +241,7 @@ describe('看他的反应：计划器', () => {
         return { requests, logs };
     }
 
-    test('开了：他两天前明说过不想听吃的，今天吃饭的照片不发，日志写原因（只有话题和次数）', async () => {
+    test('开了：他两天前明说过不想听吃的，今天吃的小事不说，日志写原因（只有话题和次数）', async () => {
         const { requests, logs } = await run(true);
         assert.equal(requests.length, 0);
         const line = logs.find(l => l.includes('不想听吃的'));
@@ -253,6 +252,5 @@ describe('看他的反应：计划器', () => {
     test('没开：照旧发', async () => {
         const { requests } = await run(false);
         assert.equal(requests.length, 1);
-        assert.equal(requests[0]!.photo, 'food');
     });
 });

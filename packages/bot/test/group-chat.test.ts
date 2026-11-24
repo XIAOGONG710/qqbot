@@ -154,7 +154,7 @@ describe('群聊：进应用', () => {
             prompt: { maxContext: 16384, worldInfo: DEFAULT_WORLD_INFO_SETTINGS, pinExamples: true },
             characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '宝宝', tier: 'boyfriend', knowsBot: true }],
-            unlistedFriends: false, schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false,
+            schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false, projectChoice: false,
             lifeInPrompt: false, grievance: false, feedbackCommands: false, realWeather: false, media: true, readStickers: Boolean(extra.stickerReader),
             herFeelings: true,
             candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir,

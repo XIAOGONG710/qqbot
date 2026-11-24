@@ -58,10 +58,10 @@ export const RICH: Partial<AppConfig> = {
     shape: true, shapeAgenda: true, shapeFiller: true, shapeSplit: true, shapeAsk: true, shapeLong: true, shapeFeel: true,
     relationship: true, jokes: true, idioms: true, tailCap: true, interruptions: true, together: true, jealousy: true,
     texture: true, curious: true, everydayLife: true, menu: true, pursuits: true, herFeelings: true, herNo: true,
-    lagTail: true, rhythm: true, typingStatus: true, selfRecall: true, readReceipts: true, reactions: true, quoteReply: true,
+    lagTail: true, rhythm: true, typingStatus: true, selfRecall: true, readReceipts: true, quoteReply: true,
     festivals: 'greet', pokes: true, pokeBack: true, recalls: true,
     proactive: 'on', proactiveReach: true, innerLife: true, proactiveInvite: true, proactiveAsk: true, comeBack: true,
-    hisHours: true, smallNews: true, proactiveRoom: true,
+    smallNews: true, proactiveRoom: true,
     feedbackCommands: true, timeline: true, tastes: true, dormancy: true, deliberate: true, weeklyReport: true,
 };
 
@@ -104,7 +104,7 @@ export const SCENARIOS: readonly Scenario[] = [
     },
     {
         name: 'tiers',
-        about: '七个档位各一人、加一个名单外的好友，同一时刻问同一句：各档的卡、分寸和回复时机',
+        about: '七个档位各一人、加一个名单外的好友（不回），同一时刻问同一句：各档的卡、分寸和回复时机',
         start: '2026-11-10T20:30:00+08:00',
         contacts: [
             { qq: 10101, name: '男朋友', tier: 'boyfriend' },
@@ -114,7 +114,6 @@ export const SCENARIOS: readonly Scenario[] = [
             { qq: 10105, name: '同学', tier: 'classmate' },
             { qq: 10106, name: '陌生人', tier: 'stranger' },
         ],
-        config: { unlistedFriends: true },
         script: async d => {
             for (const qq of [10101, 10102, 10103, 10104, 10105, 10106]) d.say(qq, '你今天都干嘛了');
             d.say(10999, '你今天都干嘛了', '路人甲');
@@ -917,10 +916,10 @@ export const SCENARIOS: readonly Scenario[] = [
     },
     {
         name: 'people',
-        about: '她身边的人（ADR 0033，ADR 0336 迁出之前）：他说起卡上的室友 / 高中闺蜜（全名或名字后两个字）才放那人最近两周；追问没有名字，她回过两次、十分钟以内沿用，之后不再放；一句话说起两个人放两段；只说「你室友」不算；她说了等下之后自己回来的那一轮（主动找他）不想；女生朋友的卡里室友有名字（放）、闺蜜没有名字（不放）；同学的卡里没有人（不放）；危机的话里带着名字（照样放）。说起她身边的人的那一轮不加「回很短」、形状按认真接话算',
+        about: '她身边的人（ADR 0033，ADR 0336 迁出之前）：他说起卡上的室友 / 高中闺蜜（全名或名字后两个字）才放那人最近两周；追问没有名字，她回过两次、十分钟以内沿用，之后不再放；一句话说起两个人放两段；只说「你室友」不算；她说了等下之后自己回来的那一轮（主动找他）不想；女生朋友的卡里室友有名字（放）、闺蜜没有名字（不放）；同学的卡里没有人（不放）；危机的话里带着名字（照样放）。说起她身边的人的那一轮形状按认真接话算',
         start: '2026-09-29T18:00:00+08:00',
         contacts: [boyfriend, classmate, girlFriend],
-        config: { ...RICH, shortReplies: true },
+        config: RICH,
         reply: () => {
             const chat = rotating(['嗯嗯', '是呀', '怎么啦', '好']);
             let away = false;

@@ -16,7 +16,7 @@ describe('模块接线（ADR 0336 第 6 步）', () => {
     const base = (): TurnModuleDeps => ({
         log: trap('log'), now: trap('now'), history: trap('history'), contacts: trap('contacts'),
         worldState: trap('worldState'), appointmentsAt: trap('appointmentsAt'), promises: trap('promises'),
-        schedule: true, herDays: true, grievance: true, shortReplies: false, lagTail: true, lifeInPrompt: true,
+        schedule: true, herDays: true, grievance: true, lagTail: true, lifeInPrompt: true,
         intent: { refuse: true }, shape: { shape: true, shapeAgenda: true },
     });
     const jokes: Module = { id: 'jokes', contribute: trap('jokes.contribute') };

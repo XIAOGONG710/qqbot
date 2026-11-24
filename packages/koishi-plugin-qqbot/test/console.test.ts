@@ -24,7 +24,7 @@ describe('控制台的角色资料（ADR 0010）', () => {
         const report = runConsoleHealthCheck({
             running: true, napcat: { online: true }, phoneActions: [], updatedAt: Date.now(),
             status: {
-                runtime: { commit: 'abc', branch: 'test', dirty: false, startedAt: new Date().toISOString() }, timeZone: 'Asia/Shanghai', contacts: [], unlistedFriends: false, schedule: true, moody: false, speechCheck: true, herDays: false, proactive: 'off', features: [],
+                runtime: { commit: 'abc', branch: 'test', dirty: false, startedAt: new Date().toISOString() }, timeZone: 'Asia/Shanghai', contacts: [], schedule: true, moody: false, speechCheck: true, herDays: false, proactive: 'off', features: [],
                 memory: { baseUrl: 'http://secret.internal', health: { ok: false, at: Date.now(), error: 'token=secret' } },
                 externalPlatforms: { tieba: 'off', douyin: 'off', xiaohongshu: 'off' }, externalDrafts: { total: 1, pending: 1, approved: 0, publishing: 0, failed: 0, byPlatform: { tieba: 1, douyin: 0, xiaohongshu: 0 } },
                 dsh: { enabled: true }, mobileCompanion: { enabled: true, connected: false, queued: 0, maxQueuedPerClient: 32 },

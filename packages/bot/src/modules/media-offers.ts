@@ -19,7 +19,7 @@
 //
 // 这一轮发不发照片（ADR 0336「判断那一串」，decideAt.photo）：assess 之后、算最终意图之前。和迁移前联系人流水线里的逐字一样：
 // - 只给男朋友档；只想一想、危机、小别扭 / 和好、他难过（意图是先接住他此刻的情绪）的轮次不发；货架和「现在的照片」的解析都没有时不看。
-// - 他明确要看猫 / 风景 / 她的片子 / 吃的（主动那条自己带着哪一类、哪道菜），货架里有、允许发（没连着发、今天没发够、没被吵醒）就发：写 photo（吃的再写 photoDish）。
+// - 他明确要看猫 / 风景 / 她的片子 / 吃的，货架里有、允许发（没连着发、今天没发够、没被吵醒）就发：写 photo（吃的再写 photoDish）。
 //   没说哪一类（只说「发张照片」）取货架上有的第一类；吃的只拿她最近那一顿那道菜的。
 // - 他明确要「现在」的照片（ADR 0240）：只有已审核、和此刻精确匹配的那一张能发（写 photo、photoPrompt）；没有就写 photoUnavailable，不拿旧图冒充。
 // 货架和解析经 DecideCtx 给；日志是这个联系人的。
@@ -33,7 +33,7 @@ import type { Module, TurnFacts } from '../interpreter/interpreter.ts';
 import type { Piece } from '../interpreter/slots.ts';
 import { imageStickerAllowance, stickerCued, stickerOnlyTurn, stickerTurn, STICKER_DISCOVERY_INTERVAL_MS, STICKER_TURN_CHANCE, stripStickerArtifacts } from '../social/stickers.ts';
 import { isExplicitCurrentPhotoRequest } from '../proactive/ai-photo-requests.ts';
-import { FOOD_DISCOVERY_INTERVAL_MS, PHOTO_DISCOVERY_INTERVAL_MS, photoAllowance, photoWanted, PHOTO_KINDS, stripPhotoArtifacts } from '../vision/photos.ts';
+import { PHOTO_DISCOVERY_INTERVAL_MS, photoAllowance, photoWanted, PHOTO_KINDS, stripPhotoArtifacts } from '../vision/photos.ts';
 import { lastMealDish } from '../world/world.ts';
 
 /** 这几样由联系人流水线写进 turn.facts，这里只读（字段说明见 interpreter.ts 的 TurnFacts） */
@@ -42,7 +42,7 @@ export type MediaOffersFacts = Pick<TurnFacts, 'stickerLine' | 'photoLine'>;
 /** 只发表情那一行（stickers.ts 的 EXACT_TOKEN） */
 const STICKER_ONLY_LINE = /^<sticker:[a-f0-9]{12}>$/i;
 
-type MediaDiscovery = Partial<Record<'photos' | 'food' | 'stickers', () => void>>;
+type MediaDiscovery = Partial<Record<'photos' | 'stickers', () => void>>;
 
 export function mediaDiscoveryModule(discovery: () => MediaDiscovery): Module {
     return {
@@ -51,7 +51,6 @@ export function mediaDiscoveryModule(discovery: () => MediaDiscovery): Module {
             const tasks = discovery();
             return [
                 ...(tasks.photos ? [{ every: PHOTO_DISCOVERY_INTERVAL_MS, run: tasks.photos }] : []),
-                ...(tasks.food ? [{ every: FOOD_DISCOVERY_INTERVAL_MS, run: tasks.food }] : []),
                 ...(tasks.stickers ? [{ every: STICKER_DISCOVERY_INTERVAL_MS, run: tasks.stickers }] : []),
             ];
         },
@@ -87,10 +86,10 @@ export function mediaOffersModule(): Module {
                 const around = facts.world;
                 if (!(ctx.photos || ctx.currentAiPhoto) || contact.tier !== 'boyfriend' || turn.thinking || facts.crisis || facts.grievance || (facts.baseIntent && /先接住他此刻的情绪/.test(facts.baseIntent))) return;
                 const photoRequestText = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
-                const wanted = initiate ? initiate.photo : photoWanted(photoRequestText);
+                const wanted = initiate ? undefined : photoWanted(photoRequestText);
                 const kind = wanted === 'any' ? PHOTO_KINDS.find(k => ctx.photos?.has(k)) : wanted;
-                // 吃的（ADR 0128）：只拿她最近吃的那一顿那道菜的；主动那条自己带着菜名
-                const dish = kind === 'food' ? (initiate?.photoDish ?? (around ? lastMealDish(around, time)?.dish : undefined)) : undefined;
+                // 吃的（ADR 0128）：只拿她最近吃的那一顿那道菜的
+                const dish = kind === 'food' && around ? lastMealDish(around, time)?.dish : undefined;
                 const wantsCurrent = !initiate && Boolean(wanted) && isExplicitCurrentPhotoRequest(photoRequestText);
                 const currentKind = wanted === 'any' ? (around && lastMealDish(around, time)?.dish ? 'food' : 'view') : wanted;
                 if (wantsCurrent && currentKind && around && ctx.currentAiPhoto) {

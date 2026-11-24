@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { DEFAULTS, parseAppConfig } from '../../bot/src/platform/config.ts';
-import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, QZONE_PEEK, SHORT_REPLIES, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
+import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, QZONE_PEEK, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
 import { canonicalTimeZone } from '../../bot/src/platform/time-zone.ts';
 import { Config, migrateThinking, mountMobileCompanion, thinkingBody, toAppConfigInput } from '../src/index.ts';
 import type { CompanionWebSocketLike } from '@qqbot/mobile-companion/websocket';
@@ -23,7 +23,6 @@ const before0009 = {
         { qq: 10001, name: '阿明', tier: 'boyfriend' },
         { qq: 10002, name: '同学甲', tier: 'classmate', persona: '网上认识的学长，比较熟' },
     ],
-    unlistedFriends: false,
     llm: {
         baseUrl: 'https://api.deepseek.com',
         model: 'deepseek-flash',
@@ -240,11 +239,11 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         }
     });
 
-    test('shortReplies、tailCap 共用模块说明，保留默认值和 YAML 保存键', () => {
+    test('tailCap 用模块说明，保留默认值和 YAML 保存键', () => {
         const yaml = createRequire(import.meta.url)('js-yaml') as { dump(value: unknown): string; load(text: string): object };
         const save = (value: object) => yaml.dump(Config.simplify(Config(value as never)));
         const omitted = save(minimal);
-        for (const item of [SHORT_REPLIES, TAIL_CAP]) {
+        for (const item of [TAIL_CAP]) {
             const { key, label, adr, description } = item;
             const schemas = Config.list?.flatMap(group => group.dict?.[key] ? [group.dict[key]] : []) ?? [];
             assert.equal(schemas.length, 1);
@@ -287,7 +286,6 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
     test('只填必填项：默认值和 config.json 留空时一样（默认值只有 config.ts 一份）', () => {
         const fromFile = parseAppConfig({ ...minimal, characterCard: 'characters/linmengyao/st/linmengyao-{tier}.json' }, repoRoot, env);
         assert.deepEqual(fromKoishi(minimal), fromFile);
-        assert.equal(fromFile.unlistedFriends, false);
         assert.equal(fromFile.memory, undefined);
         assert.equal(fromFile.dataDir, resolve(repoRoot, 'runtime/bot'));
     });
@@ -306,7 +304,6 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(config.prompt.maxContext, DEFAULTS.prompt.maxContext);
         assert.equal(config.prompt.pinExamples, DEFAULTS.prompt.pinExamples);
         assert.deepEqual(config.prompt.worldInfo, DEFAULTS.prompt.worldInfo);
-        assert.equal(config.unlistedFriends, DEFAULTS.unlistedFriends);
         assert.equal(config.schedule, DEFAULTS.schedule);
         assert.equal(config.media, DEFAULTS.media);
         assert.equal(config.stickers, DEFAULTS.stickers);
@@ -314,7 +311,6 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(config.moody, DEFAULTS.moody);
         assert.equal(config.speechCheck, DEFAULTS.speechCheck);
         assert.equal(config.herDays, DEFAULTS.herDays);
-        assert.equal(config.realTransport.enabled, false);
         assert.equal(config.projectChoice, DEFAULTS.projectChoice);
         assert.equal(config.proactive, DEFAULTS.proactive);
         assert.equal(config.aiPhotos, DEFAULTS.aiPhotos);
@@ -347,7 +343,6 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             { ...minimal, memory: { enabled: false }, schedule: false, dataDir: 'runtime/bot-test' },
             { ...minimal, proactive: 'dryRun' },
             { ...minimal, aiPhotos: true },
-            { ...minimal, realTransport: { enabled: true, endpoint: 'https://transport.example.test/status?city=all', source: '城市公共交通' } },
             { ...minimal, moody: false },
             { ...minimal, speechCheck: false },
             { ...minimal, herDays: false },
@@ -383,26 +378,18 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.throws(() => parseAppConfig({ ...toAppConfigInput(Config(minimal as never)), dsh: { enabled: true, timeoutMs: 0 } }, repoRoot, env), /dsh.timeoutMs/);
     });
 
-    test('现实交通默认关闭；显式开启后传给核心，关闭时不写回', () => {
-        assert.deepEqual(fromKoishi(minimal).realTransport, { enabled: false });
-        assert.equal('realTransport' in (Config.simplify(Config(minimal as never)) as object), false);
-
-        const input = {
-            ...minimal,
+    test('删掉的开关（减法单子 11-24）还写在线上 koishi.yml 里：表单照样能读、能写回，交给核心时不带它们，配置和没写一样', () => {
+        const leftovers = {
+            shortReplies: true, hisHours: true, photoShares: true, reactions: true, foodPhotos: true, unlistedFriends: true, ownerPeek: true,
             realTransport: { enabled: true, endpoint: 'https://transport.example.test/status?city=all', source: '城市公共交通' },
         };
-        assert.deepEqual(fromKoishi(input).realTransport, input.realTransport);
-        assert.deepEqual(
-            (Config.simplify(Config(input as never)) as { realTransport: object }).realTransport,
-            input.realTransport,
-        );
-
-        for (const endpoint of [
-            'http://transport.example.test/status',
-            'https://localhost/status',
-            'https://transport.example.test/status?token=secret',
-        ]) assert.throws(() => fromKoishi({ ...minimal, realTransport: { enabled: true, endpoint, source: '测试' } }), /realTransport\.endpoint/);
-        assert.throws(() => fromKoishi({ ...minimal, realTransport: { enabled: true, endpoint: 'https://transport.example.test', source: 'bad/source' } }), /realTransport\.source/);
+        const config = Config({ ...minimal, ...leftovers } as never);
+        const input = toAppConfigInput(config);
+        for (const key of Object.keys(leftovers)) assert.equal(key in input, false, key);
+        assert.deepEqual(fromKoishi({ ...minimal, ...leftovers }), fromKoishi(minimal));
+        // 表单读进来时还留着这些键，控制台下次保存（schema.simplify）就把它们从 koishi.yml 里抹掉；抹不抹都不影响
+        for (const key of Object.keys(leftovers)) assert.equal(key in (Config.simplify(config) as object), false, key);
+        assert.deepEqual(fromKoishi(Config.simplify(config) as object), fromKoishi(minimal));
     });
 
     test('听语音、看图（ADR 0052）：旧的配置没有这一项时是开；关了照样传过去；等于默认值时不写进 koishi.yml', () => {
@@ -427,8 +414,8 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(fromKoishi({ ...minimal, typingStatus: true }).typingStatus, true);
         assert.equal('typingStatus' in (Config.simplify(Config(minimal as never)) as object), false);
     });
-    test('回复节奏（ADR 0075）和更短的回复（候选 5）：各自默认关；开了才进配置；默认值不写回 yml', () => {
-        for (const key of ['rhythm', 'shortReplies'] as const) {
+    test('回复节奏（ADR 0075）：默认关；开了才进配置；默认值不写回 yml', () => {
+        for (const key of ['rhythm'] as const) {
             assert.equal(fromKoishi(minimal)[key], false, key);
             assert.equal(fromKoishi(before0009)[key], false, key);
             assert.equal(fromKoishi({ ...minimal, [key]: true })[key], true, key);
@@ -496,7 +483,7 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
     });
 
     test('存在感（ADR 0083）：旧配置没有这些项时全是关；开了照样传过去；等于默认值时不写进 koishi.yml；写错的模式报错', () => {
-        for (const key of ['readReceipts', 'reactions', 'onlineStatus', 'profileLikes'] as const) {
+        for (const key of ['readReceipts', 'onlineStatus', 'profileLikes'] as const) {
             assert.equal(fromKoishi(minimal)[key], false, key);
             assert.equal(fromKoishi(before0009)[key], false, key);
             assert.equal(fromKoishi({ ...minimal, [key]: true })[key], true, key);

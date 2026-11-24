@@ -27,11 +27,6 @@ export const VISION_PROVIDERS = ['deepseek'] as const;
 export const STICKER_MODES = ['off', 'collect', 'send'] as const;
 export type StickerMode = (typeof STICKER_MODES)[number];
 
-/** 现实交通只允许宿主显式配置可信 HTTPS 端点；默认关闭。 */
-export type RealTransportConfig =
-    | { enabled: false }
-    | { enabled: true; endpoint: string; source: string };
-
 /** 名单里能用的档位（ADR 0003），从亲到疏 */
 export const CONTACT_TIERS = ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger'] as const;
 export type ContactTier = (typeof CONTACT_TIERS)[number];
@@ -50,7 +45,6 @@ export const DEFAULTS = {
     prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
     memory: { timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' },
     vision: { provider: 'deepseek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', timeoutMs: MEDIA_TIMEOUTS.vision },
-    unlistedFriends: false,
     schedule: true,
     moody: true,
     speechCheck: true,
@@ -69,7 +63,6 @@ export const DEFAULTS = {
     realAirQuality: false,
     realDaylight: false,
     realCalendar: false,
-    realTransport: { enabled: false } as RealTransportConfig,
     festivals: 'off' as FestivalMode,
     readReceipts: false,
     bilibili: 'off' as PresenceMode,
@@ -87,21 +80,18 @@ export const DEFAULTS = {
     proactiveInvite: false,
     photos: false,
     aiPhotos: false,
-    photoShares: false,
     together: false,
     comeBack: false,
     relationship: false,
     jokes: false,
     interruptions: false,
     proactiveAsk: false,
-    hisHours: false,
     weeklyReport: false,
     jealousy: false,
     proactiveRoom: false,
     menu: false,
     curious: false,
     smallNews: false,
-    foodPhotos: false,
     memes: false,
     watching: false,
     texture: false,
@@ -153,7 +143,6 @@ export const DEFAULTS = {
     acquaintances: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
-    reactions: false,
     onlineStatus: false,
     profileLikes: false,
     signature: 'off' as PresenceMode,
@@ -207,8 +196,6 @@ export const DEFAULTS = {
     fewerRules: false,
     /** 她聊完回想一下、记下有依据的感受（ADR 0197）：要 herFeelings 开着；每条要指出是哪几条消息 / 日记让她有的 */
     feelingReview: false,
-    /** 她的私人空间（ADR 0200）：关着（默认）时，/追求 /说话习惯 /心境 /自我认识 这四条念她私人内容的命令不念，他得到一句固定的话；开着才念 */
-    ownerPeek: false,
     /** 记忆对账（ADR 0201）：隔一阵读一次 Hindsight 里的文档，进度里记着写过、实际没有的重新排队写（retain 是异步受理的，后台处理失败不会告诉我们） */
     memoryReconcile: false,
     /** 语义路由（ADR 0202）：关键词没认出来的轮次问一次小模型这一句是轻是重，值得认真的也走深思。要 deliberate 开着才起作用 */
@@ -226,7 +213,6 @@ export const DEFAULTS = {
     /** 她没想完的问题（ADR 0207）：他问了她答不上来的（「不知道」），夜里她自己想一遍、想出什么写什么；他再问到同一件事才把她自己想的放进提示词。私人空间 */
     openQuestions: false,
     rhythm: false,
-    shortReplies: false,
     media: true,
     stickers: 'off' as StickerMode,
     candidates: 1,
@@ -267,8 +253,6 @@ export interface AppConfig {
     characterCard: string;
     /** 名单：按各自的档位回复这些人的私聊。name 是提示词里的 {{user}} */
     contacts: Contact[];
-    /** 名单外的好友私聊时是否用 unlisted 档回复（ADR 0003 决策 2），默认否；即使打开也有固定限流 */
-    unlistedFriends: boolean;
     /** 按角色卡上的作息（ADR 0007）：时间块里写她现在在干什么。默认是；深夜测试时关掉 */
     schedule: boolean;
     /**
@@ -383,10 +367,6 @@ export interface AppConfig {
      */
     aiPhotos?: boolean;
     /**
-     * 她主动发照片（ADR 0110，要 photos 和主动消息开着）：喂完猫见到它的日子里，有的天（约 35%）她拍了张照片，过十来分钟发给他，配一句话；货架里没有猫的照片就不发。默认关
-     */
-    photoShares: boolean;
-    /**
      * 陪玩状态（ADR 0111）：他答应了她的邀约（或她答应了他的“今晚王者双排吗”）之后两三个小时，她正和他一起玩：回话短一点、慢一点，聊局里的事；这段时间不插别的主动消息；
      * 谁说“下了 / 不玩了 / 睡了 / 晚安”就结束。只对男朋友档。默认关
      */
@@ -415,11 +395,6 @@ export interface AppConfig {
      * 他没回不催；他刚说过去忙 / 累了、今晚有事就不问；她自己难过 / 很累 / 不舒服可以只输出「不发」。默认关
      */
     proactiveAsk: boolean;
-    /**
-     * 按他平时在线的钟头排（ADR 0117，要主动消息开着）：随口说件事 / 约他 / 问他意见本来就没有固定钟点，别挑在他最近三周几乎从不说话的钟头——挪到它自己时间窗内最近的好钟头。
-     * 他最近 21 天说的话少于 60 条（没规律）时不挪。默认关
-     */
-    hisHours: boolean;
     /**
      * 周报（ADR 0118）：每周日 21:30 以后自动出一份“她离真人还差多少”的数字（说话的样子、延迟、表情、主动、日志里数到的新功能），写进 <数据目录>/reports/weekly-<周日日期>.md；
      * 只有数字，没有原话；同一把尺子每周对比。也可手动：node src/ops/weekly-report-cli.ts --write。默认关
@@ -452,11 +427,6 @@ export interface AppConfig {
      * 她自己从来不提，聊天就只剩作业 / 相机 / 困。开了以后：约一半的日子，她从当天碰到的小事里挑一件，过一会儿随口发给你（一天最多一件，不要你回应）。只对男朋友档。默认关
      */
     smallNews: boolean;
-    /**
-     * 吃的照片（ADR 0128，要 photos 和 menu 都开着）：她每天按菜单吃的那几道菜，自己去网上（Wikimedia Commons，普通人随手拍的饭，看图把关：人脸 / 水印 / 招牌 / 不是这道菜的都不收）找照片；
-     * 他说“拍给我看看你吃的”时发这一顿这道菜的；主动那边（要主动消息开着）约每顿 18% 吃完饭拍了张发给他。没有这道菜的照片就不发（她那顿“没拍”）。只对男朋友档。默认关
-     */
-    foodPhotos: boolean;
     /**
      * 网络热梗（ADR 0129，要 bilibiliAccount 开着才会自己去学）：她的知识停在模型训练的那一天，网上现在流行的梗她一个都不知道。
      * 开了以后每 12 小时读一次 B 站热门 / 热搜、微博热搜、百度热榜，挑出可能是梗的词，用她的 B 站号搜「<词> 什么梗」、读字幕当证据，只根据证据写意思（把握不到中 / 不适合聊天的不收）；
@@ -618,8 +588,6 @@ export interface AppConfig {
     bilibiliAtUid: number;
     /** 已读回执（ADR 0083）：她看到他的消息的那一刻标已读（NapCat mark_private_msg_as_read），睡着时保持未读。默认关 */
     readReceipts: boolean;
-    /** 表情回应（ADR 0083）：她看到了却不回（看心情不回、收尾后的附和）时，给他最后一条点个表情回应（set_msg_emoji_like）。默认关 */
-    reactions: boolean;
     /** 在线状态（ADR 0083）：睡着「睡觉中」、上课「学习中」、听歌中、其余在线（set_online_status）。默认关 */
     onlineStatus: boolean;
     /** 资料卡点赞（ADR 0083）：约 80% 的日子给男朋友档点 1–5 个赞（send_like）。默认关 */
@@ -660,8 +628,6 @@ export interface AppConfig {
     selfRecall: boolean;
     /** 回复节奏（ADR 0075）：打字时间按字数（0.6 秒 + 每字 0.18 秒）、回之前「看 + 想」一会儿；热聊中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒） */
     rhythm: boolean;
-    /** 更短的回复（ADR 0024 的 10-19 调整，候选 5）：约一半的轮次回很短的一句，他在难受、说担心的事、问起她的朋友时让路。默认关（老样子：35%，老措辞） */
-    shortReplies: boolean;
     /** 她自己决定记不记：关掉自动记忆同步和自动日记，只认她回复里的 `<<记住：…>>` / `<<日记：…>>` 标记 */
     selfDirectedMemory?: boolean;
     /** 没回时告诉他原因（ADR 0173）：他连着发了 2 条以上、第一条过了 8 分钟还没回，就用「（」开头的提示说原因（作息 / 她自己的决定 / 故障），一串最多 3 次、原因变了才再说；发 /为什么 随时问。默认关 */
@@ -707,8 +673,6 @@ export interface AppConfig {
     fewerRules?: boolean;
     /** 她聊完回想一下、记下有依据的感受（ADR 0197）：一段聊天结束半小时后想一次——看最近 36 小时和他的聊天、昨天今天的日记，写下哪些事让她心里有了感受（开心 / 松了口气 / 担心 / 难过 / 烦 / 累）；每一条必须指出是哪几条消息（或日记）让她有的，只有小事和明显两档（大事只有作者能写 moments.json），因为他的态度难过 / 烦的一晚最多一条，来由不能引他的原话、不写别人、不碰底线；散得快。他用 /心境 看，改不了。要 herFeelings 开着、名单里有男朋友档；默认关 */
     feelingReview?: boolean;
-    /** 她的私人空间（ADR 0200）：已不起作用（11-19 起）。原来开着时他才能用 /追求 /说话习惯 /心境 /自我认识 看她自己总结 / 回想 / 追求出来的东西；这四条 10-31 起停用，用户 11-19 定为留着开关、只改说法 */
-    ownerPeek?: boolean;
     /** 记忆对账（ADR 0201）：默认关；开着时每 6 小时（发现缺了就 10 分钟后再查）对一次，缺的片段重新写；刚写进去的 2 小时内不算缺 */
     memoryReconcile?: boolean;
     /** 语义路由（ADR 0202）：默认关；要 deliberate 开着。开着时，关键词没认出来的轮次多一次小调用（不开思考、几十个 token、3 秒超时），分类说沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思 */
@@ -740,8 +704,6 @@ export interface AppConfig {
     realDaylight?: boolean;
     /** 现实法定日历（ADR 0231）：只读节假日 / 调休工作日，失败或过期不写进世界；默认关。 */
     realCalendar?: boolean;
-    /** 现实交通（ADR 0232）：显式可信 HTTPS 结构化端点；默认关，失败或过期不写进世界。 */
-    realTransport?: RealTransportConfig;
     /**
      * 听语音、看图上的字（ADR 0052）：他发的语音用 QQ 自带的语音转文字、照片和截图用 NapCat 的 OCR 取上面的字，写进聊天记录；
      * 转不出来、超时照旧「[语音]」「[图片]」。默认是
@@ -992,7 +954,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         },
         characterCard,
         contacts,
-        unlistedFriends: bool(file, 'unlistedFriends', '', DEFAULTS.unlistedFriends),
         schedule: bool(file, 'schedule', '', DEFAULTS.schedule),
         moody: bool(file, 'moody', '', DEFAULTS.moody),
         speechCheck: bool(file, 'speechCheck', '', DEFAULTS.speechCheck),
@@ -1011,7 +972,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         realAirQuality: bool(file, 'realAirQuality', '', DEFAULTS.realAirQuality),
         realDaylight: bool(file, 'realDaylight', '', DEFAULTS.realDaylight),
         realCalendar: bool(file, 'realCalendar', '', DEFAULTS.realCalendar),
-        realTransport: realTransportConfig(file.realTransport),
         festivals: festivalMode(file.festivals),
         readReceipts: bool(file, 'readReceipts', '', DEFAULTS.readReceipts),
         bilibili: oneOf(file.bilibili, 'bilibili', PRESENCE_MODES, DEFAULTS.bilibili),
@@ -1029,21 +989,18 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         proactiveInvite: bool(file, 'proactiveInvite', '', DEFAULTS.proactiveInvite),
         photos: bool(file, 'photos', '', DEFAULTS.photos),
         aiPhotos: bool(file, 'aiPhotos', '', DEFAULTS.aiPhotos),
-        photoShares: bool(file, 'photoShares', '', DEFAULTS.photoShares),
         together: bool(file, 'together', '', DEFAULTS.together),
         comeBack: bool(file, 'comeBack', '', DEFAULTS.comeBack),
         relationship: bool(file, 'relationship', '', DEFAULTS.relationship),
         jokes: bool(file, 'jokes', '', DEFAULTS.jokes),
         interruptions: bool(file, 'interruptions', '', DEFAULTS.interruptions),
         proactiveAsk: bool(file, 'proactiveAsk', '', DEFAULTS.proactiveAsk),
-        hisHours: bool(file, 'hisHours', '', DEFAULTS.hisHours),
         weeklyReport: bool(file, 'weeklyReport', '', DEFAULTS.weeklyReport),
         jealousy: bool(file, 'jealousy', '', DEFAULTS.jealousy),
         proactiveRoom: bool(file, 'proactiveRoom', '', DEFAULTS.proactiveRoom),
         menu: bool(file, 'menu', '', DEFAULTS.menu),
         curious: bool(file, 'curious', '', DEFAULTS.curious),
         smallNews: bool(file, 'smallNews', '', DEFAULTS.smallNews),
-        foodPhotos: bool(file, 'foodPhotos', '', DEFAULTS.foodPhotos),
         memes: bool(file, 'memes', '', DEFAULTS.memes),
         watching: bool(file, 'watching', '', DEFAULTS.watching),
         texture: bool(file, 'texture', '', DEFAULTS.texture),
@@ -1086,7 +1043,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         acquaintances: bool(file, 'acquaintances', '', DEFAULTS.acquaintances),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
-        reactions: bool(file, 'reactions', '', DEFAULTS.reactions),
         onlineStatus: bool(file, 'onlineStatus', '', DEFAULTS.onlineStatus),
         profileLikes: bool(file, 'profileLikes', '', DEFAULTS.profileLikes),
         signature: oneOf(file.signature, 'signature', PRESENCE_MODES, DEFAULTS.signature),
@@ -1124,7 +1080,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         selfPortrait: bool(file, 'selfPortrait', '', DEFAULTS.selfPortrait),
         fewerRules: bool(file, 'fewerRules', '', DEFAULTS.fewerRules),
         feelingReview: bool(file, 'feelingReview', '', DEFAULTS.feelingReview),
-        ownerPeek: bool(file, 'ownerPeek', '', DEFAULTS.ownerPeek),
         memoryReconcile: bool(file, 'memoryReconcile', '', DEFAULTS.memoryReconcile),
         depthRouting: bool(file, 'depthRouting', '', DEFAULTS.depthRouting),
         factHim: bool(file, 'factHim', '', DEFAULTS.factHim),
@@ -1134,7 +1089,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         herGuesses: bool(file, 'herGuesses', '', DEFAULTS.herGuesses),
         openQuestions: bool(file, 'openQuestions', '', DEFAULTS.openQuestions),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),
-        shortReplies: bool(file, 'shortReplies', '', DEFAULTS.shortReplies),
         media: bool(file, 'media', '', DEFAULTS.media),
         stickers: stickerMode(file.stickers),
         ...(vision ? { vision } : {}),
@@ -1146,44 +1100,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         dataDir: resolvePath(repoRoot, typeof file.dataDir === 'string' ? file.dataDir : DEFAULTS.dataDir),
         timeZone: file.timeZone === undefined ? DEFAULT_TIME_ZONE : canonicalTimeZone(file.timeZone),
     };
-}
-
-function realTransportConfig(value: unknown): RealTransportConfig {
-    if (value === undefined) return DEFAULTS.realTransport;
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('配置 realTransport 应为对象');
-    const input = value as Json;
-    const enabled = bool(input, 'enabled', 'realTransport', false);
-    if (!enabled) return { enabled: false };
-    const endpoint = str(input, 'endpoint', 'realTransport').trim();
-    const source = str(input, 'source', 'realTransport').trim();
-    if (endpoint.length > 2048) throw new Error('配置 realTransport.endpoint 过长');
-    if (!source || source.length > 40 || !/^[\p{L}\p{N}._ -]+$/u.test(source)) {
-        throw new Error('配置 realTransport.source 应为 1–40 个中文、字母、数字、空格、点、横线或下划线');
-    }
-    let url: URL;
-    try { url = new URL(endpoint); }
-    catch { throw new Error('配置 realTransport.endpoint 应为合法 HTTPS 地址'); }
-    if (url.protocol !== 'https:' || !url.hostname || url.username || url.password || url.hash) {
-        throw new Error('配置 realTransport.endpoint 只允许无账号、密码和片段的 HTTPS 地址');
-    }
-    if ([...url.searchParams.keys()].some(key => /^(?:api[_-]?key|access[_-]?token|token|secret|password)$/i.test(key))) {
-        throw new Error('配置 realTransport.endpoint 不能在地址中携带密钥');
-    }
-    const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
-    const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)?.slice(1).map(Number);
-    const privateIpv4 = ipv4 && ipv4.every(part => part <= 255) && (
-        ipv4[0] === 0 || ipv4[0] === 10 || ipv4[0] === 127 || ipv4[0]! >= 224
-        || (ipv4[0] === 100 && ipv4[1]! >= 64 && ipv4[1]! <= 127)
-        || (ipv4[0] === 169 && ipv4[1] === 254)
-        || (ipv4[0] === 172 && ipv4[1]! >= 16 && ipv4[1]! <= 31)
-        || (ipv4[0] === 192 && ipv4[1] === 168)
-        || (ipv4[0] === 198 && (ipv4[1] === 18 || ipv4[1] === 19))
-    );
-    const privateIpv6 = hostname === '::1' || hostname === '::' || /^(?:fc|fd|fe[89ab])/i.test(hostname);
-    if (hostname === 'localhost' || hostname.endsWith('.localhost') || privateIpv4 || privateIpv6) {
-        throw new Error('配置 realTransport.endpoint 不能指向本机或私有网络');
-    }
-    return { enabled: true, endpoint, source };
 }
 
 function candidateCount(value: unknown): number {

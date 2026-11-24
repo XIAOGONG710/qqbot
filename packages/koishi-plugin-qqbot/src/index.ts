@@ -42,7 +42,7 @@ import { stickerDecider, stickerShelf } from '../../bot/src/social/stickers.ts';
 import { qqFavorites } from '../../bot/src/social/sticker-favorites.ts';
 import { bqbDiscover } from '../../bot/src/social/sticker-sources.ts';
 import { biliStickerScreen } from '../../bot/src/language/bili-stickers.ts';
-import { webFoodSource, webPhotoSource } from '../../bot/src/vision/photo-sources.ts';
+import { webPhotoSource } from '../../bot/src/vision/photo-sources.ts';
 import { characterPaths, registerConsole, setConsoleState } from './console.ts';
 import { EXTERNAL_PLATFORM_MODES, type ExternalPlatformMode } from '../../bot/src/social/external-platforms.ts';
 import { claimTimeZone, DEFAULT_TIME_ZONE, timeZoneChoices } from '../../bot/src/platform/time-zone.ts';
@@ -167,7 +167,6 @@ const QQ_DESCRIPTION = '**QQ 号**：从小号的好友里选';
 
 export interface Config {
     contacts: { qq: number; name: string; tier: ContactTier; persona?: string; intro?: string; knowsBot?: boolean; feedback?: boolean }[];
-    unlistedFriends: boolean;
     schedule: boolean;
     timeZone?: string;
     media: boolean;
@@ -201,21 +200,18 @@ export interface Config {
     proactiveInvite: boolean;
     photos: boolean;
     aiPhotos: boolean;
-    photoShares: boolean;
     together: boolean;
     comeBack: boolean;
     relationship: boolean;
     jokes: boolean;
     interruptions: boolean;
     proactiveAsk: boolean;
-    hisHours: boolean;
     weeklyReport: boolean;
     jealousy: boolean;
     proactiveRoom: boolean;
     menu: boolean;
     curious: boolean;
     smallNews: boolean;
-    foodPhotos: boolean;
     memes: boolean;
     watching: boolean;
     texture: boolean;
@@ -255,7 +251,6 @@ export interface Config {
     acquaintances: boolean;
     bilibiliAtName: string;
     bilibiliAtUid: number;
-    reactions: boolean;
     onlineStatus: boolean;
     profileLikes: boolean;
     signature: PresenceMode;
@@ -278,7 +273,6 @@ export interface Config {
     realAirQuality?: boolean;
     realDaylight?: boolean;
     realCalendar?: boolean;
-    realTransport: { enabled: boolean; endpoint?: string; source?: string };
     festivals: FestivalMode;
     typingStatus: boolean;
     selfRecall: boolean;
@@ -302,7 +296,6 @@ export interface Config {
     selfPortrait: boolean;
     fewerRules: boolean;
     feelingReview: boolean;
-    ownerPeek: boolean;
     memoryReconcile: boolean;
     depthRouting: boolean;
     factHim: boolean;
@@ -313,7 +306,6 @@ export interface Config {
     openQuestions: boolean;
     exemplars: boolean;
     rhythm: boolean;
-    shortReplies: boolean;
     candidates: number;
     contextTurns: number;
     contextContacts: number[];
@@ -362,7 +354,6 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             intro: Schema.string().role('textarea', { rows: [1, 4] })
                 .description('**别人提起时**：她认识的这个人，一两句（例如「网上认识的朋友，比较熟」）。名单里别人说起他的称呼时给她看，留空就是不认识（ADR 0016）'),
         })).description('**回复名单**：每人按自己的档位回复'),
-        unlistedFriends: toggle('unlistedFriends'),
         schedule: toggle('schedule'),
         timeZone: Schema.union([
             ...timeZoneChoices().map(choice => Schema.const(choice.zone).description(choice.label)),
@@ -408,21 +399,18 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         proactiveInvite: toggle('proactiveInvite'),
         photos: toggle('photos'),
         aiPhotos: toggle('aiPhotos'),
-        photoShares: toggle('photoShares'),
         together: toggle('together'),
         comeBack: toggle('comeBack'),
         relationship: toggle('relationship'),
         jokes: toggle('jokes'),
         interruptions: toggle('interruptions'),
         proactiveAsk: toggle('proactiveAsk'),
-        hisHours: toggle('hisHours'),
         weeklyReport: toggle('weeklyReport'),
         jealousy: toggle('jealousy'),
         proactiveRoom: toggle('proactiveRoom'),
         menu: toggle('menu'),
         curious: toggle('curious'),
         smallNews: toggle('smallNews'),
-        foodPhotos: toggle('foodPhotos'),
         memes: toggle('memes'),
         watching: toggle('watching'),
         texture: toggle('texture'),
@@ -469,7 +457,6 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         bilibiliAtUid: Schema.number().default(DEFAULTS.bilibiliAtUid)
             .description('**他的 B 站 uid**（ADR 0089）：@ 评论（要昵称和 uid 两样）和发私信（只要 uid）都用；在 B 站网页「个人空间」的网址里能看到'),
         readReceipts: toggle('readReceipts'),
-        reactions: toggle('reactions'),
         onlineStatus: toggle('onlineStatus'),
         profileLikes: toggle('profileLikes'),
         signature: choice('signature'),
@@ -506,22 +493,6 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         realAirQuality: toggle('realAirQuality'),
         realDaylight: toggle('realDaylight'),
         realCalendar: toggle('realCalendar'),
-        realTransport: Schema.intersect([
-            Schema.object({
-                enabled: Schema.boolean().default(DEFAULTS.realTransport.enabled)
-                    .description('**现实交通**（ADR 0232）：明确打开后才读取卡上写的地方（学校、家）的结构化交通状态。失败或过期不写进她的世界，不改变课表或行动。默认关'),
-            }),
-            Schema.union([
-                Schema.object({
-                    enabled: Schema.const(true).required(),
-                    endpoint: Schema.string().required().pattern(NOT_BLANK)
-                        .description('**数据接口地址**：只填可信的公网 HTTPS 地址；不能包含账号、密码或密钥'),
-                    source: Schema.string().required().pattern(/^[\p{L}\p{N}._ -]{1,40}$/u)
-                        .description('**来源名称**：页面和日志里的简短名称，例如“城市公共交通”'),
-                }),
-                Schema.object({}),
-            ]),
-        ]).default(DEFAULTS.realTransport).description('现实交通（高级）'),
         festivals: choice('festivals'),
         typingStatus: toggle('typingStatus'),
         selfRecall: toggle('selfRecall'),
@@ -546,7 +517,6 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         selfPortrait: toggle('selfPortrait'),
         fewerRules: toggle('fewerRules'),
         feelingReview: toggle('feelingReview'),
-        ownerPeek: toggle('ownerPeek'),
         memoryReconcile: toggle('memoryReconcile'),
         depthRouting: toggle('depthRouting'),
         readStickers: toggle('readStickers'),
@@ -556,7 +526,6 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         herGuesses: toggle('herGuesses'),
         hisReactions: toggle('hisReactions'),
         rhythm: toggle('rhythm'),
-        shortReplies: toggle('shortReplies'),
         candidates: Schema.natural().min(1).max(5).default(DEFAULTS.candidates)
             .description('**挑候选**（ADR 0041）：他难过、说亲密话、收尾时一次生成几个回复、按规则挑一个（少说几句、不扯自己的事、不约「写完跟我说」）。1 是不挑；3 是这几种时候三倍的模型调用'),
         contextTurns: Schema.natural().max(40).default(DEFAULTS.contextTurns)
@@ -687,7 +656,6 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         prompt: dropUndefined({ ...config.prompt, worldInfo: dropUndefined(config.prompt?.worldInfo ?? {}) }),
         characterCard: config.characterCard,
         contacts: config.contacts.map(contact => dropUndefined(contact)),
-        unlistedFriends: config.unlistedFriends,
         schedule: config.schedule,
         ...(config.timeZone !== undefined ? { timeZone: config.timeZone } : {}),
         // 旧的 koishi.yml 没有这几项：parseAppConfig 按默认值（看心情不回开、说话的毛病开、她自己的日子开、主动消息关）
@@ -719,21 +687,18 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.proactiveInvite !== undefined ? { proactiveInvite: config.proactiveInvite } : {}),
         ...(config.photos !== undefined ? { photos: config.photos } : {}),
         ...(config.aiPhotos !== undefined ? { aiPhotos: config.aiPhotos } : {}),
-        ...(config.photoShares !== undefined ? { photoShares: config.photoShares } : {}),
         ...(config.together !== undefined ? { together: config.together } : {}),
         ...(config.comeBack !== undefined ? { comeBack: config.comeBack } : {}),
         ...(config.relationship !== undefined ? { relationship: config.relationship } : {}),
         ...(config.jokes !== undefined ? { jokes: config.jokes } : {}),
         ...(config.interruptions !== undefined ? { interruptions: config.interruptions } : {}),
         ...(config.proactiveAsk !== undefined ? { proactiveAsk: config.proactiveAsk } : {}),
-        ...(config.hisHours !== undefined ? { hisHours: config.hisHours } : {}),
         ...(config.weeklyReport !== undefined ? { weeklyReport: config.weeklyReport } : {}),
         ...(config.jealousy !== undefined ? { jealousy: config.jealousy } : {}),
         ...(config.proactiveRoom !== undefined ? { proactiveRoom: config.proactiveRoom } : {}),
         ...(config.menu !== undefined ? { menu: config.menu } : {}),
         ...(config.curious !== undefined ? { curious: config.curious } : {}),
         ...(config.smallNews !== undefined ? { smallNews: config.smallNews } : {}),
-        ...(config.foodPhotos !== undefined ? { foodPhotos: config.foodPhotos } : {}),
         ...(config.memes !== undefined ? { memes: config.memes } : {}),
         ...(config.watching !== undefined ? { watching: config.watching } : {}),
         ...(config.texture !== undefined ? { texture: config.texture } : {}),
@@ -773,7 +738,6 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.acquaintances !== undefined ? { acquaintances: config.acquaintances } : {}),
         ...(config.bilibiliAtName !== undefined ? { bilibiliAtName: config.bilibiliAtName } : {}),
         ...(config.bilibiliAtUid !== undefined ? { bilibiliAtUid: config.bilibiliAtUid } : {}),
-        ...(config.reactions !== undefined ? { reactions: config.reactions } : {}),
         ...(config.onlineStatus !== undefined ? { onlineStatus: config.onlineStatus } : {}),
         ...(config.profileLikes !== undefined ? { profileLikes: config.profileLikes } : {}),
         ...(config.signature !== undefined ? { signature: config.signature } : {}),
@@ -796,11 +760,6 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.realAirQuality !== undefined ? { realAirQuality: config.realAirQuality } : {}),
         ...(config.realDaylight !== undefined ? { realDaylight: config.realDaylight } : {}),
         ...(config.realCalendar !== undefined ? { realCalendar: config.realCalendar } : {}),
-        ...(config.realTransport?.enabled ? { realTransport: dropUndefined({
-            enabled: true,
-            endpoint: config.realTransport.endpoint,
-            source: config.realTransport.source,
-        }) } : {}),
         ...(config.festivals !== undefined ? { festivals: config.festivals } : {}),
         ...(config.typingStatus !== undefined ? { typingStatus: config.typingStatus } : {}),
         ...(config.selfRecall !== undefined ? { selfRecall: config.selfRecall } : {}),
@@ -825,7 +784,6 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.selfPortrait !== undefined ? { selfPortrait: config.selfPortrait } : {}),
         ...(config.fewerRules !== undefined ? { fewerRules: config.fewerRules } : {}),
         ...(config.feelingReview !== undefined ? { feelingReview: config.feelingReview } : {}),
-        ...(config.ownerPeek !== undefined ? { ownerPeek: config.ownerPeek } : {}),
         ...(config.memoryReconcile !== undefined ? { memoryReconcile: config.memoryReconcile } : {}),
         ...(config.depthRouting !== undefined ? { depthRouting: config.depthRouting } : {}),
         ...(config.factHim !== undefined ? { factHim: config.factHim } : {}),
@@ -835,7 +793,6 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.herGuesses !== undefined ? { herGuesses: config.herGuesses } : {}),
         ...(config.openQuestions !== undefined ? { openQuestions: config.openQuestions } : {}),
         ...(config.rhythm !== undefined ? { rhythm: config.rhythm } : {}),
-        ...(config.shortReplies !== undefined ? { shortReplies: config.shortReplies } : {}),
         ...(config.candidates !== undefined ? { candidates: config.candidates } : {}),
         ...(config.contextTurns !== undefined ? { contextTurns: config.contextTurns } : {}),
         ...(config.contextContacts !== undefined ? { contextContacts: config.contextContacts } : {}),
@@ -1018,7 +975,7 @@ function applyNow(ctx: Context, config: Config) {
         setConsoleState({ dataDir: appConfig.dataDir });
         // 开关合并的说明（还写着旧键、表达不了……）：合并表是空的时候没有
         for (const note of configSwitchNotes(input)) ctx.logger('qqbot').warn(note);
-        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} hisReactions=${appConfig.hisReactions} herGuesses=${appConfig.herGuesses} diaryLookback=${appConfig.diaryLookback ?? false} memoryFeelings=${appConfig.memoryFeelings ?? false} realNights=${appConfig.realNights ?? false} chatReview=${appConfig.chatReview ?? false} worldThreads=${appConfig.worldThreads ?? false} afterNo=${appConfig.afterNo ?? false} openQuestions=${appConfig.openQuestions}`);
+        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} hisReactions=${appConfig.hisReactions} herGuesses=${appConfig.herGuesses} diaryLookback=${appConfig.diaryLookback ?? false} memoryFeelings=${appConfig.memoryFeelings ?? false} realNights=${appConfig.realNights ?? false} chatReview=${appConfig.chatReview ?? false} worldThreads=${appConfig.worldThreads ?? false} afterNo=${appConfig.afterNo ?? false} openQuestions=${appConfig.openQuestions}`);
         // 她的时区（ADR 0331）：整个 Koishi 进程跟着她的时区走，作息和日界不再取决于机器设置；
         // 插件停用或重载时还原（还原只在没有更新的实例占用时才做，见 claimTimeZone）
         releaseTimeZone = claimTimeZone(appConfig.timeZone);
@@ -1061,7 +1018,6 @@ function applyNow(ctx: Context, config: Config) {
         deleteMessage: async messageId => { await onlineBot().internal.deleteMsg(messageId); },
         pokeFriend: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('friend_poke', { user_id: String(userId) }); },
         markRead: async userId => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('mark_private_msg_as_read', { user_id: String(userId) }); },
-        reactMessage: async (messageId, emojiId) => { assertKernelOk('set_msg_emoji_like', await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_msg_emoji_like', { message_id: messageId, emoji_id: String(emojiId), set: true })); },
         setOnlineStatus: async (status, ext) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_online_status', { status, ext_status: ext, battery_status: 0 }); },
         sendLike: async (userId, times) => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('send_like', { user_id: String(userId), times }); },
         setSignature: async text => { await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_self_longnick', { longNick: text }); },
@@ -1121,10 +1077,9 @@ function applyNow(ctx: Context, config: Config) {
     let app: ReturnType<typeof startApp>;
     try {
         const photoSource = appConfig.photos ? webPhotoSource(appConfig, log) : undefined;
-        const foodSource = appConfig.photos && appConfig.foodPhotos && appConfig.menu ? webFoodSource(appConfig, log) : undefined;
         // 提示词指纹清单（platform/prompt-manifest.ts）：和按天日志同一个目录，默认就写（没有正文）
         const promptManifest = createPromptManifestLog(join(appConfig.dataDir, 'logs'), { log });
-        app = startApp({ config: appConfig, transport, log, media, vision, promptManifest, ...(stickerReader ? { stickerReader } : {}), ...(stickers ? { stickers } : {}), ...(photoSource ? { photoSource } : {}), ...(foodSource ? { foodSource } : {}) });
+        app = startApp({ config: appConfig, transport, log, media, vision, promptManifest, ...(stickerReader ? { stickerReader } : {}), ...(stickers ? { stickers } : {}), ...(photoSource ? { photoSource } : {}) });
     } catch (error) {
         releaseTimeZone();
         const plain = plainError('插件没有启动', error);
