@@ -57,7 +57,7 @@ export const RICH: Partial<AppConfig> = {
     autonomousLife: true, grievance: true, npcAsks: true,
     relationship: true, jokes: true, interruptions: true, together: true, jealousy: true,
     curious: true, everydayLife: true, menu: true, pursuits: true, herFeelings: true, herNo: true,
-    lagTail: true, rhythm: true, typingStatus: true, selfRecall: true, readReceipts: true, quoteReply: true,
+    rhythm: true, typingStatus: true, selfRecall: true, readReceipts: true, quoteReply: true,
     festivals: 'greet', pokes: true, pokeBack: true, recalls: true,
     proactive: 'on', proactiveReach: true, innerLife: true, proactiveInvite: true, proactiveAsk: true, comeBack: true,
     smallNews: true, proactiveRoom: true,

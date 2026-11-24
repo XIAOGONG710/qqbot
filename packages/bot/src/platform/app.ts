@@ -926,8 +926,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         herDays: config.herDays,
         // 危机信号（ADR 0068）和小别扭 / 和好的起因（ADR 0074，配置 grievance）：assess 的最前面，意图阶梯和后面的判断都读
         grievance: config.grievance,
-        // 时间块（ADR 0004 / 0105）：断网很久才回那一句跟着 lagTail
-        lagTail: config.lagTail,
+        // 时间块（ADR 0004 / 0105）：断网很久才回那一句跟着 rhythm（开关合并：原 lagTail）
+        lagTail: config.rhythm,
         // 她这几天拍照修图（配置 lifeInPrompt，要有生活执行器）
         lifeInPrompt: Boolean(config.autonomousLife && lifeRunner),
         // 意图阶梯（ADR 0019 起）：开关是它的选项
@@ -1881,7 +1881,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 只写账是纯文件（跟着 herFeelings）；这一半会进给她的提示词、改她说话，所以另有一个默认关的开关
             ...(config.herFeelings && config.feltLedgerRecall ? { feltLedger: () => readLedger(soulDir()) } : {}),
             ...(config.realNights ? { realNights: true } : {}),
-            ...(config.lagTail ? { lagTail: true } : {}),
+            ...(config.rhythm ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
             ...(config.pursuits ? { pursuits: pursuitsNow } : {}),
             ...(config.deliberation !== 'off' ? { deliberate: { llm: deliberateLlm(config.llm, config.deliberateModel) } } : {}),

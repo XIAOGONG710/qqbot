@@ -98,7 +98,6 @@ export const DEFAULTS = {
     herNo: false,
     /** 拒绝之后（ADR 0214）：他又提同一类请求、上次她推了他只回「行吧」就不吭声 / 她被磨着勉强答应了，给她一句方向（要不要还是她定，变的是说法）；什么都不存 */
     afterNo: false,
-    lagTail: false,
     everydayLife: false,
     worldDrama: false,
     /** 她那边的事有后续（ADR 0216）：昨天的事今天可能有个尾巴（拌嘴第二天和好、淋雨第二天嗓子发紧……），一天最多一条；闹心的事有冷却期。要 everydayLife + worldDrama */
@@ -224,6 +223,7 @@ export const LEGACY_DEFAULTS = {
     feelingLedger: true,
     deliberate: false,
     depthRouting: false,
+    lagTail: false,
 } as const;
 
 /** 开关合并的输入映射用的默认值：DEFAULTS 加上 AppConfig 里已经删掉的旧键（parseAppConfig、Koishi 迁移、盘点、adr-map 都用这份） */
@@ -476,8 +476,6 @@ export interface AppConfig {
      * 开了以后一部分消息她在做别的，20 秒到一小时才看到（一来一回很快时少，冷场时多，他难受 / 问她在不在时更快）；
      * 并且回复一直失败（断网）十分钟以上才终于发出去时，时间块里多一句断网的事实，她可以顺口说一句“刚才网断了”，不编别的原因。默认关
      */
-    /** @deprecated 已并进 rhythm（开关合并）：输入只有旧键时原样、否则由 rhythm 派生；新代码读 rhythm */
-    lagTail: boolean;
     /**
      * 她每天碰到的小事（ADR 0106）：线上 15 天的事件账全是课、饭、睡这样的例行，卡上的“小事”只有 12 条。开了以后世界里多约 90 条日常尺度的小事
      * （外卖晚了、老师拖堂、下雨没带伞、舍友的闹钟、食堂阿姨多给了半勺菜、晚霞拍了几张、和室友 / 闺蜜的来往、猫的事……），
@@ -941,7 +939,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),
         afterNo: bool(file, 'afterNo', '', DEFAULTS.afterNo),
-        lagTail: bool(file, 'lagTail', '', DEFAULTS.lagTail),
         everydayLife: bool(file, 'everydayLife', '', DEFAULTS.everydayLife),
         worldDrama: bool(file, 'worldDrama', '', DEFAULTS.worldDrama),
         worldThreads: bool(file, 'worldThreads', '', DEFAULTS.worldThreads),
