@@ -74,7 +74,7 @@ window.__ModuleLoader__.load({
         h('header', { style: row },
           h('h2', { style: { margin: 0 } }, 'QQ 机器人服务'),
           h('button', { style: button, onClick: () => start('all'),
-            disabled: blocked || ['napcat', 'hindsight', 'koishi'].every(isReady) }, '按顺序启动缺失服务')),
+            disabled: blocked }, '按顺序启动缺失服务')),
         !state && h('p', { role: 'status' }, '正在获取服务状态，无法连接时会自动重试。'),
         health?.maintenance && h('p', { role: 'status' }, '正在维护，启动暂不可用。'),
         notice && h('p', { role: 'status' }, notice),
