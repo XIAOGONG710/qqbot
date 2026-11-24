@@ -83,7 +83,8 @@ export function plannerHost(deps: PlannerHostDeps): PlannerHost {
         if (planners.size || config.proactive === 'off') return;
         for (const contact of proactiveContacts) {
             const { character } = cardFor(contact.tier);
-            const plannerSettings = [config.proactiveReach && withReach, config.innerLife && withInner, config.proactiveInvite && withInvite, config.proactiveAsk && withAsk, config.comeBack && withBack, config.proactiveRoom && withRoom, contact.tier === 'boyfriend' && config.curious && withCurious, contact.tier === 'boyfriend' && config.everydayLife && config.smallNews && withSmallNews]
+            // 主动开着（这里已经过了 proactive === 'off' 那一关）就带上这几个时机（开关合并：原 proactiveReach、proactiveInvite、proactiveAsk、comeBack、proactiveRoom、smallNews）
+            const plannerSettings = [withReach, config.innerLife && withInner, withInvite, withAsk, withBack, withRoom, contact.tier === 'boyfriend' && config.curious && withCurious, contact.tier === 'boyfriend' && config.everydayLife && withSmallNews]
                 .reduce((settings, overlay) => (overlay ? overlay(settings) : settings), character.proactive!);
             planners.set(contact.qq, createProactivePlanner({
                 contact,
@@ -110,7 +111,7 @@ export function plannerHost(deps: PlannerHostDeps): PlannerHost {
                 ...(config.innerLife && web ? { look: (query: string) => web.look(query) } : {}),
                 // 她自己决定今天想干什么（ADR 0182）：写进这一天的打算，状态行和「你今天的打算」都用它
                 // 看他的反应（ADR 0212）：只男朋友档；她那边的人名归「朋友和室友」那一类
-                ...(config.hisReactions && contact.tier === 'boyfriend' ? { reactions: { names: (character.herWorld?.people ?? []).map(person => person.name) } } : {}),
+                ...(contact.tier === 'boyfriend' ? { reactions: { names: (character.herWorld?.people ?? []).map(person => person.name) } } : {}),
                 // 她猜的事刚有了结果（ADR 0213）：一个人想事情时想这一件
                 ...(herGuessesNow && config.innerLife && contact.tier === 'boyfriend' ? { guessFacts: () => freshGuess(herGuessesNow(), clockNow().getTime()) } : {}),
                 ...(config.innerLife ? {

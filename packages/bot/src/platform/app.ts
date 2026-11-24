@@ -1608,7 +1608,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     if (config.fewerRules) log('少规矩：开（教她怎么说话的那些提示词不放，只留她是谁、她的日子、保命和格式）');
     // 她读完 / 看完之后自己想的（ADR 0204）：22 点以后想一次；今天读到哪儿 / 看了什么视频，有话想说才写一句；私人空间，没有命令念给他
     if (config.readingTakes) log(deviceOwner ? '她读完看完之后自己想的：开（每晚 22 点以后想一次，有话想说才写；私人空间，没有命令念给他）' : '她读完看完之后自己想的：readingTakes 开着，但名单里没有男朋友档，不起作用');
-    if (config.hisReactions) log(`看他的反应：${config.proactive === 'off' ? '开着，但主动消息（proactive）关着，不起作用' : '开（只男朋友档；她主动说自己的事时提示词多一行他三周内对各类事的反应，说什么她自己拿捏；他明说过不想听的那一类照片 / 小事 7 天内不发）'}`);
+    if (config.proactive !== 'off') log(`看他的反应：开（跟着 proactive；只男朋友档；她主动说自己的事时提示词多一行他三周内对各类事的反应，说什么她自己拿捏；他明说过不想听的那一类照片 / 小事 7 天内不发）`);
     // 她没想完的问题（ADR 0207）：22 点以后想一次；他问过、她答「不知道」的，让她自己想（deliberateModel，开思考），想出什么写什么；私人空间，没有命令念给他
     if (config.openQuestions) log(deviceOwner ? '她没想完的问题：开（他问了她答不上来的，每晚 22 点以后她自己想一遍；私人空间，没有命令念给他）' : '她没想完的问题：openQuestions 开着，但名单里没有男朋友档，不起作用');
     // 她猜的事和后来的结果（ADR 0213）：22 点以后对一次；白天她像在猜结果的几句给她挑，挂着的对照世界账里这几天真实发生的事；私人空间，没有命令念给他

@@ -122,8 +122,8 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.ok(String(field?.meta.description).startsWith(`**${PROACTIVE.label}**（ADR ${PROACTIVE.adr}）：${PROACTIVE.description}`));
         const timings = ['proactiveReach', 'proactiveInvite', 'proactiveAsk', 'comeBack', 'smallNews', 'proactiveRoom', 'hisReactions'] as const;
         for (const old of timings) assert.ok(String(field?.meta.description).includes(`【原 \`${old}\`】`), old);
-        // 只写 proactive：7 个时机跟着开没开（开关合并）
-        for (const mode of ['off', 'dryRun', 'on'] as const) for (const old of timings) assert.equal(fromKoishi({ ...minimal, proactive: mode })[old], mode !== 'off', `${mode} ${old}`);
+        // 7 个时机跟着 proactive 开没开（开关合并）：app 只读 proactive，旧字段不在 AppConfig 里
+        for (const mode of ['off', 'dryRun', 'on'] as const) for (const old of timings) assert.equal(old in fromKoishi({ ...minimal, proactive: mode }), false, `${mode} ${old}`);
         assert.equal(DEFAULTS.proactive, 'off');
         const save = (value: object) => Config.simplify(Config(value as never));
         const omitted = save(minimal);

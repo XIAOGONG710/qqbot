@@ -65,21 +65,15 @@ export const DEFAULTS = {
     qqSurface: false,
     bilibili: 'off' as PresenceMode,
     bilibiliCommentKeywords: [] as readonly string[],
-    proactiveReach: false,
-    proactiveInvite: false,
     photos: false,
     aiPhotos: false,
     together: false,
-    comeBack: false,
     relationship: false,
     jokes: false,
     interruptions: false,
-    proactiveAsk: false,
     weeklyReport: false,
     jealousy: false,
-    proactiveRoom: false,
     curious: false,
-    smallNews: false,
     memes: false,
     watching: false,
     quoteReply: false,
@@ -162,8 +156,6 @@ export const DEFAULTS = {
     feelingReview: false,
     /** 她读完 / 看完之后自己想的（ADR 0204）：每晚想一次，有话想说才写一句落在具体情节 / 说法上的看法，存在私人空间里；聊到那本书 / 视频或问起“最近看了什么”才放进提示词 */
     readingTakes: false,
-    /** 看他的反应（ADR 0212）：她主动说自己的事时，看一眼他最近对哪类事接着聊、回个嗯、明说过不想听，说什么说多少她自己拿捏；他明说过不想听的那一类照片 / 小事这几天不发 */
-    hisReactions: false,
     /** 她猜的事和后来的结果（ADR 0213）：白天留意她像在猜结果的话（小测、快递、天气、作业），每晚她自己挑哪句算数，对照世界账看对没对，记一句；私人空间 */
     herGuesses: false,
     /** 她没想完的问题（ADR 0207）：他问了她答不上来的（「不知道」），夜里她自己想一遍、想出什么写什么；他再问到同一件事才把她自己想的放进提示词。私人空间 */
@@ -221,6 +213,13 @@ export const LEGACY_DEFAULTS = {
     pokeOut: false,
     pokeBack: false,
     afterNo: false,
+    proactiveReach: false,
+    proactiveInvite: false,
+    proactiveAsk: false,
+    comeBack: false,
+    smallNews: false,
+    proactiveRoom: false,
+    hisReactions: false,
 } as const;
 
 /** 开关合并的输入映射用的默认值：DEFAULTS 加上 AppConfig 里已经删掉的旧键（parseAppConfig、Koishi 迁移、盘点、adr-map 都用这份） */
@@ -319,14 +318,10 @@ export interface AppConfig {
      * 他没回也继续找他（ADR 0100）：原来她主动发的有一条没回就整个停下等他回；开了以后没回的可以再发到 3 条，一条比一条隔得久（2 小时、4 小时），
      * 并且她自己想一想要不要催他（第一次轻轻戳一下，第二次带点小脾气，也可以决定先不发）；到 3 条就停到他回。要主动消息开着。默认关
      */
-    /** @deprecated 已并进 proactive（开关合并）：输入只有旧键时原样、否则由 proactive 派生；新代码读 proactive */
-    proactiveReach: boolean;
     /**
      * 约他一起玩（ADR 0107，要主动消息开着）：晚上她想起你们的固定节目（卡上写着的我的世界存档、王者双排），随口约他一句；一周最多 3 次、两次之间至少隔 2 天（他拒绝了隔 4 天）、
      * 他没回不催、她很累 / 不舒服 / 心情不好就不约。默认关
      */
-    /** @deprecated 已并进 proactive（开关合并）：输入只有旧键时原样、否则由 proactive 派生；新代码读 proactive */
-    proactiveInvite: boolean;
     /**
      * 照片货架（ADR 0109）：他要看猫 / 风景时，货架里有就发一张高清照片。照片由她自己从网上找（Wikimedia Commons 里 CC0 / 公有领域的原图，看图模型把关：没有人脸、没有水印 / 文字 / 相框、清晰；
      * 要看图开着才找）；作者也能用 photo-cli 手动加。货架空着这个开关什么都不做。只对男朋友档；她本人的自拍、吃的不在第一版里。默认关
@@ -345,8 +340,6 @@ export interface AppConfig {
     /**
      * 说了“等下”之后自己回来（ADR 0112，要主动消息开着）：她最后一句是“等下 / 我去拿个东西 / 弄完这张再说”，他没接话，过 4–14 分钟她回来说一声，顺带说刚才那件事；不算每天的主动条数。默认关
      */
-    /** @deprecated 已并进 proactive（开关合并）：输入只有旧键时原样、否则由 proactive 派生；新代码读 proactive */
-    comeBack: boolean;
     /**
      * 关系阶段（ADR 0113）：角色卡【会变】“相处越久越敢说心里话”。最近 30 天里有 14 天以上真聊过（他那天至少说了 3 条），她更放得开一点：想他直接说、心里的事愿意往外倒一点；
      * 聊得少时保持现在的样子（只向上变，不让她因为他忙而变冷）；不存分数。只对男朋友档。默认关
@@ -366,8 +359,6 @@ export interface AppConfig {
      * 问问他的意见（ADR 0116，要主动消息开着）：下午到傍晚她拿不准一件小事（吃什么、穿什么、作业先写哪个、周末干嘛），随口问他一句；一周最多 2 次、两次之间至少隔 2 天；
      * 他没回不催；他刚说过去忙 / 累了、今晚有事就不问；她自己难过 / 很累 / 不舒服可以只输出「不发」。默认关
      */
-    /** @deprecated 已并进 proactive（开关合并）：输入只有旧键时原样、否则由 proactive 派生；新代码读 proactive */
-    proactiveAsk: boolean;
     /**
      * 周报（ADR 0118）：每周日 21:30 以后自动出一份“她离真人还差多少”的数字（说话的样子、延迟、表情、主动、日志里数到的新功能），写进 <数据目录>/reports/weekly-<周日日期>.md；
      * 只有数字，没有原话；同一把尺子每周对比。也可手动：node src/ops/weekly-report-cli.ts --write。默认关
@@ -382,8 +373,6 @@ export interface AppConfig {
      * 给主动名额留余地（ADR 0124，要主动消息开着）：他一整天没回时，早安 + 催他 + 冷场会把每天的条数占满，随口说件事、下课、睡前全被挤掉（10-22 连晚安都没说成）。
      * 开了以后：睡前那句晚安不占名额；别的时机最多占 dailyMax - 1 条，留一个给“随口说件事”。总条数不超过 dailyMax + 睡前一条（不加催他的次数）。默认关
      */
-    /** @deprecated 已并进 proactive（开关合并）：输入只有旧键时原样、否则由 proactive 派生；新代码读 proactive */
-    proactiveRoom: boolean;
     /**
      * 每顿吃什么（ADR 0125）：账上的“吃饭”只有午饭 / 晚饭和在哪吃，没有“吃了什么”，他问“中午吃的啥”她就现编，前后对不上。
      * 开了以后每天每顿从一张通用的学生菜单里按日期随机取一道（同一天对所有人一样、重启重放都一样、一个循环不重样），写进她那边的事实、此刻在做的事和复盘；
@@ -399,8 +388,6 @@ export interface AppConfig {
      * 她会主动讲今天的小事（ADR 0127，要主动消息和 everydayLife 都开着）：日常小事（食堂新窗口、宿舍楼道的灯、{朋友}发来的搞笑图……）原来只在你问“今天干嘛了”时才说得出口，
      * 她自己从来不提，聊天就只剩作业 / 相机 / 困。开了以后：约一半的日子，她从当天碰到的小事里挑一件，过一会儿随口发给你（一天最多一件，不要你回应）。只对男朋友档。默认关
      */
-    /** @deprecated 已并进 proactive（开关合并）：输入只有旧键时原样、否则由 proactive 派生；新代码读 proactive */
-    smallNews: boolean;
     /**
      * 网络热梗（ADR 0129，要 bilibiliAccount 开着才会自己去学）：她的知识停在模型训练的那一天，网上现在流行的梗她一个都不知道。
      * 开了以后每 12 小时读一次 B 站热门 / 热搜、微博热搜、百度热榜，挑出可能是梗的词，用她的 B 站号搜「<词> 什么梗」、读字幕当证据，只根据证据写意思（把握不到中 / 不适合聊天的不收）；
@@ -601,8 +588,6 @@ export interface AppConfig {
      * 看他的反应（ADR 0212）：默认关；只男朋友档，要 proactive 开着。她主动说自己的事（随口说件事、冷场、小事 / 猫 / 吃的照片）时，
      * 提示词多一行三周内他对各类事的反应（接着聊 / 回个嗯 / 没回 / 明说不想听），不禁话题；他明说过不想听的那一类照片 / 小事 7 天内不发。不落盘，每次从聊天记录重算
      */
-    /** @deprecated 已并进 proactive（开关合并）：输入只有旧键时原样、否则由 proactive 派生；新代码读 proactive */
-    hisReactions?: boolean;
     /**
      * 她猜的事和后来的结果（ADR 0213）：默认关；要名单里有男朋友档、要她那边的世界。白天只留意她说的「我猜 / 估计 / 肯定会……」+「小测 / 快递 / 下雨 / 作业……」，
      * 每晚 22 点以后她自己挑哪几句是真在猜（气话不算），挂着的对照世界账这几天真实发生的事看对没对（结果只能是世界账里的事），7 天没结果的放下；
@@ -878,21 +863,15 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qqSurface: bool(file, 'qqSurface', '', DEFAULTS.qqSurface),
         bilibili: oneOf(file.bilibili, 'bilibili', PRESENCE_MODES, DEFAULTS.bilibili),
         bilibiliCommentKeywords: bilibiliCommentKeywords(file.bilibiliCommentKeywords),
-        proactiveReach: bool(file, 'proactiveReach', '', DEFAULTS.proactiveReach),
-        proactiveInvite: bool(file, 'proactiveInvite', '', DEFAULTS.proactiveInvite),
         photos: bool(file, 'photos', '', DEFAULTS.photos),
         aiPhotos: bool(file, 'aiPhotos', '', DEFAULTS.aiPhotos),
         together: bool(file, 'together', '', DEFAULTS.together),
-        comeBack: bool(file, 'comeBack', '', DEFAULTS.comeBack),
         relationship: bool(file, 'relationship', '', DEFAULTS.relationship),
         jokes: bool(file, 'jokes', '', DEFAULTS.jokes),
         interruptions: bool(file, 'interruptions', '', DEFAULTS.interruptions),
-        proactiveAsk: bool(file, 'proactiveAsk', '', DEFAULTS.proactiveAsk),
         weeklyReport: bool(file, 'weeklyReport', '', DEFAULTS.weeklyReport),
         jealousy: bool(file, 'jealousy', '', DEFAULTS.jealousy),
-        proactiveRoom: bool(file, 'proactiveRoom', '', DEFAULTS.proactiveRoom),
         curious: bool(file, 'curious', '', DEFAULTS.curious),
-        smallNews: bool(file, 'smallNews', '', DEFAULTS.smallNews),
         memes: bool(file, 'memes', '', DEFAULTS.memes),
         watching: bool(file, 'watching', '', DEFAULTS.watching),
         quoteReply: bool(file, 'quoteReply', '', DEFAULTS.quoteReply),
@@ -953,7 +932,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         fewerRules: bool(file, 'fewerRules', '', DEFAULTS.fewerRules),
         feelingReview: bool(file, 'feelingReview', '', DEFAULTS.feelingReview),
         readingTakes: bool(file, 'readingTakes', '', DEFAULTS.readingTakes),
-        hisReactions: bool(file, 'hisReactions', '', DEFAULTS.hisReactions),
         herGuesses: bool(file, 'herGuesses', '', DEFAULTS.herGuesses),
         openQuestions: bool(file, 'openQuestions', '', DEFAULTS.openQuestions),
         rhythm: bool(file, 'rhythm', '', DEFAULTS.rhythm),

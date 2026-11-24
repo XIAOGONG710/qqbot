@@ -76,7 +76,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         speechCheck: false,
         herDays: false,
         autonomousLife: false,
-        grievance: false, pokes: false, bilibili: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, curious: false, smallNews: false, memes: false, watching: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, everydayLife: false, worldDrama: false, pursuits: false, deliberateModel: 'deepseek-v4-pro', dormancy: false, timeline: false, webLookup: 'off', tastes: false, bilibiliAtName: '', bilibiliAtUid: 0, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        grievance: false, pokes: false, bilibili: 'off', bilibiliCommentKeywords: [], photos: false, together: false, relationship: false, jokes: false, interruptions: false, weeklyReport: false, jealousy: false, curious: false, memes: false, watching: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, everydayLife: false, worldDrama: false, pursuits: false, deliberateModel: 'deepseek-v4-pro', dormancy: false, timeline: false, webLookup: 'off', tastes: false, bilibiliAtName: '', bilibiliAtUid: 0, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWorld: false, festivals: 'off', typingStatus: false, rhythm: false,
         media: true,
@@ -1677,7 +1677,8 @@ describe('主动消息（ADR 0011）', () => {
         assert.ok(next.next!.at >= new Date(2026, 9, 5, 9, 40).getTime() && next.next!.at <= new Date(2026, 9, 5, 10, 10).getTime());
         assert.ok(logs.some(l => /^\[10002\] 主动（试运行）：下一次 今天 09:\d\d 早安/.test(l) || /^\[10002\] 主动（试运行）：下一次 今天 10:\d\d 早安/.test(l)));
 
-        fireNext(clock);
+        // 主动开着时别的时机（找他、回来了……）也有自己的定时，最近的那个不一定是早安：直接走到早安那一刻
+        clock.advanceTo(next.next!.at);
         await until(() => logs.some(l => l.includes('主动（试运行，没发）')));
         assert.ok(logs.some(l => l.startsWith('[10002] 主动（试运行，没发）：早安（起床后') && l.endsWith('今天第 1 条；本来要说：好')));
         assert.deepEqual(sent, []);
@@ -1692,7 +1693,7 @@ describe('主动消息（ADR 0011）', () => {
         const first = setup(cfg, { 10002: [] }, { clock });
         await first.app.connected(SELF);
         await until(() => clock.nextTimer() !== undefined);
-        fireNext(clock);
+        clock.advanceTo(first.app.status().contacts[0]!.proactive!.next!.at);
         await until(() => first.sent.length > 0, 8000);
         assert.deepEqual(first.sent, ['10002:好']);
         assert.deepEqual(chat(cfg, 10002), ['assistant:好']);
@@ -1703,10 +1704,9 @@ describe('主动消息（ADR 0011）', () => {
         // 重启：同一时刻、同一个数据目录（补回拿到的是她刚发的那条）
         const again = setup(cfg, { 10002: [{ message_id: 900, time: Math.floor(clock.now() / 1000), sender: { user_id: SELF }, message: [{ type: 'text', data: { text: '好' } }] }] }, { clock });
         await again.app.connected(SELF);
-        // 他还没回早安：除了日子先不排
-        await until(() => again.logs.some(l => l.includes('等他回了再排')));
-        assert.ok(again.logs.includes('[10002] 主动：上一条主动消息他还没回，等他回了再排；今明两天没有要发的了'), again.logs.join('\n'));
-        assert.equal(again.app.status().contacts[0]!.proactive!.paused, '上一条主动消息他还没回，等他回了再排');
+        // 他还没回早安：主动开着时「没回也继续找他」也开着（开关合并：原 proactiveReach），下一次是催他回，不重发早安
+        await until(() => again.logs.some(l => l.startsWith('[10002] 主动：下一次')));
+        assert.ok(again.logs.some(l => /^\[10002\] 主动：下一次 今天 \d\d:\d\d 催他回/.test(l)), again.logs.join('\n'));
         assert.deepEqual(again.sent, []);
         assert.deepEqual(chat(cfg, 10002), ['assistant:好']);
     });
@@ -2884,7 +2884,7 @@ describe('全开冒烟（整包上线用）', () => {
                 contacts: bf, schedule: true, herDays: true, pokes: true, recalls: true, qqSurface: true, qqPresence: true,
                 qzone: 'dryRun', bilibili: 'dryRun', typingStatus: true,
                 rhythm: true, festivals: 'greet',
-                herFeelings: true, herNo: true, proactiveInvite: true, photos: true, together: true, comeBack: true, relationship: true, jokes: true, interruptions: true, proactiveAsk: true, weeklyReport: true, jealousy: true, proactiveRoom: true, curious: true, smallNews: true, memes: true, watching: true, everydayLife: true, pursuits: true, grievance: true,
+                herFeelings: true, herNo: true, photos: true, together: true, relationship: true, jokes: true, interruptions: true, weeklyReport: true, jealousy: true, curious: true, memes: true, watching: true, everydayLife: true, pursuits: true, grievance: true,
             });
             const { app, sent, logs } = setup(cfg, { 10001: [] }, {
                 clock, generate: () => '在呢，刚忙完', bilibiliFetch: bili,

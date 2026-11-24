@@ -1,6 +1,6 @@
 // 线上开着、开关这一层没测过的（docs/reports/2026-11-24-switch-audit.md「测试覆盖」）：hisReactions（ADR 0212，主动分享前看他的反应）。
 // 计划器拿到 reactions 之后怎么用由 his-reactions.test.ts 管（直接建 createProactivePlanner）；这里只管配置那一层：
-// 主动消息的计划器宿主（proactive/planner-host.ts，App 用的那一个）按 config.hisReactions 和档位给不给计划器 reactions。
+// 主动消息的计划器宿主（proactive/planner-host.ts，App 用的那一个）按档位给不给计划器 reactions（开关合并：hisReactions 并进 proactive，主动开着就给）。
 // 合成角色的卡上的主动设定，试运行（dryRun）跑一天：两天前她说作业的事，他回「别老说作业了」——
 // 开着时她自己挑话题主动开口（share / quiet）的那几次，说明里多一行「你看到的他的反应」；关着、或不是男朋友档，都没有。
 
@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 /** 跑一天，收她每次主动开口时交给回复器的请求 */
-async function run(hisReactions: boolean, contact: Contact) {
+async function run(contact: Contact) {
     const dataDir = mkdtempSync(join(tmpdir(), 'qqbot-live-switches-proactive-'));
     dirs.push(dataDir);
     // 两天前下午她主动说了作业的事，他回「别老说作业了」，她接一句；前一天晚上他说去忙了、她回了好（没有没回的）
@@ -63,7 +63,7 @@ async function run(hisReactions: boolean, contact: Contact) {
             return { result: 'dryRun', parts: ['嗯嗯'] };
         },
     } as unknown as Responder;
-    const config: AppConfig = baselineConfig(dataDir, [contact], { proactive: 'dryRun', moody: false, hisReactions });
+    const config: AppConfig = baselineConfig(dataDir, [contact], { proactive: 'dryRun', moody: false });
     const cards = new Map<string, TierCard>();
     const cardFor = (tier: string) => cards.get(tier) ?? cards.set(tier, loadTierCard(syntheticCardPattern, tier)).get(tier)!;
     // 宿主要的东西里，和这件事无关的都不给（没有世界账、天气、照片、记忆……，同这些开关关着时）
@@ -107,23 +107,16 @@ const boyfriend: Contact = { qq: 10001, name: '阿明', tier: 'boyfriend' };
 /** 她自己挑话题开口的那几次（share / quiet） */
 const ownTopic = (request: InitiateRequest) => /^(冷场|随口说件自己的事)（/.test(request.label);
 
-describe('hisReactions（ADR 0212）：主动分享前看他的反应', () => {
-    test('关着：她主动开口的说明里没有他的反应', async () => {
-        const r = await run(false, boyfriend);
-        assert.ok(r.requests.some(ownTopic), '这一天她有自己挑话题开口的（冷场 / 随口说件事）');
-        assert.ok(r.requests.length >= 1, '这一天她主动过');
-        assert.ok(r.requests.every(request => !request.note.includes(SEEN)), r.requests.map(request => request.note).join('\n'));
-    });
-
-    test('开着：她自己挑话题开口那次，说明里有「他直接说过不想听你说课和作业」', async () => {
-        const r = await run(true, boyfriend);
+describe('hisReactions（ADR 0212，跟着 proactive）：主动分享前看他的反应', () => {
+    test('主动开着：她自己挑话题开口那次，说明里有「他直接说过不想听你说课和作业」', async () => {
+        const r = await run(boyfriend);
         const seen = r.requests.filter(request => request.note.includes(SEEN));
         assert.ok(seen.length >= 1, [...r.requests.map(request => `${request.label}：${request.note}`), ...r.lines].join('\n'));
         assert.match(seen[0]!.note, /直接说过不想听你说课和作业/);
     });
 
-    test('开着但不是男朋友档：没有（只男朋友档）', async () => {
-        const r = await run(true, { qq: 10003, name: '小林', tier: 'bestie' });
+    test('主动开着但不是男朋友档：没有（只男朋友档）', async () => {
+        const r = await run({ qq: 10003, name: '小林', tier: 'bestie' });
         assert.ok(r.requests.some(ownTopic), '这一天她有自己挑话题开口的（冷场 / 随口说件事）');
         assert.ok(r.requests.every(request => !request.note.includes(SEEN)));
     });

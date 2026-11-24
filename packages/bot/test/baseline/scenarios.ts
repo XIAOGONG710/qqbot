@@ -59,8 +59,7 @@ export const RICH: Partial<AppConfig> = {
     curious: true, everydayLife: true, pursuits: true, herFeelings: true, herNo: true,
     rhythm: true, typingStatus: true, qqSurface: true, quoteReply: true,
     festivals: 'greet', pokes: true, recalls: true,
-    proactive: 'on', proactiveReach: true, innerLife: true, proactiveInvite: true, proactiveAsk: true, comeBack: true,
-    smallNews: true, proactiveRoom: true,
+    proactive: 'on', innerLife: true,
     feedbackCommands: true, timeline: true, tastes: true, dormancy: true, deliberation: 'keywords', weeklyReport: true,
 };
 
@@ -1239,7 +1238,7 @@ export const SCENARIOS: readonly Scenario[] = [
                 + '她回复里的 <<记住>>（单独一行的气泡发送前处理）和 <<日记>>（普通气泡发出去时处理，本地也留一份）、危机回合（重写后还不过发固定兜底、重写后通过）',
             start: '2026-12-10T19:00:00+08:00',
             contacts: [boyfriend],
-            config: { factCheck: 'fix', selfDirectedMemory: true, diaryInsights: true, proactive: 'on', proactiveReach: true, comeBack: true },
+            config: { factCheck: 'fix', selfDirectedMemory: true, diaryInsights: true, proactive: 'on' },
             memory: {
                 recall: [
                     { bank: boyfriend.qq, query: '第一次约会的地方', results: [
