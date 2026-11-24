@@ -19,7 +19,7 @@ const MODES: Record<string, readonly string[]> = {
         .map(key => [key, PRESENCE_MODES])),
 };
 /** 配置页上本来就没写说明的开关 */
-const NO_DETAIL = ['everydayLife'];
+const NO_DETAIL: string[] = [];
 
 describe('功能总表里给配置页的那一份', () => {
     test('几档模式的开关都有选项，值和代码里认的一一对应（先后也一样），默认值是其中一档；开 / 关的没有选项', () => {

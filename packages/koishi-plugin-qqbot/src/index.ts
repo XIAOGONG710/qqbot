@@ -181,7 +181,8 @@ export interface Config {
     /** 已并进 autonomousLife（开关合并），koishi.yml 里还写着才有 */
     lifeInPrompt?: boolean;
     grievance: boolean;
-    npcAsks: boolean;
+    /** 已并进 everydayLife（开关合并），koishi.yml 里还写着才有 */
+    npcAsks?: boolean;
     pokes: boolean;
     recalls: boolean;
     pokeBack: boolean;
@@ -212,7 +213,8 @@ export interface Config {
     weeklyReport: boolean;
     jealousy: boolean;
     proactiveRoom: boolean;
-    menu: boolean;
+    /** 已并进 everydayLife（开关合并），koishi.yml 里还写着才有 */
+    menu?: boolean;
     curious: boolean;
     smallNews: boolean;
     memes: boolean;
@@ -233,7 +235,8 @@ export interface Config {
     lagTail?: boolean;
     everydayLife: boolean;
     worldDrama: boolean;
-    worldThreads: boolean;
+    /** 已并进 worldDrama（开关合并），koishi.yml 里还写着才有 */
+    worldThreads?: boolean;
     diaryLookback: boolean;
     memoryFeelings: boolean;
     realNights: boolean;
@@ -419,7 +422,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         weeklyReport: toggle('weeklyReport'),
         jealousy: toggle('jealousy'),
         proactiveRoom: toggle('proactiveRoom'),
-        menu: toggle('menu'),
+        menu: legacy(),
         curious: toggle('curious'),
         smallNews: toggle('smallNews'),
         memes: toggle('memes'),
@@ -444,7 +447,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         realNights: toggle('realNights'),
         memoryFeelings: toggle('memoryFeelings'),
         diaryLookback: toggle('diaryLookback'),
-        worldThreads: toggle('worldThreads'),
+        worldThreads: legacy(),
         worldDrama: toggle('worldDrama'),
         pursuits: toggle('pursuits'),
         deliberation: choice('deliberation'),
@@ -493,7 +496,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         pokeBack: toggle('pokeBack'),
         pokeOut: toggle('pokeOut'),
         grievance: toggle('grievance'),
-        npcAsks: toggle('npcAsks'),
+        npcAsks: legacy(),
         feedbackCommands: toggle('feedbackCommands'),
         realWorld: toggle('realWorld'),
         realWeather: legacy(),

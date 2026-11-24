@@ -252,9 +252,9 @@ describe('客户端的纯函数', () => {
         assert.equal(featureTitle({ on: true }), '已启用');
         assert.equal(featureTitle({ on: false }), '未启用');
         assert.equal(featureTitle({ on: true, hint: 'ADR 0109' }), '已启用；ADR 0109');
-        const blocked = featureStatuses({ worldThreads: true }).find(f => f.key === 'worldThreads')!;
+        const blocked = featureStatuses({ feelingReview: true }).find(f => f.key === 'feelingReview')!;
         assert.ok(featureLabel(blocked).endsWith('（还需开启其他功能）'));
-        assert.match(featureTitle(blocked), /已开启但尚未生效；还需启用：日常小事 \/ 小测、日子里的小起伏/);
+        assert.match(featureTitle(blocked), /已开启但尚未生效；还需启用：心境/);
     });
 
     test('货架 / AI 草稿 / 小梗 / 周报那几行：没有这一项就不出现；待审核数用中文写清楚', () => {

@@ -68,7 +68,7 @@
 | [0058](0058-intimate-reciprocity.md) | 男朋友的亲密邀约先回应、再嘴硬 | 已实现；真模型回归通过 |  |
 | [0059](0059-meme-banter.md) | 先认出“他在玩”，再顺着接梗 | 已实现；真模型回归通过 |  |
 | [0060](0060-photo-asks.md) | 他要看照片——她先不发，用她自己的理由，再说给他听 | 已上线（10-11 11:00，`57526b5`，和 GPT 的 `codex/intimacy-followup` … |  |
-| [0061](0061-friends-ask-and-back-out.md) | 闺蜜也会约她、也会变卦；她也会说不（C1） | 事实层 + 世界层接线已实现并测过，配置 `npcAsks` 默认关，线上完全不变（分支 `claude/npc-ask… | `npcAsks` 开 |
+| [0061](0061-friends-ask-and-back-out.md) | 闺蜜也会约她、也会变卦；她也会说不（C1） | 事实层 + 世界层接线已实现并测过，配置 `npcAsks` 默认关，线上完全不变（分支 `claude/npc-ask… | `everydayLife`（原 `npcAsks`） 开 |
 | [0063](0063-image-stickers.md) | 她自己的图片表情收藏 | 已实现，默认关；真 QQ 单图技术冒烟已通过，尚未完成 collect 描述核对、未上线 | `stickers` 开 |
 | [0064](0064-her-own-events-as-reasons.md) | 她账里的事成为开口的理由（0057 的推广） | 已上线（2026-10-13 12:23:48 重启 Koishi，约 30 秒，用户当次同意；线上 `main` = … |  |
 | [0065](0065-knowledge-update-probe.md) | 「新事实顶掉旧事实」小测试（先量再决） | 已完成（2026-10-13）：现状够用，不做有效期层（2026-10-12 用户在 `options.md` 里选了 … |  |
@@ -131,7 +131,7 @@
 | [0122](0122-module-map.md) | 模块总表（A14 第一步，只分类、只写文档） | 已实现（2026-10-23；没有开关，不动任何运行代码） |  |
 | [0123](0123-jealousy.md) | 吃醋，最轻的一档（配置 `jealousy`，默认关） | 已实现，未上线（2026-10-23；配置 `jealousy`；默认关）。上线 = `koishi.yml` 里加 `… | `jealousy` 开 |
 | [0124](0124-proactive-room.md) | 给主动名额留余地（配置 `proactiveRoom`，默认关） | 已实现，未上线（2026-10-23；配置 `proactiveRoom`，要主动消息开着；默认关）。上线 = `koi… | `proactiveRoom` 开 |
-| [0125](0125-menu.md) | 每顿吃什么（配置 `menu`，默认关） | 已实现，未上线（2026-10-23；配置 `menu`；默认关）。上线 = `koishi.yml` 里加 `menu… | `menu` 开 |
+| [0125](0125-menu.md) | 每顿吃什么（配置 `menu`，默认关） | 已实现，未上线（2026-10-23；配置 `menu`；默认关）。上线 = `koishi.yml` 里加 `menu… | `everydayLife`（原 `menu`） 开 |
 | [0126](0126-curious.md) | 会追问（配置 `curious`，默认关） | 已实现，未上线（2026-10-23；配置 `curious`；默认关）。上线 = `koishi.yml` 里加 `c… | `curious` 开 |
 | [0127](0127-small-news.md) | 她会主动讲今天的小事（配置 `smallNews`，默认关，要 `everydayLife` 和主动消息开着） | 已实现，未上线（2026-10-23；配置 `smallNews`；默认关）。上线 = `koishi.yml` 里加 … | `smallNews` 开 |
 | [0128](0128-food-photos.md) | 吃的照片（配置 `foodPhotos`，默认关，要 `photos` 和 `menu` 开着） | 已删（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtractio… |  |
@@ -210,7 +210,7 @@
 | [0213](0213-her-guesses.md) | 她猜的事和后来的结果——先押一个判断，世界来回答（herGuesses） | 已实现，新开关 `herGuesses`，默认关。要名单里有男朋友档、要她那边的世界（世界账）。DSH 那台机器拉取、在… | `herGuesses` 开 |
 | [0214](0214-after-no.md) | 拒绝之后——要不要看事情本身，变的只是说法（afterNo） | 已实现，新开关 `afterNo`，默认关；只男朋友档。DSH 那台机器拉取、在 `koishi.yml` 里加 `af… | `afterNo` 开 |
 | [0215](0215-memory-weight-decision.md) | 记忆有轻有重（N4）——已经有了；「可能记错」她不要，不做 | 已实施（QQ 原有，DSH 于 2026-11-04 对齐） |  |
-| [0216](0216-world-threads.md) | 她那边的事有后续——昨天的事今天留个尾巴，闹心的事不扎堆（worldThreads） | 已实现，新开关 `worldThreads`，默认关；要 `everydayLife` 和 `worldDrama` 都… | `worldThreads` 开 |
+| [0216](0216-world-threads.md) | 她那边的事有后续——昨天的事今天留个尾巴，闹心的事不扎堆（worldThreads） | 已实现，新开关 `worldThreads`，默认关；要 `everydayLife` 和 `worldDrama` 都… | `worldDrama`（原 `worldThreads`） 开 |
 | [0217](0217-diary-lookback.md) | 翻回去看自己的日记——前天写的今天还能对上（journal_read + diaryLookback） | 已实现。 | `diaryLookback` 开 |
 | [0218](0218-memory-feelings.md) | 回忆带着当时的感觉（memoryFeelings） | 已实现，新开关 `memoryFeelings`，默认关；只男朋友档，要 `herFeelings`（最好也开着 `fe… | `memoryFeelings` 开 |
 | [0219](0219-real-nights.md) | 昨晚真的怎么睡的——早上的困从真实的夜里来，被吵醒有起床气（realNights） | 已实现，新开关 `realNights`，默认关；只男朋友档，要 `herDays` 和卡上的身体。DSH 那台机器拉取… | `realNights` 开 |

@@ -279,7 +279,7 @@ export interface AppConfig {
     lifeInPrompt: boolean;
     /** 有起因的小别扭与和好（ADR 0074）：男朋友档，他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点，他一哄就软下来。默认关 */
     grievance: boolean;
-    /** 闺蜜的约（ADR 0061）：约、迟到、改约、取消进她的一天和「你那边」；默认关 */
+    /** @deprecated 已并进 everydayLife（开关合并）：输入只有旧键时原样、否则由 everydayLife 派生；新代码读 everydayLife。闺蜜的约（ADR 0061）：约、迟到、改约、取消进她的一天和「你那边」；默认关 */
     npcAsks: boolean;
     /** 戳一戳（ADR 0079）：名单里的人在 QQ 里戳她，变成一条「[戳了戳你]」走原来的回复流程；睡着、上课时不理，5 分钟最多 3 下。默认关 */
     pokes: boolean;
@@ -393,6 +393,7 @@ export interface AppConfig {
      * 开了以后每天每顿从一张通用的学生菜单里按日期随机取一道（同一天对所有人一样、重启重放都一样、一个循环不重样），写进她那边的事实、此刻在做的事和复盘；
      * 第一次开的时候定下“从哪天起”（第二天），已经过完的日子不改。默认关
      */
+    /** @deprecated 已并进 everydayLife（开关合并）：输入只有旧键时原样、否则由 everydayLife 派生；新代码读 everydayLife */
     menu: boolean;
     /**
      * 会追问（ADR 0126）：量过，她问句率 12% 和真人持平，但问的多是口头语（「睡吧？」），问他生活、问他刚说那件事的很少——
@@ -482,7 +483,7 @@ export interface AppConfig {
     everydayLife: boolean;
     /** 她日子里的小起伏（2026-11-02，用户「直接模拟现实世界」）：一天之内的难过、烦、高兴，强度 2–3 */
     worldDrama: boolean;
-    /** 她那边的事有后续（ADR 0216）：默认关；要 everydayLife 和 worldDrama 都开着。从第一次开的第二天起才有（world/threads-from.json），已经过完的日子不改写 */
+    /** @deprecated 已并进 worldDrama（开关合并）：输入只有旧键时原样、否则由 worldDrama 派生；新代码读 worldDrama。她那边的事有后续（ADR 0216）：默认关；要 everydayLife 和 worldDrama 都开着。从第一次开的第二天起才有（world/threads-from.json），已经过完的日子不改写 */
     worldThreads?: boolean;
     /** 翻回去看自己的日记（ADR 0217）：默认关；只男朋友档。他问到前几天（ADR 0032 的那几天）时，那天她自己写的日记也放进那一段流水账 */
     diaryLookback?: boolean;

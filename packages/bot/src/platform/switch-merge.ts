@@ -108,6 +108,10 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
     },
     // 10. 节奏（13）：回复延迟的长尾跟着回复节奏
     follows('rhythm', BOOL, ['lagTail']),
+    // 11. 日常小事拆成两个（17）：闺蜜约人 / 改约、每顿吃什么跟着 everydayLife；她那边的事有后续跟着 worldDrama（照旧还要 everydayLife，app.ts）。
+    //     5 合 1 阻塞：RICH 场景没开 worldDrama，并进 everydayLife 后多出 world/threads-from.json
+    follows('everydayLife', BOOL, ['npcAsks', 'menu']),
+    follows('worldDrama', BOOL, ['worldThreads']),
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */
