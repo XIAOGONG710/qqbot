@@ -18,8 +18,11 @@ import { bqbDiscover } from '.././social/sticker-sources.ts';
 
 // 这个文件在 packages/bot/src/platform/：往上四层才是仓库根
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
-const config = loadConfig(repoRoot);
+const switchNotes: string[] = [];
+const config = loadConfig(repoRoot, process.env, switchNotes);
 const log = createLog(join(config.dataDir, 'logs'));
+// 开关合并的说明（还在用旧键、两边都写了……，switch-merge.ts）：合并表是空的时候没有
+for (const note of switchNotes) log(note);
 
 const client = new OneBotClient({ url: config.onebot.url, token: config.onebot.token, onEvent, log });
 const vision = configuredImageDescriber(config);

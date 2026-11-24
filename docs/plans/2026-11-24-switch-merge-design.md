@@ -15,6 +15,22 @@
 - 开关数：136 →（本设计能直接做的合并 −42）→（加上减法单子第二节推荐的删除 −19）**75**；阻塞都解开再 −11 是 64；「一个生活」另外 6 个验收完并进层级再 −6 是 **58**。
   和减法单子说的「约 55」差在：「一个生活」那 6 个还没验收、阻塞的 6 处，以及 `aiPhotos` 推荐先留。
 
+## 进度
+
+- **M0 已做（2026-11-24）**：机制，一组都没并（`SWITCH_MERGES` 是空表，`parseAppConfig` / 插件 `apply()` 的结果和之前逐字一样，基线 41/41）。
+  - `packages/bot/src/platform/switch-merge.ts`：`SwitchMerge` 比第一节 1 多三个字段——`values`（新键允许的值，写错报错）、
+    `existing`（新键合并前就是开关，如 `proactive` `qzone`：写着旧键时它算旧键那边的总开关，按「只有旧键」处理，不算「两边都写了」）、
+    `ignorable`（本来就不起作用的子项，对不上不算表达不了）；函数 `mergeSwitchInput`（第一节 2 的四条规则）、`representable`、`switchMergeNotes`、
+    `legacySwitchKeys`（即 `LEGACY_SWITCHES`）、`checkSwitchMerges`（表的自检）。不 import `config.ts`，默认值由调用方传。
+  - `config.ts`：`parseAppConfig` 开头先 `mergeSwitchInput`（多一个可选参数 `merges`，只给测试换表）；`configSwitchNotes(file)`；
+    `loadConfig` 多一个可选 `notes` 数组，`main.ts` 有了日志再打。
+  - 插件：`migrateSwitches` / `switchMigrations`（接在 `migrateThinking` 后面）、`legacy(values?)`（hidden、无默认值）、`routeSwitchInput`（`toAppConfigInput` 的出口）。
+    **和第一节 4 第 3 条不同**：Koishi 按 Schema 给新键补默认值，`config.X !== undefined` 永远成立、分不出 yml 里写没写；
+    所以改成「这一组还写着旧键（`legacy()` 没默认值，有值就是 yml 里写的）→ 只传旧键、不传新键（`existing` 的组照传）」，没写旧键才传新键。
+    代价：表达不了、没迁移的组，用户在表单上改新键不起作用，要先在「按 JSON 编辑」里删掉旧键（日志里那句「对不上」会说）。
+  - 测试：`packages/bot/test/switch-merge.test.ts`、`packages/koishi-plugin-qqbot/test/switch-merge.test.ts`，用测试里的示例表（含真实键名过 `parseAppConfig` 的两组）。
+  - 没在 M0 做、留给第一组（QQ 空间）一起做：`FeatureDef.absorbs`、`dashboard.test.ts` 认 `legacySwitchKeys()`、`adr-map` / `live-mix` 认合并表——空表时都是空操作，跟着真数据一起写、一起测。
+
 ---
 
 ## 〇、取证：合并后的语义在基线上跑一遍

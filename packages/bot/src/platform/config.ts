@@ -18,6 +18,7 @@ import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '.././st/promp
 import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from '.././st/world-info.ts';
 import { externalPlatformMode, type ExternalPlatformMode } from '.././social/external-platforms.ts';
 import { applyTimeZone, canonicalTimeZone, DEFAULT_TIME_ZONE } from './time-zone.ts';
+import { mergeSwitchInput, SWITCH_MERGES, switchMergeNotes, type SwitchMerge } from './switch-merge.ts';
 
 /** 看图能用的提供方（ADR 0055）。DeepSeek 复用聊天模型的 QQBOT_LLM_API_KEY，不另要 key。 */
 export const VISION_PROVIDERS = ['deepseek'] as const;
@@ -834,21 +835,34 @@ export function cardKey(contact: Pick<Contact, 'tier' | 'knowsBot'>): string {
 
 type Json = Record<string, unknown>;
 
-/** 读 config.json（独立入口和命令行工具用）；读完就把进程时区设成配置的 timeZone（ADR 0331） */
-export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.env): BotConfig {
+/**
+ * 读 config.json（独立入口和命令行工具用）；读完就把进程时区设成配置的 timeZone（ADR 0331）。
+ * notes：开关合并的说明（configSwitchNotes）放进这里，调用方有了日志再打出来
+ */
+export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.env, notes?: string[]): BotConfig {
     const path = resolvePath(repoRoot, env.QQBOT_CONFIG || 'runtime/bot/config.json');
     if (!existsSync(path)) {
         throw new Error(`找不到配置文件 ${path}，参照 packages/bot/config.example.json 创建`);
     }
     const file = JSON.parse(readFileSync(path, 'utf8')) as Json;
     const app = parseAppConfig(file, repoRoot, env);
+    notes?.push(...configSwitchNotes(file));
     applyTimeZone(app.timeZone);
     const onebot = section(file, 'onebot');
     return { onebot: { url: str(onebot, 'url', 'onebot'), token: env.QQBOT_ONEBOT_TOKEN ?? '' }, ...app };
 }
 
-/** config.json 里除 onebot 之外的部分（Koishi 插件的配置也是这个形状）：校验、补默认值，相对路径按仓库根目录解析 */
-export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.ProcessEnv = process.env): AppConfig {
+/** 开关合并（switch-merge.ts）给日志的说明：旧键读成了哪个新键、两边都写了以哪边为准；parseAppConfig 不带日志，调用方解析之后自己打 */
+export function configSwitchNotes(file: Json, merges: readonly SwitchMerge[] = SWITCH_MERGES): string[] {
+    return switchMergeNotes(file, DEFAULTS as unknown as Json, merges);
+}
+
+/**
+ * config.json 里除 onebot 之外的部分（Koishi 插件的配置也是这个形状）：校验、补默认值，相对路径按仓库根目录解析。
+ * 先按开关合并表规范化输入（switch-merge.ts；表是空的就原样）。merges 只给测试换表用
+ */
+export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.ProcessEnv = process.env, merges: readonly SwitchMerge[] = SWITCH_MERGES): AppConfig {
+    file = mergeSwitchInput(file, DEFAULTS as unknown as Json, merges);
     const apiKey = env.QQBOT_LLM_API_KEY;
     if (!apiKey) throw new Error('缺少环境变量 QQBOT_LLM_API_KEY');
 

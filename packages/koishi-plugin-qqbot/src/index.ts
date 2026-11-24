@@ -18,10 +18,11 @@ import { attachCompanionWebSocket, type CompanionWebSocketLike } from '@qqbot/mo
 import { createCompanionKoaActionPollHandler, createCompanionKoaEnvelopeHandler, createCompanionKoaMediaHandler } from '@qqbot/mobile-companion/koa';
 import type { HistoryMessage } from '../../bot/src/memory/backfill.ts';
 import type { WebMode } from '../../bot/src/platform/web.ts';
-import { CONTACT_TIERS, DEFAULTS, parseAppConfig, type AppConfig, type ContactTier, type StickerMode } from '../../bot/src/platform/config.ts';
+import { CONTACT_TIERS, configSwitchNotes, DEFAULTS, parseAppConfig, type AppConfig, type ContactTier, type StickerMode } from '../../bot/src/platform/config.ts';
 import { createLog, type Log } from '../../bot/src/platform/log.ts';
 import { createPromptManifestLog } from '../../bot/src/platform/prompt-manifest.ts';
 import { FEATURES, featureDetail, type FeatureDef } from '../../bot/src/platform/features.ts';
+import { legacyValue, representable, SWITCH_MERGES, writtenLegacy, type SwitchMerge } from '../../bot/src/platform/switch-merge.ts';
 import { type FactCheckMode } from '../../bot/src/language/fact-check.ts';
 import { QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/social/presence.ts';
 import { type GroupAgencyMode, type GroupChatMode, type GroupOwnMode } from '../../bot/src/platform/config.ts';
@@ -679,7 +680,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
     }
     const { enabled, ...memory } = config.memory ?? { enabled: false };
     const { enabled: visionEnabled, ...vision } = config.vision ?? { enabled: false };
-    return {
+    return routeSwitchInput(config, {
         llm: dropUndefined({ ...llm, extraBody }),
         ...(config.dsh?.enabled ? { dsh: dropUndefined({ enabled: true, baseUrl: config.dsh.baseUrl, model: config.dsh.model, timeoutMs: config.dsh.timeoutMs }) } : {}),
         externalPlatforms: { ...DEFAULTS.externalPlatforms, ...(config.externalPlatforms ?? {}) },
@@ -844,7 +845,67 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(visionEnabled ? { vision: { provider: DEFAULTS.vision.provider, ...dropUndefined(vision) } } : {}),
         ...(enabled ? { memory: dropUndefined(memory) } : {}),
         dataDir: config.dataDir,
-    };
+    });
+}
+
+/**
+ * 开关合并（docs/plans/2026-11-24-switch-merge-design.md 第一节 4）：合并表里每一组，新键和旧键哪个往下传。
+ * 表单给新键填了默认值（Koishi 按 Schema 补），所以「新键有值」分不出是 koishi.yml 里写的还是默认补的；
+ * 旧键在表单上是 legacy()（没有默认值），有值就一定是 koishi.yml 里写的。于是：还写着旧键（迁移前、或表达不了没迁移）
+ * → 传旧键、不传新键，parseAppConfig 按「只有旧键」原样用旧值，行为和合并前一样；没写旧键 → 传新键。
+ * existing 的组（新键合并前就是开关，koishi.yml 里它的值本来就算数）照传新键，parseAppConfig 对这种组写着旧键时也按「只有旧键」。
+ * 合并逻辑本身只在 parseAppConfig 一处。表是空的时原样返回 input。
+ */
+export function routeSwitchInput(config: Config, input: Record<string, unknown>, merges: readonly SwitchMerge[] = SWITCH_MERGES): Record<string, unknown> {
+    const source = config as unknown as Record<string, unknown>;
+    for (const merge of merges) {
+        const written = writtenLegacy(merge, source);
+        if (written.length) {
+            if (merge.existing) input[merge.key] = source[merge.key];
+            else delete input[merge.key];
+            for (const key of written) input[key] = source[key];
+        } else if (source[merge.key] !== undefined) {
+            input[merge.key] = source[merge.key];
+        }
+    }
+    return input;
+}
+
+/**
+ * 已经并进新键的旧键在表单上的样子（设计第一节 4）：控制台不显示（hidden）、**不带默认值**——
+ * simplify（loader 写回、控制台保存都用它）只丢等于默认值的项和表单里没有的键，所以迁移之前控制台保存不会把 koishi.yml 里的旧键抹掉。
+ * values：几档模式的旧键给出各档；不给就是开 / 关。
+ */
+export function legacy(values?: readonly string[]): Koishi.Schema<unknown> {
+    const schema = values ? Schema.union(values.map(value => Schema.const(value))) : Schema.boolean();
+    return (schema as Koishi.Schema<unknown>).hidden().description('（已并进别的开关，过渡期还认；启动时能对上就自动迁移）');
+}
+
+/**
+ * koishi.yml 里还写着已合并的旧键：这一组能一字不差地用新键表达（representable）时，算出新键、删掉这一组的旧键，返回新配置
+ * （照 migrateThinking：写回 koishi.yml、插件按新配置重启，行为不变）；没有可迁移的组就返回 undefined。
+ * 表达不了的组不动（照旧按旧键跑，switchMergeNotes 记日志）。合并表是空的时永远返回 undefined。
+ */
+export function migrateSwitches(config: Config, merges: readonly SwitchMerge[] = SWITCH_MERGES, defaults: Record<string, unknown> = DEFAULTS as unknown as Record<string, unknown>): Config | undefined {
+    const moves = switchMigrations(config, merges, defaults);
+    if (!moves.length) return;
+    const migrated: Record<string, unknown> = { ...config };
+    for (const { merge, written, value } of moves) {
+        for (const key of written) delete migrated[key];
+        migrated[merge.key] = value;
+    }
+    return migrated as unknown as Config;
+}
+
+/** migrateSwitches 会迁的那几组：哪一组、写着哪些旧键、并成什么值（日志用） */
+export function switchMigrations(config: Config, merges: readonly SwitchMerge[] = SWITCH_MERGES, defaults: Record<string, unknown> = DEFAULTS as unknown as Record<string, unknown>): { merge: SwitchMerge; written: string[]; value: unknown }[] {
+    const source = config as unknown as Record<string, unknown>;
+    // 新起名字的组只看旧键：表单给新键补了默认值，在这里不算「写了新键」（见 routeSwitchInput）；existing 的组新键本来就算数
+    const legacyOnly = (merge: SwitchMerge) => merge.existing ? source : { ...source, [merge.key]: undefined };
+    return merges
+        .map(merge => ({ merge, written: writtenLegacy(merge, source) }))
+        .filter(({ merge, written }) => written.length > 0 && representable(merge, legacyOnly(merge), defaults))
+        .map(({ merge, written }) => ({ merge, written, value: legacyValue(merge, legacyOnly(merge), defaults) }));
 }
 
 /**
@@ -938,12 +999,25 @@ function applyNow(ctx: Context, config: Config) {
         ctx.setTimeout(() => ctx.scope.update(migrated), 0);
         return;
     }
+    // 开关合并（docs/plans/2026-11-24-switch-merge-design.md）：koishi.yml 里还写着已合并的旧键、而且能对上的组，并成新键写回；
+    // 和上面一样一次只迁一种，写回后插件按新配置重启。合并表是空的时永远不迁
+    const switched = migrateSwitches(config);
+    if (switched) {
+        for (const { merge, written, value } of switchMigrations(config)) {
+            ctx.logger('qqbot').info(`迁移配置：${written.join('、')} 并进 ${merge.key}=${String(value)}，行为不变`);
+        }
+        ctx.setTimeout(() => ctx.scope.update(switched), 0);
+        return;
+    }
 
     let appConfig: AppConfig;
     let releaseTimeZone: () => void = () => {};
     try {
-        appConfig = parseAppConfig(toAppConfigInput(config), repoRoot);
+        const input = toAppConfigInput(config);
+        appConfig = parseAppConfig(input, repoRoot);
         setConsoleState({ dataDir: appConfig.dataDir });
+        // 开关合并的说明（还写着旧键、表达不了……）：合并表是空的时候没有
+        for (const note of configSwitchNotes(input)) ctx.logger('qqbot').warn(note);
         ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} ownerPeek=${appConfig.ownerPeek} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} hisReactions=${appConfig.hisReactions} herGuesses=${appConfig.herGuesses} diaryLookback=${appConfig.diaryLookback ?? false} memoryFeelings=${appConfig.memoryFeelings ?? false} realNights=${appConfig.realNights ?? false} chatReview=${appConfig.chatReview ?? false} worldThreads=${appConfig.worldThreads ?? false} afterNo=${appConfig.afterNo ?? false} openQuestions=${appConfig.openQuestions}`);
         // 她的时区（ADR 0331）：整个 Koishi 进程跟着她的时区走，作息和日界不再取决于机器设置；
         // 插件停用或重载时还原（还原只在没有更新的实例占用时才做，见 claimTimeZone）

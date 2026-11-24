@@ -18,6 +18,7 @@
 - `platform/resident-guard.ts`
 - `platform/contact.ts`
 - `platform/config.ts`
+- `platform/switch-merge.ts`
 - `platform/features.ts`
 - `platform/modules.ts`
 - `platform/modules-doc.ts`
