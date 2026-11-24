@@ -47,8 +47,7 @@
 | `memoryReconcile` | 记忆对账：记着写过、Hindsight 里却查不到的片段，重新排队写（防记忆悄悄少一块） | [ADR 0201](../adr/0201-memory-reconcile.md) |
 | `feedbackCommands` | “假 / 像”反馈通道 | [ADR 0073](../adr/0073-feedback-channel.md) |
 | `deviceControl` | 她能操作他的电脑和手机（有限控制）（模式） | [ADR 0148](../adr/0148-device-control.md) |
-| `qqControl` | 账号控制面（资料 / 好友 / 群）（模式） | [ADR 0142](../adr/0142-qq-account-control.md) |
-| `qqFriendGate` | 好友申请（名单内同意 / 名单外驳回）（模式） | [ADR 0142](../adr/0142-qq-account-control.md) |
+| `qqControl` | 账号控制面（资料 / 好友 / 群）（模式）（并进来的：`qqFriendGate` 好友申请（名单内同意 / 名单外驳回）（[ADR 0142](../adr/0142-qq-account-control.md)）） | [ADR 0142](../adr/0142-qq-account-control.md) |
 
 ## 看它有没有变好
 

@@ -266,12 +266,14 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'deviceControl', label: '她能操作他的电脑和手机（有限控制）', group: '记忆和安全', adr: '0148', kind: 'mode', hint: '关闭后拒绝所有设备动作',
         detail: '**她对他的电脑和手机的有限控制**（ADR 0148，只给男朋友档）：只能通知、定时、音乐、音量、打开他登记过的网页 / 应用、让手机响（自动，有次数限制）；锁屏 / 休眠要他回“批准”；看屏幕 / 摄像头只有他发 /屏幕 /摄像头 才行。电脑那头是宿主机上的 device-agent.ps1（主动来取任务，有自己的白名单），手机用 ntfy 推送；令牌在 secrets/devices.json（npm run devices -w @qqbot/bot -- init）。选“只写草稿”只记会做什么、不执行。默认关',
         modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' } },
+    // 开关合并（账号控制：控制面全开时好友申请名单内同意）
     { key: 'qqControl', label: '账号控制面（资料 / 好友 / 群）', group: '记忆和安全', adr: '0142', kind: 'mode', hint: '关闭后不执行 QQ 账号操作',
         detail: '**账号控制面**（ADR 0142）：off 关 / read 只读（盘点好友、群、空间）/ on 放行写动作。写动作只限登记过的那批（改资料、群名片、好友申请、发消息……），并且必须过下面的允许清单和一小时 6 次的限流；踢人、禁言、删好友、群发要再开「危险动作」。每次动作留审计（只记动作和对象，不记正文）。默认关',
-        modeLabels: { off: '关', read: '只读（盘点）', on: '放行写动作' } },
-    { key: 'qqFriendGate', label: '好友申请（名单内同意 / 名单外驳回）', group: '记忆和安全', adr: '0142', kind: 'mode',
-        detail: '**好友申请**（ADR 0142）：有人申请加她时怎么处理。要 `qqControl` 设为 on 才生效；名单是上面的「允许动作的好友」。默认关（不碰，留给你）',
-        modeLabels: { off: '不处理', allow: '名单内自动同意，其余留给人', all: '名单内同意、名单外驳回' } },
+        modeLabels: { off: '关', read: '只读（盘点）', on: '放行写动作' },
+        absorbs: [
+            { key: 'qqFriendGate', label: '好友申请（名单内同意 / 名单外驳回）', adr: '0142',
+                detail: '**好友申请**（ADR 0142）：有人申请加她时怎么处理。要 `qqControl` 设为 on 才生效；名单是上面的「允许动作的好友」。默认关（不碰，留给你）' },
+        ] },
     // 工具
     { key: 'weeklyReport', label: '周报', group: '工具', adr: '0118',
         detail: '**周报**（ADR 0118）：每周日 21:30 以后自动出一份“她离真人还差多少”的数字——说话的样子（字数、一轮几条、延迟）、表情和语气、主动、日志里数到的新功能有没有真的在发生——写进数据目录的 reports/weekly-<周日日期>.md。只有数字，没有原话。也可手动：`node src/ops/weekly-report-cli.ts --write`。默认关。' },

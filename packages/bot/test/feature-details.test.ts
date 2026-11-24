@@ -5,7 +5,7 @@ import { DEFAULTS, GROUP_AGENCY_MODES, GROUP_CHAT_MODES, GROUP_OWN_MODES, STICKE
 import { FEATURES, featureDetail } from '../src/platform/features.ts';
 import { WEB_MODES } from '../src/platform/web.ts';
 import { PROACTIVE_MODES } from '../src/proactive/proactive.ts';
-import { ACCOUNT_MODES, QQ_FRIEND_GATES } from '../src/social/account.ts';
+import { ACCOUNT_MODES } from '../src/social/account.ts';
 import { PRESENCE_MODES } from '../src/social/presence.ts';
 import { FESTIVAL_MODES } from '../src/world/festivals.ts';
 
@@ -14,7 +14,7 @@ import { FESTIVAL_MODES } from '../src/world/festivals.ts';
 /** 每个几档模式的开关，代码里认哪几档 */
 const MODES: Record<string, readonly string[]> = {
     webLookup: WEB_MODES, factCheck: FACT_CHECK_MODES, festivals: FESTIVAL_MODES, proactive: PROACTIVE_MODES, stickers: STICKER_MODES,
-    groupChat: GROUP_CHAT_MODES, groupOwn: GROUP_OWN_MODES, groupAgency: GROUP_AGENCY_MODES, qqControl: ACCOUNT_MODES, qqFriendGate: QQ_FRIEND_GATES,
+    groupChat: GROUP_CHAT_MODES, groupOwn: GROUP_OWN_MODES, groupAgency: GROUP_AGENCY_MODES, qqControl: ACCOUNT_MODES,
     ...Object.fromEntries(['bilibili', 'biliFeed', 'bilibiliDm', 'bilibiliReplies', 'bilibiliComment', 'qzone', 'deviceControl']
         .map(key => [key, PRESENCE_MODES])),
 };

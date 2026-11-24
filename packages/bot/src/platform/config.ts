@@ -553,7 +553,7 @@ export interface AppConfig {
     qqAllowGroups?: readonly number[];
     /** 危险动作闸（踢人 / 禁言 / 删好友 / 群发 / 建群）：默认关 */
     qqDangerous?: boolean;
-    /** 好友申请怎么处理（ADR 0142）：off 不碰 / allow 名单内自动同意、其余留给人 / all 名单内同意、名单外驳回。默认 off */
+    /** @deprecated 已并进 qqControl（开关合并）：输入只有旧键时原样、否则由 qqControl 派生；新代码读 qqControl。好友申请怎么处理（ADR 0142）：off 不碰 / allow 名单内自动同意、其余留给人 / all 名单内同意、名单外驳回。默认 off */
     qqFriendGate?: FriendGate;
     /** 她打字的这段时间，对方的 QQ 上显示「对方正在输入…」（ADR 0077；NapCat 的 set_input_status）。默认关 */
     typingStatus: boolean;

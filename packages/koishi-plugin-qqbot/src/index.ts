@@ -30,7 +30,7 @@ import { readQzoneFeed } from '../../bot/src/social/qzone-feed.ts';
 import { readFriendsFeed } from '../../bot/src/social/qzone-feeds3.ts';
 import { sessionFromCookies } from '../../bot/src/social/qzone-remote.ts';
 import { readStrangerFeed } from '../../bot/src/social/qzone-strangers.ts';
-import { type ControlMode, type FriendGate } from '../../bot/src/social/account.ts';
+import { QQ_FRIEND_GATES, type ControlMode, type FriendGate } from '../../bot/src/social/account.ts';
 import { assertKernelOk, isFriendRecall, isGroupMessage, isPokeAtMe, isPrivateFriendMessage, replySegment, type OneBotEvent } from '../../bot/src/platform/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/vision/media.ts';
 import { textToSegments } from '../../bot/src/language/qq-faces.ts';
@@ -258,7 +258,8 @@ export interface Config {
     groupAgency: GroupAgencyMode;
     groups: { id: number; name: string; knowsBot?: boolean; disguise?: boolean; cover?: string }[];
     qqControl: ControlMode;
-    qqFriendGate: FriendGate;
+    /** 已并进 qqControl（开关合并），koishi.yml 里还写着才有 */
+    qqFriendGate?: FriendGate;
     qqAllowFriends: number[];
     qqAllowGroups: number[];
     qqDangerous: boolean;
@@ -467,7 +468,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('账号控制面允许动作的群号（同上）'),
         qqDangerous: Schema.boolean().default(DEFAULTS.qqDangerous)
             .description('危险动作闸（ADR 0142）：踢人 / 禁言 / 删好友 / 群发 / 建群 / 退群。开了也要过允许清单和限流。默认关'),
-        qqFriendGate: choice('qqFriendGate'),
+        qqFriendGate: legacy(QQ_FRIEND_GATES),
         pokeBack: toggle('pokeBack'),
         pokeOut: toggle('pokeOut'),
         grievance: toggle('grievance'),

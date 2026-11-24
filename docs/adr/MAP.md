@@ -146,7 +146,7 @@
 | [0137](0137-fact-check.md) | 逐条事实检查（配置 `factCheck`：off / log / fix，默认 off） | 已实现，未上线（2026-10-24）。上线 = 换代码重启 + `koishi.yml` 里加 `factCheck:… | `factCheck` 开 |
 | [0138](0138-idioms.md) | 被他带出来的口头习惯（配置 `idioms`，默认关） | 已实现，未上线（2026-10-24）。上线 = 换代码重启 + `koishi.yml` 里加 `idioms: tr… |  |
 | [0141](0141-unfinished-lines.md) | 话说到一半就停了——出口检查，提示词不再鼓励「半句」（随 `speechCheck`，没有新开关） | 已上线（2026-10-25 00:38，用户在 AskUserQuestion 里选「现在重启，并上线」；只换代码重启… |  |
-| [0142](0142-qq-account-control.md) | 她对 QQ 账号的控制面（默认关，按后果分档） | 已实现并接进机器人，未上线、未在真 QQ 上验证（分支 `dsh/qq-control`；`qqControl` / `… | `qzone`（原 `qzoneBrowse`） 开、`qqControl` 开、`qqFriendGate` 开 |
+| [0142](0142-qq-account-control.md) | 她对 QQ 账号的控制面（默认关，按后果分档） | 已实现并接进机器人，未上线、未在真 QQ 上验证（分支 `dsh/qq-control`；`qqControl` / `… | `qzone`（原 `qzoneBrowse`） 开、`qqControl`（原 `qqFriendGate`） 开 |
 | [0143](0143-qzone-peek.md) | 她看好友的 QQ 空间（用她自己的登录态） | 已被 [ADR 0145](0145-qzone-friends-feed.md) 取代（读法改成她自己的好友动态流；原… |  |
 | [0144](0144-qzone-strangers.md) | 刷陌生人的空间（「空友爱看」那种推荐流），用来观察人怎么说话 | 已实现，未上线、未在真 QQ 上验证（分支 `dsh/qq-control`；开关 `qzoneStrangers`，默… | `qzone`（原 `qzoneStrangers`） 开 |
 | [0145](0145-qzone-friends-feed.md) | 她刷自己的好友动态，看到宝宝发的说说 | 已实现，未上线（分支 `claude/qzone-cookie-shape`，在 `dsh/qq-control` 之上… | `qzone`（原 `qzonePeek`） 开 |

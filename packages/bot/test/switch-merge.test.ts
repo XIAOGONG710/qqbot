@@ -155,6 +155,7 @@ describe('真表：已经并了的组', () => {
     const EXPECTED_LIVE: Record<string, unknown> = {
         qzone: 'on',
         factCheck: 'fix',
+        qqControl: 'on',
     };
     const env = { QQBOT_LLM_API_KEY: 'k' };
     const base = {

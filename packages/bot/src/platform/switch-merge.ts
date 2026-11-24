@@ -57,6 +57,14 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
         toLegacy: value => ({ factHim: value !== 'off' }),
         ignorable: (_, input) => input.factCheck === 'off',
     },
+    // 3. 账号控制（15）：控制面全开（on）时好友申请「名单内同意」；不是 on 时 qqFriendGate 本来不起作用（app.ts 那句「要 qqControl 设为 on」）。
+    //    「名单外驳回」（all）线上没用过，不留：写着 all 的表达不了、不迁移
+    {
+        key: 'qqControl', existing: true, values: ['off', 'read', 'on'], legacy: ['qqFriendGate'],
+        fromLegacy: input => input.qqControl,
+        toLegacy: value => ({ qqFriendGate: value === 'on' ? 'allow' : 'off' }),
+        ignorable: (_, input) => input.qqControl !== 'on',
+    },
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */
