@@ -666,7 +666,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ? lifeExecutor({
             schedule: worldCard.schedule!, books: worldCard.books, ...(worldCard.herWorld!.plans ? { plans: worldCard.herWorld!.plans } : {}),
             worldAt: time => ledgerWorld.at(worldCard.herWorld!, worldCard.schedule!, time), events: () => ledgerWorld.events(),
-            ...(config.projectChoice ? { projectChoice: true } : {}),
+            ...(config.autonomousLife ? { projectChoice: true } : {}),
             ...(worldCard.herWorld!.body ? { bodyAt: (time: Date) => bodyAt(worldCard.herWorld!.body!, worldCard.schedule!, time) } : {}),
             bedtimes: () => bedtimes(worldCard.schedule!, worldNow()),
             appointmentsBetween: (from, to) => loadAppointments?.(from, to) ?? [],
@@ -745,7 +745,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     if (config.contextTurns) log(`最近几轮 + 要点（ADR 0043）：${config.memory ? `开：原文只放最近 ${config.contextTurns} 轮，更早的在后台整理成要点，没整理好的那一轮照旧最近 80 条；${config.contextContacts.length ? `只对 ${config.contextContacts.join("、")}` : "名单里开了记忆的都开"}` : "配置开了，但长期记忆没开，不开"}`);
     if (config.candidates > 1) log(`挑候选：他难过、说亲密话、收尾时一次生成 ${config.candidates} 个，按规则挑一个（ADR 0041）`);
     if (config.autonomousLife) log(`没人聊天时她一件件过日子：${lifeRunner ? '开（ADR 0040/0045，影子模式：需要值只改行动账，不进提示词）' : '配置开了，但没有带作息和世界的卡，不开'}`);
-    if (config.projectChoice) log(`项目选择：${lifeRunner ? '开（ADR 0056：三天内作业可接管空闲安排，状态行与行动账共用）' : '配置开了，但生活执行器没开，不生效'}`);
+    if (config.autonomousLife) log(`项目选择：${lifeRunner ? '开（ADR 0056：三天内作业可接管空闲安排，状态行与行动账共用）' : '配置开了，但生活执行器没开，不生效'}`);
     // 没人找她的时候也每 ${LIFE_TICK_MS / 60_000} 分钟推一次，过完的时段尽快落账
     scanAiPhotoWorld?.();
     const noteMoodAndBooks = herDaysCard ? herDayLogger(
@@ -929,7 +929,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 时间块（ADR 0004 / 0105）：断网很久才回那一句跟着 lagTail
         lagTail: config.lagTail,
         // 她这几天拍照修图（配置 lifeInPrompt，要有生活执行器）
-        lifeInPrompt: Boolean(config.lifeInPrompt && lifeRunner),
+        lifeInPrompt: Boolean(config.autonomousLife && lifeRunner),
         // 意图阶梯（ADR 0019 起）：开关是它的选项
         intent: {
             ...(config.herNo ? { refuse: true } : {}), ...(config.afterNo ? { afterNo: true } : {}), ...(config.jealousy ? { jealous: true } : {}), ...(config.curious ? { curious: true } : {}),
@@ -937,7 +937,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         },
         // 她此刻（她那边、身体、状态行）的另几样
         herNow: {
-            ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
+            ...(config.autonomousLife && lifeRunner ? { projectChoice: true } : {}),
             ...(config.realNights ? { realNights: true } : {}), ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),
             // 作息冲突（ADR 0347 第 3 层 desktopConflict）：昨晚算上半夜被他叫上电脑（realNights 开着才用）；此刻被叫上电脑、本来在上课 / 该睡了。只男朋友档（her-now 自己判档位）
             ...(desktop.conflictHerNow ? {
@@ -1043,7 +1043,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 } catch { return undefined; }
             },
             // 首轮铺底：他走了 ≥6 小时回来，第一轮带上她自己写的日记；挂着 lifeInPrompt，不新增开关
-            ...(config.lifeInPrompt ? {
+            ...(config.autonomousLife ? {
                 wake: (contact: Contact): string | undefined => {
                     try {
                         // 刚收的这条已经进聊天记录了，算间隔要拿它之前的那条（5 分钟内的都当成本轮）
@@ -1819,7 +1819,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             memory,
             ...(promises ? { promises } : {}),
             ...(sharedWorld ? { worldState: sharedWorld } : {}),
-            ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
+            ...(config.autonomousLife && lifeRunner ? { projectChoice: true } : {}),
             ...(config.rhythm ? { rhythm: true } : {}),
             // 她自己决定今天想做什么（ADR 0182）：和「在读的书」一起当额外的空闲活动，每次现取
             ...(config.innerLife ? { herPlan: (at: Date) => herPlanActivities(config.dataDir, at, log) } : {}),

@@ -415,9 +415,10 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal('autonomousLife' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
-    test('项目选择（ADR 0056）：默认关闭；打开后传给核心，默认值不写回 yml', () => {
-        assert.equal(fromKoishi(minimal).projectChoice, false);
-        assert.equal(fromKoishi({ ...minimal, projectChoice: true }).projectChoice, true);
+    test('项目选择（ADR 0056）：并进 autonomousLife（开关合并）；yml 里还写着旧键时照旧认，默认值不写回 yml', () => {
+        assert.equal(fromKoishi(minimal).autonomousLife, false);
+        assert.equal('projectChoice' in fromKoishi({ ...minimal, projectChoice: true }), false);
+        assert.equal(fromKoishi({ ...minimal, autonomousLife: true, projectChoice: true }).autonomousLife, true);
         assert.equal('projectChoice' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 
