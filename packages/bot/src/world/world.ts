@@ -435,9 +435,71 @@ interface Timeline {
     ledger: MoneyEntry[];
 }
 
+/**
+ * simulateWorld 的结果缓存（只为快，结果和不缓存逐字一样）：每次都从 startDay 推到 until，一个学期过半就是上百天，
+ * 而同一刻里生活选择器、日记补写、提示词会拿同样的输入反复算（行为基线里九成的调用是重复的）。
+ * - 键是输入的内容（world、schedule、actions 的 JSON 加 until 的毫秒），不是对象身份：输入被原地改过也不会拿到旧结果。
+ * - 存一份、每次给一份深拷贝（copyTimeline）：调用方拿到的和以前一样是自己独占的新对象，改了也不影响缓存和别人。
+ * - 现实天气开着时（realWeather()），它的数据会随抓取更新，同样的输入隔一会儿可能不一样：只在同一段同步执行里复用，
+ *   下一个微任务就清空；换了天气来源也清空。
+ */
+const SIMULATED_MAX = 64;
+const simulated = new Map<string, Timeline>();
+let simulatedWeather: ReturnType<typeof realWeather>;
+let simulatedClearing = false;
+
 /** 从 startDay 推到 until（含），按天记下发生的事；纯函数，同样的输入同样的输出 */
 export function simulateWorld(world: World, schedule: Schedule, until: Date, actions: readonly WorldAction[] = []): Timeline {
     assertWorldDates(until);
+    const weather = realWeather();
+    if (weather !== simulatedWeather) { simulated.clear(); simulatedWeather = weather; }
+    if (weather && !simulatedClearing) {
+        simulatedClearing = true;
+        queueMicrotask(() => { simulated.clear(); simulatedClearing = false; });
+    }
+    const key = `${until.getTime()}\u0000${JSON.stringify(world)}\u0000${JSON.stringify(schedule)}\u0000${JSON.stringify(actions)}`;
+    const hit = simulated.get(key);
+    if (hit) {
+        // 最近用过的挪到最后，满了先丢最久没用的
+        simulated.delete(key);
+        simulated.set(key, hit);
+        return copyTimeline(hit);
+    }
+    const timeline = simulateWorldUncached(world, schedule, until, actions);
+    simulated.set(key, copyTimeline(timeline));
+    if (simulated.size > SIMULATED_MAX) simulated.delete(simulated.keys().next().value!);
+    return timeline;
+}
+
+/** Timeline 的深拷贝：里面只有普通对象、数组、Map、Date；同一个对象在里面出现几次，拷贝里也是同一个（比 structuredClone 快三倍多） */
+function copyTimeline<T>(value: T, seen = new Map<object, unknown>()): T {
+    if (typeof value !== 'object' || value === null) return value;
+    const known = seen.get(value);
+    if (known !== undefined) return known as T;
+    if (value instanceof Date) {
+        const out = new Date(value.getTime());
+        seen.set(value, out);
+        return out as T;
+    }
+    if (Array.isArray(value)) {
+        const out: unknown[] = new Array(value.length);
+        seen.set(value, out);
+        for (let i = 0; i < value.length; i++) out[i] = copyTimeline(value[i], seen);
+        return out as T;
+    }
+    if (value instanceof Map) {
+        const out = new Map<unknown, unknown>();
+        seen.set(value, out);
+        for (const [k, v] of value) out.set(k, copyTimeline(v, seen));
+        return out as T;
+    }
+    const out: Record<string, unknown> = {};
+    seen.set(value, out);
+    for (const k of Object.keys(value)) out[k] = copyTimeline((value as Record<string, unknown>)[k], seen);
+    return out as T;
+}
+
+function simulateWorldUncached(world: World, schedule: Schedule, until: Date, actions: readonly WorldAction[]): Timeline {
     const days = new Map<string, DayRecord>();
     const parcels: Parcel[] = [];
     const homework: Homework[] = [];

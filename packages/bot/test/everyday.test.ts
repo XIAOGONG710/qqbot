@@ -86,6 +86,24 @@ describe('世界里的日子', () => {
         for (const date of dates) assert.deepEqual(again.days.get(date)!.events.map(e => [e.id, e.at.getTime()]), timeline.days.get(date)!.events.map(e => [e.id, e.at.getTime()]));
     });
 
+    test('结果缓存不串：每次拿到的是自己的一份，改了不影响下次；输入原地改了就重新算', () => {
+        const mine = simulateWorld(world, schedule, until);
+        assert.notEqual(mine.days, timeline.days);
+        mine.days.get(dates[0]!)!.events.length = 0;
+        mine.parcels.length = 0;
+        mine.days.get(dates[1]!)!.events[0]?.at.setTime(0);
+        const again = simulateWorld(world, schedule, until);
+        assert.deepEqual(again.days, timeline.days);
+        assert.deepEqual(again.parcels, timeline.parcels);
+        const changed = structuredClone(world);
+        const before = simulateWorld(changed, schedule, until);
+        assert.ok(before.days.has('2026-09-01'));
+        changed.startDay = '2026-10-01';
+        const after = simulateWorld(changed, schedule, until);
+        assert.equal(after.days.has('2026-09-01'), false);
+        assert.ok(after.days.has('2026-10-01'));
+    });
+
     test('一天的小事数：补充的最多 3 件、同一类一天一件；整体平均在 3–5 件', () => {
         let total = 0;
         for (const date of dates) {
