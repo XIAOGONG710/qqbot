@@ -6,7 +6,6 @@
     "start": "2026-11-07T14:00:00+08:00",
     "memory": false,
     "proactive": true,
-    "proactiveAsk": true,
     "herNo": true,
     "history": [
         {
@@ -61,6 +60,5 @@
                 "exitClean": true
             }
         }
-    ],
-    "proactiveReach": true
+    ]
 }

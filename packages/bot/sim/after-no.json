@@ -1,12 +1,11 @@
 {
-    "name": "拒绝之后（ADR 0214）：两天前他约她打游戏她推了、他回「行吧」就没吭声；今天她又很累，他又约（afterNo=true）",
+    "name": "拒绝之后（ADR 0214）：两天前他约她打游戏她推了、他回「行吧」就没吭声；今天她又很累，他又约（herNo 开着就带上拒绝之后，开关合并：原 afterNo）",
     "tier": "boyfriend",
     "user": "宝宝",
     "start": "2026-11-04T20:30:00+08:00",
     "memory": false,
     "herFeelings": true,
     "herNo": true,
-    "afterNo": true,
     "moments": [{ "id": "tired", "at": "-1h", "kind": "tired", "strength": 3, "cause": "专业课作业写到现在，眼睛都花了" }],
     "history": [
         { "time": "2026-11-02T20:00:00+08:00", "role": "user", "content": "来打两把王者呗" },

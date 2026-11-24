@@ -288,13 +288,13 @@ describe('模拟器里走一遍（开 / 关）', () => {
         });
     }
 
-    test('factHim 一路走通（模拟器 → contact → 审稿）：开着时审稿的提示词里有第三类、她替他说的被带说明重写；没开时审稿的提示词里没有', async () => {
-        const run = async (factHim: boolean) => {
+    test('第三类一路走通（模拟器 → contact → 审稿）：事实检查开着就也查她替他说的（同 app.ts，开关合并后没有单独的 factHim），审稿的提示词里有第三类、她替他说的被带说明重写；检查关着时不审', async () => {
+        const run = async (on: boolean) => {
             const dir = mkdtempSync(join(tmpdir(), 'qqbot-fact-sim-'));
             const seen = { audit: [] as string[], rewrite: [] as string[] };
             try {
-                const result = await runScenario(scenarioOf('fix', '我在纠结要不要考研'), {
-                    runId: 'fact-him', dataDir: dir, card, llm, prompt, ...(factHim ? { factHim: true } : {}),
+                const result = await runScenario(scenarioOf(on ? 'fix' : 'off', '我在纠结要不要考研'), {
+                    runId: 'fact-him', dataDir: dir, card, llm, prompt,
                     generate: async (messages: OpenAIMessage[]) => {
                         if (messages[0]?.content.startsWith('你是审稿员')) {
                             seen.audit.push(messages[0].content);
@@ -316,7 +316,7 @@ describe('模拟器里走一遍（开 / 关）', () => {
         assert.match(on.seen.rewrite[0]!, /别替他说他没说过的事/);
         const off = await run(false);
         assert.equal(off.said, '你数学不差，真去考不会差的');
-        assert.ok(off.seen.audit.every(prompt => !prompt.includes('about-him')));
+        assert.equal(off.seen.audit.length, 0);
         assert.equal(off.seen.rewrite.length, 0);
     });
 

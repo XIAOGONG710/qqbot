@@ -9,11 +9,14 @@
 // --model <名>：这次模拟整场换聊天模型（同一个接口和 key），比模型用；--thinking off|high|max：思考关 / 开（开时 token 和超时放到同深思轮次，ADR 0151）；
 // --pin-examples：只对这次模拟改示例常驻（ADR 0019 决策 6），其余同配置。
 // --context-turns N：开了记忆时原始聊天只放最近 N 轮、更早的整理成要点，代替最近 80 条（ADR 0043 离线实验，线上没有这个开关）；--context-step K：切口每 K 轮挪一次，默认 4。
+// --deliberation off|keywords|routed：深思，同线上的 deliberation（不写是 off，不照配置，免得每次模拟都多花钱）；--deliberate-model <名> 换深思的模型，单写它等于 keywords。
+// 开关合并（11-25）之后删掉的参数：--deliberate 改成 --deliberation keywords，--depth 改成 --deliberation routed；
+//   --fact-him 删了——事实检查开着（场景的 factCheck 或 --fact log|fix）就也查她替他说的，同线上。
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cardKey, deliberateLlm, loadConfig } from '../platform/config.ts';
+import { cardKey, DELIBERATION_MODES, deliberateLlm, loadConfig, type DeliberationMode } from '../platform/config.ts';
 import { loadTierCard } from '../platform/contact.ts';
 import { unlimitedModelGuard } from '../language/llm.ts';
 import { HindsightClient } from '../memory/hindsight.ts';
@@ -34,15 +37,23 @@ const option = (name: string) => { const i = args.indexOf(name); if (i < 0) retu
 const runs = Number(option('--runs') ?? 3);
 const keepBank = flag('--keep-bank');
 const noMemory = flag('--no-memory');
-// 认真问她时深思（ADR 0151）：--deliberate 用配置的 deliberateModel（默认 deepseek-v4-pro）；--deliberate-model <名> 换别的
+// 开关合并删掉的参数：写了就说该怎么写，不当成场景文件
+const REMOVED_FLAGS: Readonly<Record<string, string>> = {
+    '--deliberate': '改成 --deliberation keywords',
+    '--depth': '改成 --deliberation routed',
+    '--fact-him': '删了：事实检查开着就也查她替他说的（同线上，开关合并：原 factHim）',
+};
+const removed = args.filter(arg => arg in REMOVED_FLAGS);
+if (removed.length) {
+    console.error(removed.map(arg => `${arg} ${REMOVED_FLAGS[arg]}`).join('\n'));
+    process.exit(2);
+}
+// 深思（ADR 0151 / 0202，同线上 deliberation）：keywords 关键词认出的认真轮次走深思，routed 再加小模型判轻重。
+// 用配置的 deliberateModel（默认 deepseek-v4-pro）；--deliberate-model <名> 换别的，单写它时按 keywords（和原来的 --deliberate-model 一样）
 const deliberateModelOption = option('--deliberate-model');
-const deliberate = flag('--deliberate');
+const deliberationOption = option('--deliberation');
 // 换掉深思轮次的那段提示词做对照（ADR 0207 第 2 条的实验）：--deliberate-note <文本文件>；不写就是线上的 DELIBERATE_NOTE
 const deliberateNoteFile = option('--deliberate-note');
-// 语义路由（ADR 0202）：--depth（要同时 --deliberate）：关键词没认出来的轮次问小模型这一句是轻是重，值得认真的也深思
-const depth = flag('--depth');
-// 事实检查多查一类：她替他说的事（ADR 0203）：--fact-him（要同时 --fact log|fix，或场景里开着 factCheck）
-const factHim = flag('--fact-him');
 // 逐条事实检查（ADR 0137）：对所有场景打开，log 只查只记、fix 查到就重写；不写按场景自己的
 const factOption = option('--fact');
 // 实验 A（ADR 0146）：做题式写法 / 换温度 / 关思考。思考开着时 temperature 不起作用（10-25 实测：温度 0 与 1.5 同样 5/5 种不同输出），所以要调温度先 --thinking off
@@ -70,13 +81,18 @@ if (factOption !== undefined && !['off', 'log', 'fix'].includes(factOption)) {
     console.error('--fact 应为 off / log / fix');
     process.exit(2);
 }
+if (deliberationOption !== undefined && !(DELIBERATION_MODES as readonly string[]).includes(deliberationOption)) {
+    console.error(`--deliberation 应为 ${DELIBERATION_MODES.join(' / ')}`);
+    process.exit(2);
+}
+const deliberation = (deliberationOption ?? (deliberateModelOption !== undefined ? 'keywords' : 'off')) as DeliberationMode;
 if ((frameOption !== undefined && frameOption !== 'solve') || (thinkingOption !== undefined && !['off', 'high', 'max'].includes(thinkingOption)) || (modelOption !== undefined && !/^[A-Za-z0-9._:-]{1,60}$/.test(modelOption)) || (temperatureOption !== undefined && !(Number(temperatureOption) >= 0 && Number(temperatureOption) <= 2))) {
     console.error('--frame 只认 solve；--thinking 只认 off / high / max；--model 是模型名（字母、数字和 . _ : -）；--temperature 要在 0 到 2 之间');
     process.exit(2);
 }
 if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))
     || (contextTurns && ![contextTurns.turns, contextTurns.step].every(n => Number.isInteger(n) && n >= 1))) {
-    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录或含 {tier} 的卡文件>] [--model <名>] [--thinking off|high|max] [--own-voice] [--fewer-rules] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--fact off|log|fix] [--context-turns N [--context-step K]]');
+    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录或含 {tier} 的卡文件>] [--model <名>] [--thinking off|high|max] [--own-voice] [--fewer-rules] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--fact off|log|fix] [--deliberation off|keywords|routed] [--deliberate-model <名>] [--context-turns N [--context-step K]]');
     process.exit(2);
 }
 
@@ -126,7 +142,7 @@ let failed = 0;
 const usage = { generations: 0, tokens: 0, audits: 0, auditChars: 0 };
 for (const [fileIndex, file] of files.entries()) {
     const scenario = loadScenario(file);
-    const card = loadTierCard(config.characterCard, cardKey({ tier: scenario.tier, knowsBot: scenario.knowsBot }), { ...(scenario.everydayLife ? { everydayLife: true, ...(scenario.everydayFrom ? { everydayFrom: scenario.everydayFrom } : {}) } : {}), ...(scenario.menu ? { menu: true, ...(scenario.menuFrom ? { menuFrom: scenario.menuFrom } : {}) } : {}) });
+    const card = loadTierCard(config.characterCard, cardKey({ tier: scenario.tier, knowsBot: scenario.knowsBot }), { ...(scenario.everydayLife ? { everydayLife: true, ...(scenario.everydayFrom ? { everydayFrom: scenario.everydayFrom } : {}), menu: true, ...(scenario.menuFrom ? { menuFrom: scenario.menuFrom } : {}) } : {}) });
     // 日记里的世界按同学档（ADR 0026，和 bot 一样）
     const diaryCard = loadTierCard(config.characterCard, 'classmate').character;
     const diaryWorld = diaryCard.herWorld;
@@ -145,10 +161,9 @@ for (const [fileIndex, file] of files.entries()) {
             speechCheck: config.speechCheck,
             herDays: config.herDays,
             candidates: candidatesOption === undefined ? config.candidates : Number(candidatesOption),
-            ...(deliberate || deliberateModelOption !== undefined ? { deliberateLlm: deliberateLlm(config.llm, deliberateModelOption ?? loaded.deliberateModel) } : {}),
+            ...(deliberation !== 'off' ? { deliberation } : {}),
+            ...(deliberation !== 'off' || deliberateModelOption !== undefined ? { deliberateLlm: deliberateLlm(config.llm, deliberateModelOption ?? loaded.deliberateModel) } : {}),
             ...(deliberateNoteFile ? { deliberateNote: readFileSync(deliberateNoteFile, 'utf8').trim() } : {}),
-            ...(depth ? { depthRouting: true } : {}),
-            ...(factHim ? { factHim: true } : {}),
             ...(frameOption === 'solve' ? { replyFrame: 'solve' as const } : {}),
             ...(factOption ? { factCheck: factOption as 'off' | 'log' | 'fix' } : {}),
             ...(diaryWorld ? { diaryWorld } : {}),

@@ -4,8 +4,6 @@
     "start": "2026-10-24T18:30:00+08:00",
     "memory": false,
     "proactive": true,
-    "proactiveReach": true,
-    "proactiveInvite": true,
     "herNo": true,
     "history": [
         {

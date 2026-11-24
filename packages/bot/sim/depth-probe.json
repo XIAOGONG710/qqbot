@@ -7,7 +7,6 @@
     "memory": false,
     "schedule": true,
     "autonomous": true,
-    "lifeInPrompt": true,
     "herFeelings": true, "herNo": true, "everydayLife": true, "pursuits": true, "curious": true,
     "rhythm": true, "grievance": true, "relationship": true, "together": true, "interruptions": true,
     "history": [

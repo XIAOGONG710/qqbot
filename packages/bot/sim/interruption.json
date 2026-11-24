@@ -6,7 +6,6 @@
     "start": "2026-10-28T22:20:00+08:00",
     "memory": false,
     "interruptions": true,
-    "comeBack": true,
     "proactive": true,
     "history": [
         {

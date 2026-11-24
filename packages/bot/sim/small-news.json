@@ -7,7 +7,6 @@
     "memory": false,
     "proactive": true,
     "everydayLife": true,
-    "smallNews": true,
     "herNo": true,
     "history": [
         { "time": "2026-11-11T16:00:00+08:00", "role": "user", "content": "我先去忙了，晚点聊" },

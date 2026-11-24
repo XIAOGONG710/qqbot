@@ -218,41 +218,33 @@ export interface Scenario {
     memory: boolean;
     /** 默认 true：按卡上的作息（ADR 0007） */
     schedule: boolean;
-    /** 默认 false：按卡上的主动设置主动找他（ADR 0011，真发，不是试运行）；已有的场景不受影响 */
+    /**
+     * 默认 false：按卡上的主动设置主动找他（ADR 0011，真发，不是试运行）；已有的场景不受影响。
+     * 开着就带上那几个时机，同线上 proactive（开关合并：原 proactiveReach、proactiveInvite、proactiveAsk、comeBack、proactiveRoom、hisReactions；
+     * smallNews 还要 everydayLife；hisReactions、smallNews 只男朋友档）
+     */
     proactive: boolean;
     /** 默认 false：看心情不回（ADR 0013 决策 4）；按消息 id 定，已有的场景不受影响 */
     moody: boolean;
-    /** 默认 false：没人聊天时她也一件件过日子（ADR 0040 规则自主选择器），要开着作息、她自己的日子、卡上有世界 */
+    /** 默认 false：没人聊天时她也一件件过日子（ADR 0040 规则自主选择器），要开着作息、她自己的日子、卡上有世界。同线上 autonomousLife：带上紧急课程项目接管空闲（原 projectChoice）、生活账进提示词（原 lifeInPrompt） */
     autonomous: boolean;
-    /** 默认 false：紧急课程项目接管空闲安排（ADR 0056）；要开着 autonomous */
-    projectChoice: boolean;
-    /** 默认 false：生活账接进提示词（ADR 0054，配置 lifeInPrompt）；要开着 autonomous */
-    lifeInPrompt: boolean;
     /** 默认 false：有起因的小别扭与和好（ADR 0074，配置 grievance）；只对男朋友档有效 */
     grievance: boolean;
-    /** 默认 false：回复节奏（ADR 0075，配置 rhythm）；模拟器里的虚拟时钟照样走 */
+    /** 默认 false：回复节奏（ADR 0075，配置 rhythm）；模拟器里的虚拟时钟照样走。带上回复延迟的长尾（开关合并：原 lagTail） */
     rhythm: boolean;
-    /** 默认 false：他没回也继续找他、催他一下（ADR 0100，配置 proactiveReach）；要 proactive 开着 */
-    proactiveReach: boolean;
-    /** 默认 false：约他一起玩（ADR 0107，配置 proactiveInvite）；要 proactive 开着 */
-    proactiveInvite: boolean;
     /** 默认 false：内心（ADR 0101，配置 innerLife）；要 proactive 开着 */
     innerLife: boolean;
     /** 默认 false：心境（ADR 0102，配置 herFeelings）；只对男朋友档有效。moments：作者写下的事（runtime/bot/moments.json 的样子，at 可写相对开场的偏移如 "-3h"） */
     herFeelings: boolean;
-    /** 默认 false：会拒绝（ADR 0103，配置 herNo）；只对男朋友档有效 */
+    /** 默认 false：会拒绝（ADR 0103，配置 herNo）；只对男朋友档有效。带上拒绝之后（ADR 0214，开关合并：原 afterNo） */
     herNo: boolean;
-    /** 默认 false：拒绝之后（ADR 0214，配置 afterNo）；只对男朋友档有效 */
-    afterNo: boolean;
     /** 默认 false：回忆带着当时的感觉（ADR 0218，配置 memoryFeelings）；要 herFeelings；只对男朋友档有效 */
     memoryFeelings: boolean;
     /** 默认 false：她没想完的问题（ADR 0207，配置 openQuestions）；只对男朋友档有效。要配 { "ponder": true } 步骤让她夜里想一遍（先 advance 到 22 点以后） */
     openQuestions: boolean;
     /** 默认 false：「我现在的样子」（ADR 0340，配置 selfPortrait）；只对男朋友档有效。读数据目录里的 self-portrait.json（模拟用的，场景要先放好；没有就什么都不放） */
     selfPortrait: boolean;
-    /** 默认 false：回复延迟的长尾（ADR 0105，配置 lagTail） */
-    lagTail: boolean;
-    /** 默认 false：她每天碰到的小事 + 小测（ADR 0106，配置 everydayLife） */
+    /** 默认 false：她每天碰到的小事 + 小测（ADR 0106，配置 everydayLife）。带上闺蜜的约（ADR 0061，原 npcAsks）、每顿吃什么（ADR 0125，原 menu） */
     everydayLife: boolean;
     /** 默认 false：她自己的追求（ADR 0104，配置 pursuits）；pursuitsFile：作者的 pursuits.json 的样子（不写就只有内置两条） */
     pursuits: boolean;
@@ -260,8 +252,6 @@ export interface Scenario {
     /** 日常小事和小测从哪天起才有（YYYY-MM-DD）；不写就从学期开始 */
     everydayFrom?: string;
     moments: { id: string; at: string; kind: string; strength: number; cause: string; halfLifeH?: number }[];
-    /** 默认 false：闺蜜的约（ADR 0061，配置 npcAsks）：约、迟到、改约、取消进她的一天；要开着 autonomous 才进行动账 */
-    npcAsks: boolean;
     /** 默认 off：公共节日（ADR 0076，配置 festivals）：notes 只进时间块，greet 再加主动说 */
     festivals: FestivalMode;
     /** 开场先记进账的、他给的钱（ADR 0027 调整的 receive_money）：at 是本地时刻，forCamera 存进相机基金。让场景里的世界和线上一致（10-10 他转了 2000，10-11 买了相机） */
@@ -280,8 +270,6 @@ export interface Scenario {
     stickers?: { id: string; description: string; tags: string[] }[];
     /** 预置的小梗（ADR 0114，配置 jokes）：写了才打开；跑场景时不去抽，直接用这几个 */
     jokes?: { phrase: string; origin: string }[];
-    /** 默认 false：问问他的意见（ADR 0116，配置 proactiveAsk） */
-    proactiveAsk: boolean;
     /** 默认 false：被第三方打断（ADR 0115，配置 interruptions） */
     interruptions: boolean;
     /** 默认 false：引用回复（ADR 0136，配置 quoteReply） */
@@ -294,21 +282,14 @@ export interface Scenario {
     watched?: { title: string; owner: string; tname: string; excerpt: string; hot?: string[] }[];
     /** 预置的网络热梗（ADR 0129，配置 memes）：写了才打开；跑场景时不去学，直接用这几个 */
     memes?: { term: string; meaning: string }[];
-    /** 默认 false：她会主动讲今天的小事（ADR 0127，配置 smallNews；要 everydayLife）；proactive 场景用 */
-    smallNews: boolean;
     /** 默认 false：会追问（ADR 0126，配置 curious） */
     curious: boolean;
-    /** 默认 false：每顿吃什么（ADR 0125，配置 menu）；menuFrom：从这一天起才有，不写就从头 */
-    menu: boolean;
+    /** 每顿吃什么（跟着 everydayLife）从这一天起才有，不写就从头 */
     menuFrom?: string;
-    /** 默认 false：给主动名额留余地（ADR 0124，配置 proactiveRoom） */
-    proactiveRoom: boolean;
     /** 默认 false：吃醋，最轻的一档（ADR 0123，配置 jealousy） */
     jealousy: boolean;
     /** 默认 false：关系阶段（ADR 0113，配置 relationship） */
     relationship: boolean;
-    /** 默认 false：说了等下之后自己回来（ADR 0112，配置 comeBack，要 proactive） */
-    comeBack: boolean;
     /** 默认 false：陪玩状态（ADR 0111，配置 together） */
     together: boolean;
     /** 假的照片货架（ADR 0109）：真的 shelf 代码，文件是几个字节的假图（模拟器不发图，气泡里是 <photo:编号>）。只有写了才给回复器，并打开 photos */
@@ -380,11 +361,25 @@ function rainDays(value: unknown, fail: (message: string) => never): Record<stri
     return ok ? value as Record<string, number[]> : fail('realRain 应为 { "YYYY-MM-DD": [下雨的钟头 0–23] }');
 }
 
+/**
+ * 开关合并（docs/plans/2026-11-24-switch-merge-design.md）之后线上没有单独的这些开关了，都跟着总开关走；场景里还写着就报错，
+ * 免得以为它还管用（parseAppConfig 遇到这种旧键也是按总开关算、旧键本身不起作用）。值是该写的那个键
+ */
+const MERGED_SCENARIO_KEYS: Readonly<Record<string, string>> = {
+    projectChoice: 'autonomous', lifeInPrompt: 'autonomous',
+    lagTail: 'rhythm',
+    afterNo: 'herNo',
+    npcAsks: 'everydayLife', menu: 'everydayLife',
+    proactiveReach: 'proactive', proactiveInvite: 'proactive', proactiveAsk: 'proactive', comeBack: 'proactive', proactiveRoom: 'proactive', hisReactions: 'proactive',
+    smallNews: 'proactive + everydayLife',
+};
+
 export function parseScenario(data: unknown, where = '场景'): Scenario {
     const fail = (message: string): never => { throw new Error(`${where}：${message}`); };
     if (typeof data !== 'object' || data === null) fail('应为对象');
     const s = data as Record<string, unknown>;
     if (typeof s.name !== 'string' || !s.name) fail('缺少 name');
+    for (const [key, master] of Object.entries(MERGED_SCENARIO_KEYS)) if (key in s) fail(`${key} 已经并进 ${master}（开关合并，同线上），删掉这个键`);
     const tiers: readonly string[] = [...CONTACT_TIERS, UNLISTED_TIER];
     if (typeof s.tier !== 'string' || !tiers.includes(s.tier)) fail(`tier 应为 ${tiers.join(' / ')}`);
     if (typeof s.start !== 'string' || Number.isNaN(Date.parse(s.start))) fail('start 应为 ISO 时间');
@@ -404,43 +399,31 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         proactive: s.proactive === true,
         moody: s.moody === true,
         autonomous: s.autonomous === true,
-        projectChoice: s.projectChoice === true,
-        lifeInPrompt: s.lifeInPrompt === true,
         grievance: s.grievance === true,
         rhythm: s.rhythm === true,
-        proactiveReach: s.proactiveReach === true,
-        proactiveInvite: s.proactiveInvite === true,
         together: s.together === true,
-        comeBack: s.comeBack === true,
         relationship: s.relationship === true,
         jealousy: s.jealousy === true,
-        proactiveRoom: s.proactiveRoom === true,
-        menu: s.menu === true,
         curious: s.curious === true,
         quoteReply: s.quoteReply === true,
         factCheck: s.factCheck === undefined ? 'off' : FACT_CHECK_MODES.includes(s.factCheck as FactCheckMode) ? s.factCheck as FactCheckMode : fail(`factCheck 应为 ${FACT_CHECK_MODES.join(' / ')} 之一`),
         ...(typeof s.quoteShare === 'number' && s.quoteShare >= 0 && s.quoteShare <= 1 ? { quoteShare: s.quoteShare } : {}),
-        smallNews: s.smallNews === true,
         ...(typeof s.menuFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.menuFrom) ? { menuFrom: s.menuFrom } : {}),
         interruptions: s.interruptions === true,
-        proactiveAsk: s.proactiveAsk === true,
         ...(Array.isArray(s.jokes) && s.jokes.length ? { jokes: (s.jokes as { phrase?: unknown; origin?: unknown }[]).filter(j => typeof j.phrase === 'string' && typeof j.origin === 'string').map(j => ({ phrase: j.phrase as string, origin: j.origin as string })) } : {}),
         ...(Array.isArray(s.watched) && s.watched.length ? { watched: (s.watched as Record<string, unknown>[]).filter(w => typeof w.title === 'string' && typeof w.excerpt === 'string').map(w => ({ title: w.title as string, owner: typeof w.owner === 'string' ? w.owner : 'UP', tname: typeof w.tname === 'string' ? w.tname : '日常', excerpt: w.excerpt as string, ...(Array.isArray(w.hot) ? { hot: (w.hot as unknown[]).filter((h): h is string => typeof h === 'string') } : {}) })) } : {}),
         ...(Array.isArray(s.memes) && s.memes.length ? { memes: (s.memes as { term?: unknown; meaning?: unknown }[]).filter(m => typeof m.term === 'string' && typeof m.meaning === 'string').map(m => ({ term: m.term as string, meaning: m.meaning as string })) } : {}),
         innerLife: s.innerLife === true,
         herFeelings: s.herFeelings === true,
         herNo: s.herNo === true,
-        afterNo: s.afterNo === true,
         memoryFeelings: s.memoryFeelings === true,
         openQuestions: s.openQuestions === true,
         selfPortrait: s.selfPortrait === true,
-        lagTail: s.lagTail === true,
         everydayLife: s.everydayLife === true,
         pursuits: s.pursuits === true,
         pursuitsFile: Array.isArray(s.pursuitsFile) ? s.pursuitsFile as unknown[] : [],
         ...(typeof s.everydayFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.everydayFrom) ? { everydayFrom: s.everydayFrom } : {}),
         moments: Array.isArray(s.moments) ? s.moments as Scenario['moments'] : [],
-        npcAsks: s.npcAsks === true,
         festivals: s.festivals === undefined ? 'off' : (FESTIVAL_MODES.includes(s.festivals as FestivalMode) ? s.festivals as FestivalMode : fail(`festivals 应为 ${FESTIVAL_MODES.join(' / ')} 之一`)),
         ...(s.gifts !== undefined ? { gifts: (Array.isArray(s.gifts) ? s.gifts : fail('gifts 应为数组')).map((g: unknown, i: number) => {
             const o = g as Record<string, unknown>;

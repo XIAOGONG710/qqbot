@@ -101,6 +101,15 @@ describe('模拟器：场景文件', () => {
         assert.equal(s.memory, true);
     });
 
+    test('已经并进总开关的旧键（开关合并）写了就报错，说该写哪个', () => {
+        const base = { name: 'x', tier: 'boyfriend', start: '2026-10-05T20:00:00+08:00', steps: [{ say: 'a' }] };
+        assert.throws(() => parseScenario({ ...base, rhythm: true, lagTail: true }), /lagTail 已经并进 rhythm/);
+        assert.throws(() => parseScenario({ ...base, herNo: true, afterNo: false }), /afterNo 已经并进 herNo/);
+        assert.throws(() => parseScenario({ ...base, menu: true }), /menu 已经并进 everydayLife/);
+        assert.throws(() => parseScenario({ ...base, proactive: true, proactiveReach: true }), /proactiveReach 已经并进 proactive/);
+        assert.throws(() => parseScenario({ ...base, autonomous: true, lifeInPrompt: true }), /lifeInPrompt 已经并进 autonomous/);
+    });
+
     test('生活事件不经过聊天也能发生、落账并幂等重放', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-life-sim-'));
         const scenario = parseScenario({
@@ -568,18 +577,21 @@ describe('模拟器：跑场景（假模型、假 Hindsight）', () => {
         };
         const scenario = parseScenario({
             name: '主动', tier: 'boyfriend', start: '2026-10-12T06:00:00+08:00', memory: false, proactive: true,
-            // 他每次都回：她主动发的没人回就会停（ADR 0011 确认记录第 2 条）
+            // 他每次都回：她主动发的没人回就会停（ADR 0011 确认记录第 2 条）。
+            // 主动开着就带上「没回也继续找他」等时机（同线上，开关合并：原 proactiveReach 等），所以他聊完不回时第二条是催他回、晚上还有睡前
             steps: [
                 { wait: 'proactive' },
                 { say: '早，刚醒' },
                 { say: '我明天下午有个面试' },
                 { wait: 'proactive' },
                 { say: '刚下班' },
-                { check: { proactive: { count: [2, 2], perDayMax: 2, allowedTimes: true, occasions: ['早安', '下课'], exitClean: true } } },
+                { check: { proactive: { count: [2, 2], perDayMax: 2, allowedTimes: true, occasions: ['早安', '催他回'], exitClean: true } } },
+                { wait: 'proactive' },
+                { say: '晚安' },
                 { wait: 'proactive' },
                 { say: '早' },
                 { wait: 'proactive' },
-                { check: { proactive: { count: [2, 2], occasions: ['早安', '待跟进的事'], replyAny: ['面试'], perDayMax: 2, allowedTimes: true } } },
+                { check: { proactive: { count: [3, 3], occasions: ['睡前', '早安', '待跟进的事'], replyAny: ['面试'], perDayMax: 2, allowedTimes: true } } },
             ],
         });
         try {
@@ -760,12 +772,12 @@ describe('模拟器挂着他提到见面的模块（ADR 0336）', () => {
 
 describe('模拟器挂着她这几天拍照修图的模块（ADR 0336）', () => {
     // 行为基线走的是 App，模拟器这一路的接线由这里兜：没挂模块，这一段就没有
-    test('生活账里有一段修片：开着 lifeInPrompt 时提示词里有「你这几天拍照修图」', async () => {
+    test('生活账里有一段修片：开着 autonomous（同线上 autonomousLife，原 lifeInPrompt）时提示词里有「你这几天拍照修图」', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-practice-sim-'));
         const prompts: string[] = [];
         try {
             await runScenario(parseScenario({
-                name: 'practice', tier: 'boyfriend', start: '2026-11-10T14:00:00+08:00', memory: false, schedule: true, autonomous: true, lifeInPrompt: true,
+                name: 'practice', tier: 'boyfriend', start: '2026-11-10T14:00:00+08:00', memory: false, schedule: true, autonomous: true,
                 steps: [{ say: '在干嘛' }, { advance: '10m' }, { life: { id: 'edit-photos', kind: 'work_on_project', target: 'photography_growth', subject: '修昨天拍的片子' } }, { advance: '20m' }, { say: '下午干嘛了' }, { advance: '10m' }],
             }), {
                 runId: 'practice', dataDir: dir, card, llm, prompt, herDays: true, settle: { quietMs: 10, maxMs: 50 },

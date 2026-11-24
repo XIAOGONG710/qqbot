@@ -6,7 +6,6 @@
     "start": "2026-10-05T08:30:00+08:00",
     "memory": false,
     "proactive": true,
-    "proactiveReach": true,
     "innerLife": true,
     "history": [
         { "time": "2026-10-04T21:30:00+08:00", "role": "user", "content": "明天下午有个面试，有点紧张" },

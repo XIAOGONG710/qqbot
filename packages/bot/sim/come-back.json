@@ -6,7 +6,6 @@
     "start": "2026-10-24T20:01:00+08:00",
     "memory": false,
     "proactive": true,
-    "comeBack": true,
     "history": [
         {
             "time": "2026-10-24T19:50:00+08:00",

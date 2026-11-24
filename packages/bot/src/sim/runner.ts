@@ -5,7 +5,7 @@ import { appendFileSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { localDate } from '../local-date.ts';
 import { join } from 'node:path';
 import { watchedFacts } from '../language/watching.ts';
-import type { BotConfig, Contact } from '../platform/config.ts';
+import type { BotConfig, Contact, DeliberationMode } from '../platform/config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../platform/contact.ts';
 import { jokesTurnModule } from '../modules/jokes.ts';
 import { buildTurnModules } from '../platform/turn-modules.ts';
@@ -91,14 +91,15 @@ export interface RunOptions {
     herDays?: boolean;
     /** 他难过、亲密话、收尾时挑候选（ADR 0041），run.ts 照 bot 的配置或 --candidates 传；默认不挑 */
     candidates?: number;
-    /** 认真问她时深思（ADR 0151）：run.ts 的 --deliberate；深思轮次用这份模型配置 */
+    /**
+     * 深思（ADR 0151 / 0202，同线上 deliberation）：run.ts 的 --deliberation。keywords：关键词认出的认真轮次走深思；
+     * routed：再加小模型判轻重（开关合并：原 deliberate、depthRouting）。不传 = off；不是 off 时要给 deliberateLlm
+     */
+    deliberation?: DeliberationMode;
+    /** 深思轮次（和夜里想没想完的问题）用这份模型配置：run.ts 照配置的 deliberateModel 或 --deliberate-model 传 */
     deliberateLlm?: BotConfig['llm'];
     /** 换掉深思轮次的那段提示词（run.ts 的 --deliberate-note <文件>）；不写就用线上的 DELIBERATE_NOTE */
     deliberateNote?: string;
-    /** 语义路由（ADR 0202）：run.ts 的 --depth；要 deliberateLlm */
-    depthRouting?: boolean;
-    /** 事实检查多查一类：她替他说的事（ADR 0203）：run.ts 的 --fact-him；要事实检查开着 */
-    factHim?: boolean;
     /** 「做题式」写法（ADR 0146 实验）：run.ts 的 --frame solve；线上没有 */
     replyFrame?: 'solve';
     /** 测试注入：设备控制的钩子（ADR 0148）；模拟器命令行不传。菜单经模块（modules/devices.ts）放进提示词，不看档位，同迁移前 */
@@ -224,6 +225,8 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
 }
 
 async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners: ReturnType<typeof simulationOwners>): Promise<RunResult> {
+    const deliberation = options.deliberation ?? 'off';
+    if (deliberation !== 'off' && !options.deliberateLlm) throw new Error(`deliberation=${deliberation} 要给 deliberateLlm`);
     let injecting = 0, responderEpoch = 0;
     let summaryLifetime = new AbortController();
     const injectionTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -293,8 +296,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
     /** 跑完要删的：他自己的、名单里其他人的、公共库 */
     const banks = memory ? [bankId!, ...others.map(other => memory!.bankId(other)), memory.commonBankId()] : [];
     const { character } = options.card;
-    // 闺蜜的约（ADR 0061）：场景开着才有；开关在世界对象上，其余代码照旧读世界
-    if (scenario.npcAsks && character.herWorld) character.herWorld.asks = true;
+    // 闺蜜的约（ADR 0061，同 app.ts 跟着 everydayLife；开关合并：原 npcAsks）：开关在世界对象上，其余代码照旧读世界
+    if (scenario.everydayLife && character.herWorld) character.herWorld.asks = true;
     // 公共节日（ADR 0076）：并进这一档的重要的日子；场景的开场时刻决定算哪几年
     character.dates = withFestivals(character.dates, new Date(clock.now()), scenario.festivals);
     withFestivalActivities(character.schedule, new Date(clock.now()), scenario.festivals);
@@ -310,7 +313,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             ? lifeExecutor({
                 schedule: character.schedule, books: character.books, ...(herWorld.plans ? { plans: herWorld.plans } : {}),
                 worldAt: time => ledger.at(herWorld, character.schedule!, time), events: () => ledger.events(),
-                ...(scenario.projectChoice ? { projectChoice: true } : {}),
+                // 紧急课程项目接管空闲（ADR 0056）：同 app.ts 跟着 autonomousLife（开关合并：原 projectChoice）
+                projectChoice: true,
                 ...(herWorld.body ? { bodyAt: (time: Date) => bodyAt(herWorld.body!, character.schedule!, time) } : {}),
                 // 她跟谁说过「睡了」（ADR 0042）：和 app.ts 一样看名单里所有人的聊天记录（restart 之后 history 是新读的那一份）
                 bedtimes: () => saidBedtimes([contact, ...others].map(person => history.load(person.qq)), character.schedule!, clock.now() - 86_400_000),
@@ -488,7 +492,7 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         memory,
         ...(promises ? { promises } : {}),
         ...(sharedWorld ? { worldState: sharedWorld } : {}),
-        ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}),
+        ...(scenario.autonomous ? { projectChoice: true } : {}),
         ...(scenario.rhythm ? { rhythm: true } : {}),
         // 心境（ADR 0102）：场景里的 moments 的 at 可以写 "-3h" 这样相对开场的偏移
         ...(scenario.herFeelings ? { herFeelings: true, moments: () => simMoments } : {}),
@@ -507,13 +511,14 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             schedule: scenario.schedule,
             herDays: options.herDays ?? false,
             grievance: Boolean(scenario.grievance),
-            lagTail: Boolean(scenario.lagTail),
-            lifeInPrompt: Boolean(scenario.lifeInPrompt && scenario.autonomous),
+            // 同 app.ts：长尾跟着 rhythm（原 lagTail），生活账进提示词跟着 autonomous（原 lifeInPrompt），拒绝之后跟着 herNo（原 afterNo）
+            lagTail: scenario.rhythm,
+            lifeInPrompt: scenario.autonomous,
             intent: {
-                ...(scenario.herNo ? { refuse: true } : {}), ...(scenario.afterNo ? { afterNo: true } : {}), ...(scenario.jealousy ? { jealous: true } : {}), ...(scenario.curious ? { curious: true } : {}),
+                ...(scenario.herNo ? { refuse: true } : {}), ...(scenario.herNo ? { afterNo: true } : {}), ...(scenario.jealousy ? { jealous: true } : {}), ...(scenario.curious ? { curious: true } : {}),
                 ...(scenario.everydayLife ? { everydayLife: true } : {}), ...(scenario.pursuits ? { pursuits: true } : {}),
             },
-            herNow: { ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}) },
+            herNow: { ...(scenario.autonomous ? { projectChoice: true } : {}) },
             // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取（模拟器只有这一样）
             herNotes: { ...(scenario.openQuestions ? { openQuestions: thoughtsReader(dataDir) } : {}) },
             ...(scenario.selfPortrait ? { portrait: portraitReader(dataDir) } : {}),
@@ -525,9 +530,9 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             ...(options.devices ? { devices: { menu: () => options.devices!.menu(), allowed: () => true } } : {}),
             // 引用回复（ADR 0136）：比例按场景
             ...(scenario.quoteReply ? { quote: { ...(scenario.quoteShare !== undefined ? { share: scenario.quoteShare } : {}) } } : {}),
-            // 逐条事实检查：审稿走场景自己的模型（假模型也行），每次的记录进这一步，报告里看得到
+            // 逐条事实检查：审稿走场景自己的模型（假模型也行），每次的记录进这一步，报告里看得到；开着就也查她替他说的（同 app.ts，开关合并：原 factHim）
             ...((options.factCheck ?? scenario.factCheck) !== 'off' ? { factCheck: {
-                mode: (options.factCheck ?? scenario.factCheck) as 'log' | 'fix', ...(options.factHim ? { aboutHim: true } : {}),
+                mode: (options.factCheck ?? scenario.factCheck) as 'log' | 'fix', aboutHim: true,
                 audit: messages => {
                     if (epoch !== responderEpoch) return Promise.reject(new Error('模拟回复器已停止'));
                     const scoped = generationLog();
@@ -553,11 +558,12 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             ...(scenario.watched?.length ? { watched: () => { const day = formatDate(new Date(clock.now())); return scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })); } } : {}),
         }),
         ...(scenario.memoryFeelings && scenario.herFeelings ? { memoryFeelings: true } : {}),
-        ...(scenario.lagTail ? { lagTail: true } : {}),
+        ...(scenario.rhythm ? { lagTail: true } : {}),
         ...(scenario.everydayLife ? { everydayLife: true } : {}),
         ...(scenario.pursuits ? { pursuits: () => mergePursuits(scenario.pursuitsFile as Pursuit[]) } : {}),
-        ...(options.deliberateLlm ? { deliberate: { llm: options.deliberateLlm } } : {}),
-        ...(options.depthRouting && options.deliberateLlm ? {
+        // 深思（同 app.ts）：deliberation 不是 off 就挂深思；routed 才建判轻重的小调用
+        ...(deliberation !== 'off' ? { deliberate: { llm: options.deliberateLlm! } } : {}),
+        ...(deliberation === 'routed' ? {
             turnWeight: createTurnWeigher({
                 ask: messages => (options.generate ? options.generate(messages, log) : chatCompletion({ ...options.llm, temperature: 0, maxTokens: 80, timeoutMs: WEIGH_TIMEOUT_MS, extraBody: { ...(Object.fromEntries(Object.entries(options.llm.extraBody ?? {}).filter(([key]) => key !== 'reasoning_effort'))), thinking: { type: 'disabled' } } }, messages, { log })),
                 log: line => log(line),
@@ -630,15 +636,11 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             ...(scenario.extraOccasions ? { occasions: [...new Set([...character.proactive.occasions, ...scenario.extraOccasions])] } : {}),
         }
         : character.proactive;
-    const withReached = proactiveBase && scenario.proactiveReach ? withReach(proactiveBase) : proactiveBase;
-    const withInned = withReached && scenario.innerLife ? withInner(withReached) : withReached;
-    const withInvitedOnly = withInned && scenario.proactiveInvite ? withInvite(withInned) : withInned;
-    const withInvited = withInvitedOnly && scenario.proactiveAsk ? withAsk(withInvitedOnly) : withInvitedOnly;
-    const withBacked = withInvited && scenario.comeBack ? withBack(withInvited) : withInvited;
-    const withRoomed = withBacked && scenario.proactiveRoom ? withRoom(withBacked) : withBacked;
-    const withCurioused = withRoomed && scenario.curious ? withCurious(withRoomed) : withRoomed;
-    const withSmalled = withCurioused && scenario.smallNews ? withSmallNews(withCurioused) : withCurioused;
-    const proactiveSettings = withSmalled;
+    // 主动开着就带上这几个时机，先后同 planner-host.ts（开关合并：原 proactiveReach、proactiveInvite、proactiveAsk、comeBack、proactiveRoom、smallNews；
+    // 她会讲今天的小事还要 everydayLife、只男朋友档）。计划器只在 scenario.proactive 开着时建，所以这里不再看 proactive
+    const boyfriend = scenario.tier === 'boyfriend';
+    const proactiveSettings = proactiveBase && [withReach, scenario.innerLife && withInner, withInvite, withAsk, withBack, withRoom, scenario.curious && withCurious, boyfriend && scenario.everydayLife && withSmallNews]
+        .reduce((settings, overlay) => (overlay ? overlay(settings) : settings), proactiveBase);
     const openPlanner = (): Planner | undefined => (scenario.proactive && scenario.schedule && proactiveSettings && character.schedule
         ? owners.keep(createProactivePlanner({
             contact,
@@ -647,6 +649,8 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             ...(scenario.innerLife ? { inner: true } : {}),
             ...(scenario.innerLife && scenario.watched?.length ? { watchedFacts: () => { const d = new Date(clock.now()); const day = formatDate(d); return watchedFacts(scenario.watched!.map((w, i) => ({ bvid: `BV1sim${i}`, title: w.title, owner: w.owner, tname: w.tname, excerpt: w.excerpt, hot: w.hot ?? [], day })), d); } } : {}),
             ...(scenario.together ? { together: (at: number) => Boolean(togetherNow(history.load(contact.qq), at)) } : {}),
+            // 看他的反应（ADR 0212，同 planner-host.ts：主动开着、男朋友档；开关合并：原 hisReactions）
+            ...(boyfriend ? { reactions: { names: (character.herWorld?.people ?? []).map(person => person.name) } } : {}),
             dates: character.dates,
             mode: 'on',
             history,
@@ -953,7 +957,7 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
                 responder.catchUp();
                 await runTimers(clock.now() + AUTO_TIMER_MS);
             } else if ('ponder' in step) {
-                // 她夜里把没想完的问题想一遍（ADR 0207）：和线上一样用 deliberateModel（模拟里有 --deliberate 就用它）；时间不在 22 点到凌晨 3 点、开关没开、没有可想的，都只记一行
+                // 她夜里把没想完的问题想一遍（ADR 0207）：和线上一样用 deliberateModel（模拟里有 --deliberation 或 --deliberate-model 就用它）；时间不在 22 点到凌晨 3 点、开关没开、没有可想的，都只记一行
                 await settle();
                 if (!scenario.openQuestions || scenario.tier !== 'boyfriend') {
                     log('没想完的问题：场景没开 openQuestions，略过');
@@ -992,7 +996,7 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
                             ...(herWorld.plans ? { plans: herWorld.plans } : {}),
                             worldAt: at => ledgerWorld!.at(herWorld, schedule, at),
                             events: () => ledgerWorld!.events(),
-                            ...(scenario.projectChoice ? { projectChoice: true } : {}),
+                            ...(scenario.autonomous ? { projectChoice: true } : {}),
                             ...(herWorld.body ? { bodyAt: (at: Date) => bodyAt(herWorld.body!, schedule, at) } : {}),
                             bedtimes: () => saidBedtimes([contact, ...others].map(person => history.load(person.qq)), schedule, clock.now() - 86_400_000),
                         };

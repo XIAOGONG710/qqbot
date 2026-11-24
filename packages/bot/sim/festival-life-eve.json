@@ -7,7 +7,6 @@
     "memory": false,
     "proactive": true,
     "autonomous": true,
-    "lifeInPrompt": true,
     "festivals": "greet",
     "steps": [
         { "advance": "1d13h" },

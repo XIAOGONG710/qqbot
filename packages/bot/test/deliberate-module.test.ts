@@ -51,7 +51,7 @@ describe('深思模块（ADR 0151 / 0202 / 0336）', () => {
     });
 });
 
-// 模拟器那一路（--deliberate、--deliberate-note、--depth）：行为基线碰不到；模拟器没挂模块、或者没把 --deliberate-note 交给模块，这几条报错
+// 模拟器那一路（--deliberation keywords|routed、--deliberate-note）：行为基线碰不到；模拟器没挂模块、或者没把 --deliberate-note 交给模块，这几条报错
 describe('模拟器挂着深思的模块（ADR 0336）', () => {
     const card = loadTierCard(syntheticCardPattern, 'boyfriend');
     const llm: BotConfig['llm'] = {
@@ -70,7 +70,7 @@ describe('模拟器挂着深思的模块（ADR 0336）', () => {
                 steps: [{ say: said }, { advance: '10m' }],
             }), {
                 runId: 'deliberate', dataDir: dir, card, llm, prompt, settle: { quietMs: 10, maxMs: 50 },
-                ...(patch.deliberate ? { deliberateLlm } : {}), ...(patch.note ? { deliberateNote: patch.note } : {}), ...(patch.depth ? { depthRouting: true } : {}),
+                ...(patch.deliberate ? { deliberation: patch.depth ? 'routed' as const : 'keywords' as const, deliberateLlm } : {}), ...(patch.note ? { deliberateNote: patch.note } : {}),
                 generate: async messages => {
                     const text = messages.map(m => String(m.content)).join('\n');
                     if (text.includes(WEIGH_SYSTEM)) { weighed++; return patch.depth ?? '{"kind":"light"}'; }
@@ -84,7 +84,7 @@ describe('模拟器挂着深思的模块（ADR 0336）', () => {
         return { prompts, weighed };
     };
 
-    test('--deliberate：认真问她的轮次有「先想清楚」那一句；没开就没有；--deliberate-note 换掉那一句', async () => {
+    test('--deliberation keywords：认真问她的轮次有「先想清楚」那一句；没开就没有；--deliberate-note 换掉那一句', async () => {
         const asked = '你觉得我该不该去北京实习？';
         assert.ok((await run(asked, { deliberate: true })).prompts[0]!.includes(DELIBERATE_NOTE));
         assert.ok(!(await run(asked)).prompts[0]!.includes(DELIBERATE_NOTE));
@@ -93,7 +93,7 @@ describe('模拟器挂着深思的模块（ADR 0336）', () => {
         assert.ok(!noted.includes(DELIBERATE_NOTE));
     });
 
-    test('--depth：关键词没认出来、分类说在说沉重的事——深思那一句加方向那一句；分类说闲聊就都没有', async () => {
+    test('--deliberation routed：关键词没认出来、分类说在说沉重的事——深思那一句加方向那一句；分类说闲聊就都没有', async () => {
         const heavy = await run('今天回去看了我爷爷，他有点认不得我了', { deliberate: true, depth: '{"kind":"heavy","why":"亲人"}' });
         assert.equal(heavy.weighed, 1);
         assert.ok(heavy.prompts[0]!.includes(DELIBERATE_NOTE));
