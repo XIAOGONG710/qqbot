@@ -29,9 +29,10 @@ describe('设备取件中心（ADR 0148）', () => {
     });
 
     test('取件者先来挂着：提交一个任务，取件者马上领到，交回结果后提交方拿到结果', async () => {
-        const { hub, call } = await start();
+        // 长轮询挂满 5 秒；等取件请求真到了再提交（原来固定等 50 毫秒，全量并行时请求还没到、或 300 毫秒的挂起先到点回了 204）
+        const { hub, call } = await start({ pollWaitMaxMs: 5000 });
         const polling = call('/poll?wait=5');
-        await new Promise(resolve => setTimeout(resolve, 50));
+        for (const deadline = Date.now() + 5000; !hub.online() && Date.now() < deadline;) await new Promise(resolve => setTimeout(resolve, 10));
         assert.equal(hub.online(), true);
         const submitted = hub.submit({ action: 'notify', params: { text: '喝水' } });
         const response = await polling;

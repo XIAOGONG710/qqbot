@@ -1596,27 +1596,33 @@ describe('编排（app.ts）', () => {
 
     test('生活账进提示词（lifeInPrompt，默认关）：她这几天练拍照修图写一行，只有开着、账上真有才写', async () => {
         const bf = [{ qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+        // 钉住「现在」：11-04 下午三点，那天中午弄了一段。原来跟着真实时钟算，她的一天从 02:00 起，02:00 刚过那几分钟跑就放不进「今天」（11-25 凌晨全量偶发）
+        const at = new Date(2026, 10, 4, 15, 0);
         const seed = (cfg: AppConfig) => {
-            // 「今天」按她的一天算（02:00 起）：零点到凌晨几点之间跑，不能让这段落到昨天去（原来 03:21 跑会写成「上一回是昨天晚上」）
-            const now = Date.now();
-            const herDayStart = new Date(now);
-            herDayStart.setHours(2, 0, 0, 0);
-            if (herDayStart.getTime() > now) herDayStart.setDate(herDayStart.getDate() - 1);
-            const end = new Date(Math.min(Math.max(now - 2 * 3_600_000, herDayStart.getTime() + 30 * 60_000), now - 60_000));
-            const start = new Date(Math.max(end.getTime() - 100 * 60_000, herDayStart.getTime()));
-            const day = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+            const start = new Date(2026, 10, 4, 12, 0);
+            const end = new Date(2026, 10, 4, 13, 40);
             mkdirSync(join(cfg.dataDir, 'world'), { recursive: true });
             writeFileSync(join(cfg.dataDir, 'world', 'events.json'), JSON.stringify({ version: 1, events: [{
-                id: `life:${start.toISOString()}:work_on_project`, actor: 'linmengyao', kind: 'work_on_project', day,
+                id: `life:${start.toISOString()}:work_on_project`, actor: 'linmengyao', kind: 'work_on_project', day: '2026-11-04',
                 startedAt: start.toISOString(), endedAt: end.toISOString(), source: 'simulation', result: 'succeeded',
                 subject: '修昨天拍的片子', target: 'photography_growth',
             }] }));
         };
         const promptOf = async (cfg: AppConfig) => {
             seed(cfg);
-            const { app, sent } = setup(cfg, { 10002: [historyMessage(1, 10002, '在干嘛', 5)] });
+            const clock = new VirtualClock(at);
+            const { app, sent } = setup(cfg, { 10002: [] }, { clock });
             await app.connected(SELF);
-            await until(() => sent.length > 0);
+            // 连上以后再来这一句（补回那条路按真实时钟判断过没过 3 小时，不跟虚拟时钟）
+            app.receive({ ...event(10002, 1, '在干嘛'), time: Math.floor(clock.now() / 1000) });
+            // 回复器在虚拟时钟上等（看到消息前、打字那几秒）：到点就拨过去
+            const deadline = Date.now() + 8000;
+            while (sent.length === 0 && Date.now() < deadline) {
+                await new Promise(r => setTimeout(r, 20));
+                const next = clock.nextTimer();
+                if (next !== undefined) clock.advanceTo(next);
+            }
+            assert.ok(sent.length > 0, '回复发出去了');
             const prompt = JSON.parse(readFileSync(join(cfg.dataDir, 'last-prompt.json'), 'utf8')) as { messages: { content: string }[] };
             return prompt.messages.map(m => m.content).join('\n');
         };
