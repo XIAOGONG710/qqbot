@@ -21,7 +21,6 @@
 - `life/motivation-decision-ledger.ts`
 - `life/expression-opportunity.ts`
 - `life/expression-opportunity-ledger.ts`
-- `life/expression-judgement.ts`
 - `life/her-days.ts`
 - `life/day-plan.ts`
 - `life/everyday.ts`

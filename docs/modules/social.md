@@ -44,7 +44,6 @@
 - `social/quote-reply.ts`
 - `social/external-drafts.ts`
 - `social/external-platforms.ts`
-- `social/official-adapter.ts`
 
 ## 开关
 

@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { mixinKey, MIXIN_KEY_TABLE, signParams } from '../src/bilibili/bilibili-wbi.ts';
 import { parseFeedItems, planSession, sessionSize, stayVerdict, type FeedItem } from '../src/bilibili/bilibili-feed.ts';
-import { BILI_LIMITS, BiliLimiter, auditLine } from '../src/bilibili/bilibili-limit.ts';
 
 const item = (patch: Partial<FeedItem> = {}): FeedItem => ({ bvid: 'BV1xx411c7mD', title: '楼下三花的一天', owner: '小雨', category: '喵星人', duration: 120, views: 100, ...patch });
 
@@ -58,29 +57,5 @@ describe('推荐流的一次「刷」', () => {
         assert.deepEqual(session.visited.map(entry => entry.bvid), ['BV1bb411c7mD', 'BV1cc411c7mD']);
         assert.deepEqual(session.skipped, ['BV1bb411c7mD']);
         assert.equal(session.stayed.length, 1);
-    });
-});
-
-describe('写动作的节奏闸 + 审计', () => {
-    test('评论：两次隔 10 秒；一小时 30 次；读动作不过这里', () => {
-        const limiter = new BiliLimiter();
-        let now = 1_000_000;
-        assert.equal(limiter.take('comment', now).allowed, true);
-        const second = limiter.take('comment', now + 1_000);
-        assert.equal(second.allowed, false);
-        assert.ok(!second.allowed && second.retryAfterMs > 0);
-        now += BILI_LIMITS.comment.minGapMs;
-        for (let i = 1; i < 30; i++) {
-            assert.equal(limiter.take('comment', now).allowed, true);
-            now += BILI_LIMITS.comment.minGapMs;
-        }
-        assert.equal(limiter.take('comment', now).allowed, false);
-        now += 3_600_000;
-        assert.equal(limiter.take('comment', now).allowed, true);
-    });
-
-    test('审计一行一条 JSON，只有动作 / 对象 / 结果', () => {
-        const line = auditLine({ at: 1, action: 'comment', target: 'BV1xx411c7mD', ok: true });
-        assert.deepEqual(JSON.parse(line), { at: 1, action: 'comment', target: 'BV1xx411c7mD', ok: true });
     });
 });
