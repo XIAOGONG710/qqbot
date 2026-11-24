@@ -457,7 +457,8 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         simulatedClearing = true;
         queueMicrotask(() => { simulated.clear(); simulatedClearing = false; });
     }
-    const key = `${until.getTime()}\u0000${JSON.stringify(world)}\u0000${JSON.stringify(schedule)}\u0000${JSON.stringify(actions)}`;
+    // 进程时区也进键：按天切分跟着 TZ 走，Koishi 插件重载时可能换了她的时区（claimTimeZone）
+    const key = `${until.getTime()}\u0000${process.env.TZ ?? ''}\u0000${JSON.stringify(world)}\u0000${JSON.stringify(schedule)}\u0000${JSON.stringify(actions)}`;
     const hit = simulated.get(key);
     if (hit) {
         // 最近用过的挪到最后，满了先丢最久没用的
