@@ -96,6 +96,7 @@ describe('群聊：给她看的样子', () => {
         assert.deepEqual(groupReply('不说'), []);
         assert.deepEqual(groupReply('（不说）'), []);
         assert.deepEqual(groupReply('一\n二\n三'), ['一', '二']);
+        assert.deepEqual(groupReply('？'), ['？']);
     });
 
     test('「@老王」认得出的名字换成段；认不出的留着当文字；戳一戳有冷却', () => {
@@ -241,7 +242,7 @@ describe('群聊：进应用', () => {
         assert.ok(log.includes('"mine":true') && log.includes('来了来了'));
     });
 
-    test('两个人前后脚叫她：攒成一段、只回一次，说明里点出是谁在叫她', async () => {
+    test('两个人前后脚叫她：保留两条上下文，只接后一条', async () => {
         const { app: a, sentGroup, prompts } = app('on');
         await a.connected(SELF);
         a.receiveGroup(said(555, 30001, '老王', [{ type: 'at', data: { qq: String(SELF) } }, text(' 在吗')]));
@@ -252,8 +253,8 @@ describe('群聊：进应用', () => {
         // 不是一人回一条：这一批只发一次
         assert.deepEqual(sentGroup, ['555:来了来了']);
         const prompt = prompts.at(-1)!;
-        assert.ok(prompt.includes('老王、陈陈在跟你说话'), prompt.slice(-500));
-        assert.ok(prompt.includes('不用挨个都应'), '多人找她时让她自己挑');
+        assert.match(prompt, /老王：@你\s+在吗/);
+        assert.match(prompt, /这次只接这一条群消息："陈陈：梦瑶你中午吃啥"/);
     });
 
     test('她说话的时候又有人叫她：不丢，说完接着处理下一批', async () => {
@@ -295,7 +296,7 @@ describe('群聊：进应用', () => {
         assert.ok(!groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned' }).includes('都知道你是 AI'));
     });
 
-    test('从聊天记录里学这个群的口气：长度、常出现的词、表情、谁话多、示范原话', () => {
+    test('群聊节奏只提供统计，不拿群友原话、常用词和表情当范例', () => {
         const entries = Array.from({ length: 12 }, (_, i) => ({
             time: `2026-11-${String(3 + (i % 5)).padStart(2, '0')}T20:0${i % 10}:00+08:00`,
             from: 30001 + (i % 3),
@@ -305,12 +306,10 @@ describe('群聊：进应用', () => {
         }));
         const style = analyzeGroupStyle(entries);
         assert.ok(style.avgChars > 3 && style.avgChars < 30, String(style.avgChars));
-        assert.ok(style.topWords.includes('显卡') || style.topWords.includes('显存'), style.topWords.join(','));
-        assert.ok(style.emojis.includes('😂'), style.emojis.join(''));
         assert.equal(style.talkers.length, 3);
-        assert.ok(style.exemplars.length > 0);
         const text = renderGroupStyle(style)!;
-        assert.ok(text.includes('学他们的口气') && text.includes('「'), text);
+        assert.match(text, /群聊节奏.*大家一条大概/);
+        assert.doesNotMatch(text, /这破显卡|跑整首歌|我嘞个豆|显存|😂|学他们的口气/);
         assert.equal(renderGroupStyle(undefined), undefined);
     });
 
@@ -402,6 +401,26 @@ describe('群聊：进应用', () => {
         assert.equal(String(sentRich[0]!.segments[0]!.data.qq), '30001');
         assert.equal(sentRich[0]!.replyTo, call.message_id, '引用叫她那一条');
         assert.ok(sentGroup[0]!.includes('@30001'), sentGroup.join('|'));
+    });
+
+    test('同批多人叫她时只给一个接话目标，短反应可以单独发出', async () => {
+        const { app: a, sentRich, sentGroup, prompts } = app('on', false, {
+            generate: async () => '@小陈 ？',
+        });
+        await a.connected(SELF);
+        const at = { type: 'at' as const, data: { qq: String(SELF) } };
+        a.receiveGroup(said(555, 30001, '老王', [at, text(' 昨晚那场你看了吗')]));
+        const chosen = said(555, 30002, '小陈', [at, text(' 我把地图倒着打通了')]);
+        a.receiveGroup(chosen);
+        a.receiveGroup(said(555, 30003, '小周', [text(' 我先去拿外卖')]));
+        await until(() => sentRich.length > 0);
+        a.stop();
+        const prompt = prompts.at(-1)!;
+        assert.match(prompt, /这次只接这一条群消息：.*小陈.*我把地图倒着打通了/);
+        assert.match(prompt, /反应到位就停/);
+        assert.ok(!prompt.includes('挑你最想接的那一两句'));
+        assert.equal(sentRich[0]!.replyTo, chosen.message_id);
+        assert.deepEqual(sentGroup, ['555:@30002 ？']);
     });
 
     test('认不出的 @ 不瞎换，照旧发文字、不带引用', async () => {

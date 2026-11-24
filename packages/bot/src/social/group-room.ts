@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { segmentsToText, type GroupMessageEvent, type QuoteLookup, type Segment } from '../platform/onebot.ts';
 import { matchSingRequest, type singSong } from '../voice/sing.ts';
 import { personaFacts, type TierCard } from '../platform/contact.ts';
-import { GROUP_CONTEXT, HER_NAMES, groupLine, type groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type GroupDecisionTrace, type SpeakDecision, type SpeakReason } from './group-chat.ts';
+import { GROUP_CONTEXT, HER_NAMES, groupLine, type groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type GroupDecisionTrace, type GroupEntry, type SpeakDecision, type SpeakReason } from './group-chat.ts';
 import { groupScheduleRecall } from './group-memory.ts';
 import { analyzeGroupStyle, renderGroupStyle } from './group-style.ts';
 import { groupAffectOf, mergeFelt, type groupAffect } from './group-affect.ts';
@@ -344,7 +344,9 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
                         : reasons.includes('overheard') ? 'overheard'
                             : reasons.includes('topic') ? 'topic' : undefined;
             // 决策痕迹：passed 在这里定（早于模型），模型写「不说」不改它
-            const sourceItem = batch.find(item => item.reason === reason) ?? batch.at(-1)!;
+            const sourceItem = (reason === 'mentioned' || reason === 'defend'
+                ? batch.findLast(item => item.reason === reason)
+                : batch.find(item => item.reason === reason)) ?? batch.at(-1)!;
             trace = deps.onDecision ? {
                 groupId, messageId: sourceItem.event.message_id, timeBlock: Math.floor(worldNow() / 3_600_000),
                 reason, source: sourceItem.decision?.source ?? (reason ? 'reactive' : 'lottery'),
@@ -412,14 +414,9 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             }
             const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
             const bf = boyfriend ? { qq: boyfriend.qq, name: entries.findLast(e => e.from === boyfriend.qq)?.name ?? boyfriend.name } : undefined;
-            const callers = [...new Set(batch.filter(item => item.reason === 'mentioned' || item.reason === 'defend')
-                .map(item => (item.event.sender.card || item.event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16)))];
-            const calling = [...batch].reverse().find(item => item.reason === 'mentioned' || item.reason === 'defend');
-            const who = calling ? (calling.event.sender.card || calling.event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16) : undefined;
+            const target = entries.findLast(entry => entry.messageId === sourceItem.event.message_id);
             await speakInGroup(group, reason, bf, {
-                ...(callers.length ? { callers, pending: batch.length } : { pending: batch.length }),
-                ...(calling ? { replyTo: calling.event.message_id, caller: calling.event.user_id } : {}),
-                ...(who ? { callerName: who } : {}),
+                ...(target ? { target } : {}),
                 ...(trace ? { trace } : {}),
                 ...(sourceItem.decision?.source === 'motive' ? { motive: true } : {}),
             });
@@ -452,7 +449,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
     }
 
     async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean; disguise?: boolean; cover?: string }, reason: SpeakReason, bf: { qq: number; name: string } | undefined,
-        extra: { callers?: readonly string[]; pending?: number; replyTo?: number; caller?: number; news?: string; trace?: GroupDecisionTrace; motive?: boolean } = {}): Promise<void> {
+        extra: { target?: GroupEntry; news?: string; trace?: GroupDecisionTrace; motive?: boolean } = {}): Promise<void> {
         // 群里的人都知道她是 AI（用户标过）：原卡，被问时由她定；没标：承认版卡，认真问到就承认；有人说想不开：一律承认版（ADR 0067 / 0068 / 0208）
         // 都知道、或者要装成真人：用同学档原卡（她不用承认）；没标的群用承认版；危机一律承认版
         const tier = tierOf(group, reason);
@@ -467,8 +464,8 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         const boyfriendHere = Boolean(bf && entries.some(e => e.from === bf.qq));
         const system = `你是${card.character.name}，在 QQ 群里和大家聊天。下面是你的设定。\n${personaFacts(card.character.description)}`;
         const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, bf)).join('\n');
-        const question = reason === 'mentioned' && extra.caller !== undefined
-            ? entries.findLast(entry => entry.messageId === extra.replyTo && entry.from === extra.caller) : undefined;
+        const question = reason === 'mentioned' ? extra.target : undefined;
+        const quotedTarget = reason === 'mentioned' || reason === 'defend' ? extra.target : undefined;
         const recalled = question
             ? groupScheduleRecall(groupLogs!.load, group.id, question.from, question.content, Date.parse(question.time)) : undefined;
         // 这个群里她认识谁（聊过就认得，改名也认得）；心情只说「这会儿怎么样」，不说来由（都在私聊里）
@@ -485,7 +482,9 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             : [];
         const mood = feltNow.length ? moodStateLine(feltNow) : undefined;
         const note = groupNote({
-            groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason, ...extra,
+            groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason,
+            ...(extra.target ? { targetLine: groupLine(extra.target, bf) } : {}),
+            ...(extra.news ? { news: extra.news } : {}),
             ...(memory ? { memory } : {}), ...(mood ? { mood } : {}), ...(self ? { self } : {}),
             ...(herGroupNames.get(group.id) ? { myNames: herGroupNames.get(group.id)! } : {}),
             ...(entries.some(entry => entry.history === true) ? { veteran: true } : {}),
@@ -539,7 +538,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             if (i > 0) await new Promise(resolve => setTimeout(resolve, 1200 + part.length * 150));
             if (stopped()) return;
             // 第一条引用叫她那一条；@ 换成段发出去
-            const replyTo = i === 0 ? extra.replyTo : undefined;
+            const replyTo = i === 0 ? quotedTarget?.messageId : undefined;
             const segments = mentionSegments(part, nameToQq);
             const messageId = transport.sendGroupMessage && segments
                 ? await transport.sendGroupMessage(group.id, segments, replyTo)
@@ -548,7 +547,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         }
         log(`[群 ${group.id}] 说了 ${parts.length} 条（${reason}；日志不记内容）`);
         // 接完话的小动作：顺手戳一下、给资料卡点个赞（不冲男朋友、危机回合不做）
-        const caller = extra.caller;
+        const caller = quotedTarget?.from;
         if (caller && caller !== bf?.qq && reason !== 'crisis') {
             const plan = config.pokeOut ? groupPokePlan(`${group.id}:${caller}:${worldNow()}`, lastGroupPoke.get(caller), worldNow()) : undefined;
             if (plan) {

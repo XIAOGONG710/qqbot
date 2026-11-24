@@ -207,7 +207,8 @@ const REASON_NOTE: Record<SpeakReason, string> = {
  */
 export function groupNote(input: {
     groupName: string; boyfriendHere: boolean; boyfriendName?: string; reason: SpeakReason;
-    callers?: readonly string[]; pending?: number;
+    /** 触发本轮的唯一群消息，已经带说话人。 */
+    targetLine?: string;
     /** 这个群里她认识谁（group-people.ts 渲染好的一整段） */
     memory?: string;
     /** 她这会儿的心情（只说怎么样，不说来由） */
@@ -231,7 +232,6 @@ export function groupNote(input: {
     /** 她那边刚有的事（reason 是 news 时） */
     news?: string;
 }): string {
-    const others = input.pending && input.callers ? input.pending - input.callers.length : 0;
     // 群里叫她别的名字（QQ 昵称、群名片）：那也是她，别人叫那些也算叫她
     const aliases = (input.myNames ?? []).filter(name => name.trim().length >= 2 && !HER_NAMES.includes(name.trim() as typeof HER_NAMES[number]));
     return [
@@ -251,10 +251,11 @@ export function groupNote(input: {
         input.memory ?? '',
         input.self ?? '',
         input.mood ?? '',
-        input.callers?.length
-            ? `刚才${input.callers.join('、')}在跟你说话${others > 0 ? `，这一段里还有 ${others} 条是别人在说别的` : ''}：先把上面的记录看完，挑你最想接的那一两句回，不用挨个都应，也不要一个人回一条。`
-            : '',
+        input.targetLine ? `这次只接这一条群消息：${JSON.stringify(input.targetLine)}。其他消息用来理解这一条。` : '',
         REASON_NOTE[input.reason],
+        input.reason !== 'crisis' && input.reason !== 'defend'
+            ? '闲聊时一句只说一件事，反应到位就停。真有想说的下文、还是这条话的事，才补第二句。用你自己的话，不复读、不跟着刷表情；吵架、站队或围着人起哄时不用凑。'
+            : '',
         input.news ? `（你这边的事：${input.news}）` : '',
         '只输出你要发到群里的话，不写名字前缀、不写动作；想让谁看见就写「@群名片」（只认这个群里叫得出来的名字）；不想说就只写「不说」。]',
     ].filter(Boolean).join('');
