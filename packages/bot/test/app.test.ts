@@ -1646,8 +1646,6 @@ describe('主动消息（ADR 0011）', () => {
     const boyfriend = { qq: 10002, name: '宝宝', tier: 'boyfriend' as const };
     const records = (cfg: AppConfig): ProactiveRecord[] =>
         JSON.parse(readFileSync(join(cfg.dataDir, 'proactive', '10002-boyfriend.json'), 'utf8')).records;
-    /** 把虚拟时钟拨到计划器等着的那个时刻 */
-    const fireNext = (clock: VirtualClock) => clock.advanceTo(clock.nextTimer()!);
 
     test('开关关着、作息关着、低档位：都不排', async () => {
         const off = setup(config({ schedule: true, contacts: [boyfriend] }));
