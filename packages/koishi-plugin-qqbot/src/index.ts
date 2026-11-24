@@ -296,7 +296,8 @@ export interface Config {
     desktopPromises: boolean;
     oneDiary: boolean;
     desktopFeelings: boolean;
-    feelingLedger: boolean;
+    /** 已并进 herFeelings（开关合并），koishi.yml 里还写着才有 */
+    feelingLedger?: boolean;
     feltLedgerRecall: boolean;
     desktopConflict: boolean;
     selfPursuits: boolean;
@@ -508,7 +509,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         desktopPromises: toggle('desktopPromises'),
         oneDiary: toggle('oneDiary'),
         desktopFeelings: toggle('desktopFeelings'),
-        feelingLedger: toggle('feelingLedger'),
+        feelingLedger: legacy(),
         feltLedgerRecall: toggle('feltLedgerRecall'),
         desktopConflict: toggle('desktopConflict'),
         selfPursuits: toggle('selfPursuits'),

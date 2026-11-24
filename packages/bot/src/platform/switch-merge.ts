@@ -93,7 +93,10 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
         key: 'watching', existing: true, values: BOOL, legacy: ['biliFeed'],
         fromLegacy: input => input.watching,
         toLegacy: (value, config) => ({ biliFeed: value === true ? (config.bilibili ?? 'off') : 'off' }),
-    },
+    },    // 8. 感觉账并进心境（8 的前一半）：有心境就记账；心境关着时感觉账本来不起作用（唯一读处在 herFeelings 分支里）。
+    //    新装默认：两个都没写时 feelingLedger 从开变成跟着 herFeelings（默认关），没有心境本来就没有账，行为不变。
+    //    feltLedgerRecall 并进 memoryFeelings 那一半阻塞（线上关着，并进来 = 给线上开了），不在这里
+    follows('herFeelings', BOOL, ['feelingLedger'], { ignorable: (_, input) => input.herFeelings !== true }),
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */

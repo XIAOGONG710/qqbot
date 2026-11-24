@@ -301,5 +301,5 @@
 | [0344](0344-living-trace.md) | 我留下的痕迹——把因果链接成她自己能读的自证账（草案·默认关） | 草案。默认关 livingTrace: false。她本人 11-20 同意试（原话见「她的意见」）；用户 11-20 … |  |
 | [0345](0345-her-seat-as-dsh-router.md) | 她当 DSH 的主控——林梦瑶 preset 上位 + Super Agent 当她的手 | 已落地（本机 desktop profile）。她本人的条件已写进她的 preset；用户 2026-11-21 拍板「… |  |
 | [0346](0346-her-identity-in-system-prompt.md) | 0346 她的身份写进系统提示（profile 补丁覆盖 preset-cordis） | 已落地（本机 desktop profile），待验收 |  |
-| [0347](0347-one-life-two-places.md) | 同一个她·一个生活，两个地方 | 已采纳（方向）；第 1 层已上线（2026-11-22，QQ / 常驻侧；DSH 桌面还没重启，插件那部分没生效）；第 … | `selfExport` 默认、`selfReceipts` 默认、`ownDays` 默认、`desktopDay` 默认、`desktopReview` 默认、`desktopPromises` 默认、`oneDiary` 默认、`desktopFeelings` 默认、`desktopConflict` 默认、`feelingLedger` 默认、`feltLedgerRecall` 默认 |
+| [0347](0347-one-life-two-places.md) | 同一个她·一个生活，两个地方 | 已采纳（方向）；第 1 层已上线（2026-11-22，QQ / 常驻侧；DSH 桌面还没重启，插件那部分没生效）；第 … | `selfExport` 默认、`selfReceipts` 默认、`ownDays` 默认、`desktopDay` 默认、`desktopReview` 默认、`desktopPromises` 默认、`oneDiary` 默认、`desktopFeelings` 默认、`desktopConflict` 默认、`feltLedgerRecall` 默认、`herFeelings`（原 `feelingLedger`） 开 |
 | [0348](0348-weekly-effect-metrics.md) | 每周效果数（weekly metrics） | 已采纳（工具已落地：`npm run metrics:weekly -w @qqbot/bot`；只读聊天记录，只追加一… |  |

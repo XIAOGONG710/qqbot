@@ -488,6 +488,7 @@ export interface AppConfig {
      * 要 herFeelings 开着才有感受可记。疼和她妈那块的慌照记，召回时才换说法（她 11-22「知道有过那么回事就行」）。
      * 账里的感觉要真的配上召回的旧事（进 QQ 提示词、改她说话），得另开 feltLedgerRecall。
      */
+    /** @deprecated 已并进 herFeelings（开关合并）：输入只有旧键时原样、否则由 herFeelings 派生；新代码读 herFeelings */
     feelingLedger?: boolean;
     /** 召回几天以前的事时，配上账里那天当时的感觉（ADR 0347 第 5 层）：默认关，改了她说的话，要用户点头；要 feelingLedger 和 herFeelings 都开着 */
     feltLedgerRecall?: boolean;

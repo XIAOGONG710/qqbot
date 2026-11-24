@@ -92,12 +92,11 @@
 | `worldThreads` | 她那边的事有后续（拌嘴第二天和好、淋雨第二天嗓子发紧……一天最多一条；闹心的事有冷却期；要日常小事和小起伏） | [ADR 0216](../adr/0216-world-threads.md) |
 | `diaryLookback` | 翻回去看自己的日记（他问到前几天的事，她那天写的日记也给她，说法对得上） | [ADR 0217](../adr/0217-diary-lookback.md) |
 | `memoryFeelings` | 回忆带着当时的感觉（想起某天的事时附一句她那天有依据的感觉；因为他而难过 / 烦的不附；要心境） | [ADR 0218](../adr/0218-memory-feelings.md) |
-| `feelingLedger` | 感觉账（只追加，每天明显以上的感受记一行；只写文件，不直接进提示词） | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `feltLedgerRecall` | 召回旧事时配上账里当时的感觉（改她说话；要感觉账和心境） | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `realNights` | 昨晚真的怎么睡的（早上困不困看她几点说睡了、半夜有没有被吵醒，不按课表；被吵醒有起床气） | [ADR 0219](../adr/0219-real-nights.md) |
 | `menu` | 每顿吃什么（每天随机） | [ADR 0125](../adr/0125-menu.md) |
 | `pursuits` | 她自己的追求 | [ADR 0104](../adr/0104-pursuits.md) |
-| `herFeelings` | 心境（开心 / 难过 / 流泪；桌面上的她读同一份） | [ADR 0102](../adr/0102-feelings.md) |
+| `herFeelings` | 心境（开心 / 难过 / 流泪；桌面上的她读同一份）（并进来的：`feelingLedger` 感觉账（只追加，每天明显以上的感受记一行；只写文件，不直接进提示词）（[ADR 0347](../adr/0347-one-life-two-places.md)）） | [ADR 0102](../adr/0102-feelings.md) |
 | `feelingReview` | 她聊完回想一下，记下有依据的感受（每条要指出是哪几条消息让她有的） | [ADR 0197](../adr/0197-feelings-shared-and-reviewed.md) |
 | `readingTakes` | 她读完 / 看完之后自己想的（每晚一次，有话想说才写；私人空间，聊到那本书 / 视频才放进提示词） | [ADR 0204](../adr/0204-reading-takes.md) |
 | `herGuesses` | 她猜的事和后来的结果（每晚她自己挑哪句算数、对照世界账看对没对；私人空间，聊到同一类事才放进提示词） | [ADR 0213](../adr/0213-her-guesses.md) |
