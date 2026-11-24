@@ -22,15 +22,8 @@
 
 | 配置 | 功能 | ADR |
 | --- | --- | --- |
-| `hisReactions` | 看他的反应（她主动说自己的事时看一眼他对哪类事接得多、回个嗯、明说不想听；说什么她自己拿捏） | [ADR 0212](../adr/0212-his-reactions.md) |
-| `proactive` | 主动消息（模式）：关掉后不会主动联系。开启时，她在有动机且时机合适时才考虑先开口。需要启用作息，只对允许主动联系的档位生效（目前是男朋友档）。试运行照常判断和生成，只写日志，不发送。 | [ADR 0011](../adr/0011-proactive-messages.md) |
-| `proactiveReach` | 没回也继续 / 催他 | [ADR 0100](../adr/0100-reach-when-unanswered.md) |
+| `proactive` | 主动消息（模式）：关掉后不会主动联系。开启时，她在有动机且时机合适时才考虑先开口。需要启用作息，只对允许主动联系的档位生效（目前是男朋友档）。试运行照常判断和生成，只写日志，不发送。（并进来的：`proactiveReach` 没回也继续 / 催他（[ADR 0100](../adr/0100-reach-when-unanswered.md)）；`proactiveInvite` 约他一起玩（[ADR 0107](../adr/0107-invite-to-play.md)）；`proactiveAsk` 问问他的意见（[ADR 0116](../adr/0116-ask-opinion.md)）；`comeBack` 说了等下之后回来（[ADR 0112](../adr/0112-come-back.md)）；`smallNews` 主动讲今天的小事（[ADR 0127](../adr/0127-small-news.md)）；`proactiveRoom` 给主动名额留余地（晚安不占、留一个给随口说）（[ADR 0124](../adr/0124-proactive-room.md)）；`hisReactions` 看他的反应（她主动说自己的事时看一眼他对哪类事接得多、回个嗯、明说不想听；说什么她自己拿捏）（[ADR 0212](../adr/0212-his-reactions.md)）） | [ADR 0011](../adr/0011-proactive-messages.md) |
 | `innerLife` | 内心（念头 / 心里惦记） | [ADR 0101](../adr/0101-inner-life.md) |
-| `proactiveInvite` | 约他一起玩 | [ADR 0107](../adr/0107-invite-to-play.md) |
-| `proactiveAsk` | 问问他的意见 | [ADR 0116](../adr/0116-ask-opinion.md) |
-| `comeBack` | 说了等下之后回来 | [ADR 0112](../adr/0112-come-back.md) |
-| `smallNews` | 主动讲今天的小事 | [ADR 0127](../adr/0127-small-news.md) |
-| `proactiveRoom` | 给主动名额留余地（晚安不占、留一个给随口说） | [ADR 0124](../adr/0124-proactive-room.md) |
 
 ## 看它有没有变好
 

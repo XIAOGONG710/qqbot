@@ -171,6 +171,7 @@ describe('真表：已经并了的组', () => {
         qqPresence: true,
         pokes: true,
         herNo: true,
+        proactive: 'on',
     };
     const env = { QQBOT_LLM_API_KEY: 'k' };
     const base = {

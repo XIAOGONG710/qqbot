@@ -106,23 +106,23 @@
 | [0097](0097-ai-smell-night-test.md) | 深夜测试对话里量出来的几处“AI 味”——被指出时不自证、很抽象的问题不答成金句、被追问不原地打转、反复说的字词提醒她换 | 已实现，已上线（2026-10-22）；没有开关，和 ADR 0091 十月二十一日那次校准同一类（意图行 + 一行提示… |  |
 | [0098](0098-already-told-and-topic-pick.md) | 继续去 AI 味——说过的事不再自己提、带事的轮次抽“说哪一件”、拖音/省略、图片表情放行 | 已实现，已上线（2026-10-22；没有新开关：一行提示 / 挂在已经开着的 `shapeAgenda`、`shape… |  |
 | [0099](0099-too-smooth.md) | 「太顺」——不把他的话处理完整、不马上让步、偶尔只发表情（配置 `shapeFeel`，默认关） | 已实现，未上线（2026-10-22；配置 `shapeFeel`，要 `shape` 开着；默认关）。上线 = `ko… |  |
-| [0100](0100-reach-when-unanswered.md) | 他没回也继续——她自己想要不要再找他、催他一下（配置 `proactiveReach`，默认关） | 已实现，未上线（2026-10-22；配置 `proactiveReach`，要主动消息开着；默认关）。上线 = `ko… | `proactiveReach` 开 |
+| [0100](0100-reach-when-unanswered.md) | 他没回也继续——她自己想要不要再找他、催他一下（配置 `proactiveReach`，默认关） | 已实现，未上线（2026-10-22；配置 `proactiveReach`，要主动消息开着；默认关）。上线 = `ko… | `proactive`（原 `proactiveReach`） 开 |
 | [0101](0101-inner-life.md) | 内心——她一个人的时候在想什么（配置 `innerLife`，默认关） | 已实现，未上线（2026-10-22；配置 `innerLife`，要主动消息开着；默认关）。上线 = `koishi.… | `innerLife` 开 |
 | [0102](0102-feelings.md) | 心境——她会开心、难过、担心，也会忍不住哭（配置 `herFeelings`，默认关） | 已实现，未上线（2026-10-22；配置 `herFeelings`，只给男朋友档；默认关）。上线 = `koishi… | `herFeelings` 开 |
 | [0103](0103-her-no.md) | 她会拒绝——有来由的不，不被磨两句就让步（配置 `herNo`，默认关） | 已实现，未上线（2026-10-22；配置 `herNo`，只给男朋友档；默认关）。上线 = `koishi.yml` … | `herNo` 开 |
 | [0104](0104-pursuits.md) | 她自己的追求（配置 `pursuits`，默认关） | 已实现，未上线（2026-10-22；配置 `pursuits`，只给男朋友档；默认关）。上线 = `koishi.ym… | `pursuits` 开 |
 | [0105](0105-reply-lag-tail.md) | 回复延迟的长尾，和断网后自然的补回（配置 `lagTail`，默认关） | 已实现，未上线（2026-10-22；配置 `lagTail`；默认关）。上线 = `koishi.yml` 里加 `l… | `rhythm`（原 `lagTail`） 开 |
 | [0106](0106-everyday-life.md) | 她每天碰到的小事，和一条“小测”的线（配置 `everydayLife`，默认关） | 已实现，未上线（2026-10-22；配置 `everydayLife`；默认关）。上线 = `koishi.yml` … | `everydayLife` 开 |
-| [0107](0107-invite-to-play.md) | 约他一起玩（主动时机 `invite`，配置 `proactiveInvite`，默认关） | 已实现，未上线（2026-10-22；配置 `proactiveInvite`；默认关）。上线 = `koishi.ym… | `proactiveInvite` 开 |
+| [0107](0107-invite-to-play.md) | 约他一起玩（主动时机 `invite`，配置 `proactiveInvite`，默认关） | 已实现，未上线（2026-10-22；配置 `proactiveInvite`；默认关）。上线 = `koishi.ym… | `proactive`（原 `proactiveInvite`） 开 |
 | [0108](0108-proactive-opener.md) | 主动开口不先叫名字 | 已实现，未上线（2026-10-22；提示词措辞，没有开关；上线 = 落地代码 + 重启；回滚 = `git rever… |  |
 | [0109](0109-photo-shelf.md) | 照片货架——她自己从网上找高清图发给他（配置 `photos`，默认关） | 已实现，未上线（2026-10-22；配置 `photos`；默认关）。上线 = `koishi.yml` 里加 `ph… | `photos` 开 |
 | [0110](0110-photo-shares.md) | 她主动发照片——喂完土豆拍了一张（配置 `photoShares`，默认关） | 已删（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtractio… |  |
 | [0111](0111-together.md) | 陪玩状态——答应邀约后的两三个小时她正和他一起玩（配置 `together`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `together` 开 |
-| [0112](0112-come-back.md) | 说了“等下”之后自己回来（主动时机 `back`，配置 `comeBack`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `comeBack` 开 |
+| [0112](0112-come-back.md) | 说了“等下”之后自己回来（主动时机 `back`，配置 `comeBack`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `proactive`（原 `comeBack`） 开 |
 | [0113](0113-relationship-stage.md) | 关系阶段——聊得多了她更放得开（配置 `relationship`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `relationship` 开 |
 | [0114](0114-running-jokes.md) | 小梗回头提（配置 `jokes`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `jokes` 开 |
 | [0115](0115-interruptions.md) | 被第三方打断（配置 `interruptions`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `interruptions` 开 |
-| [0116](0116-ask-opinion.md) | 问问他的意见（主动时机 `ask`，配置 `proactiveAsk`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `proactiveAsk` 开 |
+| [0116](0116-ask-opinion.md) | 问问他的意见（主动时机 `ask`，配置 `proactiveAsk`，默认关） | 已上线（2026-10-25 00:53，用户在 AskUserQuestion 里选「六个一起开」：comeBack、… | `proactive`（原 `proactiveAsk`） 开 |
 | [0117](0117-his-hours.md) | 按他平时在线的钟头排（配置 `hisHours`，默认关） | 已删（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtractio… |  |
 | [0118](0118-weekly-report.md) | 周报——每周自动出一份“她离真人还差多少”的数字（配置 `weeklyReport`，默认关） | 已实现，未上线（2026-10-22；配置 `weeklyReport`；默认关）。上线 = `koishi.yml` … | `weeklyReport` 开 |
 | [0119](0119-consistency-check.md) | 前后一致性检查（只读工具，不进运行时） | 已实现（2026-10-22；工具 `node src/ops/consistency-cli.ts`；没有开关，不改运… |  |
@@ -130,10 +130,10 @@
 | [0121](0121-odd-words.md) | 医书词和小说腔——「肚子坠着」这类真人不这么说的词 | 已实现，未上线（2026-10-23；没有配置开关，纯措辞）。上线 = 落地代码 + 重启；回滚 = `git rese… |  |
 | [0122](0122-module-map.md) | 模块总表（A14 第一步，只分类、只写文档） | 已实现（2026-10-23；没有开关，不动任何运行代码） |  |
 | [0123](0123-jealousy.md) | 吃醋，最轻的一档（配置 `jealousy`，默认关） | 已实现，未上线（2026-10-23；配置 `jealousy`；默认关）。上线 = `koishi.yml` 里加 `… | `jealousy` 开 |
-| [0124](0124-proactive-room.md) | 给主动名额留余地（配置 `proactiveRoom`，默认关） | 已实现，未上线（2026-10-23；配置 `proactiveRoom`，要主动消息开着；默认关）。上线 = `koi… | `proactiveRoom` 开 |
+| [0124](0124-proactive-room.md) | 给主动名额留余地（配置 `proactiveRoom`，默认关） | 已实现，未上线（2026-10-23；配置 `proactiveRoom`，要主动消息开着；默认关）。上线 = `koi… | `proactive`（原 `proactiveRoom`） 开 |
 | [0125](0125-menu.md) | 每顿吃什么（配置 `menu`，默认关） | 已实现，未上线（2026-10-23；配置 `menu`；默认关）。上线 = `koishi.yml` 里加 `menu… | `everydayLife`（原 `menu`） 开 |
 | [0126](0126-curious.md) | 会追问（配置 `curious`，默认关） | 已实现，未上线（2026-10-23；配置 `curious`；默认关）。上线 = `koishi.yml` 里加 `c… | `curious` 开 |
-| [0127](0127-small-news.md) | 她会主动讲今天的小事（配置 `smallNews`，默认关，要 `everydayLife` 和主动消息开着） | 已实现，未上线（2026-10-23；配置 `smallNews`；默认关）。上线 = `koishi.yml` 里加 … | `smallNews` 开 |
+| [0127](0127-small-news.md) | 她会主动讲今天的小事（配置 `smallNews`，默认关，要 `everydayLife` 和主动消息开着） | 已实现，未上线（2026-10-23；配置 `smallNews`；默认关）。上线 = `koishi.yml` 里加 … | `proactive`（原 `smallNews`） 开 |
 | [0128](0128-food-photos.md) | 吃的照片（配置 `foodPhotos`，默认关，要 `photos` 和 `menu` 开着） | 已删（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtractio… |  |
 | [0129](0129-memes.md) | 她知道网上现在流行的梗（配置 `memes`，默认关；要 `bilibiliAccount` 开着才会自己去学） | 已实现，未上线（2026-10-23；配置 `memes`；默认关）。上线 = `koishi.yml` 里加 `mem… | `memes` 开 |
 | [0130](0130-watching.md) | 她自己在 B 站看东西、形成看法（配置 `watching`，默认关；要 `bilibiliAccount`，想法变成念头要 `innerLife`） | 已实现，未上线（2026-10-23；配置 `watching`；默认关）。上线 = `koishi.yml` 里加 `… | `watching` 开 |
@@ -206,7 +206,7 @@
 | [0209](0209-strangers.md) | 陌生人私聊——签名写明是 AI、每天上限、只打招呼先不回、未成年人不陪 | 已删（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtractio… |  |
 | [0210](0210-group-chat.md) | 群聊——只在名单里的群说话，基本潜水 | 已实现，新开关 `groupChat`（`off` / `dryRun` / `on`，默认 `off`）+ 群名单 `… | `groupChat` 开 |
 | [0211](0211-world-drama.md) | 日子里的小起伏（worldDrama） | 已实现，开关 `worldDrama`（默认关；2026-11-02 用户要求开着） | `worldDrama` 开 |
-| [0212](0212-his-reactions.md) | 看他的反应——她主动说自己的事，他接不接，她自己拿捏（hisReactions） | 已实现，新开关 `hisReactions`，默认关；只男朋友档，要 `proactive` 开着。DSH 那台机器拉取… | `hisReactions` 开 |
+| [0212](0212-his-reactions.md) | 看他的反应——她主动说自己的事，他接不接，她自己拿捏（hisReactions） | 已实现，新开关 `hisReactions`，默认关；只男朋友档，要 `proactive` 开着。DSH 那台机器拉取… | `proactive`（原 `hisReactions`） 开 |
 | [0213](0213-her-guesses.md) | 她猜的事和后来的结果——先押一个判断，世界来回答（herGuesses） | 已实现，新开关 `herGuesses`，默认关。要名单里有男朋友档、要她那边的世界（世界账）。DSH 那台机器拉取、在… | `herGuesses` 开 |
 | [0214](0214-after-no.md) | 拒绝之后——要不要看事情本身，变的只是说法（afterNo） | 已实现，新开关 `afterNo`，默认关；只男朋友档。DSH 那台机器拉取、在 `koishi.yml` 里加 `af… | `herNo`（原 `afterNo`） 开 |
 | [0215](0215-memory-weight-decision.md) | 记忆有轻有重（N4）——已经有了；「可能记错」她不要，不做 | 已实施（QQ 原有，DSH 于 2026-11-04 对齐） |  |

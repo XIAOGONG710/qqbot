@@ -138,6 +138,19 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
     // 14. 拒绝之后（19）：他又提同一类请求时记得上次，跟着「会拒绝」。基线 RICH 开 herNo、没开 afterNo，派生后会是开（设计实跑 8 个一致）；
     //     这一步 app 照旧读旧字段
     follows('herNo', BOOL, ['afterNo']),
+    // 16. 主动时机（1）：主动消息开着（含 dryRun）就带下面 7 个时机。proactive 关着时 7 个子项本来不起作用
+    //     （planner-host.ts 在 config.proactive === 'off' 之后才读，另一处只是 app.ts 一行日志），ignorable；
+    //     所以能表达的是：proactive 关，或者 7 个全开。innerLife（还管 inner 槽、herPlan）、curious（说话那边也用）单留
+    {
+        key: 'proactive', existing: true, values: PRESENCE,
+        legacy: ['proactiveReach', 'proactiveInvite', 'proactiveAsk', 'comeBack', 'smallNews', 'proactiveRoom', 'hisReactions'],
+        fromLegacy: input => input.proactive,
+        toLegacy: value => ({
+            proactiveReach: value !== 'off', proactiveInvite: value !== 'off', proactiveAsk: value !== 'off', comeBack: value !== 'off',
+            smallNews: value !== 'off', proactiveRoom: value !== 'off', hisReactions: value !== 'off',
+        }),
+        ignorable: (_, input) => input.proactive === 'off',
+    },
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */

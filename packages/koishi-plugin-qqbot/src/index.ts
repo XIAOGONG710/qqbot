@@ -205,23 +205,29 @@ export interface Config {
     /** 已并进 bilibili（开关合并），koishi.yml 里还写着才有 */
     bilibiliReplies?: PresenceMode;
     bilibiliCommentKeywords: string[];
-    proactiveReach: boolean;
-    proactiveInvite: boolean;
+    /** 已并进 proactive（开关合并），koishi.yml 里还写着才有 */
+    proactiveReach?: boolean;
+    /** 已并进 proactive（开关合并），koishi.yml 里还写着才有 */
+    proactiveInvite?: boolean;
     photos: boolean;
     aiPhotos: boolean;
     together: boolean;
-    comeBack: boolean;
+    /** 已并进 proactive（开关合并），koishi.yml 里还写着才有 */
+    comeBack?: boolean;
     relationship: boolean;
     jokes: boolean;
     interruptions: boolean;
-    proactiveAsk: boolean;
+    /** 已并进 proactive（开关合并），koishi.yml 里还写着才有 */
+    proactiveAsk?: boolean;
     weeklyReport: boolean;
     jealousy: boolean;
-    proactiveRoom: boolean;
+    /** 已并进 proactive（开关合并），koishi.yml 里还写着才有 */
+    proactiveRoom?: boolean;
     /** 已并进 everydayLife（开关合并），koishi.yml 里还写着才有 */
     menu?: boolean;
     curious: boolean;
-    smallNews: boolean;
+    /** 已并进 proactive（开关合并），koishi.yml 里还写着才有 */
+    smallNews?: boolean;
     memes: boolean;
     watching: boolean;
     /** 已并进 bilibili（开关合并），koishi.yml 里还写着才有 */
@@ -333,7 +339,8 @@ export interface Config {
     /** 已并进 media（开关合并），koishi.yml 里还写着才有 */
     readStickers?: boolean;
     readingTakes: boolean;
-    hisReactions: boolean;
+    /** 已并进 proactive（开关合并），koishi.yml 里还写着才有 */
+    hisReactions?: boolean;
     herGuesses: boolean;
     openQuestions: boolean;
     rhythm: boolean;
@@ -422,22 +429,22 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         bilibiliReplies: legacy(PRESENCE_MODES),
         bilibiliCommentKeywords: Schema.array(Schema.string()).default([...DEFAULTS.bilibiliCommentKeywords])
             .description('**评论的话题关键词**（ADR 0092）：填了，评论就不再跟着分享走，而是她自己每天按其中一个关键词搜视频（比如「大肥鱼 插件」「DSH 插件」「deepseek harness」），在播放多的前几个里挑一个，读字幕和热评后评论并 @ 他。不看分区，所以 AI 视频、DSH 插件视频搜得到；约一半的日子想评论一次，仍受「隔至少一天、一周最多 3 条」管。前期专评 AI 视频和 DSH 插件视频用。不填就是老样子（分享之后在那个视频下评论）。最多 10 个，每个不超过 30 个字'),
-        proactiveReach: toggle('proactiveReach'),
-        proactiveInvite: toggle('proactiveInvite'),
+        proactiveReach: legacy(),
+        proactiveInvite: legacy(),
         photos: toggle('photos'),
         aiPhotos: toggle('aiPhotos'),
         together: toggle('together'),
-        comeBack: toggle('comeBack'),
+        comeBack: legacy(),
         relationship: toggle('relationship'),
         jokes: toggle('jokes'),
         interruptions: toggle('interruptions'),
-        proactiveAsk: toggle('proactiveAsk'),
+        proactiveAsk: legacy(),
         weeklyReport: toggle('weeklyReport'),
         jealousy: toggle('jealousy'),
-        proactiveRoom: toggle('proactiveRoom'),
+        proactiveRoom: legacy(),
         menu: legacy(),
         curious: toggle('curious'),
-        smallNews: toggle('smallNews'),
+        smallNews: legacy(),
         memes: toggle('memes'),
         watching: toggle('watching'),
         biliStickers: legacy(),
@@ -549,7 +556,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         openQuestions: toggle('openQuestions'),
         readingTakes: toggle('readingTakes'),
         herGuesses: toggle('herGuesses'),
-        hisReactions: toggle('hisReactions'),
+        hisReactions: legacy(),
         rhythm: toggle('rhythm'),
         candidates: Schema.natural().min(1).max(5).default(DEFAULTS.candidates)
             .description('**挑候选**（ADR 0041）：他难过、说亲密话、收尾时一次生成几个回复、按规则挑一个（少说几句、不扯自己的事、不约「写完跟我说」）。1 是不挑；3 是这几种时候三倍的模型调用'),
