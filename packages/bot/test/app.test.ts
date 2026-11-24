@@ -1162,7 +1162,7 @@ describe('编排（app.ts）', () => {
     test('两边互读最近几轮（ADR 0177，crossRecent）：他刚在 DSH 桌面上说的，男朋友档的提示词里有、同学档没有；开关关着、或超过 6 小时都没有', async () => {
         const run = async (crossRecent: boolean, ageMin: number) => {
             const prompts: string[] = [];
-            const cfg = config({ crossRecent, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }, { qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
+            const cfg = config({ oneLife: crossRecent ? 'read' : 'off', contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }, { qq: 10002, name: '宝宝', tier: 'boyfriend' }] });
             mkdirSync(join(cfg.dataDir, 'memory'), { recursive: true });
             writeFileSync(join(cfg.dataDir, 'memory', 'desktop-recent.jsonl'), `${JSON.stringify({ at: Date.now() - ageMin * 60_000, user: '帮我把桌面上的发票整理一下ZQD', assistant: '好，我分成报销和不报销两个文件夹了' })}\n`);
             const { app, sent, logs } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
@@ -1189,7 +1189,7 @@ describe('编排（app.ts）', () => {
 
     test('跨端最近对话只属于唯一 deviceOwner，第二个男朋友档也不能看到', async () => {
         const prompts: string[] = [];
-        const cfg = config({ crossRecent: true, contacts: [
+        const cfg = config({ oneLife: 'read', contacts: [
             { qq: 10001, name: '第一位', tier: 'boyfriend' },
             { qq: 10002, name: '第二位', tier: 'boyfriend' },
         ] });
@@ -1306,7 +1306,7 @@ describe('编排（app.ts）', () => {
         const seen = await readByPlugin(cfg);
         assert.deepEqual([seen?.owner, seen?.common, seen?.legacy], [written.ownerBank, 'test-common', 'test']);
         // 第 2 层开着：互读的三个文件路径，DSH 插件的读法也认（目录名 / 文件名都对得上）
-        const crossCfg = config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }], memory, crossRecent: true });
+        const crossCfg = config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }], memory, oneLife: 'read' });
         setup(crossCfg);
         const crossSeen = await readByPlugin(crossCfg);
         assert.equal(crossSeen?.chatFile, join(crossCfg.dataDir, 'chats', '10002.jsonl'));
@@ -1322,18 +1322,18 @@ describe('编排（app.ts）', () => {
         assert.equal(existsSync(ownerFile(noMemory)), false);
 
         // 同一个数据目录先启用、后移除 owner：旧 bank 和近期文件不能继续被 DSH 使用。
-        const ownerMigration = config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }], memory, crossRecent: true });
+        const ownerMigration = config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }], memory, oneLife: 'read' });
         setup(ownerMigration);
-        const ownerRevoked = config({ dataDir: ownerMigration.dataDir, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], memory, crossRecent: true });
+        const ownerRevoked = config({ dataDir: ownerMigration.dataDir, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], memory, oneLife: 'read' });
         setup(ownerRevoked);
         assert.equal(readOwnerBank(join(ownerRevoked.dataDir, 'memory')), undefined);
         assert.equal(await readByPlugin(ownerRevoked), undefined);
         assert.equal(JSON.parse(readFileSync(ownerFile(ownerRevoked), 'utf8')).reason, 'owner_missing');
 
         // 同一个数据目录先启用、后关闭长期记忆，也必须立即切断接缝。
-        const memoryMigration = config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }], memory, crossRecent: true });
+        const memoryMigration = config({ contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }], memory, oneLife: 'read' });
         setup(memoryMigration);
-        const memoryRevoked = config({ dataDir: memoryMigration.dataDir, contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }], crossRecent: true });
+        const memoryRevoked = config({ dataDir: memoryMigration.dataDir, contacts: [{ qq: 10002, name: '宝宝', tier: 'boyfriend' }], oneLife: 'read' });
         setup(memoryRevoked);
         assert.equal(readOwnerBank(join(memoryRevoked.dataDir, 'memory')), undefined);
         assert.equal(await readByPlugin(memoryRevoked), undefined);
@@ -3235,7 +3235,7 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
         rmSync(selfFile, { force: true });
         rmSync(feelingsFile, { force: true });
         const clock = new VirtualClock(start);
-        const cfg = config({ ...life, contacts: bf, selfExport: true });
+        const cfg = config({ ...life, contacts: bf, oneLife: 'export' });
         writeMoment(cfg, clock);
         const prompts: string[][] = [];
         const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, generate: messages => { prompts.push(messages.map(m => m.content)); return '嗯嗯'; } });
@@ -3264,7 +3264,7 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
     test('指纹清单：SELF 每一行（心境除外）的哈希和 QQ 那一轮清单里同一个槽的一样；清单的段真在那份提示词里；App 自己不写清单文件（落盘是宿主的事）', async () => {
         rmSync(selfFile, { force: true });
         const clock = new VirtualClock(start);
-        const cfg = config({ ...life, contacts: bf, selfExport: true });
+        const cfg = config({ ...life, contacts: bf, oneLife: 'export' });
         writeMoment(cfg, clock);
         const prompts: string[][] = [];
         const manifests: PromptManifest[] = [];
@@ -3302,7 +3302,7 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
         const run = async (on: boolean) => {
             writeFileSync(receipts, line + String.fromCharCode(10));
             const clock = new VirtualClock(start);
-            const cfg = config({ ...life, contacts: bf, proactive: 'on', dsh: { enabled: true }, selfExport: true, ...(on ? { selfReceipts: true } : {}) });
+            const cfg = config({ ...life, contacts: bf, proactive: 'on', dsh: { enabled: true }, ...(on ? { oneLife: 'export' as const } : {}) });
             // 收件箱 30 秒一次的定时器是真的 setInterval：只把它换成可拨的（别的 setTimeout 照常走）
             mock.timers.enable({ apis: ['setInterval'] });
             try {
@@ -3315,7 +3315,7 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
             return existsSync(join(cfg.dataDir, 'memory', 'self-receipts-state.json'));
         };
         try {
-            assert.equal(await run(false), false, 'selfReceipts 关着不消费');
+            assert.equal(await run(false), false, 'oneLife 没开到 export 不消费');
             assert.equal(await run(true), true, '两个开关都开时消费回执');
         } finally { rmSync(receipts, { force: true }); }
     });
@@ -3324,7 +3324,7 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
     test('桌面记录接线：desktopDay 开着才收进 desktop-log.jsonl', async () => {
         const run = async (on: boolean) => {
             const clock = new VirtualClock(start);
-            const cfg = config({ ...life, contacts: bf, dsh: { enabled: true }, crossRecent: true, ...(on ? { desktopDay: true } : {}) });
+            const cfg = config({ ...life, contacts: bf, dsh: { enabled: true }, oneLife: on ? 'desktop' : 'read' });
             mkdirSync(join(cfg.dataDir, 'memory'), { recursive: true });
             const row = { at: start.getTime() - 5 * 60_000, user: '帮我看看这个表', assistant: '弄好了' };
             writeFileSync(join(cfg.dataDir, 'memory', 'desktop-recent.jsonl'), JSON.stringify(row) + String.fromCharCode(10));
@@ -3348,7 +3348,7 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
         const run = async (on: boolean) => {
             const clock = new VirtualClock(start);
             const prompts: string[] = [];
-            const cfg = config({ ...life, contacts: bf, dsh: { enabled: true }, crossRecent: true, herFeelings: true, desktopDay: true, ...(on ? { desktopFeelings: true } : {}) });
+            const cfg = config({ ...life, contacts: bf, dsh: { enabled: true }, herFeelings: true, oneLife: 'desktop', ...(on ? { desktopFeelings: true } : {}) });
             mkdirSync(join(cfg.dataDir, 'memory'), { recursive: true });
             const row = { at: start.getTime() - 5 * 60_000, user: '好想你啊', assistant: '我也是' };
             writeFileSync(join(cfg.dataDir, 'memory', 'desktop-recent.jsonl'), JSON.stringify(row) + String.fromCharCode(10));
@@ -3386,7 +3386,7 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
         rmSync(selfFile, { force: true });
         const clock = new VirtualClock(day);
         const prompts: string[] = [];
-        const both = setup(config({ ...life, autonomousLife: true, contacts: bf, ownDays: true, selfExport: true }), { 10001: [] }, { clock, generate: messages => { prompts.push(messages.map(m => m.content).join(String.fromCharCode(10))); return '嗯嗯'; } });
+        const both = setup(config({ ...life, autonomousLife: true, contacts: bf, ownDays: true, oneLife: 'export' }), { 10001: [] }, { clock, generate: messages => { prompts.push(messages.map(m => m.content).join(String.fromCharCode(10))); return '嗯嗯'; } });
         await until(() => existsSync(selfFile));
         const thread = readSelf().lines.find(line => line.slot === 'selfThread');
         assert.ok(thread?.text.includes('[你这两天自己在做的：昨天'), 'SELF 里有这一行');
@@ -3405,14 +3405,14 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
         await replied(offClock, off.sent);
         assert.equal(existsSync(selfFile), false, '开关关着不写');
         const mateClock = new VirtualClock(start);
-        const mate = setup(config({ ...life, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], selfExport: true }), { 10001: [] }, { clock: mateClock });
+        const mate = setup(config({ ...life, contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }], oneLife: 'export' }), { 10001: [] }, { clock: mateClock });
         await mate.app.connected(SELF);
         mate.app.receive({ ...event(10001, 1, '嗯'), time: Math.floor(mateClock.now() / 1000) });
         await replied(mateClock, mate.sent);
         assert.equal(existsSync(selfFile), false, '同学档的流水线不建快照');
         // 名单里同学档排在他后面：快照只留他那条流水线的（心境只给男朋友档算，同学档的快照没有那一行）
         const bothClock = new VirtualClock(start);
-        const bothCfg = config({ ...life, contacts: [...bf, { qq: 10003, name: '同学', tier: 'classmate' }], selfExport: true });
+        const bothCfg = config({ ...life, contacts: [...bf, { qq: 10003, name: '同学', tier: 'classmate' }], oneLife: 'export' });
         writeMoment(bothCfg, bothClock);
         const both = setup(bothCfg, {}, { clock: bothClock });
         await until(() => existsSync(selfFile));

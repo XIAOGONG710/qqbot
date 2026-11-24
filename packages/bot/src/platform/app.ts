@@ -12,7 +12,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, oneLifeAt, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { loadOthers } from '.././social/others.ts';
 import { createAccount } from '.././social/account.ts';
 import { chatCompletion, forExtraction } from '.././language/llm.ts';
@@ -848,7 +848,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             scanAiPhotoWorld?.();
         } } } : {}),
     });
-    const dshInbox = dshInboxModule(dshEnabled && (config.timeline || sharedWorld || (config.selfExport && config.selfReceipts) || (config.desktopDay && config.crossRecent)) ? () => syncDshInboxes() : undefined);
+    const dshInbox = dshInboxModule(dshEnabled && (config.timeline || sharedWorld || oneLifeAt(config.oneLife, 'export')) ? () => syncDshInboxes() : undefined);
     // 待跟进（连上之后才有计划器）：排在所有 synced 的最前面，同迁移前
     // 群消息的入口（ADR 0336 第 6 步）：群里那一摊在下面才建，事件来了再取
     const groupRoomEntry = groupRoomModule(() => groupChat, {
@@ -898,7 +898,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const dshStateExport = dshStateModule(dshEnabled ? () => exportDshState() : undefined, NOW_REFRESH_MS);
     // 「此刻的她」（SELF.json，ADR 0347 第 2 层，配置 selfExport）：每 5 分钟、validUntil 到点、给他回完一条之后写；怎么写在后面的 exportSelf。关着时没有定时任务
     const selfExport = selfExportModule({
-        ...(config.selfExport ? { exportSelf: () => selfHost.exportSelf() } : {}),
+        ...(oneLifeAt(config.oneLife, 'export') ? { exportSelf: () => selfHost.exportSelf() } : {}),
         every: SELF_REFRESH_MS, now: () => exec.now(),
         after: (fn, ms) => exec.after(fn, ms), cancel: timer => exec.cancel(timer),
     });
@@ -1417,10 +1417,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 同一个她（ADR 0176）：把他的 bank 告诉 DSH 桌面上的她，让两边读写同一份记忆
     try {
         if (memory && deviceOwner) {
-            const crossFiles = config.crossRecent ? { chatFile: join(config.dataDir, 'chats', `${deviceOwner.qq}.jsonl`), recalledFile: join(config.dataDir, 'chats', `${deviceOwner.qq}.recalled.json`), desktopFile: desktopRecentPath(join(config.dataDir, 'memory')) } : {};
+            const crossFiles = oneLifeAt(config.oneLife, 'read') ? { chatFile: join(config.dataDir, 'chats', `${deviceOwner.qq}.jsonl`), recalledFile: join(config.dataDir, 'chats', `${deviceOwner.qq}.recalled.json`), desktopFile: desktopRecentPath(join(config.dataDir, 'memory')) } : {};
             if (writeOwnerBank(join(config.dataDir, 'memory'), { ownerBank: memory.bankId(deviceOwner), commonBank: memory.commonBankId(), legacyBank: config.memory!.bankPrefix, ...crossFiles,
                 ...(desktopSource && config.oneDiary ? { desktopDiary: true as const } : {}),
-                ...(desktopSource && config.desktopPromises ? { desktopPromises: true as const } : {}), })) log(`同一个她：他的记忆 bank 写进 memory/owner-bank.json（DSH 桌面上的她读它）${config.crossRecent ? '；两边互读最近几轮：开' : ''}`);
+                ...(desktopSource && config.desktopPromises ? { desktopPromises: true as const } : {}), })) log(`同一个她：他的记忆 bank 写进 memory/owner-bank.json（DSH 桌面上的她读它）${oneLifeAt(config.oneLife, 'read') ? '；两边互读最近几轮：开' : ''}`);
         } else if (revokeOwnerBank(join(config.dataDir, 'memory'), memory ? 'owner_missing' : 'memory_disabled')) {
             log(`同一个她：owner-bank.json 已撤销（${memory ? '没有设备 owner' : '长期记忆已关闭'}）`);
         }
@@ -1436,7 +1436,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 桌面记录读不了就让它抛，承诺账照「暂不可确认」暂停，不悄悄少几句（memory/owner-day-view.ts）
     const ownerDay: OwnerDayHistoryOptions | undefined = desktopSource && config.desktopPromises && memory
         ? { ownerQq: desktop.owner!.qq, desktop: () => desktopPromiseTurns(desktopTurns(config.dataDir, worldNow())) } : undefined;
-    if (config.desktopPromises && !ownerDay) log(`桌面上答应的事：desktopPromises 开着，但${!desktopSource ? ' desktopDay 没起作用' : '长期记忆没开'}，不起作用`);
+    if (config.desktopPromises && !ownerDay) log(`桌面上答应的事：desktopPromises 开着，但${!desktopSource ? ' oneLife 没开到 desktop' : '长期记忆没开'}，不起作用`);
     const keeper = memory
         ? promiseKeeper({
             contacts: config.contacts,
@@ -1786,7 +1786,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
             ...(deviceHooks && contact.tier === 'boyfriend' ? { devices: deviceHooks } : {}),
             // 桌面对话文件只属于唯一 deviceOwner；不能仅按 boyfriend 档放行，否则多个同档联系人会互相看到私聊。
-            ...(config.crossRecent && deviceOwner?.qq === contact.qq ? { desktopRecent: (now: Date) => desktopBlock(desktopRecentPath(join(config.dataDir, 'memory')), now.getTime()) } : {}),
+            ...(oneLifeAt(config.oneLife, 'read') && deviceOwner?.qq === contact.qq ? { desktopRecent: (now: Date) => desktopBlock(desktopRecentPath(join(config.dataDir, 'memory')), now.getTime()) } : {}),
             ...(photos && contact.tier === 'boyfriend' ? { photos } : {}),
             ...(aiPhotoRequests && contact.tier === 'boyfriend' ? {
                 currentAiPhoto: ({ kind, dish, at, world }: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => requestCurrentAiPhoto(aiPhotoRequests, kind, world, at, dish),
@@ -1971,7 +1971,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(promptManifest ? { onManifest: promptManifest } : {}),
             turnModules: interpreter.turnModules,
             // 桌面上已经说过的那件她那边的事（ADR 0347 第 2 层回执，selfReceipts）：意图阶梯的 news 不再当没说过；只给他，开关关着时不给（和原来一样）
-            ...(config.selfExport && config.selfReceipts && contact.qq === deviceOwner?.qq
+            ...(oneLifeAt(config.oneLife, 'export') && contact.qq === deviceOwner?.qq
                 ? { toldElsewhere: (id: string) => plannerOf(contact.qq)?.toldElsewhere(id) ?? false } : {}),
             ...pipeline,
             // 回复和逐条事实检查的审稿也经执行器（ADR 0336 第 3 步）：配置、日志和原来 contact.ts 的默认调用一样；

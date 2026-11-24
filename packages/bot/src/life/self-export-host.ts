@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import type { StoredMessage } from '../memory/history.ts';
 import { consumeSelfReceipts, type SelfReceiptPlanner } from '../memory/self-receipts.ts';
-import type { AppConfig, Contact } from '../platform/config.ts';
+import { oneLifeAt, type AppConfig, type Contact } from '../platform/config.ts';
 import type { ContactPipelineOptions, ContactResponder } from '../platform/contact.ts';
 import type { Log } from '../platform/log.ts';
 import { renderSelf, selfExportPath, writeSelfExport } from './self-export.ts';
@@ -14,7 +14,7 @@ import { SELF_RECEIPTS_FILE, type SelfPending } from './self-types.ts';
 // ADR 0336 收尾（docs/plans/2026-11-24-0336-finish.md）原样搬到这里；什么时候写仍由 self-export 模块的定时和 App 定。
 
 export interface SelfExportHostDeps {
-    config: Pick<AppConfig, 'dataDir' | 'selfExport' | 'selfReceipts'>;
+    config: Pick<AppConfig, 'dataDir' | 'oneLife'>;
     /** 名单里第一个男朋友档（deviceOwner） */
     owner: Contact | undefined;
     soulDir: () => string;
@@ -58,7 +58,7 @@ export function selfExportHost({ config, owner: deviceOwner, soulDir, worldNow, 
     const exportSelf = async (): Promise<number | undefined> => {
         const owner = deviceOwner;
         const snapshot = ownerSnapshot;
-        if (!config.selfExport || !owner || !snapshot || stopped() || dormant()) return undefined;
+        if (!oneLifeAt(config.oneLife, 'export') || !owner || !snapshot || stopped() || dormant()) return undefined;
         try {
             const at = new Date(worldNow());
             const { pieces, facts } = await snapshot(at);
@@ -84,10 +84,10 @@ export function selfExportHost({ config, owner: deviceOwner, soulDir, worldNow, 
     return {
         exportSelf,
         watch(contact, responder) {
-            if (config.selfExport && contact.qq === deviceOwner?.qq) ownerSnapshot = responder.snapshot;
+            if (oneLifeAt(config.oneLife, 'export') && contact.qq === deviceOwner?.qq) ownerSnapshot = responder.snapshot;
         },
         afterSentToOwner(contact, send) {
-            if (!config.selfExport || contact.qq !== deviceOwner?.qq) return send;
+            if (!oneLifeAt(config.oneLife, 'export') || contact.qq !== deviceOwner?.qq) return send;
             return async (userId, text, sendOptions) => {
                 const id = await send(userId, text, sendOptions);
                 refreshSoon();
@@ -97,7 +97,7 @@ export function selfExportHost({ config, owner: deviceOwner, soulDir, worldNow, 
         syncReceipts(now) {
             // 桌面回执（ADR 0347 第 2 层，selfReceipts）：她在桌面上把攒着的话说出口了，计划器记成说过了，QQ 不再重发；收到了就刷新一次 SELF
             const owner = deviceOwner;
-            const planner = owner && config.selfExport && config.selfReceipts ? plannerOf(owner.qq) : undefined;
+            const planner = owner && oneLifeAt(config.oneLife, 'export') ? plannerOf(owner.qq) : undefined;
             if (planner) {
                 const counts = consumeSelfReceipts({
                     file: join(soulDir(), SELF_RECEIPTS_FILE),

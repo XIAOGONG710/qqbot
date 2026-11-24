@@ -5,7 +5,7 @@ import { desktopLogPath, desktopTurns, ingestDesktopRecent } from '../memory/des
 import type { StoredMessage } from '../memory/history.ts';
 import type { Timeline } from '../memory/timeline.ts';
 import { desktopMessages } from '../memory/owner-day-view.ts';
-import type { AppConfig, Contact } from '../platform/config.ts';
+import { oneLifeAt, type AppConfig, type Contact } from '../platform/config.ts';
 import type { Log } from '../platform/log.ts';
 import type { Character } from '../st/card.ts';
 import type { ActionQueue } from '../world/action-queue.ts';
@@ -25,7 +25,7 @@ import { formatDate, herDay, stateAt, type Schedule } from './schedule.ts';
 // 约定来源接上以后 App 调 worldReady。都关着时什么都不建，和原来逐字一样。
 
 export interface DesktopHostDeps {
-    config: Pick<AppConfig, 'dataDir' | 'contacts' | 'timeline' | 'desktopDay' | 'crossRecent' | 'desktopReview' | 'feelingReview' | 'herFeelings' | 'desktopConflict' | 'herDays' | 'desktopFeelings'>;
+    config: Pick<AppConfig, 'dataDir' | 'contacts' | 'timeline' | 'oneLife' | 'desktopReview' | 'feelingReview' | 'herFeelings' | 'desktopConflict' | 'herDays' | 'desktopFeelings'>;
     /** 灵魂目录（DSH 的 desktop-presence.json 在这里） */
     soulDir: string;
     worldNow: () => number;
@@ -79,15 +79,15 @@ export function desktopHost({ config, soulDir, worldNow, cardFor, bedtimes, file
     // （同 App 里的 deviceOwner，这里先按同一条规则取，生活执行器要用）。desktopDay 要 crossRecent（桌面回合靠它那条路传过来）；
     // 另外四个开关各自再要 desktopDay / feelingReview / herDays / 长期记忆，依赖不齐就当没开
     const desktopOwner = config.contacts.find(c => c.tier === 'boyfriend');
-    const desktopSource = config.desktopDay && config.crossRecent && desktopOwner
+    const desktopSource = oneLifeAt(config.oneLife, 'desktop') && desktopOwner
         ? desktopNowSource({ dataDir: config.dataDir, soulDir, log }) : undefined;
-    if (config.desktopDay && !desktopSource) log(`桌面上的时间：desktopDay 开着，但${!config.crossRecent ? ' crossRecent 没开（桌面回合靠它传过来）' : '名单里没有男朋友档'}，不起作用`);
+    if (oneLifeAt(config.oneLife, 'desktop') && !desktopSource) log('桌面上的时间：oneLife 开到 desktop，但名单里没有男朋友档，不起作用');
     else if (desktopSource) log(`桌面上的时间：开（只给 ${desktopOwner!.qq}；他在电脑前主动消息不打扰、留话先留着，NOW.md 知道${config.timeline ? '，会话记进时间线' : ''}）`);
-    if (config.desktopReview && !(desktopSource && config.feelingReview && config.herFeelings)) log(`桌面上的对话进回想：desktopReview 开着，但${!desktopSource ? ' desktopDay 没起作用' : ' feelingReview / herFeelings 没开'}，不起作用`);
+    if (config.desktopReview && !(desktopSource && config.feelingReview && config.herFeelings)) log(`桌面上的对话进回想：desktopReview 开着，但${!desktopSource ? ' oneLife 没开到 desktop' : ' feelingReview / herFeelings 没开'}，不起作用`);
     // 作息冲突（desktopConflict）：要 desktopDay、herDays；被叫上电脑那一行和昨晚那段只在名单里只有一个男朋友档时给（her-now 只按档位认人，不能让别的男朋友档看到他的桌面）
     const desktopConflictOn = Boolean(desktopSource && config.desktopConflict && config.herDays);
     const desktopConflictHerNow = desktopConflictOn && config.contacts.filter(c => c.tier === 'boyfriend').length === 1;
-    if (config.desktopConflict && !desktopConflictOn) log(`作息冲突：desktopConflict 开着，但${!desktopSource ? ' desktopDay 没起作用' : ' herDays 没开'}，不起作用`);
+    if (config.desktopConflict && !desktopConflictOn) log(`作息冲突：desktopConflict 开着，但${!desktopSource ? ' oneLife 没开到 desktop' : ' herDays 没开'}，不起作用`);
     else if (desktopConflictOn && !desktopConflictHerNow) log('作息冲突：名单里不止一个男朋友档，「被他叫上电脑」那一行和昨晚那段不给（只记世界事件、占她的时间）');
     // 30 秒一拍（DSH 收件箱那一拍）刷新的桌面缓存：生活选择器的忙碌段、当聊天记录用的桌面回合（她在电脑上说「睡了」也算说过）。用的地方不读文件
     let desktopBusyCache: readonly DesktopSpan[] = [];
