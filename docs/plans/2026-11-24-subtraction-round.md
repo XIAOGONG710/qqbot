@@ -45,6 +45,7 @@
 9. **做好了但从没接线的 8 个文件**（死代码报告 `docs/reports/2026-11-24-dead-code.md`；只有测试 import）：bilibili-asr、bilibili-inbox、bilibili-limit、bilibili-schema、expression-judgement、official-adapter、evidence-registry、information-sources（推荐：删，要用时从 git 拿回）。
    同报告里的 `language/intimacy.ts`（`/亲热` 写入的一半随指令收敛没了，读旧文件那行还接在 app.ts）推荐连那一行一起删；`addSoulRating`（ADR 0336 记着「留给用户定」）、`EXTERNAL_PLATFORM_CAPABILITIES` 跟外部平台功能一起定。
    死代码这一轮已经直接删掉的（没有调用方、类型检查能证明）：约 550 行，见报告。
+   - [x] **已办（11-24）**：8 个文件连测试 `e8bff6cc`（-706 行）；`/亲热` 整条读取链（intimacy.ts、app.ts 接线、contact.ts 选项、`intimate` 判断位置和槽）`9706e7d0`（-197 行）。基线 41/41 逐字一致。`addSoulRating`、`EXTERNAL_PLATFORM_CAPABILITIES` 照旧留。
 
 ## 三、合并（一、二做完再开始，一组一个提交，基线逐字不变）
 
