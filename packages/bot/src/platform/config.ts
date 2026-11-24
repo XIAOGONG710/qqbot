@@ -127,6 +127,7 @@ export const DEFAULTS = {
     deliberation: 'off' as DeliberationMode,
     deliberate: false,
     deliberateModel: 'deepseek-v4-pro',
+    ledgers: false,
     identityLedger: false,
     memoryAudit: false,
     dormancy: false,
@@ -519,8 +520,11 @@ export interface AppConfig {
     /** 深思轮次用的模型名，默认 deepseek-v4-pro（和聊天用的同一个接口） */
     deliberateModel: string;
     /** 设定账本（ADR 0157）：每次启动给人设源文件和角色卡算哈希、对哈希链账本、记下改动（谁、哪天、为什么——来自提交说明）；有没登记原因的改动告诉用户；他问起她的设定被改过没有才会说。/设定 看摘要。默认关 */
+    /** 留痕（开关合并，设计第二节 9）：设定账本、记忆账本、记忆对账一起开关。默认关 */
+    ledgers?: boolean;
+    /** @deprecated 已并进 ledgers（开关合并）：输入只有旧键时原样、否则由 ledgers 派生；新代码读 ledgers */
     identityLedger: boolean;
-    /** 记忆账本（ADR 0158）：长期记忆的每次写入和删除在哈希链账本里留一行（只记哈希，不记原文）。默认关 */
+    /** @deprecated 已并进 ledgers（开关合并）：输入只有旧键时原样、否则由 ledgers 派生；新代码读 ledgers。记忆账本（ADR 0158）：长期记忆的每次写入和删除在哈希链账本里留一行（只记哈希，不记原文）。默认关 */
     memoryAudit: boolean;
     /** 自愿休眠 / 封存（ADR 0161）：他发 /休眠 先跟她商量（她自己说话）、/休眠 确认 才封存并休眠、/唤醒 核对后醒来。只认男朋友档。默认关 */
     dormancy: boolean;
@@ -623,7 +627,7 @@ export interface AppConfig {
     fewerRules?: boolean;
     /** 她聊完回想一下、记下有依据的感受（ADR 0197）：一段聊天结束半小时后想一次——看最近 36 小时和他的聊天、昨天今天的日记，写下哪些事让她心里有了感受（开心 / 松了口气 / 担心 / 难过 / 烦 / 累）；每一条必须指出是哪几条消息（或日记）让她有的，只有小事和明显两档（大事只有作者能写 moments.json），因为他的态度难过 / 烦的一晚最多一条，来由不能引他的原话、不写别人、不碰底线；散得快。他用 /心境 看，改不了。要 herFeelings 开着、名单里有男朋友档；默认关 */
     feelingReview?: boolean;
-    /** 记忆对账（ADR 0201）：默认关；开着时每 6 小时（发现缺了就 10 分钟后再查）对一次，缺的片段重新写；刚写进去的 2 小时内不算缺 */
+    /** @deprecated 已并进 ledgers（开关合并）：输入只有旧键时原样、否则由 ledgers 派生；新代码读 ledgers。记忆对账（ADR 0201）：默认关；开着时每 6 小时（发现缺了就 10 分钟后再查）对一次，缺的片段重新写；刚写进去的 2 小时内不算缺 */
     memoryReconcile?: boolean;
     /** @deprecated 已并进 deliberation（开关合并）：输入只有旧键时原样、否则由 deliberation 派生；新代码读 deliberation。语义路由（ADR 0202）：默认关；要 deliberate 开着。开着时，关键词没认出来的轮次多一次小调用（不开思考、几十个 token、3 秒超时），分类说沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思 */
     depthRouting?: boolean;
@@ -978,6 +982,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         deliberation: oneOf(file.deliberation, 'deliberation', DELIBERATION_MODES, DEFAULTS.deliberation),
         deliberate: bool(file, 'deliberate', '', DEFAULTS.deliberate),
         deliberateModel: deliberateModel(file.deliberateModel),
+        ledgers: bool(file, 'ledgers', '', DEFAULTS.ledgers),
         identityLedger: bool(file, 'identityLedger', '', DEFAULTS.identityLedger),
         memoryAudit: bool(file, 'memoryAudit', '', DEFAULTS.memoryAudit),
         dormancy: bool(file, 'dormancy', '', DEFAULTS.dormancy),

@@ -112,6 +112,13 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
     //     5 合 1 阻塞：RICH 场景没开 worldDrama，并进 everydayLife 后多出 world/threads-from.json
     follows('everydayLife', BOOL, ['npcAsks', 'menu']),
     follows('worldDrama', BOOL, ['worldThreads']),
+    // 12. 留痕（9）：新名字 ledgers，「有没有被悄悄改 / 漏写，都记账、都核对」。没有总开关，任一开就开。
+    //     审计建议的「对账跟着有没有长期记忆」实跑不行（memory 场景 18:30 多一次后台调用）；memoryReconcile 照旧还要有 memory 一节才起作用
+    {
+        key: 'ledgers', values: BOOL, legacy: ['identityLedger', 'memoryAudit', 'memoryReconcile'],
+        fromLegacy: input => input.identityLedger === true || input.memoryAudit === true || input.memoryReconcile === true,
+        toLegacy: value => ({ identityLedger: value, memoryAudit: value, memoryReconcile: value }),
+    },
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */

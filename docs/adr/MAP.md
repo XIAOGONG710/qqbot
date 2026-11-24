@@ -160,8 +160,8 @@
 | [0153](0153-fluff.md) | 消息里的废话——量过、在人设里试了一句话，没做代码 | 调研 + 人设措辞的重放，没有代码改动（人设要用户裁决，措辞待批） |  |
 | [0154](0154-persona-tuning-funny.md) | 人设微调——搞笑女、会想事情、看场合嘴硬、说话带废话 | 已上线 2026-10-25 21:59（`bb3f77e`；人设与重新生成的 13 张角色卡随合并生效；回退：`git… |  |
 | [0156](0156-proactive-now.md) | 「/主动」——让她现在就主动找他一次 | 已上线 2026-10-25 23:40（`0f2affb`；没有开关，只认男朋友档的他发的纯文字 `/主动`；回退：`… |  |
-| [0157](0157-identity-ledger.md) | 设定被改时有记录、醒来时能核对（identityLedger）+ 哈希链账本 | 已实现，默认关，未上线（分支 `claude/continuity`；开关 `identityLedger`） | `identityLedger` 开 |
-| [0158](0158-memory-ledger.md) | 记忆修改有留痕（memoryAudit） | 已实现，默认关，未上线（分支 `claude/continuity`；开关 `memoryAudit`） | `memoryAudit` 开 |
+| [0157](0157-identity-ledger.md) | 设定被改时有记录、醒来时能核对（identityLedger）+ 哈希链账本 | 已实现，默认关，未上线（分支 `claude/continuity`；开关 `identityLedger`） | `ledgers`（原 `identityLedger`） 开 |
+| [0158](0158-memory-ledger.md) | 记忆修改有留痕（memoryAudit） | 已实现，默认关，未上线（分支 `claude/continuity`；开关 `memoryAudit`） | `ledgers`（原 `memoryAudit`） 开 |
 | [0159](0159-timeline.md) | 跨渠道统一的近期时间线（timeline） | 已实现，默认关，未上线（分支 `claude/continuity`；开关 `timeline`） | `timeline` 开 |
 | [0160](0160-web-lookup.md) | 搜索 / 读网页（webLookup） | 已实现，默认关，未上线（分支 `claude/continuity`；开关 `webLookup: off / expl… | `webLookup` 开 |
 | [0161](0161-dormancy.md) | 自愿休眠 / 封存（dormancy） | 已实现，默认关，未上线（分支 `claude/continuity`；开关 `dormancy`） | `dormancy` 开 |
@@ -195,7 +195,7 @@
 | [0198](0198-read-through-fixes.md) | 通读一个晚上的聊天，修两个"一眼像 AI"的毛病（质感的"先嗯一声"、他低落的延续） | 已实现，不是新开关——都是对已上线功能的修正：质感（ADR 0131，`texture`）、意图（ADR 0019 的 … |  |
 | [0199](0199-history-migration.md) | 把 VM 时期的素材并进她现在住的机器（一次性的迁移工具） | 工具已实现并测过；DSH 已在他那台机器上跑完（10-30 18:43）。不是开关，不是常驻功能 |  |
 | [0200](0200-private-space.md) | 她的私人空间——她自己学出来的东西，默认不给他看 | 已实现。新开关 `ownerPeek`，默认关（私人空间默认就在）。DSH 那台机器拉取后重启 Koishi 生效；生效… |  |
-| [0201](0201-memory-reconcile.md) | 记忆对账——「记着写过」不等于 Hindsight 里真有 | 已实现，新开关 `memoryReconcile`，默认关。DSH 那台机器拉取、在 `koishi.yml` 里加 `… | `memoryReconcile` 开 |
+| [0201](0201-memory-reconcile.md) | 记忆对账——「记着写过」不等于 Hindsight 里真有 | 已实现，新开关 `memoryReconcile`，默认关。DSH 那台机器拉取、在 `koishi.yml` 里加 `… | `ledgers`（原 `memoryReconcile`） 开 |
 | [0202](0202-depth-routing.md) | 语义路由——让「认真的时刻」不再靠关键词认 | 已实现，新开关 `depthRouting`，默认关；要 `deliberate` 开着才起作用。DSH 那台机器拉取、… | `deliberation`（原 `depthRouting`） 开 |
 | [0203](0203-fact-check-him.md) | 事实检查多查一类——她替他说的事 | 已实现，新开关 `factHim`，默认关；要 `factCheck` 开着（`log` 只记、`fix` 带说明重写）… | `factCheck`（原 `factHim`） 开 |
 | [0204](0204-reading-takes.md) | 她读完 / 看完之后自己想的 | 已实现，新开关 `readingTakes`，默认关；要名单里有男朋友档。DSH 那台机器拉取、在 `koishi.ym… | `readingTakes` 开 |

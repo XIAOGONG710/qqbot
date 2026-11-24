@@ -166,6 +166,7 @@ describe('真表：已经并了的组', () => {
         rhythm: true,
         everydayLife: true,
         worldDrama: true,
+        ledgers: true,
     };
     const env = { QQBOT_LLM_API_KEY: 'k' };
     const base = {
@@ -216,6 +217,16 @@ describe('真表：已经并了的组', () => {
         assert.deepEqual(withoutNewNames(parse(migrated)), today, '只写新键：旧字段由新键派生，和今天一样');
         const after = parse(migrated) as unknown as Record<string, unknown>;
         for (const merge of SWITCH_MERGES) assert.deepEqual(after[merge.key], EXPECTED_LIVE[merge.key], merge.key);
+    });
+
+    test('留痕（memoryReconcile 线上开着、开关层原来没测过）：只写 ledgers 三项都跟着；只写着 memoryReconcile 时它照旧原样、另两项照旧关，日志说对不上', () => {
+        const on = parse({ ledgers: true });
+        assert.deepEqual([on.identityLedger, on.memoryAudit, on.memoryReconcile], [true, true, true]);
+        const off = parse({ ledgers: false });
+        assert.deepEqual([off.identityLedger, off.memoryAudit, off.memoryReconcile], [false, false, false]);
+        const old = parse({ memoryReconcile: true });
+        assert.deepEqual([old.ledgers, old.identityLedger, old.memoryAudit, old.memoryReconcile], [true, false, false, true]);
+        assert.match(configSwitchNotes({ memoryReconcile: true }).join('\n'), /已并进 ledgers（= true）.*对不上/);
     });
 
     test('只写新键：每一档都能派生出全部旧字段；都没写：旧字段由新键的默认值派生', () => {

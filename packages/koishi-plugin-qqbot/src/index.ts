@@ -246,8 +246,11 @@ export interface Config {
     /** 已并进 deliberation（开关合并），koishi.yml 里还写着才有 */
     deliberate?: boolean;
     deliberateModel: string;
-    identityLedger: boolean;
-    memoryAudit: boolean;
+    ledgers: boolean;
+    /** 已并进 ledgers（开关合并），koishi.yml 里还写着才有 */
+    identityLedger?: boolean;
+    /** 已并进 ledgers（开关合并），koishi.yml 里还写着才有 */
+    memoryAudit?: boolean;
     dormancy: boolean;
     timeline: boolean;
     webLookup: WebMode;
@@ -312,7 +315,8 @@ export interface Config {
     selfPortrait: boolean;
     fewerRules: boolean;
     feelingReview: boolean;
-    memoryReconcile: boolean;
+    /** 已并进 ledgers（开关合并），koishi.yml 里还写着才有 */
+    memoryReconcile?: boolean;
     /** 已并进 deliberation（开关合并），koishi.yml 里还写着才有 */
     depthRouting?: boolean;
     /** 已并进 factCheck（开关合并），koishi.yml 里还写着才有 */
@@ -454,8 +458,9 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         deliberate: legacy(),
         deliberateModel: Schema.string().default(DEFAULTS.deliberateModel)
             .description('深思轮次用的模型名（和聊天用的同一个接口）。默认 deepseek-v4-pro'),
-        identityLedger: toggle('identityLedger'),
-        memoryAudit: toggle('memoryAudit'),
+        ledgers: toggle('ledgers'),
+        identityLedger: legacy(),
+        memoryAudit: legacy(),
         timeline: toggle('timeline'),
         webLookup: choice('webLookup'),
         dormancy: toggle('dormancy'),
@@ -526,7 +531,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         selfPortrait: toggle('selfPortrait'),
         fewerRules: toggle('fewerRules'),
         feelingReview: toggle('feelingReview'),
-        memoryReconcile: toggle('memoryReconcile'),
+        memoryReconcile: legacy(),
         depthRouting: legacy(),
         readStickers: legacy(),
         factHim: legacy(),
