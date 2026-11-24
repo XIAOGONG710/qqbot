@@ -240,7 +240,8 @@ const stateOf = (person: AskPerson, schedule: Schedule, day: Date) => npcStates(
  * monthAsks 的结果缓存（只为快，结果和不缓存逐字一样）：一个月的约要把这个月每一天都试一遍（课表、对方的病和忙、哈希），
  * 而世界推进每算一刻都要问今天和明天的约，同一个月被重算上万次。
  * - 键是输入的内容（这个月、人、配置、schedule 的 JSON，加 anchors.key），不是对象身份：输入被原地改过也不会拿到旧结果；
- *   anchors 给了 meal 却没给 key 的不缓存（看不出 meal 取决于什么）。
+ *   anchors 给了 meal 却没给 key 的不缓存（看不出 meal 取决于什么）。进程时区也进键：按天切分跟着 TZ 走，
+ *   Koishi 插件重载时可能换了她的时区（claimTimeZone，同 simulateWorld）。
  * - 存一份、每次给一份拷贝（约和里面的时刻、理由都是新对象）：调用方改了也不影响缓存和别人。
  * - 算的时候抛错（配置不对）不缓存，下次照样抛。
  */
@@ -255,7 +256,7 @@ const copyAsk = (ask: NpcAsk): NpcAsk => ({
 
 function cachedMonthAsks(person: AskPerson, config: AsksConfig, schedule: Schedule, scheduleJson: string, first: Date, anchors?: AskAnchors): NpcAsk[] {
     if (anchors?.meal && anchors.key === undefined) return monthAsks(person, config, schedule, first, anchors);
-    const key = `${first.getTime()}\u0000${JSON.stringify(person)}\u0000${JSON.stringify(config)}\u0000${scheduleJson}\u0000${anchors?.meal ? anchors.key : ''}`;
+    const key = `${first.getTime()}\u0000${process.env.TZ ?? ''}\u0000${JSON.stringify(person)}\u0000${JSON.stringify(config)}\u0000${scheduleJson}\u0000${anchors?.meal ? anchors.key : ''}`;
     const hit = monthAsksCache.get(key);
     if (hit) {
         // 最近用过的挪到最后，满了先丢最久没用的

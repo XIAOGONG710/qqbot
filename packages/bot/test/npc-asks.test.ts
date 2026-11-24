@@ -207,4 +207,21 @@ describe('一个月的约的缓存（只为快）', () => {
         assert.deepEqual(month(schedule, meals(30)), keyed(30, 'b'), '没 key 的照算，和有 key 的算出来一样');
         assert.notDeepEqual(month(schedule, meals(0)), month(schedule, meals(30)));
     });
+
+    test('进程时区也进键：月初同一时刻、月中一边换了夏令时，换了时区不拿另一个时区算的', () => {
+        const zone = process.env.TZ;
+        // 2027-03-01 纽约和固定 UTC-5 的 0 点是同一时刻；3 月 14 日起纽约换夏令时，约的时刻不再一样
+        const inMarch = (s: typeof longSchedule) => Array.from({ length: 31 }, (_, i) => npcAsksOn(people, s, new Date(2027, 2, i + 1), ASKS)).flat();
+        try {
+            process.env.TZ = 'Etc/GMT+5';
+            const fixed = inMarch(longSchedule);
+            process.env.TZ = 'America/New_York';
+            const cached = inMarch(longSchedule);
+            const fresh = inMarch({ ...longSchedule, uncached: true } as typeof longSchedule);
+            assert.deepEqual(cached, fresh);
+            assert.notDeepEqual(fixed.map(a => a.start.getTime()), fresh.map(a => a.start.getTime()), '这个月里有落在换夏令时之后的约');
+        } finally {
+            process.env.TZ = zone;
+        }
+    });
 });
