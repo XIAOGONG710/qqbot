@@ -31,6 +31,11 @@ export interface AskKind {
 /** 世界里已经排好的事，约要对上它们（world.ts 传进来；预览、测试可以不传） */
 export interface AskAnchors {
     meal?: (kind: 'lunch' | 'dinner', day: Date) => { start: Date; end: Date } | undefined;
+    /**
+     * meal 的结果除了 schedule 和 day 以外还取决于什么（内容的 JSON，world.ts 给：作息、哪些假期回家、开始那天）。
+     * 给了才缓存一个月的约（monthAsks）；没给的（预览、测试里随手写的 meal）每次照算
+     */
+    key?: string;
 }
 
 /** 变卦的理由；private：对方自己的私事（身体、家里），只在最亲的档位、被问到才说（ADR 0020，ADR 0061 决策 4） */
@@ -231,6 +236,39 @@ const pick = <T>(list: readonly T[], key: string): T => list[Math.floor(unit(key
 const BLOCKING: readonly NpcStateKind[] = ['sick', 'busy', 'home'];
 const stateOf = (person: AskPerson, schedule: Schedule, day: Date) => npcStates(person.id, person.life, schedule, day).find(s => BLOCKING.includes(s.kind));
 
+/**
+ * monthAsks 的结果缓存（只为快，结果和不缓存逐字一样）：一个月的约要把这个月每一天都试一遍（课表、对方的病和忙、哈希），
+ * 而世界推进每算一刻都要问今天和明天的约，同一个月被重算上万次。
+ * - 键是输入的内容（这个月、人、配置、schedule 的 JSON，加 anchors.key），不是对象身份：输入被原地改过也不会拿到旧结果；
+ *   anchors 给了 meal 却没给 key 的不缓存（看不出 meal 取决于什么）。
+ * - 存一份、每次给一份拷贝（约和里面的时刻、理由都是新对象）：调用方改了也不影响缓存和别人。
+ * - 算的时候抛错（配置不对）不缓存，下次照样抛。
+ */
+const MONTH_ASKS_MAX = 256;
+const monthAsksCache = new Map<string, NpcAsk[]>();
+
+const copyAsk = (ask: NpcAsk): NpcAsk => ({
+    ...ask, askedAt: new Date(ask.askedAt.getTime()), start: new Date(ask.start.getTime()),
+    ...(ask.actualStart ? { actualStart: new Date(ask.actualStart.getTime()) } : {}),
+    ...(ask.reason ? { reason: { ...ask.reason } } : {}),
+});
+
+function cachedMonthAsks(person: AskPerson, config: AsksConfig, schedule: Schedule, scheduleJson: string, first: Date, anchors?: AskAnchors): NpcAsk[] {
+    if (anchors?.meal && anchors.key === undefined) return monthAsks(person, config, schedule, first, anchors);
+    const key = `${first.getTime()}\u0000${JSON.stringify(person)}\u0000${JSON.stringify(config)}\u0000${scheduleJson}\u0000${anchors?.meal ? anchors.key : ''}`;
+    const hit = monthAsksCache.get(key);
+    if (hit) {
+        // 最近用过的挪到最后，满了先丢最久没用的
+        monthAsksCache.delete(key);
+        monthAsksCache.set(key, hit);
+        return hit.map(copyAsk);
+    }
+    const asks = monthAsks(person, config, schedule, first, anchors);
+    monthAsksCache.set(key, asks.map(copyAsk));
+    if (monthAsksCache.size > MONTH_ASKS_MAX) monthAsksCache.delete(monthAsksCache.keys().next().value!);
+    return asks;
+}
+
 /** 这个人在 first 那个月里发起的约（约的那天都落在这个月） */
 function monthAsks(person: AskPerson, config: AsksConfig, schedule: Schedule, first: Date, anchors?: AskAnchors): NpcAsk[] {
     if (!Number.isFinite(config.perMonth) || config.perMonth < 0 || config.perMonth > MAX_NPC_MONTHLY_SPANS) throw new RangeError(`NPC每月邀请次数应为 0–${MAX_NPC_MONTHLY_SPANS} 内的有限数`);
@@ -302,7 +340,8 @@ function settle(ask: NpcAsk, person: AskPerson, config: AsksConfig, schedule: Sc
 export function npcAsksOn(people: readonly AskPerson[], schedule: Schedule, day: Date, configs: Record<string, AsksConfig> = DEFAULT_ASKS, anchors?: AskAnchors): NpcAsk[] {
     const first = localDate(day.getFullYear(), day.getMonth(), 1);
     const date = formatDate(day);
-    return people.flatMap(person => (configs[person.id] ? monthAsks(person, configs[person.id]!, schedule, first, anchors) : []))
+    let scheduleJson: string | undefined;
+    return people.flatMap(person => (configs[person.id] ? cachedMonthAsks(person, configs[person.id]!, schedule, scheduleJson ??= JSON.stringify(schedule), first, anchors) : []))
         .filter(ask => ask.day === date)
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 }

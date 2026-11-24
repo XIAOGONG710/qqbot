@@ -809,6 +809,8 @@ function friendDatesFor(world: World, schedule: Schedule, now: Date, days: reado
             const meal = routineOn(world.routine, schedule, day, atSchoolOn(world, schedule, day)).meals.find(m => m.kind === kind);
             return meal && meal.where === 'canteen' ? meal : undefined;
         },
+        // meal 除了 schedule 和那一天只看这几样（routineOn、atSchoolOn）：给了 key，同一个月的约可以缓存（npc-asks.ts）
+        key: JSON.stringify([world.routine ?? null, world.awayHolidays, world.startDay]),
     };
     const out: FriendDate[] = [];
     for (const day of days) {

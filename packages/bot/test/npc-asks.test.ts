@@ -176,3 +176,35 @@ describe('日志里的一句', () => {
         assert.ok(describeAsk(ask).includes(ask.name) && describeAsk(ask).includes(formatDate(ask.start).slice(0, 0)));
     });
 });
+
+describe('一个月的约的缓存（只为快）', () => {
+    const meals = (shift: number) => ({
+        meal: (kind: 'lunch' | 'dinner', d: Date) => {
+            const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), kind === 'lunch' ? 12 : 18, shift);
+            return { start, end: new Date(start.getTime() + 45 * 60_000) };
+        },
+    });
+    const month = (s = schedule, anchors?: Parameters<typeof npcAsksOn>[4]) =>
+        Array.from({ length: 31 }, (_, i) => npcAsksOn(people, s, day(10, i + 1), ASKS, anchors)).flat();
+
+    test('拿到的是自己的拷贝：改了结果不影响下一次', () => {
+        const first = month();
+        assert.ok(first.length > 0);
+        const fresh = structuredClone(first);
+        for (const ask of first) { ask.start.setTime(0); ask.askedAt.setTime(0); ask.text = '改了'; if (ask.reason) ask.reason.text = '改了'; }
+        assert.deepEqual(month(), fresh);
+    });
+
+    test('键看内容：schedule 原地改了、anchors.key 变了都重算；meal 没给 key 不缓存', () => {
+        const copy = structuredClone(schedule);
+        const before = month(copy);
+        copy.courses = [];
+        assert.notDeepEqual(month(copy), before, '没课了，上课日才约的那几件就没了');
+        const keyed = (shift: number, key: string) => month(schedule, { ...meals(shift), key });
+        const a = keyed(0, 'a');
+        assert.deepEqual(keyed(30, 'a'), a, '同一个 key 当作同样的 meal（调用方保证）');
+        assert.notDeepEqual(keyed(30, 'b'), a, 'key 变了重算');
+        assert.deepEqual(month(schedule, meals(30)), keyed(30, 'b'), '没 key 的照算，和有 key 的算出来一样');
+        assert.notDeepEqual(month(schedule, meals(0)), month(schedule, meals(30)));
+    });
+});
