@@ -123,7 +123,8 @@ describe('听语音、看图（ADR 0052）：读消息（假 NapCat）', () => {
         const path = join(dir, 'ok.silk');
         writeFileSync(path, silk(400));
         const { reader, calls } = napcat({ 7: '今天食堂\n人超多[笑]' });
-        const { text, logs } = await read(voice(path), reader);
+        // 数秒数是读本地文件，和转文字共用 voice 的超时：测试默认 0.1 秒，全量并行跑时读文件会超（11-24/25 全量偶发少了秒数），这里给足
+        const { text, logs } = await read(voice(path), reader, { timeouts: { voice: 5000, ocr: 100, vision: 100 } });
         assert.equal(text, '[语音 8秒：今天食堂 人超多【笑】]');
         assert.deepEqual(calls.voice, [7]);
         assert.match(logs[0]!, /^听语音：转出 \d+ 个字，8 秒（\d+\.\d 秒）$/);
@@ -132,7 +133,7 @@ describe('听语音、看图（ADR 0052）：读消息（假 NapCat）', () => {
     test('转不出来、超时：有秒数写秒数，没有就是老样子「[语音]」，不卡住', async () => {
         const path = join(dir, 'fail.silk');
         writeFileSync(path, silk(150));
-        assert.equal((await read(voice(path), napcat({ 7: new Error('获取语音转文字结果失败') }).reader)).text, '[语音 3秒]');
+        assert.equal((await read(voice(path), napcat({ 7: new Error('获取语音转文字结果失败') }).reader, { timeouts: { voice: 5000, ocr: 100, vision: 100 } })).text, '[语音 3秒]');
         const started = Date.now();
         const timedOut = await read(voice(), napcat({ 7: 'hang' }).reader);
         assert.equal(timedOut.text, '[语音]');
