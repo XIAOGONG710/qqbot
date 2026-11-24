@@ -115,7 +115,8 @@ export function bilibiliOwners(deps: BilibiliOwnersDeps): BilibiliOwners {
     }
 
     function startBrowsing(): void {
-        if (browsing || config.bilibili === 'off') return;
+        const mode = config.bilibili ?? 'off';
+        if (browsing || mode === 'off') return;
         const target = config.contacts.find(c => c.tier === 'boyfriend');
         if (!target || !worldCard?.schedule) {
             log('刷 B 站：没有男朋友档的联系人或没有作息，不启动');
@@ -127,7 +128,7 @@ export function bilibiliOwners(deps: BilibiliOwnersDeps): BilibiliOwners {
         const dm = bilibiliDmOptions();
         const gate = comment ? bilibiliRisk() : undefined;
         browsing = createVideoBrowsing({
-            mode: config.bilibili,
+            mode,
             ...(account ? { account } : {}),
             ...(account && comment ? { comment } : {}),
             ...(gate ? { risk: gate } : {}),
@@ -161,7 +162,7 @@ ${video.link}`);
             },
         });
         browsing.start();
-        log(`刷 B 站：${config.bilibili === 'dryRun' ? '只写草稿（不发）' : '开'}，发给 ${target.name}；一周最多 3 个，${account ? '用她的 B 站号按口味搜、读字幕，搜不到再读 B 站热门榜' : '读 B 站热门榜（公开接口，不登录）'}${account && dm ? `；改在 B 站给他发私信（${dm.mode === 'dryRun' || config.bilibili === 'dryRun' ? '只写草稿' : '真发'}），QQ 上只提醒一句` : ''}${account && comment ? `；${comment.keywords?.length ? `按话题（${comment.keywords.join('、')}）自己找视频` : '分享后在视频下'}评论并 @ ${config.bilibiliAtName}（${comment.mode === 'dryRun' || config.bilibili === 'dryRun' ? '只写草稿' : '真发'}）` : ''}`);
+        log(`刷 B 站：${(config.bilibili ?? 'off') === 'dryRun' ? '只写草稿（不发）' : '开'}，发给 ${target.name}；一周最多 3 个，${account ? '用她的 B 站号按口味搜、读字幕，搜不到再读 B 站热门榜' : '读 B 站热门榜（公开接口，不登录）'}${account && dm ? `；改在 B 站给他发私信（${dm.mode === 'dryRun' || (config.bilibili ?? 'off') === 'dryRun' ? '只写草稿' : '真发'}），QQ 上只提醒一句` : ''}${account && comment ? `；${comment.keywords?.length ? `按话题（${comment.keywords.join('、')}）自己找视频` : '分享后在视频下'}评论并 @ ${config.bilibiliAtName}（${comment.mode === 'dryRun' || (config.bilibili ?? 'off') === 'dryRun' ? '只写草稿' : '真发'}）` : ''}`);
     }
 
     /**

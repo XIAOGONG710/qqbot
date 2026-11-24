@@ -53,7 +53,7 @@ export function presenceOwner(deps: PresenceOwnerDeps): PresenceOwner {
     let presence: Presence | undefined;
     function startPresence(): void {
         if (presence) return;
-        if (!config.qqPresence && config.qzone === 'off') return;
+        if (!config.qqPresence && (config.qzone ?? 'off') === 'off') return;
         if (!worldCard?.schedule) {
             log('存在感：没有作息（herDays 关或卡上没有作息），不启动——在线状态、点赞、签名、说说都按她的作息排');
             return;
@@ -67,7 +67,7 @@ export function presenceOwner(deps: PresenceOwnerDeps): PresenceOwner {
             try { lowest = cardFor(tier); break; } catch { /* 试下一档 */ }
         }
         const publicSchedule = lowest?.character.schedule ?? schedule;
-        const qzone = config.qzone !== 'off' && lowest
+        const qzone = (config.qzone ?? 'off') !== 'off' && lowest
             ? qzoneComposer({
                 character: { name: lowest.character.name, description: lowest.character.description, personality: lowest.character.personality, banned: lowest.character.banned },
                 generate: messages => (exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 1.1 }, messages }, log)),
@@ -81,10 +81,10 @@ export function presenceOwner(deps: PresenceOwnerDeps): PresenceOwner {
                 log,
             })
             : undefined;
-        if (config.qzone !== 'off' && !qzone) log('存在感：陌生人档和同学档的卡都读不了，不写说说');
+        if ((config.qzone ?? 'off') !== 'off' && !qzone) log('存在感：陌生人档和同学档的卡都读不了，不写说说');
         presence = createPresence({
             ...(dormancy ? { paused: () => dormancy.isDormant() } : {}),
-            flags: { onlineStatus: config.qqPresence === true, profileLikes: config.qqPresence === true, signature: config.qzone, qzone: qzone ? config.qzone : 'off', qzoneVisibility: config.qzoneVisibility, pokeOut: config.qqPresence === true, qzoneBrowse: config.qzone, qzonePeek: config.qzone, qzoneStrangers: config.qzone },
+            flags: { onlineStatus: config.qqPresence === true, profileLikes: config.qqPresence === true, signature: config.qzone ?? 'off', qzone: qzone ? config.qzone ?? 'off' : 'off', qzoneVisibility: config.qzoneVisibility, pokeOut: config.qqPresence === true, qzoneBrowse: config.qzone ?? 'off', qzonePeek: config.qzone ?? 'off', qzoneStrangers: config.qzone ?? 'off' },
             transport, schedule, extraFree,
             likeTargets: config.contacts.filter(c => c.tier === 'boyfriend').map(c => c.qq),
             // 能看谁的空间：只放用户点名的（qqAllowFriends），名字用于提示词里说是谁的空间
@@ -100,7 +100,7 @@ export function presenceOwner(deps: PresenceOwnerDeps): PresenceOwner {
             ...(qzone ? { composeQzone: qzone } : {}),
         });
         presence.start();
-        log(`存在感：${[config.qqPresence && '在线状态', config.qqPresence && '资料卡点赞', config.qqPresence && '主动戳他', config.qzone !== 'off' && `个性签名（${config.qzone === 'dryRun' ? '只写草稿' : '真改'}）`, qzone && `说说（${config.qzone === 'dryRun' ? '只写草稿' : '真发'}，${config.qzoneVisibility === 'public' ? '所有人可见' : '仅好友可见'}）`, config.qzone !== 'off' && `翻空间（${config.qzone === 'dryRun' ? '只写草稿' : '记进提示词'}）`, config.qzone !== 'off' && `看好友空间（${config.qzone === 'dryRun' ? '只写草稿' : '记进提示词'}）`, config.qzone !== 'off' && `刷陌生人（${config.qzone === 'dryRun' ? '只写草稿' : '记进提示词 + 留样本'}）`].filter(Boolean).join('、')}`);
+        log(`存在感：${[config.qqPresence && '在线状态', config.qqPresence && '资料卡点赞', config.qqPresence && '主动戳他', (config.qzone ?? 'off') !== 'off' && `个性签名（${(config.qzone ?? 'off') === 'dryRun' ? '只写草稿' : '真改'}）`, qzone && `说说（${(config.qzone ?? 'off') === 'dryRun' ? '只写草稿' : '真发'}，${config.qzoneVisibility === 'public' ? '所有人可见' : '仅好友可见'}）`, (config.qzone ?? 'off') !== 'off' && `翻空间（${(config.qzone ?? 'off') === 'dryRun' ? '只写草稿' : '记进提示词'}）`, (config.qzone ?? 'off') !== 'off' && `看好友空间（${(config.qzone ?? 'off') === 'dryRun' ? '只写草稿' : '记进提示词'}）`, (config.qzone ?? 'off') !== 'off' && `刷陌生人（${(config.qzone ?? 'off') === 'dryRun' ? '只写草稿' : '记进提示词 + 留样本'}）`].filter(Boolean).join('、')}`);
     }
     return {
         start: startPresence,
