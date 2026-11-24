@@ -139,6 +139,35 @@ test('旧已取消的约没有before-image不能猜恢复，可信撤回进度�
  } finally { await keeper.stop(); cleanup(f.root); }
 });
 
+test('旧撤回片段受保护，同联系人后来的桌面承诺仍入账', async () => {
+ const f = fixture(true), state = emptyPromiseState();
+ const oldId = `ep-${at('17:30').getTime()}`, newId = `ep-${at('19:00').getTime()}`;
+ const old = { id: 'unverified-old', what: 'QUARANTINED_PROMISE', said: '2026-11-05', episode: oldId };
+ state.extracted[oldId] = true;
+ state.promises.push(old);
+ writeFileSync(f.path, JSON.stringify(state));
+ assert.equal(f.history.recall(contact.qq, 2), true);
+ f.history.append(contact.qq, { role: 'user', time: at('19:00').toISOString(), content: '（电脑上）还记得那本书吗？' });
+ f.history.append(contact.qq, { role: 'assistant', time: at('19:01').toISOString(), content: '（电脑上）【我答应并记下：下次讲书的结局】【我改主意了：取消原来的安排】' });
+ f.clock(at('20:00'));
+ const materials: string[] = [];
+ const keeper = promiseKeeper({ ...f.options, extract: async messages => {
+  materials.push(String(messages.at(-1)?.content));
+  return JSON.stringify({ add: [{ what: '下次讲书的结局', evidence: 2 }], resolved: [{ id: old.id, evidence: 2 }] });
+ } });
+ try {
+  await keeper.sync();
+  await keeper.sync();
+  const saved = readPromiseState(f.path);
+  assert.equal(materials.length, 1);
+  assert.doesNotMatch(materials[0]!, /QUARANTINED_PROMISE|17:30/);
+  assert.equal(saved.uncertainSources?.[oldId], true);
+  assert.deepEqual(saved.promises.find(item => item.id === old.id), old);
+  assert.equal(saved.promises.find(item => item.episode === newId)?.what, '下次讲书的结局');
+  assert.equal(saved.sources?.[newId]?.phase, 'closed');
+ } finally { await keeper.stop(); cleanup(f.root); }
+});
+
 test('未来仍有效的early即使旧计数裁剪也保留来源和因果证据，不静默退回legacy', async () => {
  const f = fixture(), keeper = promiseKeeper({ ...f.options, extract: async () => '{"add":[{"what":"FUTURE_MEET","date":"2026-12-20","meet":{"time":"18:00"}}],"resolved":[]}' });
  try { await keeper.sync(); f.clock(new Date('2026-12-10T12:00:00')); await keeper.sync();
