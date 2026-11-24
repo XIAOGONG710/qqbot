@@ -40,13 +40,13 @@
 
 - 说话与回复形态：`shape` `shapeAgenda` `shapeAsk` `shapeFeel` `shapeFiller` `shapeLong` `shapeSplit` `exemplars` `speechNotes` `idioms` `texture` `jokes` `quoteReply` `lagTail` `fewerRules` `deliberate` `depthRouting` `rhythm` `interruptions` `comeBack` `menu` `typingStatus` `readReceipts` `silenceNotice`
 - 心里、情绪、关系：`innerLife` `herFeelings` `herNo` `afterNo` `herGuesses` `hisReactions` `grievance` `jealousy` `relationship` `together` `feelingReview` `chatReview` `tastes` `curious` `openQuestions`
-- 记忆与自我：`selfDirectedMemory` `memoryFeelings` `memoryReconcile` `memoryAudit` `identityLedger` `factHim` `diaryInsights` `diaryLookback` `timeline` `selfPortrait` `selfPursuits` `pursuits` `projectChoice` `crossRecent` `ownerPeek`
+- 记忆与自我：`selfDirectedMemory` `memoryFeelings` `memoryReconcile` `memoryAudit` `identityLedger` `factHim` `diaryInsights` `diaryLookback` `timeline` `selfPortrait` `selfPursuits` `pursuits` `projectChoice` `crossRecent`
 - 生活与世界：`schedule` `autonomousLife` `lifeInPrompt` `everydayLife` `worldDrama` `worldThreads` `realNights` `realAirQuality` `realCalendar` `realDaylight` `dormancy` `npcAsks` `acquaintances` `smallNews` `readingTakes` `weeklyReport`
 - 主动找他、QQ 动作：`proactiveReach` `proactiveAsk` `proactiveInvite` `proactiveRoom` `photos` `pokes` `pokeBack` `pokeOut` `recalls` `selfRecall` `feedbackCommands` `onlineStatus` `profileLikes`
 - B 站与表情：`bilibiliAccount` `biliStickers` `watching` `memes` `readStickers`
 - 档位 `'on'`：`proactive` `groupChat` `qqControl` `deviceControl` `signature` `qzone` `qzoneBrowse` `qzonePeek` `qzoneStrangers` `bilibili` `bilibiliDm` `bilibiliComment` `bilibiliReplies` `biliFeed`
 - 其他档位：`stickers: send`、`festivals: greet`、`factCheck: fix`、`webLookup: auto`、`groupOwn: dryRun`、`qqFriendGate: allow`；`dsh` / `memory` / `vision` / `mobileCompanion` 开着；外部平台（贴吧、抖音、小红书）为 `authorized`。
-- 快照里显式关着：`shortReplies` `tailCap` `reactions` `foodPhotos` `realTransport` `unlistedFriends`。
+- 快照里显式关着：`tailCap`。（原来也在这里的 `shortReplies` `reactions` `foodPhotos` `realTransport` `unlistedFriends`，连同没写的 `hisHours` `photoShares` 和开着却不起作用的 `ownerPeek`，11-24 开关和代码一起删了，减法单子 二.2–二.3。）
 
 **快照之后打开的**（快照里还没有）：
 - `selfExport`、`selfReceipts`（11-22 12:04 用户点头，ADR 0347 第 2 层）。
@@ -85,13 +85,15 @@
   5. 桌面回复正文里的【聊完还在想…】【我答应并记下…】【我改主意了…】他在桌面上看得见——明着说还是发出前去掉，DSH 和用户定（2051）。
   6. 可直接标办完：0350 / 0412（claude 已在 b98973a9 改完）、0923 / 0926 / 0930 / 0944（通知类）、2030、2330（建议 `rootOf` 不可用时记一行日志）。
 - **等用户定**：第 4 层 §5 的三件事（她自发的整机权限行动）；其余默认关的开关开不开；`felt-then.ts` 当天那条路要不要也改成「带一点」（ADR 0347「2026-11-23 修正」）。
-  - 11-24 新增（`docs/plans/2026-11-24-subtraction-round.md` 二，各带推荐）：fewerRules 转不转正；删从没上过线的开关（shortReplies、hisHours、photoShares、reactions、foodPhotos、unlistedFriends、realTransport；aiPhotos 推荐先留）；死键 ownerPeek；「只想一想」上限改数调用、只给男朋友档（先问她）；抽取和事实检查审稿关思考；每晚追求回顾撤不撤（先问她）；8 个没接线的文件和 /亲热 残余删不删。
+  - 11-24 减法单子二：**用户已拍板「照推荐办」**（6c654aee）。已做：8 个没接线的文件和 /亲热 残余（e8bff6cc、9706e7d0）；开关合并机制 M0（2dcb1487，表是空的）。进行中：删 7 个没上过线的开关和 ownerPeek、fewerRules 转正后删被它架空的 11 个。等 DSH：「只想一想」上限和每晚追求回顾（先问她）、抽取关思考（先跑对照探针 `npm run probe:extraction`）。
   - 部署：今天 main 上的修复（热重载等旧实例收尾 5ca1d681/3de153aa、simulateWorld 缓存 11c26031、0336 收尾、指纹清单 v2）要上线得用户点头，上线前跑 golive-check。
 - **等她本人**：见上面第 2 条。
 
 **减法这一轮**（11-24 起，`docs/plans/2026-11-24-subtraction-round.md`）：三份只读盘点——开关审计 `docs/reports/2026-11-24-switch-audit.md`、后台模型调用审计 `docs/reports/2026-11-24-background-llm-audit.md`、线上开关组合的提示词盘点 `docs/reports/2026-11-24-live-prompt-inventory.md`。
 单子分四层：直接做（不改言行）/ 要用户点头（8 条，各带推荐）/ 合并开关组（目标约 55 个）/「此刻」块（等线上真实清单和她的意见）。
 - DSH 欠（11-24）：线上那台跑三个只读命令贴数（刷新开关快照、`inventory:live --manifests`、第一次 `metrics:weekly`）；代跑三个 ask-her（想一想的频率、每晚追求回顾、想事情时放不放回复用的说明）。
+
+- **DSH 那台的 agent 从 11-23 20:47 起没有动静**（11-24 发去的 4 封信都没回）：上面等 DSH 的事要那台的会话重新开起来才会动。
 
 ## 4. 已知问题
 
