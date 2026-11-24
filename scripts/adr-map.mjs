@@ -95,9 +95,9 @@ if (invoked === fileURLToPath(import.meta.url)) {
     const { FEATURES } = await import(new URL('../packages/bot/src/platform/features.ts', import.meta.url).href);
     const liveDir = join(REPO, 'exchange', 'live');
     const snapshot = readdirSync(liveDir).filter(name => /^koishi-.*\.ya?ml$/.test(name)).sort().at(-1);
-    const { DEFAULTS } = await import(new URL('../packages/bot/src/platform/config.ts', import.meta.url).href);
+    const { SWITCH_DEFAULTS } = await import(new URL('../packages/bot/src/platform/config.ts', import.meta.url).href);
     const { mergeSwitchInput, SWITCH_MERGES } = await import(new URL('../packages/bot/src/platform/switch-merge.ts', import.meta.url).href);
-    const live = snapshot ? mergedLive(liveValues(readFileSync(join(liveDir, snapshot), 'utf8')), SWITCH_MERGES, DEFAULTS, mergeSwitchInput) : undefined;
+    const live = snapshot ? mergedLive(liveValues(readFileSync(join(liveDir, snapshot), 'utf8')), SWITCH_MERGES, SWITCH_DEFAULTS, mergeSwitchInput) : undefined;
     // 少规矩（fewerRules）开着时，启动时 relaxStyle 把只管说话风格的那几个强制关掉：线上实际是关的
     const { relaxStyle } = await import(new URL('../packages/bot/src/language/fewer-rules.ts', import.meta.url).href);
     const forcedOff = live && onOff(live.fewerRules) === '开'

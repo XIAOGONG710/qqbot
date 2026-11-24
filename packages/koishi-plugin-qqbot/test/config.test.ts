@@ -54,8 +54,8 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             const written = save({ ...minimal, qzone: mode });
             assert.deepEqual(written, mode === 'off' ? omitted : { ...omitted, qzone: mode });
             assert.equal(fromKoishi(written).qzone, mode);
-            // 只写 qzone：签名、翻空间、刷好友动态、刷陌生人跟着它（开关合并）
-            for (const old of ['signature', 'qzoneBrowse', 'qzonePeek', 'qzoneStrangers'] as const) assert.equal(fromKoishi(written)[old], mode, old);
+            // 签名、翻空间、刷好友动态、刷陌生人跟着 qzone（开关合并）：app 只读 qzone，旧字段不在 AppConfig 里
+            for (const old of ['signature', 'qzoneBrowse', 'qzonePeek', 'qzoneStrangers']) assert.equal(old in fromKoishi(written), false, old);
         }
     });
 
@@ -398,7 +398,6 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             assert.equal(fromKoishi({ ...minimal, [key]: true })[key], true, key);
             assert.equal(key in (Config.simplify(Config(minimal as never)) as object), false, key);
         }
-        assert.equal(fromKoishi(minimal).signature, 'off');
         assert.equal(fromKoishi(minimal).bilibili, 'off');
         assert.equal(fromKoishi({ ...minimal, bilibili: 'dryRun' }).bilibili, 'dryRun');
         assert.throws(() => Config({ ...minimal, bilibili: 'maybe' } as never));

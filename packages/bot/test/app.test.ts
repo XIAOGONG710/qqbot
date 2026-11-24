@@ -77,7 +77,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, memes: false, watching: false, biliStickers: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, worldDrama: false, pursuits: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, acquaintances: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, memes: false, watching: false, biliStickers: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, worldDrama: false, pursuits: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, acquaintances: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false,
         media: true,
@@ -2852,7 +2852,7 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
 describe('她知道自己在 QQ 上的样子（ADR 0083）：进提示词', () => {
     test('签名和 3 天内真发的说说进时间块；日志里签名只记字数', async () => {
         const clock = new VirtualClock(new Date(2026, 10, 5, 20, 0));
-        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], schedule: true, herDays: true, signature: 'on' });
+        const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], schedule: true, herDays: true, qzone: 'on' });
         mkdirSync(join(cfg.dataDir, 'presence'), { recursive: true });
         const now = clock.now();
         writeFileSync(join(cfg.dataDir, 'presence', 'presence.json'), JSON.stringify({
@@ -2890,7 +2890,7 @@ describe('全开冒烟（整包上线用）', () => {
             const bili = async (): Promise<{ ok: boolean; status: number; text: () => Promise<string> }> => ({ ok: true, status: 200, text: async () => JSON.stringify({ code: 0, data: { list: [] } }) });
             const cfg = config({
                 contacts: bf, schedule: true, herDays: true, pokes: true, pokeBack: true, pokeOut: true, recalls: true, readReceipts: true,
-                onlineStatus: true, profileLikes: true, signature: 'dryRun', qzone: 'dryRun', bilibili: 'dryRun', typingStatus: true, selfRecall: true,
+                onlineStatus: true, profileLikes: true, qzone: 'dryRun', bilibili: 'dryRun', typingStatus: true, selfRecall: true,
                 rhythm: true, festivals: 'greet', npcAsks: true,
                 herFeelings: true, herNo: true, proactiveInvite: true, photos: true, together: true, comeBack: true, relationship: true, jokes: true, interruptions: true, proactiveAsk: true, weeklyReport: true, jealousy: true, proactiveRoom: true, menu: true, curious: true, smallNews: true, memes: true, watching: true, biliStickers: true, lagTail: true, everydayLife: true, pursuits: true, grievance: true,
             });

@@ -144,12 +144,8 @@ export const DEFAULTS = {
     qqPresence: false,
     onlineStatus: false,
     profileLikes: false,
-    signature: 'off' as PresenceMode,
     qzone: 'off' as PresenceMode,
     qzoneVisibility: 'friends' as QzoneVisibility,
-    qzoneBrowse: 'off' as PresenceMode,
-    qzonePeek: 'off' as PresenceMode,
-    qzoneStrangers: 'off' as PresenceMode,
     groupChat: 'off' as GroupChatMode,
     groupOwn: 'off' as GroupOwnMode,
     groupAgency: 'off' as GroupAgencyMode,
@@ -221,6 +217,21 @@ export const DEFAULTS = {
     proactive: 'off' as ProactiveMode,
     dataDir: 'runtime/bot',
 } as const;
+
+/**
+ * 已并进新键、AppConfig 里已经删掉的旧键原来的默认值（开关合并第一节 6 的步骤 B）：app 不再读它们，
+ * 只给 koishi.yml / config.json 里还写着旧键时的输入映射用（switch-merge.ts 的 fromLegacy 按这里补没写的旧键）。
+ * 线上迁移确认之后跟着 legacy() 表单项、合并表的输入映射一起删
+ */
+export const LEGACY_DEFAULTS = {
+    signature: 'off' as PresenceMode,
+    qzoneBrowse: 'off' as PresenceMode,
+    qzonePeek: 'off' as PresenceMode,
+    qzoneStrangers: 'off' as PresenceMode,
+} as const;
+
+/** 开关合并的输入映射用的默认值：DEFAULTS 加上 AppConfig 里已经删掉的旧键（parseAppConfig、Koishi 迁移、盘点、adr-map 都用这份） */
+export const SWITCH_DEFAULTS: Readonly<Record<string, unknown>> = { ...DEFAULTS, ...LEGACY_DEFAULTS };
 
 /** 独立入口（main.ts）的配置：连 NapCat 的 onebot 一节 + 其余部分 */
 export interface BotConfig extends AppConfig {
@@ -564,18 +575,10 @@ export interface AppConfig {
     onlineStatus: boolean;
     /** @deprecated 已并进 qqPresence（开关合并）：输入只有旧键时原样、否则由 qqPresence 派生；新代码读 qqPresence。资料卡点赞（ADR 0083）：约 80% 的日子给男朋友档点 1–5 个赞（send_like）。默认关 */
     profileLikes: boolean;
-    /** @deprecated 已并进 qzone（开关合并）：输入只有旧键时原样、否则由 qzone 派生；新代码读 qzone。个性签名（ADR 0083）：隔 3–5 天换一条（set_self_longnick）；dryRun 只写草稿不改。默认关 */
-    signature: PresenceMode;
     /** QQ 空间说说（ADR 0083）：一周两三条，用最低隐私档的卡写（send_qzone_msg）；dryRun 只写草稿不发。默认关 */
     qzone: PresenceMode;
     /** 说说谁能看：friends 仅好友（默认）/ public 所有人（可能进「空友爱看」被陌生人看到） */
     qzoneVisibility: QzoneVisibility;
-    /** @deprecated 已并进 qzone（开关合并）：输入只有旧键时原样、否则由 qzone 派生；新代码读 qzone。她自己翻空间动态（ADR 0142，「空友爱看」那种混着陌生人的流）：读一页、记下「刚才看到什么」，dryRun 只写草稿。默认关 */
-    qzoneBrowse?: PresenceMode;
-    /** @deprecated 已并进 qzone（开关合并）：输入只有旧键时原样、否则由 qzone 派生；新代码读 qzone。看名单里好友的空间（ADR 0143，用她自己的登录态走 Qzone 网页接口）：10:00–22:00、每 4 小时最多一次、一次看一个人。默认关 */
-    qzonePeek?: PresenceMode;
-    /** @deprecated 已并进 qzone（开关合并）：输入只有旧键时原样、否则由 qzone 派生；新代码读 qzone。刷平台推的陌生人说说（ADR 0144，「空友爱看」那种流）：09:00–23:00、每 3 小时最多一次；只读、只留正文样本。默认关 */
-    qzoneStrangers?: PresenceMode;
     /** 群聊（ADR 0210）：off 关 / read 只看只记不说话 / dryRun 写草稿不发 / on 发。只在 groups 名单里的群。默认 off */
     groupChat?: GroupChatMode;
     /** 群里她也有自己（ADR 0341）：off 关 / dryRun 她自己冒的那句（冷场、有事）只写草稿，别的回话照旧 / on 每次开口都带着她此刻（同学能知道的）和她定的边界，冷场有事会自己冒一句。要开着 groupChat。默认 off */
@@ -796,7 +799,7 @@ export function loadConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.en
 
 /** 开关合并（switch-merge.ts）给日志的说明：旧键读成了哪个新键、两边都写了以哪边为准；parseAppConfig 不带日志，调用方解析之后自己打 */
 export function configSwitchNotes(file: Json, merges: readonly SwitchMerge[] = SWITCH_MERGES): string[] {
-    return switchMergeNotes(file, DEFAULTS as unknown as Json, merges);
+    return switchMergeNotes(file, SWITCH_DEFAULTS as Json, merges);
 }
 
 /**
@@ -804,7 +807,7 @@ export function configSwitchNotes(file: Json, merges: readonly SwitchMerge[] = S
  * 先按开关合并表规范化输入（switch-merge.ts；表是空的就原样）。merges 只给测试换表用
  */
 export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.ProcessEnv = process.env, merges: readonly SwitchMerge[] = SWITCH_MERGES): AppConfig {
-    file = mergeSwitchInput(file, DEFAULTS as unknown as Json, merges);
+    file = mergeSwitchInput(file, SWITCH_DEFAULTS as Json, merges);
     const apiKey = env.QQBOT_LLM_API_KEY;
     if (!apiKey) throw new Error('缺少环境变量 QQBOT_LLM_API_KEY');
 
@@ -1019,12 +1022,8 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qqPresence: bool(file, 'qqPresence', '', DEFAULTS.qqPresence),
         onlineStatus: bool(file, 'onlineStatus', '', DEFAULTS.onlineStatus),
         profileLikes: bool(file, 'profileLikes', '', DEFAULTS.profileLikes),
-        signature: oneOf(file.signature, 'signature', PRESENCE_MODES, DEFAULTS.signature),
         qzone: oneOf(file.qzone, 'qzone', PRESENCE_MODES, DEFAULTS.qzone),
         qzoneVisibility: oneOf(file.qzoneVisibility, 'qzoneVisibility', QZONE_VISIBILITIES, DEFAULTS.qzoneVisibility),
-        qzoneBrowse: oneOf(file.qzoneBrowse, 'qzoneBrowse', PRESENCE_MODES, DEFAULTS.qzoneBrowse),
-        qzonePeek: oneOf(file.qzonePeek, 'qzonePeek', PRESENCE_MODES, DEFAULTS.qzonePeek),
-        qzoneStrangers: oneOf(file.qzoneStrangers, 'qzoneStrangers', PRESENCE_MODES, DEFAULTS.qzoneStrangers),
         groupChat: oneOf(file.groupChat, 'groupChat', GROUP_CHAT_MODES, DEFAULTS.groupChat),
         groupOwn: oneOf(file.groupOwn, 'groupOwn', GROUP_OWN_MODES, DEFAULTS.groupOwn),
         groupAgency: oneOf(file.groupAgency, 'groupAgency', GROUP_AGENCY_MODES, DEFAULTS.groupAgency),

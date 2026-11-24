@@ -147,13 +147,14 @@ describe('说说用哪张卡（隐私：公开的地方用最低隐私档）', (
         h.owner.start();
         assert.deepEqual(h.cardsAsked, ['stranger', 'classmate']);
         assert.ok(h.logs.includes('存在感：陌生人档和同学档的卡都读不了，不写说说'));
-        assert.equal(h.logs.at(-1), '存在感：在线状态', '起来的清单里没有说说');
+        // qzone 开着时签名、翻空间等跟着起（开关合并），只是没有说说
+        assert.equal(h.logs.at(-1), '存在感：在线状态、个性签名（真改）、翻空间（记进提示词）、看好友空间（记进提示词）、刷陌生人（记进提示词 + 留样本）', '起来的清单里没有说说');
     });
 });
 
 describe('名单：点赞、看空间、戳他', () => {
     test('看好友空间只看用户点名的人（qqAllowFriends），名单里别的人不看', async () => {
-        const h = harness({ config: { qzonePeek: 'dryRun', qqAllowFriends: [OTHER.qq] } });
+        const h = harness({ config: { qzone: 'dryRun', qqAllowFriends: [OTHER.qq] } });
         h.owner.start();
         await flush();
         assert.deepEqual(h.calls.filter(c => c.startsWith('peek:')), [`peek:${OTHER.qq}`]);
@@ -161,7 +162,7 @@ describe('名单：点赞、看空间、戳他', () => {
     });
 
     test('没点名任何人：一个空间都不看', async () => {
-        const h = harness({ config: { qzonePeek: 'on' } });
+        const h = harness({ config: { qzone: 'on' } });
         h.owner.start();
         await flush();
         assert.deepEqual(h.calls.filter(c => c.startsWith('peek:')), []);

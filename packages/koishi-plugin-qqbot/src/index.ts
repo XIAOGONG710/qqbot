@@ -18,7 +18,7 @@ import { attachCompanionWebSocket, type CompanionWebSocketLike } from '@qqbot/mo
 import { createCompanionKoaActionPollHandler, createCompanionKoaEnvelopeHandler, createCompanionKoaMediaHandler } from '@qqbot/mobile-companion/koa';
 import type { HistoryMessage } from '../../bot/src/memory/backfill.ts';
 import type { WebMode } from '../../bot/src/platform/web.ts';
-import { CONTACT_TIERS, configSwitchNotes, DEFAULTS, parseAppConfig, type AppConfig, type ContactTier, type DeliberationMode, type OneLifeMode, type StickerMode } from '../../bot/src/platform/config.ts';
+import { CONTACT_TIERS, configSwitchNotes, DEFAULTS, parseAppConfig, SWITCH_DEFAULTS, type AppConfig, type ContactTier, type DeliberationMode, type OneLifeMode, type StickerMode } from '../../bot/src/platform/config.ts';
 import { createLog, type Log } from '../../bot/src/platform/log.ts';
 import { createPromptManifestLog } from '../../bot/src/platform/prompt-manifest.ts';
 import { FEATURES, featureDetail, type FeatureDef } from '../../bot/src/platform/features.ts';
@@ -870,7 +870,7 @@ export function legacy<T extends string | boolean = boolean>(values?: readonly T
  * （照 migrateThinking：写回 koishi.yml、插件按新配置重启，行为不变）；没有可迁移的组就返回 undefined。
  * 表达不了的组不动（照旧按旧键跑，switchMergeNotes 记日志）。合并表是空的时永远返回 undefined。
  */
-export function migrateSwitches(config: Config, merges: readonly SwitchMerge[] = SWITCH_MERGES, defaults: Record<string, unknown> = DEFAULTS as unknown as Record<string, unknown>): Config | undefined {
+export function migrateSwitches(config: Config, merges: readonly SwitchMerge[] = SWITCH_MERGES, defaults: Readonly<Record<string, unknown>> = SWITCH_DEFAULTS): Config | undefined {
     const moves = switchMigrations(config, merges, defaults);
     if (!moves.length) return;
     const migrated: Record<string, unknown> = { ...config };
@@ -882,7 +882,7 @@ export function migrateSwitches(config: Config, merges: readonly SwitchMerge[] =
 }
 
 /** migrateSwitches 会迁的那几组：哪一组、写着哪些旧键、并成什么值（日志用） */
-export function switchMigrations(config: Config, merges: readonly SwitchMerge[] = SWITCH_MERGES, defaults: Record<string, unknown> = DEFAULTS as unknown as Record<string, unknown>): { merge: SwitchMerge; written: string[]; value: unknown }[] {
+export function switchMigrations(config: Config, merges: readonly SwitchMerge[] = SWITCH_MERGES, defaults: Readonly<Record<string, unknown>> = SWITCH_DEFAULTS): { merge: SwitchMerge; written: string[]; value: unknown }[] {
     const source = config as unknown as Record<string, unknown>;
     // 新起名字的组只看旧键：表单给新键补了默认值，在这里不算「写了新键」（见 routeSwitchInput）；existing 的组新键本来就算数
     const legacyOnly = (merge: SwitchMerge) => merge.existing ? source : { ...source, [merge.key]: undefined };

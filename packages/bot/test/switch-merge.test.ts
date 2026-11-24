@@ -2,7 +2,7 @@
 // 最后一节核对真表：线上快照（test/fixtures/live-switches.ts）里每一组都能并、迁移前后解析出来一样。
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { configSwitchNotes, DEFAULTS, parseAppConfig } from '../src/platform/config.ts';
+import { configSwitchNotes, LEGACY_DEFAULTS, parseAppConfig, SWITCH_DEFAULTS } from '../src/platform/config.ts';
 import { FEATURES } from '../src/platform/features.ts';
 import { checkSwitchMerges, legacySwitchKeys, legacyValue, mergeSwitchInput, representable, SWITCH_MERGES, switchMergeNotes, writtenLegacy, type SwitchMerge } from '../src/platform/switch-merge.ts';
 import { LIVE_2026_11_20, LIVE_LATER_ON } from './fixtures/live-switches.ts';
@@ -106,28 +106,28 @@ describe('existing：新键合并前就是开关（照「QQ 空间」的形状�
         key: 'qzone',
         existing: true,
         values: ['off', 'dryRun', 'on'],
-        legacy: ['qzoneBrowse', 'qzonePeek'],
+        legacy: ['deviceControl', 'groupChat'],
         fromLegacy: input => input.qzone,
-        toLegacy: value => ({ qzoneBrowse: value, qzonePeek: value }),
+        toLegacy: value => ({ deviceControl: value, groupChat: value }),
     };
     const parse = (file: Record<string, unknown>, merges: readonly SwitchMerge[] = [qzone]) => parseAppConfig({ ...base, ...file }, '/repo', env, merges);
 
     test('写着旧键（线上 koishi.yml 现在的样子）：新键也写着也按「只有旧键」，旧字段原样，和今天解析的一样', () => {
         for (const file of [
-            { qzone: 'on', qzoneBrowse: 'on', qzonePeek: 'on' },
-            { qzone: 'on', qzoneBrowse: 'dryRun' }, // 对不上的也原样
-            { qzoneBrowse: 'on' },
+            { qzone: 'on', deviceControl: 'on', groupChat: 'on' },
+            { qzone: 'on', deviceControl: 'dryRun' }, // 对不上的也原样
+            { deviceControl: 'on' },
         ]) {
             assert.deepEqual(parse(file), parse(file, []), JSON.stringify(file));
         }
-        assert.match(configSwitchNotes({ qzone: 'on', qzoneBrowse: 'dryRun' }, [qzone])[0]!, /已并进 qzone（= on）.*对不上：qzoneBrowse=dryRun/);
+        assert.match(configSwitchNotes({ qzone: 'on', deviceControl: 'dryRun' }, [qzone])[0]!, /已并进 qzone（= on）.*对不上：deviceControl=dryRun/);
     });
 
     test('只写新键：app 照旧读得到派生出来的旧字段', () => {
         const config = parse({ qzone: 'dryRun' });
         assert.equal(config.qzone, 'dryRun');
-        assert.equal(config.qzoneBrowse, 'dryRun');
-        assert.equal(config.qzonePeek, 'dryRun');
+        assert.equal(config.deviceControl, 'dryRun');
+        assert.equal(config.groupChat, 'dryRun');
     });
 
     test('新起名字的组：两边都写了以新键为准，旧字段跟着新键', () => {
@@ -149,7 +149,7 @@ describe('existing：新键合并前就是开关（照「QQ 空间」的形状�
 });
 
 describe('真表：已经并了的组', () => {
-    const defaults = DEFAULTS as unknown as Record<string, unknown>;
+    const defaults = SWITCH_DEFAULTS as Record<string, unknown>;
     /** 线上快照（11-20 那份 + 之后补开的）里每一组旧键并成的新值 */
     const LIVE = { ...LIVE_2026_11_20, ...LIVE_LATER_ON };
     const EXPECTED_LIVE: Record<string, unknown> = {
@@ -250,7 +250,11 @@ describe('真表：已经并了的组', () => {
                 const config = parse({ [merge.key]: value }) as unknown as Record<string, unknown>;
                 assert.deepEqual(config[merge.key], value, merge.key);
                 const derived = merge.toLegacy(value, config);
-                for (const old of merge.legacy) assert.deepEqual(config[old], derived[old], `${merge.key}=${String(value)} → ${old}`);
+                for (const old of merge.legacy) {
+                    // 步骤 B 做完的组：旧字段已经从 AppConfig 删掉（app 只读新键）
+                    if (old in LEGACY_DEFAULTS) assert.equal(old in config, false, `${old} 已从 AppConfig 删掉`);
+                    else assert.deepEqual(config[old], derived[old], `${merge.key}=${String(value)} → ${old}`);
+                }
             }
             const none = parse({}) as unknown as Record<string, unknown>;
             assert.deepEqual(none[merge.key], defaults[merge.key], `${merge.key} 默认值`);

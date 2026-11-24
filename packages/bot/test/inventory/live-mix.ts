@@ -12,7 +12,7 @@ import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AppConfig, Contact } from '../../src/platform/config.ts';
-import { DEFAULTS } from '../../src/platform/config.ts';
+import { DEFAULTS, SWITCH_DEFAULTS } from '../../src/platform/config.ts';
 import { mergeSwitchInput, SWITCH_MERGES } from '../../src/platform/switch-merge.ts';
 import { MANIFEST_FILE, MANIFEST_KINDS, SLOT_KINDS, type ManifestKind, type PromptManifest } from '../../src/platform/prompt-manifest.ts';
 import { runScenario, type LlmCall, type Replier, type Scenario } from '../baseline/harness.ts';
@@ -70,7 +70,7 @@ export function liveSwitches(text: string, source = ''): LiveSwitches {
         (p): p is Record<string, unknown> => Boolean(p && typeof p === 'object' && 'contacts' in p),
     );
     if (!plugin) throw new Error('快照里找不到 qqbot 插件的配置');
-    const defaults = DEFAULTS as unknown as Record<string, unknown>;
+    const defaults = SWITCH_DEFAULTS as Record<string, unknown>;
     const config: Record<string, unknown> = {};
     const on: string[] = [];
     const unknown: string[] = [];
