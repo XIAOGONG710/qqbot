@@ -177,6 +177,17 @@ describe('backup completion policy', () => {
         });
     });
 
+    test('state backup excludes runtime lease files and transient heartbeats but keeps the published heartbeat', () => {
+        const root = fresh();
+        const active = join(root, 'runtime', 'bot');
+        mkdirSync(active, { recursive: true });
+        writeFileSync(join(active, 'heartbeat.json'), '{}', 'utf8');
+        writeFileSync(join(active, 'heartbeat.json.tmp-23120-107'), '{}', 'utf8');
+        writeFileSync(join(active, 'bot.coordination.sqlite'), '');
+        writeFileSync(join(active, 'bot.coordination.sqlite-journal'), '');
+        assert.deepEqual(discoverStateBackup(root).items, [join(active, 'heartbeat.json')]);
+    });
+
     test('state backup includes complete AI photo draft and reference directories for index and file recovery', () => {
         const root = fresh();
         const active = join(root, 'runtime', 'bot');

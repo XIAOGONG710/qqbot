@@ -325,9 +325,11 @@ async function check() {
     const nowHour = new Date().getHours();
     if (nowHour >= BACKUP_HOUR) {
         try {
-            execFileSync(process.execPath, ['scripts/backup.mjs'], { cwd: root, timeout: 15 * 60_000, stdio: 'ignore' });
+            execFileSync(process.execPath, ['scripts/backup.mjs'], { cwd: root, timeout: 15 * 60_000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
         } catch (error) {
-            say(`备份：没做成（${error instanceof Error ? error.message.split(String.fromCharCode(10))[0] : String(error)}）`);
+            const details = error?.stdout?.split(/\r?\n/).filter(line => /^\[backup\].*(失败|拒绝|没找到)/.test(line));
+            const reason = details?.length ? details.join('；') : String(error?.message ?? error).split('\n')[0];
+            say(`备份：没做成（${reason}）`);
         }
         await checkBackupHealth();
     }

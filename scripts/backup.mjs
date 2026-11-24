@@ -5,6 +5,7 @@
 // 用法：
 //   node scripts/backup.mjs            # 今天没有就做一份（服务守护每天调一次）
 //   node scripts/backup.mjs --now      # 强制做一份
+//   node scripts/backup.mjs --retry-now --keep-old  # 立即补做缺失部分，保留旧备份
 //
 // 依赖：pg_dump（在 .pg0 的安装目录里）、powershell 的 Compress-Archive。
 import { execFileSync } from 'node:child_process';
@@ -31,6 +32,8 @@ const stamp = new Date();
 const day = `${stamp.getFullYear()}-${String(stamp.getMonth() + 1).padStart(2, '0')}-${String(stamp.getDate()).padStart(2, '0')}`;
 const target = join(backupDir, day);
 const force = process.argv.includes('--now');
+const retryNow = process.argv.includes('--retry-now');
+const keepOld = process.argv.includes('--keep-old');
 
 const log = (message) => console.log(`[backup] ${message}`);
 
@@ -84,13 +87,15 @@ function archiveState(reuse, plan) {
     }
     try {
         execFileSync('powershell.exe', ['-NoProfile', '-Command',
-            `Compress-Archive -Path ${plan.items.map(item => `'${item.replace(/'/g, "''")}'`).join(',')} -DestinationPath '${zip}' -Force`],
-        { timeout: 10 * 60_000, stdio: 'ignore' });
+            `$ErrorActionPreference = 'Stop'; Compress-Archive -LiteralPath ${plan.items.map(item => `'${item.replace(/'/g, "''")}'`).join(',')} -DestinationPath '${zip.replace(/'/g, "''")}' -Force`],
+        { timeout: 10 * 60_000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
         const bytes = statSync(zip).size;
         log(`状态打包好：her-state.zip（${(bytes / 1024 / 1024).toFixed(1)} MB）`);
         return { ok: true, source: plan.source, bytes };
     } catch (error) {
-        const reason = error instanceof Error ? error.message.split('\n')[0] : String(error);
+        const diagnostic = error?.stderr?.trim().split(/\r?\nAt (?:line:|[^\r\n]+:\d+ char:)/)[0];
+        const reason = diagnostic?.replace(/\r?\n\s*/g, ' ')
+            || (error instanceof Error ? error.message.split('\n')[0] : String(error));
         log(`状态打包失败：${reason}`);
         return { ok: false, reason };
     }
@@ -113,7 +118,7 @@ if (!force && isCompleteBackup(target, statePlan?.source ?? null)) {
     log(`今天已经有备份了（${day}），跳过`);
     process.exit(0);
 }
-if (!force && existsSync(target) && !retryDue(target)) {
+if (!force && !retryNow && existsSync(target) && !retryDue(target)) {
     log('上次备份不完整，30 分钟后再重试');
     process.exit(0);
 }
@@ -137,7 +142,7 @@ if (database.ok && state.ok) {
 } else {
     writeBackupMarker(target, FAILURE_MARKER, { completed: false, attemptedAt, components });
 }
-prune();
+if (!keepOld) prune();
 if (database.ok && state.ok) {
     log(`完成：${target}`);
 } else {

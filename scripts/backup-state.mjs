@@ -79,7 +79,9 @@ export function discoverStateBackup(root, configured) {
             return { source, items: [], invalid: true };
         }
         const items = entries
-            .filter(entry => !['logs', 'secrets', 'bot.lock', 'last-prompt.json'].includes(entry.name))
+            .filter(entry => !['logs', 'secrets', 'bot.lock', 'last-prompt.json',
+                'bot.coordination.sqlite', 'bot.coordination.sqlite-journal'].includes(entry.name))
+            .filter(entry => !/^heartbeat\.json\.tmp-/i.test(entry.name))
             .filter(entry => !/^config(?:\.|$)/i.test(entry.name))
             .map(entry => join(directory, entry.name));
         return { source, items };
