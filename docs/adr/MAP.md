@@ -59,7 +59,7 @@
 | [0049](0049-chat-day-markers.md) | 聊天记录隔天插日期 | 已上线（2026-10-10 13:28，`main` = `integration` = `1e86548`（`rel… |  |
 | [0050](0050-rain-proactive.md) | 下雨了她主动找他 | 已上线（2026-10-10 13:28，`main` = `integration` = `1e86548`（`rel… |  |
 | [0051](0051-qq-faces.md) | QQ 小黄脸两个方向都通 | 已上线（2026-10-10 13:28，`main` = `integration` = `1e86548`（`rel… |  |
-| [0052](0052-voice-and-images.md) | 他发的语音和图片，她「听得到、看得到字」 | 已上线（2026-10-10 13:28，`main` = `integration` = `1e86548`（`rel… | `media` 默认 |
+| [0052](0052-voice-and-images.md) | 他发的语音和图片，她「听得到、看得到字」 | 已上线（2026-10-10 13:28，`main` = `integration` = `1e86548`（`rel… | `media` 开 |
 | [0053](0053-buying-the-camera.md) | 攒够了，这周末去买相机 | 已上线（2026-10-10 18:31，`main` = `07bfe16`，用户同意后重启 Koishi；上线前 b… |  |
 | [0054](0054-life-ledger-in-prompt.md) | 生活账接进提示词（第一步）——她这几天练拍照修图 | 已实现，开关默认关（配置 `lifeInPrompt`）；等影子账满两整天再审一次（10-11 15:00 以后），干净… |  |
 | [0055](0055-deepseek-vision.md) | 用现有 DeepSeek 接口看懂图片 | 已实现，默认关；尚未上线 |  |
@@ -200,7 +200,7 @@
 | [0203](0203-fact-check-him.md) | 事实检查多查一类——她替他说的事 | 已实现，新开关 `factHim`，默认关；要 `factCheck` 开着（`log` 只记、`fix` 带说明重写）… | `factCheck`（原 `factHim`） 开 |
 | [0204](0204-reading-takes.md) | 她读完 / 看完之后自己想的 | 已实现，新开关 `readingTakes`，默认关；要名单里有男朋友档。DSH 那台机器拉取、在 `koishi.ym… | `readingTakes` 开 |
 | [0205](0205-trope-shares.md) | 几种“一看就是 AI”的说法——只数给她看，不禁 | 已实现，没有新开关：只是给已有的两处多一句数字——每晚想说话习惯（`speechNotes`）的提示词，和 `/说话趋势… |  |
-| [0206](0206-read-his-stickers.md) | 他发来的表情包，她看得懂（`readStickers`） | 已实现，默认关，未上线（分支 `claude/self-pursuits`；全量测试见文末） | `readStickers` 开 |
+| [0206](0206-read-his-stickers.md) | 他发来的表情包，她看得懂（`readStickers`） | 已实现，默认关，未上线（分支 `claude/self-pursuits`；全量测试见文末） | `media`（原 `readStickers`） 开 |
 | [0207](0207-open-questions.md) | 她没想完的问题 | 已实现，新开关 `openQuestions`，默认关；要名单里有男朋友档。DSH 那台机器拉取、在 `koishi.y… | `openQuestions` 开 |
 | [0208](0208-doubt-and-her-own-existence.md) | 她可以怀疑自己，也知道自己存在的真实情况 | 已实现，没有新开关（改的是她独处想事情的提示、卡里「被问是不是 AI」那一段和两个场景）；已合进 `dsh/qq-con… |  |
 | [0209](0209-strangers.md) | 陌生人私聊——签名写明是 AI、每天上限、只打招呼先不回、未成年人不陪 | 已删（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtractio… |  |

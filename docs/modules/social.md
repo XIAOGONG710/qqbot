@@ -49,11 +49,10 @@
 | 配置 | 功能 | ADR |
 | --- | --- | --- |
 | `biliStickers` | 表情包自己在 B 站找（顶替小黄脸） | [ADR 0132](../adr/0132-bili-stickers.md) |
-| `readStickers` | 看懂他发的表情包（先抄图上的字、再说画面；要看图模型） | [ADR 0206](../adr/0206-read-his-stickers.md) |
 | `photos` | 照片货架（网上找高清图） | [ADR 0109](../adr/0109-photo-shelf.md) |
 | `aiPhotos` | AI 生活照草稿（人工审核后才可用） | [ADR 0240](../adr/0240-world-and-qq-ai-photo-requests.md) |
 | `stickers` | 图片表情（模式）：第一阶段只处理男朋友档。先用「只收藏核对」观察描述；完成真图核对和 NapCat 真发预检后，再选「收藏并发送」。需要打开「看懂图片内容」，默认关。 | [ADR 0063](../adr/0063-image-stickers.md) |
-| `media` | 听语音、看图 | [ADR 0052](../adr/0052-voice-and-images.md) |
+| `media` | 听语音、看图（并进来的：`readStickers` 看懂他发的表情包（先抄图上的字、再说画面；要看图模型）（[ADR 0206](../adr/0206-read-his-stickers.md)）） | [ADR 0052](../adr/0052-voice-and-images.md) |
 | `pokes` | 被戳会回 | [ADR 0079](../adr/0079-poke.md) |
 | `pokeBack` | 戳回去 | [ADR 0079](../adr/0079-poke.md) |
 | `pokeOut` | 主动戳他 | [ADR 0087](../adr/0087-poke-out.md) |

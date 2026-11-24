@@ -61,7 +61,7 @@ describe('示例组：两个旧键 → 一个新键', () => {
     });
 
     test('新键的值不合法：报错；输入本身不被改动', () => {
-        assert.throws(() => merge({ lamp: 'yes' }), /配置 lamp 应为 false \/ true 之一/);
+        assert.throws(() => merge({ lamp: 'yes' }), /配置 lamp 应为 true 或 false/);
         const input = { lampA: true };
         merge(input);
         assert.deepEqual(input, { lampA: true });
@@ -157,6 +157,7 @@ describe('真表：已经并了的组', () => {
         factCheck: 'fix',
         qqControl: 'on',
         autonomousLife: true,
+        media: true,
     };
     const env = { QQBOT_LLM_API_KEY: 'k' };
     const base = {

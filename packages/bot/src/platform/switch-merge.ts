@@ -68,6 +68,8 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
     },
     // 4. 生活账（12）：作业接管空闲、生活账进提示词都要 autonomousLife 的账，跟着它
     follows('autonomousLife', BOOL, ['projectChoice', 'lifeInPrompt']),
+    // 5. 看图（16）：看懂他发的表情包跟着「听语音、看图」。新装默认从「不读表情包」变成读（仍要配看图模型才真读，app.ts 的 stickerReader）
+    follows('media', BOOL, ['readStickers']),
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */
@@ -91,6 +93,8 @@ function filled(merge: SwitchMerge, input: Input, defaults: Input): Input {
 
 function checkValue(merge: SwitchMerge, value: unknown): void {
     if (!merge.values.includes(value)) {
+        // 开 / 关的说法和 config.ts 的 bool() 一样（旧报错信息不变）
+        if (merge.values.length === 2 && merge.values.includes(true) && merge.values.includes(false)) throw new Error(`配置 ${merge.key} 应为 true 或 false`);
         throw new Error(`配置 ${merge.key} 应为 ${merge.values.map(v => JSON.stringify(v)).join(' / ')} 之一`);
     }
 }

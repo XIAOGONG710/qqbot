@@ -614,7 +614,7 @@ export interface AppConfig {
     depthRouting?: boolean;
     /** @deprecated 已并进 factCheck（开关合并）：输入只有旧键时原样、否则由 factCheck 派生；新代码读 factCheck。事实检查多查一类（ADR 0203）：默认关；要 factCheck 开着（log 只记、fix 带说明重写）。审稿是同一次调用，只是多一类规则 */
     factHim?: boolean;
-    /** 看懂他发的表情包（ADR 0206）：默认关；要 media 和看图模型（vision）开着，只对名单里的人。读过的缓存在 stickers/read-cache.json，同一张只读一次 */
+    /** @deprecated 已并进 media（开关合并）：输入只有旧键时原样、否则由 media 派生；新代码读 media。看懂他发的表情包（ADR 0206）：默认关；要 media 和看图模型（vision）开着，只对名单里的人。读过的缓存在 stickers/read-cache.json，同一张只读一次 */
     readStickers?: boolean;
     /** 她读完 / 看完之后自己想的（ADR 0204）：默认关；要名单里有男朋友档。每晚 22 点以后想一次，有话想说才写，没想法就空着；存在 reading-takes.json（她的私人空间，没有命令念给他） */
     readingTakes?: boolean;

@@ -69,7 +69,7 @@ describe('routeSwitchInput：新键和旧键哪个往下传', () => {
         assert.deepEqual(routed, { qzone: 'on', qzoneBrowse: 'on', qzonePeek: 'dryRun' });
         // 对不上 → 不迁；解析出来和今天一样（旧字段原样）
         assert.equal(migrateSwitches(config, [qzone]), undefined);
-        const today = parseAppConfig(toAppConfigInput(config), repoRoot, env);
+        const today = parseAppConfig(toAppConfigInput(config), repoRoot, env, []);
         const merged = parseAppConfig(routeSwitchInput(config, toAppConfigInput(config), [qzone]), repoRoot, env, [qzone]);
         assert.deepEqual(merged, today);
     });
@@ -92,7 +92,7 @@ describe('迁移前后行为不变（真实键名的示例组，照「留痕」�
             assert.ok(migrated);
             const fields = (config: Record<string, unknown>) => [config.ledgersExample, config.identityLedger, config.memoryAudit];
             assert.deepEqual(fields(migrated as never), [value, undefined, undefined]);
-            const today = parseAppConfig(toAppConfigInput(old), repoRoot, env);
+            const today = parseAppConfig(toAppConfigInput(old), repoRoot, env, []);
             assert.deepEqual(parseWith(old), today);
             assert.deepEqual(parseWith(migrated), today);
         });

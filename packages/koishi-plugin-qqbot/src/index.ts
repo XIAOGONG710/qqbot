@@ -297,7 +297,8 @@ export interface Config {
     depthRouting: boolean;
     /** 已并进 factCheck（开关合并），koishi.yml 里还写着才有 */
     factHim?: boolean;
-    readStickers: boolean;
+    /** 已并进 media（开关合并），koishi.yml 里还写着才有 */
+    readStickers?: boolean;
     readingTakes: boolean;
     hisReactions: boolean;
     herGuesses: boolean;
@@ -505,7 +506,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         feelingReview: toggle('feelingReview'),
         memoryReconcile: toggle('memoryReconcile'),
         depthRouting: toggle('depthRouting'),
-        readStickers: toggle('readStickers'),
+        readStickers: legacy(),
         factHim: legacy(),
         openQuestions: toggle('openQuestions'),
         readingTakes: toggle('readingTakes'),
