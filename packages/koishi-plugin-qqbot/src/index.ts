@@ -188,11 +188,16 @@ export interface Config {
     pokeOut: boolean;
     readReceipts: boolean;
     bilibili: PresenceMode;
-    bilibiliAccount: boolean;
-    biliFeed: PresenceMode;
-    bilibiliComment: PresenceMode;
-    bilibiliDm: PresenceMode;
-    bilibiliReplies: PresenceMode;
+    /** 已并进 bilibili（开关合并），koishi.yml 里还写着才有 */
+    bilibiliAccount?: boolean;
+    /** 已并进 watching（开关合并），koishi.yml 里还写着才有 */
+    biliFeed?: PresenceMode;
+    /** 已并进 bilibili（开关合并），koishi.yml 里还写着才有 */
+    bilibiliComment?: PresenceMode;
+    /** 已并进 bilibili（开关合并），koishi.yml 里还写着才有 */
+    bilibiliDm?: PresenceMode;
+    /** 已并进 bilibili（开关合并），koishi.yml 里还写着才有 */
+    bilibiliReplies?: PresenceMode;
     bilibiliCommentKeywords: string[];
     proactiveReach: boolean;
     proactiveInvite: boolean;
@@ -212,7 +217,8 @@ export interface Config {
     smallNews: boolean;
     memes: boolean;
     watching: boolean;
-    biliStickers: boolean;
+    /** 已并进 bilibili（开关合并），koishi.yml 里还写着才有 */
+    biliStickers?: boolean;
     quoteReply: boolean;
     deviceControl: PresenceMode;
     deviceLinks: string[];
@@ -240,7 +246,8 @@ export interface Config {
     timeline: boolean;
     webLookup: WebMode;
     tastes: boolean;
-    acquaintances: boolean;
+    /** 已并进 bilibili（开关合并），koishi.yml 里还写着才有 */
+    acquaintances?: boolean;
     bilibiliAtName: string;
     bilibiliAtUid: number;
     onlineStatus: boolean;
@@ -387,11 +394,11 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         pokes: toggle('pokes'),
         recalls: toggle('recalls'),
         bilibili: choice('bilibili'),
-        biliFeed: choice('biliFeed'),
-        bilibiliAccount: toggle('bilibiliAccount'),
-        bilibiliComment: choice('bilibiliComment'),
-        bilibiliDm: choice('bilibiliDm'),
-        bilibiliReplies: choice('bilibiliReplies'),
+        biliFeed: legacy(PRESENCE_MODES),
+        bilibiliAccount: legacy(),
+        bilibiliComment: legacy(PRESENCE_MODES),
+        bilibiliDm: legacy(PRESENCE_MODES),
+        bilibiliReplies: legacy(PRESENCE_MODES),
         bilibiliCommentKeywords: Schema.array(Schema.string()).default([...DEFAULTS.bilibiliCommentKeywords])
             .description('**评论的话题关键词**（ADR 0092）：填了，评论就不再跟着分享走，而是她自己每天按其中一个关键词搜视频（比如「大肥鱼 插件」「DSH 插件」「deepseek harness」），在播放多的前几个里挑一个，读字幕和热评后评论并 @ 他。不看分区，所以 AI 视频、DSH 插件视频搜得到；约一半的日子想评论一次，仍受「隔至少一天、一周最多 3 条」管。前期专评 AI 视频和 DSH 插件视频用。不填就是老样子（分享之后在那个视频下评论）。最多 10 个，每个不超过 30 个字'),
         proactiveReach: toggle('proactiveReach'),
@@ -412,7 +419,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         smallNews: toggle('smallNews'),
         memes: toggle('memes'),
         watching: toggle('watching'),
-        biliStickers: toggle('biliStickers'),
+        biliStickers: legacy(),
         quoteReply: toggle('quoteReply'),
         deviceControl: choice('deviceControl'),
         deviceLinks: Schema.array(Schema.string()).default([...DEFAULTS.deviceLinks])
@@ -444,7 +451,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         webLookup: choice('webLookup'),
         dormancy: toggle('dormancy'),
         tastes: toggle('tastes'),
-        acquaintances: toggle('acquaintances'),
+        acquaintances: legacy(),
         bilibiliAtName: Schema.string().default(DEFAULTS.bilibiliAtName)
             .description('**要 @ 的人的 B 站昵称**（ADR 0089）：评论最前面会写 @昵称；不含 @ 和换行'),
         bilibiliAtUid: Schema.number().default(DEFAULTS.bilibiliAtUid)

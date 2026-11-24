@@ -76,6 +76,23 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
         key: 'realWorld', values: BOOL, legacy: ['realWeather', 'realAirQuality', 'realDaylight', 'realCalendar'],
         fromLegacy: input => input.realWeather === true,
         toLegacy: value => ({ realWeather: value, realAirQuality: value, realDaylight: value, realCalendar: value }),
+    },    // 7. B 站（3）：她的 B 站号、私信、回复、话题评论、认识的人、B 站表情包都跟着 bilibili；「刷到视频分享给他」跟着 watching（看什么由它定，发不发由 bilibili 定）。
+    //    watching 单留（watched 场景只开它、不开 bilibili）。B 站表情包还要「图片表情」开着：没开时它本来不起作用
+    {
+        key: 'bilibili', existing: true, values: PRESENCE,
+        legacy: ['bilibiliAccount', 'bilibiliDm', 'bilibiliReplies', 'bilibiliComment', 'acquaintances', 'biliStickers'],
+        fromLegacy: input => input.bilibili,
+        toLegacy: (value, config) => ({
+            bilibiliAccount: value !== 'off', bilibiliDm: value, bilibiliReplies: value, bilibiliComment: value, acquaintances: value !== 'off',
+            biliStickers: value !== 'off' && (config.stickers ?? 'off') !== 'off',
+        }),
+        ignorable: (key, input) => key === 'biliStickers' && (input.stickers ?? 'off') === 'off',
+    },
+    // 要排在 bilibili 后面：派生 biliFeed 时读的是已经定下来的 bilibili
+    {
+        key: 'watching', existing: true, values: BOOL, legacy: ['biliFeed'],
+        fromLegacy: input => input.watching,
+        toLegacy: (value, config) => ({ biliFeed: value === true ? (config.bilibili ?? 'off') : 'off' }),
     },
 ];
 

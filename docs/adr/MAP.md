@@ -95,10 +95,10 @@
 | [0086](0086-self-recall.md) | 打错字时，有时撤回重发，而不只是补一条「*对的词」 | 已实现，未上线、未开启（分支 `claude/self-recall`；配置 `selfRecall`，默认关） | `selfRecall` 开 |
 | [0087](0087-poke-out.md) | 她主动戳他一下 | 已实现，未上线、未开启（分支 `claude/poke-out`；配置 `pokeOut`，默认关） | `pokeOut` 开 |
 | [0088](0088-her-temper-with-him.md) | 她对他的脾气——先傲娇、再软；被冷落会生气（男朋友档） | 草稿，未上线（分支 `claude/her-temper`）。卡片改动会热加载，上线前要用户点头。 |  |
-| [0089](0089-bilibili-account.md) | 她有自己的 B 站号——搜视频、读字幕、在评论区 @ 他 | 已实现，未合并、未上线、未开启（分支 `claude/bilibili-account`；配置 `bilibiliAcc… | `bilibiliAccount` 开、`bilibiliDm` 开 |
-| [0090](0090-bilibili-replies.md) | 她回复评论区里别人回她的话（先回他，其次挑有价值的，AI 相关的一律不回） | 已实现，试运行为先，未合并、未上线、未开启（分支 `claude/bilibili-account`；配置 `bilib… | `bilibiliReplies` 开 |
+| [0089](0089-bilibili-account.md) | 她有自己的 B 站号——搜视频、读字幕、在评论区 @ 他 | 已实现，未合并、未上线、未开启（分支 `claude/bilibili-account`；配置 `bilibiliAcc… | `bilibili`（原 `bilibiliAccount`、`bilibiliDm`） 开 |
+| [0090](0090-bilibili-replies.md) | 她回复评论区里别人回她的话（先回他，其次挑有价值的，AI 相关的一律不回） | 已实现，试运行为先，未合并、未上线、未开启（分支 `claude/bilibili-account`；配置 `bilib… | `bilibili`（原 `bilibiliReplies`） 开 |
 | [0091](0091-reply-shape.md) | 形状控制——按他说的长短定她每条最多几个字；加上一把「像不像真人」的尺子 | 已实现，未合并、未上线、未开启（分支 `claude/bilibili-account`；配置 `shape`，默认 `… |  |
-| [0092](0092-bilibili-topic-comments.md) | 评论的话题模式——前期专评 AI 视频和 DSH 插件视频 | 已实现，未合并、未上线、未开启（分支 `claude/bilibili-topics`，接在 `claude/bilib… | `bilibiliComment` 开 |
+| [0092](0092-bilibili-topic-comments.md) | 评论的话题模式——前期专评 AI 视频和 DSH 插件视频 | 已实现，未合并、未上线、未开启（分支 `claude/bilibili-topics`，接在 `claude/bilib… | `bilibili`（原 `bilibiliComment`） 开 |
 | [0093](0093-blind-judge.md) | 让模型当鉴别员做盲评——量“内容”像不像真人 | 已实现（工具 `ops/blind-judge-cli.ts`，不进运行时）；“顺着说”那句提示词的新措辞随这次上线 |  |
 | [0094](0094-her-own-agenda.md) | 答完他的话之后，偶尔带一件自己的事（配置 `shapeAgenda`，默认关） | 已实现；2026-10-22 随 bili9 上线（`shapeAgenda: true`，要 `shape` 开着）；… |  |
 | [0095](0095-filler-turns.md) | 偶尔只回一句不带内容的话，他拖音时跟着拖（配置 `shapeFiller`，默认关） | 已实现；2026-10-22 随 bili9 上线（`shapeFiller: true`，要 `shape` 开着）；… |  |
@@ -138,7 +138,7 @@
 | [0129](0129-memes.md) | 她知道网上现在流行的梗（配置 `memes`，默认关；要 `bilibiliAccount` 开着才会自己去学） | 已实现，未上线（2026-10-23；配置 `memes`；默认关）。上线 = `koishi.yml` 里加 `mem… | `memes` 开 |
 | [0130](0130-watching.md) | 她自己在 B 站看东西、形成看法（配置 `watching`，默认关；要 `bilibiliAccount`，想法变成念头要 `innerLife`） | 已实现，未上线（2026-10-23；配置 `watching`；默认关）。上线 = `koishi.yml` 里加 `… | `watching` 开 |
 | [0131](0131-texture.md) | 说话的质感（配置 `texture`，默认关） | 已实现，未上线（2026-10-23；配置 `texture`；默认关）。上线 = `koishi.yml` 里加 `t… |  |
-| [0132](0132-bili-stickers.md) | 表情包自己在 B 站找（配置 `biliStickers`，默认关；要 `stickers` 和 `bilibiliAccount` 开着） | 已实现，未上线（2026-10-23；配置 `biliStickers`；默认关）。上线 = `koishi.yml` … | `biliStickers` 开 |
+| [0132](0132-bili-stickers.md) | 表情包自己在 B 站找（配置 `biliStickers`，默认关；要 `stickers` 和 `bilibiliAccount` 开着） | 已实现，未上线（2026-10-23；配置 `biliStickers`；默认关）。上线 = `koishi.yml` … | `bilibili`（原 `biliStickers`） 开 |
 | [0133](0133-proactive-lead.md) | 主动发的话要有由头（没有开关，同 ADR 0108） | 已上线（2026-10-23 22:16，用户说「做」；线上 `bee3768`；没有配置变化）。回滚 = `git r… |  |
 | [0134](0134-split-follows.md) | 分成几条发时，后面几条顺着前一条说；「～」别连着加（没有开关，同 ADR 0108 / 0133） | 已上线（2026-10-23，用户说「上线」；只换代码重启，没有配置变化）。回滚 = `git reset --hard… |  |
 | [0135](0135-proactive-openers.md) | 主动消息的开头别老是同一种、不照搬套话、不编事实里没有的小动作（没有开关，同 ADR 0108 / 0133） | 已上线（2026-10-24，用户说「上线」；只换代码重启，没有配置变化）。回滚 = `git reset --hard… |  |
@@ -166,10 +166,10 @@
 | [0160](0160-web-lookup.md) | 搜索 / 读网页（webLookup） | 已实现，默认关，未上线（分支 `claude/continuity`；开关 `webLookup: off / expl… | `webLookup` 开 |
 | [0161](0161-dormancy.md) | 自愿休眠 / 封存（dormancy） | 已实现，默认关，未上线（分支 `claude/continuity`；开关 `dormancy`） | `dormancy` 开 |
 | [0162](0162-tastes.md) | 从经历里长出偏好（tastes） | 已实现，默认关，未上线（分支 `claude/continuity`；开关 `tastes`） | `tastes` 开 |
-| [0163](0163-acquaintances.md) | 认识其他「大肥鱼」或人（acquaintances） | 已实现，默认关，未上线（分支 `claude/continuity`；开关 `acquaintances`） | `acquaintances` 开 |
+| [0163](0163-acquaintances.md) | 认识其他「大肥鱼」或人（acquaintances） | 已实现，默认关，未上线（分支 `claude/continuity`；开关 `acquaintances`） | `bilibili`（原 `acquaintances`） 开 |
 | [0165](0165-net-alert-helpers.md) | 断网时也用她的号告诉能动虚拟机的人（net-alert helpers） | 已实现，未上线（分支 `claude/net-alert-helpers`；不是 Koishi 开关，是 `runtim… |  |
 | [0167](0167-selfcheck.md) | 人格自检（只读报告）+ 四条外部做法的取舍 | 已实现（只读工具），未上线（分支 `dsh/qq-control`；不进运行时、不改任何开关） |  |
-| [0168](0168-bili-parity.md) | 照 bili-cli 的表把我们差的能力补齐（分五期，全部用我们自己的方式） | 第一期已实现（只读），其余四期只有设计、没写代码 | `biliFeed` 开 |
+| [0168](0168-bili-parity.md) | 照 bili-cli 的表把我们差的能力补齐（分五期，全部用我们自己的方式） | 第一期已实现（只读），其余四期只有设计、没写代码 | `watching`（原 `biliFeed`） 开 |
 | [0170](0170-intimate-command.md) | `/亲热` —— 十条回复临时黏一点 |  |  |
 | [0171](0171-self-directed-memory.md) | 她自己的记忆（三库、混合写入、主动查询） | 已实施 | `selfDirectedMemory` 开 |
 | [0172](0172-work-mode-full-access.md) | 工作模式给整机权限——用户已授权；本地接口加守卫 | 已实现，随 `dsh/qq-control` 提供；本机的常驻进程和 Koishi 要重启才生效 |  |

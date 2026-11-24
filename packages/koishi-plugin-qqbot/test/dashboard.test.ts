@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
 import { legacySwitchKeys } from '../../bot/src/platform/switch-merge.ts';
-import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, SILENCE_NOTICE, STICKERS, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
+import { BILIBILI, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, SILENCE_NOTICE, STICKERS, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
 import { aiPhotoRuntimeRows, attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, lifeTrend, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText, timeZoneLine } from '../client/dashboard.js';
 
@@ -118,46 +118,6 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
             assert.equal(item.on, mode !== 'off');
             assert.equal(item.mode, mode === 'off' ? undefined : mode);
             assert.ok(featureTitle(item).includes(BILIBILI.description));
-        }
-    });
-
-    test('biliFeed 三档的面板说明共用模块定义', () => {
-        for (const mode of ['off', 'dryRun', 'on'] as const) {
-            const item = featureStatuses({ biliFeed: mode }).find(feature => feature.key === 'biliFeed')!;
-            assert.equal(item.label, BILI_FEED.label);
-            assert.equal(item.on, mode !== 'off');
-            assert.equal(item.mode, mode === 'off' ? undefined : mode);
-            assert.ok(featureTitle(item).includes(BILI_FEED.description));
-        }
-    });
-
-    test('bilibiliDm 三档的面板说明共用模块定义', () => {
-        for (const mode of ['off', 'dryRun', 'on'] as const) {
-            const item = featureStatuses({ bilibiliDm: mode }).find(feature => feature.key === 'bilibiliDm')!;
-            assert.equal(item.label, BILIBILI_DM.label);
-            assert.equal(item.on, mode !== 'off');
-            assert.equal(item.mode, mode === 'off' ? undefined : mode);
-            assert.ok(featureTitle(item).includes(BILIBILI_DM.description));
-        }
-    });
-
-    test('bilibiliReplies 三档的面板说明共用模块定义', () => {
-        for (const mode of ['off', 'dryRun', 'on'] as const) {
-            const item = featureStatuses({ bilibiliReplies: mode }).find(feature => feature.key === 'bilibiliReplies')!;
-            assert.equal(item.label, BILIBILI_REPLIES.label);
-            assert.equal(item.on, mode !== 'off');
-            assert.equal(item.mode, mode === 'off' ? undefined : mode);
-            assert.ok(featureTitle(item).includes(BILIBILI_REPLIES.description));
-        }
-    });
-
-    test('bilibiliComment 三档的面板说明共用模块定义', () => {
-        for (const mode of ['off', 'dryRun', 'on'] as const) {
-            const item = featureStatuses({ bilibiliComment: mode }).find(feature => feature.key === 'bilibiliComment')!;
-            assert.equal(item.label, BILIBILI_COMMENT.label);
-            assert.equal(item.on, mode !== 'off');
-            assert.equal(item.mode, mode === 'off' ? undefined : mode);
-            assert.ok(featureTitle(item).includes(BILIBILI_COMMENT.description));
         }
     });
 

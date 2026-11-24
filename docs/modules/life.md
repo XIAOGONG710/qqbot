@@ -76,7 +76,6 @@
 | 配置 | 功能 | ADR |
 | --- | --- | --- |
 | `tastes` | 从经历里长出偏好 | [ADR 0162](../adr/0162-tastes.md) |
-| `acquaintances` | 认识的人（B 站上再见到认得） | [ADR 0163](../adr/0163-acquaintances.md) |
 | `ownDays` | 「这两天自己在做的」用世界账里真发生的事 | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `oneDiary` | 一本日记（当天日记由 QQ 写，抄一份给桌面） | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `desktopFeelings` | 桌面上的事也进心境（他在电脑上说想她、关心她、说难受、冲她发火） | [ADR 0347](../adr/0347-one-life-two-places.md) |

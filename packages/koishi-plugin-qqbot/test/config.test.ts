@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { DEFAULTS, parseAppConfig } from '../../bot/src/platform/config.ts';
-import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, SILENCE_NOTICE, STICKERS, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
+import { BILIBILI, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, SILENCE_NOTICE, STICKERS, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
 import { canonicalTimeZone } from '../../bot/src/platform/time-zone.ts';
 import { Config, migrateThinking, mountMobileCompanion, thinkingBody, toAppConfigInput } from '../src/index.ts';
 import type { CompanionWebSocketLike } from '@qqbot/mobile-companion/websocket';
@@ -59,61 +59,10 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         }
     });
 
-    test('bilibiliComment 使用模块说明，保留三档和保存键', () => {
-        const field = Config.list?.find(group => group.dict?.bilibiliComment)?.dict?.bilibiliComment;
-        assert.equal(field?.meta.description, `**${BILIBILI_COMMENT.label}**（ADR ${BILIBILI_COMMENT.adr}）：${BILIBILI_COMMENT.description}`);
-        assert.equal(DEFAULTS.bilibiliComment, 'off');
-        const save = (value: object) => Config.simplify(Config(value as never));
-        const omitted = save(minimal);
-        for (const mode of ['off', 'dryRun', 'on'] as const) {
-            const written = save({ ...minimal, bilibiliComment: mode });
-            assert.deepEqual(written, mode === 'off' ? omitted : { ...omitted, bilibiliComment: mode });
-            assert.equal(fromKoishi(written).bilibiliComment, mode);
-        }
-    });
-
-    test('bilibiliReplies 使用模块说明，保留三档和保存键', () => {
-        const field = Config.list?.find(group => group.dict?.bilibiliReplies)?.dict?.bilibiliReplies;
-        assert.equal(field?.meta.description, `**${BILIBILI_REPLIES.label}**（ADR ${BILIBILI_REPLIES.adr}）：${BILIBILI_REPLIES.description}`);
-        assert.equal(DEFAULTS.bilibiliReplies, 'off');
-        const save = (value: object) => Config.simplify(Config(value as never));
-        const omitted = save(minimal);
-        for (const mode of ['off', 'dryRun', 'on'] as const) {
-            const written = save({ ...minimal, bilibiliReplies: mode });
-            assert.deepEqual(written, mode === 'off' ? omitted : { ...omitted, bilibiliReplies: mode });
-            assert.equal(fromKoishi(written).bilibiliReplies, mode);
-        }
-    });
-
-    test('bilibiliDm 使用模块说明，保留三档和保存键', () => {
-        const field = Config.list?.find(group => group.dict?.bilibiliDm)?.dict?.bilibiliDm;
-        assert.equal(field?.meta.description, `**${BILIBILI_DM.label}**（ADR ${BILIBILI_DM.adr}）：${BILIBILI_DM.description}`);
-        assert.equal(DEFAULTS.bilibiliDm, 'off');
-        const save = (value: object) => Config.simplify(Config(value as never));
-        const omitted = save(minimal);
-        for (const mode of ['off', 'dryRun', 'on'] as const) {
-            const written = save({ ...minimal, bilibiliDm: mode });
-            assert.deepEqual(written, mode === 'off' ? omitted : { ...omitted, bilibiliDm: mode });
-            assert.equal(fromKoishi(written).bilibiliDm, mode);
-        }
-    });
-
-    test('biliFeed 使用模块说明，保留三档和保存键', () => {
-        const field = Config.list?.find(group => group.dict?.biliFeed)?.dict?.biliFeed;
-        assert.equal(field?.meta.description, `**${BILI_FEED.label}**（ADR ${BILI_FEED.adr}）：${BILI_FEED.description}`);
-        assert.equal(DEFAULTS.biliFeed, 'off');
-        const save = (value: object) => Config.simplify(Config(value as never));
-        const omitted = save(minimal);
-        for (const mode of ['off', 'dryRun', 'on'] as const) {
-            const written = save({ ...minimal, biliFeed: mode });
-            assert.deepEqual(written, mode === 'off' ? omitted : { ...omitted, biliFeed: mode });
-            assert.equal(fromKoishi(written).biliFeed, mode);
-        }
-    });
-
     test('bilibili 使用模块说明，保留三档和保存键', () => {
         const field = Config.list?.find(group => group.dict?.bilibili)?.dict?.bilibili;
-        assert.equal(field?.meta.description, `**${BILIBILI.label}**（ADR ${BILIBILI.adr}）：${BILIBILI.description}`);
+        assert.ok(String(field?.meta.description).startsWith(`**${BILIBILI.label}**（ADR ${BILIBILI.adr}）：${BILIBILI.description}`));
+        for (const old of ['bilibiliAccount', 'bilibiliDm', 'bilibiliReplies', 'bilibiliComment', 'acquaintances', 'biliStickers']) assert.ok(String(field?.meta.description).includes(`【原 \`${old}\`】`), old);
         assert.equal(DEFAULTS.bilibili, 'off');
         const save = (value: object) => Config.simplify(Config(value as never));
         const omitted = save(minimal);
@@ -121,6 +70,13 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             const written = save({ ...minimal, bilibili: mode });
             assert.deepEqual(written, mode === 'off' ? omitted : { ...omitted, bilibili: mode });
             assert.equal(fromKoishi(written).bilibili, mode);
+            // 只写 bilibili：私信、回复、话题评论跟着它的档位，账号、认识的人跟着开没开（开关合并）；B 站表情包还要「图片表情」，表单默认没开
+            const parsed = fromKoishi(written);
+            for (const old of ['bilibiliDm', 'bilibiliReplies', 'bilibiliComment'] as const) assert.equal(parsed[old], mode, old);
+            for (const old of ['bilibiliAccount', 'acquaintances'] as const) assert.equal(parsed[old], mode !== 'off', old);
+            assert.equal(parsed.biliStickers, false);
+            assert.equal(fromKoishi({ ...written, stickers: 'send' }).biliStickers, mode !== 'off');
+            assert.equal(fromKoishi({ ...written, watching: true }).biliFeed, mode, '刷到视频分享跟着 watching，档位看 bilibili');
         }
     });
 
