@@ -44,7 +44,6 @@
 | `desktopReview` | 桌面上的对话也进「聊完回想」 | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `desktopPromises` | 桌面上答应的事进承诺账 | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `selfDirectedMemory` | 她自己决定记不记（关掉自动记忆同步和自动日记） | [ADR 0171](../adr/0171-self-directed-memory.md) |
-| `factHim` | 事实检查多查一类：她替他说的、聊天 / 记忆里没有依据的事（要 factCheck 开着） | [ADR 0203](../adr/0203-fact-check-him.md) |
 | `memoryReconcile` | 记忆对账：记着写过、Hindsight 里却查不到的片段，重新排队写（防记忆悄悄少一块） | [ADR 0201](../adr/0201-memory-reconcile.md) |
 | `feedbackCommands` | “假 / 像”反馈通道 | [ADR 0073](../adr/0073-feedback-channel.md) |
 | `deviceControl` | 她能操作他的电脑和手机（有限控制）（模式） | [ADR 0148](../adr/0148-device-control.md) |

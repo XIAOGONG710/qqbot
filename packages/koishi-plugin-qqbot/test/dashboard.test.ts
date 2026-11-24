@@ -185,15 +185,15 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
     });
 
     test('开关打开但依赖缺失时不冒充已生效，并只返回中文依赖名', () => {
-        const status = featureStatuses({ worldThreads: true, depthRouting: true, factHim: true, memoryFeelings: true });
+        // 用的是不会并进别的开关的几项（worldThreads / depthRouting / factHim 这些已经或将要并进新键，开关合并）
+        const status = featureStatuses({ memoryFeelings: true, feelingReview: true, desktopConflict: true });
         const get = (key: string) => status.find(s => s.key === key)!;
-        assert.equal(get('worldThreads').on, false);
-        assert.equal(get('worldThreads').configured, true);
-        assert.deepEqual(get('worldThreads').missing, ['日常小事 / 小测', '日子里的小起伏']);
-        assert.deepEqual(get('depthRouting').missing, ['认真问她时深思']);
-        assert.deepEqual(get('factHim').missing, ['逐条事实检查']);
+        assert.equal(get('memoryFeelings').on, false);
+        assert.equal(get('memoryFeelings').configured, true);
         assert.deepEqual(get('memoryFeelings').missing, ['心境']);
-        const ready = featureStatuses({ worldThreads: true, everydayLife: true, worldDrama: true }).find(s => s.key === 'worldThreads')!;
+        assert.deepEqual(get('feelingReview').missing, ['心境']);
+        assert.equal(get('desktopConflict').missing?.length, 2);
+        const ready = featureStatuses({ memoryFeelings: true, herFeelings: true }).find(s => s.key === 'memoryFeelings')!;
         assert.equal(ready.on, true);
         assert.equal(ready.configured, undefined);
         assert.equal(ready.missing, undefined);

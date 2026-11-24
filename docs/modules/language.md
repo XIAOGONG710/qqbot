@@ -127,7 +127,7 @@
 | `afterNo` | 拒绝之后（他又提同一类请求时记得上次：拒了他只回「行吧」、或者勉强答应了；要不要还是她定） | [ADR 0214](../adr/0214-after-no.md) |
 | `moody` | 看心情不回 | [ADR 0013](../adr/0013-old-project-advice.md) |
 | `speechCheck` | 说话的毛病（出口检查） | [ADR 0014](../adr/0014-speech-habits.md) |
-| `factCheck` | 逐条事实检查（编的说法 / 对不上事实）（模式）：发送前，对照设定、本轮事实和聊天记录，逐条检查她对自己和身边世界的具体说法。off 不查；log 只记录问题，回复照发（敏感调试关着时只记条数）；fix 先带说明重写一次，再查，仍有问题就删掉对应行。危机回合不查，查不成照发。默认关。 | [ADR 0137](../adr/0137-fact-check.md) |
+| `factCheck` | 逐条事实检查（编的说法 / 对不上事实）（模式）：发送前，对照设定、本轮事实和聊天记录，逐条检查她对自己和身边世界的具体说法。off 不查；log 只记录问题，回复照发（敏感调试关着时只记条数）；fix 先带说明重写一次，再查，仍有问题就删掉对应行。危机回合不查，查不成照发。默认关。（并进来的：`factHim` 事实检查多查一类：她替他说的、聊天 / 记忆里没有依据的事（要 factCheck 开着）（[ADR 0203](../adr/0203-fact-check-him.md)）） | [ADR 0137](../adr/0137-fact-check.md) |
 | `relationship` | 关系阶段（聊得多了更放得开） | [ADR 0113](../adr/0113-relationship-stage.md) |
 | `jokes` | 小梗回头提 | [ADR 0114](../adr/0114-running-jokes.md) |
 | `interruptions` | 被第三方打断 | [ADR 0115](../adr/0115-interruptions.md) |

@@ -197,7 +197,7 @@
 | [0200](0200-private-space.md) | 她的私人空间——她自己学出来的东西，默认不给他看 | 已实现。新开关 `ownerPeek`，默认关（私人空间默认就在）。DSH 那台机器拉取后重启 Koishi 生效；生效… |  |
 | [0201](0201-memory-reconcile.md) | 记忆对账——「记着写过」不等于 Hindsight 里真有 | 已实现，新开关 `memoryReconcile`，默认关。DSH 那台机器拉取、在 `koishi.yml` 里加 `… | `memoryReconcile` 开 |
 | [0202](0202-depth-routing.md) | 语义路由——让「认真的时刻」不再靠关键词认 | 已实现，新开关 `depthRouting`，默认关；要 `deliberate` 开着才起作用。DSH 那台机器拉取、… | `depthRouting` 开 |
-| [0203](0203-fact-check-him.md) | 事实检查多查一类——她替他说的事 | 已实现，新开关 `factHim`，默认关；要 `factCheck` 开着（`log` 只记、`fix` 带说明重写）… | `factHim` 开 |
+| [0203](0203-fact-check-him.md) | 事实检查多查一类——她替他说的事 | 已实现，新开关 `factHim`，默认关；要 `factCheck` 开着（`log` 只记、`fix` 带说明重写）… | `factCheck`（原 `factHim`） 开 |
 | [0204](0204-reading-takes.md) | 她读完 / 看完之后自己想的 | 已实现，新开关 `readingTakes`，默认关；要名单里有男朋友档。DSH 那台机器拉取、在 `koishi.ym… | `readingTakes` 开 |
 | [0205](0205-trope-shares.md) | 几种“一看就是 AI”的说法——只数给她看，不禁 | 已实现，没有新开关：只是给已有的两处多一句数字——每晚想说话习惯（`speechNotes`）的提示词，和 `/说话趋势… |  |
 | [0206](0206-read-his-stickers.md) | 他发来的表情包，她看得懂（`readStickers`） | 已实现，默认关，未上线（分支 `claude/self-pursuits`；全量测试见文末） | `readStickers` 开 |

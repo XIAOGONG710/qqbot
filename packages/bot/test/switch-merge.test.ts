@@ -154,6 +154,7 @@ describe('真表：已经并了的组', () => {
     const LIVE = { ...LIVE_2026_11_20, ...LIVE_LATER_ON };
     const EXPECTED_LIVE: Record<string, unknown> = {
         qzone: 'on',
+        factCheck: 'fix',
     };
     const env = { QQBOT_LLM_API_KEY: 'k' };
     const base = {

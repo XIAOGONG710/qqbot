@@ -50,6 +50,13 @@ function follows(key: string, values: readonly unknown[], legacy: readonly strin
 export const SWITCH_MERGES: readonly SwitchMerge[] = [
     // 1. QQ 空间（设计第二节 18）：签名、翻空间、刷好友动态、刷陌生人都是同一种三档，跟着 qzone
     follows('qzone', PRESENCE, ['signature', 'qzoneBrowse', 'qzonePeek', 'qzoneStrangers']),
+    // 2. 事实检查（11）：检查开着就也查「替他说的」；检查关着时 factHim 本来不起作用
+    {
+        key: 'factCheck', existing: true, values: ['off', 'log', 'fix'], legacy: ['factHim'],
+        fromLegacy: input => input.factCheck,
+        toLegacy: value => ({ factHim: value !== 'off' }),
+        ignorable: (_, input) => input.factCheck === 'off',
+    },
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */

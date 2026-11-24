@@ -139,7 +139,8 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
 
     test('factCheck 使用模块说明，保留三档和保存键', () => {
         const field = Config.list?.find(group => group.dict?.factCheck)?.dict?.factCheck;
-        assert.equal(field?.meta.description, `**${FACT_CHECK.label}**（ADR ${FACT_CHECK.adr}）：${FACT_CHECK.description}`);
+        assert.ok(String(field?.meta.description).startsWith(`**${FACT_CHECK.label}**（ADR ${FACT_CHECK.adr}）：${FACT_CHECK.description}`));
+        assert.ok(String(field?.meta.description).includes('【原 `factHim`】'), '并进来的 factHim');
         assert.equal(DEFAULTS.factCheck, 'off');
         const save = (value: object) => Config.simplify(Config(value as never));
         const omitted = save(minimal);
