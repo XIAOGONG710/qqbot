@@ -889,7 +889,35 @@ const FRIENDS_REFRESH_MS = 60_000;
 let friendsLoaded = false;
 let friendsKey = '';
 
+/**
+ * 热重载（改了 koishi.yml、插件被重新加载）时 cordis 的 reset() 不等 dispose 返回的 Promise，紧接着就重新 apply：
+ * 上一个实例的 app.stop() 还在收尾（日记、答应的事、长期记忆的写入要等 HTTP），数据目录租约没放开，
+ * 新实例的 startApp 就会抛「本进程仍持有数据目录」，插件停在失败、没有重试——11-23 19:49 自动重载后桌面记录不再收很可能就是这样。
+ * 所以：dispose 把收尾登记在这里，新实例等这些收尾都结束（成功失败都算）再起；等的时候实例已经被停用了就不起。
+ */
+const pendingStops = new Set<Promise<void>>();
+
+export function trackStop(drain: Promise<unknown>): void {
+    const settled = drain.then(() => {}, () => {});
+    pendingStops.add(settled);
+    void settled.finally(() => pendingStops.delete(settled));
+}
+
+export function afterPendingStops<T>(start: () => T, stillWanted: () => boolean, onWait?: (count: number) => void): T | Promise<T | undefined> {
+    if (!pendingStops.size) return start();
+    onWait?.(pendingStops.size);
+    return Promise.all([...pendingStops]).then(() => (stillWanted() ? start() : undefined));
+}
+
 export function apply(ctx: Context, config: Config) {
+    return afterPendingStops(
+        () => applyNow(ctx, config),
+        () => ctx.scope.isActive,
+        count => ctx.logger('qqbot').info(`上一个实例还在收尾（${count} 项），等它放开数据目录再启动`),
+    );
+}
+
+function applyNow(ctx: Context, config: Config) {
     // 控制台的「林梦瑶」页面（ADR 0010）：注册一次，插件失败时也在
     registerConsole(ctx, repoRoot);
     const card = config.characterCard ?? CHARACTER_CARD;
@@ -1041,7 +1069,11 @@ export function apply(ctx: Context, config: Config) {
         }
         setConsoleState({ running: false, status: undefined });
         // 收尾还在按她的时区算日期，等做完再还原进程时区
-        if (drained) return Promise.resolve(drained).finally(releaseTimeZone);
+        if (drained) {
+            const finished = Promise.resolve(drained).finally(releaseTimeZone);
+            trackStop(finished);
+            return finished;
+        }
         releaseTimeZone();
         return drained;
     });
