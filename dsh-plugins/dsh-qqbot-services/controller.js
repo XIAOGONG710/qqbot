@@ -30,7 +30,7 @@ export function createController({ probe, launch, sleep, now = Date.now }) {
       let state = await status(true)
       if (closed) return
       if (ready(state, service)) {
-        operation.steps[service] = 'ready'
+        operation.steps[service] = 'skipped'
         continue
       }
       if (state.maintenance) {

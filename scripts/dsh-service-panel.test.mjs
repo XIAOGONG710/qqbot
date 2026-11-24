@@ -30,7 +30,7 @@ test('batch skips ready services and waits for each missing dependency in order'
     });
     assert.equal(controller.start('all'), 'accepted');
     assert.equal(controller.start('koishi'), 'busy');
-    assert.deepEqual((await settled(controller)).steps, { napcat: 'ready', hindsight: 'ready', koishi: 'ready' });
+    assert.deepEqual((await settled(controller)).steps, { napcat: 'skipped', hindsight: 'ready', koishi: 'ready' });
     assert.deepEqual(calls, ['hindsight', 'koishi']);
 });
 
@@ -83,6 +83,29 @@ test('routes accept only local panel operations and event texts never leave the 
     assert.deepEqual(summarizeWatchdog(['2026/11/24 18:00:00 hindsight：启动失败 token=SECRET']), [
         { at: '2026/11/24 18:00:00', service: 'hindsight', event: 'failed' },
     ]);
+});
+
+test('desktop proxy can submit only with the token from the local state route', async () => {
+    const current = { ...health, napcat: true, hindsight: true, koishi: true, koishiListening: true };
+    const controller = createController({ probe: async () => current, launch: async () => assert.fail(), sleep: async () => {} });
+    const handler = createHandler(controller, () => []);
+    const call = async (method, path, headers = {}) => {
+        let status, body;
+        await handler({ method, url: '/api/qqbot-services/' + path, socket: { remoteAddress: '127.0.0.1' },
+            headers: { host: '127.0.0.1:3000', ...headers } }, {
+            writeHead(value) { status = value; }, end(value) { body = JSON.parse(value); },
+        });
+        return { status, body };
+    };
+    const { body } = await call('GET', 'state');
+    const marker = { 'x-qqbot-service-panel': '1' };
+    const authorized = { ...marker, 'x-qqbot-service-token': body.panelToken };
+    assert.equal((await call('POST', 'start/all', marker)).status, 403);
+    assert.equal((await call('GET', 'state', { origin: 'https://example.test' })).status, 403);
+    assert.equal((await call('POST', 'start/all', { ...authorized, 'sec-fetch-site': 'cross-site' })).status, 403);
+    assert.equal((await call('POST', 'start/all', { ...authorized, origin: 'null' })).status, 403);
+    assert.equal((await call('POST', 'start/all', authorized)).status, 202);
+    assert.deepEqual((await settled(controller)).steps, { napcat: 'skipped', hindsight: 'skipped', koishi: 'skipped' });
 });
 
 test('client seats a single DSH main view and sidebar entry', () => {

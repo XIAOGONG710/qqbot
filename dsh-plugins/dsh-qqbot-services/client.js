@@ -6,7 +6,7 @@ window.__ModuleLoader__.load({
     const panel = 'dsh-qqbot-services'
     const api = '/api/qqbot-services'
     const names = { napcat: 'NapCat', hindsight: 'Hindsight', koishi: 'Koishi', watchdog: '守护', backup: '备份' }
-    const steps = { checking: '正在检查', starting: '正在等待服务就绪', ready: '已就绪', timeout: '等待就绪超时', failed: '启动或检查失败', maintenance: '维护期间暂停启动' }
+    const steps = { checking: '正在检查', starting: '正在等待服务就绪', skipped: '已运行，跳过启动', ready: '已就绪', timeout: '等待就绪超时', failed: '启动或检查失败', maintenance: '维护期间暂停启动' }
     const eventNames = { watching: '开始监测', recovered: '恢复正常', starting: '尝试启动', failed: '运行异常' }
     const button = { padding: '6px 12px', borderRadius: 6, cursor: 'pointer' }
     const row = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 0',
@@ -57,7 +57,9 @@ window.__ModuleLoader__.load({
         setNotice('')
         try {
           const response = await fetch(`${api}/start/${service}`, {
-            method: 'POST', headers: { 'x-qqbot-service-panel': '1' }, signal: AbortSignal.timeout(10_000),
+            method: 'POST', headers: {
+              'x-qqbot-service-panel': '1', 'x-qqbot-service-token': state.panelToken,
+            }, signal: AbortSignal.timeout(10_000),
           })
           if (!response.ok) throw Error()
           setNotice('已提交启动请求')

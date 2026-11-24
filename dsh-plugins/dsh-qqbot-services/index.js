@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { closeSync, fstatSync, mkdirSync, openSync, readSync, realpathSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -13,15 +14,19 @@ const exec = promisify(execFile)
 const localAddresses = ['127.0.0.1', '::1', '::ffff:127.0.0.1']
 const localHost = /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?$/i
 
-export function allowedRequest(req) {
+export function allowedRequest(req, panelToken) {
   if (!localAddresses.includes(req.socket?.remoteAddress) || !localHost.test(req.headers?.host ?? '')) return false
   if (req.headers.forwarded || req.headers['x-forwarded-for'] || req.headers['x-forwarded-host']) return false
   if (req.headers['sec-fetch-site'] === 'cross-site') return false
-  if (req.method !== 'POST') return true
   const host = req.headers.host.toLowerCase()
   const origin = req.headers.origin?.toLowerCase()
-  return (origin === `http://${host}` || origin === `https://${host}`)
-    && req.headers['x-qqbot-service-panel'] === '1'
+  const trustedOrigin = origin === `http://${host}` || origin === `https://${host}`
+  if (origin !== undefined && !trustedOrigin) return false
+  if (req.method !== 'POST') return true
+  // The desktop protocol proxy verifies its renderer origin, then strips Origin.
+  return req.headers['x-qqbot-service-panel'] === '1'
+    && (trustedOrigin || (origin === undefined && panelToken !== undefined
+      && req.headers['x-qqbot-service-token'] === panelToken))
 }
 
 function tail(file) {
@@ -55,15 +60,16 @@ export function summarizeWatchdog(lines) {
 }
 
 export function createHandler(controller, events) {
+  const panelToken = randomBytes(32).toString('hex')
   return async (req, res) => {
     const send = (status, value) => {
       res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
       res.end(JSON.stringify(value))
     }
-    if (!allowedRequest(req)) return send(403, { error: 'forbidden' })
+    if (!allowedRequest(req, panelToken)) return send(403, { error: 'forbidden' })
     const path = (req.url ?? '').split('?')[0]
     if (req.method === 'GET' && path === `${prefix}/state`) {
-      try { return send(200, { ...await controller.state(), events: events() }) }
+      try { return send(200, { ...await controller.state(), events: events(), panelToken }) }
       catch { return send(503, { error: 'status_unavailable' }) }
     }
     if (req.method === 'POST' && path.startsWith(`${prefix}/start/`)) {
