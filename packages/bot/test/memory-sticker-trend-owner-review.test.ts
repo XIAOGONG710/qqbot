@@ -16,7 +16,7 @@ test('App停止后归还借用货架原来源，外部发现不调用旧App账�
         for (const tier of ['classmate', 'classmate-open']) writeFileSync(join(root, `card-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
         const shelf = stickerShelf({ dir: join(dataDir, 'stickers'), log: () => {}, describe: async () => '', decide: async () => ({ keep: false, description: '', tags: [] }), trendDiscover: async () => { sourceCalls++; return []; } });
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'card-{tier}.json'), dataDir,
-            contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], stickers: 'collect', biliStickers: true, bilibiliAccount: true,
+            contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], stickers: 'collect', bilibili: 'dryRun',
             schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic' });
         app = startApp({ config, stickers: shelf, sensitive: { on: () => false, describe: () => '' }, log: () => {}, transport: { friendHistory: async () => [], sendPrivateText: async () => 900 }, pipeline: { generate: async () => '合成回应' } });
         await app.stop(); await shelf.discover();

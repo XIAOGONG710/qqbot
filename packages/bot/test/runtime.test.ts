@@ -1109,13 +1109,13 @@ describe('配置', () => {
         assert.deepEqual(config, parseAppConfig(rest, 'C:/repo', { QQBOT_LLM_API_KEY: 'k' }));
     });
 
-    test('B 站账号层（ADR 0089）：默认全关、昵称和 uid 空；写了就读进来；类型不对报错', () => {
+    test('B 站账号层（ADR 0089，账号、评论、私信、回复都跟着 bilibili）：默认关、昵称和 uid 空；写了就读进来；类型不对报错', () => {
         const { onebot: _, ...rest } = valid;
         const env = { QQBOT_LLM_API_KEY: 'k' };
         const defaults = parseAppConfig(rest, 'C:/repo', env);
-        assert.deepEqual([defaults.bilibiliAccount, defaults.bilibiliComment, defaults.bilibiliDm, defaults.bilibiliReplies, defaults.bilibiliAtName, defaults.bilibiliAtUid], [false, 'off', 'off', 'off', '', 0]);
-        const set = parseAppConfig({ ...rest, bilibiliAccount: true, bilibiliComment: 'dryRun', bilibiliDm: 'on', bilibiliReplies: 'dryRun', bilibiliAtName: ' 小明 ', bilibiliAtUid: 98765 }, 'C:/repo', env);
-        assert.deepEqual([set.bilibiliAccount, set.bilibiliComment, set.bilibiliDm, set.bilibiliReplies, set.bilibiliAtName, set.bilibiliAtUid], [true, 'dryRun', 'on', 'dryRun', '小明', 98765]);
+        assert.deepEqual([defaults.bilibili, defaults.bilibiliAtName, defaults.bilibiliAtUid], ['off', '', 0]);
+        const set = parseAppConfig({ ...rest, bilibili: 'dryRun', bilibiliAtName: ' 小明 ', bilibiliAtUid: 98765 }, 'C:/repo', env);
+        assert.deepEqual([set.bilibili, set.bilibiliAtName, set.bilibiliAtUid], ['dryRun', '小明', 98765]);
         // 话题关键词（ADR 0092）：默认空；去掉空的和重复的；类型不对、太多、太长报错
         assert.deepEqual(defaults.bilibiliCommentKeywords, []);
         assert.deepEqual(parseAppConfig({ ...rest, bilibiliCommentKeywords: [' 大肥鱼 插件 ', 'DSH 插件', 'DSH 插件', ''] }, 'C:/repo', env).bilibiliCommentKeywords, ['大肥鱼 插件', 'DSH 插件']);
@@ -1123,7 +1123,7 @@ describe('配置', () => {
             assert.throws(() => parseAppConfig({ ...rest, bilibiliCommentKeywords: bad }, 'C:/repo', env), /bilibiliCommentKeywords/, JSON.stringify(bad));
         }
         for (const [key, bad, message] of [
-            ['bilibiliAccount', 'yes', /bilibiliAccount/], ['bilibiliComment', 'maybe', /bilibiliComment/], ['bilibiliDm', true, /bilibiliDm/], ['bilibiliReplies', 'sure', /bilibiliReplies/], ['bilibiliAtName', 123, /bilibiliAtName/],
+            ['bilibili', 'maybe', /bilibili/], ['bilibiliAtName', 123, /bilibiliAtName/],
             ['bilibiliAtName', '@小明', /bilibiliAtName/], ['bilibiliAtName', 'x'.repeat(41), /bilibiliAtName/], ['bilibiliAtUid', '98765', /bilibiliAtUid/], ['bilibiliAtUid', -1, /bilibiliAtUid/], ['bilibiliAtUid', 1.5, /bilibiliAtUid/],
         ] as const) {
             assert.throws(() => parseAppConfig({ ...rest, [key]: bad }, 'C:/repo', env), message, `${key}=${String(bad)}`);

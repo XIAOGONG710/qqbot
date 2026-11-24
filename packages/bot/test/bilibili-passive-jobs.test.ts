@@ -133,15 +133,15 @@ describe('她自己看一个视频（watchJob）', () => {
 });
 
 describe('刷推荐（feedJob）', () => {
-    test('没开 / 停了：不刷', async () => {
-        for (const h of [harness(), harness({ config: { biliFeed: 'off' } }), harness({ config: { biliFeed: 'dryRun' }, stopped: () => true })]) {
+    test('没开（watching 或 bilibili 关着）/ 停了：不刷', async () => {
+        for (const h of [harness(), harness({ config: { bilibili: 'on' } }), harness({ config: { watching: true, bilibili: 'off' } }), harness({ config: { watching: true, bilibili: 'dryRun' }, stopped: () => true })]) {
             await h.jobs.feedJob();
             assert.deepEqual(h.fetches, []);
         }
     });
 
     test('醒着、过了 14 点：经被动读取去拉推荐（带停的 signal）；读不到就记一行跳过', async () => {
-        const h = harness({ config: { biliFeed: 'dryRun' }, now: at(15) });
+        const h = harness({ config: { watching: true, bilibili: 'dryRun' }, now: at(15) });
         await h.jobs.feedJob();
         assert.ok(h.fetches.length >= 1);
         assert.equal(h.fetches[0]!.signal.aborted, false);
@@ -153,16 +153,16 @@ describe('刷推荐（feedJob）', () => {
     test('按作息她在上课：不刷；同一刻没有作息卡就不看作息、照刷', async () => {
         // 合成作息：2026-11-23（周一）15:30 在上课
         const inClass = new Date(2026, 10, 23, 15, 30).getTime();
-        const busy = harness({ config: { biliFeed: 'on' }, now: inClass });
+        const busy = harness({ config: { watching: true, bilibili: 'on' }, now: inClass });
         await busy.jobs.feedJob();
         assert.deepEqual(busy.fetches, []);
-        const noSchedule = harness({ config: { biliFeed: 'on' }, now: inClass, worldCard: null });
+        const noSchedule = harness({ config: { watching: true, bilibili: 'on' }, now: inClass, worldCard: null });
         await noSchedule.jobs.feedJob();
         assert.ok(noSchedule.fetches.length >= 1);
     });
 
     test('不到 14 点：不刷', async () => {
-        const h = harness({ config: { biliFeed: 'on' }, now: at(10) });
+        const h = harness({ config: { watching: true, bilibili: 'on' }, now: at(10) });
         await h.jobs.feedJob();
         assert.deepEqual(h.fetches, []);
     });
@@ -171,7 +171,7 @@ describe('刷推荐（feedJob）', () => {
         let release!: () => void;
         const gate = new Promise<void>(resolve => { release = resolve; });
         let calls = 0;
-        const h = harness({ config: { biliFeed: 'dryRun' }, fetch: async () => { calls++; await gate; return { ok: false, status: 503, text: async () => '' }; } });
+        const h = harness({ config: { watching: true, bilibili: 'dryRun' }, fetch: async () => { calls++; await gate; return { ok: false, status: 503, text: async () => '' }; } });
         const first = h.jobs.feedJob();
         await tick();
         await h.jobs.feedJob();

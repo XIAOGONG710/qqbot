@@ -22,7 +22,7 @@ async function observe(stage: 'compose' | 'compose-fail' | 'account' | 'fetch' |
   for (const tier of ['classmate', 'classmate-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
   writeFileSync(join(dataDir, 'secrets', 'bilibili.json'), JSON.stringify({ sessdata: 'SYNTHETIC_SESSION', biliJct: 'SYNTHETIC_CSRF', dedeUserId: '123', buvid3: 'SYNTHETIC_DEVICE', savedAt: '2026-11-05T00:00:00Z' }));
   const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
-   contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], bilibiliAccount: true, bilibiliAtUid: 456, bilibiliReplies: stage === 'post' ? 'on' : 'dryRun',
+   contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], bilibiliAtUid: 456, bilibili: stage === 'post' ? 'on' : 'dryRun',
    jokes: false, schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
   globalThis.fetch = async (input, init) => {
    const url = new URL(String(input)); assert.equal(url.hostname, 'api.bilibili.com');

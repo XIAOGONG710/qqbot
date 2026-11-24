@@ -119,12 +119,12 @@ export function plannerHost(deps: PlannerHostDeps): PlannerHost {
                     },
                 } : {}),
                 // 最近在 B 站看过 / 今天刷到过（ADR 0130 / 0168）：内心想事情时多一个真事可讲；看过的优先
-                ...(config.innerLife && contact.tier === 'boyfriend' && (config.watching || (config.biliFeed ?? 'off') !== 'off') ? {
+                ...(config.innerLife && contact.tier === 'boyfriend' && config.watching ? {
                     watchedFacts: () => {
                         const when = new Date(exec.now());
                         const watched = config.watching ? watchedFacts(watchedEntries(), when) : undefined;
                         if (watched) return watched;
-                        return (config.biliFeed ?? 'off') !== 'off' ? feedFactEntry(loadFeed(feedPath(config.dataDir), log), when) : undefined;
+                        return config.bilibili !== 'off' ? feedFactEntry(loadFeed(feedPath(config.dataDir), log), when) : undefined;
                     },
                 } : {}),
                 dates: character.dates,

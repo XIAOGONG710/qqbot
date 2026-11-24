@@ -385,7 +385,7 @@ export interface AppOptions {
     stickerOnlyChance?: number;
     /** B 站公开接口的 fetch（配置 bilibili；不给就用全局 fetch，测试注入假的） */
     bilibiliFetch?: BiliFetch;
-    /** 她的 B 站号用的请求函数（配置 bilibiliAccount；要读 Set-Cookie、发 POST；不给就用真的，测试注入假的） */
+    /** 她的 B 站号用的请求函数（bilibili 开着时；要读 Set-Cookie、发 POST；不给就用真的，测试注入假的） */
     bilibiliRequest?: BiliRequest;
     /** 测试用：换掉听、看各项的上限 */
     mediaTimeouts?: Partial<typeof MEDIA_TIMEOUTS>;
@@ -919,7 +919,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         syncedJobs: {
             ...(config.weeklyReport ? { weeklyReport: () => checkWeeklyReport() } : {}),
             ...(config.watching ? { watching: () => { void watchJob(); } } : {}),
-            ...(config.biliFeed && config.biliFeed !== 'off' ? { feed: () => { void feedJob(); } } : {}),
+            ...(config.watching && config.bilibili !== 'off' ? { feed: () => { void feedJob(); } } : {}),
             ...(config.memes ? { memes: () => { void refreshMemeJob(); } } : {}),
         },
         schedule: config.schedule,
@@ -1308,7 +1308,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     lifetime.own('tastes', () => tastes?.stop());
     const reflectTastes = () => { if (!stopped) void tastes?.reflect().catch(error => tastesLog(`口味：出错（${error instanceof Error ? error.message : String(error)}）`)); };
     // 回头看一天最多一次（tastes.ts 里有间隔）：每小时来看一眼要不要看，启动两分钟后先看一次——由 tastes 模块声明（ADR 0336 第 6 步，App 搭好时开）
-    const acquaintances = config.acquaintances ? new Acquaintances({ dataDir: config.dataDir, now: clockNow, log }) : undefined;
+    const acquaintances = config.bilibili !== 'off' ? new Acquaintances({ dataDir: config.dataDir, now: clockNow, log }) : undefined;
     const dormancy = config.dormancy && deviceOwner ? new Dormancy({ dataDir: config.dataDir, repoRoot, now: clockNow, gitHead: () => exec.process.gitHead(repoRoot), log }) : undefined;
     if (config.dormancy && !deviceOwner) log('休眠：开着，但名单里没有男朋友档的联系人，不启动');
     if (dormancy?.isDormant()) log(`休眠：${dormancy.status()}`);
@@ -1799,7 +1799,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 return snapshot.content;
             } } : {}),
             ...(stickerChance !== undefined ? { stickerChance } : {}),
-            ...(config.biliStickers ? { stickerUncued: STICKER_UNCUED_CHANCE } : {}),
+            ...(config.bilibili !== 'off' && (config.stickers ?? 'off') !== 'off' ? { stickerUncued: STICKER_UNCUED_CHANCE } : {}),
             // 抽到发表情的轮次里只发表情（ADR 0099）：原来跟着情绪轮 shapeFeel 走，11-24 删了；测试可以直接给概率
             ...(stickerOnlyChance !== undefined && stickerOnlyChance > 0 ? { stickerOnlyChance } : {}),
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
@@ -2013,10 +2013,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const bilibiliAccountSource = bilibili.accountSource;
     const startBilibiliOwners = bilibili.startOwners;
 
-    // 她自己在 B 站找表情包（ADR 0132，配置 biliStickers）：表情包的候选来源换成 B 站（原来的公开目录兜底）；别的来源（他发来的、QQ 收藏、导入箱）照旧
-    if (config.biliStickers && stickers?.setTrend) {
+    // 她自己在 B 站找表情包（ADR 0132，bilibili 和图片表情都开着时）：表情包的候选来源换成 B 站（原来的公开目录兜底）；别的来源（他发来的、QQ 收藏、导入箱）照旧
+    if (config.bilibili !== 'off' && (config.stickers ?? 'off') !== 'off' && stickers?.setTrend) {
         const source = bilibiliAccountSource();
-        if (!source) log('B 站表情包：biliStickers 开着，但要 bilibiliAccount 也开着，还用原来的公开目录');
+        if (!source) log('B 站表情包：她的 B 站号没打开，还用原来的公开目录');
         else {
             const release = stickers.setTrend(previous => biliStickerDiscover({ account: source, fetch: (url, init) => fetch(url, init) as never, now: () => new Date(worldNow()), log: message => { if (!stopped) log(message); } }, previous), BILI_STICKER_PER_DAY);
             if (typeof release === 'function') releaseStickerTrend = release;

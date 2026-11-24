@@ -21,7 +21,7 @@ for (const stage of ['account', 'subtitle'] as const) test(`真实App停止取�
         for (const tier of ['classmate', 'classmate-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
         writeFileSync(join(dataDir, 'secrets', 'bilibili.json'), JSON.stringify({ sessdata: 'SYNTHETIC_SESSION', biliJct: 'SYNTHETIC_CSRF', dedeUserId: '123', buvid3: 'SYNTHETIC_DEVICE', savedAt: '2026-11-05T00:00:00Z' }));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
-            contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], bilibiliAccount: true, watching: true, timeline: true,
+            contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], bilibili: 'dryRun', watching: true, timeline: true,
             schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         globalThis.fetch = async () => { assert.fail('Network prohibited in synthetic watch App fixture'); };
         globalThis.setTimeout = ((callback: (...args: unknown[]) => void, ms: number, ...args: unknown[]) => oldTimeout(callback, ms === 800 ? 0 : ms, ...args)) as typeof setTimeout;
@@ -61,7 +61,7 @@ for (const stage of ['status', 'body'] as const) test(`生产guard分支held风�
         for (const tier of ['classmate', 'classmate-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
         writeFileSync(join(dataDir, 'secrets', 'bilibili.json'), JSON.stringify({ sessdata: 'SYNTHETIC_SESSION', biliJct: 'SYNTHETIC_CSRF', dedeUserId: '123', buvid3: 'SYNTHETIC_DEVICE', savedAt: '2026-11-05T00:00:00Z' }));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
-            contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], bilibiliAccount: true, watching: true,
+            contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], bilibili: 'dryRun', watching: true,
             schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         globalThis.fetch = async input => {
             assert.ok(String(input).startsWith('https://api.bilibili.com/x/web-interface/nav'));

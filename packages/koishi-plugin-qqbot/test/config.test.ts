@@ -70,13 +70,10 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
             const written = save({ ...minimal, bilibili: mode });
             assert.deepEqual(written, mode === 'off' ? omitted : { ...omitted, bilibili: mode });
             assert.equal(fromKoishi(written).bilibili, mode);
-            // 只写 bilibili：私信、回复、话题评论跟着它的档位，账号、认识的人跟着开没开（开关合并）；B 站表情包还要「图片表情」，表单默认没开
-            const parsed = fromKoishi(written);
-            for (const old of ['bilibiliDm', 'bilibiliReplies', 'bilibiliComment'] as const) assert.equal(parsed[old], mode, old);
-            for (const old of ['bilibiliAccount', 'acquaintances'] as const) assert.equal(parsed[old], mode !== 'off', old);
-            assert.equal(parsed.biliStickers, false);
-            assert.equal(fromKoishi({ ...written, stickers: 'send' }).biliStickers, mode !== 'off');
-            assert.equal(fromKoishi({ ...written, watching: true }).biliFeed, mode, '刷到视频分享跟着 watching，档位看 bilibili');
+            // 私信、回复、话题评论、账号、认识的人、B 站表情包跟着 bilibili，刷到视频分享跟着 watching（开关合并）：app 只读新键，旧字段不在 AppConfig 里
+            const parsed = fromKoishi({ ...written, watching: true, stickers: 'send' });
+            for (const old of ['bilibiliDm', 'bilibiliReplies', 'bilibiliComment', 'bilibiliAccount', 'acquaintances', 'biliStickers', 'biliFeed']) assert.equal(old in parsed, false, old);
+            assert.equal(parsed.bilibili, mode);
         }
     });
 

@@ -68,11 +68,6 @@ export const DEFAULTS = {
     qqSurface: false,
     readReceipts: false,
     bilibili: 'off' as PresenceMode,
-    bilibiliAccount: false,
-    biliFeed: 'off' as PresenceMode,
-    bilibiliComment: 'off' as PresenceMode,
-    bilibiliDm: 'off' as PresenceMode,
-    bilibiliReplies: 'off' as PresenceMode,
     bilibiliCommentKeywords: [] as readonly string[],
     proactiveReach: false,
     proactiveInvite: false,
@@ -92,7 +87,6 @@ export const DEFAULTS = {
     smallNews: false,
     memes: false,
     watching: false,
-    biliStickers: false,
     quoteReply: false,
     deviceControl: 'off' as PresenceMode,
     deviceLinks: [] as readonly string[],
@@ -132,7 +126,6 @@ export const DEFAULTS = {
     timeline: false,
     webLookup: 'off' as WebMode,
     tastes: false,
-    acquaintances: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
     qqPresence: false,
@@ -226,6 +219,13 @@ export const LEGACY_DEFAULTS = {
     realAirQuality: false,
     realDaylight: false,
     realCalendar: false,
+    bilibiliAccount: false,
+    bilibiliDm: 'off' as PresenceMode,
+    bilibiliReplies: 'off' as PresenceMode,
+    bilibiliComment: 'off' as PresenceMode,
+    acquaintances: false,
+    biliStickers: false,
+    biliFeed: 'off' as PresenceMode,
 } as const;
 
 /** 开关合并的输入映射用的默认值：DEFAULTS 加上 AppConfig 里已经删掉的旧键（parseAppConfig、Koishi 迁移、盘点、adr-map 都用这份） */
@@ -313,24 +313,14 @@ export interface AppConfig {
      * 她的 B 站号（ADR 0089）：用凭证文件（<dataDir>/secrets/bilibili.json，`npm run bilibili-login -w @qqbot/bot` 扫码生成）登录，
      * 按口味搜视频、读字幕，让分享更有内容。要 bilibili 也开着；只读，不在 B 站发任何东西。默认关
      */
-    /** @deprecated 已并进 bilibili（开关合并）：输入只有旧键时原样、否则由 bilibili 派生；新代码读 bilibili */
-    bilibiliAccount: boolean;
-    /** @deprecated 已并进 watching（开关合并）：输入只有旧键时原样、否则由 watching 派生；新代码读 watching。她自己刷 B 站推荐（ADR 0168）：14 点后一天一次，拿一页推荐、排一次会话（停/划走），只记刷到的；dryRun 只写草稿。默认关 */
-    biliFeed?: PresenceMode;
-    /** @deprecated 已并进 bilibili（开关合并）：输入只有旧键时原样、否则由 bilibili 派生；新代码读 bilibili。在她分享的视频下评论并 @ 他（ADR 0089）：要 bilibiliAccount、bilibiliAtName、bilibiliAtUid 都配好；评论公开，用最低隐私档的卡写；dryRun 只写草稿。默认关 */
-    bilibiliComment: PresenceMode;
     /**
      * 在 B 站给他发私信（ADR 0089）：她刷到视频后，把链接加一两句话私信到他的 B 站（用 bilibiliAtUid），QQ 上只说一句「去看私信」，不再在 QQ 上发链接；
      * 私信发不出去（他没关注她的号、风控）就退回在 QQ 上直接发链接。要 bilibiliAccount；他要先关注她的号。dryRun 只写草稿。默认关
      */
-    /** @deprecated 已并进 bilibili（开关合并）：输入只有旧键时原样、否则由 bilibili 派生；新代码读 bilibili */
-    bilibiliDm: PresenceMode;
     /**
      * 回复别人回在她评论下面的话（ADR 0090）：先回他（bilibiliAtUid），其次挑有价值的；问她是不是 AI / 真人的、骂人的、广告、带链接的、想改她设定的一律不回；
      * 每天有上限。有价值的回复（不含昵称和 uid）另存一份真人语料。要 bilibiliAccount、bilibiliAtUid；dryRun 只写草稿。默认关
      */
-    /** @deprecated 已并进 bilibili（开关合并）：输入只有旧键时原样、否则由 bilibili 派生；新代码读 bilibili */
-    bilibiliReplies: PresenceMode;
     /**
      * 话题模式（ADR 0092）：给了关键词，评论就不再跟着分享走，而是她自己每天按其中一个关键词搜视频、挑播放多的前几个里的一个、读字幕和热评后评论并 @ 他
      * （不看分区，所以 DSH 插件、AI 视频搜得到）；约一半的日子想评论一次，仍受评论的间隔（一天）和一周 3 条的上限管。前期专评 AI 视频和 DSH 插件视频用。不写就是老样子
@@ -441,8 +431,6 @@ export interface AppConfig {
      * 表情包的候选来源换成 B 站：她的号读官方表情包（热词系列、tv_小电视，不要小黄脸 / 颜文字）+ 热门视频评论区里像表情包的图（真人照片、截图、广告的不收）；公开目录只在 B 站这路没东西时兜底。
      * 并且没有明确反应的、允许发表情的轮次里也约 12% 发一个（原来她线上 437 轮里只发了 1 个），顶替小黄脸。默认关
      */
-    /** @deprecated 已并进 bilibili（开关合并）：输入只有旧键时原样、否则由 bilibili 派生；新代码读 bilibili */
-    biliStickers: boolean;
     /**
      * 引用回复（ADR 0136）：QQ 里长按一条消息「回复」。她以前一次都没引用过。两种明确的时候才引：
      * 他连着发了几条、其中有个不是最后一条的问题，她回答那个问题，按概率引用它；打错字撤回失败（超过两分钟）补「*对的词」时，有时引用刚才那条错的。
@@ -551,8 +539,6 @@ export interface AppConfig {
     webLookup: WebMode;
     /** 从经历里长出偏好（ADR 0162）：每天最多回头看一次最近两周的真经历，指出带证据的偏好。默认关 */
     tastes: boolean;
-    /** @deprecated 已并进 bilibili（开关合并）：输入只有旧键时原样、否则由 bilibili 派生；新代码读 bilibili。认识的人（ADR 0163）：B 站上回复她的人登记下来，再见到认得；不替她主动加好友 / 私信陌生人。默认关 */
-    acquaintances: boolean;
     /** 要 @ 的人的 B 站昵称 */
     bilibiliAtName: string;
     /** 他的 B 站 uid：@ 评论（要昵称和 uid 两样）和发私信（只要 uid）都用 */
@@ -934,11 +920,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         qqSurface: bool(file, 'qqSurface', '', DEFAULTS.qqSurface),
         readReceipts: bool(file, 'readReceipts', '', DEFAULTS.readReceipts),
         bilibili: oneOf(file.bilibili, 'bilibili', PRESENCE_MODES, DEFAULTS.bilibili),
-        bilibiliAccount: bool(file, 'bilibiliAccount', '', DEFAULTS.bilibiliAccount),
-        biliFeed: oneOf(file.biliFeed, 'biliFeed', PRESENCE_MODES, DEFAULTS.biliFeed),
-        bilibiliComment: oneOf(file.bilibiliComment, 'bilibiliComment', PRESENCE_MODES, DEFAULTS.bilibiliComment),
-        bilibiliDm: oneOf(file.bilibiliDm, 'bilibiliDm', PRESENCE_MODES, DEFAULTS.bilibiliDm),
-        bilibiliReplies: oneOf(file.bilibiliReplies, 'bilibiliReplies', PRESENCE_MODES, DEFAULTS.bilibiliReplies),
         bilibiliCommentKeywords: bilibiliCommentKeywords(file.bilibiliCommentKeywords),
         proactiveReach: bool(file, 'proactiveReach', '', DEFAULTS.proactiveReach),
         proactiveInvite: bool(file, 'proactiveInvite', '', DEFAULTS.proactiveInvite),
@@ -958,7 +939,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         smallNews: bool(file, 'smallNews', '', DEFAULTS.smallNews),
         memes: bool(file, 'memes', '', DEFAULTS.memes),
         watching: bool(file, 'watching', '', DEFAULTS.watching),
-        biliStickers: bool(file, 'biliStickers', '', DEFAULTS.biliStickers),
         quoteReply: bool(file, 'quoteReply', '', DEFAULTS.quoteReply),
         deviceControl: oneOf(file.deviceControl, 'deviceControl', PRESENCE_MODES, DEFAULTS.deviceControl),
         deviceLinks: deviceLinks(file.deviceLinks),
@@ -990,7 +970,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         timeline: bool(file, 'timeline', '', DEFAULTS.timeline),
         webLookup: oneOf(file.webLookup, 'webLookup', WEB_MODES, DEFAULTS.webLookup),
         tastes: bool(file, 'tastes', '', DEFAULTS.tastes),
-        acquaintances: bool(file, 'acquaintances', '', DEFAULTS.acquaintances),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
         qqPresence: bool(file, 'qqPresence', '', DEFAULTS.qqPresence),

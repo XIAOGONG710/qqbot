@@ -76,7 +76,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         speechCheck: false,
         herDays: false,
         autonomousLife: false,
-        grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, memes: false, watching: false, biliStickers: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, worldDrama: false, pursuits: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, acquaintances: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, memes: false, watching: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, worldDrama: false, pursuits: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWorld: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false,
         media: true,
@@ -836,7 +836,7 @@ describe('编排（app.ts）', () => {
             feeds++;
             return { ok: false, status: 503, text: async () => '' };
         };
-        const cfg = config({ weeklyReport: true, watching: true, memes: true, biliFeed: 'on', bilibiliAccount: true,
+        const cfg = config({ weeklyReport: true, watching: true, memes: true, bilibili: 'on',
             contacts: [{ qq: 10001, name: '合成人甲', tier: 'boyfriend' }] });
         const cred = credentialPath(cfg.dataDir);
         mkdirSync(dirname(cred), { recursive: true });
@@ -2691,7 +2691,7 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
 
         test('有凭证：按口味搜到的排第一，读字幕，摘录进她的提示词；日志说已登录；凭证内容不进日志', async () => {
             const clock = new VirtualClock(planDay());
-            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', bilibiliAccount: true });
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on' });
             saveCredential(credentialPath(cfg.dataDir), credential);
             const calls: { url: string; body?: string }[] = [];
             const prompts: string[] = [];
@@ -2712,7 +2712,7 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
 
         test('开关开着但没有凭证文件：记一次日志说怎么办，照旧读热门榜', async () => {
             const clock = new VirtualClock(planDay());
-            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', bilibiliAccount: true });
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on' });
             const calls: { url: string }[] = [];
             const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, bilibiliFetch: fetchStub([]), bilibiliRequest: accountRequest(calls), generate: () => '这个也太真实了' });
             await app.connected(SELF);
@@ -2724,7 +2724,7 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
 
         test('评论开着：分享之后在视频下评论并真 @ 他（昵称 + uid），写评论的用最低隐私档的卡；复核在 2 分钟后', async () => {
             const clock = new VirtualClock(planDay());
-            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', bilibiliAccount: true, bilibiliComment: 'on', bilibiliAtName: '小明', bilibiliAtUid: 98765 });
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', bilibiliAtName: '小明', bilibiliAtUid: 98765 });
             saveCredential(credentialPath(cfg.dataDir), credential);
             const calls: { url: string; body?: string }[] = [];
             const prompts: string[] = [];
@@ -2739,7 +2739,7 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
             assert.equal(form.get('message'), '@小明 这个也太真实了');
             assert.deepEqual(JSON.parse(form.get('at_name_to_mid')!), { 小明: 98765 });
             assert.equal(form.get('oid'), '101');
-            assert.equal(sent.length, 2, '先发了 QQ 的话和链接');
+            assert.equal(sent.length, 1, '私信也跟着 bilibili 开着（填了 uid）：链接改在 B 站私信，QQ 上只提醒一句');
             assert.ok(prompts.some(p => p.includes('现在你要在 B 站一个视频下面发一条公开评论')), '评论走的是评论写手的说明');
             assert.ok(logs.some(l => l.includes('评论并 @ 了 小明')), logs.join('|'));
             assert.ok(logs.some(l => l.includes('分享后在视频下评论并 @ 小明（真发）')));
@@ -2747,7 +2747,7 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
 
         test('私信开着：链接和她的话发到他的 B 站私信，QQ 上只发一句提醒（没有链接）；私信记进聊天记录，他问起时她知道发过什么', async () => {
             const clock = new VirtualClock(planDay());
-            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', bilibiliAccount: true, bilibiliDm: 'on', bilibiliAtUid: 98765 });
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', bilibiliAtUid: 98765 });
             saveCredential(credentialPath(cfg.dataDir), credential);
             const calls: { url: string; body?: string }[] = [];
             const { app, sent, logs } = setup(cfg, { 10001: [] }, { clock, bilibiliFetch: fetchStub([]), bilibiliRequest: accountRequest(calls), generate: () => '这个也太真实了' });
@@ -2765,10 +2765,9 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
             assert.ok(logs.some(l => l.includes('在 B 站给他发了私信')) && logs.some(l => l.includes('在 QQ 上提醒他去看私信')), logs.join('|'));
         });
 
-        test('私信开着但没填他的 uid，或没开账号：不发私信，各记一行日志，照旧在 QQ 上发链接', async () => {
+        test('私信跟着 bilibili，但没填他的 uid：不发私信，记一行日志，照旧在 QQ 上发链接', async () => {
             for (const [overrides, expected] of [
-                [{ bilibiliAccount: true, bilibiliDm: 'on' as const }, '没填 bilibiliAtUid'],
-                [{ bilibiliDm: 'on' as const, bilibiliAtUid: 98765 }, '要 bilibiliAccount 也开着'],
+                [{}, '没填 bilibiliAtUid'],
             ] as const) {
                 const clock = new VirtualClock(planDay());
                 const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', ...overrides });
@@ -2783,10 +2782,10 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
             }
         });
 
-        test('回复开着（ADR 0090）：不用开刷视频；看「回复我的」，他的话先回，试运行只写草稿、不碰 B 站、不发 QQ；日志说清楚', async () => {
+        test('回复开着（ADR 0090）：看「回复我的」，他的话先回，试运行只写草稿、不碰 B 站、不发 QQ；日志说清楚', async () => {
             const evening = planDay();
             const clock = new VirtualClock(evening);
-            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibiliAccount: true, bilibiliReplies: 'dryRun', bilibiliAtUid: 98765 });
+            const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'dryRun', bilibiliAtUid: 98765 });
             saveCredential(credentialPath(cfg.dataDir), credential);
             const seconds = Math.floor(evening.getTime() / 1000);
             const entry = (mid: number, nickname: string, id: number, text: string, ago: number) => ({
@@ -2808,15 +2807,14 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
             assert.match(text, /要在 B 站回复的话（草稿，没发）\n\n回复 @小明 :这个梗我能玩一年\n\n（他说：她写得挺好/);
             assert.ok(!text.includes('路人乙'), '一次只回一条，他的先');
             assert.deepEqual(sent, []);
-            assert.ok(!calls.some(c => c.url.includes('reply/add') || c.url.includes('send_msg') || c.url.includes('wbi/search')), '试运行不写 B 站，也没开刷视频');
+            assert.ok(!calls.some(c => c.url.includes('reply/add') || c.url.includes('send_msg')), '试运行不写 B 站');
             assert.ok(logs.some(l => l.includes('回复 B 站评论：只写草稿（不发）')), logs.join('|'));
             assert.ok(existsSync(join(cfg.dataDir, 'presence', 'bilibili-corpus.jsonl')));
         });
 
-        test('回复开着但没填他的 uid，或没开账号：不回复，各记一行日志', async () => {
+        test('回复跟着 bilibili，但没填他的 uid：不回复，记一行日志', async () => {
             for (const [overrides, expected] of [
-                [{ bilibiliAccount: true, bilibiliReplies: 'dryRun' as const }, '没填 bilibiliAtUid'],
-                [{ bilibiliReplies: 'dryRun' as const, bilibiliAtUid: 98765 }, '要 bilibiliAccount 也开着'],
+                [{ bilibili: 'dryRun' as const }, '没填 bilibiliAtUid'],
             ] as const) {
                 const cfg = config({ contacts: bf, schedule: true, herDays: true, ...overrides });
                 saveCredential(credentialPath(cfg.dataDir), credential);
@@ -2829,10 +2827,9 @@ describe('刷 B 站（ADR 0084）：接进应用', () => {
             }
         });
 
-        test('评论开着但没填要 @ 的人，或没开账号：不评论，各记一行日志', async () => {
+        test('评论跟着 bilibili，但没填要 @ 的人：不评论，记一行日志', async () => {
             for (const [overrides, expected] of [
-                [{ bilibiliAccount: true, bilibiliComment: 'on' as const }, '没填 bilibiliAtName / bilibiliAtUid'],
-                [{ bilibiliComment: 'on' as const, bilibiliAtName: '小明', bilibiliAtUid: 98765 }, '要 bilibiliAccount 也开着'],
+                [{}, '没填 bilibiliAtName / bilibiliAtUid'],
             ] as const) {
                 const clock = new VirtualClock(planDay());
                 const cfg = config({ contacts: bf, schedule: true, herDays: true, bilibili: 'on', ...overrides });
@@ -2891,7 +2888,7 @@ describe('全开冒烟（整包上线用）', () => {
                 contacts: bf, schedule: true, herDays: true, pokes: true, pokeBack: true, pokeOut: true, recalls: true, readReceipts: true,
                 onlineStatus: true, profileLikes: true, qzone: 'dryRun', bilibili: 'dryRun', typingStatus: true, selfRecall: true,
                 rhythm: true, festivals: 'greet', npcAsks: true,
-                herFeelings: true, herNo: true, proactiveInvite: true, photos: true, together: true, comeBack: true, relationship: true, jokes: true, interruptions: true, proactiveAsk: true, weeklyReport: true, jealousy: true, proactiveRoom: true, menu: true, curious: true, smallNews: true, memes: true, watching: true, biliStickers: true, lagTail: true, everydayLife: true, pursuits: true, grievance: true,
+                herFeelings: true, herNo: true, proactiveInvite: true, photos: true, together: true, comeBack: true, relationship: true, jokes: true, interruptions: true, proactiveAsk: true, weeklyReport: true, jealousy: true, proactiveRoom: true, menu: true, curious: true, smallNews: true, memes: true, watching: true, lagTail: true, everydayLife: true, pursuits: true, grievance: true,
             });
             const { app, sent, logs } = setup(cfg, { 10001: [] }, {
                 clock, generate: () => '在呢，刚忙完', bilibiliFetch: bili,
