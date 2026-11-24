@@ -268,10 +268,13 @@ export function computeWeeklyMetrics(input: MetricsInput): WeeklyMetrics {
     const inWindow = (t: number) => t >= from && t < to;
     const turns: Turn[] = [];
     const his: number[] = [];
+    // 这个窗口里真有聊天的人（有聊天文件、这几天一句没说的不算）
+    const active = new Set<number>();
     for (const [qq, messages] of input.chats) {
         turns.push(...turnsOf(messages, input.proactiveIds?.get(qq), { from, to }));
         for (const message of messages) {
             const t = Date.parse(message.time);
+            if (inWindow(t)) active.add(qq);
             if (message.role === 'user' && inWindow(t)) his.push(t);
         }
     }
@@ -285,7 +288,7 @@ export function computeWeeklyMetrics(input: MetricsInput): WeeklyMetrics {
         from: new Date(from).toISOString(),
         to: new Date(to).toISOString(),
         scope: input.scope ?? 'all',
-        contacts: input.chats.size,
+        contacts: active.size,
         days,
         week: aggregate(turns, his.length),
     };

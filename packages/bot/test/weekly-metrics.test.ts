@@ -37,6 +37,15 @@ describe('每周效果数', () => {
     const dirs: string[] = [];
     afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
+    test('联系人数只数这个窗口里真有聊天的（有文件、这几天没说话的不算）', () => {
+        const { from, to } = windowOf('2026-11-18', 3);
+        const chats = new Map<number, StoredMessage[]>([
+            [10001, history],
+            [10002, [msg(at(10, 9), 'user', '上周的话'), msg(at(10, 9, 1), 'assistant', '嗯')]],
+        ]);
+        assert.equal(computeWeeklyMetrics({ chats, from, to }).contacts, 1);
+    });
+
     test('一轮一轮分开：回他 / 自己找他（主动记录或隔一小时以上）/ 接着自己说，回他的才有延迟', () => {
         const withIds = turnsOf(history, new Set([6]));
         assert.deepEqual(withIds.map(turn => turn.kind), ['reply', 'reply', 'reply', 'reply', 'proactive', 'proactive', 'reply']);
