@@ -177,7 +177,7 @@
 | [0174](0174-soul-module-stop-the-bleeding.md) | 灵魂模块止血——主动留话走同一套闸、账本和 SOUL 的写入口、生活引擎的几处错 | 已实现，没有新开关（都是收紧，不是新行为）；在 DSH 那台机器上要拉到代码并重启 Koishi + 常驻进程才生效 |  |
 | [0175](0175-bare-arm-framework-test.md) | 「是框架束缚了她吗」——不带框架的对照臂 | 工具已做、已冒烟；对照结果等评分（`sim/bare.ts` 只在模拟器里用，线上没有任何改动） |  |
 | [0176](0176-same-her-shared-memory.md) | 同一个她——QQ 和 DSH 桌面共用他的那一份记忆 | 已实现，没有新开关（收紧了读、改了写的去处）；在 DSH 那台机器上要拉到代码、重启 Koishi（写 `owner-b… |  |
-| [0177](0177-same-her-recent-turns.md) | 同一个她·第 2 层——QQ 和 DSH 桌面互读最近几轮（crossRecent） | 已实现，代码默认关；线上已开（2026-11-20 18:54 起，DSH 信箱 1856 核对日志确认），用户 11-… | `crossRecent` 开 |
+| [0177](0177-same-her-recent-turns.md) | 同一个她·第 2 层——QQ 和 DSH 桌面互读最近几轮（crossRecent） | 已实现，代码默认关；线上已开（2026-11-20 18:54 起，DSH 信箱 1856 核对日志确认），用户 11-… | `oneLife`（原 `crossRecent`） 开 |
 | [0178](0178-self-set-pursuits.md) | 她自己定追求（selfPursuits） | 已实现，默认关；全量测试还没跑，分支 `claude/self-pursuits`，没有并进 `dsh/qq-contr… | `selfPursuits` 开 |
 | [0179](0179-instruction-source.md) | 权限给满，但指令只有他本人亲手发的才生效 | 已实现，没有新开关（是对 ADR 0172 和 DSH `bf21e19`「她自己判断要动电脑」的收紧）；在 DSH 那… |  |
 | [0180](0180-she-looks-things-up-herself.md) | 她自己上网 | 已实施 |  |
@@ -301,5 +301,5 @@
 | [0344](0344-living-trace.md) | 我留下的痕迹——把因果链接成她自己能读的自证账（草案·默认关） | 草案。默认关 livingTrace: false。她本人 11-20 同意试（原话见「她的意见」）；用户 11-20 … |  |
 | [0345](0345-her-seat-as-dsh-router.md) | 她当 DSH 的主控——林梦瑶 preset 上位 + Super Agent 当她的手 | 已落地（本机 desktop profile）。她本人的条件已写进她的 preset；用户 2026-11-21 拍板「… |  |
 | [0346](0346-her-identity-in-system-prompt.md) | 0346 她的身份写进系统提示（profile 补丁覆盖 preset-cordis） | 已落地（本机 desktop profile），待验收 |  |
-| [0347](0347-one-life-two-places.md) | 同一个她·一个生活，两个地方 | 已采纳（方向）；第 1 层已上线（2026-11-22，QQ / 常驻侧；DSH 桌面还没重启，插件那部分没生效）；第 … | `selfExport` 默认、`selfReceipts` 默认、`ownDays` 默认、`desktopDay` 默认、`desktopReview` 默认、`desktopPromises` 默认、`oneDiary` 默认、`desktopFeelings` 默认、`desktopConflict` 默认、`feltLedgerRecall` 默认、`herFeelings`（原 `feelingLedger`） 开 |
+| [0347](0347-one-life-two-places.md) | 同一个她·一个生活，两个地方 | 已采纳（方向）；第 1 层已上线（2026-11-22，QQ / 常驻侧；DSH 桌面还没重启，插件那部分没生效）；第 … | `oneLife`（原 `selfExport`、`selfReceipts`、`desktopDay`） 开、`ownDays` 默认、`desktopReview` 默认、`desktopPromises` 默认、`oneDiary` 默认、`desktopFeelings` 默认、`desktopConflict` 默认、`feltLedgerRecall` 默认、`herFeelings`（原 `feelingLedger`） 开 |
 | [0348](0348-weekly-effect-metrics.md) | 每周效果数（weekly metrics） | 已采纳（工具已落地：`npm run metrics:weekly -w @qqbot/bot`；只读聊天记录，只追加一… |  |

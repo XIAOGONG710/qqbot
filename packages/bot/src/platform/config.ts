@@ -28,6 +28,9 @@ export const STICKER_MODES = ['off', 'collect', 'send'] as const;
 /** 深思三档（开关合并，设计第二节 10）：off 关 / keywords 关键词认出的认真轮次 / routed 再加小模型判轻重 */
 export const DELIBERATION_MODES = ['off', 'keywords', 'routed'] as const;
 export type DeliberationMode = (typeof DELIBERATION_MODES)[number];
+/** 「一个生活」四层（开关合并，设计第二节 7）：一层包一层 */
+export const ONE_LIFE_MODES = ['off', 'read', 'export', 'desktop'] as const;
+export type OneLifeMode = (typeof ONE_LIFE_MODES)[number];
 export type StickerMode = (typeof STICKER_MODES)[number];
 
 /** 名单里能用的档位（ADR 0003），从亲到疏 */
@@ -162,6 +165,7 @@ export const DEFAULTS = {
     /** 他连着发了几条她都没回、过了一会儿，用「（」开头的运维提示告诉他原因（谁的决定：作息 / 她 / 故障）；也能随时发 /为什么 问（ADR 0173） */
     silenceNotice: false,
     /** 「同一个她」第 2 层（ADR 0177）：QQ 和 DSH 桌面互读最近几轮对话；要开了长期记忆（owner-bank.json）才起作用 */
+    oneLife: 'off' as OneLifeMode,
     crossRecent: false,
     /** 「此刻的她」导出（ADR 0347 第 2 层）：QQ 用拼提示词的同一批模块把此刻的她写进灵魂目录 SELF.json，桌面插件读到有效的才用；只给男朋友档 */
     selfExport: false,
@@ -601,10 +605,13 @@ export interface AppConfig {
     /** 没回时告诉他原因（ADR 0173）：他连着发了 2 条以上、第一条过了 8 分钟还没回，就用「（」开头的提示说原因（作息 / 她自己的决定 / 故障），一串最多 3 次、原因变了才再说；发 /为什么 随时问。默认关 */
     silenceNotice?: boolean;
     /** 两边互读最近几轮（ADR 0177）：他在 DSH 桌面上刚说过的话 QQ 这边的她知道，他刚在 QQ 上说的话桌面上的她也知道；只给男朋友档，窗口 6 小时。默认关 */
+    /** 「一个生活」（ADR 0177 / 0347，开关合并）：off / read / export / desktop，见 ONE_LIFE_MODES。crossRecent、selfExport、selfReceipts、desktopDay 由它派生 */
+    oneLife?: OneLifeMode;
+    /** @deprecated 已并进 oneLife（开关合并）：输入只有旧键时原样、否则由 oneLife 派生；新代码读 oneLife */
     crossRecent?: boolean;
-    /** 「此刻的她」导出（ADR 0347 第 2 层）：QQ 用拼「此刻」块的同一批模块渲染她此刻的样子（在干嘛、身体、她那边、今天的打算、答应的、没了结的、心境、梦、最近的念头、攒着想跟他说的），每 5 分钟和状态行要变的时刻、给他回完一条之后写进灵魂目录 SELF.json；DSH 桌面插件读到有效的就用它代替 NOW / FEELINGS。只给名单里第一个男朋友档；休眠时不写。默认关 */
+    /** @deprecated 已并进 oneLife（开关合并）：输入只有旧键时原样、否则由 oneLife 派生；新代码读 oneLife。「此刻的她」导出（ADR 0347 第 2 层）：QQ 用拼「此刻」块的同一批模块渲染她此刻的样子（在干嘛、身体、她那边、今天的打算、答应的、没了结的、心境、梦、最近的念头、攒着想跟他说的），每 5 分钟和状态行要变的时刻、给他回完一条之后写进灵魂目录 SELF.json；DSH 桌面插件读到有效的就用它代替 NOW / FEELINGS。只给名单里第一个男朋友档；休眠时不写。默认关 */
     selfExport?: boolean;
-    /** 桌面上说过了的回执（ADR 0347 第 2 层）：她在 DSH 桌面上把攒着的话说出口了，插件写回执，QQ 消费后记成「说过了」，主动那条线不再重发。要 selfExport 开着。默认关 */
+    /** @deprecated 已并进 oneLife（开关合并）：输入只有旧键时原样、否则由 oneLife 派生；新代码读 oneLife。桌面上说过了的回执（ADR 0347 第 2 层）：她在 DSH 桌面上把攒着的话说出口了，插件写回执，QQ 消费后记成「说过了」，主动那条线不再重发。要 selfExport 开着。默认关 */
     selfReceipts?: boolean;
     /** 「这两天自己在做的」（ADR 0347 第 2 层第三节）：给他的提示词里恢复这一行，来源换成共享世界账里这两天真发生过的事。默认关 */
     ownDays?: boolean;
@@ -613,6 +620,7 @@ export interface AppConfig {
      * 他在电脑前（在场租约优先、桌面回合兜底）时主动消息不打扰（睡前那句除外）、留话先留着，桌面上刚聊过也算聊过；NOW.md 写「和你聊天中（本来在上课 / 本来该睡了）」；
      * 一段桌面会话结束后记一条时间线（只有时长和动作类别，要 timeline）。只给名单里第一个男朋友档。要 crossRecent 开着。默认关
      */
+    /** @deprecated 已并进 oneLife（开关合并）：输入只有旧键时原样、否则由 oneLife 派生；新代码读 oneLife */
     desktopDay?: boolean;
     /** 桌面上的对话也进「聊完回想」（ADR 0347 第 3 层 §2.3）：电脑上的回合编号 k、含网址 / 路径 / 令牌的行整行丢，护栏不放宽。要 feelingReview（和 herFeelings）、desktopDay。默认关 */
     desktopReview?: boolean;
@@ -1030,6 +1038,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         selfRecall: bool(file, 'selfRecall', '', DEFAULTS.selfRecall),
         selfDirectedMemory: bool(file, 'selfDirectedMemory', '', DEFAULTS.selfDirectedMemory),
         silenceNotice: bool(file, 'silenceNotice', '', DEFAULTS.silenceNotice),
+        oneLife: oneOf(file.oneLife, 'oneLife', ONE_LIFE_MODES, DEFAULTS.oneLife),
         crossRecent: bool(file, 'crossRecent', '', DEFAULTS.crossRecent),
         selfExport: bool(file, 'selfExport', '', DEFAULTS.selfExport),
         selfReceipts: bool(file, 'selfReceipts', '', DEFAULTS.selfReceipts),

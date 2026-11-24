@@ -34,7 +34,10 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
             if (feature.adr) assert.match(feature.adr, /^\d{4}$/);
             for (const required of feature.requires ?? []) {
                 assert.notEqual(required, feature.key, `${feature.key} 不能依赖自己`);
-                assert.ok(keys.includes(required), `${feature.key} 依赖了没有登记的功能 ${required}`);
+                // 「键=档位」：键登记过、档位是它认的一档
+                const [key, mode] = required.split('=') as [string, string | undefined];
+                assert.ok(keys.includes(key), `${feature.key} 依赖了没有登记的功能 ${required}`);
+                if (mode !== undefined) assert.ok(Object.keys(FEATURES.find(f => f.key === key)!.modeLabels ?? {}).includes(mode), `${feature.key} 依赖的 ${required} 不是 ${key} 的一档`);
             }
         }
     });
@@ -153,6 +156,12 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
         assert.deepEqual(get('memoryFeelings').missing, ['心境']);
         assert.deepEqual(get('feelingReview').missing, ['心境']);
         assert.equal(get('desktopConflict').missing?.length, 2);
+        // 「键=档位」的依赖：一个生活要到 desktop 这一层，桌面上的承诺才起作用
+        for (const [oneLife, on] of [['read', false], ['export', false], ['desktop', true]] as const) {
+            const promises = featureStatuses({ oneLife, desktopPromises: true }).find(s => s.key === 'desktopPromises')!;
+            assert.equal(promises.on, on, oneLife);
+            if (!on) assert.deepEqual(promises.missing, ['一个生活']);
+        }
         const ready = featureStatuses({ memoryFeelings: true, herFeelings: true }).find(s => s.key === 'memoryFeelings')!;
         assert.equal(ready.on, true);
         assert.equal(ready.configured, undefined);
@@ -227,7 +236,7 @@ describe('客户端的纯函数', () => {
             jokes: true, speechCheck: true,
             herDays: true, autonomousLife: true, proactive: 'on',
             media: true, bilibili: 'dryRun', qzone: 'off',
-            crossRecent: true, dsh: { enabled: true },
+            oneLife: 'read', dsh: { enabled: true },
         });
         const bundles = capabilityBundles(source);
         assert.deepEqual(bundles.map((bundle: { name: string }) => bundle.name), [

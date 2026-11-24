@@ -151,6 +151,24 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
         }),
         ignorable: (_, input) => input.proactive === 'off',
     },
+    // 17. 「一个生活」分层（7）：新名字 oneLife，四档一层包一层——read 互读最近几轮；export 再把「此刻的她」交给桌面（SELF.json + 回执）；
+    //     desktop 再把桌面上的时间算进她的一天。旧 → 新取满足整条链的最高一层；跳层（开了 desktopDay 没开 selfExport）、
+    //     只开 selfExport 不开 selfReceipts 表达不了、不迁移。另 6 个（ownDays、desktopReview、desktopPromises、oneDiary、
+    //     desktopFeelings、desktopConflict）各自改她说的 / 记的，验收开到线上之后再并成更高的一层，这里不动
+    {
+        key: 'oneLife', values: ['off', 'read', 'export', 'desktop'], legacy: ['crossRecent', 'selfExport', 'selfReceipts', 'desktopDay'],
+        fromLegacy: input => {
+            if (input.crossRecent !== true) return 'off';
+            if (input.selfExport !== true || input.selfReceipts !== true) return 'read';
+            return input.desktopDay === true ? 'desktop' : 'export';
+        },
+        toLegacy: value => ({
+            crossRecent: value !== 'off',
+            selfExport: value === 'export' || value === 'desktop',
+            selfReceipts: value === 'export' || value === 'desktop',
+            desktopDay: value === 'desktop',
+        }),
+    },
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */

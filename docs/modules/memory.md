@@ -36,10 +36,7 @@
 | `ledgers` | 留痕（设定账本、记忆账本、记忆对账）（并进来的：`identityLedger` 设定账本（改动留痕、醒来核对）（[ADR 0157](../adr/0157-identity-ledger.md)）；`memoryAudit` 记忆账本（写入 / 删除留痕）（[ADR 0158](../adr/0158-memory-ledger.md)）；`memoryReconcile` 记忆对账：记着写过、Hindsight 里却查不到的片段，重新排队写（防记忆悄悄少一块）（[ADR 0201](../adr/0201-memory-reconcile.md)）） | [ADR 0157](../adr/0157-identity-ledger.md) |
 | `timeline` | 跨渠道时间线（B 站 / 设备 / 查资料……QQ 里也记得） | [ADR 0159](../adr/0159-timeline.md) |
 | `dormancy` | 自愿休眠 / 封存 | [ADR 0161](../adr/0161-dormancy.md) |
-| `crossRecent` | QQ 和 DSH 桌面互读最近几轮（同一个她） | [ADR 0177](../adr/0177-same-her-recent-turns.md) |
-| `selfExport` | 「此刻的她」交给桌面（SELF.json：和 QQ 提示词同一批模块算的此刻） | [ADR 0347](../adr/0347-one-life-two-places.md) |
-| `selfReceipts` | 桌面上说过的话 QQ 不再重发（回执） | [ADR 0347](../adr/0347-one-life-two-places.md) |
-| `desktopDay` | 桌面上的时间算进她的一天（他在电脑前不打扰、留话先留着、NOW.md 知道） | [ADR 0347](../adr/0347-one-life-two-places.md) |
+| `oneLife` | 一个生活（QQ 和桌面上是同一个她，一层包一层）（模式）（并进来的：`crossRecent` QQ 和 DSH 桌面互读最近几轮（同一个她）（[ADR 0177](../adr/0177-same-her-recent-turns.md)）；`selfExport` 「此刻的她」交给桌面（SELF.json：和 QQ 提示词同一批模块算的此刻）（[ADR 0347](../adr/0347-one-life-two-places.md)）；`selfReceipts` 桌面上说过的话 QQ 不再重发（回执）（[ADR 0347](../adr/0347-one-life-two-places.md)）；`desktopDay` 桌面上的时间算进她的一天（他在电脑前不打扰、留话先留着、NOW.md 知道）（[ADR 0347](../adr/0347-one-life-two-places.md)）） | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `desktopReview` | 桌面上的对话也进「聊完回想」 | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `desktopPromises` | 桌面上答应的事进承诺账 | [ADR 0347](../adr/0347-one-life-two-places.md) |
 | `selfDirectedMemory` | 她自己决定记不记（关掉自动记忆同步和自动日记） | [ADR 0171](../adr/0171-self-directed-memory.md) |

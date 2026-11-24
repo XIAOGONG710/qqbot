@@ -18,7 +18,7 @@ import { attachCompanionWebSocket, type CompanionWebSocketLike } from '@qqbot/mo
 import { createCompanionKoaActionPollHandler, createCompanionKoaEnvelopeHandler, createCompanionKoaMediaHandler } from '@qqbot/mobile-companion/koa';
 import type { HistoryMessage } from '../../bot/src/memory/backfill.ts';
 import type { WebMode } from '../../bot/src/platform/web.ts';
-import { CONTACT_TIERS, configSwitchNotes, DEFAULTS, parseAppConfig, type AppConfig, type ContactTier, type DeliberationMode, type StickerMode } from '../../bot/src/platform/config.ts';
+import { CONTACT_TIERS, configSwitchNotes, DEFAULTS, parseAppConfig, type AppConfig, type ContactTier, type DeliberationMode, type OneLifeMode, type StickerMode } from '../../bot/src/platform/config.ts';
 import { createLog, type Log } from '../../bot/src/platform/log.ts';
 import { createPromptManifestLog } from '../../bot/src/platform/prompt-manifest.ts';
 import { FEATURES, featureDetail, type FeatureDef } from '../../bot/src/platform/features.ts';
@@ -311,11 +311,16 @@ export interface Config {
     selfRecall?: boolean;
     selfDirectedMemory: boolean;
     silenceNotice: boolean;
-    crossRecent: boolean;
-    selfExport: boolean;
-    selfReceipts: boolean;
+    oneLife: OneLifeMode;
+    /** 已并进 oneLife（开关合并），koishi.yml 里还写着才有 */
+    crossRecent?: boolean;
+    /** 已并进 oneLife（开关合并），koishi.yml 里还写着才有 */
+    selfExport?: boolean;
+    /** 已并进 oneLife（开关合并），koishi.yml 里还写着才有 */
+    selfReceipts?: boolean;
     ownDays: boolean;
-    desktopDay: boolean;
+    /** 已并进 oneLife（开关合并），koishi.yml 里还写着才有 */
+    desktopDay?: boolean;
     desktopReview: boolean;
     desktopPromises: boolean;
     oneDiary: boolean;
@@ -531,11 +536,12 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         selfRecall: legacy(),
         selfDirectedMemory: toggle('selfDirectedMemory'),
         silenceNotice: toggle('silenceNotice'),
-        crossRecent: toggle('crossRecent'),
-        selfExport: toggle('selfExport'),
-        selfReceipts: toggle('selfReceipts'),
+        oneLife: choice('oneLife'),
+        crossRecent: legacy(),
+        selfExport: legacy(),
+        selfReceipts: legacy(),
         ownDays: toggle('ownDays'),
-        desktopDay: toggle('desktopDay'),
+        desktopDay: legacy(),
         desktopReview: toggle('desktopReview'),
         desktopPromises: toggle('desktopPromises'),
         oneDiary: toggle('oneDiary'),

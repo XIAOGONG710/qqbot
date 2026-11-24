@@ -172,6 +172,7 @@ describe('真表：已经并了的组', () => {
         pokes: true,
         herNo: true,
         proactive: 'on',
+        oneLife: 'desktop',
     };
     const env = { QQBOT_LLM_API_KEY: 'k' };
     const base = {
@@ -232,6 +233,15 @@ describe('真表：已经并了的组', () => {
         const old = parse({ memoryReconcile: true });
         assert.deepEqual([old.ledgers, old.identityLedger, old.memoryAudit, old.memoryReconcile], [true, false, false, true]);
         assert.match(configSwitchNotes({ memoryReconcile: true }).join('\n'), /已并进 ledgers（= true）.*对不上/);
+    });
+
+    test('一个生活：11-20 那份快照（只开了互读）是 read；之后补开三项是 desktop；跳层的表达不了', () => {
+        const merge = SWITCH_MERGES.find(m => m.key === 'oneLife')!;
+        assert.equal(representable(merge, LIVE_2026_11_20, defaults), true);
+        assert.equal(legacyValue(merge, LIVE_2026_11_20, defaults), 'read');
+        assert.equal(legacyValue(merge, { crossRecent: true, selfExport: true, selfReceipts: true }, defaults), 'export');
+        assert.equal(representable(merge, { crossRecent: true, desktopDay: true }, defaults), false, '跳层');
+        assert.equal(representable(merge, { crossRecent: true, selfExport: true }, defaults), false, '只开 selfExport');
     });
 
     test('只写新键：每一档都能派生出全部旧字段；都没写：旧字段由新键的默认值派生', () => {

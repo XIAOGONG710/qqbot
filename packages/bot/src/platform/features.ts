@@ -14,6 +14,7 @@ export type FeatureGroup = (typeof FEATURE_GROUPS)[number];
 /** 一行：key 是 config 里的名字；requires 是要让本项真正生效还必须开启的其他功能。 */
 export interface FeatureDef {
     key: string; label: string; group: FeatureGroup; adr?: string; kind?: 'bool' | 'mode'; hint?: string; description?: string; requires?: readonly string[];
+    // requires 里写「键=档位」（如 'oneLife=desktop'）：那个几档的开关恰好在这一档才算满足；只写键就是开着就行
     /** 控制台配置页上这一项的完整说明（Koishi 插件的 Schema 从这里取，ADR 0336 第 6 步）；没写就由 label / adr / description 拼，见 featureDetail */
     detail?: string;
     /** 几档模式的开关：每档的值和配置页上的说法，键的先后就是下拉框的先后（和代码里认的那张表一样，feature-details.test.ts 核对） */
@@ -106,25 +107,31 @@ export const FEATURES: readonly FeatureDef[] = [
     { key: 'together', label: '陪玩状态', group: '说话', adr: '0111',
         detail: '**陪玩状态**（ADR 0111）：他答应了她的邀约（或她答应了他的“今晚王者双排吗”）之后的两三个小时，她正和他一起玩——回话短一点、慢一点，聊眼前这局 / 存档里的事；这段时间不插“你人呢”之类别的主动消息；谁说“下了 / 不玩了 / 睡了 / 晚安”就结束。只对男朋友档。默认关。' },
     SILENCE_NOTICE,
-    { key: 'crossRecent', label: 'QQ 和 DSH 桌面互读最近几轮（同一个她）', group: '记忆和安全', adr: '0177',
-        detail: '**QQ 和 DSH 桌面互读最近几轮**（ADR 0177，「同一个她」第 2 层）：他在 DSH 桌面上刚说过的话（最近 3 轮、6 小时内），QQ 这边的她知道；他刚在 QQ 上说的话，桌面上的她也知道。只给男朋友档；要开了长期记忆。需要 DSH 那边重启插件。默认关。' },
-    { key: 'selfExport', label: '「此刻的她」交给桌面（SELF.json：和 QQ 提示词同一批模块算的此刻）', group: '记忆和安全', adr: '0347',
-        detail: '**「此刻的她」交给桌面**（ADR 0347 第 2 层）：QQ 用拼「此刻」块的同一批模块，把她此刻的样子（在干嘛、接下来的课、身体、她那边今天的事、今天的打算、答应你的、没了结的、带来由的心境、梦、最近的念头，和攒着想跟你说、还没说出口的几件）写进灵魂目录的 SELF.json，和 QQ 提示词里的那几行一字不差；每 5 分钟、状态要变的那一刻、给你回完一条之后刷新。DSH 桌面上的她读到有效的就用它，过期（30 分钟）自动退回原来的 NOW / 心境。只给名单里第一个男朋友档；休眠时不写；危机暂停时不放攒着的话。需要 DSH 那边的插件支持。默认关。' },
-    { key: 'selfReceipts', label: '桌面上说过的话 QQ 不再重发（回执）', group: '记忆和安全', adr: '0347', requires: ['selfExport'],
-        detail: '**桌面上说过的话 QQ 不再重发**（ADR 0347 第 2 层）：她在 DSH 桌面上把攒着想跟你说的事说出口了，桌面插件留一张回执，QQ 这边记成「说过了」，主动消息不再把同一件事再发一遍。只认放给她看过的那几件，宁可漏判不误判。要同时开 selfExport。默认关。' },
+    // 开关合并（一个生活：一层包一层，互读、交出此刻、桌面上的时间）
+    { key: 'oneLife', label: '一个生活（QQ 和桌面上是同一个她，一层包一层）', group: '记忆和安全', adr: '0347', kind: 'mode',
+        detail: '**一个生活**（ADR 0177 / 0347）：QQ 上的她和 DSH 桌面上的她是同一个人，分层开。read：两边互读最近几轮；export：再把「此刻的她」交给桌面（SELF.json），桌面上说过的话 QQ 不再重发；desktop：再把桌面上的时间算进她的一天（他在电脑前不打扰、留话先留着）。下面几项桌面上的（回想、承诺、心境、上课时被叫）要到 desktop 这一层才起作用。默认关',
+        modeLabels: { off: '关', read: '两边互读最近几轮', export: '再把此刻交给桌面（SELF.json + 回执）', desktop: '再把桌面上的时间算进她的一天' },
+        absorbs: [
+            { key: 'crossRecent', label: 'QQ 和 DSH 桌面互读最近几轮（同一个她）', adr: '0177',
+                detail: '**QQ 和 DSH 桌面互读最近几轮**（ADR 0177，「同一个她」第 2 层）：他在 DSH 桌面上刚说过的话（最近 3 轮、6 小时内），QQ 这边的她知道；他刚在 QQ 上说的话，桌面上的她也知道。只给男朋友档；要开了长期记忆。需要 DSH 那边重启插件。默认关。' },
+            { key: 'selfExport', label: '「此刻的她」交给桌面（SELF.json：和 QQ 提示词同一批模块算的此刻）', adr: '0347',
+                detail: '**「此刻的她」交给桌面**（ADR 0347 第 2 层）：QQ 用拼「此刻」块的同一批模块，把她此刻的样子（在干嘛、接下来的课、身体、她那边今天的事、今天的打算、答应你的、没了结的、带来由的心境、梦、最近的念头，和攒着想跟你说、还没说出口的几件）写进灵魂目录的 SELF.json，和 QQ 提示词里的那几行一字不差；每 5 分钟、状态要变的那一刻、给你回完一条之后刷新。DSH 桌面上的她读到有效的就用它，过期（30 分钟）自动退回原来的 NOW / 心境。只给名单里第一个男朋友档；休眠时不写；危机暂停时不放攒着的话。需要 DSH 那边的插件支持。默认关。' },
+            { key: 'selfReceipts', label: '桌面上说过的话 QQ 不再重发（回执）', adr: '0347',
+                detail: '**桌面上说过的话 QQ 不再重发**（ADR 0347 第 2 层）：她在 DSH 桌面上把攒着想跟你说的事说出口了，桌面插件留一张回执，QQ 这边记成「说过了」，主动消息不再把同一件事再发一遍。只认放给她看过的那几件，宁可漏判不误判。要同时开 selfExport。默认关。' },
+            { key: 'desktopDay', label: '桌面上的时间算进她的一天（他在电脑前不打扰、留话先留着、NOW.md 知道）', adr: '0347',
+                detail: '**桌面上的时间算进她的一天**（ADR 0347 第 3 层）：每 30 秒把 DSH 桌面插件写的最近几轮收进 QQ 自己的桌面记录（按 id 去重、留 14 天）。他在电脑前陪她时（插件的在场租约优先，没有就看最后一轮在不在 10 分钟内）主动消息不打扰（睡前那句除外）、她留的话先留着，他走了 10 分钟以上再发；桌面上刚聊过也算聊过（早安、睡前、「一小时内聊过」都算上）；给桌面看的 NOW.md 写「和你聊天中（本来在上课 / 本来该睡了）」；一段桌面会话结束后记一条时间线（只有时长和动作类别，不放原文，要 timeline）。只给名单里第一个男朋友档。要 crossRecent 开着。默认关。' },
+        ] },
     { key: 'ownDays', label: '「这两天自己在做的」用世界账里真发生的事', group: '她的日子', adr: '0347',
         detail: '**「这两天自己在做的」**（ADR 0347 第 2 层第三节）：给你的提示词里恢复「你这两天自己在做的」那一行，来源换成共享世界账里这两天已经发生的事（她自己挑的活动、项目），没有未来计划、没有模型猜测。默认关。' },
-    { key: 'desktopDay', label: '桌面上的时间算进她的一天（他在电脑前不打扰、留话先留着、NOW.md 知道）', group: '记忆和安全', adr: '0347', requires: ['crossRecent'],
-        detail: '**桌面上的时间算进她的一天**（ADR 0347 第 3 层）：每 30 秒把 DSH 桌面插件写的最近几轮收进 QQ 自己的桌面记录（按 id 去重、留 14 天）。他在电脑前陪她时（插件的在场租约优先，没有就看最后一轮在不在 10 分钟内）主动消息不打扰（睡前那句除外）、她留的话先留着，他走了 10 分钟以上再发；桌面上刚聊过也算聊过（早安、睡前、「一小时内聊过」都算上）；给桌面看的 NOW.md 写「和你聊天中（本来在上课 / 本来该睡了）」；一段桌面会话结束后记一条时间线（只有时长和动作类别，不放原文，要 timeline）。只给名单里第一个男朋友档。要 crossRecent 开着。默认关。' },
-    { key: 'desktopReview', label: '桌面上的对话也进「聊完回想」', group: '记忆和安全', adr: '0347', requires: ['feelingReview', 'desktopDay'],
+    { key: 'desktopReview', label: '桌面上的对话也进「聊完回想」', group: '记忆和安全', adr: '0347', requires: ['feelingReview', 'oneLife=desktop'],
         detail: '**桌面上的对话也进「聊完回想」**（ADR 0347 第 3 层）：她聊完回想、记下有依据的感受时，电脑上的回合也算——编号用 k（QQ 上的是 m），`/心境` 一眼看得出依据来自哪边；含网址、本机路径、令牌的行整行不要；不引他原话等护栏一条不放宽。要 feelingReview、desktopDay。默认关。' },
-    { key: 'desktopPromises', label: '桌面上答应的事进承诺账', group: '记忆和安全', adr: '0347', requires: ['desktopDay'],
+    { key: 'desktopPromises', label: '桌面上答应的事进承诺账', group: '记忆和安全', adr: '0347', requires: ['oneLife=desktop'],
         detail: '**桌面上答应的事进承诺账**（ADR 0347 第 3 层）：她在电脑上答应你的事（「明天帮你看完」）和 QQ 上的一样记下、到日子提醒；电脑上约好、接着在 QQ 上聊，不会马上又提醒一遍。只看你那一位。要 desktopDay 和长期记忆。打开时最近 7 天的片段会重抽一次；以后关掉或桌面记录被清，从桌面那轮开始、还挂着的约的片段会对不上，承诺账会「暂不可确认」到那些约被忘掉。默认关。' },
     { key: 'oneDiary', label: '一本日记（当天日记由 QQ 写，抄一份给桌面）', group: '她的日子', adr: '0347',
         detail: '**一本日记**（ADR 0347 第 3 层）：她的当天日记只由 QQ 这边写（selfDirectedMemory 开着也写，周记、阶段总结跟着回来），写完往 JOURNAL.md 末尾抄一份「## 日期（当天）」，桌面上翻得到；桌面上她自己写的段落留着、算她手写的。自己的下文、他走了很久回来那一轮、他问到某一天、做梦都从同一本读。NOW.md 多一行告诉常驻进程这天的日记 QQ 写了。desktopDay 也开着时，日记材料多一行「电脑上：14:10–16:05 陪他…」（只有时段和动作类别，没有原文）。要长期记忆。默认关。' },
-    { key: 'desktopFeelings', label: '桌面上的事也进心境（他在电脑上说想她、关心她、说难受、冲她发火）', group: '她的日子', adr: '0347', requires: ['herFeelings', 'desktopDay'],
+    { key: 'desktopFeelings', label: '桌面上的事也进心境（他在电脑上说想她、关心她、说难受、冲她发火）', group: '她的日子', adr: '0347', requires: ['herFeelings', 'oneLife=desktop'],
         detail: '**桌面上的事也是她的事**（ADR 0347 第 5 层）：QQ 是唯一算心境的地方，原来桌面上（DSH）过了一晚上、他说了什么她心里是空的。开着时，他在电脑上说的这几句也进心境：说想她 / 要抱抱（心里暖）、问她吃没吃让早点睡（暖一点）、说他自己累或难受（她跟着担心）、冲她发火（烦）。只看他说的、只算一眼能看出来的，别人说话和她在桌面上的自言自语不算。要 desktopDay、herFeelings。默认关。' },
-    { key: 'desktopConflict', label: '他在她上课 / 睡觉时叫她上电脑：她知道本来在干嘛', group: '她的日子', adr: '0347', requires: ['desktopDay', 'herDays'],
+    { key: 'desktopConflict', label: '他在她上课 / 睡觉时叫她上电脑：她知道本来在干嘛', group: '她的日子', adr: '0347', requires: ['oneLife=desktop', 'herDays'],
         detail: '**作息冲突**（ADR 0347 第 3 层）：他在她上课、该睡了、空闲的时候叫她上电脑，功能照常、不拖不拒；她知道自己本来在干嘛（提示词多一行「被他叫上电脑（本来在上课 / 本来该睡了）」，刚被叫起来那一会儿按被吵醒写，开了 realNights 就有起床气）；昨晚算上半夜在电脑上陪你的那段；空闲时间的桌面会话占着她的时间，结束后记成一件世界事件（「陪他（电脑上）」，没有原文）；上课不另扣精力。她在电脑上说「睡了」也算说过睡了。只给名单里第一个男朋友档。要 desktopDay、herDays（睡觉那一行还要 realNights）。默认关。' },
     { key: 'selfPursuits', label: '她自己定追求（每晚想一次，自己放下 / 提新的）', group: '她的日子', adr: '0178',
         detail: '**她自己定追求**（ADR 0178）：她每晚 20 点以后安静地想一次——哪些事还想做、哪些不想了、有没有新的想做的；可以放下 / 暂停 / 恢复任何一条（包括作者给的别挂科、拍相机），记一句进度，提新的（同时最多 3 件、隔 3 天提一件、要说为什么）。你用 `/追求` 看，改不了。花真钱 / 违法 / 骗人 / 碰你的东西 / 人生大方向（考研出国结婚分手等，作者没定）不会成为追求。要同时开 `pursuits`。默认关。' },
@@ -362,10 +369,15 @@ export function featureStatuses(config: object): FeatureStatus[] {
     const values = config as Record<string, unknown>;
     const byKey = new Map(FEATURES.map(def => [def.key, def]));
     const requested = new Map(FEATURES.map(def => [def.key, configured(def, values)]));
+    // 「键=档位」的依赖：那个开关恰好在这一档
+    const satisfied = (required: string) => {
+        const [key, mode] = required.split('=') as [string, string | undefined];
+        return requested.get(key) === true && (mode === undefined || values[key] === mode);
+    };
     return FEATURES.map(def => {
         const value = values[def.key];
         const wantsOn = requested.get(def.key) === true;
-        const missing = wantsOn ? (def.requires ?? []).filter(key => requested.get(key) !== true).map(key => dependencyLabel(byKey.get(key)!)) : [];
+        const missing = wantsOn ? (def.requires ?? []).filter(required => !satisfied(required)).map(required => dependencyLabel(byKey.get(required.split('=')[0]!)!)) : [];
         const on = wantsOn && missing.length === 0;
         const hint = def.hint ?? def.description;
         return {
