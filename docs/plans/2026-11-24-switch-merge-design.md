@@ -60,8 +60,19 @@
   `adr-map` 把旧键挂在新键下（「`qzone`（原 `qzoneBrowse`）」，快照里还是旧键时新键的线上值按合并表算）、`modules-doc` 列出并进来的旧键、
   `live-mix` 在新起名字的新键没写时按合并表补上；`requires` 认「键=档位」（`'oneLife=desktop'`）。
   功能总表 FEATURES：**116 → 74**（116 是 11-24 两次删除之后、合并之前数的）。
-  **还没做**：线上迁移（下次部署时插件 `migrateSwitches` 会把 koishi.yml 里这些旧键改写成新键，要用户点头）；
-  各组的步骤 B（app 改读新键、删旧字段、`scenarios.ts` 换键）；迁移确认一周后删 `legacy()` 表单项和输入映射。
+  **还没做**：线上迁移（下次部署时插件 `migrateSwitches` 会把 koishi.yml 里这些旧键改写成新键，要用户点头）；迁移确认一周后删 `legacy()` 表单项和输入映射。
+
+- **步骤 B 全部做完（2026-11-25）**：16 组按上表的顺序一组一个提交（af089eb5 … 756427cf，另 28b3f875 补了一个漏删的测试辅助函数），**16 组都整组改读新键，没有一组要留旧字段**。
+  app / 模块 / 宿主文件只读新键；`AppConfig` / `DEFAULTS` / `parseAppConfig` 的输出里删掉了 **48 个旧字段**（`@deprecated` 一个不剩）。
+  旧键原来的默认值挪进 `config.ts` 的 `LEGACY_DEFAULTS`，`SWITCH_DEFAULTS = DEFAULTS + LEGACY_DEFAULTS` 给输入映射用（`parseAppConfig`、`configSwitchNotes`、插件 `migrateSwitches`、`live-mix`、`adr-map`）：
+  koishi.yml 里还写着旧键时新键照旧按旧键算，线上迁移之前行为不变。代价：旧键写错值不再单独报错（表单的 `legacy()` 仍校验），表达不了的组合按 `fromLegacy` 折成新键（线上快照每组都表达得了）。
+  基线：每组 `baseline:fast` 39/39 逐字一致，快照一个没动。场景里写着「半套」的四组先只改读处全量实跑、确认逐字一致才整组转：
+  节奏（`burst-and-interrupt` 开 rhythm 没开 lagTail）、拒绝之后（RICH 开 herNo 没开 afterNo，28 个场景）、主动时机（RICH 开 6 个、review 开 2 个，18 个场景）都一致；
+  深思 RICH 的 `deliberate: true` 正好是 `keywords` 档、看图（基线不给看图模型）、真实世界（`baselineConfig` 改写 `realWorld: false`）也都一致。
+  `scenarios.ts` 里旧键全换成新键（RICH：qqSurface、deliberation；去掉并进来的那些）。
+  顺带：`oneLifeAt(mode, layer)`（「一个生活」一层包一层）；基线 harness 的 `Scenario.repoRoot`（可选，基线场景都不给）——`ledgers` 带着设定账本，测试里开它时仓库根目录指到空的临时目录、不碰真实角色资料；
+  线上组合盘点 `live-mix` 和 `identityLedger` 一样不搬 `ledgers`；`app.ts` 2701 → 2697 行（上限跟着降）。
+  测试里只能用旧键表达的组合（某一项单开 / 单关）随合并不存在了，对应用例删掉或改写成新键的档位，提交说明逐组写了。
   **仍然阻塞、没动**：夜间自省（`review` 场景）、QQ 表层 / 戳一戳整组 8 → 2（含 `typingStatus`、主动戳他并进戳一戳：`RICH`、`burst-and-interrupt`、`her-now-dsh`）、
   追求（等二.8）、回忆的感觉 `feltLedgerRecall`（线上关着）、日常小事 5 合 1（`RICH` 没开 `worldDrama`）。
 

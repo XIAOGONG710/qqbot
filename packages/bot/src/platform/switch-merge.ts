@@ -2,7 +2,8 @@
 // parseAppConfig（配置输入的规范化）、Koishi 插件（migrateSwitches 写回 koishi.yml、toAppConfigInput 的取舍）、日志都调这里，不各写一份。
 // 纯数据 + 纯函数，不 import config.ts（默认值由调用方传进来，避免循环引用）。
 //
-// 过渡期的规则（设计第一节 2）：
+// 过渡期的规则（设计第一节 2）。步骤 B 做完之后（2026-11-25，16 组都做了）app 只读新键、AppConfig 里没有旧字段了，
+// 下面派生出来的旧字段只留在 parseAppConfig 的输入里，不再往下传；这套规则现在只管「koishi.yml 里还写着旧键时新键取什么」：
 //   只有新键      → 新键；旧字段 = toLegacy(新键)
 //   只有旧键      → 新键 = fromLegacy(旧键)；旧字段**原样**往下传（哪怕旧键之间对不上，app 还读旧字段的这一步也和今天一样）
 //   两边都写了    → 以新键为准；旧字段 = toLegacy(新键)；日志说一句（existing 的组除外：新键本来就是旧键那边的总开关，按「只有旧键」）
@@ -46,7 +47,7 @@ function follows(key: string, values: readonly unknown[], legacy: readonly strin
 
 /**
  * 已经合并的组，按设计第三节的顺序一组一个提交（docs/plans/2026-11-24-switch-merge-design.md 第二节逐组写了映射、线上值和基线核对）。
- * app 代码过渡期照旧读旧字段（parseAppConfig 按上面的规则给出），所以基线逐字不变；改读新键的一组一组来。
+ * 步骤 B（app 改读新键、删旧字段）也一组一个提交做完了；旧键原来的默认值在 config.ts 的 LEGACY_DEFAULTS，输入映射用 SWITCH_DEFAULTS。
  */
 export const SWITCH_MERGES: readonly SwitchMerge[] = [
     // 1. QQ 空间（设计第二节 18）：签名、翻空间、刷好友动态、刷陌生人都是同一种三档，跟着 qzone
@@ -136,7 +137,7 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
     },
     follows('pokes', BOOL, ['pokeBack'], { ignorable: (_, input) => input.pokes !== true }),
     // 14. 拒绝之后（19）：他又提同一类请求时记得上次，跟着「会拒绝」。基线 RICH 开 herNo、没开 afterNo，派生后会是开（设计实跑 8 个一致）；
-    //     这一步 app 照旧读旧字段
+    //     步骤 B 只改读处全量实跑过，39/39 一致
     follows('herNo', BOOL, ['afterNo']),
     // 16. 主动时机（1）：主动消息开着（含 dryRun）就带下面 7 个时机。proactive 关着时 7 个子项本来不起作用
     //     （planner-host.ts 在 config.proactive === 'off' 之后才读，另一处只是 app.ts 一行日志），ignorable；
