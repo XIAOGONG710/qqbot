@@ -61,7 +61,7 @@ export const RICH: Partial<AppConfig> = {
     festivals: 'greet', pokes: true, pokeBack: true, recalls: true,
     proactive: 'on', proactiveReach: true, innerLife: true, proactiveInvite: true, proactiveAsk: true, comeBack: true,
     smallNews: true, proactiveRoom: true,
-    feedbackCommands: true, timeline: true, tastes: true, dormancy: true, deliberate: true, weeklyReport: true,
+    feedbackCommands: true, timeline: true, tastes: true, dormancy: true, deliberation: 'keywords', weeklyReport: true,
 };
 
 /** 按轮换着回几种说法；后台要 JSON 的给空的 */

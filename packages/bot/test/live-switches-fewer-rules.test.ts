@@ -43,7 +43,7 @@ async function run(s: Scenario) {
 }
 
 /** 认真问她想法（同基线 rich-chat 那一轮） */
-const deliberate = (fewerRules: boolean) => scenario({ deliberate: true, fewerRules }, [
+const deliberate = (fewerRules: boolean) => scenario({ deliberation: 'keywords', fewerRules }, [
     ['2026-11-22T20:30:00+08:00', '认真问你，你觉得我要不要转专业？我最近真的很纠结'],
 ]);
 

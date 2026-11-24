@@ -1269,14 +1269,13 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const { reasoning_effort: _effort, ...llmExtra } = config.llm.extraBody as Record<string, unknown>;
     const quietLlm = { ...forExtraction(config.llm), temperature: 0, extraBody: { ...llmExtra, thinking: { type: 'disabled' } } };
     const askSmall = (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => (exec.llm({ purpose: 'background', config: quietLlm, messages }, log));
-    // 语义路由（ADR 0202）：深思开着、而且配置了 depthRouting 才建；小调用不开思考、温度 0、几十个 token，超时由 createTurnWeigher 管
-    const turnWeigher = config.depthRouting && config.deliberate
+    // 语义路由（ADR 0202）：deliberation 是 routed 才建；小调用不开思考、温度 0、几十个 token，超时由 createTurnWeigher 管
+    const turnWeigher = config.deliberation === 'routed'
         ? createTurnWeigher({
             ask: messages => exec.llm({ purpose: 'chat', config: { ...config.llm, temperature: 0, maxTokens: 80, timeoutMs: WEIGH_TIMEOUT_MS, extraBody: { ...llmExtra, thinking: { type: 'disabled' } } }, messages }, log),
             log, now: () => clockNow().getTime(),
         })
         : undefined;
-    if (config.depthRouting && !config.deliberate) log('语义路由：depthRouting 开着，但 deliberate 没开——没有地方放，不起作用');
     const web = config.webLookup !== 'off'
         ? new WebLookup({
             mode: config.webLookup, dataDir: config.dataDir, ask: askSmall, now: clockNow,
@@ -1885,7 +1884,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
             ...(config.pursuits ? { pursuits: pursuitsNow } : {}),
-            ...(config.deliberate ? { deliberate: { llm: deliberateLlm(config.llm, config.deliberateModel) } } : {}),
+            ...(config.deliberation !== 'off' ? { deliberate: { llm: deliberateLlm(config.llm, config.deliberateModel) } } : {}),
             ...(turnWeigher ? { turnWeight: turnWeigher } : {}),
             ...(continuity ? { continuity } : {}),
             contacts: config.contacts,

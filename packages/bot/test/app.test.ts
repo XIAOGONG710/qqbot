@@ -76,7 +76,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         speechCheck: false,
         herDays: false,
         autonomousLife: false,
-        grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, memes: false, watching: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, worldDrama: false, pursuits: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, memes: false, watching: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, worldDrama: false, pursuits: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWorld: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false,
         media: true,
@@ -257,7 +257,7 @@ describe('编排（app.ts）', () => {
 
     test('深思（ADR 0151）：认真问她的轮次不套字数和条数、用深思用的模型、提示词只留一句“先想清楚”；闲聊、危机、关着的时候都不动', async () => {
         const run = async (deliberate: boolean, said: string) => {
-            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], deliberate });
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], deliberation: deliberate ? 'keywords' : 'off' });
             const calls: { prompt: string; model?: string }[] = [];
             const { app, sent, logs } = setup(cfg, {}, { generate: (messages, use) => { calls.push({ prompt: messages.map(m => m.content).join('\n'), ...(use ? { model: use.model } : {}) }); return '想去就去，不过先想清楚你到底图什么'; } });
             app.receive(event(10001, 1, said));
@@ -280,10 +280,10 @@ describe('编排（app.ts）', () => {
         assert.doesNotMatch(crisis.calls[0]!.prompt, /开口前先在心里想清楚/);
     });
 
-    test('语义路由（ADR 0202，depthRouting）：关键词没认出来、但意思上是认真的轮次也深思（换模型、不套字数、按类别多一小句方向）；关键词已经认出来的不再问；闲聊、危机、没开、没配深思、问不成的时候都照旧', async () => {
+    test('语义路由（ADR 0202，deliberation=routed）：关键词没认出来、但意思上是认真的轮次也深思（换模型、不套字数、按类别多一小句方向）；关键词已经认出来的不再问；闲聊、危机、没开、没配深思、问不成的时候都照旧', async () => {
         const WEIGH = '你只做分类，不回复他';
         const run = async (patch: Partial<AppConfig>, said: string, router: string | Error) => {
-            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], deliberate: true, depthRouting: true, ...patch });
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], deliberation: 'routed', ...patch });
             const calls: { prompt: string; model?: string }[] = [];
             let asked = 0;
             const { app, sent, logs } = setup(cfg, {}, { generate: (messages, use) => {
@@ -323,14 +323,14 @@ describe('编排（app.ts）', () => {
         const broken = await run({}, '今天回去看了我爷爷，他有点认不得我了', new Error('连不上'));
         assert.equal(broken.calls[0]!.model, undefined);
         assert.ok(broken.logs.some(line => line.includes('语义路由：没问成')));
-        // 没开 depthRouting：从不问
-        const off = await run({ depthRouting: false }, '今天回去看了我爷爷，他有点认不得我了', '{"kind":"heavy"}');
+        // keywords 档（只有关键词）：从不问
+        const off = await run({ deliberation: 'keywords' }, '今天回去看了我爷爷，他有点认不得我了', '{"kind":"heavy"}');
         assert.equal(off.asked, 0);
         assert.equal(off.calls[0]!.model, undefined);
-        // 深思没开：没有地方放，不问，记一行
-        const noDeliberate = await run({ deliberate: false }, '今天回去看了我爷爷，他有点认不得我了', '{"kind":"heavy"}');
+        // 深思关着（off）：不问
+        const noDeliberate = await run({ deliberation: 'off' }, '今天回去看了我爷爷，他有点认不得我了', '{"kind":"heavy"}');
         assert.equal(noDeliberate.asked, 0);
-        assert.ok(noDeliberate.logs.some(line => line.includes('deliberate 没开')));
+        assert.equal(noDeliberate.calls[0]!.model, undefined);
         // 危机回合：不问、不深思
         const crisis = await run({}, '我不想活了', '{"kind":"heavy"}');
         assert.equal(crisis.asked, 0);

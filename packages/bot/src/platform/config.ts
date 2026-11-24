@@ -115,7 +115,6 @@ export const DEFAULTS = {
     chatReview: false,
     pursuits: false,
     deliberation: 'off' as DeliberationMode,
-    deliberate: false,
     deliberateModel: 'deepseek-v4-pro',
     ledgers: false,
     identityLedger: false,
@@ -178,8 +177,6 @@ export const DEFAULTS = {
     feelingReview: false,
     /** 记忆对账（ADR 0201）：隔一阵读一次 Hindsight 里的文档，进度里记着写过、实际没有的重新排队写（retain 是异步受理的，后台处理失败不会告诉我们） */
     memoryReconcile: false,
-    /** 语义路由（ADR 0202）：关键词没认出来的轮次问一次小模型这一句是轻是重，值得认真的也走深思。要 deliberate 开着才起作用 */
-    depthRouting: false,
     /** 她读完 / 看完之后自己想的（ADR 0204）：每晚想一次，有话想说才写一句落在具体情节 / 说法上的看法，存在私人空间里；聊到那本书 / 视频或问起“最近看了什么”才放进提示词 */
     readingTakes: false,
     /** 看他的反应（ADR 0212）：她主动说自己的事时，看一眼他最近对哪类事接着聊、回个嗯、明说过不想听，说什么说多少她自己拿捏；他明说过不想听的那一类照片 / 小事这几天不发 */
@@ -225,6 +222,8 @@ export const LEGACY_DEFAULTS = {
     biliStickers: false,
     biliFeed: 'off' as PresenceMode,
     feelingLedger: true,
+    deliberate: false,
+    depthRouting: false,
 } as const;
 
 /** 开关合并的输入映射用的默认值：DEFAULTS 加上 AppConfig 里已经删掉的旧键（parseAppConfig、Koishi 迁移、盘点、adr-map 都用这份） */
@@ -517,8 +516,6 @@ export interface AppConfig {
      */
     /** 深思（ADR 0151 / 0202，开关合并）：off / keywords / routed，见 DELIBERATION_MODES。deliberate、depthRouting 由它派生 */
     deliberation?: DeliberationMode;
-    /** @deprecated 已并进 deliberation（开关合并）：输入只有旧键时原样、否则由 deliberation 派生；新代码读 deliberation */
-    deliberate: boolean;
     /** 深思轮次用的模型名，默认 deepseek-v4-pro（和聊天用的同一个接口） */
     deliberateModel: string;
     /** 设定账本（ADR 0157）：每次启动给人设源文件和角色卡算哈希、对哈希链账本、记下改动（谁、哪天、为什么——来自提交说明）；有没登记原因的改动告诉用户；他问起她的设定被改过没有才会说。/设定 看摘要。默认关 */
@@ -629,8 +626,6 @@ export interface AppConfig {
     feelingReview?: boolean;
     /** @deprecated 已并进 ledgers（开关合并）：输入只有旧键时原样、否则由 ledgers 派生；新代码读 ledgers。记忆对账（ADR 0201）：默认关；开着时每 6 小时（发现缺了就 10 分钟后再查）对一次，缺的片段重新写；刚写进去的 2 小时内不算缺 */
     memoryReconcile?: boolean;
-    /** @deprecated 已并进 deliberation（开关合并）：输入只有旧键时原样、否则由 deliberation 派生；新代码读 deliberation。语义路由（ADR 0202）：默认关；要 deliberate 开着。开着时，关键词没认出来的轮次多一次小调用（不开思考、几十个 token、3 秒超时），分类说沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思 */
-    depthRouting?: boolean;
     /** 她读完 / 看完之后自己想的（ADR 0204）：默认关；要名单里有男朋友档。每晚 22 点以后想一次，有话想说才写，没想法就空着；存在 reading-takes.json（她的私人空间，没有命令念给他） */
     readingTakes?: boolean;
     /**
@@ -957,7 +952,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         chatReview: bool(file, 'chatReview', '', DEFAULTS.chatReview),
         pursuits: bool(file, 'pursuits', '', DEFAULTS.pursuits),
         deliberation: oneOf(file.deliberation, 'deliberation', DELIBERATION_MODES, DEFAULTS.deliberation),
-        deliberate: bool(file, 'deliberate', '', DEFAULTS.deliberate),
         deliberateModel: deliberateModel(file.deliberateModel),
         ledgers: bool(file, 'ledgers', '', DEFAULTS.ledgers),
         identityLedger: bool(file, 'identityLedger', '', DEFAULTS.identityLedger),
@@ -1003,7 +997,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         fewerRules: bool(file, 'fewerRules', '', DEFAULTS.fewerRules),
         feelingReview: bool(file, 'feelingReview', '', DEFAULTS.feelingReview),
         memoryReconcile: bool(file, 'memoryReconcile', '', DEFAULTS.memoryReconcile),
-        depthRouting: bool(file, 'depthRouting', '', DEFAULTS.depthRouting),
         readingTakes: bool(file, 'readingTakes', '', DEFAULTS.readingTakes),
         hisReactions: bool(file, 'hisReactions', '', DEFAULTS.hisReactions),
         herGuesses: bool(file, 'herGuesses', '', DEFAULTS.herGuesses),
