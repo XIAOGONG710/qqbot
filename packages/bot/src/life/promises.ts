@@ -385,6 +385,12 @@ export interface PromiseKeeper {
     appointmentsAt(at: Date): Appointment[];
     /** 一段时间内会占用她的约定；自主生活选择器用它预留出门到见完的时段。 */
     appointmentsBetween(from: Date, to: Date): Appointment[];
+    /**
+     * 同步跑 work；这期间约定来源每个人只读一次文件、只投影一次（只为快：生活选择器排一轮要问上百次约定）。
+     * 结果和不包一样：每次照样给新对象；读失败、暂停的不复用（下一次照样重读、照样暂停）；她的一天换了、这期间写过的重读。
+     * 只看得出别的进程恰好在这一段同步执行中间改了文件这一种区别——等于它晚改了几毫秒。work 里 await 之后的部分不在这一段里。
+     */
+    reading<T>(work: () => T): T;
 }
 
 export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
@@ -538,19 +544,33 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         for (const id of Object.keys(state.loopVersions ?? {})) if (!loopIds.has(id)) delete state.loopVersions![id];
         if (paused.has(path(contact)) || !validPromiseState(state)) throw new PromiseStateUnavailable('承诺状态无效，拒绝写入');
         checkRunning();
+        reads?.delete(path(contact));
         writeJsonAtomic(path(contact), state);
         recovered(contact, '写');
     };
+    // reading() 期间每个人投影好的那一份（只存读成功、投影成功的），连同算它时她的一天
+    let reads: Map<string, { day: number; projected: KeeperState }> | undefined;
     const visible = (contact: Contact, requireComplete = true): KeeperState | undefined => {
-        const state = load(contact);
-        if (!state) return undefined;
-        const episodes = sourceEpisodes(contact);
-        if (!episodes) return undefined;
-        const projected = project(state, episodes);
+        const key = path(contact);
+        // 暂停的不看缓存：和 load 一样直接没有
+        const memo = reads && !paused.has(key) ? reads.get(key) : undefined;
+        const day = reads ? today(new Date(now())).getTime() : undefined;
+        let projected: KeeperState | undefined;
+        if (memo && memo.day === day) projected = structuredClone(memo.projected);
+        else {
+            const state = load(contact);
+            if (!state) return undefined;
+            const episodes = sourceEpisodes(contact);
+            if (!episodes) return undefined;
+            projected = project(state, episodes);
+            if (!projected) return undefined;
+            projected.promises = knownRows(projected, projected.promises);
+            projected.loops = knownRows(projected, projected.loops);
+            // project 按她的一天忘掉过期的：算的这一会儿正好跨了天的不存
+            if (reads && day === today(new Date(now())).getTime()) reads.set(key, { day, projected: structuredClone(projected) });
+        }
         // 旧抽取也可能取消过别的约，完整日历仍不能据此判定空闲。
-        if (!projected || (requireComplete && Object.keys(projected.uncertainSources ?? {}).length)) return undefined;
-        projected.promises = knownRows(projected, projected.promises);
-        projected.loops = knownRows(projected, projected.loops);
+        if (requireComplete && Object.keys(projected.uncertainSources ?? {}).length) return undefined;
         return projected;
     };
     const available = (): boolean => options.contacts.map(contact => visible(contact) !== undefined).every(Boolean);
@@ -840,5 +860,10 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
         },
         appointmentsAt: at => knownAppointments(at, new Date(at.getTime() + 1)),
         appointmentsBetween,
+        reading: work => {
+            if (reads) return work();
+            reads = new Map();
+            try { return work(); } finally { reads = undefined; }
+        },
     };
 }

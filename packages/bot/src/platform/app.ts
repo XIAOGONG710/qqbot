@@ -657,6 +657,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // promiseKeeper 要等聊天记录打开后才能建；生活执行器先拿稳定代理，真正第一次推进前再接上。
     let loadAppointments: ((from: Date, to: Date) => readonly Appointment[]) | undefined;
     let appointmentsAvailable = () => true;
+    // 排一轮生活时约定来源每人只读一次（promises.reading，只为快；结果和不包一样）
+    let readingAppointments: <T>(work: () => T) => T = work => work();
     let appointmentPlanningPaused = false;
     // 作息冲突开着时，她在电脑上说的「睡了」也算（desktop.chat()，30 秒刷新一次；关着是空的，和原来一样）
     const bedtimesSince = (schedule: Schedule, since: number) => (loadChat
@@ -686,7 +688,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         }, lifeQueue, { since: lifeStartedAt, log })
         : undefined;
     const sharedWorld = ledgerWorld && lifeQueue
-        ? settlingWorld(ledgerWorld, lifeQueue, worldNow, lifeRunner ? now => {
+        ? settlingWorld(ledgerWorld, lifeQueue, worldNow, lifeRunner ? now => readingAppointments(() => {
             if (!appointmentsAvailable()) {
                 if (!appointmentPlanningPaused) log('生活安排：约定来源不可用，暂停新增安排，不把未知约定当成空日历');
                 appointmentPlanningPaused = true;
@@ -698,7 +700,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 if (!appointmentPlanningPaused) log('生活安排：读取约定期间状态不可用，暂停新增安排');
                 appointmentPlanningPaused = true;
             }
-        } : undefined)
+        }) : undefined)
         : ledgerWorld;
     const imageProviders = aiPhotoProvidersFromEnv();
     let aiPhotoSetupFailed = false;
@@ -1455,6 +1457,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     lifetime.own('promises', () => promises?.stop());
     loadAppointments = promises?.appointmentsBetween;
     appointmentsAvailable = () => promises?.available() ?? true;
+    if (promises) readingAppointments = work => promises.reading(work);
     // 约定来源已经接上以后再第一次推进生活；否则启动瞬间会把赴约时段排成普通休闲。
     noteHerDay?.(new Date(exec.now()));
     desktop.worldReady();
@@ -1477,7 +1480,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             sourceSince: contact => tierRecord.since(contact.qq)?.toISOString(),
             history,
             memory,
-            ...(promises ? { plans: promises.plansOn } : {}),
+            ...(promises ? { plans: promises.plansOn, reading: promises.reading } : {}),
             generate: messages => (exec.llm({ purpose: 'background', config: { ...config.llm, temperature: DIARY_TEMPERATURE }, messages }, log)),
             dir: join(config.dataDir, 'memory'),
             log,

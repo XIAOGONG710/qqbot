@@ -11,6 +11,7 @@ import {
     describeAppointment, describePromises, duePromises, forgotten, meetWindow, parsePromises, promiseKeeper, promisePrompt, SHOWN_REPLIES, type HerPromise,
 } from '../src/life/promises.ts';
 import type { Schedule } from '../src/life/schedule.ts';
+import { fileOps } from '../src/memory/json-file.ts';
 import { SENSITIVE_OFF, SENSITIVE_ON, useSensitiveSwitch } from '../src/platform/sensitive.ts';
 
 // 这个文件里的测试靠日志里的原文来断言模块的行为；日志默认不写原文的那条由 log-bodies.test.ts 管
@@ -318,6 +319,57 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
             assert.equal(keeper.describe(amin, chat, at('2026-10-16T19:30:00')), undefined);
             assert.deepEqual(keeper.plansOn('2026-10-16'), ['和他去东门吃麻辣烫'], '日记里还有这件');
         } finally {
+            cleanup();
+        }
+    });
+
+    test('reading（只为快）：一段同步执行里约定文件只读一次，结果和不包一样；给的是各自的新对象；读失败的、换了一天的重读', async () => {
+        const history = [
+            msg('2026-10-16T16:00:00', 'user', '晚上一起去吃东门那家麻辣烫吧'),
+            msg('2026-10-16T16:01:00', 'assistant', '行啊，六点东门口'),
+        ];
+        const { keeper, cleanup, setNow } = setup(history, [
+            '{"add":[{"what":"和他去东门吃麻辣烫","date":"2026-10-16","meet":{"time":"18:00","where":"东门口"}}],"resolved":[]}',
+        ], at('2026-10-16T17:00:00'));
+        const original = fileOps.readFileSync, delays = fileOps.readDelaysMs;
+        let reads = 0, failNext = false;
+        fileOps.readDelaysMs = [0];
+        fileOps.readFileSync = ((path: string, encoding: BufferEncoding) => {
+            if (String(path).endsWith('1-boyfriend.json')) {
+                reads++;
+                if (failNext) { failNext = false; throw Object.assign(new Error('too many open files'), { code: 'EMFILE' }); }
+            }
+            return original(path, encoding);
+        }) as typeof fileOps.readFileSync;
+        try {
+            await keeper.sync();
+            const from = at('2026-10-16T17:30:00'), to = at('2026-10-16T18:00:00');
+            const plain = keeper.appointmentsBetween(from, to);
+            assert.equal(plain.length, 1);
+            reads = 0;
+            keeper.reading(() => {
+                const first = keeper.appointmentsBetween(from, to);
+                assert.ok(keeper.available());
+                assert.deepEqual(keeper.plansOn('2026-10-16'), ['和他去东门吃麻辣烫']);
+                assert.deepEqual(first, plain);
+                first[0]!.promise.what = '改了';
+                const second = keeper.appointmentsBetween(from, to);
+                assert.deepEqual(second, plain, '改了上一次给的不影响下一次');
+                assert.notEqual(second[0]!.promise, first[0]!.promise);
+                assert.equal(reads, 1, '这一段里只读了一次');
+                // 暂时读不到的不复用、也不被缓存挡住：照样当不可用，下一次照样重读
+                failNext = true;
+                setNow(at('2026-10-17T03:00:00'));
+                assert.throws(() => keeper.appointmentsBetween(from, to), /约定来源不可用/);
+                assert.equal(reads, 2, '她的一天换了就重读');
+                assert.deepEqual(keeper.appointmentsBetween(from, to), plain);
+                assert.equal(reads, 3);
+            });
+            keeper.appointmentsBetween(from, to);
+            assert.equal(reads, 4, 'reading 外面照旧每次都读');
+        } finally {
+            fileOps.readFileSync = original;
+            fileOps.readDelaysMs = delays;
             cleanup();
         }
     });

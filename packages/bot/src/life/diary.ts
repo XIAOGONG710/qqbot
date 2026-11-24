@@ -231,6 +231,8 @@ export interface DiaryWriterOptions {
     memory: LongTermMemory;
     /** 她之前说过那天打算做的事（ADR 0018 决策 2，promises.ts）；不传就没有 */
     plans?: (date: string) => string[];
+    /** 同步跑 work，这期间 plans 的来源只读一次（promises.reading，只为快；结果和不包一样）。不给就直接跑 */
+    reading?: <T>(work: () => T) => T;
     /** 写日记的模型调用（温度用低一点的） */
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     /** 状态文件目录（runtime/bot/memory） */
@@ -428,7 +430,10 @@ export function diaryWriter(options: DiaryWriterOptions): { catchUp(now: Date): 
         if (method) method.call(options.memory, documentId);
     };
     let verifying = false;
-    const verifySources = (now: Date, intents: readonly WrittenSourceIntent[] = []): boolean => {
+    // 复核要把每篇日记那天的材料重算一遍，每篇都问一次 plans：包在 reading 里，约定文件这一趟只读一次
+    const verifySources = (now: Date, intents: readonly WrittenSourceIntent[] = []): boolean =>
+        options.reading ? options.reading(() => verifySourcesNow(now, intents)) : verifySourcesNow(now, intents);
+    const verifySourcesNow = (now: Date, intents: readonly WrittenSourceIntent[]): boolean => {
         if (stopped) return false;
         if (verifying) throw new Error('日记来源复核未确认；暂不读取派生资料');
         verifying = true;
