@@ -167,6 +167,9 @@ describe('真表：已经并了的组', () => {
         everydayLife: true,
         worldDrama: true,
         ledgers: true,
+        qqSurface: true,
+        qqPresence: true,
+        pokes: true,
     };
     const env = { QQBOT_LLM_API_KEY: 'k' };
     const base = {

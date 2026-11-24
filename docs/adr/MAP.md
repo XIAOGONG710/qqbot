@@ -85,15 +85,15 @@
 | [0076](0076-festivals-and-winter-break.md) | 公共节日、在家过的寒假 | 已实现，未上线（分支 `claude/festivals`；配置 `festivals` 默认 `off`；寒假是草稿，… | `festivals` 开 |
 | [0077](0077-typing-status.md) | 「对方正在输入…」 | 已实现，未上线、未在真 QQ 上验证（分支 `claude/typing-status`；配置 `typingStatu… | `typingStatus` 开 |
 | [0078](0078-wake-jitter.md) | 起床时刻每天不一样 | 已实现，未上线（分支 `claude/wake-jitter`；数据在 `characters/linmengyao/s… |  |
-| [0079](0079-poke.md) | 他戳她一下，她会回 | 已实现，未上线、未在真 QQ 上验证（分支 `claude/poke`；配置 `pokes` 默认关） | `pokes` 开、`pokeBack` 开 |
+| [0079](0079-poke.md) | 他戳她一下，她会回 | 已实现，未上线、未在真 QQ 上验证（分支 `claude/poke`；配置 `pokes` 默认关） | `pokes`（原 `pokeBack`） 开 |
 | [0080](0080-share-cards.md) | 他分享的链接、转发的聊天记录、发的文件，她看得懂 | 已实现，未上线（分支 `claude/share-cards`；没有配置开关——只改他发来这几种消息时聊天记录里写成什么… |  |
 | [0081](0081-quote-reply-read.md) | 他引用她的某句话再回，她看得到被引用的是哪句 | 已实现，未上线（分支 `claude/quote-read`；没有配置开关；上线要重启 Koishi，需要用户当次点头） |  |
 | [0082](0082-recalls.md) | 他撤回一条消息，她看到的是「撤回了一条消息」 | 已实现，未上线、未在真 QQ 上验证（分支 `claude/recall`；配置 `recalls` 默认关） | `recalls` 开 |
-| [0083](0083-presence.md) | 她在 QQ 上「有个人在」——已读、在线状态、表情回应、点赞、签名、说说 | 已实现，未上线、未在真 QQ 上验证（分支 `claude/presence`；六个开关各自独立、默认全关；说说和签名另… | `readReceipts` 开、`onlineStatus` 开、`profileLikes` 开、`qzone`（原 `signature`） 开 |
+| [0083](0083-presence.md) | 她在 QQ 上「有个人在」——已读、在线状态、表情回应、点赞、签名、说说 | 已实现，未上线、未在真 QQ 上验证（分支 `claude/presence`；六个开关各自独立、默认全关；说说和签名另… | `qqSurface`（原 `readReceipts`） 开、`qqPresence`（原 `onlineStatus`、`profileLikes`） 开、`qzone`（原 `signature`） 开 |
 | [0084](0084-bilibili-browsing.md) | 她刷 B 站，刷到一个真视频，发给他 | 已实现，未上线、未开启（分支 `claude/bilibili`；配置 `bilibili` = off / dryRu… | `bilibili` 开 |
 | [0085](0085-napcat-probe.md) | NapCat 探针——在你在场时一次验完「没在真 QQ 上试过」的那些动作 | 已实现，2026-10-19 在线上跑过两次（见「确认记录」）（分支 `claude/napcat-probe`；脚本 … |  |
-| [0086](0086-self-recall.md) | 打错字时，有时撤回重发，而不只是补一条「*对的词」 | 已实现，未上线、未开启（分支 `claude/self-recall`；配置 `selfRecall`，默认关） | `selfRecall` 开 |
-| [0087](0087-poke-out.md) | 她主动戳他一下 | 已实现，未上线、未开启（分支 `claude/poke-out`；配置 `pokeOut`，默认关） | `pokeOut` 开 |
+| [0086](0086-self-recall.md) | 打错字时，有时撤回重发，而不只是补一条「*对的词」 | 已实现，未上线、未开启（分支 `claude/self-recall`；配置 `selfRecall`，默认关） | `qqSurface`（原 `selfRecall`） 开 |
+| [0087](0087-poke-out.md) | 她主动戳他一下 | 已实现，未上线、未开启（分支 `claude/poke-out`；配置 `pokeOut`，默认关） | `qqPresence`（原 `pokeOut`） 开 |
 | [0088](0088-her-temper-with-him.md) | 她对他的脾气——先傲娇、再软；被冷落会生气（男朋友档） | 草稿，未上线（分支 `claude/her-temper`）。卡片改动会热加载，上线前要用户点头。 |  |
 | [0089](0089-bilibili-account.md) | 她有自己的 B 站号——搜视频、读字幕、在评论区 @ 他 | 已实现，未合并、未上线、未开启（分支 `claude/bilibili-account`；配置 `bilibiliAcc… | `bilibili`（原 `bilibiliAccount`、`bilibiliDm`） 开 |
 | [0090](0090-bilibili-replies.md) | 她回复评论区里别人回她的话（先回他，其次挑有价值的，AI 相关的一律不回） | 已实现，试运行为先，未合并、未上线、未开启（分支 `claude/bilibili-account`；配置 `bilib… | `bilibili`（原 `bilibiliReplies`） 开 |

@@ -119,6 +119,22 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
         fromLegacy: input => input.identityLedger === true || input.memoryAudit === true || input.memoryReconcile === true,
         toLegacy: value => ({ identityLedger: value, memoryAudit: value, memoryReconcile: value }),
     },
+    // 13. QQ 表层 + 戳一戳，按「在哪读、基线里怎么开」分成三个键（设计第二节 5、6）：
+    //     qqSurface 回复时的小动作（标已读、打错字撤回重发，都在 app.ts 给 responder 的那几行）；
+    //     qqPresence 不聊天时在 QQ 上的存在感（在线状态、资料卡点赞、主动戳他，都在 social/presence-owner.ts）；
+    //     pokes 被戳会回，戳回去跟着它（pokes 关着时戳回去本来不起作用，modules/pokes.ts）。
+    //     「正在输入」typingStatus 单留；整组 8 → 2 阻塞于 RICH、burst-and-interrupt、her-now-dsh 三处场景配置（要改快照）
+    {
+        key: 'qqSurface', values: BOOL, legacy: ['readReceipts', 'selfRecall'],
+        fromLegacy: input => input.readReceipts === true || input.selfRecall === true,
+        toLegacy: value => ({ readReceipts: value, selfRecall: value }),
+    },
+    {
+        key: 'qqPresence', values: BOOL, legacy: ['onlineStatus', 'profileLikes', 'pokeOut'],
+        fromLegacy: input => input.onlineStatus === true || input.profileLikes === true || input.pokeOut === true,
+        toLegacy: value => ({ onlineStatus: value, profileLikes: value, pokeOut: value }),
+    },
+    follows('pokes', BOOL, ['pokeBack'], { ignorable: (_, input) => input.pokes !== true }),
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */

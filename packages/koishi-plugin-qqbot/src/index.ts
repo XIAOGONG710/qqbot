@@ -185,9 +185,14 @@ export interface Config {
     npcAsks?: boolean;
     pokes: boolean;
     recalls: boolean;
-    pokeBack: boolean;
-    pokeOut: boolean;
-    readReceipts: boolean;
+    /** 已并进 pokes（开关合并），koishi.yml 里还写着才有 */
+    pokeBack?: boolean;
+    /** 已并进 qqPresence（开关合并），koishi.yml 里还写着才有 */
+    pokeOut?: boolean;
+    qqSurface: boolean;
+    qqPresence: boolean;
+    /** 已并进 qqSurface（开关合并），koishi.yml 里还写着才有 */
+    readReceipts?: boolean;
     bilibili: PresenceMode;
     /** 已并进 bilibili（开关合并），koishi.yml 里还写着才有 */
     bilibiliAccount?: boolean;
@@ -259,8 +264,10 @@ export interface Config {
     acquaintances?: boolean;
     bilibiliAtName: string;
     bilibiliAtUid: number;
-    onlineStatus: boolean;
-    profileLikes: boolean;
+    /** 已并进 qqPresence（开关合并），koishi.yml 里还写着才有 */
+    onlineStatus?: boolean;
+    /** 已并进 qqPresence（开关合并），koishi.yml 里还写着才有 */
+    profileLikes?: boolean;
     /** 已并进 qzone（开关合并），koishi.yml 里还写着才有 */
     signature?: PresenceMode;
     qzone: PresenceMode;
@@ -293,7 +300,8 @@ export interface Config {
     realCalendar?: boolean;
     festivals: FestivalMode;
     typingStatus: boolean;
-    selfRecall: boolean;
+    /** 已并进 qqSurface（开关合并），koishi.yml 里还写着才有 */
+    selfRecall?: boolean;
     selfDirectedMemory: boolean;
     silenceNotice: boolean;
     crossRecent: boolean;
@@ -470,9 +478,11 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
             .description('**要 @ 的人的 B 站昵称**（ADR 0089）：评论最前面会写 @昵称；不含 @ 和换行'),
         bilibiliAtUid: Schema.number().default(DEFAULTS.bilibiliAtUid)
             .description('**他的 B 站 uid**（ADR 0089）：@ 评论（要昵称和 uid 两样）和发私信（只要 uid）都用；在 B 站网页「个人空间」的网址里能看到'),
-        readReceipts: toggle('readReceipts'),
-        onlineStatus: toggle('onlineStatus'),
-        profileLikes: toggle('profileLikes'),
+        qqSurface: toggle('qqSurface'),
+        qqPresence: toggle('qqPresence'),
+        readReceipts: legacy(),
+        onlineStatus: legacy(),
+        profileLikes: legacy(),
         signature: legacy(PRESENCE_MODES),
         qzone: choice('qzone'),
         qzoneVisibility: Schema.union(QZONE_VISIBILITIES.map(mode => Schema.const(mode).description(QZONE_LABELS[mode]))).default(DEFAULTS.qzoneVisibility)
@@ -498,8 +508,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         qqDangerous: Schema.boolean().default(DEFAULTS.qqDangerous)
             .description('危险动作闸（ADR 0142）：踢人 / 禁言 / 删好友 / 群发 / 建群 / 退群。开了也要过允许清单和限流。默认关'),
         qqFriendGate: legacy(QQ_FRIEND_GATES),
-        pokeBack: toggle('pokeBack'),
-        pokeOut: toggle('pokeOut'),
+        pokeBack: legacy(),
+        pokeOut: legacy(),
         grievance: toggle('grievance'),
         npcAsks: legacy(),
         feedbackCommands: toggle('feedbackCommands'),
@@ -510,7 +520,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         realCalendar: legacy(),
         festivals: choice('festivals'),
         typingStatus: toggle('typingStatus'),
-        selfRecall: toggle('selfRecall'),
+        selfRecall: legacy(),
         selfDirectedMemory: toggle('selfDirectedMemory'),
         silenceNotice: toggle('silenceNotice'),
         crossRecent: toggle('crossRecent'),

@@ -52,19 +52,15 @@
 | `aiPhotos` | AI 生活照草稿（人工审核后才可用） | [ADR 0240](../adr/0240-world-and-qq-ai-photo-requests.md) |
 | `stickers` | 图片表情（模式）：第一阶段只处理男朋友档。先用「只收藏核对」观察描述；完成真图核对和 NapCat 真发预检后，再选「收藏并发送」。需要打开「看懂图片内容」，默认关。 | [ADR 0063](../adr/0063-image-stickers.md) |
 | `media` | 听语音、看图（并进来的：`readStickers` 看懂他发的表情包（先抄图上的字、再说画面；要看图模型）（[ADR 0206](../adr/0206-read-his-stickers.md)）） | [ADR 0052](../adr/0052-voice-and-images.md) |
-| `pokes` | 被戳会回 | [ADR 0079](../adr/0079-poke.md) |
-| `pokeBack` | 戳回去 | [ADR 0079](../adr/0079-poke.md) |
-| `pokeOut` | 主动戳他 | [ADR 0087](../adr/0087-poke-out.md) |
+| `pokes` | 被戳会回（并进来的：`pokeBack` 戳回去（[ADR 0079](../adr/0079-poke.md)）） | [ADR 0079](../adr/0079-poke.md) |
 | `recalls` | 看得到他撤回 | [ADR 0082](../adr/0082-recalls.md) |
-| `readReceipts` | 已读回执 | [ADR 0083](../adr/0083-presence.md) |
-| `onlineStatus` | 在线状态 | [ADR 0083](../adr/0083-presence.md) |
-| `profileLikes` | 资料卡点赞 | [ADR 0083](../adr/0083-presence.md) |
+| `qqSurface` | 回复时的小动作（标已读、打错字撤回重发）（并进来的：`readReceipts` 已读回执（[ADR 0083](../adr/0083-presence.md)）；`selfRecall` 打错字撤回重发（[ADR 0086](../adr/0086-self-recall.md)）） | [ADR 0083](../adr/0083-presence.md) |
+| `qqPresence` | 不聊天时在 QQ 上的存在感（在线状态、点赞、主动戳他）（并进来的：`onlineStatus` 在线状态（[ADR 0083](../adr/0083-presence.md)）；`profileLikes` 资料卡点赞（[ADR 0083](../adr/0083-presence.md)）；`pokeOut` 主动戳他（[ADR 0087](../adr/0087-poke-out.md)）） | [ADR 0083](../adr/0083-presence.md) |
 | `qzone` | 说说（模式）：一周两三条，模仿「空友爱看」里常见的那种——随手一两句，有图就围着图写（图放在数据目录的 presence/photos/ 里，需要开「看懂图片内容」）。用最低隐私档的卡来写并过禁用词；选「只写草稿」时存在 presence/drafts.md 里，不真发。默认关。（并进来的：`signature` 个性签名（[ADR 0083](../adr/0083-presence.md)）；`qzoneBrowse` 自己翻空间动态（[ADR 0142](../adr/0142-qq-account-control.md)）；`qzonePeek` 刷好友动态（看名单里好友发的说说）（[ADR 0145](../adr/0145-qzone-friends-feed.md)）；`qzoneStrangers` 刷陌生人的空间（学人怎么说话）（[ADR 0144](../adr/0144-qzone-strangers.md)）） | [ADR 0083](../adr/0083-presence.md) |
 | `groupChat` | 群聊（模式）：只在名单群里活动。off 关闭；read 只看只记、不说话；dryRun 只把草稿写入 groups/drafts.md、不发送；on 允许发言。她基本潜水，被叫到、有人损他或聊到熟悉话题时才考虑接话；普通回复每群每小时最多 6 条、每天最多 30 条。不主动进群，不接邀请。 | [ADR 0210](../adr/0210-group-chat.md) |
 | `groupOwn` | 群里她也有自己（带着此刻进群，冷场、有事时自己冒一句）（模式） | [ADR 0341](../adr/0341-her-own-presence-in-groups.md) |
 | `groupAgency` | 群自主（开口由她自己的动机决定，抽签退位）（模式） | [ADR 0343](../adr/0343-group-agency-from-shadow.md) |
 | `typingStatus` | “正在输入…” | [ADR 0077](../adr/0077-typing-status.md) |
-| `selfRecall` | 打错字撤回重发 | [ADR 0086](../adr/0086-self-recall.md) |
 | `quoteReply` | 引用回复（他连发里的问题 / 补错字） | [ADR 0136](../adr/0136-quote-reply.md) |
 
 ## 看它有没有变好

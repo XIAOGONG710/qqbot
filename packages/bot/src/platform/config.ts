@@ -68,6 +68,7 @@ export const DEFAULTS = {
     realDaylight: false,
     realCalendar: false,
     festivals: 'off' as FestivalMode,
+    qqSurface: false,
     readReceipts: false,
     bilibili: 'off' as PresenceMode,
     bilibiliAccount: false,
@@ -137,6 +138,7 @@ export const DEFAULTS = {
     acquaintances: false,
     bilibiliAtName: '',
     bilibiliAtUid: 0,
+    qqPresence: false,
     onlineStatus: false,
     profileLikes: false,
     signature: 'off' as PresenceMode,
@@ -286,9 +288,9 @@ export interface AppConfig {
     pokes: boolean;
     /** 撤回（ADR 0082）：他撤回一条她还没回的消息，她看到的是「[撤回了一条消息]」而不是原文（危机的话除外）。默认关 */
     recalls: boolean;
-    /** 戳回去（ADR 0079 补）：开着 pokes 时，算数的戳里约 40% 她也戳回去一下（NapCat 的 friend_poke，要它的 packet 服务可用）。默认关 */
+    /** @deprecated 已并进 pokes（开关合并）：输入只有旧键时原样、否则由 pokes 派生；新代码读 pokes。戳回去（ADR 0079 补）：开着 pokes 时，算数的戳里约 40% 她也戳回去一下（NapCat 的 friend_poke，要它的 packet 服务可用）。默认关 */
     pokeBack: boolean;
-    /** 主动戳他（ADR 0087）：男朋友档，聊天安静了一阵、最后一条是她说的时，一周最多 3 次她戳他一下（NapCat 的 friend_poke）。默认关 */
+    /** @deprecated 已并进 qqPresence（开关合并）：输入只有旧键时原样、否则由 qqPresence 派生；新代码读 qqPresence。主动戳他（ADR 0087）：男朋友档，聊天安静了一阵、最后一条是她说的时，一周最多 3 次她戳他一下（NapCat 的 friend_poke）。默认关 */
     pokeOut: boolean;
     /**
      * 反馈通道（ADR 0073）：男朋友档对她的话回一个字「假」或「像」，记进 feedback/YYYY-MM.jsonl，不当聊天、她不回应。默认关
@@ -541,10 +543,16 @@ export interface AppConfig {
     /** 他的 B 站 uid：@ 评论（要昵称和 uid 两样）和发私信（只要 uid）都用 */
     bilibiliAtUid: number;
     /** 已读回执（ADR 0083）：她看到他的消息的那一刻标已读（NapCat mark_private_msg_as_read），睡着时保持未读。默认关 */
+    /** 回复时在 QQ 上的小动作（开关合并，设计第二节 5）：标已读、打错字撤回重发。默认关 */
+    qqSurface?: boolean;
+    /** @deprecated 已并进 qqSurface（开关合并）：输入只有旧键时原样、否则由 qqSurface 派生；新代码读 qqSurface */
     readReceipts: boolean;
     /** 在线状态（ADR 0083）：睡着「睡觉中」、上课「学习中」、听歌中、其余在线（set_online_status）。默认关 */
+    /** 不聊天时在 QQ 上的存在感（开关合并，设计第二节 5）：在线状态、资料卡点赞、主动戳他。默认关 */
+    qqPresence?: boolean;
+    /** @deprecated 已并进 qqPresence（开关合并）：输入只有旧键时原样、否则由 qqPresence 派生；新代码读 qqPresence */
     onlineStatus: boolean;
-    /** 资料卡点赞（ADR 0083）：约 80% 的日子给男朋友档点 1–5 个赞（send_like）。默认关 */
+    /** @deprecated 已并进 qqPresence（开关合并）：输入只有旧键时原样、否则由 qqPresence 派生；新代码读 qqPresence。资料卡点赞（ADR 0083）：约 80% 的日子给男朋友档点 1–5 个赞（send_like）。默认关 */
     profileLikes: boolean;
     /** @deprecated 已并进 qzone（开关合并）：输入只有旧键时原样、否则由 qzone 派生；新代码读 qzone。个性签名（ADR 0083）：隔 3–5 天换一条（set_self_longnick）；dryRun 只写草稿不改。默认关 */
     signature: PresenceMode;
@@ -578,7 +586,7 @@ export interface AppConfig {
     qqFriendGate?: FriendGate;
     /** 她打字的这段时间，对方的 QQ 上显示「对方正在输入…」（ADR 0077；NapCat 的 set_input_status）。默认关 */
     typingStatus: boolean;
-    /** 她打错字想改口时，一部分改成撤回重发（先发打错的，几秒后撤回再发对的；NapCat 的 delete_msg，ADR 0086）。默认关 */
+    /** @deprecated 已并进 qqSurface（开关合并）：输入只有旧键时原样、否则由 qqSurface 派生；新代码读 qqSurface。她打错字想改口时，一部分改成撤回重发（先发打错的，几秒后撤回再发对的；NapCat 的 delete_msg，ADR 0086）。默认关 */
     selfRecall: boolean;
     /** 回复节奏（ADR 0075）：打字时间按字数（0.6 秒 + 每字 0.18 秒）、回之前「看 + 想」一会儿；热聊中位慢约 4 秒。默认关（老样子：0.8 秒 + 每字 0.1 秒） */
     rhythm: boolean;
@@ -931,6 +939,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         realDaylight: bool(file, 'realDaylight', '', DEFAULTS.realDaylight),
         realCalendar: bool(file, 'realCalendar', '', DEFAULTS.realCalendar),
         festivals: festivalMode(file.festivals),
+        qqSurface: bool(file, 'qqSurface', '', DEFAULTS.qqSurface),
         readReceipts: bool(file, 'readReceipts', '', DEFAULTS.readReceipts),
         bilibili: oneOf(file.bilibili, 'bilibili', PRESENCE_MODES, DEFAULTS.bilibili),
         bilibiliAccount: bool(file, 'bilibiliAccount', '', DEFAULTS.bilibiliAccount),
@@ -992,6 +1001,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         acquaintances: bool(file, 'acquaintances', '', DEFAULTS.acquaintances),
         bilibiliAtName: bilibiliAtName(file.bilibiliAtName),
         bilibiliAtUid: bilibiliAtUid(file.bilibiliAtUid),
+        qqPresence: bool(file, 'qqPresence', '', DEFAULTS.qqPresence),
         onlineStatus: bool(file, 'onlineStatus', '', DEFAULTS.onlineStatus),
         profileLikes: bool(file, 'profileLikes', '', DEFAULTS.profileLikes),
         signature: oneOf(file.signature, 'signature', PRESENCE_MODES, DEFAULTS.signature),
