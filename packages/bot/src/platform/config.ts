@@ -91,8 +91,6 @@ export const DEFAULTS = {
     adultSiteUrls: [] as readonly string[],
     herFeelings: false,
     herNo: false,
-    /** 拒绝之后（ADR 0214）：他又提同一类请求、上次她推了他只回「行吧」就不吭声 / 她被磨着勉强答应了，给她一句方向（要不要还是她定，变的是说法）；什么都不存 */
-    afterNo: false,
     everydayLife: false,
     worldDrama: false,
     /** 翻回去看自己的日记（ADR 0217）：他问到前几天的事时，把她那天自己写的日记（JOURNAL.md 那天的段落 + 聊天里写的 <<日记>>）也给她 */
@@ -222,6 +220,7 @@ export const LEGACY_DEFAULTS = {
     profileLikes: false,
     pokeOut: false,
     pokeBack: false,
+    afterNo: false,
 } as const;
 
 /** 开关合并的输入映射用的默认值：DEFAULTS 加上 AppConfig 里已经删掉的旧键（parseAppConfig、Koishi 迁移、盘点、adr-map 都用这份） */
@@ -459,8 +458,6 @@ export interface AppConfig {
      * 他命令式地管着她（“不许跟别的男生说话”“听到没”）时不顺着说“好好好都听你的”，先别扭一句、明说不答应。只给男朋友档，他难过 / 生病 / 危机时让路；没来由不会拒绝。默认关
      */
     herNo: boolean;
-    /** @deprecated 已并进 herNo（开关合并）：输入只有旧键时原样、否则由 herNo 派生；新代码读 herNo。拒绝之后（ADR 0214）：默认关；只男朋友档。每一轮从聊天记录重算，什么都不存 */
-    afterNo?: boolean;
     /**
      * 回复延迟的长尾（ADR 0105）：真人回消息的延迟是长尾的（WhatsApp 111 人的数据里只有 57.8% 的回复在 1 分钟内），她醒着空着时原来 100% 在十几秒内。
      * 开了以后一部分消息她在做别的，20 秒到一小时才看到（一来一回很快时少，冷场时多，他难受 / 问她在不在时更快）；
@@ -907,7 +904,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         adultSiteUrls: adultSiteUrls(file.adultSiteUrls),
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),
-        afterNo: bool(file, 'afterNo', '', DEFAULTS.afterNo),
         everydayLife: bool(file, 'everydayLife', '', DEFAULTS.everydayLife),
         worldDrama: bool(file, 'worldDrama', '', DEFAULTS.worldDrama),
         diaryLookback: bool(file, 'diaryLookback', '', DEFAULTS.diaryLookback),

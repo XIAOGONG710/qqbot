@@ -932,7 +932,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         lifeInPrompt: Boolean(config.autonomousLife && lifeRunner),
         // 意图阶梯（ADR 0019 起）：开关是它的选项
         intent: {
-            ...(config.herNo ? { refuse: true } : {}), ...(config.afterNo ? { afterNo: true } : {}), ...(config.jealousy ? { jealous: true } : {}), ...(config.curious ? { curious: true } : {}),
+            ...(config.herNo ? { refuse: true } : {}), ...(config.herNo ? { afterNo: true } : {}), ...(config.jealousy ? { jealous: true } : {}), ...(config.curious ? { curious: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}), ...(config.pursuits ? { pursuits: true } : {}),
         },
         // 她此刻（她那边、身体、状态行）的另几样
