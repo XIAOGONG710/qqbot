@@ -125,7 +125,7 @@ export function plannerHost(deps: PlannerHostDeps): PlannerHost {
                         const when = new Date(exec.now());
                         const watched = config.watching ? watchedFacts(watchedEntries(), when) : undefined;
                         if (watched) return watched;
-                        return config.bilibili !== 'off' ? feedFactEntry(loadFeed(feedPath(config.dataDir), log), when) : undefined;
+                        return (config.bilibili ?? 'off') !== 'off' ? feedFactEntry(loadFeed(feedPath(config.dataDir), log), when) : undefined;
                     },
                 } : {}),
                 dates: character.dates,

@@ -71,7 +71,7 @@ export function bilibiliOwners(deps: BilibiliOwnersDeps): BilibiliOwners {
     /** 她的 B 站号（ADR 0089，跟着 bilibili）：按需打开，凭证文件换了（重新扫码）就自动换上；细节在 bilibili-account-source.ts */
     let accountSource: (() => Promise<BiliAccount | undefined>) | undefined;
     function bilibiliAccountSource(): (() => Promise<BiliAccount | undefined>) | undefined {
-        if (config.bilibili === 'off') return undefined;
+        if ((config.bilibili ?? 'off') === 'off') return undefined;
         // 刷视频和回复评论共用一个来源：凭证只读一次、失败只记一次日志
         // 真实请求外面包一层持久熔断（ADR 0147）：碰到 B 站的风控信号就整体停，要人在本机 `npm run platform -w @qqbot/bot -- resume bilibili --acknowledge-account-risk` 才恢复；测试注入的假请求不包
         accountSource ??= decorateAccounts(createAccountSource({ dataDir: config.dataDir, request: bilibiliRequest ?? ownAccountGuard(guardRequest(realRequest, createBreaker({ dataDir: config.dataDir, platform: 'bilibili', log }), BILIBILI_RISK)), now: worldNow, log: message => { if (!stopped()) log(message); } }));
@@ -80,7 +80,7 @@ export function bilibiliOwners(deps: BilibiliOwnersDeps): BilibiliOwners {
 
     /** 分享之后在视频下评论并 @ 他（ADR 0089，跟着 bilibili）：没配好就记一行日志、不评论 */
     function bilibiliCommentOptions(): CommentOptions | undefined {
-        const mode = config.bilibili;
+        const mode = config.bilibili ?? 'off';
         if (mode === 'off') return undefined;
         if (!config.bilibiliAtName || config.bilibiliAtUid <= 0) {
             log('刷 B 站：bilibili 开着，但没填 bilibiliAtName / bilibiliAtUid（要 @ 的人），不评论');
@@ -105,7 +105,7 @@ export function bilibiliOwners(deps: BilibiliOwnersDeps): BilibiliOwners {
 
     /** 在 B 站给他发私信、QQ 上只提醒一句（ADR 0089，跟着 bilibili）：没配好就记一行日志、不发 */
     function bilibiliDmOptions(): DmOptions | undefined {
-        const mode = config.bilibili;
+        const mode = config.bilibili ?? 'off';
         if (mode === 'off') return undefined;
         if (config.bilibiliAtUid <= 0) {
             log('刷 B 站：bilibili 开着，但没填 bilibiliAtUid（收私信的人的 B 站 uid），不发私信');
@@ -172,7 +172,7 @@ ${video.link}`);
     function bilibiliRisk(): RiskMonitor | undefined {
         if (stopped()) return undefined;
         if (risk) return risk;
-        if (config.bilibili === 'off') return undefined;
+        if ((config.bilibili ?? 'off') === 'off') return undefined;
         const account = bilibiliAccountSource();
         if (!account || config.bilibiliAtUid <= 0) return undefined;
         risk = createRiskMonitor({ account, uid: config.bilibiliAtUid, dir: join(config.dataDir, 'presence'), now: worldNow, log });
@@ -184,7 +184,7 @@ ${video.link}`);
     /** 回复别人回在她评论下面的话（ADR 0090，跟着 bilibili）：没配好就记一行日志、不回；和刷视频各自启动（只要有评论就会有回复，不管分享开没开） */
     let replies: ReplyWatcher | undefined;
     function bilibiliReplyOptions(): ReplyOptions | undefined {
-        const mode = config.bilibili;
+        const mode = config.bilibili ?? 'off';
         if (mode === 'off') return undefined;
         const account = bilibiliAccountSource();
         if (!account) {

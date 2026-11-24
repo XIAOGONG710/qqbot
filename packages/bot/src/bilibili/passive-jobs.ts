@@ -85,7 +85,7 @@ export function passiveJobs(deps: PassiveJobsDeps): PassiveJobs {
     // 她每天刷一小会儿 B 站推荐（ADR 0168）：14 点后一天一次；30 分钟看一眼该不该刷；只读、只记账
     let feedRunning = false;
     const feedJob = (): Promise<void> => {
-        const mode = config.watching ? config.bilibili : 'off';
+        const mode = config.watching ? config.bilibili ?? 'off' : 'off';
         if (!mode || mode === 'off' || stopped() || feedRunning) return Promise.resolve();
         const rawFetch = passiveFetch(bilibiliFetch ?? ((url, init) => fetch(url, init)));
         // feed 模块的 fetch 形状不强制 signal（只读、单次请求），这里补一个
