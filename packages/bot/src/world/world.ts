@@ -447,6 +447,15 @@ let simulatedClearing = false;
 
 /** 从 startDay 推到 until（含），按天记下发生的事；纯函数，同样的输入同样的输出 */
 export function simulateWorld(world: World, schedule: Schedule, until: Date, actions: readonly WorldAction[] = []): Timeline {
+    const { timeline, shared } = cachedTimeline(world, schedule, until, actions);
+    return shared ? copyTimeline(timeline) : timeline;
+}
+
+/**
+ * 同 simulateWorld，但缓存里有的时候直接给缓存里那一份（shared），不拷贝：只给只读、不把里面的对象交出去的调用方（worldAt，
+ * 交出去的那几样它自己拷贝）。整份 Timeline 是开学以来每一天的记录，worldAt 每算一刻只看其中几样，整份拷贝太慢
+ */
+function cachedTimeline(world: World, schedule: Schedule, until: Date, actions: readonly WorldAction[]): { timeline: Timeline; shared: boolean } {
     assertWorldDates(until);
     const weather = realWeather();
     if (weather !== simulatedWeather) { simulated.clear(); simulatedWeather = weather; }
@@ -461,12 +470,12 @@ export function simulateWorld(world: World, schedule: Schedule, until: Date, act
         // 最近用过的挪到最后，满了先丢最久没用的
         simulated.delete(key);
         simulated.set(key, hit);
-        return copyTimeline(hit);
+        return { timeline: hit, shared: true };
     }
     const timeline = simulateWorldUncached(world, schedule, until, actions);
     simulated.set(key, copyTimeline(timeline));
     if (simulated.size > SIMULATED_MAX) simulated.delete(simulated.keys().next().value!);
-    return timeline;
+    return { timeline, shared: false };
 }
 
 /** Timeline 的深拷贝：里面只有普通对象、数组、Map、Date；同一个对象在里面出现几次，拷贝里也是同一个（比 structuredClone 快三倍多） */
@@ -898,7 +907,11 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     const day = herDay(schedule, now);
     if (day < parseDate(world.startDay)) return undefined;
     // until 必须保留具体时刻：W3 动作按说出时间生效；只传 day 会把今天的动作都挡在 00:00 之后。
-    const timeline = simulateWorld(world, schedule, now, actions);
+    // 缓存里那一份只读：放进 result 的对象、时刻都用 own() 拷贝一份（和以前拿整份拷贝时一样，result 里没有和缓存、和别的调用共用的东西；
+    // 共用一个 seen，timeline 里同一个对象出现在 result 的几处，拷贝后也还是同一个）
+    const { timeline } = cachedTimeline(world, schedule, now, actions);
+    const seen = new Map<object, unknown>();
+    const own = <T>(value: T): T => copyTimeline(value, seen);
     const date = formatDate(day);
     const record = timeline.days.get(date)!;
     const yesterday = timeline.days.get(formatDate(addDays(day, -1)));
@@ -913,7 +926,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     // 空气质量、日照按卡上的地点（weather.places，ADR 0334）：在学校取学校那里的，放假在家取家里的；卡上没写就没有
     const places = world.weather?.places;
     const place = places ? (record.atSchool ? places.school : places.home).id : undefined;
-    if (record.weather) result.weather = record.weather;
+    if (record.weather) result.weather = own(record.weather);
     if (record.weatherUnknown) result.weatherUnknown = true;
     const airQuality = place ? realAirQuality()?.day(place, date, now) : undefined;
     if (airQuality) result.airQuality = airQuality;
@@ -923,7 +936,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     if (needs) result.needs = needs;
     if (world.cat && record.cat) {
         const c = record.cat;
-        const today = c.fed && c.fed <= now ? { fed: c.fed, ...(c.seen !== undefined ? { seen: c.seen } : {}) }
+        const today = c.fed && c.fed <= now ? { fed: own(c.fed), ...(c.seen !== undefined ? { seen: c.seen } : {}) }
             : c.fed ? { later: world.cat.feed[0] }
                 : { skipped: c.skipped! };
         // 还没去的时候，猫粮按昨天晚上的算
@@ -934,11 +947,11 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
     for (const parcel of timeline.parcels) {
         if (parcel.returned) continue;
         if (parcel.picked && parcel.picked <= now) {
-            if (formatDate(parcel.picked) === date) result.parcels.push({ item: parcel.item, status: 'picked_today', when: parcel.picked });
+            if (formatDate(parcel.picked) === date) result.parcels.push({ item: parcel.item, status: 'picked_today', when: own(parcel.picked) });
         } else if (parcel.arrive <= now) {
-            result.parcels.push({ item: parcel.item, status: 'station', when: parcel.arrive, deadline: parcel.deadline });
+            result.parcels.push({ item: parcel.item, status: 'station', when: own(parcel.arrive), deadline: parcel.deadline });
         } else if (parcel.arrive.getTime() - startOfDay(now).getTime() < 2 * DAY_MS && parcel.ordered <= date) {
-            result.parcels.push({ item: parcel.item, status: 'arriving', when: parcel.arrive });
+            result.parcels.push({ item: parcel.item, status: 'arriving', when: own(parcel.arrive) });
         }
     }
     if (world.cameraFund) {
@@ -946,7 +959,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
         const trip = timeline.camera && formatDate(herDay(schedule, timeline.camera.start)) <= date ? timeline.camera : undefined;
         const tripState = !trip ? undefined : now >= trip.end ? 'bought' as const : now >= trip.start ? 'buying' as const : 'planned' as const;
         result.cameraFund = {
-            ...(trip && tripState ? { camera: { ...trip, state: tripState } } : {}),
+            ...(trip && tripState ? { camera: { ...own(trip), state: tripState } } : {}),
             saved: tripState === 'bought' ? 0 : tripState ? world.cameraFund.goal : last?.saved ?? world.cameraFund.saved, goal: world.cameraFund.goal,
             ...(() => {
                 const plan = world.cameraFund.purchase;
@@ -954,14 +967,14 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
                 const next = addDays(day, 1);
                 return !trip && plan && plan.date === formatDate(next) && saved >= plan.price ? { tomorrow: { start: at(next, plan.from), where: plan.where, what: plan.what } } : {};
             })(),
-            ...(world.money && last && now.getTime() - last.at.getTime() < 7 * DAY_MS ? { lastDeposit: { at: last.at, amount: last.amount } } : {}),
+            ...(world.money && last && now.getTime() - last.at.getTime() < 7 * DAY_MS ? { lastDeposit: { at: own(last.at), amount: last.amount } } : {}),
         };
     }
     for (const item of timeline.homework) {
         if (item.assignedAt > now || item.due <= now || item.due.getTime() - startOfDay(now).getTime() > 3 * DAY_MS) continue;
-        result.homework.push({ course: item.course, due: item.due, done: item.done <= now, doneAt: item.done, assigned: item.assigned });
+        result.homework.push({ course: item.course, due: own(item.due), done: item.done <= now, doneAt: own(item.done), assigned: item.assigned });
     }
-    if (record.call) result.familyCall = { at: record.call, done: record.call <= now };
+    if (record.call) result.familyCall = { at: own(record.call), done: record.call <= now };
     if (world.routine) result.routine = routineOn(world.routine, schedule, day, record.atSchool, world.menu ? { menu: world.menu, ...(world.menuFrom ? { from: world.menuFrom } : {}) } : undefined);
     for (const event of record.events) {
         if (event.at > now) continue;
@@ -970,7 +983,7 @@ export function worldAt(world: World, schedule: Schedule, now: Date, actions: re
         const def = world.events.find(item => item.id === event.id);
         const window = def?.attach === 'meal' ? def.window : undefined;
         const mealKind = window === 'afternoon' ? 'lunch' as const : window === 'evening' ? 'dinner' as const : undefined;
-        result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: event.at, ...(person ? { person: { id: person.id, name: person.name, relation: person.relation } } : {}), ...(event.feel ? { feel: event.feel } : {}), ...(mealKind ? { mealKind } : {}), ...(def?.attach ? { attach: def.attach } : {}) });
+        result.events.push({ id: event.id, text: event.text.replaceAll('{person}', person?.name ?? '朋友'), at: own(event.at), ...(person ? { person: { id: person.id, name: person.name, relation: person.relation } } : {}), ...(event.feel ? { feel: own(event.feel) } : {}), ...(mealKind ? { mealKind } : {}), ...(def?.attach ? { attach: def.attach } : {}) });
     }
     const people = world.people.map(p => ({ name: p.name, relation: p.relation, states: npcStates(p.id, p.life, schedule, day) })).filter(p => p.states.length);
     if (people.length) result.people = people;

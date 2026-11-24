@@ -104,6 +104,37 @@ describe('世界里的日子', () => {
         assert.ok(after.days.has('2026-10-01'));
     });
 
+    test('worldAt 读缓存里那一份不拷整份：给出的对象、时刻和别的调用、和缓存都不共用；改了不影响下次', () => {
+        // 卡上的配置（world、schedule 里的对象）本来就可能被引用，不算
+        const config = new Set<object>();
+        const walk = (value: unknown, into: Set<object>) => {
+            if (typeof value !== 'object' || value === null || into.has(value)) return;
+            into.add(value);
+            for (const item of value instanceof Map ? value.values() : Object.values(value)) walk(item, into);
+        };
+        walk(world, config);
+        walk(schedule, config);
+        const moments = dates.filter((_, i) => i % 3 === 0).map(date => new Date(`${date}T21:30:00+08:00`));
+        const owned = (now: WorldNow | undefined) => { const out = new Set<object>(); walk(now, out); return [...out].filter(item => !config.has(item)); };
+        const seen = new Set<string>();
+        for (const at of moments) {
+            // 第一次可能是现算的，后两次都是缓存里拿的
+            const [first, second, third] = [0, 1, 2].map(() => worldAt(world, schedule, at)!);
+            for (const key of Object.keys(first!)) seen.add(key);
+            for (const [a, b] of [[first, second], [second, third]]) {
+                const mine = new Set(owned(a));
+                assert.deepEqual(owned(b).filter(item => mine.has(item)), [], `${at.toISOString()} 两次 worldAt 有共用的对象`);
+            }
+            // 改坏缓存里拿的那一次（所有时刻清零、数组清空），下一次照旧
+            for (const item of owned(second)) {
+                if (item instanceof Date) item.setTime(0);
+                else if (Array.isArray(item)) item.length = 0;
+            }
+            assert.deepEqual(worldAt(world, schedule, at), third);
+        }
+        for (const key of ['weather', 'cat', 'parcels', 'homework', 'events', 'routine']) assert.ok(seen.has(key), `覆盖到 ${key}`);
+    });
+
     test('一天的小事数：补充的最多 3 件、同一类一天一件；整体平均在 3–5 件', () => {
         let total = 0;
         for (const date of dates) {
