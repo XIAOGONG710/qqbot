@@ -31,7 +31,6 @@
 - `language/status-line.ts`
 - `language/time-context.ts`
 - `language/relationship.ts`
-- `language/intimacy.ts`
 - `language/jokes.ts`
 - `language/idioms.ts`
 - `language/memes.ts`

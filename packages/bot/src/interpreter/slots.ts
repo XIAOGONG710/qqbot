@@ -44,7 +44,7 @@ export const NOW_SLOTS = [
     'watched', 'continuity', 'interrupt', 'devices', 'sticker', 'photo',
     'intent', 'lastUser', 'understanding', 'traces', 'person', 'directAnswer', 'noOverthink', 'selfMemory', 'refusal', 'rating', 'life', 'wake', 'herAsk',
     'workRequest', 'workJudge', 'workMode',
-    'deliberate', 'routedHint', 'length', 'shape', 'quote', 'crutch', 'told', 'opener', 'inner', 'intimate', 'transcript', 'solveFrame', 'initiateNote',
+    'deliberate', 'routedHint', 'length', 'shape', 'quote', 'crutch', 'told', 'opener', 'inner', 'transcript', 'solveFrame', 'initiateNote',
 ] as const;
 
 /**

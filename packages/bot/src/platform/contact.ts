@@ -230,8 +230,6 @@ export interface ContactPipelineOptions {
      * 她理解人的话（10-30 用户：让她自己学习去理解人说的话）：他这句话和以前被纠正过的事撞上时，
      * 返回一行「上次你这么理解，他纠正过」；没有就不加
      */
-    /** 他刚发过「/亲热」（ADR 0170）：接下来几条回复黏一点；每取一次少一条，主动找他、危机回合不取 */
-    intimacyLine?: () => string | undefined;
     /** 心境（ADR 0102，配置 herFeelings）：她那边的事、他的态度、作者写下的事，在她心里留下带来由的感受（开心 / 难过 / 担心……），会慢慢散；只给男朋友档，危机回合不放 */
     herFeelings?: boolean;
     /** 每次给他算完心境交出来（ADR 0197）：app.ts 写进灵魂目录，桌面上的她读同一份；出错不影响回复 */
@@ -302,7 +300,6 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
         } : {}),
         ...(options.dreams ? { dreams: options.dreams } : {}),
         ...(options.continuity ? { continuity: options.continuity } : {}),
-        ...(options.intimacyLine ? { intimacyLine: options.intimacyLine } : {}),
         ...(options.selfNote ? { selfNote: options.selfNote } : {}),
         ...(options.promises ? { promises: options.promises } : {}),
         ...(options.toldElsewhere ? { toldElsewhere: options.toldElsewhere } : {}),
@@ -531,9 +528,6 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             decideStage(options.turnModules ?? [], 'length', turn, decideCtx);
             // 别重复自己（反复说的字词、主动找他的开头、说过了的事，ADR 0098 / 0135）是解释器的模块（modules/repetition.ts），经 turnModules 放进 crutch、opener、told 槽
             // 她最近心里在想的（ADR 0101）是解释器的模块（modules/inner.ts），经 turnModules 放进 inner 槽
-            // 「/亲热」（ADR 0170）：他刚让她黏一点，接下来几条回复里放一行；每生成一条取一次
-            // 是意图行模块的 decideAt.intimate：在这里原位取（每取一次扣一条、写状态文件），写进 turn.facts.intimateLine
-            decideStage(options.turnModules ?? [], 'intimate', turn, decideCtx);
             // 质感（ADR 0131）发出去之前用的上下文是解释器的模块（modules/decorate.ts 的 decideAt.texture，开了 texture 才挂）：写进 turn.facts.texture
             decideStage(options.turnModules ?? [], 'texture', turn, decideCtx);
             // 聊天原文放多少（最近几天 / 最近几轮 + 更早的要点，ADR 0018 / 0043）和记忆这一组的收尾（拼上要点和那一天，写进 turn.facts.memory）是记忆模块的 decideAt.context：

@@ -176,8 +176,6 @@ export interface TurnFacts {
     stickerLine?: string;
     /** 照片清单（ADR 0109 / 0128 / 0240）：同上（照片货架每次重读索引）；modules/media-offers.ts 放进 photo 槽 */
     photoLine?: string;
-    /** 「/亲热」那一行（ADR 0170）：原位取（每取一次扣一条、写文件），主动找他、危机回合不取；modules/intent-line.ts 放进 intimate 槽 */
-    intimateLine?: string;
     /** 这一轮允许发图片表情（ADR 0063 / 0132）：联系人流水线按档位、危机、被吵醒、他难过、这一轮发照片……算好后写；
      *  清理时 modules/media-offers.ts 按它决定留不留一个认识的编号。不允许时没有 */
     stickersAllowed?: boolean;
@@ -354,7 +352,7 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'intimate', 'texture', 'context', 'lists'] as const;
+export const DECIDE_STAGES = ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'texture', 'context', 'lists'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
@@ -388,8 +386,6 @@ export interface DecideCtx {
     dreams?: () => { appraisals: Appraisal[]; line?: string };
     /** 连续性（ADR 0157–0163）：异步——上网、调模型、记「已告诉他」；停下时抛 AbortError */
     continuity?: (context: { contact: Contact; said: string; initiating: boolean; now: Date }) => Promise<string[]>;
-    /** 「/亲热」（ADR 0170）那一行：每取一次扣一条、写状态文件 */
-    intimacyLine?: () => string | undefined;
     /** 聊天原文放多少（ADR 0018 调整 12 / ADR 0043）：开了长期记忆、名单里的人才只放最近几天（recentOnly）；配置 contextTurns 时更早的换成要点（summarize 会在后台起一次整理） */
     context?: { recentOnly: boolean; window?: TurnWindow & { summarize: Summarizer }; /** 名单（要点里她的名字换成「你」时看有没有别的女生） */ contacts?: readonly Contact[] };
     /** 清单的取（ADR 0063 / 0109 / 0240）：图片表情收藏库、照片货架的 prompt（每取一次都查索引 / 文件，坏了会抛错） */

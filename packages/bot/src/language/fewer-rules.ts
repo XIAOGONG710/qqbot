@@ -37,7 +37,7 @@ export const RULE_SLOTS: ReadonlySet<Slot> = new Set<Slot>([
     'solveFrame', // 模拟器的对照提示
 ]);
 // 不在这里、另外处理的：意图行（intent-line.ts：危机回合的照放）、「他最后说的是」（reply-basics.ts：她主动找他时那句「那不是刚说的」是时间事实，照放）。
-// 拿不准、先留着的（带着事实或她自己写的）：warm、closeness、meme、speechNote、review、quote、intimate；她自己写的「我现在的样子」（portrait）照放。
+// 拿不准、先留着的（带着事实或她自己写的）：warm、closeness、meme、speechNote、review、quote；她自己写的「我现在的样子」（portrait）照放。
 
 /** 开着时一并关掉的、只管说话风格的开关：说话的毛病检查（助手腔、算账、重复……）、句尾封顶、质感、形状那一套、挑候选 */
 export function relaxStyle<T extends Partial<AppConfig>>(config: T): T {

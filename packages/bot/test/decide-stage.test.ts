@@ -23,8 +23,8 @@ const ctxOf = (have: readonly string[], extra: Partial<DecideCtx> = {}) => {
 const decide = (turn: Turn, ctx: DecideCtx) => { decideStage([mediaOffersModule()], 'photo', turn, ctx); return turn.facts; };
 
 describe('判断顺序表（ADR 0336「判断那一串」）', () => {
-    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：真人数值和成长层（buildPrompt 开头）→ 召回 → 那一天 → 答应的事 → 挂着的事 → 还没说过的事 → 照片 → 梦 → 最终的意图 → 心境 → 连续性 → 图片表情 → 深思 → 长短要的两样 → 「/亲热」 → 质感的上下文 → 聊天原文和记忆的收尾 → 清单', () => {
-        assert.deepEqual([...DECIDE_STAGES], ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'intimate', 'texture', 'context', 'lists']);
+    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：真人数值和成长层（buildPrompt 开头）→ 召回 → 那一天 → 答应的事 → 挂着的事 → 还没说过的事 → 照片 → 梦 → 最终的意图 → 心境 → 连续性 → 图片表情 → 深思 → 长短要的两样 → 质感的上下文 → 聊天原文和记忆的收尾 → 清单', () => {
+        assert.deepEqual([...DECIDE_STAGES], ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'texture', 'context', 'lists']);
     });
 
     test('一个位置上按注册顺序跑，拿到同一轮和流水线给的东西；只挂 decideAt 的模块不被解释器筛掉', () => {
@@ -435,10 +435,9 @@ describe('assess 之前原位取的几样（recap / promises / loops / news）',
     });
 });
 
-describe('梦、连续性、「/亲热」的取（dream / continuity / intimate）', async () => {
+describe('梦、连续性的取（dream / continuity）', async () => {
     const { feelingsModule } = await import('../src/modules/feelings.ts');
     const { continuityModule } = await import('../src/modules/continuity.ts');
-    const { intentLineModule } = await import('../src/modules/intent-line.ts');
     const feelings = (herFeelings: boolean) => ({ herFeelings, everydayLife: false, worldAt: () => undefined });
     const crisis = { level: 'high' } as unknown as NonNullable<Turn['facts']['crisis']>;
     const dreams = () => ({ line: '[你昨晚梦到考试迟到]', appraisals: [{ kind: 'anxious' }] as never[] });
@@ -471,18 +470,6 @@ describe('梦、连续性、「/亲热」的取（dream / continuity / intimate�
         assert.deepEqual(failed.lines, ['连续性：出错，这一轮不放（超时）']);
         const stopped = take(turnOf('在吗'), async () => { throw new DOMException('停了', 'AbortError'); });
         await assert.rejects(stopped.result as Promise<void>, { name: 'AbortError' });
-    });
-
-    test('「/亲热」：主动找他、危机回合不取（不扣条数）；取到记一行、写进 facts', () => {
-        let taken = 0;
-        const intimacyLine = () => { taken++; return '[他刚让你黏一点]'; };
-        const take = (turn: Turn) => { const { ctx, lines } = ctxOf([], { intimacyLine }); decideStage([intentLineModule()], 'intimate', turn, ctx); return { facts: turn.facts, lines }; };
-        assert.equal(take(turnOf('在吗', {}, { initiate: { note: '', topic: '' } as NonNullable<Turn['initiate']> })).facts.intimateLine, undefined);
-        assert.equal(take(turnOf('在吗', { crisis })).facts.intimateLine, undefined);
-        assert.equal(taken, 0);
-        const got = take(turnOf('在吗'));
-        assert.equal(got.facts.intimateLine, '[他刚让你黏一点]');
-        assert.deepEqual(got.lines, ['亲热：他刚发过 /亲热，这一轮提示词里让她黏一点']);
     });
 });
 

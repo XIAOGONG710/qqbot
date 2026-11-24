@@ -163,7 +163,6 @@ import { appendDayDiary, oneDiaryEntries, windowFor } from '.././life/one-diary.
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
 import { lifeExecutor } from '.././world/life-selector.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/diary.ts';
-import { takeIntimateLine } from '.././language/intimacy.ts';
 import { describeState, formatDate, herDay, stateAt, type Schedule } from '.././life/schedule.ts';
 import type { WeatherFetcherStatus } from '.././world/weather.ts';
 import type { AirQualityFetcherStatus } from '.././world/air-quality.ts';
@@ -1877,7 +1876,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 她理解人的话（10-30）：他这句话和以前被纠正过的事撞上时提醒她
             // 他说过、做过、答应过的事（10-31 留痕）：最近的几条递给她
             // 他刚发过「/亲热」（ADR 0170）：接下来十条回复黏一点，每生成一条减一
-            ...(contact.tier === 'boyfriend' ? { intimacyLine: () => takeIntimateLine(config.dataDir, contact.qq) } : {}),
             // 心境（ADR 0102）：作者写下的事每次现取
             ...(config.herFeelings ? { herFeelings: true, moments: momentsReader(config.dataDir, log) } : {}),
             // 设备所有者明确问指定群时，才查该群。群底账在回复器建好后初始化。
