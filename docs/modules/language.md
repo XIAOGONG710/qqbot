@@ -121,8 +121,7 @@
 | 配置 | 功能 | ADR |
 | --- | --- | --- |
 | `deliberation` | 认真问她时深思（更强的模型、不套字数）（模式）（并进来的：`deliberate` 认真问她时深思（更强的模型、不套字数）（[ADR 0151](../adr/0151-deliberate.md)）；`depthRouting` 语义路由：关键词没认出来的轮次，问小模型这一句是轻是重——沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思（要 deliberate 开着）（[ADR 0202](../adr/0202-depth-routing.md)）） | [ADR 0151](../adr/0151-deliberate.md) |
-| `rhythm` | 回复节奏（看想 / 打字时间） | [ADR 0075](../adr/0075-reply-rhythm.md) |
-| `lagTail` | 回复延迟的长尾 | [ADR 0105](../adr/0105-reply-lag-tail.md) |
+| `rhythm` | 回复节奏（看想 / 打字时间）（并进来的：`lagTail` 回复延迟的长尾（[ADR 0105](../adr/0105-reply-lag-tail.md)）） | [ADR 0075](../adr/0075-reply-rhythm.md) |
 | `herNo` | 会拒绝 | [ADR 0103](../adr/0103-her-no.md) |
 | `afterNo` | 拒绝之后（他又提同一类请求时记得上次：拒了他只回「行吧」、或者勉强答应了；要不要还是她定） | [ADR 0214](../adr/0214-after-no.md) |
 | `moody` | 看心情不回 | [ADR 0013](../adr/0013-old-project-advice.md) |

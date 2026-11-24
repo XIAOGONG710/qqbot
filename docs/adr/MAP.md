@@ -111,7 +111,7 @@
 | [0102](0102-feelings.md) | 心境——她会开心、难过、担心，也会忍不住哭（配置 `herFeelings`，默认关） | 已实现，未上线（2026-10-22；配置 `herFeelings`，只给男朋友档；默认关）。上线 = `koishi… | `herFeelings` 开 |
 | [0103](0103-her-no.md) | 她会拒绝——有来由的不，不被磨两句就让步（配置 `herNo`，默认关） | 已实现，未上线（2026-10-22；配置 `herNo`，只给男朋友档；默认关）。上线 = `koishi.yml` … | `herNo` 开 |
 | [0104](0104-pursuits.md) | 她自己的追求（配置 `pursuits`，默认关） | 已实现，未上线（2026-10-22；配置 `pursuits`，只给男朋友档；默认关）。上线 = `koishi.ym… | `pursuits` 开 |
-| [0105](0105-reply-lag-tail.md) | 回复延迟的长尾，和断网后自然的补回（配置 `lagTail`，默认关） | 已实现，未上线（2026-10-22；配置 `lagTail`；默认关）。上线 = `koishi.yml` 里加 `l… | `lagTail` 开 |
+| [0105](0105-reply-lag-tail.md) | 回复延迟的长尾，和断网后自然的补回（配置 `lagTail`，默认关） | 已实现，未上线（2026-10-22；配置 `lagTail`；默认关）。上线 = `koishi.yml` 里加 `l… | `rhythm`（原 `lagTail`） 开 |
 | [0106](0106-everyday-life.md) | 她每天碰到的小事，和一条“小测”的线（配置 `everydayLife`，默认关） | 已实现，未上线（2026-10-22；配置 `everydayLife`；默认关）。上线 = `koishi.yml` … | `everydayLife` 开 |
 | [0107](0107-invite-to-play.md) | 约他一起玩（主动时机 `invite`，配置 `proactiveInvite`，默认关） | 已实现，未上线（2026-10-22；配置 `proactiveInvite`；默认关）。上线 = `koishi.ym… | `proactiveInvite` 开 |
 | [0108](0108-proactive-opener.md) | 主动开口不先叫名字 | 已实现，未上线（2026-10-22；提示词措辞，没有开关；上线 = 落地代码 + 重启；回滚 = `git rever… |  |

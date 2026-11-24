@@ -106,6 +106,8 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
         toLegacy: value => ({ deliberate: value !== 'off', depthRouting: value === 'routed' }),
         ignorable: (key, input) => key === 'depthRouting' && input.deliberate !== true,
     },
+    // 10. 节奏（13）：回复延迟的长尾跟着回复节奏
+    follows('rhythm', BOOL, ['lagTail']),
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */

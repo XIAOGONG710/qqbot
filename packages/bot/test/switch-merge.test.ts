@@ -163,6 +163,7 @@ describe('真表：已经并了的组', () => {
         watching: true,
         herFeelings: true,
         deliberation: 'routed',
+        rhythm: true,
     };
     const env = { QQBOT_LLM_API_KEY: 'k' };
     const base = {

@@ -229,7 +229,8 @@ export interface Config {
     herFeelings: boolean;
     herNo: boolean;
     afterNo: boolean;
-    lagTail: boolean;
+    /** 已并进 rhythm（开关合并），koishi.yml 里还写着才有 */
+    lagTail?: boolean;
     everydayLife: boolean;
     worldDrama: boolean;
     worldThreads: boolean;
@@ -437,7 +438,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         herFeelings: toggle('herFeelings'),
         afterNo: toggle('afterNo'),
         herNo: toggle('herNo'),
-        lagTail: toggle('lagTail'),
+        lagTail: legacy(),
         everydayLife: toggle('everydayLife'),
         chatReview: toggle('chatReview'),
         realNights: toggle('realNights'),
