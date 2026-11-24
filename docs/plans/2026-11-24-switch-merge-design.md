@@ -31,6 +31,40 @@
   - 测试：`packages/bot/test/switch-merge.test.ts`、`packages/koishi-plugin-qqbot/test/switch-merge.test.ts`，用测试里的示例表（含真实键名过 `parseAppConfig` 的两组）。
   - 没在 M0 做、留给第一组（QQ 空间）一起做：`FeatureDef.absorbs`、`dashboard.test.ts` 认 `legacySwitchKeys()`、`adr-map` / `live-mix` 认合并表——空表时都是空操作，跟着真数据一起写、一起测。
 
+- **能直接做的组已合并（2026-11-24 夜 – 11-25）**：按第三节的顺序一组一个提交，SWITCH_MERGES 现在 20 行（16 个提交；B 站、日常小事各两行，QQ 表层 + 戳一戳三行）：并掉 48 个旧键、新起 6 个名字（realWorld、deliberation、ledgers、qqSurface、qqPresence、oneLife）。
+  每组：`SWITCH_MERGES` 加一到三行、`features.ts` 新键一行（`absorbs` 收原来的行）、旧键在 Koishi 表单上改 `legacy()`、`AppConfig` 旧字段标 `@deprecated`。
+  **app 代码一行没改**，照旧读 `parseAppConfig` 派生出来的旧字段（第一节 6 的步骤 B「改读新键、删旧字段」一组都还没做），所以基线逐字不变（每组 `baseline:fast` 39/39）。
+  每组都对着线上快照核过：`packages/bot/test/fixtures/live-switches.ts`（11-20 快照里功能总表的开关值，加 11-22/23 补开的三个），
+  `switch-merge.test.ts`（bot、插件各一份）核对每组线上可表达、新值等于线上、今天 / 迁移前 / 迁移后 / 迁移后经控制台保存再读回，解析出来的旧字段一样。
+
+  | 提交 | 组 | 旧 → 新 |
+  |---|---|---|
+  | 4f8cfaed | QQ 空间 | `signature` `qzoneBrowse` `qzonePeek` `qzoneStrangers` → `qzone`（线上 on） |
+  | 8fef2881 | 事实检查 | `factHim` → `factCheck`（fix） |
+  | 7b8c138f | 账号控制 | `qqFriendGate` → `qqControl`（on；`all` 档不留，写着 all 的不迁） |
+  | b01fe701 | 生活账 | `projectChoice` `lifeInPrompt` → `autonomousLife`（true） |
+  | d5157a45 | 看图 | `readStickers` → `media`（true；新装默认读表情包，仍要看图模型） |
+  | 57f428f8 | 真实世界 | `realWeather` `realAirQuality` `realDaylight` `realCalendar` → 新键 `realWorld`（true；新装默认四路都开） |
+  | a9659ad7 | B 站 | `bilibiliAccount` `bilibiliDm` `bilibiliReplies` `bilibiliComment` `acquaintances` `biliStickers` → `bilibili`（on）；`biliFeed` → `watching`（true） |
+  | 88c496e6 | 感觉账 | `feelingLedger` → `herFeelings`（true） |
+  | f2d567c8 | 深思 | `deliberate` `depthRouting` → 新键 `deliberation`（三档，routed） |
+  | 097c78e0 | 节奏 | `lagTail` → `rhythm`（true） |
+  | b4d740a2 | 日常小事（拆两个） | `npcAsks` `menu` → `everydayLife`；`worldThreads` → `worldDrama`（都 true） |
+  | 965bf59e | 留痕 | `identityLedger` `memoryAudit` `memoryReconcile` → 新键 `ledgers`（true） |
+  | 25a66675 | QQ 表层 + 戳一戳（三键） | `readReceipts` `selfRecall` → 新键 `qqSurface`；`onlineStatus` `profileLikes` `pokeOut` → 新键 `qqPresence`；`pokeBack` → `pokes`（都 true） |
+  | b22acc2d | 拒绝之后 | `afterNo` → `herNo`（true） |
+  | e9ce7d49 | 主动时机 | `proactiveReach` `proactiveInvite` `proactiveAsk` `comeBack` `smallNews` `proactiveRoom` `hisReactions` → `proactive`（on） |
+  | 268279bb | 「一个生活」 | `crossRecent` `selfExport` `selfReceipts` `desktopDay` → 新键 `oneLife`（四档；11-20 快照是 read，11-22/23 补开后是 desktop） |
+
+  机制在第一组顺带补上：`FeatureDef.absorbs`（配置页说明把并进来的旧项一项一句接在后面）、`dashboard.test` 认 `legacySwitchKeys()`、
+  `adr-map` 把旧键挂在新键下（「`qzone`（原 `qzoneBrowse`）」，快照里还是旧键时新键的线上值按合并表算）、`modules-doc` 列出并进来的旧键、
+  `live-mix` 在新起名字的新键没写时按合并表补上；`requires` 认「键=档位」（`'oneLife=desktop'`）。
+  功能总表 FEATURES：**116 → 74**（116 是 11-24 两次删除之后、合并之前数的）。
+  **还没做**：线上迁移（下次部署时插件 `migrateSwitches` 会把 koishi.yml 里这些旧键改写成新键，要用户点头）；
+  各组的步骤 B（app 改读新键、删旧字段、`scenarios.ts` 换键）；迁移确认一周后删 `legacy()` 表单项和输入映射。
+  **仍然阻塞、没动**：夜间自省（`review` 场景）、QQ 表层 / 戳一戳整组 8 → 2（含 `typingStatus`、主动戳他并进戳一戳：`RICH`、`burst-and-interrupt`、`her-now-dsh`）、
+  追求（等二.8）、回忆的感觉 `feltLedgerRecall`（线上关着）、日常小事 5 合 1（`RICH` 没开 `worldDrama`）。
+
 ---
 
 ## 〇、取证：合并后的语义在基线上跑一遍

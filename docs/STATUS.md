@@ -87,6 +87,7 @@
 - **等用户定**：第 4 层 §5 的三件事（她自发的整机权限行动）；其余默认关的开关开不开；`felt-then.ts` 当天那条路要不要也改成「带一点」（ADR 0347「2026-11-23 修正」）。
   - 11-24 减法单子二：**用户已拍板「照推荐办」**（6c654aee）。已做：8 个没接线的文件和 /亲热 残余（e8bff6cc、9706e7d0）；开关合并机制 M0（2dcb1487，表是空的）。进行中：删 7 个没上过线的开关和 ownerPeek、fewerRules 转正后删被它架空的 11 个。等 DSH：「只想一想」上限和每晚追求回顾（先问她）、抽取关思考（先跑对照探针 `npm run probe:extraction`）。
   - 部署：今天 main 上的修复（热重载等旧实例收尾 5ca1d681/3de153aa、simulateWorld 缓存 11c26031、0336 收尾、指纹清单 v2）要上线得用户点头，上线前跑 golive-check。
+  - 开关合并（11-25，`docs/plans/2026-11-24-switch-merge-design.md`「进度」）：能直接做的 16 组已合并，FEATURES 116 → 74。**下次部署时 Koishi 插件会把线上 koishi.yml 里这些旧键改写成新键**（`migrateSwitches`，值等价、行为不变；写回线上配置文件要用户点头，上线前备份 koishi.yml、用 `read-switches.mjs` 出新快照重核，尤其「一个生活」四项）。
 - **等她本人**：见上面第 2 条。
 
 **减法这一轮**（11-24 起，`docs/plans/2026-11-24-subtraction-round.md`）：三份只读盘点——开关审计 `docs/reports/2026-11-24-switch-audit.md`、后台模型调用审计 `docs/reports/2026-11-24-background-llm-audit.md`、线上开关组合的提示词盘点 `docs/reports/2026-11-24-live-prompt-inventory.md`。
