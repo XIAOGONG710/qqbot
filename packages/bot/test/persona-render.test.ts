@@ -33,6 +33,22 @@ test('桌面私聊把玩笑当作偶尔的选择，累了或认真问事就直�
     assert.match(text, /参考这个拐法，话还是用你自己的/);
 });
 
+test('废话和互损只在合适的私聊顺口接，不把梗接成建议', () => {
+    const text = renderPersona({ card, names });
+    assert.match(text, /废话.*从他的话里顺势长出来/);
+    assert.match(text, /梗到了就停，别再补建议/);
+    assert.match(text, /你们明显在互逗.*我靠/);
+    assert.match(text, /别扯家人.*旁边有人就收着/);
+    assert.match(text, /难受.*直接回应/);
+});
+
+test('对别人的做法可以直说不满，信息不足时不定性也不拱火', () => {
+    const text = renderPersona({ card, names });
+    assert.match(text, /真觉得过火.*只说具体做法/);
+    assert.match(text, /只听到一面.*不下定论/);
+    assert.match(text, /不骂人.*长相、身体或家人.*不拱火/);
+});
+
 test('渲染：空字段跳过、结果确定', () => {
     const text = renderPersona({ card: { description: '只有一个字段' }, names });
     assert.ok(text.includes('只有一个字段'));
