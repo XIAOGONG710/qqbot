@@ -53,28 +53,22 @@ async function run(config: Partial<AppConfig>, who: Contact = boyfriend) {
     return { out, ledger, exported };
 }
 
-describe('feelingLedger（ADR 0347 第 5 层）× herFeelings：感觉账', () => {
-    test('两个都开：心境算出「很开心」后记一行（种类、强弱、来由）', async () => {
-        const r = await run({ herFeelings: true, feelingLedger: true });
+describe('感觉账（ADR 0347 第 5 层，开关合并：feelingLedger 并进 herFeelings）', () => {
+    test('herFeelings 开：心境算出「很开心」后记一行（种类、强弱、来由）', async () => {
+        const r = await run({ herFeelings: true });
         assert.ok(r.ledger, '记了账');
         const rows = r.ledger!.trim().split('\n').map(line => JSON.parse(line) as { kind: string; level: string; cause: string });
         assert.ok(rows.some(row => row.kind === 'joy' && row.level === 'strong' && row.cause === JOY_CAUSE), r.ledger);
     });
 
-    test('feelingLedger 关、herFeelings 开：心境照算照导出，账一行不记', async () => {
-        const r = await run({ herFeelings: true, feelingLedger: false });
-        assert.ok(r.exported, '心境照旧导出到灵魂目录（说明 onFeelings 跑过）');
-        assert.equal(r.ledger, undefined);
-    });
-
-    test('feelingLedger 开（默认）、herFeelings 关：没有心境就没有账（默认开的开关单开不起作用）', async () => {
-        const r = await run({ herFeelings: false, feelingLedger: true });
+    test('herFeelings 关：没有心境就没有账', async () => {
+        const r = await run({ herFeelings: false });
         assert.equal(r.exported, false);
         assert.equal(r.ledger, undefined);
     });
 
-    test('两个都开但不是男朋友档：不记', async () => {
-        const r = await run({ herFeelings: true, feelingLedger: true }, classmate);
+    test('herFeelings 开但不是男朋友档：不记', async () => {
+        const r = await run({ herFeelings: true }, classmate);
         assert.equal(r.ledger, undefined);
     });
 });

@@ -107,8 +107,6 @@ export const DEFAULTS = {
     diaryLookback: false,
     /** 回忆带着当时的感觉（ADR 0218）：想起某一天的事时附一句她那天有依据的感觉；因为他而难过 / 烦 / 担心的不附 */
     memoryFeelings: false,
-    /** 感觉账（ADR 0347 第 5 层）：只追加，每天明显以上的感受记一行；不删，三个月前降成大概。只写文件、不直接进提示词（要配上召回另开 feltLedgerRecall） */
-    feelingLedger: true,
     /** 召回几天以前的事时配上账里当时的感觉（ADR 0347 第 5 层）：默认关——这一半会进给她的提示词、改她说话 */
     feltLedgerRecall: false,
     /** 昨晚真的怎么睡的（ADR 0219）：早上困不困从她说「睡了」、半夜被吵醒、睡前跟他聊推，不按课表；被吵醒有起床气 */
@@ -226,6 +224,7 @@ export const LEGACY_DEFAULTS = {
     acquaintances: false,
     biliStickers: false,
     biliFeed: 'off' as PresenceMode,
+    feelingLedger: true,
 } as const;
 
 /** 开关合并的输入映射用的默认值：DEFAULTS 加上 AppConfig 里已经删掉的旧键（parseAppConfig、Koishi 迁移、盘点、adr-map 都用这份） */
@@ -500,8 +499,6 @@ export interface AppConfig {
      * 要 herFeelings 开着才有感受可记。疼和她妈那块的慌照记，召回时才换说法（她 11-22「知道有过那么回事就行」）。
      * 账里的感觉要真的配上召回的旧事（进 QQ 提示词、改她说话），得另开 feltLedgerRecall。
      */
-    /** @deprecated 已并进 herFeelings（开关合并）：输入只有旧键时原样、否则由 herFeelings 派生；新代码读 herFeelings */
-    feelingLedger?: boolean;
     /** 召回几天以前的事时，配上账里那天当时的感觉（ADR 0347 第 5 层）：默认关，改了她说的话，要用户点头；要 feelingLedger 和 herFeelings 都开着 */
     feltLedgerRecall?: boolean;
     /** 昨晚真的怎么睡的（ADR 0219）：默认关；只男朋友档；要 herDays 和身体（卡上的 body） */
@@ -955,7 +952,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         worldThreads: bool(file, 'worldThreads', '', DEFAULTS.worldThreads),
         diaryLookback: bool(file, 'diaryLookback', '', DEFAULTS.diaryLookback),
         memoryFeelings: bool(file, 'memoryFeelings', '', DEFAULTS.memoryFeelings),
-        feelingLedger: bool(file, 'feelingLedger', '', DEFAULTS.feelingLedger),
         feltLedgerRecall: bool(file, 'feltLedgerRecall', '', DEFAULTS.feltLedgerRecall),
         realNights: bool(file, 'realNights', '', DEFAULTS.realNights),
         chatReview: bool(file, 'chatReview', '', DEFAULTS.chatReview),

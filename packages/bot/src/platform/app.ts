@@ -1869,20 +1869,18 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 lastFeelings = report;
                 writeFeelingsExport(soulDir(), report);
                 // 感觉账（ADR 0347 第 5 层）：只追加，几天以后想起那件事还配得上当时的感觉。
-                // 「聊完回想」记下的感受同时最多 8 条、放下就丢种类，靠账补；疼和她妈那块的慌记账时不换、召回时才换说法
-                if (config.feelingLedger) {
-                    try {
-                        const added = appendFeelings(soulDir(), report.felt, report.at);
-                        if (added) log(`感觉账：记了 ${added} 条（日志不记内容）`);
-                    } catch (e) { log(`感觉账：写不进去 ${e}`); }
-                }
+                // 「聊完回想」记下的感受同时最多 8 条、放下就丢种类，靠账补；疼和她妈那块的慌记账时不换、召回时才换说法。有心境就记（开关合并：原 feelingLedger）
+                try {
+                    const added = appendFeelings(soulDir(), report.felt, report.at);
+                    if (added) log(`感觉账：记了 ${added} 条（日志不记内容）`);
+                } catch (e) { log(`感觉账：写不进去 ${e}`); }
             } } : {}),
             ...(feelingReviewNow && contact.tier === 'boyfriend' ? { feelingReview: feelingReviewNow } : {}),
             ...(config.quoteReply ? { quoteReply: true } : {}),
             ...(config.memoryFeelings && config.herFeelings ? { memoryFeelings: true } : {}),
             // 感觉账（ADR 0347 第 5 层）：几天以前的事想起时，从账里配当时的感觉（说法照她定的换过）。
-            // 只写账是纯文件（feelingLedger 默认开）；这一半会进给她的提示词、改她说话，所以另有一个默认关的开关
-            ...(config.feelingLedger && config.feltLedgerRecall ? { feltLedger: () => readLedger(soulDir()) } : {}),
+            // 只写账是纯文件（跟着 herFeelings）；这一半会进给她的提示词、改她说话，所以另有一个默认关的开关
+            ...(config.herFeelings && config.feltLedgerRecall ? { feltLedger: () => readLedger(soulDir()) } : {}),
             ...(config.realNights ? { realNights: true } : {}),
             ...(config.lagTail ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
