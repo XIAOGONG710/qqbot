@@ -836,7 +836,7 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
  * 开关合并（docs/plans/2026-11-24-switch-merge-design.md 第一节 4）：合并表里每一组，新键和旧键哪个往下传。
  * 表单给新键填了默认值（Koishi 按 Schema 补），所以「新键有值」分不出是 koishi.yml 里写的还是默认补的；
  * 旧键在表单上是 legacy()（没有默认值），有值就一定是 koishi.yml 里写的。于是：还写着旧键（迁移前、或表达不了没迁移）
- * → 传旧键、不传新键，parseAppConfig 按「只有旧键」原样用旧值，行为和合并前一样；没写旧键 → 传新键。
+ * → 传旧键、不传新键，parseAppConfig 由旧键推出新键（表达不了的组合 parseAppConfig 报错、插件不启动，不悄悄改行为）；没写旧键 → 传新键。
  * existing 的组（新键合并前就是开关，koishi.yml 里它的值本来就算数）照传新键，parseAppConfig 对这种组写着旧键时也按「只有旧键」。
  * 合并逻辑本身只在 parseAppConfig 一处。表是空的时原样返回 input。
  */
@@ -868,7 +868,7 @@ export function legacy<T extends string | boolean = boolean>(values?: readonly T
 /**
  * koishi.yml 里还写着已合并的旧键：这一组能一字不差地用新键表达（representable）时，算出新键、删掉这一组的旧键，返回新配置
  * （照 migrateThinking：写回 koishi.yml、插件按新配置重启，行为不变）；没有可迁移的组就返回 undefined。
- * 表达不了的组不动（照旧按旧键跑，switchMergeNotes 记日志）。合并表是空的时永远返回 undefined。
+ * 表达不了的组不动、不写回：parseAppConfig 会拒绝启动并说明是哪几项（app 只读新键，照推出来的值跑会改行为）。合并表是空的时永远返回 undefined。
  */
 export function migrateSwitches(config: Config, merges: readonly SwitchMerge[] = SWITCH_MERGES, defaults: Readonly<Record<string, unknown>> = SWITCH_DEFAULTS): Config | undefined {
     const moves = switchMigrations(config, merges, defaults);

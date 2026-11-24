@@ -220,6 +220,24 @@ export function representable(merge: SwitchMerge, input: Input, defaults: Input)
 }
 
 /**
+ * 只写了旧键、而且新键表达不了的组（比如 bilibili: on 配 bilibiliDm: dryRun）：app 已经只读新键（步骤 B），
+ * 照推出来的新值跑会悄悄改行为（草稿变真发），所以 parseAppConfig 拿它报错、插件停在「配置有误」，等人在控制台按新键改。
+ * 审查 docs/reports/2026-11-25-switch-merge-review.md 发现 1。新键也写了的不算（以新键为准是写的人自己的意思）。
+ */
+export function unrepresentableSwitches(input: Input, defaults: Input, merges: readonly SwitchMerge[] = SWITCH_MERGES): string[] {
+    const problems: string[] = [];
+    for (const merge of merges) {
+        const written = writtenLegacy(merge, input);
+        if (!written.length || (input[merge.key] !== undefined && !merge.existing)) continue;
+        if (representable(merge, input, defaults)) continue;
+        const value = legacyValue(merge, input, defaults);
+        problems.push(`${merge.key}：旧键 ${mismatches(merge, input, value, defaults, false)
+            .map(([key, was, now]) => `${key}=${show(was)}`).join('、')} 并不成一个 ${merge.key}（推出来是 ${show(value)}，会改掉这几项）`);
+    }
+    return problems;
+}
+
+/**
  * parseAppConfig 之前的规范化：按上面的四条规则补上新键、派生旧字段。不改输入，有改动时返回新对象；
  * 表是空的就原样返回同一个对象。新键的值不在 values 里时报错。
  */
@@ -259,7 +277,7 @@ export function switchMergeNotes(input: Input, defaults: Input, merges: readonly
         const value = legacyValue(merge, input, defaults);
         notes.push(`开关合并：旧键 ${written.join('、')} 已并进 ${merge.key}（= ${show(value)}），请改用 ${merge.key}`
             + (representable(merge, input, defaults) ? '' : `；这几项和 ${merge.key} 对不上：${mismatches(merge, input, value, defaults, false)
-                .map(([key, was, now]) => `${key}=${show(was)}（${merge.key}=${show(value)} 时是 ${show(now)}）`).join('，')}，过渡期照旧按旧键`));
+                .map(([key, was, now]) => `${key}=${show(was)}（${merge.key}=${show(value)} 时是 ${show(now)}）`).join('，')}；parseAppConfig 会拒绝启动，请在控制台按新键改`));
     }
     return notes;
 }

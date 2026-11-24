@@ -67,11 +67,9 @@ describe('routeSwitchInput：新键和旧键哪个往下传', () => {
         const config = Config({ ...minimal, qzone: 'on', qzoneBrowse: 'on', qzonePeek: 'dryRun' } as never);
         const routed = routeSwitchInput(config, {}, [qzone]);
         assert.deepEqual(routed, { qzone: 'on', qzoneBrowse: 'on', qzonePeek: 'dryRun' });
-        // 对不上 → 不迁；解析出来和今天一样（旧字段原样）
+        // 对不上 → 不迁；app 只读新键了，照推出来的值跑会改行为，所以解析时拒绝启动（审查 2026-11-25 发现 1）
         assert.equal(migrateSwitches(config, [qzone]), undefined);
-        const today = parseAppConfig(toAppConfigInput(config), repoRoot, env, []);
-        const merged = parseAppConfig(routeSwitchInput(config, toAppConfigInput(config), [qzone]), repoRoot, env, [qzone]);
-        assert.deepEqual(merged, today);
+        assert.throws(() => parseAppConfig(routeSwitchInput(config, toAppConfigInput(config), [qzone]), repoRoot, env, [qzone]), /新键表达不了.*qzonePeek=dryRun/);
     });
 });
 

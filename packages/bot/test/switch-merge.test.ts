@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { configSwitchNotes, LEGACY_DEFAULTS, parseAppConfig, SWITCH_DEFAULTS } from '../src/platform/config.ts';
 import { FEATURES } from '../src/platform/features.ts';
-import { checkSwitchMerges, legacySwitchKeys, legacyValue, mergeSwitchInput, representable, SWITCH_MERGES, switchMergeNotes, writtenLegacy, type SwitchMerge } from '../src/platform/switch-merge.ts';
+import { checkSwitchMerges, legacySwitchKeys, legacyValue, mergeSwitchInput, representable, SWITCH_MERGES, switchMergeNotes, unrepresentableSwitches, writtenLegacy, type SwitchMerge } from '../src/platform/switch-merge.ts';
 import { LIVE_2026_11_20, LIVE_LATER_ON } from './fixtures/live-switches.ts';
 
 /** 示例：两个假旧键并成一个新起名字的布尔键，没有总开关，任一开就开 */
@@ -40,7 +40,11 @@ describe('示例组：两个旧键 → 一个新键', () => {
         assert.deepEqual(merge({ lampA: true }), { lampA: true, lamp: true });
         const [line] = notes(input);
         assert.match(line!, /已并进 lamp（= true）/);
-        assert.match(line!, /对不上：lampB=false（lamp=true 时是 true），过渡期照旧按旧键/);
+        assert.match(line!, /对不上：lampB=false（lamp=true 时是 true）；parseAppConfig 会拒绝启动/);
+        // 审查 2026-11-25 发现 1：app 只读新键了，照推出来的值跑会悄悄改行为，所以算出来要拒绝
+        assert.equal(unrepresentableSwitches(input, lampDefaults, [lamp]).length, 1);
+        assert.deepEqual(unrepresentableSwitches({ lampA: true, lampB: true }, lampDefaults, [lamp]), []);
+        assert.deepEqual(unrepresentableSwitches({ lamp: true, lampA: false }, lampDefaults, [lamp]), [], '新键也写了以新键为准，不算');
     });
 
     test('只有新键：旧字段由新键派生，没有日志', () => {
@@ -115,11 +119,13 @@ describe('existing：新键合并前就是开关（照「QQ 空间」的形状�
     test('写着旧键（线上 koishi.yml 现在的样子）：新键也写着也按「只有旧键」，旧字段原样，和今天解析的一样', () => {
         for (const file of [
             { qzone: 'on', deviceControl: 'on', groupChat: 'on' },
-            { qzone: 'on', deviceControl: 'dryRun' }, // 对不上的也原样
-            { deviceControl: 'on' },
+            { qzone: 'dryRun', deviceControl: 'dryRun', groupChat: 'dryRun' },
         ]) {
             assert.deepEqual(parse(file), parse(file, []), JSON.stringify(file));
         }
+        // 表达不了的（一个 dryRun、另一个按默认 off）：拒绝启动，不悄悄改成 on
+        assert.throws(() => parse({ qzone: 'on', deviceControl: 'dryRun' }), /新键表达不了.*deviceControl=dryRun/);
+        assert.throws(() => parse({ deviceControl: 'on' }), /新键表达不了/);
         assert.match(configSwitchNotes({ qzone: 'on', deviceControl: 'dryRun' }, [qzone])[0]!, /已并进 qzone（= on）.*对不上：deviceControl=dryRun/);
     });
 
@@ -141,9 +147,11 @@ describe('existing：新键合并前就是开关（照「QQ 空间」的形状�
         const both = parse({ ledgersExample: true, tastes: false }, [ledgers]);
         assert.equal(both.tastes, true);
         assert.equal(both.timeline, true);
-        const oldOnly = parse({ tastes: true }, [ledgers]);
+        const oldOnly = parse({ tastes: true, timeline: true }, [ledgers]);
         assert.equal(oldOnly.tastes, true);
-        assert.equal(oldOnly.timeline, false);
+        assert.equal(oldOnly.timeline, true);
+        // 只写一个旧键、另一个按默认关：表达不了，拒绝启动（不悄悄把 timeline 也打开）
+        assert.throws(() => parse({ tastes: true }, [ledgers]), /新键表达不了.*timeline=false/);
         assert.throws(() => parse({ ledgersExample: 1 }, [ledgers]), /配置 ledgersExample 应为/);
     });
 });
@@ -228,7 +236,9 @@ describe('真表：已经并了的组', () => {
     test('留痕（memoryReconcile 线上开着、开关层原来没测过）：app 只读 ledgers；只写着 memoryReconcile 时 ledgers 是开（任一开就开），日志说对不上', () => {
         assert.equal(parse({ ledgers: true }).ledgers, true);
         assert.equal(parse({ ledgers: false }).ledgers, false);
-        const old = parse({ memoryReconcile: true }) as unknown as Record<string, unknown>;
+        // 只写着 memoryReconcile：推出来 ledgers 开会连带打开设定账本（读真实角色目录），表达不了，拒绝启动
+        assert.throws(() => parse({ memoryReconcile: true }), /新键表达不了.*identityLedger=false/);
+        const old = parse({ identityLedger: true, memoryAudit: true, memoryReconcile: true }) as unknown as Record<string, unknown>;
         assert.equal(old.ledgers, true);
         for (const key of ['identityLedger', 'memoryAudit', 'memoryReconcile']) assert.equal(key in old, false, key);
         assert.match(configSwitchNotes({ memoryReconcile: true }).join('\n'), /已并进 ledgers（= true）.*对不上/);

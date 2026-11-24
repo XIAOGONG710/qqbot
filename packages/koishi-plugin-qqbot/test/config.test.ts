@@ -400,7 +400,9 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.throws(() => Config({ ...minimal, bilibili: 'maybe' } as never));
         assert.equal(fromKoishi(minimal).qzone, 'off');
         assert.equal(fromKoishi(minimal).qzoneVisibility, 'friends');
-        assert.equal(fromKoishi({ ...minimal, signature: 'dryRun', qzone: 'on', qzoneVisibility: 'public' }).qzone, 'on');
+        assert.equal(fromKoishi({ ...minimal, signature: 'on', qzoneBrowse: 'on', qzonePeek: 'on', qzoneStrangers: 'on', qzone: 'on', qzoneVisibility: 'public' }).qzone, 'on');
+        // 签名只写草稿、空间开着：新键表达不了，拒绝启动（不悄悄把签名改成真改，审查 2026-11-25 发现 1）
+        assert.throws(() => fromKoishi({ ...minimal, signature: 'dryRun', qzone: 'on' }), /新键表达不了.*signature=dryRun/);
         assert.equal(fromKoishi({ ...minimal, qzoneVisibility: 'public' }).qzoneVisibility, 'public');
         assert.throws(() => Config({ ...minimal, qzone: 'maybe' } as never));
         assert.throws(() => parseAppConfig({ ...toAppConfigInput(Config(minimal as never)), qzone: 'maybe' }, repoRoot, env), /qzone/);
@@ -414,8 +416,9 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
 
     test('项目选择（ADR 0056）：并进 autonomousLife（开关合并）；yml 里还写着旧键时照旧认，默认值不写回 yml', () => {
         assert.equal(fromKoishi(minimal).autonomousLife, false);
-        assert.equal('projectChoice' in fromKoishi({ ...minimal, projectChoice: true }), false);
-        assert.equal(fromKoishi({ ...minimal, autonomousLife: true, projectChoice: true }).autonomousLife, true);
+        assert.throws(() => fromKoishi({ ...minimal, projectChoice: true }), /新键表达不了/);
+        assert.equal('projectChoice' in fromKoishi({ ...minimal, autonomousLife: true, projectChoice: true, lifeInPrompt: true }), false);
+        assert.equal(fromKoishi({ ...minimal, autonomousLife: true, projectChoice: true, lifeInPrompt: true }).autonomousLife, true);
         assert.equal('projectChoice' in (Config.simplify(Config(minimal as never)) as object), false);
     });
 

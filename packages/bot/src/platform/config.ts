@@ -18,7 +18,7 @@ import { PROMPT_POST_PROCESSING, type PromptPostProcessing } from '.././st/promp
 import { DEFAULT_WORLD_INFO_SETTINGS, type WorldInfoSettings } from '.././st/world-info.ts';
 import { externalPlatformMode, type ExternalPlatformMode } from '.././social/external-platforms.ts';
 import { applyTimeZone, canonicalTimeZone, DEFAULT_TIME_ZONE } from './time-zone.ts';
-import { mergeSwitchInput, SWITCH_MERGES, switchMergeNotes, type SwitchMerge } from './switch-merge.ts';
+import { mergeSwitchInput, SWITCH_MERGES, switchMergeNotes, unrepresentableSwitches, type SwitchMerge } from './switch-merge.ts';
 
 /** 看图能用的提供方（ADR 0055）。DeepSeek 复用聊天模型的 QQBOT_LLM_API_KEY，不另要 key。 */
 export const VISION_PROVIDERS = ['deepseek'] as const;
@@ -712,6 +712,9 @@ export function configSwitchNotes(file: Json, merges: readonly SwitchMerge[] = S
  * 先按开关合并表规范化输入（switch-merge.ts；表是空的就原样）。merges 只给测试换表用
  */
 export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.ProcessEnv = process.env, merges: readonly SwitchMerge[] = SWITCH_MERGES): AppConfig {
+    // 只写了旧键、新键表达不了的组：app 只读新键了，照推出来的值跑会悄悄改行为（比如私信草稿变真发），宁可不启动
+    const unrepresentable = unrepresentableSwitches(file, SWITCH_DEFAULTS as Json, merges);
+    if (unrepresentable.length) throw new Error(`配置里有已合并的开关旧键组合，新键表达不了，请在控制台按新键改：${unrepresentable.join('；')}`);
     file = mergeSwitchInput(file, SWITCH_DEFAULTS as Json, merges);
     const apiKey = env.QQBOT_LLM_API_KEY;
     if (!apiKey) throw new Error('缺少环境变量 QQBOT_LLM_API_KEY');
