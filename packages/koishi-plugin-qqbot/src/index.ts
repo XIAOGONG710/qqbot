@@ -895,7 +895,10 @@ let friendsKey = '';
  * 新实例的 startApp 就会抛「本进程仍持有数据目录」，插件停在失败、没有重试——11-23 19:49 自动重载后桌面记录不再收很可能就是这样。
  * 所以：dispose 把收尾登记在这里，新实例等这些收尾都结束（成功失败都算）再起；等的时候实例已经被停用了就不起。
  */
-const pendingStops = new Set<Promise<void>>();
+// 挂在 globalThis 上（同 bot/src/platform/lock.ts 的租约表）：插件模块被重新 import 时新旧两份代码看的是同一张表
+const pendingStops: Set<Promise<void>> = ((globalThis as Record<symbol, unknown>)[Symbol.for('qqbot.koishi.pendingStops')] ??= new Set<Promise<void>>()) as Set<Promise<void>>;
+/** 等了这么久还没收完就再记一行（收尾卡住时日志里看得出来在等什么） */
+export const STOP_WAIT_NOTICE_MS = 60_000;
 
 export function trackStop(drain: Promise<unknown>): void {
     const settled = drain.then(() => {}, () => {});
@@ -906,7 +909,12 @@ export function trackStop(drain: Promise<unknown>): void {
 export function afterPendingStops<T>(start: () => T, stillWanted: () => boolean, onWait?: (count: number) => void): T | Promise<T | undefined> {
     if (!pendingStops.size) return start();
     onWait?.(pendingStops.size);
-    return Promise.all([...pendingStops]).then(() => (stillWanted() ? start() : undefined));
+    const notice = setTimeout(() => onWait?.(pendingStops.size), STOP_WAIT_NOTICE_MS);
+    notice.unref?.();
+    return Promise.all([...pendingStops]).then(() => {
+        clearTimeout(notice);
+        return stillWanted() ? start() : undefined;
+    });
 }
 
 export function apply(ctx: Context, config: Config) {
