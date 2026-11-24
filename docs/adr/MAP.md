@@ -89,7 +89,7 @@
 | [0080](0080-share-cards.md) | 他分享的链接、转发的聊天记录、发的文件，她看得懂 | 已实现，未上线（分支 `claude/share-cards`；没有配置开关——只改他发来这几种消息时聊天记录里写成什么… |  |
 | [0081](0081-quote-reply-read.md) | 他引用她的某句话再回，她看得到被引用的是哪句 | 已实现，未上线（分支 `claude/quote-read`；没有配置开关；上线要重启 Koishi，需要用户当次点头） |  |
 | [0082](0082-recalls.md) | 他撤回一条消息，她看到的是「撤回了一条消息」 | 已实现，未上线、未在真 QQ 上验证（分支 `claude/recall`；配置 `recalls` 默认关） | `recalls` 开 |
-| [0083](0083-presence.md) | 她在 QQ 上「有个人在」——已读、在线状态、表情回应、点赞、签名、说说 | 已实现，未上线、未在真 QQ 上验证（分支 `claude/presence`；六个开关各自独立、默认全关；说说和签名另… | `readReceipts` 开、`onlineStatus` 开、`profileLikes` 开、`signature` 开、`qzone` 开 |
+| [0083](0083-presence.md) | 她在 QQ 上「有个人在」——已读、在线状态、表情回应、点赞、签名、说说 | 已实现，未上线、未在真 QQ 上验证（分支 `claude/presence`；六个开关各自独立、默认全关；说说和签名另… | `readReceipts` 开、`onlineStatus` 开、`profileLikes` 开、`qzone`（原 `signature`） 开 |
 | [0084](0084-bilibili-browsing.md) | 她刷 B 站，刷到一个真视频，发给他 | 已实现，未上线、未开启（分支 `claude/bilibili`；配置 `bilibili` = off / dryRu… | `bilibili` 开 |
 | [0085](0085-napcat-probe.md) | NapCat 探针——在你在场时一次验完「没在真 QQ 上试过」的那些动作 | 已实现，2026-10-19 在线上跑过两次（见「确认记录」）（分支 `claude/napcat-probe`；脚本 … |  |
 | [0086](0086-self-recall.md) | 打错字时，有时撤回重发，而不只是补一条「*对的词」 | 已实现，未上线、未开启（分支 `claude/self-recall`；配置 `selfRecall`，默认关） | `selfRecall` 开 |
@@ -146,10 +146,10 @@
 | [0137](0137-fact-check.md) | 逐条事实检查（配置 `factCheck`：off / log / fix，默认 off） | 已实现，未上线（2026-10-24）。上线 = 换代码重启 + `koishi.yml` 里加 `factCheck:… | `factCheck` 开 |
 | [0138](0138-idioms.md) | 被他带出来的口头习惯（配置 `idioms`，默认关） | 已实现，未上线（2026-10-24）。上线 = 换代码重启 + `koishi.yml` 里加 `idioms: tr… |  |
 | [0141](0141-unfinished-lines.md) | 话说到一半就停了——出口检查，提示词不再鼓励「半句」（随 `speechCheck`，没有新开关） | 已上线（2026-10-25 00:38，用户在 AskUserQuestion 里选「现在重启，并上线」；只换代码重启… |  |
-| [0142](0142-qq-account-control.md) | 她对 QQ 账号的控制面（默认关，按后果分档） | 已实现并接进机器人，未上线、未在真 QQ 上验证（分支 `dsh/qq-control`；`qqControl` / `… | `qzoneBrowse` 开、`qqControl` 开、`qqFriendGate` 开 |
+| [0142](0142-qq-account-control.md) | 她对 QQ 账号的控制面（默认关，按后果分档） | 已实现并接进机器人，未上线、未在真 QQ 上验证（分支 `dsh/qq-control`；`qqControl` / `… | `qzone`（原 `qzoneBrowse`） 开、`qqControl` 开、`qqFriendGate` 开 |
 | [0143](0143-qzone-peek.md) | 她看好友的 QQ 空间（用她自己的登录态） | 已被 [ADR 0145](0145-qzone-friends-feed.md) 取代（读法改成她自己的好友动态流；原… |  |
-| [0144](0144-qzone-strangers.md) | 刷陌生人的空间（「空友爱看」那种推荐流），用来观察人怎么说话 | 已实现，未上线、未在真 QQ 上验证（分支 `dsh/qq-control`；开关 `qzoneStrangers`，默… | `qzoneStrangers` 开 |
-| [0145](0145-qzone-friends-feed.md) | 她刷自己的好友动态，看到宝宝发的说说 | 已实现，未上线（分支 `claude/qzone-cookie-shape`，在 `dsh/qq-control` 之上… | `qzonePeek` 开 |
+| [0144](0144-qzone-strangers.md) | 刷陌生人的空间（「空友爱看」那种推荐流），用来观察人怎么说话 | 已实现，未上线、未在真 QQ 上验证（分支 `dsh/qq-control`；开关 `qzoneStrangers`，默… | `qzone`（原 `qzoneStrangers`） 开 |
+| [0145](0145-qzone-friends-feed.md) | 她刷自己的好友动态，看到宝宝发的说说 | 已实现，未上线（分支 `claude/qzone-cookie-shape`，在 `dsh/qq-control` 之上… | `qzone`（原 `qzonePeek`） 开 |
 | [0146](0146-human-videos.md) | 从「让 AI 更像人」的视频里学到的——句尾「吧」「呢」封顶；毛刺的度量；做题式写法的对比实验 | B（`tailCap`）已实现，默认关，未上线；C（毛刺度量）已实现（只读工具）；A（做题式写法）是离线实验，结论：温度… |  |
 | [0147](0147-platform-accounts.md) | 平台账号的统一规矩——持久熔断、先读后写、专号专用；不做冒充真人的交友平台 | 熔断器已实现并接进 B 站的真实请求，未上线（没有开关：只在碰到风控信号时才改变行为；B 站账号层现在整体关着）；新平台… |  |
 | [0148](0148-device-control.md) | 她对他的电脑和手机的有限控制——取件模式、分档、他触发的看屏幕 | 已实现，未上线、未在真机上验证（分支 `claude/human-videos`；开关 `deviceControl`，… | `deviceControl` 开 |

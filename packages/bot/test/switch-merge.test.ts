@@ -1,9 +1,11 @@
 // 开关合并的机制（docs/plans/2026-11-24-switch-merge-design.md 第一节，M0）：合并表是参数，这里用只在测试里的示例表；
-// 真表现在是空的，最后几条核对它让 parseAppConfig 和今天一模一样。
+// 最后一节核对真表：线上快照（test/fixtures/live-switches.ts）里每一组都能并、迁移前后解析出来一样。
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { configSwitchNotes, DEFAULTS, parseAppConfig } from '../src/platform/config.ts';
-import { checkSwitchMerges, legacySwitchKeys, mergeSwitchInput, representable, SWITCH_MERGES, switchMergeNotes, type SwitchMerge } from '../src/platform/switch-merge.ts';
+import { FEATURES } from '../src/platform/features.ts';
+import { checkSwitchMerges, legacySwitchKeys, legacyValue, mergeSwitchInput, representable, SWITCH_MERGES, switchMergeNotes, writtenLegacy, type SwitchMerge } from '../src/platform/switch-merge.ts';
+import { LIVE_2026_11_20, LIVE_LATER_ON } from './fixtures/live-switches.ts';
 
 /** 示例：两个假旧键并成一个新起名字的布尔键，没有总开关，任一开就开 */
 const lamp: SwitchMerge = {
@@ -146,17 +148,74 @@ describe('existing：新键合并前就是开关（照「QQ 空间」的形状�
     });
 });
 
-describe('真表（M0：一组都没并）', () => {
-    test('是空的、自检通过、没有旧键', () => {
-        assert.equal(SWITCH_MERGES.length, 0);
-        assert.deepEqual(checkSwitchMerges(SWITCH_MERGES, DEFAULTS as unknown as Record<string, unknown>), []);
-        assert.equal(legacySwitchKeys().size, 0);
+describe('真表：已经并了的组', () => {
+    const defaults = DEFAULTS as unknown as Record<string, unknown>;
+    /** 线上快照（11-20 那份 + 之后补开的）里每一组旧键并成的新值 */
+    const LIVE = { ...LIVE_2026_11_20, ...LIVE_LATER_ON };
+    const EXPECTED_LIVE: Record<string, unknown> = {
+        qzone: 'on',
+    };
+    const env = { QQBOT_LLM_API_KEY: 'k' };
+    const base = {
+        llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' },
+        contacts: [{ qq: 10001, name: '阿明', tier: 'classmate' }],
+        characterCard: 'synthetic/{tier}.json',
+    };
+    const parse = (file: Record<string, unknown>, merges?: readonly SwitchMerge[]) => parseAppConfig({ ...base, ...file }, '/repo', env, merges);
+    /** 新起名字的新键（合并前没有这个开关）：不合并时解析出来是默认值，比较时去掉 */
+    const newNames = SWITCH_MERGES.filter(merge => !merge.existing).map(merge => merge.key);
+    const withoutNewNames = (config: object) => Object.fromEntries(Object.entries(config).filter(([key]) => !newNames.includes(key)));
+
+    test('自检通过；旧键就是各组 legacy 的并集', () => {
+        assert.deepEqual(checkSwitchMerges(SWITCH_MERGES, defaults), []);
+        assert.deepEqual([...legacySwitchKeys()].sort(), SWITCH_MERGES.flatMap(merge => merge.legacy).sort());
+        assert.deepEqual(SWITCH_MERGES.map(merge => merge.key), Object.keys(EXPECTED_LIVE), '每并一组，在 EXPECTED_LIVE 里写上它线上的新值');
     });
 
-    test('规范化原样返回同一个对象，没有日志：parseAppConfig 和今天一样', () => {
-        for (const input of [{}, { qzone: 'on', qzoneBrowse: 'dryRun' }, { proactive: 'on', proactiveReach: true }, { deliberate: true, depthRouting: false }]) {
-            assert.equal(mergeSwitchInput(input, DEFAULTS as unknown as Record<string, unknown>), input);
-            assert.deepEqual(configSwitchNotes(input), []);
+    test('功能总表：每组新键一行、absorbs 恰好是并进来的旧键；旧键不再单独成行', () => {
+        const keys = new Set(FEATURES.map(def => def.key));
+        for (const merge of SWITCH_MERGES) {
+            const def = FEATURES.find(row => row.key === merge.key);
+            assert.ok(def, `${merge.key} 在功能总表里`);
+            assert.deepEqual(def.absorbs?.map(item => item.key), [...merge.legacy], `${merge.key} 的 absorbs`);
+            for (const old of merge.legacy) assert.equal(keys.has(old), false, `${old} 不再单独成行`);
+        }
+        assert.deepEqual(FEATURES.filter(def => def.absorbs?.length && !SWITCH_MERGES.some(merge => merge.key === def.key)).map(def => def.key), [], '有 absorbs 的都在合并表里');
+    });
+
+    test('线上快照：每一组都能一字不差地并成新键，新值就是线上现在的行为', () => {
+        for (const merge of SWITCH_MERGES) {
+            assert.equal(representable(merge, LIVE, defaults), true, `${merge.key} 线上可表达`);
+            assert.deepEqual(legacyValue(merge, LIVE, defaults), EXPECTED_LIVE[merge.key], merge.key);
+        }
+        for (const note of configSwitchNotes(LIVE)) assert.doesNotMatch(note, /对不上/);
+    });
+
+    test('线上快照：合并前（今天）、写着旧键（迁移前）、只写新键（迁移后），解析出来的旧字段一样', () => {
+        const today = withoutNewNames(parse(LIVE, []));
+        const migrated: Record<string, unknown> = { ...LIVE };
+        for (const merge of SWITCH_MERGES) {
+            const written = writtenLegacy(merge, LIVE);
+            if (!written.length) continue;
+            migrated[merge.key] = legacyValue(merge, LIVE, defaults);
+            for (const key of written) delete migrated[key];
+        }
+        assert.deepEqual(withoutNewNames(parse(LIVE)), today, '写着旧键：旧字段原样');
+        assert.deepEqual(withoutNewNames(parse(migrated)), today, '只写新键：旧字段由新键派生，和今天一样');
+        const after = parse(migrated) as unknown as Record<string, unknown>;
+        for (const merge of SWITCH_MERGES) assert.deepEqual(after[merge.key], EXPECTED_LIVE[merge.key], merge.key);
+    });
+
+    test('只写新键：每一档都能派生出全部旧字段；都没写：旧字段由新键的默认值派生', () => {
+        for (const merge of SWITCH_MERGES) {
+            for (const value of merge.values) {
+                const config = parse({ [merge.key]: value }) as unknown as Record<string, unknown>;
+                assert.deepEqual(config[merge.key], value, merge.key);
+                const derived = merge.toLegacy(value, config);
+                for (const old of merge.legacy) assert.deepEqual(config[old], derived[old], `${merge.key}=${String(value)} → ${old}`);
+            }
+            const none = parse({}) as unknown as Record<string, unknown>;
+            assert.deepEqual(none[merge.key], defaults[merge.key], `${merge.key} 默认值`);
         }
     });
 });

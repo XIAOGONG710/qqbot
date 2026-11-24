@@ -18,13 +18,31 @@ export interface FeatureDef {
     detail?: string;
     /** 几档模式的开关：每档的值和配置页上的说法，键的先后就是下拉框的先后（和代码里认的那张表一样，feature-details.test.ts 核对） */
     modeLabels?: Readonly<Record<string, string>>;
+    /**
+     * 开关合并（docs/plans/2026-11-24-switch-merge-design.md）：并进这一项的旧开关，原来那一行的名字、ADR、说明照搬。
+     * 映射在 platform/switch-merge.ts 的 SWITCH_MERGES；配置页说明、模块文档、ADR 地图都把它们列在这一项下面
+     */
+    absorbs?: readonly AbsorbedFeature[];
 }
 
-/** 配置页上这一项的说明：写了 detail 用 detail；模块那边给了短说明（description）就拼成「**名字**（ADR 编号）：短说明」；都没有就没有 */
-export function featureDetail(def: FeatureDef): string | undefined {
+/** 并进别的开关的旧开关（原来 FEATURES 里那一行的说明部分） */
+export interface AbsorbedFeature { key: string; label: string; adr?: string; description?: string; detail?: string }
+
+const ownDetail = (def: { label: string; adr?: string; description?: string; detail?: string }): string | undefined => {
     if (def.detail !== undefined) return def.detail;
     if (def.description === undefined) return undefined;
     return `**${def.label}**${def.adr ? `（ADR ${def.adr}）` : ''}：${def.description}`;
+};
+
+/**
+ * 配置页上这一项的说明：写了 detail 用 detail；模块那边给了短说明（description）就拼成「**名字**（ADR 编号）：短说明」；都没有就没有。
+ * 并进来的旧开关（absorbs）接在后面，一项一句，带原来的键名
+ */
+export function featureDetail(def: FeatureDef): string | undefined {
+    const own = ownDetail(def);
+    if (!def.absorbs?.length) return own;
+    const absorbed = def.absorbs.map(item => `【原 \`${item.key}\`】${ownDetail(item) ?? `**${item.label}**${item.adr ? `（ADR ${item.adr}）` : ''}`}`);
+    return `${own ?? `**${def.label}**`}　**并进来的**（跟着这一项走）：${absorbed.join('；')}`;
 }
 
 export const FEATURES: readonly FeatureDef[] = [
@@ -219,13 +237,14 @@ export const FEATURES: readonly FeatureDef[] = [
         detail: '**在线状态**（ADR 0083）：按她的作息，睡着或说过睡了「睡觉中」、上课「学习中」、在听歌「听歌中」、其余「在线」（NapCat 的 set_online_status）；状态变了至少隔 10 分钟才改。不用「离开」：QQ 的「离开」会给每个来消息的人自动回一句预设的话（10-20 实测）。对外可见。默认关' },
     { key: 'profileLikes', label: '资料卡点赞', group: '在 QQ 上的样子', adr: '0083',
         detail: '**资料卡点赞**（ADR 0083）：约 80% 的日子，中午到晚上某个时刻给男朋友档的人点 1–5 个赞（NapCat 的 send_like）；睡着、上课时不点。他会收到通知。默认关' },
-    SIGNATURE,
-    QZONE,
-    QZONE_BROWSE,
-    QZONE_PEEK,
-    { key: 'qzoneStrangers', label: '刷陌生人的空间（学人怎么说话）', group: '在 QQ 上的样子', adr: '0144', kind: 'mode',
-        detail: '**刷陌生人的空间**（ADR 0144）：用她的登录态读平台推的陌生人说说（「空友爱看」那种流），09:00–23:00、每 3 小时最多一次；只读不互动。摘一句进提示词，样本（只有正文，没有名字和号）留在 presence/strangers.jsonl。接口名没有公开文档，读不到只记一行。默认关',
-        modeLabels: { off: '关', dryRun: '只写草稿，不真做', on: '开' } },
+    // 开关合并（QQ 空间：签名、翻空间、刷好友动态、刷陌生人都是同一种三档、都在 social/presence-owner.ts 读，跟着 qzone 走）
+    { ...QZONE, absorbs: [
+        SIGNATURE,
+        QZONE_BROWSE,
+        QZONE_PEEK,
+        { key: 'qzoneStrangers', label: '刷陌生人的空间（学人怎么说话）', adr: '0144',
+            detail: '**刷陌生人的空间**（ADR 0144）：用她的登录态读平台推的陌生人说说（「空友爱看」那种流），09:00–23:00、每 3 小时最多一次；只读不互动。摘一句进提示词，样本（只有正文，没有名字和号）留在 presence/strangers.jsonl。接口名没有公开文档，读不到只记一行。默认关' },
+    ] },
     GROUP_CHAT,
     { key: 'groupOwn', label: '群里她也有自己（带着此刻进群，冷场、有事时自己冒一句）', group: '在 QQ 上的样子', adr: '0341', kind: 'mode',
         detail: '**群里她也有自己**（ADR 0341）：用户 11-20「群聊里尤其严重」，群聊模拟里没人叫她就一句不说。on：群里每次开口都带着她此刻同学能知道的那些（几点、在干嘛、天气、楼下的猫；不带作业、钱、和他的事），心情不用过期的；她醒着、不在上课时，群里冷场 4 小时以上（不是死群）或者她那边刚有件事（下雨、刚喂过猫）、群里刚有人，抽签决定要不要自己冒一句，冷场、有事各一个群一天最多 1 次，说不说由她。她自己定的：分数排名一个字不提、她和他的事群里一句不说（越线的那条不发）、表情包一天最多一次。dryRun：只有她自己冒的那句写进 groups/drafts.md，别的回话照旧。要开着 groupChat。默认关。',

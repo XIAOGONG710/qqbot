@@ -2,15 +2,16 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
-import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, QZONE_PEEK, SIGNATURE, SILENCE_NOTICE, STICKERS, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
+import { legacySwitchKeys } from '../../bot/src/platform/switch-merge.ts';
+import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, SILENCE_NOTICE, STICKERS, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
 import { aiPhotoRuntimeRows, attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, lifeTrend, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText, timeZoneLine } from '../client/dashboard.js';
 
 // ADR 0120：控制台“状态”页的功能开关仪表盘
 
 describe('功能总表：config 里的每个开关都在表里（新加一个开关忘了登记，这里会红）', () => {
-    test('DEFAULTS 里每个布尔 / 模式开关要么在 FEATURES 里，要么在 NOT_SWITCHES 里', () => {
-        const registered = new Set(FEATURES.map(f => f.key));
+    test('DEFAULTS 里每个布尔 / 模式开关要么在 FEATURES 里，要么在 NOT_SWITCHES 里（已并进新键的旧键算登记过：开关合并的过渡期）', () => {
+        const registered = new Set([...FEATURES.map(f => f.key), ...legacySwitchKeys()]);
         const ignored = new Set(NOT_SWITCHES);
         const missing = Object.entries(DEFAULTS as Record<string, unknown>)
             .filter(([key, value]) => (typeof value === 'boolean' || typeof value === 'string') && !registered.has(key) && !ignored.has(key))
@@ -160,16 +161,6 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
         }
     });
 
-    test('signature 三档的面板说明共用模块定义', () => {
-        for (const mode of ['off', 'dryRun', 'on'] as const) {
-            const item = featureStatuses({ signature: mode }).find(feature => feature.key === 'signature')!;
-            assert.equal(item.label, SIGNATURE.label);
-            assert.equal(item.on, mode !== 'off');
-            assert.equal(item.mode, mode === 'off' ? undefined : mode);
-            assert.ok(featureTitle(item).includes(SIGNATURE.description));
-        }
-    });
-
     test('qzone 三档的面板说明共用模块定义', () => {
         for (const mode of ['off', 'dryRun', 'on'] as const) {
             const item = featureStatuses({ qzone: mode }).find(feature => feature.key === 'qzone')!;
@@ -177,26 +168,6 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
             assert.equal(item.on, mode !== 'off');
             assert.equal(item.mode, mode === 'off' ? undefined : mode);
             assert.ok(featureTitle(item).includes(QZONE.description));
-        }
-    });
-
-    test('qzoneBrowse 三档的面板说明共用模块定义', () => {
-        for (const mode of ['off', 'dryRun', 'on'] as const) {
-            const item = featureStatuses({ qzoneBrowse: mode }).find(feature => feature.key === 'qzoneBrowse')!;
-            assert.equal(item.label, QZONE_BROWSE.label);
-            assert.equal(item.on, mode !== 'off');
-            assert.equal(item.mode, mode === 'off' ? undefined : mode);
-            assert.ok(featureTitle(item).includes(QZONE_BROWSE.description));
-        }
-    });
-
-    test('qzonePeek 三档的面板说明共用模块定义', () => {
-        for (const mode of ['off', 'dryRun', 'on'] as const) {
-            const item = featureStatuses({ qzonePeek: mode }).find(feature => feature.key === 'qzonePeek')!;
-            assert.equal(item.label, QZONE_PEEK.label);
-            assert.equal(item.on, mode !== 'off');
-            assert.equal(item.mode, mode === 'off' ? undefined : mode);
-            assert.ok(featureTitle(item).includes(QZONE_PEEK.description));
         }
     });
 

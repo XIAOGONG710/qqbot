@@ -1,4 +1,4 @@
-// ADR 地图：docs/adr 下每一份一行——编号、标题、文件里写的状态、它管的开关（功能总表 features.ts 的 adr 字段）和那些开关在线上快照里开没开。
+// ADR 地图：docs/adr 下每一份一行——编号、标题、文件里写的状态、它管的开关（功能总表 features.ts 的 adr 字段；并进别的开关的旧键看 absorbs）和那些开关在线上快照里开没开。
 // 为什么：近 300 份 ADR，文件头的「状态」常常停在写的那天（「未上线」的早就上了），新会话不知道哪份还算数。
 // 线上开没开以快照为准（exchange/live 最新一份，scripts/read-switches.mjs 导出），文件里的状态只照抄、不当真。
 // 用法：node scripts/adr-map.mjs [--out docs/adr/MAP.md]（不给 --out 就打印）。生成物别手改。
@@ -26,6 +26,20 @@ export function liveValues(yamlText) {
     return plugin;
 }
 
+/**
+ * 开关合并（docs/plans/2026-11-24-switch-merge-design.md）：快照里还写着旧键时，新键的线上值按合并表从旧键算（迁移前后的快照都能出图）；
+ * 新键和旧键都没写的组照旧是「默认」。merges / defaults / mergeInput 是 bot 的 SWITCH_MERGES、DEFAULTS、mergeSwitchInput
+ */
+export function mergedLive(live, merges, defaults, mergeInput) {
+    if (!live) return live;
+    const merged = mergeInput(live, defaults, merges);
+    const out = { ...live };
+    for (const merge of merges) {
+        if (live[merge.key] !== undefined || merge.legacy.some(key => live[key] !== undefined)) out[merge.key] = merged[merge.key];
+    }
+    return out;
+}
+
 /** 快照里的值 → 开 / 关 / 默认；{ enabled } 这种对象（dsh、memory、vision）看 enabled */
 export const onOff = value => {
     if (value === undefined) return '默认';
@@ -46,11 +60,15 @@ export function adrMap(files, features, live, source = '', forcedOff = new Set()
         if (!number) continue;
         seen.set(number, [...(seen.get(number) ?? []), name]);
         const { title, status } = readAdr(text);
-        const switches = features.filter(f => f.adr === number).map(f => f.key);
-        const liveText = switches.map(key => {
-            if (!live) return `\`${key}\``;
+        // 开关合并：并进别的开关的旧键（absorbs）挂在新键下面，写成「`新键`（原 `旧键`）」
+        const switches = features
+            .map(f => ({ key: f.key, own: f.adr === number, absorbed: (f.absorbs ?? []).filter(a => a.adr === number).map(a => a.key) }))
+            .filter(s => s.own || s.absorbed.length);
+        const liveText = switches.map(({ key, absorbed }) => {
+            const name = `\`${key}\`${absorbed.length ? `（原 ${absorbed.map(old => `\`${old}\``).join('、')}）` : ''}`;
+            if (!live) return name;
             const state = onOff(live[key]);
-            return `\`${key}\` ${state === '开' && forcedOff.has(key) ? '关（被 fewerRules 关掉）' : state}`;
+            return `${name} ${state === '开' && forcedOff.has(key) ? '关（被 fewerRules 关掉）' : state}`;
         }).join('、');
         rows.push(`| [${number}](${name}) | ${title} | ${status} | ${liveText} |`);
     }
@@ -77,7 +95,9 @@ if (invoked === fileURLToPath(import.meta.url)) {
     const { FEATURES } = await import(new URL('../packages/bot/src/platform/features.ts', import.meta.url).href);
     const liveDir = join(REPO, 'exchange', 'live');
     const snapshot = readdirSync(liveDir).filter(name => /^koishi-.*\.ya?ml$/.test(name)).sort().at(-1);
-    const live = snapshot ? liveValues(readFileSync(join(liveDir, snapshot), 'utf8')) : undefined;
+    const { DEFAULTS } = await import(new URL('../packages/bot/src/platform/config.ts', import.meta.url).href);
+    const { mergeSwitchInput, SWITCH_MERGES } = await import(new URL('../packages/bot/src/platform/switch-merge.ts', import.meta.url).href);
+    const live = snapshot ? mergedLive(liveValues(readFileSync(join(liveDir, snapshot), 'utf8')), SWITCH_MERGES, DEFAULTS, mergeSwitchInput) : undefined;
     // 少规矩（fewerRules）开着时，启动时 relaxStyle 把只管说话风格的那几个强制关掉：线上实际是关的
     const { relaxStyle } = await import(new URL('../packages/bot/src/language/fewer-rules.ts', import.meta.url).href);
     const forcedOff = live && onOff(live.fewerRules) === '开'

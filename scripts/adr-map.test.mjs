@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { adrMap, liveValues, onOff, readAdr } from './adr-map.mjs';
+import { adrMap, liveValues, mergedLive, onOff, readAdr } from './adr-map.mjs';
 
 test('读 ADR 头：标题去掉编号前缀，状态去加粗、截断、竖线换掉', () => {
     const { title, status } = readAdr('# ADR 0129：她知道梗 | 网上\n\n- 状态：**已实现，未上线**（2026-10-23）\n');
@@ -37,4 +37,19 @@ test('{ enabled } 对象看 enabled；被 fewerRules 强制关掉的标出来', 
     const md = adrMap(files, features, { shape: true, dsh: { enabled: true } }, '', new Set(['shape']));
     assert.match(md, /`shape` 关（被 fewerRules 关掉）/);
     assert.match(md, /`dsh` 开/);
+});
+
+test('开关合并：旧键挂在新键下面；快照里还写着旧键时，新键的线上值从旧键算', () => {
+    const files = [{ name: '0083-presence.md', text: '# ADR 0083：存在感\n' }, { name: '0142-control.md', text: '# ADR 0142：控制面\n' }];
+    const features = [{ key: 'qzone', adr: '0083', absorbs: [{ key: 'signature', adr: '0083' }, { key: 'qzoneBrowse', adr: '0142' }] }];
+    const merges = [{ key: 'qzone', legacy: ['signature', 'qzoneBrowse'] }];
+    const mergeInput = (input, defaults) => ({ ...input, qzone: input.qzone ?? defaults.qzone });
+    const live = mergedLive({ signature: 'on', qzoneBrowse: 'on', qzone: 'on' }, merges, { qzone: 'off' }, mergeInput);
+    const md = adrMap(files, features, live);
+    assert.match(md, /\| \[0083\]\(0083-presence\.md\) \| 存在感 \|  \| `qzone`（原 `signature`） 开 \|/);
+    assert.match(md, /\| \[0142\]\(0142-control\.md\) \| 控制面 \|  \| `qzone`（原 `qzoneBrowse`） 开 \|/);
+    // 新起名字的组：快照里只有旧键，新键的值由合并表算出来
+    const renamed = mergedLive({ lampA: true }, [{ key: 'lamp', legacy: ['lampA'] }], { lamp: false }, input => ({ ...input, lamp: input.lampA === true }));
+    assert.equal(renamed.lamp, true);
+    assert.equal(mergedLive({ other: 1 }, [{ key: 'lamp', legacy: ['lampA'] }], {}, input => ({ ...input, lamp: false })).lamp, undefined, '都没写：照旧「默认」');
 });

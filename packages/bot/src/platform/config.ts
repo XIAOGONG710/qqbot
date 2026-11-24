@@ -525,17 +525,17 @@ export interface AppConfig {
     onlineStatus: boolean;
     /** 资料卡点赞（ADR 0083）：约 80% 的日子给男朋友档点 1–5 个赞（send_like）。默认关 */
     profileLikes: boolean;
-    /** 个性签名（ADR 0083）：隔 3–5 天换一条（set_self_longnick）；dryRun 只写草稿不改。默认关 */
+    /** @deprecated 已并进 qzone（开关合并）：输入只有旧键时原样、否则由 qzone 派生；新代码读 qzone。个性签名（ADR 0083）：隔 3–5 天换一条（set_self_longnick）；dryRun 只写草稿不改。默认关 */
     signature: PresenceMode;
     /** QQ 空间说说（ADR 0083）：一周两三条，用最低隐私档的卡写（send_qzone_msg）；dryRun 只写草稿不发。默认关 */
     qzone: PresenceMode;
     /** 说说谁能看：friends 仅好友（默认）/ public 所有人（可能进「空友爱看」被陌生人看到） */
     qzoneVisibility: QzoneVisibility;
-    /** 她自己翻空间动态（ADR 0142，「空友爱看」那种混着陌生人的流）：读一页、记下「刚才看到什么」，dryRun 只写草稿。默认关 */
+    /** @deprecated 已并进 qzone（开关合并）：输入只有旧键时原样、否则由 qzone 派生；新代码读 qzone。她自己翻空间动态（ADR 0142，「空友爱看」那种混着陌生人的流）：读一页、记下「刚才看到什么」，dryRun 只写草稿。默认关 */
     qzoneBrowse?: PresenceMode;
-    /** 看名单里好友的空间（ADR 0143，用她自己的登录态走 Qzone 网页接口）：10:00–22:00、每 4 小时最多一次、一次看一个人。默认关 */
+    /** @deprecated 已并进 qzone（开关合并）：输入只有旧键时原样、否则由 qzone 派生；新代码读 qzone。看名单里好友的空间（ADR 0143，用她自己的登录态走 Qzone 网页接口）：10:00–22:00、每 4 小时最多一次、一次看一个人。默认关 */
     qzonePeek?: PresenceMode;
-    /** 刷平台推的陌生人说说（ADR 0144，「空友爱看」那种流）：09:00–23:00、每 3 小时最多一次；只读、只留正文样本。默认关 */
+    /** @deprecated 已并进 qzone（开关合并）：输入只有旧键时原样、否则由 qzone 派生；新代码读 qzone。刷平台推的陌生人说说（ADR 0144，「空友爱看」那种流）：09:00–23:00、每 3 小时最多一次；只读、只留正文样本。默认关 */
     qzoneStrangers?: PresenceMode;
     /** 群聊（ADR 0210）：off 关 / read 只看只记不说话 / dryRun 写草稿不发 / on 发。只在 groups 名单里的群。默认 off */
     groupChat?: GroupChatMode;

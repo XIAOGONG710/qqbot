@@ -15,7 +15,7 @@ import { FESTIVAL_MODES } from '../src/world/festivals.ts';
 const MODES: Record<string, readonly string[]> = {
     webLookup: WEB_MODES, factCheck: FACT_CHECK_MODES, festivals: FESTIVAL_MODES, proactive: PROACTIVE_MODES, stickers: STICKER_MODES,
     groupChat: GROUP_CHAT_MODES, groupOwn: GROUP_OWN_MODES, groupAgency: GROUP_AGENCY_MODES, qqControl: ACCOUNT_MODES, qqFriendGate: QQ_FRIEND_GATES,
-    ...Object.fromEntries(['bilibili', 'biliFeed', 'bilibiliDm', 'bilibiliReplies', 'bilibiliComment', 'signature', 'qzone', 'qzoneBrowse', 'qzonePeek', 'qzoneStrangers', 'deviceControl']
+    ...Object.fromEntries(['bilibili', 'biliFeed', 'bilibiliDm', 'bilibiliReplies', 'bilibiliComment', 'qzone', 'deviceControl']
         .map(key => [key, PRESENCE_MODES])),
 };
 /** 配置页上本来就没写说明的开关 */

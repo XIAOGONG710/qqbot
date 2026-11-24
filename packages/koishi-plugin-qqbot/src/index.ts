@@ -24,7 +24,7 @@ import { createPromptManifestLog } from '../../bot/src/platform/prompt-manifest.
 import { FEATURES, featureDetail, type FeatureDef } from '../../bot/src/platform/features.ts';
 import { legacyValue, representable, SWITCH_MERGES, writtenLegacy, type SwitchMerge } from '../../bot/src/platform/switch-merge.ts';
 import { type FactCheckMode } from '../../bot/src/language/fact-check.ts';
-import { QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/social/presence.ts';
+import { PRESENCE_MODES, QZONE_VISIBILITIES, type PresenceMode, type QzoneVisibility } from '../../bot/src/social/presence.ts';
 import { type GroupAgencyMode, type GroupChatMode, type GroupOwnMode } from '../../bot/src/platform/config.ts';
 import { readQzoneFeed } from '../../bot/src/social/qzone-feed.ts';
 import { readFriendsFeed } from '../../bot/src/social/qzone-feeds3.ts';
@@ -243,12 +243,16 @@ export interface Config {
     bilibiliAtUid: number;
     onlineStatus: boolean;
     profileLikes: boolean;
-    signature: PresenceMode;
+    /** 已并进 qzone（开关合并），koishi.yml 里还写着才有 */
+    signature?: PresenceMode;
     qzone: PresenceMode;
     qzoneVisibility: QzoneVisibility;
-    qzoneBrowse: PresenceMode;
-    qzonePeek: PresenceMode;
-    qzoneStrangers: PresenceMode;
+    /** 已并进 qzone（开关合并），koishi.yml 里还写着才有 */
+    qzoneBrowse?: PresenceMode;
+    /** 已并进 qzone（开关合并），koishi.yml 里还写着才有 */
+    qzonePeek?: PresenceMode;
+    /** 已并进 qzone（开关合并），koishi.yml 里还写着才有 */
+    qzoneStrangers?: PresenceMode;
     groupChat: GroupChatMode;
     groupOwn: GroupOwnMode;
     groupAgency: GroupAgencyMode;
@@ -438,13 +442,13 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         readReceipts: toggle('readReceipts'),
         onlineStatus: toggle('onlineStatus'),
         profileLikes: toggle('profileLikes'),
-        signature: choice('signature'),
+        signature: legacy(PRESENCE_MODES),
         qzone: choice('qzone'),
         qzoneVisibility: Schema.union(QZONE_VISIBILITIES.map(mode => Schema.const(mode).description(QZONE_LABELS[mode]))).default(DEFAULTS.qzoneVisibility)
             .description('**说说谁能看**（ADR 0083）：仅好友（默认）；所有人可见会让陌生人看到，也可能被「空友爱看」收录并收到好友申请'),
-        qzoneBrowse: choice('qzoneBrowse'),
-        qzonePeek: choice('qzonePeek'),
-        qzoneStrangers: choice('qzoneStrangers'),
+        qzoneBrowse: legacy(PRESENCE_MODES),
+        qzonePeek: legacy(PRESENCE_MODES),
+        qzoneStrangers: legacy(PRESENCE_MODES),
         groupChat: choice('groupChat'),
         groupOwn: choice('groupOwn'),
         groupAgency: choice('groupAgency'),
@@ -800,9 +804,9 @@ export function routeSwitchInput(config: Config, input: Record<string, unknown>,
  * simplify（loader 写回、控制台保存都用它）只丢等于默认值的项和表单里没有的键，所以迁移之前控制台保存不会把 koishi.yml 里的旧键抹掉。
  * values：几档模式的旧键给出各档；不给就是开 / 关。
  */
-export function legacy(values?: readonly string[]): Koishi.Schema<unknown> {
+export function legacy<T extends string | boolean = boolean>(values?: readonly T[]): Koishi.Schema<T> {
     const schema = values ? Schema.union(values.map(value => Schema.const(value))) : Schema.boolean();
-    return (schema as Koishi.Schema<unknown>).hidden().description('（已并进别的开关，过渡期还认；启动时能对上就自动迁移）');
+    return (schema as unknown as Koishi.Schema<T>).hidden().description('（已并进别的开关，过渡期还认；启动时能对上就自动迁移）');
 }
 
 /**

@@ -1,12 +1,13 @@
 // 开关合并在 Koishi 这边（docs/plans/2026-11-24-switch-merge-design.md 第一节 4，M0）：migrateSwitches / routeSwitchInput / legacy()。
-// 合并表是参数，这里用只在测试里的示例表；真表现在是空的，最后几条核对插件和今天一模一样。
+// 合并表是参数，这里用只在测试里的示例表；最后一节用真表和线上快照（bot/test/fixtures/live-switches.ts）核对迁移前后一样。
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import type * as Koishi from 'koishi';
 import { parseAppConfig } from '../../bot/src/platform/config.ts';
-import type { SwitchMerge } from '../../bot/src/platform/switch-merge.ts';
+import { SWITCH_MERGES, type SwitchMerge } from '../../bot/src/platform/switch-merge.ts';
+import { LIVE_2026_11_20, LIVE_LATER_ON } from '../../bot/test/fixtures/live-switches.ts';
 import { Config, legacy, migrateSwitches, routeSwitchInput, switchMigrations, toAppConfigInput } from '../src/index.ts';
 
 const { Schema } = createRequire(import.meta.url)('koishi') as typeof Koishi;
@@ -112,7 +113,7 @@ describe('legacy()：表单上隐藏、不带默认值', () => {
     test('控制台保存（simplify）不抹掉旧键，哪怕值是 false；新键等于默认值照旧不写', () => {
         const saved = form.simplify(form({ lamp: false, lampA: false, mode: 'off' })) as Record<string, unknown>;
         assert.deepEqual(saved, { lampA: false, mode: 'off' });
-        assert.deepEqual(form(saved), { lamp: false, lampA: false, mode: 'off' }, '往返不变');
+        assert.deepEqual(form(saved as never), { lamp: false, lampA: false, mode: 'off' }, '往返不变');
     });
 
     test('没写旧键时解析结果里没有它（不会被当成「写着旧键」）', () => {
@@ -120,18 +121,52 @@ describe('legacy()：表单上隐藏、不带默认值', () => {
     });
 
     test('模式联合只认列出的几档', () => {
-        assert.throws(() => form({ mode: 'dryRun' }));
+        assert.throws(() => form({ mode: 'dryRun' } as never));
     });
 });
 
-describe('真表（M0：一组都没并）：插件和今天一样', () => {
-    test('migrateSwitches 永远是 undefined，routeSwitchInput 原样返回', () => {
-        for (const extra of [{}, { qzone: 'on', qzoneBrowse: 'dryRun' }, { proactive: 'on', proactiveReach: true }, { lampA: true, lampB: true }]) {
-            const config = Config({ ...minimal, ...extra } as never);
-            assert.equal(migrateSwitches(config), undefined);
-            assert.deepEqual(switchMigrations(config), []);
-            const input = { a: 1 };
-            assert.equal(routeSwitchInput(config, input), input);
+describe('真表 × 线上快照：koishi.yml 迁移前后行为一样', () => {
+    const live = { ...minimal, ...LIVE_2026_11_20, ...LIVE_LATER_ON };
+    /** 新起名字的新键：不合并时没有这个开关，比较时去掉 */
+    const newNames = SWITCH_MERGES.filter(merge => !merge.existing).map(merge => merge.key);
+    const withoutNewNames = (config: object) => Object.fromEntries(Object.entries(config).filter(([key]) => !newNames.includes(key)));
+
+    test('写着旧键的组都能迁：迁完只剩新键；迁一次就够', () => {
+        const old = Config(live as never);
+        const migrated = migrateSwitches(old) as unknown as Record<string, unknown>;
+        assert.ok(migrated);
+        const moves = switchMigrations(old);
+        for (const merge of SWITCH_MERGES) {
+            const written = merge.legacy.filter(key => (live as Record<string, unknown>)[key] !== undefined);
+            if (!written.length) continue;
+            assert.ok(moves.some(move => move.merge.key === merge.key), `${merge.key} 迁了`);
+            for (const key of merge.legacy) assert.equal(key in migrated, false, `${key} 删掉了`);
+        }
+        assert.equal(migrateSwitches(migrated as never), undefined);
+    });
+
+    test('今天（不合并）、迁移前、迁移后、迁移后经控制台保存再读回，解析出来的旧字段一样', () => {
+        const old = Config(live as never);
+        const migrated = migrateSwitches(old)!;
+        const saved = Config(Config.simplify(migrated) as never);
+        const today = withoutNewNames(parseAppConfig(toAppConfigInput(old), repoRoot, env, []));
+        assert.deepEqual(withoutNewNames(parseAppConfig(toAppConfigInput(old), repoRoot, env)), today, '迁移前');
+        assert.deepEqual(withoutNewNames(parseAppConfig(toAppConfigInput(migrated), repoRoot, env)), today, '迁移后');
+        assert.deepEqual(withoutNewNames(parseAppConfig(toAppConfigInput(saved), repoRoot, env)), today, '迁移后保存再读回');
+        const after = parseAppConfig(toAppConfigInput(saved), repoRoot, env) as unknown as Record<string, unknown>;
+        const before = parseAppConfig(toAppConfigInput(old), repoRoot, env) as unknown as Record<string, unknown>;
+        for (const merge of SWITCH_MERGES) assert.deepEqual(after[merge.key], before[merge.key], merge.key);
+    });
+
+    test('旧键在表单上隐藏、没有默认值；新键还是一行 toggle / choice', () => {
+        const dict = Object.assign({}, ...(Config as unknown as { list: { dict?: Record<string, Koishi.Schema> }[] }).list.map(part => part.dict ?? {})) as Record<string, Koishi.Schema>;
+        for (const merge of SWITCH_MERGES) {
+            assert.ok(dict[merge.key], merge.key);
+            assert.notEqual(dict[merge.key]!.meta.hidden, true, merge.key);
+            for (const key of merge.legacy) {
+                assert.equal(dict[key]!.meta.hidden, true, key);
+                assert.equal(dict[key]!.meta.default, undefined, key);
+            }
         }
     });
 });

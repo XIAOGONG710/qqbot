@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AppConfig, Contact } from '../../src/platform/config.ts';
 import { DEFAULTS } from '../../src/platform/config.ts';
+import { mergeSwitchInput, SWITCH_MERGES } from '../../src/platform/switch-merge.ts';
 import { MANIFEST_FILE, MANIFEST_KINDS, SLOT_KINDS, type ManifestKind, type PromptManifest } from '../../src/platform/prompt-manifest.ts';
 import { runScenario, type LlmCall, type Replier, type Scenario } from '../baseline/harness.ts';
 import { SCENARIOS } from '../baseline/scenarios.ts';
@@ -80,6 +81,13 @@ export function liveSwitches(text: string, source = ''): LiveSwitches {
         if (typeof value !== typeof defaults[key] || (value !== null && typeof value === 'object')) { skipped.push(key); continue; }
         config[key] = value;
         if (isOn(value)) on.push(key);
+    }
+    // 开关合并：快照里还写着旧键、新起名字的新键没写时，新键按合并表从旧键算（旧键照搬，app 过渡期还读旧字段）
+    const merged = mergeSwitchInput(config, defaults);
+    for (const merge of SWITCH_MERGES) {
+        if (config[merge.key] !== undefined || !merge.legacy.some(key => config[key] !== undefined)) continue;
+        config[merge.key] = merged[merge.key];
+        if (isOn(config[merge.key])) on.push(merge.key);
     }
     return { source, config: config as Partial<AppConfig>, on: on.sort(), unknown: unknown.sort(), skipped: skipped.sort() };
 }

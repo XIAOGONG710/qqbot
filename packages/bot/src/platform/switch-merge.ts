@@ -31,8 +31,26 @@ export interface SwitchMerge {
     ignorable?(legacyKey: string, input: Input): boolean;
 }
 
-/** 已经合并的组。M0 只有机制，一组都还没并（设计第三节的顺序表从「QQ 空间」开始一组一个提交） */
-export const SWITCH_MERGES: readonly SwitchMerge[] = [];
+const PRESENCE = ['off', 'dryRun', 'on'] as const;
+
+/** 新键合并前就是开关、旧键各自等于它（「跟着它走」）：旧 → 新取新键自己的值，新 → 旧每个旧键都是这个值 */
+function follows(key: string, values: readonly unknown[], legacy: readonly string[], extra: Partial<SwitchMerge> = {}): SwitchMerge {
+    return {
+        key, values, legacy, existing: true,
+        fromLegacy: input => input[key],
+        toLegacy: value => Object.fromEntries(legacy.map(name => [name, value])),
+        ...extra,
+    };
+}
+
+/**
+ * 已经合并的组，按设计第三节的顺序一组一个提交（docs/plans/2026-11-24-switch-merge-design.md 第二节逐组写了映射、线上值和基线核对）。
+ * app 代码过渡期照旧读旧字段（parseAppConfig 按上面的规则给出），所以基线逐字不变；改读新键的一组一组来。
+ */
+export const SWITCH_MERGES: readonly SwitchMerge[] = [
+    // 1. QQ 空间（设计第二节 18）：签名、翻空间、刷好友动态、刷陌生人都是同一种三档，跟着 qzone
+    follows('qzone', PRESENCE, ['signature', 'qzoneBrowse', 'qzonePeek', 'qzoneStrangers']),
+];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */
 export function legacySwitchKeys(merges: readonly SwitchMerge[] = SWITCH_MERGES): ReadonlySet<string> {
