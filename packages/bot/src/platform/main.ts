@@ -28,7 +28,7 @@ const client = new OneBotClient({ url: config.onebot.url, token: config.onebot.t
 const vision = configuredImageDescriber(config);
 const stickerVision = configuredImageDescriber(config, STICKER_VISION_PROMPT);
 // 读他刚发来的表情包（ADR 0206）：同一个要求，但在聊天路上，不排在后台收藏后面
-const stickerReader = config.readStickers ? configuredImageDescriber(config, STICKER_VISION_PROMPT, 'chat') : undefined;
+const stickerReader = config.media ? configuredImageDescriber(config, STICKER_VISION_PROMPT, 'chat') : undefined;
 const qqFav = qqFavorites((action, params) => client.call<unknown>(action, params));
 const stickers = (config.stickers ?? 'off') !== 'off' && stickerVision ? stickerShelf({
     dir: join(config.dataDir, 'stickers'),

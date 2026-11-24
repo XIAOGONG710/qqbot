@@ -81,24 +81,18 @@ async function run(overrides: Partial<AppConfig>) {
 
 const READ = '[动画表情：上面写着「理理我」；一只橘猫委屈地趴在地上]';
 
-describe('readStickers（ADR 0206）：看懂他发的表情包', () => {
-    test('关着（给了看图也不读）：一次都不调，聊天记录和提示词里照旧「[动画表情]」', async () => {
-        const r = await run({ media: true, readStickers: false });
+describe('readStickers（ADR 0206）：看懂他发的表情包（开关合并：跟着 media）', () => {
+    test('media 关着（给了看图也不读）：一次都不调，聊天记录和提示词里照旧「[动画表情]」', async () => {
+        const r = await run({ media: false });
         assert.equal(r.calls.length, 0);
         assert.deepEqual(r.said, ['好嘛 [动画表情]']);
         assert.ok(!r.prompts.some(prompt => prompt.includes(READ)));
     });
 
     test('开着：读一次，聊天记录里是「[动画表情：上面写着…；画面]」，提示词里也是', async () => {
-        const r = await run({ media: true, readStickers: true });
+        const r = await run({ media: true });
         assert.equal(r.calls.length, 1);
         assert.deepEqual(r.said, [`好嘛 ${READ}`]);
         assert.ok(r.prompts.some(prompt => prompt.includes(READ)));
-    });
-
-    test('开着但 media 关着：不读（要 media + 看图）', async () => {
-        const r = await run({ media: false, readStickers: true });
-        assert.equal(r.calls.length, 0);
-        assert.ok(!r.said.some(text => text.includes('动画表情：')));
     });
 });

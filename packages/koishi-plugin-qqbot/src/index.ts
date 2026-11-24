@@ -1089,7 +1089,7 @@ function applyNow(ctx: Context, config: Config) {
     const vision = configuredImageDescriber(appConfig);
     const stickerVision = configuredImageDescriber(appConfig, STICKER_VISION_PROMPT);
     // 读他刚发来的表情包（ADR 0206）：同一个要求，但在聊天路上，不排在后台收藏后面
-    const stickerReader = appConfig.readStickers ? configuredImageDescriber(appConfig, STICKER_VISION_PROMPT, 'chat') : undefined;
+    const stickerReader = appConfig.media ? configuredImageDescriber(appConfig, STICKER_VISION_PROMPT, 'chat') : undefined;
     const qqFav = qqFavorites((action, params) => mediaBot()._get(action, params));
     const stickers = (appConfig.stickers ?? 'off') !== 'off' && stickerVision ? stickerShelf({
         dir: join(appConfig.dataDir, 'stickers'),

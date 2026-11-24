@@ -371,7 +371,7 @@ export interface AppOptions {
     /** 测试可替换；运行时按当前视觉配置创建。 */
     imageRecognition?: ImageDescriber;
     imageSearch?: ImageDescriber;
-    /** 读他发来的表情包（ADR 0206，readStickers）：表情包专用的看图要求、聊天优先级；运行入口按配置建，测试可给假的 */
+    /** 读他发来的表情包（ADR 0206，跟着 media）：表情包专用的看图要求、聊天优先级；运行入口按配置建，测试可给假的 */
     stickerReader?: ImageDescriber;
     /** 图片表情收藏（ADR 0063）；运行入口按配置建，测试可给假的。 */
     stickers?: StickerShelf;
@@ -764,8 +764,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     }
     // 听语音、看图上的字（ADR 0052）：配置关了、入口没给就不读
     const mediaLimits = { ...MEDIA_TIMEOUTS, ...(config.vision ? { vision: config.vision.timeoutMs } : {}), ...mediaTimeouts };
-    // 他发来的表情包也读（ADR 0206 readStickers）：只对名单里的人（和看图一样，图会发到看图模型）；读过的缓存在 stickers/read-cache.json
-    const readingStickers = Boolean(config.media && config.readStickers && stickerReader);
+    // 他发来的表情包也读（ADR 0206，跟着 media）：只对名单里的人（和看图一样，图会发到看图模型）；读过的缓存在 stickers/read-cache.json
+    const readingStickers = Boolean(config.media && stickerReader);
     const stickerReading = readingStickers ? { stickerVision: stickerReader!, stickerReads: openStickerReads(join(config.dataDir, 'stickers', 'read-cache.json')) } : {};
     // 「真正听到声音」的实现接上之后，语音旁边会多一段「[声音：…]」（vision/hearing.ts）
     const hearing = config.media ? createHearing() : undefined;
@@ -778,7 +778,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const canRead = [media?.voiceToText && '语音转文字', media?.ocr && '图上的字（OCR）', vision && '看图（只对名单里的人）'].filter(Boolean).join('、');
     log(`听语音、看图：${!config.media ? '关（配置 media: false），照旧「[语音]」「[图片]」'
         : canRead ? `开（${canRead}；语音最多等 ${mediaLimits.voice / 1000} 秒，OCR ${mediaLimits.ocr / 1000} 秒，看图模型 ${mediaLimits.vision / 1000} 秒，读不出来照旧「[语音]」「[图片]」）` : '开，但入口没给 NapCat 的语音转文字和 OCR，照旧「[语音]」「[图片]」'}`);
-    log(`看他发的表情包：${readingStickers ? '开（名单里的人；先抄图上的字再说画面，同一张只读一次；读不出来照旧「[动画表情]」）' : config.readStickers ? '开着，但没有看图模型或 media 关着，照旧「[动画表情]」' : '关（配置 readStickers: false），照旧「[动画表情]」'}`);
+    log(`看他发的表情包：${readingStickers ? '开（名单里的人；先抄图上的字再说画面，同一张只读一次；读不出来照旧「[动画表情]」）' : config.media ? '开着，但没有看图模型，照旧「[动画表情]」' : '关（配置 media: false），照旧「[动画表情]」'}`);
     const stickerMode = config.stickers ?? 'off';
     const collectingStickers = stickerMode !== 'off' ? stickers : undefined;
     const sendingStickers = stickerMode === 'send' && transport.sendPrivateImage ? collectingStickers : undefined;

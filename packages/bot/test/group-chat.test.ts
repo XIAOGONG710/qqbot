@@ -156,7 +156,7 @@ describe('群聊：进应用', () => {
             characterCard: syntheticCardPattern,
             contacts: [{ qq: 10001, name: '宝宝', tier: 'boyfriend', knowsBot: true }],
             schedule: false, moody: false, speechCheck: false, herDays: false, autonomousLife: false,
-            grievance: false, feedbackCommands: false, realWeather: false, media: true, readStickers: Boolean(extra.stickerReader),
+            grievance: false, feedbackCommands: false, realWeather: false, media: true,
             herFeelings: true,
             candidates: 1, contextTurns: 0, contextContacts: [], proactive: 'off', dataDir,
             groupChat, groups: [{ id: 555, name: '宿舍群', ...(knowsBot ? { knowsBot: true } : {}) }],
