@@ -134,16 +134,16 @@ describe('existing：新键合并前就是开关（照「QQ 空间」的形状�
         const ledgers: SwitchMerge = {
             key: 'ledgersExample',
             values: [false, true],
-            legacy: ['identityLedger', 'memoryAudit'],
-            fromLegacy: input => input.identityLedger === true || input.memoryAudit === true,
-            toLegacy: value => ({ identityLedger: value === true, memoryAudit: value === true }),
+            legacy: ['tastes', 'timeline'],
+            fromLegacy: input => input.tastes === true || input.timeline === true,
+            toLegacy: value => ({ tastes: value === true, timeline: value === true }),
         };
-        const both = parse({ ledgersExample: true, identityLedger: false }, [ledgers]);
-        assert.equal(both.identityLedger, true);
-        assert.equal(both.memoryAudit, true);
-        const oldOnly = parse({ identityLedger: true }, [ledgers]);
-        assert.equal(oldOnly.identityLedger, true);
-        assert.equal(oldOnly.memoryAudit, false);
+        const both = parse({ ledgersExample: true, tastes: false }, [ledgers]);
+        assert.equal(both.tastes, true);
+        assert.equal(both.timeline, true);
+        const oldOnly = parse({ tastes: true }, [ledgers]);
+        assert.equal(oldOnly.tastes, true);
+        assert.equal(oldOnly.timeline, false);
         assert.throws(() => parse({ ledgersExample: 1 }, [ledgers]), /配置 ledgersExample 应为/);
     });
 });
@@ -225,13 +225,12 @@ describe('真表：已经并了的组', () => {
         for (const merge of SWITCH_MERGES) assert.deepEqual(after[merge.key], EXPECTED_LIVE[merge.key], merge.key);
     });
 
-    test('留痕（memoryReconcile 线上开着、开关层原来没测过）：只写 ledgers 三项都跟着；只写着 memoryReconcile 时它照旧原样、另两项照旧关，日志说对不上', () => {
-        const on = parse({ ledgers: true });
-        assert.deepEqual([on.identityLedger, on.memoryAudit, on.memoryReconcile], [true, true, true]);
-        const off = parse({ ledgers: false });
-        assert.deepEqual([off.identityLedger, off.memoryAudit, off.memoryReconcile], [false, false, false]);
-        const old = parse({ memoryReconcile: true });
-        assert.deepEqual([old.ledgers, old.identityLedger, old.memoryAudit, old.memoryReconcile], [true, false, false, true]);
+    test('留痕（memoryReconcile 线上开着、开关层原来没测过）：app 只读 ledgers；只写着 memoryReconcile 时 ledgers 是开（任一开就开），日志说对不上', () => {
+        assert.equal(parse({ ledgers: true }).ledgers, true);
+        assert.equal(parse({ ledgers: false }).ledgers, false);
+        const old = parse({ memoryReconcile: true }) as unknown as Record<string, unknown>;
+        assert.equal(old.ledgers, true);
+        for (const key of ['identityLedger', 'memoryAudit', 'memoryReconcile']) assert.equal(key in old, false, key);
         assert.match(configSwitchNotes({ memoryReconcile: true }).join('\n'), /已并进 ledgers（= true）.*对不上/);
     });
 

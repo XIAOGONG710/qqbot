@@ -68,6 +68,8 @@ export interface Scenario {
     stickers?: { description: string; tags: string[] }[];
     /** 提示词指纹清单（platform/prompt-manifest.ts）：给了就交给 App，每次给联系人生成前收到一份；基线场景都不给，快照不变（线上组合盘点 test/inventory/live-mix.ts 用） */
     manifest?: (manifest: PromptManifest) => void;
+    /** 给了就交给 App 当仓库根目录（ledgers 带着的设定账本只读这里下面的角色目录，不碰真实资料）；基线场景都不给，快照不变 */
+    repoRoot?: string;
     script: (driver: Driver) => Promise<void>;
 }
 
@@ -318,6 +320,7 @@ export async function runScenario(scenario: Scenario): Promise<string> {
             ...(scenario.devices ? { startDevices: fakeDevices(scenario.devices.readyAfterMs, record) } : {}),
             ...(stickers ? { stickers } : {}),
             ...(scenario.manifest ? { promptManifest: scenario.manifest } : {}),
+            ...(scenario.repoRoot ? { repoRoot: scenario.repoRoot } : {}),
             pipeline: {
                 generate: async (messages, _log, use) => {
                     const index = ++llmCalls;

@@ -50,7 +50,7 @@ function setup(options: { reconcile?: boolean; common?: boolean } = {}) {
 
 describe('记忆对账（ADR 0201）：进度里记着写过、Hindsight 里却没有的，重新排队写', () => {
     test('线上默认是关', () => {
-        assert.equal(DEFAULTS.memoryReconcile, false);
+        assert.equal(DEFAULTS.ledgers, false, '并进 ledgers（开关合并）');
     });
 
     test('没开（默认）：丢了一篇也不管', async () => {

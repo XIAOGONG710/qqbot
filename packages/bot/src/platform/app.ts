@@ -1247,7 +1247,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     desktop.attachWorld({ sharedWorld, timeline, lifeQueue, worldCard, bedtimesSince });
     // 之后每 30 秒再收一次：由 dsh-inbox 模块声明（ADR 0336 第 6 步，App 搭好时开）
     if (dshEnabled && (timeline || sharedWorld)) syncDshInboxes();
-    const identity = config.identityLedger ? new Identity({ repoRoot, dataDir: config.dataDir, now: clockNow, log }) : undefined;
+    const identity = config.ledgers ? new Identity({ repoRoot, dataDir: config.dataDir, now: clockNow, log }) : undefined;
     if (identity) {
         try {
             const report = identity.check();
@@ -1259,7 +1259,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             log(`设定账本：核对出错（${error instanceof Error ? error.message : String(error)}）`);
         }
     }
-    const memoryLedgerNow = config.memoryAudit ? memoryLedger(config.dataDir) : undefined;
+    const memoryLedgerNow = config.ledgers ? memoryLedger(config.dataDir) : undefined;
     if (memoryLedgerNow) {
         const check = memoryLedgerNow.verify();
         log(`记忆账本：${check.ok ? `验过了（${check.count} 条）` : `验不过：${check.reason}`}`);
@@ -1407,7 +1407,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             log,
             common: true,
             ...(deviceOwner ? { privateContact: deviceOwner } : {}),
-            reconcile: config.memoryReconcile,
+            reconcile: config.ledgers,
         })
         : undefined;
     lifetime.own('memory', () => memory?.stop());

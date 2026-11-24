@@ -32,12 +32,13 @@ async function fixture(mode: 'held' | 'reentrant' | 'throw' | 'probe' | 'advice'
     globals[linkKey] = () => ({ model: 'synthetic', probe: async () => { await source(); return { ok: true, at: new Date(now).toISOString(), model: 'synthetic', latencyMs: 1 }; }, advise: async () => { await source(); return '合成DSH回答'; } });
     const dsh = mode === 'probe' || mode === 'advice';
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
-        contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], memoryAudit: !dsh, dsh: { enabled: dsh }, jokes: false,
+        contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], ledgers: !dsh, dsh: { enabled: dsh }, jokes: false,
         schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
     globalThis.fetch = async () => { throw new Error('unexpected synthetic network'); };
     const cleanup = async () => { release(); await app?.stop(); await settle(); globalThis.fetch = oldFetch; globals[linkKey] = oldLink; assert.equal(dirname(resolve(root)), resolve(tmpdir())); assert.ok(basename(root).startsWith('qqbot-app-tell-owner-test-')); rmSync(root, { recursive: true, force: true }); };
     try {
-        app = startApp({ config, log: line => logs.push(line), sensitive: { on: () => false, describe: () => '' },
+        // ledgers 也带着设定账本：repoRoot 指到合成目录，不碰真实角色资料
+        app = startApp({ config, repoRoot: root, log: line => logs.push(line), sensitive: { on: () => false, describe: () => '' },
             transport: { friendHistory: async () => [], sendPrivateText: (_qq, text) => {
                 sends.push(text); entered = true;
                 if (mode === 'reentrant' || mode === 'throw') { void app!.stop(); leaseInsideTransport = existsSync(join(dataDir, 'bot.lock')); }

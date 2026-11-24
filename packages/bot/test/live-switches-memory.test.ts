@@ -5,9 +5,10 @@
 // 只用合成角色和合成的种子，不读真实资料；不改快照。
 
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, test } from 'node:test';
+import { after, describe, test } from 'node:test';
 import type { AppConfig, Contact } from '../src/platform/config.ts';
 import { ChatHistory } from '../src/memory/history.ts';
 import { momentsPath } from '../src/emotion/moments.ts';
@@ -118,13 +119,23 @@ describe('memoryFeelings（ADR 0218）× herFeelings：问到那天时附她那�
 });
 
 /** 以前几天聊过的几段（连上时写进 Hindsight），之后跑过对账要等的宽限期 */
-function reconcileRun(memoryReconcile: boolean): Scenario {
+const repos: string[] = [];
+after(() => { for (const dir of repos) rmSync(dir, { recursive: true, force: true }); });
+function emptyRepo(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'qqbot-live-switches-reconcile-repo-'));
+    repos.push(dir);
+    return dir;
+}
+
+/** 对账并进 ledgers（开关合并）：ledgers 也带着设定账本，仓库根目录指到空的临时目录，不碰真实角色资料 */
+function reconcileRun(ledgers: boolean): Scenario {
     return {
         name: 'live-switches-reconcile',
         about: '开关层：记忆对账',
         start: '2026-12-09T08:00:00+08:00',
         contacts: [boyfriend],
-        config: { ...BASE, memoryReconcile },
+        config: { ...BASE, ledgers },
+        repoRoot: emptyRepo(),
         memory: {},
         seed: (dataDir, start) => {
             const chats = new ChatHistory(dataDir);

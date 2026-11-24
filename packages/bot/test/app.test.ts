@@ -76,7 +76,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         speechCheck: false,
         herDays: false,
         autonomousLife: false,
-        grievance: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, curious: false, smallNews: false, memes: false, watching: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, everydayLife: false, worldDrama: false, pursuits: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        grievance: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, curious: false, smallNews: false, memes: false, watching: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, everydayLife: false, worldDrama: false, pursuits: false, deliberateModel: 'deepseek-v4-pro', dormancy: false, timeline: false, webLookup: 'off', tastes: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWorld: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false,
         media: true,
@@ -1714,7 +1714,7 @@ describe('主动消息（ADR 0011）', () => {
 
 
     test('「/设定」（ADR 0157 / 0158 / 0161）：设定账本、记忆账本、休眠状态的摘要；不进聊天记录；没开任何一个时当普通话', async () => {
-        const cfg = config({ identityLedger: true, memoryAudit: true, dormancy: true, contacts: [boyfriend] });
+        const cfg = config({ ledgers: true, dormancy: true, contacts: [boyfriend] });
         const first = setup(cfg, { 10002: [] });
         await first.app.connected(SELF);
         first.app.receive(event(10002, 601, '/设定'));

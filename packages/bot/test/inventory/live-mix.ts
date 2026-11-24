@@ -38,6 +38,7 @@ export const NOT_COPIED: Readonly<Record<string, string>> = {
     characterCard: '合成角色卡',
     timeZone: '固定 Asia/Shanghai',
     identityLedger: '会读真实角色目录并调 git',
+    ledgers: '含设定账本（原 identityLedger）：会读真实角色目录并调 git',
     dormancy: '封存会复制真实角色目录',
     deviceControl: '会起真的设备服务、监听端口',
     qqControl: 'QQ 账号控制面，合成环境里没有',
@@ -85,7 +86,7 @@ export function liveSwitches(text: string, source = ''): LiveSwitches {
     // 开关合并：快照里还写着旧键、新起名字的新键没写时，新键按合并表从旧键算（旧键照搬，app 过渡期还读旧字段）
     const merged = mergeSwitchInput(config, defaults);
     for (const merge of SWITCH_MERGES) {
-        if (config[merge.key] !== undefined || !merge.legacy.some(key => config[key] !== undefined)) continue;
+        if (merge.key in NOT_COPIED || config[merge.key] !== undefined || !merge.legacy.some(key => config[key] !== undefined)) continue;
         config[merge.key] = merged[merge.key];
         if (isOn(config[merge.key])) on.push(merge.key);
     }
