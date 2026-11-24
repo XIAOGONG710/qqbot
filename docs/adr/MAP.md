@@ -55,7 +55,7 @@
 | [0045](0045-continuous-needs.md) | 精力、饥饿、压力先成为可重放的事实投影 | 第二步已在影子模式上线（纯投影、版本化锚点和宽阈值选择；仍不进提示词） | `autonomousLife`（原 `lifeInPrompt`） 开 |
 | [0046](0046-meeting-in-person.md) | 见面可以答应，见了面也在 QQ 上说话 | 已上线（2026-10-10 01:53，和 ADR 0047 一起，`main` = `447105f`，用户同意后重… |  |
 | [0047](0047-meetups-in-her-day.md) | 约好的见面进她当天的安排 | 已上线（2026-10-10 01:53，`main` = `447105f`，用户同意后重启 Koishi；日志确认插… |  |
-| [0048](0048-real-weather.md) | 真实天气 | 已上线（2026-10-10 13:28，`main` = `integration` = `1e86548`（`rel… | `realWeather` 默认 |
+| [0048](0048-real-weather.md) | 真实天气 | 已上线（2026-10-10 13:28，`main` = `integration` = `1e86548`（`rel… | `realWorld`（原 `realWeather`） 开 |
 | [0049](0049-chat-day-markers.md) | 聊天记录隔天插日期 | 已上线（2026-10-10 13:28，`main` = `integration` = `1e86548`（`rel… |  |
 | [0050](0050-rain-proactive.md) | 下雨了她主动找他 | 已上线（2026-10-10 13:28，`main` = `integration` = `1e86548`（`rel… |  |
 | [0051](0051-qq-faces.md) | QQ 小黄脸两个方向都通 | 已上线（2026-10-10 13:28，`main` = `integration` = `1e86548`（`rel… |  |
@@ -224,11 +224,11 @@
 | [0225](0225-dsh-state-snapshot.md) | QQ → DSH 真人式状态快照 |  |  |
 | [0226](0226-dsh-desktop-inbox.md) | DSH 桌面动作进入 QQ 时间线和世界账 |  |  |
 | [0226](0226-memory-evidence.md) | 长期记忆状态的证据摘要 |  |  |
-| [0227](0227-real-air-quality.md) | 现实世界空气质量接入 |  | `realAirQuality` 开 |
-| [0228](0228-real-daylight.md) | 现实世界日照接入 |  | `realDaylight` 开 |
+| [0227](0227-real-air-quality.md) | 现实世界空气质量接入 |  | `realWorld`（原 `realAirQuality`） 开 |
+| [0228](0228-real-daylight.md) | 现实世界日照接入 |  | `realWorld`（原 `realDaylight`） 开 |
 | [0229](0229-world-needs-projection.md) | 需要状态进入世界快照 |  |  |
 | [0230](0230-holiday-in-world.md) | 假期事实进入世界快照 |  |  |
-| [0231](0231-real-public-calendar.md) | 现实法定节假日与调休 |  | `realCalendar` 开 |
+| [0231](0231-real-public-calendar.md) | 现实法定节假日与调休 |  | `realWorld`（原 `realCalendar`） 开 |
 | [0232](0232-real-transport-facts.md) | 现实交通 / 公共服务事实适配器 |  |  |
 | [0233](0233-environment-action-policy.md) | 环境事实参与行动选择 |  |  |
 | [0234](0234-life-pulse-card.md) | 把底层能力合成“她此刻的生活” | 已实现，随 Koishi 控制台页面加载后生效；不增加配置开关 |  |

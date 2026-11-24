@@ -87,10 +87,7 @@
 | `herDays` | 每日心情、在读的书 | [ADR 0015](../adr/0015-her-own-days.md) |
 | `schedule` | 作息 | [ADR 0007](../adr/0007-schedule-and-reply-timing.md) |
 | `autonomousLife` | 没人聊天时她一件件过日子（并进来的：`projectChoice` 作业接管空闲（[ADR 0056](../adr/0056-project-portfolio.md)）；`lifeInPrompt` 生活账进提示词（[ADR 0045](../adr/0045-continuous-needs.md)）） | [ADR 0040](../adr/0040-rule-life-selector.md) |
-| `realWeather` | 真实天气 | [ADR 0048](../adr/0048-real-weather.md) |
-| `realAirQuality` | 真实空气质量 | [ADR 0227](../adr/0227-real-air-quality.md) |
-| `realDaylight` | 真实日照 | [ADR 0228](../adr/0228-real-daylight.md) |
-| `realCalendar` | 法定节假日与调休 | [ADR 0231](../adr/0231-real-public-calendar.md) |
+| `realWorld` | 真实世界（天气、空气、日照、法定日历）（并进来的：`realWeather` 真实天气（[ADR 0048](../adr/0048-real-weather.md)）；`realAirQuality` 真实空气质量（[ADR 0227](../adr/0227-real-air-quality.md)）；`realDaylight` 真实日照（[ADR 0228](../adr/0228-real-daylight.md)）；`realCalendar` 法定节假日与调休（[ADR 0231](../adr/0231-real-public-calendar.md)）） | [ADR 0048](../adr/0048-real-weather.md) |
 | `everydayLife` | 日常小事 / 小测 | [ADR 0106](../adr/0106-everyday-life.md) |
 | `worldDrama` | 日子里的小起伏（一天之内的难过 / 烦 / 高兴） | [ADR 0211](../adr/0211-world-drama.md) |
 | `worldThreads` | 她那边的事有后续（拌嘴第二天和好、淋雨第二天嗓子发紧……一天最多一条；闹心的事有冷却期；要日常小事和小起伏） | [ADR 0216](../adr/0216-world-threads.md) |

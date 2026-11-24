@@ -70,6 +70,13 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
     follows('autonomousLife', BOOL, ['projectChoice', 'lifeInPrompt']),
     // 5. 看图（16）：看懂他发的表情包跟着「听语音、看图」。新装默认从「不读表情包」变成读（仍要配看图模型才真读，app.ts 的 stickerReader）
     follows('media', BOOL, ['readStickers']),
+    // 6. 真实世界（4）：新起的名字 realWorld，四路真实数据一起开关；旧键里 realWeather 当总开关（它原来默认开，另三个默认关：
+    //    新装默认从「只有天气」变成四路都开，线上四个都开着不受影响）
+    {
+        key: 'realWorld', values: BOOL, legacy: ['realWeather', 'realAirQuality', 'realDaylight', 'realCalendar'],
+        fromLegacy: input => input.realWeather === true,
+        toLegacy: value => ({ realWeather: value, realAirQuality: value, realDaylight: value, realCalendar: value }),
+    },
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */

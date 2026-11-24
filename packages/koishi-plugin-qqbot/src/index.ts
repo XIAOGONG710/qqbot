@@ -266,9 +266,14 @@ export interface Config {
     qqAllowGroups: number[];
     qqDangerous: boolean;
     feedbackCommands: boolean;
-    realWeather: boolean;
+    realWorld: boolean;
+    /** 已并进 realWorld（开关合并），koishi.yml 里还写着才有 */
+    realWeather?: boolean;
+    /** 已并进 realWorld（开关合并），koishi.yml 里还写着才有 */
     realAirQuality?: boolean;
+    /** 已并进 realWorld（开关合并），koishi.yml 里还写着才有 */
     realDaylight?: boolean;
+    /** 已并进 realWorld（开关合并），koishi.yml 里还写着才有 */
     realCalendar?: boolean;
     festivals: FestivalMode;
     typingStatus: boolean;
@@ -477,10 +482,11 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         grievance: toggle('grievance'),
         npcAsks: toggle('npcAsks'),
         feedbackCommands: toggle('feedbackCommands'),
-        realWeather: toggle('realWeather'),
-        realAirQuality: toggle('realAirQuality'),
-        realDaylight: toggle('realDaylight'),
-        realCalendar: toggle('realCalendar'),
+        realWorld: toggle('realWorld'),
+        realWeather: legacy(),
+        realAirQuality: legacy(),
+        realDaylight: legacy(),
+        realCalendar: legacy(),
         festivals: choice('festivals'),
         typingStatus: toggle('typingStatus'),
         selfRecall: toggle('selfRecall'),

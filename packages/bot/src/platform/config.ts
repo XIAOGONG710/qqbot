@@ -59,6 +59,7 @@ export const DEFAULTS = {
     pokeBack: false,
     pokeOut: false,
     feedbackCommands: false,
+    realWorld: true,
     realWeather: true,
     realAirQuality: false,
     realDaylight: false,
@@ -632,12 +633,15 @@ export interface AppConfig {
     /** 她没想完的问题（ADR 0207）：默认关；要名单里有男朋友档。他问的、她答「不知道」的，夜里（22 点以后）用 deliberateModel 让她自己想，想出什么写什么；存在 open-questions.json（她的私人空间，没有命令念给他）；他再问到同一件事才放进提示词，不说怎么用 */
     openQuestions?: boolean;
     /** 真实天气（ADR 0048）：她的世界里的天气按学校那边（在学校）/ 老家（放假在家）实际的，每 30 分钟从 Open-Meteo 取一次；取不到照旧按日期生成。默认是 */
+    /** 真实世界（开关合并，设计第二节 4）：天气、空气质量、日照、法定日历四路真实数据，取不到照旧按日期生成。默认开 */
+    realWorld?: boolean;
+    /** @deprecated 已并进 realWorld（开关合并）：输入只有旧键时原样、否则由 realWorld 派生；新代码读 realWorld */
     realWeather: boolean;
-    /** 真实空气质量（ADR 0227）：只取当前已观测小时，失败或过期不写进世界；默认关。 */
+    /** @deprecated 已并进 realWorld（开关合并）：输入只有旧键时原样、否则由 realWorld 派生；新代码读 realWorld。真实空气质量（ADR 0227）：只取当前已观测小时，失败或过期不写进世界；默认关。 */
     realAirQuality?: boolean;
-    /** 真实日照（ADR 0228）：只取公开日出 / 日落，失败或过期不写进世界；默认关。 */
+    /** @deprecated 已并进 realWorld（开关合并）：输入只有旧键时原样、否则由 realWorld 派生；新代码读 realWorld。真实日照（ADR 0228）：只取公开日出 / 日落，失败或过期不写进世界；默认关。 */
     realDaylight?: boolean;
-    /** 现实法定日历（ADR 0231）：只读节假日 / 调休工作日，失败或过期不写进世界；默认关。 */
+    /** @deprecated 已并进 realWorld（开关合并）：输入只有旧键时原样、否则由 realWorld 派生；新代码读 realWorld。现实法定日历（ADR 0231）：只读节假日 / 调休工作日，失败或过期不写进世界；默认关。 */
     realCalendar?: boolean;
     /**
      * 听语音、看图上的字（ADR 0052）：他发的语音用 QQ 自带的语音转文字、照片和截图用 NapCat 的 OCR 取上面的字，写进聊天记录；
@@ -903,6 +907,7 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         pokeBack: bool(file, 'pokeBack', '', DEFAULTS.pokeBack),
         pokeOut: bool(file, 'pokeOut', '', DEFAULTS.pokeOut),
         feedbackCommands: bool(file, 'feedbackCommands', '', DEFAULTS.feedbackCommands),
+        realWorld: bool(file, 'realWorld', '', DEFAULTS.realWorld),
         realWeather: bool(file, 'realWeather', '', DEFAULTS.realWeather),
         realAirQuality: bool(file, 'realAirQuality', '', DEFAULTS.realAirQuality),
         realDaylight: bool(file, 'realDaylight', '', DEFAULTS.realDaylight),
