@@ -176,8 +176,10 @@ export interface Config {
     speechCheck: boolean;
     herDays: boolean;
     autonomousLife: boolean;
-    projectChoice: boolean;
-    lifeInPrompt: boolean;
+    /** 已并进 autonomousLife（开关合并），koishi.yml 里还写着才有 */
+    projectChoice?: boolean;
+    /** 已并进 autonomousLife（开关合并），koishi.yml 里还写着才有 */
+    lifeInPrompt?: boolean;
     grievance: boolean;
     npcAsks: boolean;
     pokes: boolean;
@@ -374,8 +376,8 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         speechCheck: toggle('speechCheck'),
         herDays: toggle('herDays'),
         autonomousLife: toggle('autonomousLife'),
-        projectChoice: toggle('projectChoice'),
-        lifeInPrompt: toggle('lifeInPrompt'),
+        projectChoice: legacy(),
+        lifeInPrompt: legacy(),
         pokes: toggle('pokes'),
         recalls: toggle('recalls'),
         bilibili: choice('bilibili'),

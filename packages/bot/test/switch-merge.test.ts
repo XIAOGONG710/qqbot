@@ -156,6 +156,7 @@ describe('真表：已经并了的组', () => {
         qzone: 'on',
         factCheck: 'fix',
         qqControl: 'on',
+        autonomousLife: true,
     };
     const env = { QQBOT_LLM_API_KEY: 'k' };
     const base = {

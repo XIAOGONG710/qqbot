@@ -258,7 +258,8 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.equal(config.moody, DEFAULTS.moody);
         assert.equal(config.speechCheck, DEFAULTS.speechCheck);
         assert.equal(config.herDays, DEFAULTS.herDays);
-        assert.equal(config.projectChoice, DEFAULTS.projectChoice);
+        assert.equal(config.autonomousLife, DEFAULTS.autonomousLife);
+        assert.equal(config.projectChoice, undefined, '已并进 autonomousLife 的旧键在表单上没有默认值');
         assert.equal(config.proactive, DEFAULTS.proactive);
         assert.equal(config.aiPhotos, DEFAULTS.aiPhotos);
         assert.equal(config.dataDir, DEFAULTS.dataDir);

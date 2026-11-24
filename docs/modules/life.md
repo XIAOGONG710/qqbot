@@ -86,9 +86,7 @@
 | `selfPortrait` | 她带着往前走的「我现在的样子」（每晚自己整份重写，每次聊天都带着） | [ADR 0340](../adr/0340-carry-a-self-forward.md) |
 | `herDays` | 每日心情、在读的书 | [ADR 0015](../adr/0015-her-own-days.md) |
 | `schedule` | 作息 | [ADR 0007](../adr/0007-schedule-and-reply-timing.md) |
-| `autonomousLife` | 没人聊天时她一件件过日子 | [ADR 0040](../adr/0040-rule-life-selector.md) |
-| `projectChoice` | 作业接管空闲 | [ADR 0056](../adr/0056-project-portfolio.md) |
-| `lifeInPrompt` | 生活账进提示词 | [ADR 0045](../adr/0045-continuous-needs.md) |
+| `autonomousLife` | 没人聊天时她一件件过日子（并进来的：`projectChoice` 作业接管空闲（[ADR 0056](../adr/0056-project-portfolio.md)）；`lifeInPrompt` 生活账进提示词（[ADR 0045](../adr/0045-continuous-needs.md)）） | [ADR 0040](../adr/0040-rule-life-selector.md) |
 | `realWeather` | 真实天气 | [ADR 0048](../adr/0048-real-weather.md) |
 | `realAirQuality` | 真实空气质量 | [ADR 0227](../adr/0227-real-air-quality.md) |
 | `realDaylight` | 真实日照 | [ADR 0228](../adr/0228-real-daylight.md) |

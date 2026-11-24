@@ -32,6 +32,7 @@ export interface SwitchMerge {
 }
 
 const PRESENCE = ['off', 'dryRun', 'on'] as const;
+const BOOL = [false, true] as const;
 
 /** 新键合并前就是开关、旧键各自等于它（「跟着它走」）：旧 → 新取新键自己的值，新 → 旧每个旧键都是这个值 */
 function follows(key: string, values: readonly unknown[], legacy: readonly string[], extra: Partial<SwitchMerge> = {}): SwitchMerge {
@@ -65,6 +66,8 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
         toLegacy: value => ({ qqFriendGate: value === 'on' ? 'allow' : 'off' }),
         ignorable: (_, input) => input.qqControl !== 'on',
     },
+    // 4. 生活账（12）：作业接管空闲、生活账进提示词都要 autonomousLife 的账，跟着它
+    follows('autonomousLife', BOOL, ['projectChoice', 'lifeInPrompt']),
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */
