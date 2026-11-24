@@ -11,7 +11,7 @@
 import type { CandidatePlan, Module } from '../interpreter/interpreter.ts';
 import { describePick, pickBest, PICKED_INTENTS } from '../language/candidates.ts';
 import { ODD_BODY_WORDS, STILTED_WORDS } from '../language/expression.ts';
-import { speechContext, TAIL_CAPS } from '../language/speech-check.ts';
+import { speechContext } from '../language/speech-check.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import { heardSinceReply } from '../memory/long-term.ts';
 
@@ -20,8 +20,6 @@ export interface CandidatesModuleOptions {
     count: number;
     /** 开着说话的毛病检查（配置 speechCheck）时，候选也按它扣分；要读存下来的聊天记录 */
     speechCheck?: boolean;
-    /** 句尾语气词封顶（配置 tailCap），跟着 speechCheck */
-    tailCap?: boolean;
     history: (qq: number) => readonly StoredMessage[];
 }
 
@@ -36,7 +34,7 @@ export function candidatesModule(options: CandidatesModuleOptions): Module {
                 kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(turn.history), banned: [...(turn.card?.banned ?? []), ...ODD_BODY_WORDS, ...STILTED_WORDS],
                 // 她自己生活里的东西：猫、相机、在读的书、手上的爱好（DSH 诊断 1.2、ADR 0036 的四类）
                 own: [...(facts.world?.cat ? [facts.world.cat.name] : []), '相机', ...(turn.card?.books ?? []).map(book => book.title), '追剧', '调色', '构图', '修片', '摄影区'],
-                ...(options.speechCheck ? { speech: speechContext(options.history(turn.contact.qq), options.tailCap ? { tailCaps: TAIL_CAPS } : {}) } : {}),
+                ...(options.speechCheck ? { speech: speechContext(options.history(turn.contact.qq)) } : {}),
             };
             return [];
         },

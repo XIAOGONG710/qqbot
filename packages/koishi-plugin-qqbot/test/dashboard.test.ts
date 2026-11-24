@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { DEFAULTS } from '../../bot/src/platform/config.ts';
 import { FEATURE_GROUPS, FEATURES, featureStatuses, NOT_SWITCHES } from '../../bot/src/platform/features.ts';
-import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, QZONE_PEEK, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
+import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, QZONE_PEEK, SIGNATURE, SILENCE_NOTICE, STICKERS, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
 // @ts-expect-error 手写的 ES 模块，没有类型
 import { aiPhotoRuntimeRows, attentionDetail, capabilityBundles, capabilityTotals, dashboardTime, dshStatusLine, extrasRows, featureGroups, featureLabel, featureTitle, featureTotals, filterContacts, GROUP_ORDER, lifeMoments, lifePulse, lifeTrend, memoryStatusDetail, mobileCompanionStatusDetail, overviewCounts, realWorldStatus, responderStatusText, timeZoneLine } from '../client/dashboard.js';
 
@@ -39,7 +39,7 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
     });
 
     test('试点开关的面板标签和说明取自模块，不改变开关状态', () => {
-        for (const def of [SILENCE_NOTICE, TAIL_CAP]) {
+        for (const def of [SILENCE_NOTICE]) {
             for (const on of [false, true]) {
                 const item = featureStatuses({ [def.key]: on }).find(feature => feature.key === def.key)!;
                 assert.equal(item.label, def.label);
@@ -201,9 +201,9 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
     });
 
     test('featureStatuses：bool 看真假；mode 看是不是 off，并把模式带上', () => {
-        const status = featureStatuses({ shape: true, photos: false, proactive: 'dryRun', stickers: 'off', festivals: 'greet' });
+        const status = featureStatuses({ jokes: true, photos: false, proactive: 'dryRun', stickers: 'off', festivals: 'greet' });
         const get = (key: string) => status.find(s => s.key === key)!;
-        assert.equal(get('shape').on, true);
+        assert.equal(get('jokes').on, true);
         assert.equal(get('photos').on, false);
         assert.deepEqual([get('proactive').on, get('proactive').mode], [true, 'dryRun']);
         assert.equal(get('stickers').on, false);
@@ -253,7 +253,7 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
             ],
             features: [
                 { key: 'dsh', label: '外部顾问（按需咨询）', group: '工具', on: true },
-                { key: 'shape', label: '形状控制（每条多长、几条）', group: '说话', on: false },
+                { key: 'jokes', label: '小梗回头提', group: '说话', on: false },
             ],
             externalDrafts: { pending: 2, approved: 3, publishing: 1, failed: 4 },
             extras: { aiPhotoDrafts: { total: 5, pending: 2, approved: 2, rejected: 1 } },
@@ -274,7 +274,7 @@ describe('功能总表：config 里的每个开关都在表里（新加一个开
 });
 
 describe('客户端的纯函数', () => {
-    const features = featureStatuses({ shape: true, jokes: true, photos: true, proactive: 'on', stickers: 'send' });
+    const features = featureStatuses({ rhythm: true, jokes: true, photos: true, proactive: 'on', stickers: 'send' });
 
     test('分组：照模块顺序；每组里开着的排前面；统计开了几个', () => {
         const groups = featureGroups(features);
@@ -293,7 +293,7 @@ describe('客户端的纯函数', () => {
 
     test('能力包把技术开关压成六个体验入口，但不制造新的总开关', () => {
         const source = featureStatuses({
-            shape: true, speechCheck: true,
+            jokes: true, speechCheck: true,
             herDays: true, autonomousLife: true, proactive: 'on',
             media: true, bilibili: 'dryRun', qzone: 'off',
             crossRecent: true, dsh: { enabled: true },

@@ -35,7 +35,7 @@ async function typingFixture(mode: 'success' | 'failure' | 'reentrant' | 'throw'
     let app: App | undefined, calls = 0, settledAction = false, leaseInside: boolean | undefined, stopInside: Promise<void> | undefined;
     let now = Date.parse('2026-11-05T12:00:00+08:00');
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
-        contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], typingStatus: true, jokes: false, idioms: false,
+        contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], typingStatus: true, jokes: false,
         schedule: true, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
     globalThis.fetch = async () => { throw new Error('unexpected synthetic network'); };
     const cleanup = async () => { held.resolve(); await app?.stop(); await settle(); globalThis.fetch = oldFetch; assert.equal(dirname(resolve(root)), resolve(tmpdir())); assert.ok(basename(root).startsWith('qqbot-app-typing-owner-')); rmSync(root, { recursive: true, force: true }); };

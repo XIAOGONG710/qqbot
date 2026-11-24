@@ -87,8 +87,8 @@ export function liveSwitches(text: string, source = ''): LiveSwitches {
 const boyfriend: Contact = { qq: 10001, name: '阿明', tier: 'boyfriend', persona: '她的男朋友，同校不同专业', knowsBot: true };
 const classmate: Contact = { qq: 10002, name: '小周', tier: 'classmate' };
 
-/** 借来种子的基线场景：合成的日记、灵魂目录、她自己记下的东西、小梗、口头习惯、热梗、看过的视频、范例、心境来由、关系阶段 */
-const SEEDED_FROM = ['soul', 'her-notes', 'jokes', 'idioms', 'memes', 'watched', 'exemplars', 'feelings-sources', 'closeness'] as const;
+/** 借来种子的基线场景：合成的日记、灵魂目录、她自己记下的东西、小梗、热梗、看过的视频、心境来由、关系阶段（口头习惯、真人例子的场景 11-24 随开关删了） */
+const SEEDED_FROM = ['soul', 'her-notes', 'jokes', 'memes', 'watched', 'feelings-sources', 'closeness'] as const;
 
 function rotating(lines: readonly string[]): Replier {
     let chat = 0;

@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { describeShape } from '../src/language/shape.ts';
-import { applyTexture } from '../src/language/texture.ts';
 import { endsHanging, findUnfinished, finishReply, repairUnfinished } from '../src/language/unfinished.ts';
 
 const kinds = (reply: string) => findUnfinished(reply).map(item => `${item.kind}:${reply.split('\n').filter(Boolean)[item.index]}`);
@@ -96,29 +94,5 @@ describe('话说到一半就停了：出口（重写一次，不行再处理）'
         assert.ok(logs.some(line => line.includes('重写失败（断网）')));
         assert.equal(await finishReply(bad, deps(async () => '\n')), '想啊，都想得有点睡不着了，不过你别得意');
         assert.equal(await finishReply('这话说得', deps(async () => '这话说得')), '这话说得');
-    });
-});
-
-describe('话说到一半就停了：另外两处会造成它的地方', () => {
-    test('提示词里不再说「半句也行」「不用把话说圆」「留半句」，换成「把意思说完」；一个词的反应（micro）不受影响', () => {
-        const all = [
-            describeShape({ kind: 'short', cap: 8, maxBubbles: 2 }),
-            describeShape({ kind: 'medium', cap: 14, maxBubbles: 2 }),
-            describeShape({ kind: 'long', cap: 24, maxBubbles: 2, parts: 2 }),
-            describeShape({ kind: 'short', cap: 8, maxBubbles: 1, drawl: true }),
-        ].join('\n');
-        assert.doesNotMatch(all, /半句也行|不用把话说圆|不用凑成完整|留半句/);
-        assert.match(describeShape({ kind: 'medium', cap: 14, maxBubbles: 2 }), /把意思说完/);
-        assert.match(describeShape({ kind: 'long', cap: 24, maxBubbles: 2, parts: 2 }), /最后一条要有自己的内容/);
-        assert.match(describeShape({ kind: 'micro', cap: 4, maxBubbles: 1 }), /单个词都可以/);
-    });
-
-    test('质感不把停在连词 / 假设词上的「……」去掉（去掉就成了话说到一半）；别的省略号照旧', () => {
-        for (let i = 0; i < 30; i++) {
-            const kept = applyTexture(['要是你不来……'], { seed: `s${i}`, serious: false, recentFaces: 9 });
-            assert.deepEqual(kept.parts, ['要是你不来……'], `seed s${i}`);
-        }
-        const stripped = Array.from({ length: 30 }, (_, i) => applyTexture(['我今天不想动了……'], { seed: `s${i}`, serious: false, recentFaces: 9 }).parts[0]);
-        assert.ok(stripped.some(part => part === '我今天不想动了'), '别的省略号还是会去掉');
     });
 });

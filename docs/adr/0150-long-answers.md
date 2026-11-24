@@ -1,6 +1,7 @@
 # ADR 0150：被认真问想法 / 原因时说长一点（shapeLong）
 
 - 状态：**已上线 2026-10-25 21:59**（`bb3f77e`；`koishi.yml` 里 `shapeLong: true`，要 `shape` 开着；回退：删掉那一行并重启）
+- 2026-11-24：fewerRules 转正（用户拍板，[减法单子 二.1](../plans/2026-11-24-subtraction-round.md)），`shapeLong`连开关和代码一起删了；线上 fewerRules 开着时它本来就不生效。
 - 日期：2026-10-25
 - 关联：[ADR 0091](0091-reply-shape.md)（形状控制）、[ADR 0096](0096-split-and-share.md)（拆成几条）、[ADR 0149](0149-answer-then-continue.md)（被问时答完再接着说）、[ADR 0151](0151-deliberate.md)（深思）
 - 用户提出：2026-10-25「她的消息一直都太短，不会有长回复」

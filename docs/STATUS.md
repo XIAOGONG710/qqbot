@@ -38,7 +38,7 @@
 
 最新快照 **`exchange/live/koishi-2026-11-20-1855.yaml`**（2026-11-20 18:55 导出，DSH 那台）：`true` 的布尔开关 **88 个**，档位开关 `'on'` 的 **14 个**。下面按大类归一下（归类是我做的，权威是快照本身）：
 
-- 说话与回复形态：`shape` `shapeAgenda` `shapeAsk` `shapeFeel` `shapeFiller` `shapeLong` `shapeSplit` `exemplars` `speechNotes` `idioms` `texture` `jokes` `quoteReply` `lagTail` `fewerRules` `deliberate` `depthRouting` `rhythm` `interruptions` `comeBack` `menu` `typingStatus` `readReceipts` `silenceNotice`
+- 说话与回复形态：`speechNotes` `jokes` `quoteReply` `lagTail` `fewerRules` `deliberate` `depthRouting` `rhythm` `interruptions` `comeBack` `menu` `typingStatus` `readReceipts` `silenceNotice`
 - 心里、情绪、关系：`innerLife` `herFeelings` `herNo` `afterNo` `herGuesses` `hisReactions` `grievance` `jealousy` `relationship` `together` `feelingReview` `chatReview` `tastes` `curious` `openQuestions`
 - 记忆与自我：`selfDirectedMemory` `memoryFeelings` `memoryReconcile` `memoryAudit` `identityLedger` `factHim` `diaryInsights` `diaryLookback` `timeline` `selfPortrait` `selfPursuits` `pursuits` `projectChoice` `crossRecent`
 - 生活与世界：`schedule` `autonomousLife` `lifeInPrompt` `everydayLife` `worldDrama` `worldThreads` `realNights` `realAirQuality` `realCalendar` `realDaylight` `dormancy` `npcAsks` `acquaintances` `smallNews` `readingTakes` `weeklyReport`
@@ -46,7 +46,7 @@
 - B 站与表情：`bilibiliAccount` `biliStickers` `watching` `memes` `readStickers`
 - 档位 `'on'`：`proactive` `groupChat` `qqControl` `deviceControl` `signature` `qzone` `qzoneBrowse` `qzonePeek` `qzoneStrangers` `bilibili` `bilibiliDm` `bilibiliComment` `bilibiliReplies` `biliFeed`
 - 其他档位：`stickers: send`、`festivals: greet`、`factCheck: fix`、`webLookup: auto`、`groupOwn: dryRun`、`qqFriendGate: allow`；`dsh` / `memory` / `vision` / `mobileCompanion` 开着；外部平台（贴吧、抖音、小红书）为 `authorized`。
-- 快照里显式关着：`tailCap`。（原来也在这里的 `shortReplies` `reactions` `foodPhotos` `realTransport` `unlistedFriends`，连同没写的 `hisHours` `photoShares` 和开着却不起作用的 `ownerPeek`，11-24 开关和代码一起删了，减法单子 二.2–二.3。）
+- 快照里显式关着的都删了：`shortReplies` `tailCap` `reactions` `foodPhotos` `realTransport` `unlistedFriends`，连同没写的 `hisHours` `photoShares` 和开着却不起作用的 `ownerPeek`（11-24，减法单子 二.2–二.3）；fewerRules 转正后被它架空、快照里开着的形状族 7 个、`texture` `idioms` `exemplars` 也连代码删了（二.1）。
 
 **快照之后打开的**（快照里还没有）：
 - `selfExport`、`selfReceipts`（11-22 12:04 用户点头，ADR 0347 第 2 层）。

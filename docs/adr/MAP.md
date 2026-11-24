@@ -97,15 +97,15 @@
 | [0088](0088-her-temper-with-him.md) | 她对他的脾气——先傲娇、再软；被冷落会生气（男朋友档） | 草稿，未上线（分支 `claude/her-temper`）。卡片改动会热加载，上线前要用户点头。 |  |
 | [0089](0089-bilibili-account.md) | 她有自己的 B 站号——搜视频、读字幕、在评论区 @ 他 | 已实现，未合并、未上线、未开启（分支 `claude/bilibili-account`；配置 `bilibiliAcc… | `bilibiliAccount` 开、`bilibiliDm` 开 |
 | [0090](0090-bilibili-replies.md) | 她回复评论区里别人回她的话（先回他，其次挑有价值的，AI 相关的一律不回） | 已实现，试运行为先，未合并、未上线、未开启（分支 `claude/bilibili-account`；配置 `bilib… | `bilibiliReplies` 开 |
-| [0091](0091-reply-shape.md) | 形状控制——按他说的长短定她每条最多几个字；加上一把「像不像真人」的尺子 | 已实现，未合并、未上线、未开启（分支 `claude/bilibili-account`；配置 `shape`，默认 `… | `shape` 关（被 fewerRules 关掉） |
+| [0091](0091-reply-shape.md) | 形状控制——按他说的长短定她每条最多几个字；加上一把「像不像真人」的尺子 | 已实现，未合并、未上线、未开启（分支 `claude/bilibili-account`；配置 `shape`，默认 `… |  |
 | [0092](0092-bilibili-topic-comments.md) | 评论的话题模式——前期专评 AI 视频和 DSH 插件视频 | 已实现，未合并、未上线、未开启（分支 `claude/bilibili-topics`，接在 `claude/bilib… | `bilibiliComment` 开 |
 | [0093](0093-blind-judge.md) | 让模型当鉴别员做盲评——量“内容”像不像真人 | 已实现（工具 `ops/blind-judge-cli.ts`，不进运行时）；“顺着说”那句提示词的新措辞随这次上线 |  |
-| [0094](0094-her-own-agenda.md) | 答完他的话之后，偶尔带一件自己的事（配置 `shapeAgenda`，默认关） | 已实现；2026-10-22 随 bili9 上线（`shapeAgenda: true`，要 `shape` 开着）；… | `shapeAgenda` 关（被 fewerRules 关掉） |
-| [0095](0095-filler-turns.md) | 偶尔只回一句不带内容的话，他拖音时跟着拖（配置 `shapeFiller`，默认关） | 已实现；2026-10-22 随 bili9 上线（`shapeFiller: true`，要 `shape` 开着）；… | `shapeFiller` 关（被 fewerRules 关掉） |
-| [0096](0096-split-and-share.md) | 条数当目标（`shapeSplit`）和「随口说件自己的事」（主动时机 `share`），都默认关 | 已实现；2026-10-22 随 bili9 上线（用户 10-22：「我希望她能主动找我进行聊天，而不是被动的接受」）… | `shapeSplit` 关（被 fewerRules 关掉） |
+| [0094](0094-her-own-agenda.md) | 答完他的话之后，偶尔带一件自己的事（配置 `shapeAgenda`，默认关） | 已实现；2026-10-22 随 bili9 上线（`shapeAgenda: true`，要 `shape` 开着）；… |  |
+| [0095](0095-filler-turns.md) | 偶尔只回一句不带内容的话，他拖音时跟着拖（配置 `shapeFiller`，默认关） | 已实现；2026-10-22 随 bili9 上线（`shapeFiller: true`，要 `shape` 开着）；… |  |
+| [0096](0096-split-and-share.md) | 条数当目标（`shapeSplit`）和「随口说件自己的事」（主动时机 `share`），都默认关 | 已实现；2026-10-22 随 bili9 上线（用户 10-22：「我希望她能主动找我进行聊天，而不是被动的接受」）… |  |
 | [0097](0097-ai-smell-night-test.md) | 深夜测试对话里量出来的几处“AI 味”——被指出时不自证、很抽象的问题不答成金句、被追问不原地打转、反复说的字词提醒她换 | 已实现，已上线（2026-10-22）；没有开关，和 ADR 0091 十月二十一日那次校准同一类（意图行 + 一行提示… |  |
 | [0098](0098-already-told-and-topic-pick.md) | 继续去 AI 味——说过的事不再自己提、带事的轮次抽“说哪一件”、拖音/省略、图片表情放行 | 已实现，已上线（2026-10-22；没有新开关：一行提示 / 挂在已经开着的 `shapeAgenda`、`shape… |  |
-| [0099](0099-too-smooth.md) | 「太顺」——不把他的话处理完整、不马上让步、偶尔只发表情（配置 `shapeFeel`，默认关） | 已实现，未上线（2026-10-22；配置 `shapeFeel`，要 `shape` 开着；默认关）。上线 = `ko… | `shapeFeel` 关（被 fewerRules 关掉） |
+| [0099](0099-too-smooth.md) | 「太顺」——不把他的话处理完整、不马上让步、偶尔只发表情（配置 `shapeFeel`，默认关） | 已实现，未上线（2026-10-22；配置 `shapeFeel`，要 `shape` 开着；默认关）。上线 = `ko… |  |
 | [0100](0100-reach-when-unanswered.md) | 他没回也继续——她自己想要不要再找他、催他一下（配置 `proactiveReach`，默认关） | 已实现，未上线（2026-10-22；配置 `proactiveReach`，要主动消息开着；默认关）。上线 = `ko… | `proactiveReach` 开 |
 | [0101](0101-inner-life.md) | 内心——她一个人的时候在想什么（配置 `innerLife`，默认关） | 已实现，未上线（2026-10-22；配置 `innerLife`，要主动消息开着；默认关）。上线 = `koishi.… | `innerLife` 开 |
 | [0102](0102-feelings.md) | 心境——她会开心、难过、担心，也会忍不住哭（配置 `herFeelings`，默认关） | 已实现，未上线（2026-10-22；配置 `herFeelings`，只给男朋友档；默认关）。上线 = `koishi… | `herFeelings` 开 |
@@ -137,24 +137,24 @@
 | [0128](0128-food-photos.md) | 吃的照片（配置 `foodPhotos`，默认关，要 `photos` 和 `menu` 开着） | 已删（2026-11-24，用户拍板 [减法单子 二.2](../plans/2026-11-24-subtractio… |  |
 | [0129](0129-memes.md) | 她知道网上现在流行的梗（配置 `memes`，默认关；要 `bilibiliAccount` 开着才会自己去学） | 已实现，未上线（2026-10-23；配置 `memes`；默认关）。上线 = `koishi.yml` 里加 `mem… | `memes` 开 |
 | [0130](0130-watching.md) | 她自己在 B 站看东西、形成看法（配置 `watching`，默认关；要 `bilibiliAccount`，想法变成念头要 `innerLife`） | 已实现，未上线（2026-10-23；配置 `watching`；默认关）。上线 = `koishi.yml` 里加 `… | `watching` 开 |
-| [0131](0131-texture.md) | 说话的质感（配置 `texture`，默认关） | 已实现，未上线（2026-10-23；配置 `texture`；默认关）。上线 = `koishi.yml` 里加 `t… | `texture` 关（被 fewerRules 关掉） |
+| [0131](0131-texture.md) | 说话的质感（配置 `texture`，默认关） | 已实现，未上线（2026-10-23；配置 `texture`；默认关）。上线 = `koishi.yml` 里加 `t… |  |
 | [0132](0132-bili-stickers.md) | 表情包自己在 B 站找（配置 `biliStickers`，默认关；要 `stickers` 和 `bilibiliAccount` 开着） | 已实现，未上线（2026-10-23；配置 `biliStickers`；默认关）。上线 = `koishi.yml` … | `biliStickers` 开 |
 | [0133](0133-proactive-lead.md) | 主动发的话要有由头（没有开关，同 ADR 0108） | 已上线（2026-10-23 22:16，用户说「做」；线上 `bee3768`；没有配置变化）。回滚 = `git r… |  |
 | [0134](0134-split-follows.md) | 分成几条发时，后面几条顺着前一条说；「～」别连着加（没有开关，同 ADR 0108 / 0133） | 已上线（2026-10-23，用户说「上线」；只换代码重启，没有配置变化）。回滚 = `git reset --hard… |  |
 | [0135](0135-proactive-openers.md) | 主动消息的开头别老是同一种、不照搬套话、不编事实里没有的小动作（没有开关，同 ADR 0108 / 0133） | 已上线（2026-10-24，用户说「上线」；只换代码重启，没有配置变化）。回滚 = `git reset --hard… |  |
 | [0136](0136-quote-reply.md) | 引用回复（配置 `quoteReply`，默认关） | 已实现，未上线（2026-10-24）。上线 = 换代码重启 + `koishi.yml` 里加 `quoteReply… | `quoteReply` 开 |
 | [0137](0137-fact-check.md) | 逐条事实检查（配置 `factCheck`：off / log / fix，默认 off） | 已实现，未上线（2026-10-24）。上线 = 换代码重启 + `koishi.yml` 里加 `factCheck:… | `factCheck` 开 |
-| [0138](0138-idioms.md) | 被他带出来的口头习惯（配置 `idioms`，默认关） | 已实现，未上线（2026-10-24）。上线 = 换代码重启 + `koishi.yml` 里加 `idioms: tr… | `idioms` 开 |
+| [0138](0138-idioms.md) | 被他带出来的口头习惯（配置 `idioms`，默认关） | 已实现，未上线（2026-10-24）。上线 = 换代码重启 + `koishi.yml` 里加 `idioms: tr… |  |
 | [0141](0141-unfinished-lines.md) | 话说到一半就停了——出口检查，提示词不再鼓励「半句」（随 `speechCheck`，没有新开关） | 已上线（2026-10-25 00:38，用户在 AskUserQuestion 里选「现在重启，并上线」；只换代码重启… |  |
 | [0142](0142-qq-account-control.md) | 她对 QQ 账号的控制面（默认关，按后果分档） | 已实现并接进机器人，未上线、未在真 QQ 上验证（分支 `dsh/qq-control`；`qqControl` / `… | `qzoneBrowse` 开、`qqControl` 开、`qqFriendGate` 开 |
 | [0143](0143-qzone-peek.md) | 她看好友的 QQ 空间（用她自己的登录态） | 已被 [ADR 0145](0145-qzone-friends-feed.md) 取代（读法改成她自己的好友动态流；原… |  |
 | [0144](0144-qzone-strangers.md) | 刷陌生人的空间（「空友爱看」那种推荐流），用来观察人怎么说话 | 已实现，未上线、未在真 QQ 上验证（分支 `dsh/qq-control`；开关 `qzoneStrangers`，默… | `qzoneStrangers` 开 |
 | [0145](0145-qzone-friends-feed.md) | 她刷自己的好友动态，看到宝宝发的说说 | 已实现，未上线（分支 `claude/qzone-cookie-shape`，在 `dsh/qq-control` 之上… | `qzonePeek` 开 |
-| [0146](0146-human-videos.md) | 从「让 AI 更像人」的视频里学到的——句尾「吧」「呢」封顶；毛刺的度量；做题式写法的对比实验 | B（`tailCap`）已实现，默认关，未上线；C（毛刺度量）已实现（只读工具）；A（做题式写法）是离线实验，结论：温度… | `tailCap` 关 |
+| [0146](0146-human-videos.md) | 从「让 AI 更像人」的视频里学到的——句尾「吧」「呢」封顶；毛刺的度量；做题式写法的对比实验 | B（`tailCap`）已实现，默认关，未上线；C（毛刺度量）已实现（只读工具）；A（做题式写法）是离线实验，结论：温度… |  |
 | [0147](0147-platform-accounts.md) | 平台账号的统一规矩——持久熔断、先读后写、专号专用；不做冒充真人的交友平台 | 熔断器已实现并接进 B 站的真实请求，未上线（没有开关：只在碰到风控信号时才改变行为；B 站账号层现在整体关着）；新平台… |  |
 | [0148](0148-device-control.md) | 她对他的电脑和手机的有限控制——取件模式、分档、他触发的看屏幕 | 已实现，未上线、未在真机上验证（分支 `claude/human-videos`；开关 `deviceControl`，… | `deviceControl` 开 |
-| [0149](0149-answer-then-continue.md) | 被问直接问题时，答完再接着说（shapeAsk） | 已上线 2026-10-25 21:59（`bb3f77e`；`koishi.yml` 里 `shapeAsk: tru… | `shapeAsk` 关（被 fewerRules 关掉） |
-| [0150](0150-long-answers.md) | 被认真问想法 / 原因时说长一点（shapeLong） | 已上线 2026-10-25 21:59（`bb3f77e`；`koishi.yml` 里 `shapeLong: tr… | `shapeLong` 关（被 fewerRules 关掉） |
+| [0149](0149-answer-then-continue.md) | 被问直接问题时，答完再接着说（shapeAsk） | 已上线 2026-10-25 21:59（`bb3f77e`；`koishi.yml` 里 `shapeAsk: tru… |  |
+| [0150](0150-long-answers.md) | 被认真问想法 / 原因时说长一点（shapeLong） | 已上线 2026-10-25 21:59（`bb3f77e`；`koishi.yml` 里 `shapeLong: tr… |  |
 | [0151](0151-deliberate.md) | 认真问她时深思——换更强的模型、不套字数、只留一句「先想清楚」（deliberate） | 已上线 2026-10-25 21:59（`bb3f77e`；`koishi.yml` 里 `deliberate: t… | `deliberate` 开 |
 | [0152](0152-small-thing-why.md) | 小事主动讲的时候，先定下「为什么说」，不许编反转、不许说给他看没有的东西 | 已上线 2026-10-25 21:59（随 `bb3f77e`；改的是 `smallNews`（ADR 0127）那一… |  |
 | [0153](0153-fluff.md) | 消息里的废话——量过、在人设里试了一句话，没做代码 | 调研 + 人设措辞的重放，没有代码改动（人设要用户裁决，措辞待批） |  |
@@ -184,7 +184,7 @@
 | [0181](0181-she-reads-the-page.md) | 她查东西的时候，读完再摘 | 已实施 |  |
 | [0182](0182-she-decides-her-day.md) | 她自己决定今天干什么 | 已实施 |  |
 | [0189](0189-she-decides-to-reach-out.md) | 要不要主动找他，她自己决定 | 已实施 |  |
-| [0190](0190-learn-from-real-chat.md) | 让她从真人聊天里自己学怎么说话（草案 + 第一个实验） | 实验已做（只在模拟器里，线上没有任何改动）；学习机制本身还没建，等用户定语料来源 | `exemplars` 开 |
+| [0190](0190-learn-from-real-chat.md) | 让她从真人聊天里自己学怎么说话（草案 + 第一个实验） | 实验已做（只在模拟器里，线上没有任何改动）；学习机制本身还没建，等用户定语料来源 |  |
 | [0191](0191-crisis-concern-split.md) | 危机「关切级」拆成 strain 和 concern | strain 档已被 [ADR 0192](0192-drop-strain-tier.md) 删除（用户 10-30：… |  |
 | [0192](0192-drop-strain-tier.md) | 删掉危机的最轻一档（strain） | 已实现（没有新开关）；用户 2026-10-30 的决定，取代 [ADR 0191](0191-crisis-conce… |  |
 | [0193](0193-nightly-speech-notes.md) | 她每晚自己总结说话习惯 | 已实现，默认关（开关 `speechNotes`，要名单里有男朋友档）；没有上线，DSH 机器要拉取后重启 Koishi… | `speechNotes` 开 |

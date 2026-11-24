@@ -35,7 +35,7 @@ const tmp = () => { const dir = mkdtempSync(join(tmpdir(), 'qqbot-manifest-')); 
 
 // 编的段落：三个模块，一个是异步的；同一个槽（people）两个模块都放
 const ALPHA: Piece[] = [{ slot: 'state', text: '[你现在：在宿舍看书]' }, { slot: 'recalled', text: '[你记得：他说过喜欢猫]' }, { slot: 'people', text: '[小周：她室友]' }];
-const BETA: Piece[] = [{ slot: 'time', text: '[现在是晚上九点零三分]' }, { slot: 'relationship', text: '[你们在一起两个月了]' }, { slot: 'shape', text: '[这一轮回两条]' }];
+const BETA: Piece[] = [{ slot: 'time', text: '[现在是晚上九点零三分]' }, { slot: 'relationship', text: '[你们在一起两个月了]' }, { slot: 'length', text: '[这一轮回句短的]' }];
 const GAMMA: Piece[] = [{ slot: 'inner', text: '[你最近心里在想的：想吃火锅]' }, { slot: 'people', text: '[阿杰：他同学]' }];
 const modules = (async = false): Module[] => [
     { id: 'alpha', contribute: () => ALPHA },
@@ -47,7 +47,7 @@ const turnOf = (crisis = false): Turn => ({ contact: { qq: 10001, name: '阿明'
 /** 期望的先后：main → 聊天记录之后（按 AFTER_HISTORY_SLOTS）→「此刻」块（按 NOW_SLOTS） */
 const EXPECTED = [
     ['main', 'relationship', 'beta'], ['history', 'recalled', 'alpha'], ['history', 'people', 'alpha'], ['history', 'people', 'gamma'],
-    ['now', 'time', 'beta'], ['now', 'state', 'alpha'], ['now', 'shape', 'beta'], ['now', 'inner', 'gamma'],
+    ['now', 'time', 'beta'], ['now', 'state', 'alpha'], ['now', 'length', 'beta'], ['now', 'inner', 'gamma'],
 ];
 
 describe('段落带模块（contributeTurn）和真正放进去的段落（placedPieces）', () => {
@@ -71,9 +71,9 @@ describe('段落带模块（contributeTurn）和真正放进去的段落（place
         useFewerRules(true);
         let placed: PlacedPiece[] = [];
         contributeTurn(modules(), turnOf(), list => { placed = list; });
-        assert.ok(!placed.some(({ piece }) => piece.slot === 'shape'));
+        assert.ok(!placed.some(({ piece }) => piece.slot === 'length'));
         contributeTurn(modules(), turnOf(true), list => { placed = list; });
-        assert.ok(placed.some(({ piece }) => piece.slot === 'shape'));
+        assert.ok(placed.some(({ piece }) => piece.slot === 'length'));
         assert.deepEqual(placedPieces([...ALPHA, ...BETA], { crisis: false }).map(({ piece }) => piece.slot), ['relationship', 'recalled', 'people', 'time', 'state']);
     });
 });
@@ -193,11 +193,11 @@ describe('联系人流水线：每次生成交一份清单', () => {
         assert.equal(off.manifests.length, 0);
     });
 
-    // 挑候选（ADR 0041）：同一份提示词生成三个、挑第二个；审稿在 shape 那一步要一次重写（末尾加一条说明）并采用
+    // 挑候选（ADR 0041）：同一份提示词生成三个、挑第二个；审稿在 pull 那一步要一次重写（末尾加一条说明）并采用
     const NOTE = '[合成的重写说明：再短一点，别用感叹号]';
     const pickAndRewrite = (): Module[] => [
         { id: 'pick', candidates: () => ({ count: 3, choose: () => 1 }) },
-        { id: 'rewriter', reviewAt: { shape: async (_text, _turn, ctx) => { const again = await ctx.regenerate(NOTE); ctx.accept(); return again; } } },
+        { id: 'rewriter', reviewAt: { pull: async (_text, _turn, ctx) => { const again = await ctx.regenerate(NOTE); ctx.accept(); return again; } } },
     ];
 
     test('挑候选一行 candidate、审稿重写一行 review：没有段落，只有真发给模型的那份消息的条数 / 字数 / sha256', async () => {
@@ -213,7 +213,7 @@ describe('联系人流水线：每次生成交一份清单', () => {
         assert.deepEqual(candidate.messages.list, calls[0]!.map(m => ({ role: m.role, chars: m.content.length, sha256: hash(m.content) })));
         // 审稿重写：哪一步要的、真发出去的那份（多了末尾那条说明）
         assert.deepEqual(review.pieces, []);
-        assert.equal(review.stage, 'shape');
+        assert.equal(review.stage, 'pull');
         assert.equal(review.at, reply.at);
         assert.deepEqual(review.messages.list, calls[3]!.map(m => ({ role: m.role, chars: m.content.length, sha256: hash(m.content) })));
         assert.equal(review.messages.count, prompts[0]!.length + 1);

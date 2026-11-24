@@ -26,22 +26,25 @@ export const fewerRules = (): boolean => on;
 export const RULE_SLOTS: ReadonlySet<Slot> = new Set<Slot>([
     'groundNote', // 「你现在」是底子不是话题、没人问别说
     'pace', // 心情好话多一点、心情差话少一点
-    'length', 'shape', // 这一轮几条、每条几个字
+    'length', // 这一轮回短一点 / 话多一点（每条几个字的形状 shape 随 fewerRules 转正删了，2026-11-24）
     'directAnswer', 'noOverthink', // 正经问先答、别琢磨（人称那句是帮她读懂「我」「你」指谁，10-30 修理解错误加的，留着）
     'reading', // 把这一轮当完整一句理解、别反问「你指哪件」
     'scene', 'opinion', 'askHint', 'routedHint', 'deliberate', // 碰到某类话该怎么接
     'register', 'rating', // 照平时的样子接、评价低就话少一点
     'crutch', 'opener', 'told', // 换个反应、换种开头、说过的别再提
-    'idiom', 'exemplar', // 学他的口头禅、看真人怎么回
     'unsure', // 拿不准就说拿不准（不编已在 FEWER_RULES_BASICS）
     'solveFrame', // 模拟器的对照提示
 ]);
 // 不在这里、另外处理的：意图行（intent-line.ts：危机回合的照放）、「他最后说的是」（reply-basics.ts：她主动找他时那句「那不是刚说的」是时间事实，照放）。
 // 拿不准、先留着的（带着事实或她自己写的）：warm、closeness、meme、speechNote、review、quote；她自己写的「我现在的样子」（portrait）照放。
 
-/** 开着时一并关掉的、只管说话风格的开关：说话的毛病检查（助手腔、算账、重复……）、句尾封顶、质感、形状那一套、挑候选 */
+/**
+ * 开着时一并关掉的、只管说话风格的开关：说话的毛病检查（助手腔、算账、重复……）、挑候选。
+ * 原来还关句尾封顶（tailCap）、质感（texture）、形状那一套（shape 和 6 个分项）——fewerRules 转正后（2026-11-24，减法单子 二.1）
+ * 那几个开关连代码一起删了；口头习惯（idioms）、真人例子（exemplars）的槽本来就在 RULE_SLOTS 里被丢，也一起删了
+ */
 export function relaxStyle<T extends Partial<AppConfig>>(config: T): T {
-    return { ...config, speechCheck: false, tailCap: false, texture: false, shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, shapeSplit: false, shapeAsk: false, shapeLong: false, candidates: 1 };
+    return { ...config, speechCheck: false, candidates: 1 };
 }
 
 /** 角色卡场景世界书里的「场景参考」（类似的话你可能会这样回……只学语气和长短）：是说话的范例，不是事实 */

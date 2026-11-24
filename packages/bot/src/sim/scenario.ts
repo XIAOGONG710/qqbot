@@ -232,14 +232,6 @@ export interface Scenario {
     grievance: boolean;
     /** 默认 false：回复节奏（ADR 0075，配置 rhythm）；模拟器里的虚拟时钟照样走 */
     rhythm: boolean;
-    /** 默认 false：形状控制（ADR 0091，配置 shape）；run.ts 的 --shape 对所有场景打开 */
-    shape: boolean;
-    /** 默认 false：带自己的小事（ADR 0094，配置 shapeAgenda，要 shape 开着）；run.ts 的 --agenda 对所有场景打开 */
-    shapeAgenda: boolean;
-    /** 默认 false：废话（ADR 0095，配置 shapeFiller，要 shape 开着）；run.ts 的 --filler 对所有场景打开 */
-    shapeFiller: boolean;
-    /** 默认 false：情绪轮（ADR 0099，配置 shapeFeel，要 shape 开着）；run.ts 的 --feel 对所有场景打开 */
-    shapeFeel: boolean;
     /** 默认 false：他没回也继续找他、催他一下（ADR 0100，配置 proactiveReach）；要 proactive 开着 */
     proactiveReach: boolean;
     /** 默认 false：约他一起玩（ADR 0107，配置 proactiveInvite）；要 proactive 开着 */
@@ -254,8 +246,6 @@ export interface Scenario {
     afterNo: boolean;
     /** 默认 false：回忆带着当时的感觉（ADR 0218，配置 memoryFeelings）；要 herFeelings；只对男朋友档有效 */
     memoryFeelings: boolean;
-    /** 默认 false：形状对所有轮次都生效（ADR 0220，配置 shapeAll） */
-    shapeAll: boolean;
     /** 默认 false：她没想完的问题（ADR 0207，配置 openQuestions）；只对男朋友档有效。要配 { "ponder": true } 步骤让她夜里想一遍（先 advance 到 22 点以后） */
     openQuestions: boolean;
     /** 默认 false：「我现在的样子」（ADR 0340，配置 selfPortrait）；只对男朋友档有效。读数据目录里的 self-portrait.json（模拟用的，场景要先放好；没有就什么都不放） */
@@ -269,11 +259,7 @@ export interface Scenario {
     pursuitsFile: unknown[];
     /** 日常小事和小测从哪天起才有（YYYY-MM-DD）；不写就从学期开始 */
     everydayFrom?: string;
-    /** 调参用：各种形状轮次的占比（shape.ts 的 ShapeShares）；不写用默认 */
-    shapeShares?: { feel?: number; filler?: number; agenda?: number; plain?: number };
     moments: { id: string; at: string; kind: string; strength: number; cause: string; halfLifeH?: number }[];
-    /** 默认 false：分成几条（ADR 0096，配置 shapeSplit，要 shape 开着）；run.ts 的 --split 对所有场景打开 */
-    shapeSplit: boolean;
     /** 默认 false：闺蜜的约（ADR 0061，配置 npcAsks）：约、迟到、改约、取消进她的一天；要开着 autonomous 才进行动账 */
     npcAsks: boolean;
     /** 默认 off：公共节日（ADR 0076，配置 festivals）：notes 只进时间块，greet 再加主动说 */
@@ -298,14 +284,8 @@ export interface Scenario {
     proactiveAsk: boolean;
     /** 默认 false：被第三方打断（ADR 0115，配置 interruptions） */
     interruptions: boolean;
-    /** 默认 false：说话的质感（ADR 0131，配置 texture） */
-    texture: boolean;
     /** 默认 false：引用回复（ADR 0136，配置 quoteReply） */
     quoteReply: boolean;
-    /** 预置的他的口头习惯（ADR 0138，配置 idioms）：写了才打开；跑场景时不去学，直接用这几个 */
-    idioms?: { phrase: string; kind?: string }[];
-    /** 给她看口头习惯的概率（0–1，不写按 IDIOM_TURN_SHARE）：测试和对比用 */
-    idiomShare?: number;
     /** 默认 off：逐条事实检查（ADR 0137，配置 factCheck）：log 只查只记，fix 查到就重写 */
     factCheck: FactCheckMode;
     /** 引用的概率（0–1，不写按 QUOTE_SHARE）：测试和对比用 */
@@ -335,7 +315,7 @@ export interface Scenario {
     photos?: { kind: 'cat' | 'view' | 'work' | 'food'; caption: string; dish?: string }[];
     /** 允许发图片表情的轮次里抽中发的概率（0–1），不写按线上的 STICKER_TURN_CHANCE；写 1 = 允许的轮次都发（测选哪张用） */
     stickerChance?: number;
-    /** 抽到发表情的轮次里只发表情、不写文字的概率（0–1），不写：shapeFeel 开着（场景里或 --feel）按线上的 STICKER_ONLY_SHARE，否则 0；写 1 = 抽到的轮次都只发表情（ADR 0099） */
+    /** 抽到发表情的轮次里只发表情、不写文字的概率（0–1），不写就是 0（原来 shapeFeel 开着时按 STICKER_ONLY_SHARE，11-24 随形状控制删了）；写 1 = 抽到的轮次都只发表情（ADR 0099） */
     stickerOnlyChance?: number;
     /** 没有明确反应的、允许发表情的轮次里抽到发一个的概率（ADR 0132，配置 biliStickers）；不写就没有这条路 */
     stickerUncued?: number;
@@ -428,10 +408,6 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         lifeInPrompt: s.lifeInPrompt === true,
         grievance: s.grievance === true,
         rhythm: s.rhythm === true,
-        shape: s.shape === true,
-        shapeAgenda: s.shapeAgenda === true,
-        shapeFiller: s.shapeFiller === true,
-        shapeFeel: s.shapeFeel === true,
         proactiveReach: s.proactiveReach === true,
         proactiveInvite: s.proactiveInvite === true,
         together: s.together === true,
@@ -441,14 +417,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         proactiveRoom: s.proactiveRoom === true,
         menu: s.menu === true,
         curious: s.curious === true,
-        texture: s.texture === true,
         quoteReply: s.quoteReply === true,
-        ...(Array.isArray(s.idioms) && s.idioms.length ? { idioms: s.idioms.map((item: unknown, i: number) => {
-            const o = item as { phrase?: unknown; kind?: unknown } | null;
-            if (typeof o?.phrase !== 'string' || !o.phrase.trim()) fail(`idioms[${i}].phrase 应为非空字符串`);
-            return { phrase: (o!.phrase as string).trim(), ...(typeof o!.kind === 'string' ? { kind: o!.kind } : {}) };
-        }) } : {}),
-        ...(typeof s.idiomShare === 'number' && s.idiomShare >= 0 && s.idiomShare <= 1 ? { idiomShare: s.idiomShare } : {}),
         factCheck: s.factCheck === undefined ? 'off' : FACT_CHECK_MODES.includes(s.factCheck as FactCheckMode) ? s.factCheck as FactCheckMode : fail(`factCheck 应为 ${FACT_CHECK_MODES.join(' / ')} 之一`),
         ...(typeof s.quoteShare === 'number' && s.quoteShare >= 0 && s.quoteShare <= 1 ? { quoteShare: s.quoteShare } : {}),
         smallNews: s.smallNews === true,
@@ -463,7 +432,6 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         herNo: s.herNo === true,
         afterNo: s.afterNo === true,
         memoryFeelings: s.memoryFeelings === true,
-        shapeAll: s.shapeAll === true,
         openQuestions: s.openQuestions === true,
         selfPortrait: s.selfPortrait === true,
         lagTail: s.lagTail === true,
@@ -471,9 +439,7 @@ export function parseScenario(data: unknown, where = '场景'): Scenario {
         pursuits: s.pursuits === true,
         pursuitsFile: Array.isArray(s.pursuitsFile) ? s.pursuitsFile as unknown[] : [],
         ...(typeof s.everydayFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.everydayFrom) ? { everydayFrom: s.everydayFrom } : {}),
-        ...(s.shapeShares && typeof s.shapeShares === 'object' ? { shapeShares: s.shapeShares as NonNullable<Scenario['shapeShares']> } : {}),
         moments: Array.isArray(s.moments) ? s.moments as Scenario['moments'] : [],
-        shapeSplit: s.shapeSplit === true,
         npcAsks: s.npcAsks === true,
         festivals: s.festivals === undefined ? 'off' : (FESTIVAL_MODES.includes(s.festivals as FestivalMode) ? s.festivals as FestivalMode : fail(`festivals 应为 ${FESTIVAL_MODES.join(' / ')} 之一`)),
         ...(s.gifts !== undefined ? { gifts: (Array.isArray(s.gifts) ? s.gifts : fail('gifts 应为数组')).map((g: unknown, i: number) => {

@@ -1,6 +1,7 @@
 # ADR 0190：让她从真人聊天里自己学怎么说话（草案 + 第一个实验）
 
 - 状态：**实验已做（只在模拟器里，线上没有任何改动）；学习机制本身还没建，等用户定语料来源**
+- 2026-11-24：fewerRules 转正（用户拍板，[减法单子 二.1](../plans/2026-11-24-subtraction-round.md)），`exemplars`（exemplar 槽；语料还给说话习惯 ADR 0193 抽样用）连开关和代码一起删了；线上 fewerRules 开着时它本来就不生效。
 - 日期：2026-10-30
 - 后续：第 1–2 步例子检索（`exemplars`）已做；第 3 步见 [ADR 0193](0193-nightly-speech-notes.md)；第 4 步见 [ADR 0195](0195-speech-feedback.md)（隐性反馈——回得快慢、有没有笑——没做）；第 5 步的结构指标那一半见 [ADR 0196](0196-speech-trend.md)（`/说话趋势`，盲评要真人，没做）
 - 关联：[ADR 0175](0175-bare-arm-framework-test.md)（不带框架的对照臂）、[ADR 0138](0138-idioms.md)（顺口学他的词）、[ADR 0178](0178-self-set-pursuits.md)（她每晚自己想一次的机制）

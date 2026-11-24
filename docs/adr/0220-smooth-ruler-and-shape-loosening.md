@@ -2,6 +2,7 @@
 
 - 日期：2026-11-02
 - 状态：**尺子和开关已提交**（`scripts/smooth-replay.mjs`，开关 `shapeAll` 默认关，随 `df8c933`）。**线上没改**：要不要恢复形状，等用户定
+- 2026-11-24：fewerRules 转正（用户拍板，[减法单子 二.1](../plans/2026-11-24-subtraction-round.md)），形状控制（`shape` 整族，含 shapeAll）连开关和代码一起删了；线上 fewerRules 开着时它本来就不生效。
 - 相关：ADR 0091（形状控制）、ADR 0099（太顺：带上文重放 + 标注）、DSH `27facc0`（10-28「形状松绑」，没有 ADR）、ADR 0221（每天回顾聊天）
 
 ## 起因

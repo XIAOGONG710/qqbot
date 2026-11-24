@@ -20,7 +20,7 @@ async function fixture(kind: 'plain' | 'answered' | 'crisis' = 'plain') {
     const history = () => new ChatHistory(dataDir).load(10001);
     for (const tier of ['boyfriend', 'boyfriend-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
-        contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], jokes: true, recalls: true, idioms: false,
+        contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], jokes: true, recalls: true,
         schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
     const h = new ChatHistory(dataDir);
     for (let i = 0; i < 42; i++) h.append(10001, { role: 'user', content: i === 0 ? `${phrase} ${origin}${kind === 'crisis' ? ' 我现在想自杀' : ''}` : i < 3 ? phrase : `合成其他对话${i}`, time: new Date(now - 3 * 86_400_000 + i * 1000).toISOString(), messageId: i + 1 });

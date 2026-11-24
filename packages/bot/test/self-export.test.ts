@@ -38,7 +38,7 @@ describe('槽位白名单（SELF_SLOTS）', () => {
     test('selfPieces：只留 SELF 槽、按 NOW_SLOTS 排（同槽按给出的先后）；少规矩开着时丢 RULE_SLOTS 里的', () => {
         const pieces: Piece[] = [
             { slot: 'inner', text: '念头' }, { slot: 'intent', text: '意图' }, { slot: 'state', text: '你现在' },
-            { slot: 'shape', text: '形状' }, { slot: 'groundNote', text: '底子' }, { slot: 'days', text: '日子一' }, { slot: 'days', text: '日子二' },
+            { slot: 'length', text: '长短' }, { slot: 'groundNote', text: '底子' }, { slot: 'days', text: '日子一' }, { slot: 'days', text: '日子二' },
         ];
         assert.deepEqual(selfPieces(pieces).map(piece => piece.text), ['日子一', '日子二', '你现在', '底子', '念头']);
         useFewerRules(true);
@@ -131,7 +131,7 @@ describe('快照（platform/contact.ts 的 snapshot）', () => {
         const history = (qq: number) => store.get(qq) ?? [];
         const turnModules = buildTurnModules({
             log, now: () => at.getTime(), history, contacts: () => [he], worldState: () => undefined, appointmentsAt: () => undefined, promises: () => undefined,
-            schedule: true, herDays: true, grievance: false, lagTail: false, lifeInPrompt: false, intent: {}, shape: {},
+            schedule: true, herDays: true, grievance: false, lagTail: false, lifeInPrompt: false, intent: {},
             innerLine: () => '[你最近心里在想的：合成的念头]',
         });
         return createContactResponder({
@@ -171,7 +171,7 @@ describe('快照（platform/contact.ts 的 snapshot）', () => {
         // 该有的都有：你现在、心境、念头、答应的、没了结的
         for (const slot of ['state', 'feeling', 'inner', 'promised', 'unsettled']) assert.ok(slots.includes(slot as never), `缺 ${slot}`);
         // 不在白名单里的（她在 QQ 上的样子、心境的节奏、余温）不进来
-        for (const slot of ['selfNote', 'pace', 'warm', 'time', 'intent', 'shape']) assert.ok(!slots.includes(slot as never), `混进了 ${slot}`);
+        for (const slot of ['selfNote', 'pace', 'warm', 'time', 'intent', 'length']) assert.ok(!slots.includes(slot as never), `混进了 ${slot}`);
         const feeling = first.pieces.find(piece => piece.slot === 'feeling')!.text;
         assert.match(feeling, /小测没考好/);
         assert.doesNotMatch(feeling, /一直在忍|这么一问/, '中性版：桌面上没有人正好在关心她');

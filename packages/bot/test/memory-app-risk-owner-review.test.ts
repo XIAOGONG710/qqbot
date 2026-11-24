@@ -21,7 +21,7 @@ async function fixture(stage: 'account' | 'unread' | 'notices' | 'dm' | 'none', 
     writeFileSync(join(dataDir, 'secrets', 'bilibili.json'), JSON.stringify({ sessdata: 'SYNTHETIC_SESSION', biliJct: 'SYNTHETIC_CSRF', dedeUserId: '123', buvid3: 'SYNTHETIC_DEVICE', savedAt: '2026-11-05T00:00:00Z' }));
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
         contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], bilibiliAccount: true, bilibiliReplies: 'dryRun', bilibiliAtUid: 456,
-        jokes: false, idioms: false, memes: false, watching: false, biliFeed: 'off', schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+        jokes: false, memes: false, watching: false, biliFeed: 'off', schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
     const request: BiliRequest = async raw => {
         const url = new URL(raw); requests.push(url.pathname); let name: string, body: object;
         if (url.pathname.endsWith('/nav')) { name = 'account'; body = login; }

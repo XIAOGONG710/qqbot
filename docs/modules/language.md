@@ -10,7 +10,7 @@
 - `language/intent.ts`
 - `language/own-voice.ts`
 - `language/fewer-rules.ts`
-- `language/shape.ts`
+- `language/deliberate.ts`
 - `language/turn-weight.ts`
 - `language/expression.ts`
 - `language/exit-check.ts`
@@ -32,7 +32,6 @@
 - `language/time-context.ts`
 - `language/relationship.ts`
 - `language/jokes.ts`
-- `language/idioms.ts`
 - `language/memes.ts`
 - `language/meme-store.ts`
 - `language/meme-dict.ts`
@@ -50,7 +49,6 @@
 - `language/speech-feedback.ts`
 - `language/tropes.ts`
 - `language/watching.ts`
-- `language/texture.ts`
 - `language/selfcheck.ts`
 - `language/bili-stickers.ts`
 - `language/interruption.ts`
@@ -60,7 +58,6 @@
 - `language/llm.ts`
 - `language/model-guard.ts`
 - `modules/jokes.ts`
-- `modules/idioms.ts`
 - `modules/interruptions.ts`
 - `modules/closeness.ts`
 - `modules/together.ts`
@@ -93,7 +90,6 @@
 - `modules/tastes.ts`
 - `modules/follow-ups.ts`
 - `modules/playful.ts`
-- `modules/exemplars.ts`
 - `modules/solve-frame.ts`
 - `modules/inner.ts`
 - `modules/transcript.ts`
@@ -106,7 +102,6 @@
 - `modules/consent.ts`
 - `modules/initiate-note.ts`
 - `modules/length.ts`
-- `modules/shape.ts`
 - `modules/quote.ts`
 - `modules/time-block.ts`
 - `modules/continuity.ts`
@@ -125,14 +120,7 @@
 
 | 配置 | 功能 | ADR |
 | --- | --- | --- |
-| `shape` | 形状控制（每条多长、几条） | [ADR 0091](../adr/0091-reply-shape.md) |
-| `shapeAgenda` | 带自己的事 | [ADR 0094](../adr/0094-her-own-agenda.md) |
-| `shapeFiller` | 废话轮次 | [ADR 0095](../adr/0095-filler-turns.md) |
-| `shapeSplit` | 拆成几条 | [ADR 0096](../adr/0096-split-and-share.md) |
-| `shapeAsk` | 被问问题时答完再接着说 | [ADR 0149](../adr/0149-answer-then-continue.md) |
-| `shapeLong` | 被认真问想法时说长一点 | [ADR 0150](../adr/0150-long-answers.md) |
 | `deliberate` | 认真问她时深思（更强的模型、不套字数） | [ADR 0151](../adr/0151-deliberate.md) |
-| `shapeFeel` | 情绪轮（先说自己的小情绪） | [ADR 0099](../adr/0099-too-smooth.md) |
 | `rhythm` | 回复节奏（看想 / 打字时间） | [ADR 0075](../adr/0075-reply-rhythm.md) |
 | `lagTail` | 回复延迟的长尾 | [ADR 0105](../adr/0105-reply-lag-tail.md) |
 | `herNo` | 会拒绝 | [ADR 0103](../adr/0103-her-no.md) |
@@ -142,16 +130,12 @@
 | `factCheck` | 逐条事实检查（编的说法 / 对不上事实）（模式）：发送前，对照设定、本轮事实和聊天记录，逐条检查她对自己和身边世界的具体说法。off 不查；log 只记录问题，回复照发（敏感调试关着时只记条数）；fix 先带说明重写一次，再查，仍有问题就删掉对应行。危机回合不查，查不成照发。默认关。 | [ADR 0137](../adr/0137-fact-check.md) |
 | `relationship` | 关系阶段（聊得多了更放得开） | [ADR 0113](../adr/0113-relationship-stage.md) |
 | `jokes` | 小梗回头提 | [ADR 0114](../adr/0114-running-jokes.md) |
-| `idioms` | 被他带出口头习惯（他爱说的词她偶尔顺口用） | [ADR 0138](../adr/0138-idioms.md) |
-| `tailCap` | 句尾「吧」「呢」封顶（压回真人的水平）：她多出来的句尾语气字几乎全在这两个字上（吧 5.0% 对他的 2.2%，呢 5.0% 对他的 1.8%；啊 / 嘛 / 呀 / 啦在真人范围内，不动）。开了以后，她最近 80 条气泡里以“吧”收尾的占比到 3%、以“呢”收尾的到 2.5% 时，这一轮再用它收尾的就把那个字去掉（不重写）；固定搭配（干嘛 / 好吧 / 行吧）、省略问句（你呢）和太短的应声不动。 | [ADR 0146](../adr/0146-human-videos.md) |
 | `interruptions` | 被第三方打断 | [ADR 0115](../adr/0115-interruptions.md) |
 | `together` | 陪玩状态 | [ADR 0111](../adr/0111-together.md) |
 | `silenceNotice` | 没回时在正常聊天里酌情解释：确认在睡（夜里，或她自己说过睡了）、在上课、在忙、出了故障或有明确的忘回记录，才在正常回复时顺口照实提一句；不知道就不编。她自己不想回的，他问起就照实说不想回，不拿在忙顶上（她 2026-11-22 的条件，ADR 0173）。 | [ADR 0173](../adr/0173-silence-reasons.md) |
 | `speechNotes` | 她每晚自己总结说话习惯（「我发现……」，挑几条放进提示词；他可以用 /像AI /像真人 标她说的话给她看；/说话趋势 按周看她说话的数字） | [ADR 0193](../adr/0193-nightly-speech-notes.md) |
 | `fewerRules` | 少规矩：提示词里教她怎么说话的那些（说话短、先接哪句、别主动、不另起话题……）整类拿掉，只留她是谁和她的日子 | [ADR 0342](../adr/0342-fewer-rules.md) |
-| `exemplars` | 看真人怎么回（从已批准的真人语料挑几条当口气参考） | [ADR 0190](../adr/0190-learn-from-real-chat.md) |
 | `jealousy` | 吃醋（最轻一档） | [ADR 0123](../adr/0123-jealousy.md) |
-| `texture` | 说话的质感（问号 / ～ / 小黄脸 / 叠字） | [ADR 0131](../adr/0131-texture.md) |
 | `curious` | 会追问（问他刚说的那件事） | [ADR 0126](../adr/0126-curious.md) |
 | `chatReview` | 她每天回顾聊天（每晚看今天数得出来的几处：他说她说错、只回嗯、连问、太长、重复，她自己判断、记一句；私人空间） | [ADR 0221](../adr/0221-chat-review.md) |
 | `depthRouting` | 语义路由：关键词没认出来的轮次，问小模型这一句是轻是重——沉重的事 / 要她的看法 / 问她自己 / 质疑她 / 问他们俩的，也走深思（要 deliberate 开着） | [ADR 0202](../adr/0202-depth-routing.md) |

@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { recentCrutches, repeatedOpener } from '../src/language/expression.ts';
 import { ABSTRACT_INTENT, CHALLENGE_INTENT, describeIntent, STALL_INTENT } from '../src/language/intent.ts';
-import { planShape } from '../src/language/shape.ts';
 
 // 10-22 深夜测试对话（用户：「她现在还是会有 AI 的味道」）量出来的三处：被指出不像真人时自证、被问很抽象的问题时答成金句、被追问答案时原地打转；
 // 再加“最近反复说的字词”那一行。台词都是虚构的，只照真实对话的形状写
@@ -35,12 +34,6 @@ describe('很抽象的问题：别答成金句（ABSTRACT_INTENT）', () => {
         assert.match(ABSTRACT_INTENT, /不要排比、对仗/);
     });
 
-    test('这一类轮次形状只用长的几档（不会只回两个字）', () => {
-        const plans = Array.from({ length: 200 }, (_, i) => planShape({
-            history: [{ role: 'user', content: `你说谈恋爱到底是什么样子的${i}`, time: new Date(Date.UTC(2026, 9, 21, 17, 0, i)).toISOString() }], intent: ABSTRACT_INTENT,
-        })!);
-        assert.ok(plans.every(plan => plan.cap >= 14));
-    });
 });
 
 describe('被连着追问一个答案：别原地打转（STALL_INTENT）', () => {
@@ -59,12 +52,6 @@ describe('被连着追问一个答案：别原地打转（STALL_INTENT）', () =
         assert.notEqual(intent(...stalling, user('你吃了吗')), STALL_INTENT);
     });
 
-    test('追答案的轮次形状只用长的几档', () => {
-        const plans = Array.from({ length: 200 }, (_, i) => planShape({
-            history: [{ role: 'user', content: `回答我你愿意吗${i}`, time: new Date(Date.UTC(2026, 9, 21, 17, 0, i)).toISOString() }], intent: STALL_INTENT,
-        })!);
-        assert.ok(plans.every(plan => plan.cap >= 14));
-    });
 });
 
 describe('最近反复说的字词（recentCrutches）', () => {

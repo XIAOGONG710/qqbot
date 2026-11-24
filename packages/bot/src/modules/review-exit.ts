@@ -14,7 +14,7 @@ import { fewerRules } from '../language/fewer-rules.ts';
 import type { Module, ReviewCtx, ReviewVerdict, Turn } from '../interpreter/interpreter.ts';
 import { crisisFallback, faceContext, reviewCrisisReply, reviewReply, type ReviewOptions } from '../language/exit-check.ts';
 import { ODD_BODY_WORDS, STILTED_WORDS } from '../language/expression.ts';
-import { speechContext, TAIL_CAPS } from '../language/speech-check.ts';
+import { speechContext } from '../language/speech-check.ts';
 
 /** 出口检查那一刻的上下文；ctx.exit / ctx.history 没有时（不经联系人流水线）不算 */
 export function exitOptionsOf(turn: Turn, ctx: ReviewCtx): ReviewOptions | undefined {
@@ -27,7 +27,7 @@ export function exitOptionsOf(turn: Turn, ctx: ReviewCtx): ReviewOptions | undef
         // 少规矩（ADR 0342）：只留卡上的红线，医书词和书面腔不再让她重写
         banned: fewerRules() && !facts.crisis ? [...(turn.card?.banned ?? [])] : [...(turn.card?.banned ?? []), ...ODD_BODY_WORDS, ...STILTED_WORDS],
         userName: contact.name,
-        ...(given.speechCheck ? { speech: { ...speechContext(history(), given.tailCap ? { tailCaps: TAIL_CAPS } : {}), ...(facts.sulk ? { allowGrievance: true } : {}), ...(ctx.allowRepeat ? { allowRepeat: true } : {}) } } : {}),
+        ...(given.speechCheck ? { speech: { ...speechContext(history()), ...(facts.sulk ? { allowGrievance: true } : {}), ...(ctx.allowRepeat ? { allowRepeat: true } : {}) } } : {}),
         ...(facts.books?.context ? { books: facts.books.context } : {}),
         // 小黄脸（ADR 0051）：最近几次带得太密、他认真说事她只回表情
         faces: faceContext(history(), contact.tier),

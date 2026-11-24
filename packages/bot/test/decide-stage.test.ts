@@ -23,8 +23,8 @@ const ctxOf = (have: readonly string[], extra: Partial<DecideCtx> = {}) => {
 const decide = (turn: Turn, ctx: DecideCtx) => { decideStage([mediaOffersModule()], 'photo', turn, ctx); return turn.facts; };
 
 describe('判断顺序表（ADR 0336「判断那一串」）', () => {
-    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：真人数值和成长层（buildPrompt 开头）→ 召回 → 那一天 → 答应的事 → 挂着的事 → 还没说过的事 → 照片 → 梦 → 最终的意图 → 心境 → 连续性 → 图片表情 → 深思 → 长短要的两样 → 质感的上下文 → 聊天原文和记忆的收尾 → 清单', () => {
-        assert.deepEqual([...DECIDE_STAGES], ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'texture', 'context', 'lists']);
+    test('表上的位置随迁出逐个加，先后照流水线里原来的顺序：真人数值和成长层（buildPrompt 开头）→ 召回 → 那一天 → 答应的事 → 挂着的事 → 还没说过的事 → 照片 → 梦 → 最终的意图 → 心境 → 连续性 → 图片表情 → 深思 → 她低落不低落（长短要的；质感 11-24 删了） → 聊天原文和记忆的收尾 → 清单', () => {
+        assert.deepEqual([...DECIDE_STAGES], ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'context', 'lists']);
     });
 
     test('一个位置上按注册顺序跑，拿到同一轮和流水线给的东西；只挂 decideAt 的模块不被解释器筛掉', () => {
@@ -224,38 +224,6 @@ describe('图片表情这一轮用不用（modules/media-offers.ts 的 decideAt.
     });
 });
 
-describe('质感的上下文（modules/decorate.ts 的 decideAt.texture）', async () => {
-    const { textureModule } = await import('../src/modules/decorate.ts');
-    const reply = (content: string) => ({ role: 'assistant' as const, content, time: NOW.toISOString() });
-    const run = (text: string, facts: Turn['facts'] = {}, extra: Partial<Turn> = {}, stored: ReturnType<typeof reply>[] = []) => {
-        const { ctx } = ctxOf([], { history: () => stored });
-        const turn = turnOf(text, facts, extra);
-        decideStage([textureModule()], 'texture', turn, ctx);
-        return turn.facts.texture;
-    };
-
-    test('男朋友档、不是只想一想才有；带上他这一串说的话', () => {
-        assert.deepEqual(run('今天去图书馆了'), { said: '今天去图书馆了', serious: false, recentFaces: 0, recentTildes: 0 });
-        assert.equal(run('今天去图书馆了', {}, { contact: { qq: 2, name: '小周', tier: 'classmate' } }), undefined);
-        assert.equal(run('今天去图书馆了', {}, { thinking: true }), undefined);
-    });
-
-    test('认真的回合：危机、小别扭生效、他难过、意图是先接住他此刻的情绪', () => {
-        assert.equal(run('哈哈', { crisis: { level: 'high' } as NonNullable<Turn['facts']['crisis']> })!.serious, true);
-        assert.equal(run('哈哈', { grievanceActive: true })!.serious, true);
-        assert.equal(run('哈哈', { sulk: true })!.serious, true);
-        assert.equal(run('哈哈', { baseIntent: '[这一轮你想：先接住他此刻的情绪]' })!.serious, true);
-        assert.equal(run('今天被导师骂了，好难过')!.serious, true);
-        assert.equal(run('哈哈')!.serious, false);
-    });
-
-    test('她最近几次回复带了几次小黄脸、句尾「～」：从存下来的聊天记录里数（那一刻现读）', () => {
-        const out = run('哈哈', {}, {}, [reply('好呀[doge]'), reply('在的～'), reply('嗯嗯')]);
-        assert.equal(out!.recentFaces, 1);
-        assert.equal(out!.recentTildes, 1);
-    });
-});
-
 describe('深思和语义路由的判断（modules/deliberate.ts 的 decideAt.deliberate）', async () => {
     const { deliberateModule } = await import('../src/modules/deliberate.ts');
     const { ROUTED_HINTS } = await import('../src/language/turn-weight.ts');
@@ -336,20 +304,18 @@ describe('深思和语义路由的判断（modules/deliberate.ts 的 decideAt.de
     });
 });
 
-describe('长短和形状要的两样（modules/shape.ts 的 decideAt.length）', async () => {
-    const { shapeModule } = await import('../src/modules/shape.ts');
+describe('她这会儿低落不低落（modules/length.ts 的 decideAt.length；原来在形状模块里，11-24 随形状控制删了搬过来）', async () => {
+    const { lengthModule } = await import('../src/modules/length.ts');
     const run = (facts: Turn['facts'] = {}, extra: Partial<DecideCtx> = {}) => {
         const { ctx } = ctxOf([], extra);
         const turn = turnOf('在吗', facts);
-        decideStage([shapeModule({ log: () => {} })], 'length', turn, ctx);
+        decideStage([lengthModule({ log: () => {} })], 'length', turn, ctx);
         return turn.facts;
     };
     const values = (over: Record<string, number>) => ({ energy: 60, hunger: 40, stress: 40, mood: 60, ...over }) as unknown as NonNullable<Turn['facts']['humanValues']>;
 
-    test('平常：不低落；没有她那边、身体、心情时没有可挑的话题', () => {
-        const facts = run();
-        assert.equal(facts.low, undefined);
-        assert.deepEqual(facts.agendaTopics, []);
+    test('平常：不低落', () => {
+        assert.equal(run().low, undefined);
     });
 
     test('低落：真人数值低（没劲 / 饿 / 压力大 / 心情差）；心境那一行放了而且偏低', () => {
@@ -363,27 +329,6 @@ describe('长短和形状要的两样（modules/shape.ts 的 decideAt.length）'
         assert.equal(run({ felt: sad }).low, undefined, '那一行没放（小别扭生效之类）就不算');
     });
 
-    test('话题：她那边那一行的标签，去掉已经说过的；卡上有心情、开了她自己的日子时加「心情」', async () => {
-        const { loadTierCard } = await import('../src/platform/contact.ts');
-        const { worldAt } = await import('../src/world/world.ts');
-        const { syntheticCardPattern } = await import('./fixtures/card.ts');
-        const card = loadTierCard(syntheticCardPattern, 'boyfriend').character;
-        const world = worldAt(card.herWorld!, card.schedule!, NOW)!;
-        const topics = (facts: Turn['facts'], extra: Partial<DecideCtx> = {}) => {
-            const { ctx } = ctxOf([], extra);
-            const turn = { ...turnOf('在吗', facts), card };
-            decideStage([shapeModule({ log: () => {} })], 'length', turn, ctx);
-            return turn.facts.agendaTopics ?? [];
-        };
-        const all = topics({ world });
-        assert.ok(all.length > 0, '合成世界那一行有标签');
-        assert.ok(!all.includes('心情'), '没给作息（没开她自己的日子）就没有心情');
-        assert.deepEqual(topics({ world }, { schedule: card.schedule! }), [...all, '心情']);
-        const homework = all.filter(label => /作业/.test(label));
-        const cat = all.filter(label => /猫/.test(label));
-        assert.ok(homework.length + cat.length > 0, '合成世界里有作业或猫，能验证去掉说过的');
-        assert.deepEqual(topics({ world, told: ['作业', '猫'] }), all.filter(label => !/作业/.test(label) && !/猫/.test(label)));
-    });
 });
 
 describe('assess 之前原位取的几样（recap / promises / loops / news）', async () => {

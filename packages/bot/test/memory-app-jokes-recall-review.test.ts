@@ -19,7 +19,7 @@ test('真实App小梗在途来源被同长度撤回后，不保存旧结果或�
     try {
         for (const tier of ['boyfriend', 'boyfriend-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
-            contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], jokes: true, recalls: true, idioms: false,
+            contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], jokes: true, recalls: true,
             schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         const history = new ChatHistory(dataDir);
         // All messages remain unanswered and inside the joke window, but outside

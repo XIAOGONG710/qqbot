@@ -29,7 +29,6 @@ import type { Character } from '../st/card.ts';
 import type { BodyNow } from '../life/body.ts';
 import type { HerStatus } from '../language/status-line.ts';
 import type { DescribedBooks } from '../life/her-days.ts';
-import type { ShapePlan } from '../language/shape.ts';
 import type { PhotoKind, PhotoShelf } from '../vision/photos.ts';
 import type { StickerShelf } from '../social/stickers.ts';
 import type { ParsedTokens } from '../platform/device-actions.ts';
@@ -136,16 +135,12 @@ export interface TurnFacts {
     deliberate?: boolean;
     /** 语义路由（ADR 0202）放进深思的那一轮按分类多放的一小句方向（ROUTED_HINTS）；旧逻辑在判断深思的地方写，modules/deliberate.ts 放进 routedHint 槽。关键词认出来的深思时没有 */
     routedHint?: string;
-    /** 这一轮的形状（ADR 0091）：每条多长、几条。形状的模块（modules/shape.ts）在 contribute 时写，长短的模块和旧逻辑（生成、发出去之前裁）读 */
-    shape?: ShapePlan;
     /** 引用回复（ADR 0136，modules/quote.ts 在 contribute 时写）：这一轮第一条引用他哪一条；旧逻辑发送时读 */
     quote?: QuotePlan;
     /** 连续性（ADR 0157–0163）：这一轮放进提示词的几行（设定改动的背景、QQ 以外做过的事、上网查到的、自己发现的口味、又见到的人）。
      *  取是异步的、会上网调模型，还在联系人流水线原来的位置（危机回合、只想一想的轮次不取，出错当没有）；modules/continuity.ts 读、放进 continuity 槽。没取到时没有 */
     continuity?: readonly string[];
-    /** 带自己的事时能挑的话题（她那边还没说过的、身体、心情）；形状的模块读 */
-    agendaTopics?: readonly string[];
-    /** 她这会儿低落（心情安静、身体不舒服、心境偏低、真人数值低）：不加「话多」 */
+    /** 她这会儿低落（心情安静、身体不舒服、心境偏低、真人数值低）：不加「话多」。长短的模块（modules/length.ts）在 decideAt.length 写 */
     low?: boolean;
     /** 早上那句梦（2026-10-31）：联系人流水线原位读梦（同时取梦给心境的打分）后写；App 只给男朋友档、开了 herFeelings，危机回合没有。modules/feelings.ts 放进 dreams 槽 */
     dreamLine?: string;
@@ -187,9 +182,6 @@ export interface TurnFacts {
     photoUnavailable?: boolean;
     /** 这一轮挑候选的规则（ADR 0041，modules/candidates.ts 在 contribute 时写）：他难过、说亲密话、收尾的轮次才有；联系人流水线生成时经 candidatePlan 问 */
     pick?: PickRules;
-    /** 这一轮发出去之前加质感用的上下文（ADR 0131 / 0134）：他这一串说的话、是不是认真的回合、她最近几次回复里带了几次小黄脸 / 句尾「～」。
-     *  modules/decorate.ts 的质感模块在 decideAt.texture 写（开了 texture、男朋友档、不是只想一想才有），修饰时读 */
-    texture?: { said: string; serious: boolean; recentFaces: number; recentTildes: number };
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */
@@ -352,7 +344,7 @@ export interface Draft {
  * 判断那一串的顺序（ADR 0336「判断那一串」）：assess 之后、拼段落之前，联系人流水线里还剩一串互相接着的判断（照片 → 最终的意图 → 心境 → 图片表情 → 深思……），
  * 一个个迁成模块；先后由这张表定（照搬流水线里手写的顺序），表随迁出逐个加长
  */
-export const DECIDE_STAGES = ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'texture', 'context', 'lists'] as const;
+export const DECIDE_STAGES = ['values', 'recall', 'recap', 'promises', 'loops', 'news', 'photo', 'dream', 'intent', 'feelings', 'continuity', 'stickers', 'deliberate', 'length', 'context', 'lists'] as const;
 export type DecideStage = (typeof DECIDE_STAGES)[number];
 
 /** 判断时联系人流水线给的东西（这个联系人的货架之类；字段随模块迁出逐个加） */
@@ -488,7 +480,7 @@ export function cleanStages(modules: readonly Module[], text: string, turn: Turn
  * 修饰的顺序（ADR 0336「生成之后那一段」第 11 步）：同 slots.ts / REVIEW_STAGES / CLEAN_STAGES，先后由这张表定。照搬迁移前联系人流水线里手写的顺序：
  * 先加质感（ADR 0131），再打错字（ADR 0024；打错字认的是汉字，不碰小黄脸 / 标点）
  */
-export const DECORATE_STAGES = ['texture', 'typo'] as const;
+export const DECORATE_STAGES = ['typo'] as const;
 export type DecorateStage = (typeof DECORATE_STAGES)[number];
 
 /** 修饰时联系人流水线给的东西 */
@@ -546,7 +538,7 @@ export function absorbStage(modules: readonly Module[], stage: AbsorbStage, text
  * 审稿的顺序（ADR 0336「生成之后那一段」）：同 slots.ts，先后由这张表定，不由模块决定。照搬迁移前联系人流水线里手写的顺序：
  * 逐条事实检查 → 出口检查（危机回合走危机检查、到此为止）→ <<查>> → 形状裁剪 → 话说到一半 → 删行收尾 → 最后再查一次事实
  */
-export const REVIEW_STAGES = ['facts', 'exit', 'pull', 'shape', 'unfinished', 'finalize', 'factsFinal'] as const;
+export const REVIEW_STAGES = ['facts', 'exit', 'pull', 'unfinished', 'finalize', 'factsFinal'] as const;
 export type ReviewStage = (typeof REVIEW_STAGES)[number];
 
 /** 审稿时联系人流水线给的东西；字段随审稿模块迁出逐个加 */
@@ -557,8 +549,8 @@ export interface ReviewCtx {
     accept(): void;
     /** 这一轮不操作他的设备：草稿和重写里的设备指令都不登记（危机回合，ADR 0068 / 0148）；出口检查模块（modules/review-exit.ts）在危机回合调 */
     dropDevices(): void;
-    /** 出口检查要的、按联系人 / 配置给的几样：查不查说话的毛病（配置 speechCheck）、句尾语气词封顶（tailCap）、这个联系人有没有图片表情收藏库。联系人流水线总是给；不经流水线建的（测试）可以没有 */
-    exit?: { speechCheck: boolean; tailCap: boolean; imageStickers: boolean };
+    /** 出口检查要的、按联系人 / 配置给的几样：查不查说话的毛病（配置 speechCheck）、这个联系人有没有图片表情收藏库。联系人流水线总是给；不经流水线建的（测试）可以没有 */
+    exit?: { speechCheck: boolean; imageStickers: boolean };
     /** 这个联系人存下来的聊天记录，审稿的那一刻现读（说话的毛病、小黄脸带得密不密） */
     history?: () => readonly StoredMessage[];
     /** 这一轮拼出来的提示词（ST 后处理之前，system 还是 system）：事实检查（modules/review-facts.ts）拿它当「她能依据的事实」；拼提示词没走到时没有 */

@@ -87,7 +87,8 @@
 @ 2026-11-18 09:41:09.892 llm #1 回复
 嗯嗯
 刚在看书
-@ 2026-11-18 09:41:14.651 qq sendPrivateText [10001,"嗯嗯，刚在看书"]
+@ 2026-11-18 09:41:11.557 qq sendPrivateText [10001,"嗯嗯"]
+@ 2026-11-18 09:41:12.514 qq sendPrivateText [10001,"刚在看书"]
 @ 2026-11-18 12:05:00.000 他 10001 发 #1001
 中午吃啥
 @ 2026-11-18 12:05:46.641 qq markRead [10001]
@@ -96,7 +97,9 @@
 --- user
 早上好，到教室了吗
 --- assistant
-嗯嗯，刚在看书
+嗯嗯
+
+刚在看书
 --- user
 中午吃啥
 
@@ -148,7 +151,9 @@
 --- user
 早上好，到教室了吗
 --- assistant
-嗯嗯，刚在看书
+嗯嗯
+
+刚在看书
 --- user
 中午吃啥
 --- assistant
@@ -194,9 +199,8 @@
 @ 2026-11-18 12:08:04.000 llm #3 回复
 行吧
 那你早点睡
-@ 2026-11-18 12:08:08.608 qq setInputStatus [10001]
-@ 2026-11-18 12:08:10.401 qq sendPrivateText [10001,"行吧[捂脸]"]
-@ 2026-11-18 12:08:11.838 qq sendPrivateText [10001,"那你早点睡"]
+@ 2026-11-18 12:08:06.076 qq sendPrivateText [10001,"行吧"]
+@ 2026-11-18 12:08:07.513 qq sendPrivateText [10001,"那你早点睡"]
 @ 2026-11-18 13:00:00.000 llm #4 background model=baseline-chat temperature=0.95 maxTokens=8192
 --- system
 你是测试角色，午后趴在桌上打了个盹。写两到三句梦里闪过去的东西：短、碎，不用讲完整，情绪可以是白天剩下的一点。不要写"这梦说明什么"。只输出梦本身。
@@ -229,7 +233,9 @@
 --- user
 早上好，到教室了吗
 --- assistant
-嗯嗯，刚在看书
+嗯嗯
+
+刚在看书
 --- user
 中午吃啥
 --- assistant
@@ -237,7 +243,7 @@
 --- user
 我想吃麻辣烫
 --- assistant
-行吧[捂脸]
+行吧
 
 那你早点睡
 --- user
@@ -278,7 +284,7 @@
 不算他几小时没回消息的账。
 @ 2026-11-18 20:30:20.915 llm #6 回复
 好呀
-@ 2026-11-18 20:30:22.708 qq sendPrivateText [10001,"好呀～"]
+@ 2026-11-18 20:30:23.299 qq sendPrivateText [10001,"好呀"]
 @ 2026-11-18 20:50:00.000 他 10001 发 #1004
 假
 @ 2026-11-18 21:00:00.000 他 10002 发 #1005
@@ -366,7 +372,9 @@
 --- user
 早上好，到教室了吗
 --- assistant
-嗯嗯，刚在看书
+嗯嗯
+
+刚在看书
 --- user
 中午吃啥
 --- assistant
@@ -374,13 +382,13 @@
 --- user
 我想吃麻辣烫
 --- assistant
-行吧[捂脸]
+行吧
 
 那你早点睡
 --- user
 认真问你，你觉得我要不要转专业？我最近真的很纠结
 --- assistant
-好呀～
+好呀
 --- user
 睡了吗
 
@@ -448,7 +456,9 @@ life:2026-11-18T16:00:00.000Z:leisure | 今天 00:00 | 休闲 | 琢磨新胶片�
 --- user
 早上好，到教室了吗
 --- assistant
-嗯嗯，刚在看书
+嗯嗯
+
+刚在看书
 --- user
 中午吃啥
 --- assistant
@@ -456,13 +466,13 @@ life:2026-11-18T16:00:00.000Z:leisure | 今天 00:00 | 休闲 | 琢磨新胶片�
 --- user
 我想吃麻辣烫
 --- assistant
-行吧[捂脸]
+行吧
 
 那你早点睡
 --- user
 认真问你，你觉得我要不要转专业？我最近真的很纠结
 --- assistant
-好呀～
+好呀
 --- user
 睡了吗
 --- assistant
@@ -505,9 +515,8 @@ life:2026-11-18T16:00:00.000Z:leisure | 今天 00:00 | 休闲 | 琢磨新胶片�
 @ 2026-11-19 09:43:16.804 llm #11 回复
 行吧
 那你早点睡
-@ 2026-11-19 09:43:21.412 qq setInputStatus [10001]
-@ 2026-11-19 09:43:23.205 qq sendPrivateText [10001,"行吧[捂脸]"]
-@ 2026-11-19 09:43:24.642 qq sendPrivateText [10001,"那你早点睡"]
+@ 2026-11-19 09:43:18.880 qq sendPrivateText [10001,"行吧"]
+@ 2026-11-19 09:43:20.317 qq sendPrivateText [10001,"那你早点睡"]
 @ 2026-11-19 10:30:00.000 停止
 
 # 数据目录
@@ -3977,19 +3986,20 @@ life:2026-11-18T16:00:00.000Z:leisure | 今天 00:00 | 休闲 | 琢磨新胶片�
 
 == chats/10001.jsonl
 {"time":"2026-11-18T01:10:00.000Z","role":"user","content":"早上好，到教室了吗","messageId":1000,"incomingId":"inc-<uuid-1>"}
-{"time":"2026-11-18T01:41:14.651Z","role":"assistant","content":"嗯嗯，刚在看书","messageId":5000}
+{"time":"2026-11-18T01:41:11.557Z","role":"assistant","content":"嗯嗯","messageId":5000}
+{"time":"2026-11-18T01:41:12.514Z","role":"assistant","content":"刚在看书","messageId":5001}
 {"time":"2026-11-18T04:05:00.000Z","role":"user","content":"中午吃啥","messageId":1001,"incomingId":"inc-<uuid-2>"}
-{"time":"2026-11-18T04:05:50.731Z","role":"assistant","content":"哈哈哈离谱","messageId":5001}
+{"time":"2026-11-18T04:05:50.731Z","role":"assistant","content":"哈哈哈离谱","messageId":5002}
 {"time":"2026-11-18T04:08:00.000Z","role":"user","content":"我想吃麻辣烫","messageId":1002,"incomingId":"inc-<uuid-3>"}
-{"time":"2026-11-18T04:08:10.401Z","role":"assistant","content":"行吧[捂脸]","messageId":5002}
-{"time":"2026-11-18T04:08:11.838Z","role":"assistant","content":"那你早点睡","messageId":5003}
+{"time":"2026-11-18T04:08:06.076Z","role":"assistant","content":"行吧","messageId":5003}
+{"time":"2026-11-18T04:08:07.513Z","role":"assistant","content":"那你早点睡","messageId":5004}
 {"time":"2026-11-18T12:30:00.000Z","role":"user","content":"认真问你，你觉得我要不要转专业？我最近真的很纠结","messageId":1003,"incomingId":"inc-<uuid-4>"}
-{"time":"2026-11-18T12:30:22.708Z","role":"assistant","content":"好呀～","messageId":5004}
+{"time":"2026-11-18T12:30:23.299Z","role":"assistant","content":"好呀","messageId":5005}
 {"time":"2026-11-18T15:50:00.000Z","role":"user","content":"睡了吗","messageId":1006,"incomingId":"inc-<uuid-5>"}
-{"time":"2026-11-18T15:50:51.699Z","role":"assistant","content":"哈哈哈离谱","messageId":5007}
+{"time":"2026-11-18T15:50:51.699Z","role":"assistant","content":"哈哈哈离谱","messageId":5008}
 {"time":"2026-11-19T00:30:00.000Z","role":"user","content":"昨天睡得怎么样","messageId":1007,"incomingId":"inc-<uuid-6>"}
-{"time":"2026-11-19T01:43:23.205Z","role":"assistant","content":"行吧[捂脸]","messageId":5008}
-{"time":"2026-11-19T01:43:24.642Z","role":"assistant","content":"那你早点睡","messageId":5009}
+{"time":"2026-11-19T01:43:18.880Z","role":"assistant","content":"行吧","messageId":5009}
+{"time":"2026-11-19T01:43:20.317Z","role":"assistant","content":"那你早点睡","messageId":5010}
 == chats/10001.recalled.json
 {
   "version": 2,
@@ -3999,8 +4009,8 @@ life:2026-11-18T16:00:00.000Z:leisure | 今天 00:00 | 休闲 | 琢磨新胶片�
 }
 == chats/10002.jsonl
 {"time":"2026-11-18T13:00:00.000Z","role":"user","content":"你周末去图书馆吗","messageId":1005,"incomingId":"inc-<uuid-7>"}
-{"time":"2026-11-18T13:00:43.375Z","role":"assistant","content":"嗯嗯","messageId":5005}
-{"time":"2026-11-18T13:00:45.289Z","role":"assistant","content":"刚在看书","messageId":5006}
+{"time":"2026-11-18T13:00:43.375Z","role":"assistant","content":"嗯嗯","messageId":5006}
+{"time":"2026-11-18T13:00:45.289Z","role":"assistant","content":"刚在看书","messageId":5007}
 == chats/10002.recalled.json
 {
   "version": 2,
@@ -4012,7 +4022,7 @@ life:2026-11-18T16:00:00.000Z:leisure | 今天 00:00 | 休闲 | 琢磨新胶片�
 {"date":"2026-11-18-nap","dream":"我刚下课\n饿死了","at":1794978000000,"fragment":true,"nap":true}
 {"date":"2026-11-18","dream":"[]","at":1795014000000,"fragment":true}
 == feedback/2026-11.jsonl
-{"at":"2026-11-18T12:50:00.000Z","label":"fake","messageId":1004,"contact":10001,"herMessageId":5004,"her":["好呀～"],"context":[{"role":"user","text":"中午吃啥"},{"role":"assistant","text":"哈哈哈离谱"},{"role":"user","text":"我想吃麻辣烫"},{"role":"assistant","text":"行吧[捂脸]"},{"role":"assistant","text":"那你早点睡"},{"role":"user","text":"认真问你，你觉得我要不要转专业？我最近真的很纠结"}],"tier":"boyfriend"}
+{"at":"2026-11-18T12:50:00.000Z","label":"fake","messageId":1004,"contact":10001,"herMessageId":5005,"her":["好呀"],"context":[{"role":"user","text":"中午吃啥"},{"role":"assistant","text":"哈哈哈离谱"},{"role":"user","text":"我想吃麻辣烫"},{"role":"assistant","text":"行吧"},{"role":"assistant","text":"那你早点睡"},{"role":"user","text":"认真问你，你觉得我要不要转专业？我最近真的很纠结"}],"tier":"boyfriend"}
 == heartbeat.json
 {
   "at": "2026-11-19T02:30:00.000Z",

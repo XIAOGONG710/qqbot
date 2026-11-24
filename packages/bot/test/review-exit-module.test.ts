@@ -205,7 +205,7 @@ describe('出口检查的上下文自己算（exitOptionsOf，2026-11-16）', as
         const reads: number[] = [];
         const ctx: ReviewCtx = {
             regenerate: async () => '重写', accept: () => {}, dropDevices: () => {}, scratch: {}, log: () => {},
-            exit: { speechCheck: false, tailCap: false, imageStickers: false },
+            exit: { speechCheck: false, imageStickers: false },
             history: () => { reads.push(1); return [] as StoredMessage[]; },
             ...extra,
         };
@@ -236,20 +236,20 @@ describe('出口检查的上下文自己算（exitOptionsOf，2026-11-16）', as
     });
 
     test('开了 speechCheck：聊天记录读两次（说话的毛病、小黄脸）；小别扭生效放过带点抱怨的话，固定说法放过重复', () => {
-        const plain = ctxOf({ exit: { speechCheck: true, tailCap: false, imageStickers: false } });
+        const plain = ctxOf({ exit: { speechCheck: true, imageStickers: false } });
         const options = exitOptionsOf(turnOf(), plain.ctx)!;
         assert.ok(options.speech);
         assert.equal(plain.reads.length, 2);
         assert.equal(options.speech.allowGrievance, undefined);
         assert.equal(options.speech.allowRepeat, undefined);
-        const sulk = exitOptionsOf(turnOf({ sulk: true }), ctxOf({ exit: { speechCheck: true, tailCap: true, imageStickers: false }, allowRepeat: true }).ctx)!;
+        const sulk = exitOptionsOf(turnOf({ sulk: true }), ctxOf({ exit: { speechCheck: true, imageStickers: false }, allowRepeat: true }).ctx)!;
         assert.equal(sulk.speech!.allowGrievance, true);
         assert.equal(sulk.speech!.allowRepeat, true);
     });
 
     test('文字抱抱看最终的意图；图片表情看这个联系人有没有收藏库；在读的书的进度来自这一轮放的书', () => {
         const books = { context: { marker: '进度' } } as unknown as NonNullable<TurnFacts['books']>;
-        const options = exitOptionsOf(turnOf({ intent: '[这一轮你想：他要 QQ 文字里的抱抱，给他]', books }), ctxOf({ exit: { speechCheck: false, tailCap: false, imageStickers: true } }).ctx)!;
+        const options = exitOptionsOf(turnOf({ intent: '[这一轮你想：他要 QQ 文字里的抱抱，给他]', books }), ctxOf({ exit: { speechCheck: false, imageStickers: true } }).ctx)!;
         assert.equal(options.textIntimacy, true);
         assert.equal(options.imageStickers, true);
         assert.equal(options.books, books.context);

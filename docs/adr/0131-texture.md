@@ -1,6 +1,7 @@
 # ADR 0131：说话的质感（配置 `texture`，默认关）
 
 - 状态：**已实现，未上线**（2026-10-23；配置 `texture`；默认关）。上线 = `koishi.yml` 里加 `texture: true` + 重启；回滚 = 改回 false + 重启（不存任何状态）
+- 2026-11-24：fewerRules 转正（用户拍板，[减法单子 二.1](../plans/2026-11-24-subtraction-round.md)），`texture`连开关和代码一起删了；线上 fewerRules 开着时它本来就不生效。
 - 日期：2026-10-23
 - 关联：[ADR 0024](0024-expression-layer.md)（打错字——同一个位置）、[ADR 0051](0051-qq-faces.md)（QQ 小黄脸）、[ADR 0091](0091-reply-shape.md)（形状 + 「像不像真人」的尺子）、[ADR 0132](0132-bili-stickers.md)（表情包自己在 B 站找）
 - 用户提出：2026-10-23「质感那几项也往真人靠，如果可以的话尽量超过我」；同日追加「表情包让她在 bilibili 自己找，不要用或者少用黄豆表情」

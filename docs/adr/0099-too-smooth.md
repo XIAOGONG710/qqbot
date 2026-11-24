@@ -1,6 +1,7 @@
 # ADR 0099：「太顺」——不把他的话处理完整、不马上让步、偶尔只发表情（配置 `shapeFeel`，默认关）
 
 - 状态：**已实现，未上线**（2026-10-22；配置 `shapeFeel`，要 `shape` 开着；默认关）。上线 = `koishi.yml` 里加 `shapeFeel: true` + 重启；回滚 = 改回 false + 重启
+- 2026-11-24：fewerRules 转正（用户拍板，[减法单子 二.1](../plans/2026-11-24-subtraction-round.md)），`shapeFeel`（连同它带的「只发表情」那一半）连开关和代码一起删了；线上 fewerRules 开着时它本来就不生效。
 - 日期：2026-10-22
 - 关联：[ADR 0093](0093-blind-judge.md)（鉴别员盲评：头号依据“太完整太顺”）、[ADR 0095](0095-filler-turns.md)（废话轮次）、[ADR 0098](0098-already-told-and-topic-pick.md)（“太完整、太顺这个最大的问题还没动”）、[ADR 0088](0088-her-temper-with-him.md)（用户 10-20：她太乖、太顺着、太会体谅）
 - 用户提出：2026-10-22「继续做太顺的问题修复」

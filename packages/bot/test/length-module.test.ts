@@ -22,10 +22,9 @@ describe('长短不一模块（ADR 0024 / 0336）', () => {
         assert.deepEqual(run(turnOf()), [{ slot: 'length', text: describeLength(hint) }]);
     });
 
-    test('危机、形状、记忆线索、只发表情、照片、被打断、只想一想、深思：都不放', () => {
+    test('危机、记忆线索、只发表情、照片、被打断、只想一想、深思：都不放', () => {
         const blocked: [string, Turn][] = [
             ['危机', turnOf({ crisis: { level: 'high' } as TurnFacts['crisis'] })],
-            ['形状', turnOf({ shape: { cap: 20, maxBubbles: 2 } as TurnFacts['shape'] })],
             ['记忆线索', turnOf({ cue: '国庆' })],
             ['只发表情', turnOf({ stickerOnly: true })],
             ['照片', turnOf({ photo: 'cat' })],

@@ -15,7 +15,7 @@ import type { Module } from '../interpreter/interpreter.ts';
 import type { Piece } from '../interpreter/slots.ts';
 import type { ChatMessage } from '../language/prompt.ts';
 import { asksToExplain } from '../language/expression.ts';
-import { DELIBERATE_NOTE, deliberateTurn } from '../language/shape.ts';
+import { DELIBERATE_NOTE, deliberateTurn } from '../language/deliberate.ts';
 import { KIND_LABEL, ROUTED_HINTS, wantsDepth, type TurnWeight } from '../language/turn-weight.ts';
 
 export interface DeliberateModuleOptions {

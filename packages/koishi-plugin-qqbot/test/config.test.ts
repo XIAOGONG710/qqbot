@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, test } from 'node:test';
 import { DEFAULTS, parseAppConfig } from '../../bot/src/platform/config.ts';
-import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, QZONE_PEEK, SIGNATURE, SILENCE_NOTICE, STICKERS, TAIL_CAP, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
+import { BILI_FEED, BILIBILI, BILIBILI_COMMENT, BILIBILI_DM, BILIBILI_REPLIES, FACT_CHECK, FESTIVALS, GROUP_CHAT, PROACTIVE, QZONE, QZONE_BROWSE, QZONE_PEEK, SIGNATURE, SILENCE_NOTICE, STICKERS, WEB_LOOKUP } from '../../bot/src/platform/modules.ts';
 import { canonicalTimeZone } from '../../bot/src/platform/time-zone.ts';
 import { Config, migrateThinking, mountMobileCompanion, thinkingBody, toAppConfigInput } from '../src/index.ts';
 import type { CompanionWebSocketLike } from '@qqbot/mobile-companion/websocket';
@@ -239,24 +239,6 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         }
     });
 
-    test('tailCap 用模块说明，保留默认值和 YAML 保存键', () => {
-        const yaml = createRequire(import.meta.url)('js-yaml') as { dump(value: unknown): string; load(text: string): object };
-        const save = (value: object) => yaml.dump(Config.simplify(Config(value as never)));
-        const omitted = save(minimal);
-        for (const item of [TAIL_CAP]) {
-            const { key, label, adr, description } = item;
-            const schemas = Config.list?.flatMap(group => group.dict?.[key] ? [group.dict[key]] : []) ?? [];
-            assert.equal(schemas.length, 1);
-            assert.equal(schemas[0]!.meta.description, `**${label}**（ADR ${adr}）：${description}`);
-            assert.equal(DEFAULTS[key], false);
-            assert.equal(save({ ...minimal, [key]: false }), omitted);
-            const enabled = save({ ...minimal, [key]: true });
-            assert.deepEqual(yaml.load(enabled), { ...yaml.load(omitted), [key]: true });
-            assert.equal(fromKoishi(yaml.load(omitted))[key], false);
-            assert.equal(fromKoishi(yaml.load(enabled))[key], true);
-        }
-    });
-
     test('silenceNotice 表单说明取自模块，YAML 仍省略默认 false、原键保存 true', () => {
         const schemas = Config.list?.flatMap(group => group.dict?.silenceNotice ? [group.dict.silenceNotice] : []) ?? [];
         assert.equal(schemas.length, 1);
@@ -378,9 +360,10 @@ describe('插件配置（控制台表单 → config.json 的形状 → parseAppC
         assert.throws(() => parseAppConfig({ ...toAppConfigInput(Config(minimal as never)), dsh: { enabled: true, timeoutMs: 0 } }, repoRoot, env), /dsh.timeoutMs/);
     });
 
-    test('删掉的开关（减法单子 11-24）还写在线上 koishi.yml 里：表单照样能读、能写回，交给核心时不带它们，配置和没写一样', () => {
+    test('删掉的开关（减法单子 11-24，二.1–二.3）还写在线上 koishi.yml 里：表单照样能读、能写回，交给核心时不带它们，配置和没写一样', () => {
         const leftovers = {
             shortReplies: true, hisHours: true, photoShares: true, reactions: true, foodPhotos: true, unlistedFriends: true, ownerPeek: true,
+            shape: true, shapeAgenda: true, shapeFiller: true, shapeFeel: true, shapeSplit: true, shapeAsk: true, shapeLong: true, texture: true, tailCap: true, idioms: true, exemplars: true,
             realTransport: { enabled: true, endpoint: 'https://transport.example.test/status?city=all', source: '城市公共交通' },
         };
         const config = Config({ ...minimal, ...leftovers } as never);

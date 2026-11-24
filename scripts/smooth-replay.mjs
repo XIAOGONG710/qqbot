@@ -7,6 +7,7 @@
 //   npm run sim -w @qqbot/bot -- <输出目录>/<变体名> --runs 2 --no-memory --parallel 8
 //   node scripts/smooth-replay.mjs score <名字>=<sim 结果目录> [...]                 → 按变体汇总标签占比（要 QQBOT_LLM_API_KEY）
 // 只读：不写任何线上状态、不发 QQ；场景和结果都在 runtime/ 下。
+// 2026-11-24：形状控制（shape 整族、shapeShares、shapeAll）和质感（texture）随 fewerRules 转正删了，gen 的第三个参数不再起作用，变体名只是个标签。
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
@@ -41,9 +42,7 @@ function gen(dir, variant, shares) {
         const scenario = {
             name: `太顺尺子 ${variant} ${pair.id}`,
             tier: 'boyfriend', user: '宝宝', start: new Date(start).toISOString(), memory: false,
-            shape: true, shapeAgenda: true, shapeFiller: true, shapeFeel: true, shapeSplit: true, herNo: true, texture: true,
-            ...(shares !== undefined && Object.keys(shares).some(k => k !== 'all') ? { shapeShares: Object.fromEntries(Object.entries(shares).filter(([k]) => k !== 'all')) } : {}),
-            ...(shares?.all ? { shapeAll: true } : {}),
+            herNo: true,
             history,
             steps: [{ case: pair.id, note: pair.real }, { say: pair.his.length > 1 ? pair.his : pair.his[0] ?? '嗯' }, { check: { exitClean: true } }],
         };

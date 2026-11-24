@@ -14,11 +14,11 @@ describe('审稿顺序表上的位置（ADR 0336）', () => {
     const ctx: ReviewCtx = { regenerate: async () => '重写', accept: () => {}, dropDevices: () => {}, scratch: {}, log: () => {} };
 
     test('顺序照迁移前的手写顺序', () => {
-        assert.deepEqual([...REVIEW_STAGES], ['facts', 'exit', 'pull', 'shape', 'unfinished', 'finalize', 'factsFinal']);
+        assert.deepEqual([...REVIEW_STAGES], ['facts', 'exit', 'pull', 'unfinished', 'finalize', 'factsFinal']);
     });
 
     test('这个位置没有模块挂：同步返回原稿（不多一个微任务）', () => {
-        const other: Module = { id: 'other', reviewAt: { shape: text => `${text}!` } };
+        const other: Module = { id: 'other', reviewAt: { pull: text => `${text}!` } };
         assert.deepEqual(reviewStage([other], 'finalize', '原稿', turn, ctx), { text: '原稿' });
         assert.deepEqual(reviewStage([], 'facts', '原稿', turn, ctx), { text: '原稿' });
     });
@@ -34,10 +34,10 @@ describe('审稿顺序表上的位置（ADR 0336）', () => {
     });
 
     test('前面同步、中间异步：从异步那一步起转成 promise，顺序不变', async () => {
-        const a: Module = { id: 'a', reviewAt: { shape: text => `${text}A` } };
-        const b: Module = { id: 'b', reviewAt: { shape: async text => `${text}B` } };
-        const c: Module = { id: 'c', reviewAt: { shape: text => `${text}C` } };
-        const out = reviewStage([a, b, c], 'shape', '稿', turn, ctx);
+        const a: Module = { id: 'a', reviewAt: { pull: text => `${text}A` } };
+        const b: Module = { id: 'b', reviewAt: { pull: async text => `${text}B` } };
+        const c: Module = { id: 'c', reviewAt: { pull: text => `${text}C` } };
+        const out = reviewStage([a, b, c], 'pull', '稿', turn, ctx);
         assert.ok(out instanceof Promise);
         assert.deepEqual(await out, { text: '稿ABC' });
     });

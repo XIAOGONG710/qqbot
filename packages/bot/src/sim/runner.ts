@@ -8,14 +8,13 @@ import { watchedFacts } from '../language/watching.ts';
 import type { BotConfig, Contact } from '../platform/config.ts';
 import { createContactResponder, replySkip, type TierCard } from '../platform/contact.ts';
 import { jokesTurnModule } from '../modules/jokes.ts';
-import { idiomsTurnModule } from '../modules/idioms.ts';
 import { buildTurnModules } from '../platform/turn-modules.ts';
 import type { DeviceControl } from '../platform/device-actions.ts';
 import { SENSITIVE_ON, useSensitiveSwitch } from '../platform/sensitive.ts';
 import { withFestivalActivities, withFestivals } from '../world/festivals.ts';
 import { photoShelf } from '../vision/photos.ts';
 import { togetherNow } from '../language/together.ts';
-import { STICKER_ONLY_SHARE, stickerShelf } from '../social/stickers.ts';
+import { stickerShelf } from '../social/stickers.ts';
 import { MEET_MINUTES, promiseKeeper } from '../life/promises.ts';
 import { writeJsonAtomic } from '../memory/json-file.ts';
 import { ponderIfDue, thoughtsReader } from '../life/open-questions.ts';
@@ -92,20 +91,6 @@ export interface RunOptions {
     herDays?: boolean;
     /** 他难过、亲密话、收尾时挑候选（ADR 0041），run.ts 照 bot 的配置或 --candidates 传；默认不挑 */
     candidates?: number;
-    /** 形状控制（ADR 0091）：run.ts 的 --shape 对所有场景打开 */
-    shape?: boolean;
-    /** 带自己的小事（ADR 0094）：run.ts 的 --agenda 对所有场景打开，同时打开 shape */
-    shapeAgenda?: boolean;
-    /** 废话（ADR 0095）：run.ts 的 --filler 对所有场景打开，同时打开 shape */
-    shapeFiller?: boolean;
-    /** 情绪轮（ADR 0099）：run.ts 的 --feel 对所有场景打开，同时打开 shape */
-    shapeFeel?: boolean;
-    /** 分成几条（ADR 0096）：run.ts 的 --split 对所有场景打开，同时打开 shape */
-    shapeSplit?: boolean;
-    /** 被问直接问题时答完再接着说（ADR 0149）：run.ts 的 --ask 对所有场景打开，同时打开 shape */
-    shapeAsk?: boolean;
-    /** 被认真问想法时说长一点（ADR 0150）：run.ts 的 --long 对所有场景打开，同时打开 shape */
-    shapeLong?: boolean;
     /** 认真问她时深思（ADR 0151）：run.ts 的 --deliberate；深思轮次用这份模型配置 */
     deliberateLlm?: BotConfig['llm'];
     /** 换掉深思轮次的那段提示词（run.ts 的 --deliberate-note <文件>）；不写就用线上的 DELIBERATE_NOTE */
@@ -528,18 +513,6 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
                 ...(scenario.herNo ? { refuse: true } : {}), ...(scenario.afterNo ? { afterNo: true } : {}), ...(scenario.jealousy ? { jealous: true } : {}), ...(scenario.curious ? { curious: true } : {}),
                 ...(scenario.everydayLife ? { everydayLife: true } : {}), ...(scenario.pursuits ? { pursuits: true } : {}),
             },
-            // 形状控制（ADR 0091）：开关和分项同迁移前给联系人流水线的
-            shape: {
-                ...(scenario.shape || options.shape || scenario.shapeAgenda || options.shapeAgenda || scenario.shapeFiller || options.shapeFiller || scenario.shapeFeel || options.shapeFeel || scenario.shapeSplit || options.shapeSplit || options.shapeAsk || options.shapeLong ? { shape: true } : {}),
-                ...(scenario.shapeAgenda || options.shapeAgenda ? { shapeAgenda: true } : {}),
-                ...(scenario.shapeFiller || options.shapeFiller ? { shapeFiller: true } : {}),
-                ...(scenario.shapeFeel || options.shapeFeel ? { shapeFeel: true } : {}),
-                ...(scenario.shapeAll ? { shapeAll: true } : {}),
-                ...(scenario.shapeShares ? { shapeShares: scenario.shapeShares } : {}),
-                ...(scenario.shapeSplit || options.shapeSplit ? { shapeSplit: true } : {}),
-                ...(options.shapeAsk ? { shapeAsk: true } : {}),
-                ...(options.shapeLong ? { shapeLong: true } : {}),
-            },
             herNow: { ...(scenario.projectChoice && scenario.autonomous ? { projectChoice: true } : {}) },
             // 她没想完的问题（ADR 0207）：想出来的在数据目录的 open-questions.json，每次现取（模拟器只有这一样）
             herNotes: { ...(scenario.openQuestions ? { openQuestions: thoughtsReader(dataDir) } : {}) },
@@ -564,16 +537,14 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
             } } : {}),
             // 话说到一半（跟着 speechCheck）
             speechCheck: Boolean(options.speechCheck),
-            // 挑候选（ADR 0041）：--candidates 或 bot 的配置大于 1 才挂（模拟器没有 tailCap）
+            // 挑候选（ADR 0041）：--candidates 或 bot 的配置大于 1 才挂
             ...((options.candidates ?? 1) > 1 ? { candidates: { count: options.candidates!, speechCheck: options.speechCheck ?? false } } : {}),
-            // 质感按场景（打错字总是挂）；模拟器不取连续性、群里的事、真人数值，也没有梗百科词库，不挂
-            texture: Boolean(scenario.texture),
+            // 打错字总是挂；模拟器不取连续性、群里的事、真人数值，也没有梗百科词库，不挂
             // 「做题式」写法（ADR 0146 实验）：只有 --frame solve 时挂
             solveFrame: options.replyFrame === 'solve',
             relationship: Boolean(scenario.relationship),
-            // 小梗（ADR 0114）、口头习惯（ADR 0138）：直接给场景里写好的，不抽
+            // 小梗（ADR 0114）：直接给场景里写好的，不抽
             ...(scenario.jokes?.length ? { jokes: jokesTurnModule(() => scenario.jokes!, message => { if (epoch === responderEpoch) log(message); }) } : {}),
-            ...(scenario.idioms?.length ? { idioms: idiomsTurnModule(() => scenario.idioms!.map(item => ({ phrase: item.phrase, kind: item.kind ?? '口头禅', count: 9, days: 5 })), message => { if (epoch === responderEpoch) log(message); }, scenario.idiomShare) } : {}),
             together: Boolean(scenario.together),
             interruptions: Boolean(scenario.interruptions),
             // 网络热梗（ADR 0129）：直接给场景里写好的梗，当作今天刚在榜上，不学
@@ -597,7 +568,7 @@ async function runOwnedScenario(scenario: Scenario, options: RunOptions, owners:
         ...(photos && scenario.tier === 'boyfriend' ? { photos } : {}),
         ...(scenario.stickerChance !== undefined ? { stickerChance: scenario.stickerChance } : {}),
         ...(scenario.stickerUncued !== undefined ? { stickerUncued: scenario.stickerUncued } : {}),
-        ...(scenario.stickerOnlyChance !== undefined ? { stickerOnlyChance: scenario.stickerOnlyChance } : scenario.shapeFeel || options.shapeFeel ? { stickerOnlyChance: STICKER_ONLY_SHARE } : {}),
+        ...(scenario.stickerOnlyChance !== undefined ? { stickerOnlyChance: scenario.stickerOnlyChance } : {}),
         contacts: [contact, ...others],
         log: message => { if (epoch === responderEpoch) log(message); },
         now: clock.now,

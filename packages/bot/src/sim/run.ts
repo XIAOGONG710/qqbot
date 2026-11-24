@@ -34,18 +34,6 @@ const option = (name: string) => { const i = args.indexOf(name); if (i < 0) retu
 const runs = Number(option('--runs') ?? 3);
 const keepBank = flag('--keep-bank');
 const noMemory = flag('--no-memory');
-// 形状控制（ADR 0091）：对所有场景打开，A/B 时和不带 --shape 的一批比
-const shape = flag('--shape');
-// 带自己的小事（ADR 0094）：同时打开 shape
-const agenda = flag('--agenda');
-// 废话（ADR 0095）：同时打开 shape
-const filler = flag('--filler');
-// 分成几条（ADR 0096）：同时打开 shape
-const split = flag('--split');
-// 被问直接问题时答完再接着说（ADR 0149）：同时打开 shape
-const ask = flag('--ask');
-// 被认真问想法时说长一点（ADR 0150）：同时打开 shape
-const long = flag('--long');
 // 认真问她时深思（ADR 0151）：--deliberate 用配置的 deliberateModel（默认 deepseek-v4-pro）；--deliberate-model <名> 换别的
 const deliberateModelOption = option('--deliberate-model');
 const deliberate = flag('--deliberate');
@@ -55,8 +43,6 @@ const deliberateNoteFile = option('--deliberate-note');
 const depth = flag('--depth');
 // 事实检查多查一类：她替他说的事（ADR 0203）：--fact-him（要同时 --fact log|fix，或场景里开着 factCheck）
 const factHim = flag('--fact-him');
-// 情绪轮（ADR 0099）：同时打开 shape
-const feel = flag('--feel');
 // 逐条事实检查（ADR 0137）：对所有场景打开，log 只查只记、fix 查到就重写；不写按场景自己的
 const factOption = option('--fact');
 // 实验 A（ADR 0146）：做题式写法 / 换温度 / 关思考。思考开着时 temperature 不起作用（10-25 实测：温度 0 与 1.5 同样 5/5 种不同输出），所以要调温度先 --thinking off
@@ -90,7 +76,7 @@ if ((frameOption !== undefined && frameOption !== 'solve') || (thinkingOption !=
 }
 if (args.length === 0 || !Number.isInteger(runs) || runs < 1 || (parallel !== undefined && (!Number.isInteger(parallel) || parallel < 1)) || (pinExamples !== undefined && !['on', 'off'].includes(pinExamples))
     || (contextTurns && ![contextTurns.turns, contextTurns.step].every(n => Number.isInteger(n) && n >= 1))) {
-    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录或含 {tier} 的卡文件>] [--model <名>] [--thinking off|high|max] [--own-voice] [--fewer-rules] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--shape] [--agenda] [--filler] [--feel] [--split] [--fact off|log|fix] [--context-turns N [--context-step K]]');
+    console.error('用法：npm run sim -w @qqbot/bot -- <场景文件或目录>... [--runs 3] [--keep-bank] [--no-memory] [--card <目录或含 {tier} 的卡文件>] [--model <名>] [--thinking off|high|max] [--own-voice] [--fewer-rules] [--pin-examples on|off] [--tag <名字>] [--parallel N] [--candidates N] [--fact off|log|fix] [--context-turns N [--context-step K]]');
     process.exit(2);
 }
 
@@ -159,17 +145,10 @@ for (const [fileIndex, file] of files.entries()) {
             speechCheck: config.speechCheck,
             herDays: config.herDays,
             candidates: candidatesOption === undefined ? config.candidates : Number(candidatesOption),
-            ...(shape || agenda || filler || feel || split || ask || long ? { shape: true } : {}),
-            ...(ask ? { shapeAsk: true } : {}),
-            ...(long ? { shapeLong: true } : {}),
             ...(deliberate || deliberateModelOption !== undefined ? { deliberateLlm: deliberateLlm(config.llm, deliberateModelOption ?? loaded.deliberateModel) } : {}),
             ...(deliberateNoteFile ? { deliberateNote: readFileSync(deliberateNoteFile, 'utf8').trim() } : {}),
             ...(depth ? { depthRouting: true } : {}),
             ...(factHim ? { factHim: true } : {}),
-            ...(agenda ? { shapeAgenda: true } : {}),
-            ...(filler ? { shapeFiller: true } : {}),
-            ...(feel ? { shapeFeel: true } : {}),
-            ...(split ? { shapeSplit: true } : {}),
             ...(frameOption === 'solve' ? { replyFrame: 'solve' as const } : {}),
             ...(factOption ? { factCheck: factOption as 'off' | 'log' | 'fix' } : {}),
             ...(diaryWorld ? { diaryWorld } : {}),

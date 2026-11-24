@@ -379,13 +379,6 @@ describe('他问她今天过得怎么样（ADR 0106，dayThings 开着才有）'
         assert.notEqual(describeIntent({ history: [assistant('嗯'), user('今天干嘛了')], now, dayThings: true, crisis: 'high' }), ABOUT_DAY_INTENT);
         assert.notEqual(describeIntent({ history: [assistant('嗯'), user('今天干嘛了')], now, dayThings: true, initiating: true }), ABOUT_DAY_INTENT);
     });
-    test('这一轮不压成几个字：长度档位至少是 medium', async () => {
-        const { planShape } = await import('../src/language/shape.ts');
-        for (let i = 0; i < 20; i++) {
-            const plan = planShape({ history: [{ role: 'assistant', content: '嗯' }, { role: 'user', content: `今天干嘛了${i}` }], intent: ABOUT_DAY_INTENT, initiating: false })!;
-            assert.ok(['medium', 'long', 'wide'].includes(plan.kind), plan.kind);
-        }
-    });
 });
 
 describe('他的低落往后接着算（10-30 通读：「被领导骂了」之后的「想辞职」「是不是太没用了」她在质疑他）', () => {

@@ -1,6 +1,7 @@
 # ADR 0096：条数当目标（`shapeSplit`）和「随口说件自己的事」（主动时机 `share`），都默认关
 
 - 状态：**已实现；2026-10-22 随 bili9 上线**（用户 10-22：「我希望她能主动找我进行聊天，而不是被动的接受」）。`shapeSplit: true`（要 `shape` 开着）；`share` 写进了男朋友档（`tiers.yml` 加 `share`、`daily_max` 2 → 4，转换器重出两张卡）。回滚：配置里 `shapeSplit` 改回 false；`tiers.yml` 去掉 `share`、`daily_max` 改回 2，重出卡再落地一次，重启
+- 2026-11-24：fewerRules 转正（用户拍板，[减法单子 二.1](../plans/2026-11-24-subtraction-round.md)），`shapeSplit`连开关和代码一起删了；线上 fewerRules 开着时它本来就不生效。
 - 日期：2026-10-21 夜 / 22 日
 - 关联：[ADR 0036](0036-conversation-naturalness.md)（回复风格，10-10 把多数回复压成一条）、[ADR 0091](0091-reply-shape.md)、[ADR 0094](0094-her-own-agenda.md)、[ADR 0011](0011-proactive-messages.md)、[ADR 0013](0013-old-project-advice.md)
 - 用户提出：2026-10-22「顺看一下为什么现在聊天只回复一条消息，让她的主动性更强一点，会聊其他的事」

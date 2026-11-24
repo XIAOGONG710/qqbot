@@ -16,7 +16,7 @@ const pieces: Piece[] = [
     { slot: 'time', text: '[当前时间]' },
     { slot: 'state', text: '[你现在：在宿舍]' },
     { slot: 'groundNote', text: '（没人问就别主动说）' },
-    { slot: 'shape', text: '[这一轮说话：每条不超过 14 个字]' },
+    { slot: 'length', text: '[这一轮说话：只回一句短的]' },
     { slot: 'lastUser', text: '他最后说的是：「在吗」。先接这一句' },
 ];
 
@@ -28,7 +28,7 @@ describe('少规矩（fewerRules）', () => {
         const { afterMain, afterHistory } = assemblePrompt(pieces);
         assert.deepEqual(afterMain, ['我现在的样子']);
         assert.match(afterHistory.at(-1)!, /没人问就别主动说/);
-        assert.match(afterHistory.at(-1)!, /每条不超过 14 个字/);
+        assert.match(afterHistory.at(-1)!, /只回一句短的/);
     });
 
     test('开着：教她怎么说话的槽不放；事实和她自己写的「我现在的样子」照放', () => {
@@ -38,7 +38,7 @@ describe('少规矩（fewerRules）', () => {
         const now = afterHistory.at(-1)!;
         assert.match(now, /当前时间/);
         assert.match(now, /你现在：在宿舍/);
-        assert.doesNotMatch(now, /别主动说|不超过 14 个字/);
+        assert.doesNotMatch(now, /别主动说|只回一句短的/);
         assert.ok(!RULE_SLOTS.has('portrait') && !RULE_SLOTS.has('state') && !RULE_SLOTS.has('time'));
     });
 
@@ -46,7 +46,7 @@ describe('少规矩（fewerRules）', () => {
         useFewerRules(true);
         const now = assemblePrompt(pieces, { crisis: true }).afterHistory.at(-1)!;
         assert.match(now, /没人问就别主动说/);
-        assert.match(now, /每条不超过 14 个字/);
+        assert.match(now, /只回一句短的/);
         assert.match(now, /先接这一句/);
         const module = replyBasicsModule();
         const fresh = [{ role: 'user', content: '我不想活了', time: '2026-11-20T11:59:00Z' }];
@@ -78,12 +78,11 @@ describe('少规矩（fewerRules）', () => {
         assert.equal(lastUser(module.contribute!(turnOf({}, { history: fresh } as Partial<Turn>))).length, 1, '关着时照旧放');
     });
 
-    test('场景范例认得出来；只管风格的开关一并关掉', () => {
+    test('场景范例认得出来；只管风格的开关一并关掉（质感、句尾封顶、形状那一套 11-24 连开关删了，只剩说话的毛病和挑候选）', () => {
         assert.equal(isSceneExample({ content: '[场景参考·打招呼] 类似的话你可能会这样回：「在呢」' }), true);
         assert.equal(isSceneExample({ content: '楼下的猫叫团子饼' }), false);
-        const relaxed = relaxStyle({ speechCheck: true, tailCap: true, texture: true, shape: true, candidates: 3, herFeelings: true });
+        const relaxed = relaxStyle({ speechCheck: true, candidates: 3, herFeelings: true });
         assert.equal(relaxed.speechCheck, false);
-        assert.equal(relaxed.shape, false);
         assert.equal(relaxed.candidates, 1);
         assert.equal(relaxed.herFeelings, true, '不是风格的开关不动');
     });

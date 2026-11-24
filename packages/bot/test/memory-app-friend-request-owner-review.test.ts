@@ -18,7 +18,7 @@ async function fixture(mode: 'success' | 'failure' | 'reentrant' | 'throw') {
     for (const tier of ['boyfriend', 'boyfriend-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色', extensions: { qqbot: { schedule } } } }));
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
         contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], qqControl: 'on', qqFriendGate: 'allow', qqAllowFriends: [10001],
-        jokes: false, idioms: false, schedule: true, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+        jokes: false, schedule: true, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
     globalThis.fetch = async () => { throw new Error('unexpected synthetic network'); };
     const cleanup = async () => { release(); await app?.stop(); await settle(); globalThis.fetch = oldFetch; assert.equal(dirname(resolve(root)), resolve(tmpdir())); assert.ok(basename(root).startsWith('qqbot-app-friend-request-owner-')); rmSync(root, { recursive: true, force: true }); };
     try {

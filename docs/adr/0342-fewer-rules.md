@@ -1,6 +1,7 @@
 # ADR 0342：少规矩——把教她怎么说话的那些拿掉，交给她自己
 
 - 状态：**线上已开（2026-11-20 18:54 起，DSH 信箱 1856 核对日志确认）**，用户 11-20 在 DSH 那台亲口点头「四个都开」。快照 `exchange/live/koishi-2026-11-20-1855.yaml`；日志「少规矩：开」。代码默认仍关（配置 `fewerRules`）；回滚 = `koishi.yml` 删掉那一行 + 重启。
+- 2026-11-24：用户拍板转正（[减法单子 二.1](../plans/2026-11-24-subtraction-round.md)）。被它架空的 11 个开关连代码删了：形状族 7 个（shape、shapeAgenda、shapeFiller、shapeSplit、shapeAsk、shapeLong、shapeFeel）、texture、tailCap、idioms、exemplars；relaxStyle 只剩关 speechCheck、candidates 置 1；RULE_SLOTS 去掉 shape、idiom、exemplar 三个槽。fewerRules 本身仍是开关（线上开着）。
 - 日期：2026-11-20
 - 起因：用户 2026-11-20：「我想让她有灵性」；讲了群里一条机器人「鱼」一夜之间开智、会骂人、有自己的想法，主人没做太大改动；「我感觉应该是规矩给她压住了」；同意连「说话短」这类形状规矩一起拿掉。
 - 关联：[ADR 0101](0101-inner-life.md)、[ADR 0151](0151-deliberate.md)、[ADR 0175](0175-bare-arm-framework-test.md)（10-29「是框架束缚了她吗」，对照结果一直没评）、[ADR 0340](0340-carry-a-self-forward.md)（她自己写的「我现在的样子」）、[ADR 0341](0341-her-own-presence-in-groups.md)、`language/own-voice.ts`（只换五句的小实验，89acb623）

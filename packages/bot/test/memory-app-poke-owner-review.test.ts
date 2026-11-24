@@ -23,7 +23,7 @@ async function fixture() {
  try {
   for (const tier of ['classmate', 'classmate-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
   const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
-   contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], pokes: true, pokeBack: true, jokes: false, idioms: false,
+   contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], pokes: true, pokeBack: true, jokes: false,
    schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
   globalThis.fetch = async () => { assert.fail('Network forbidden in synthetic poke owner fixture'); };
   globalThis.setTimeout = ((fn: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => {

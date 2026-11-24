@@ -16,10 +16,9 @@ import { closenessModule } from '../modules/closeness.ts';
 import { consentModule, type ConsentModuleOptions } from '../modules/consent.ts';
 import { continuityModule } from '../modules/continuity.ts';
 import { crisisModule } from '../modules/crisis.ts';
-import { textureModule, typoModule } from '../modules/decorate.ts';
+import { typoModule } from '../modules/decorate.ts';
 import { deliberateModule } from '../modules/deliberate.ts';
 import { devicesModule, type DevicesModuleOptions } from '../modules/devices.ts';
-import { exemplarsModule, type ExemplarsModuleOptions } from '../modules/exemplars.ts';
 import { feelingsModule } from '../modules/feelings.ts';
 import { groupModule } from '../modules/group.ts';
 import { herNotesModule, type HerNotesOptions } from '../modules/her-notes.ts';
@@ -55,7 +54,6 @@ import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
 import { scenesModule } from '../modules/scenes.ts';
 import { selfMemoryModule, type SelfMemoryOptions } from '../modules/self-memory.ts';
 import { selfNotesModule, type SelfNotesModuleOptions } from '../modules/self-notes.ts';
-import { shapeModule, type ShapeModuleOptions } from '../modules/shape.ts';
 import { shellModule, type ShellModuleOptions } from '../modules/shell.ts';
 import { solveFrameModule } from '../modules/solve-frame.ts';
 import { soulModule, type SoulOptions } from '../modules/soul.ts';
@@ -92,7 +90,6 @@ export interface TurnModuleDeps {
     lagTail: boolean;
     lifeInPrompt: boolean;
     intent: IntentModuleOptions;
-    shape: Omit<ShapeModuleOptions, 'log'>;
     /** 她此刻的另几样（项目选择、昨晚怎么睡的、她自己定的计划；作息冲突的桌面那两样，ADR 0347 第 3 层 desktopConflict，App 才给） */
     herNow?: Pick<HerNowOptions, 'projectChoice' | 'realNights' | 'herPlan' | 'desktopNight' | 'desktopCalled'>;
     /** 她自己记下的东西：各样的读取函数，配置没开的不给 */
@@ -112,8 +109,6 @@ export interface TurnModuleDeps {
     selfNotes?: SelfNotesModuleOptions;
     soul?: SoulOptions;
     learningQuestion?: Parameters<typeof learningQuestionModule>[0];
-    /** 真人例子：有条目才挂 */
-    exemplars?: ExemplarsModuleOptions['exemplars'];
     innerLine?: InnerModuleOptions['innerLine'];
     devices?: DevicesModuleOptions;
     consent?: ConsentModuleOptions;
@@ -127,13 +122,11 @@ export interface TurnModuleDeps {
     candidates?: Omit<CandidatesModuleOptions, 'history'>;
     continuity?: boolean;
     group?: boolean;
-    texture?: boolean;
     humanState?: boolean;
     /** 「做题式」写法的实验（模拟器 --frame solve） */
     solveFrame?: boolean;
     relationship?: boolean;
     jokes?: Module;
-    idioms?: Module;
     together?: boolean;
     interruptions?: boolean;
     memes?: Parameters<typeof memesModule>[0];
@@ -171,12 +164,10 @@ export function buildTurnModules(d: TurnModuleDeps): Module[] {
         pastModule(log),
         peopleAroundModule({ herDays, log }),
         meetupModule({ herDays, worldState: d.worldState, promises: d.promises, log }),
-        ...(d.exemplars?.length ? [exemplarsModule({ exemplars: d.exemplars, log })] : []),
         practiceModule({ lifeInPrompt: d.lifeInPrompt, herDays, worldState: d.worldState }),
         ...(d.innerLine ? [innerModule({ innerLine: d.innerLine, log })] : []),
         ...(d.devices ? [devicesModule(d.devices)] : []),
         ...(d.consent ? [consentModule(d.consent)] : []),
-        shapeModule({ ...d.shape, log }),
         lengthModule({ log }),
         ...(d.quote ? [quoteModule({ history: d.history, ...d.quote, log })] : []),
         initiateNoteModule(),
@@ -194,7 +185,6 @@ export function buildTurnModules(d: TurnModuleDeps): Module[] {
         timeNotesModule(),
         mediaOffersModule(),
         ...(d.candidates ? [candidatesModule({ ...d.candidates, history: d.history })] : []),
-        ...(d.texture ? [textureModule()] : []),
         typoModule(),
         intentLineModule(),
         ...(d.humanState ? [humanStateModule()] : []),
@@ -203,7 +193,6 @@ export function buildTurnModules(d: TurnModuleDeps): Module[] {
         ...(d.solveFrame ? [solveFrameModule()] : []),
         ...(d.relationship ? [closenessModule(log)] : []),
         ...(d.jokes ? [d.jokes] : []),
-        ...(d.idioms ? [d.idioms] : []),
         ...(d.together ? [togetherModule(log)] : []),
         ...(d.interruptions ? [interruptionsModule(log)] : []),
         ...(d.memes ? [memesModule(d.memes, log)] : []),

@@ -16,7 +16,7 @@ for (const failure of [false, true]) test(`真实App.stop取消小梗提取，�
     try {
         for (const tier of ['boyfriend', 'boyfriend-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
         const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
-            contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], jokes: true, idioms: false, schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+            contacts: [{ qq: 10001, tier: 'boyfriend', name: '合成联系人' }], jokes: true, schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         const history = new ChatHistory(dataDir);
         for (let i = 0; i < 42; i++) history.append(10001, { role: i % 2 ? 'assistant' : 'user', content: `星云团子饼 合成对话${i}`, time: new Date(now - (42 - i) * 1000).toISOString(), messageId: i + 1 });
         globalThis.fetch = async () => { assert.fail('Network prohibited in synthetic jokes-stop fixture'); };

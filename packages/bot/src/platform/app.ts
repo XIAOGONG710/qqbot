@@ -20,7 +20,6 @@ import { createExecutor, realFiles, type ExecutorOptions } from '../executor/exe
 import { absorbStage, createInterpreter } from '../interpreter/interpreter.ts';
 import { jokesModule } from '../modules/jokes.ts';
 import { takeMemoryReview, takeSelfNotes } from '../modules/self-notes.ts';
-import { idiomsModule } from '../modules/idioms.ts';
 import { buildTurnModules } from './turn-modules.ts';
 import { reflectionsModule } from '../modules/reflections.ts';
 import { memorySyncModule } from '../modules/memory-sync.ts';
@@ -181,7 +180,7 @@ import { missedMessages } from './missed-messages.ts';
 import { privateAdmission } from '.././social/private-admission.ts';
 import { weeklyReportDue, writeWeeklyReport } from './weekly-report.ts';
 import { photoShelf, PHOTO_HISTORY_PREFIX, type PhotoKind, type PhotoSource } from '.././vision/photos.ts';
-import { STICKER_ONLY_SHARE, type StickerShelf } from '.././social/stickers.ts';
+import type { StickerShelf } from '.././social/stickers.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import type { PromptManifest } from './prompt-manifest.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
@@ -382,7 +381,7 @@ export interface AppOptions {
     photoRetryMs?: number;
     /** 允许发图片表情的轮次里抽中发的概率（不写按 STICKER_TURN_CHANCE；测试用）*/
     stickerChance?: number;
-    /** 抽到发表情的轮次里只发表情不写文字的概率（不写：shapeFeel 开着按 STICKER_ONLY_SHARE，否则 0；测试用，ADR 0099）*/
+    /** 抽到发表情的轮次里只发表情不写文字的概率（不写就是 0；原来跟着 shapeFeel，11-24 随形状控制删了；测试用，ADR 0099）*/
     stickerOnlyChance?: number;
     /** B 站公开接口的 fetch（配置 bilibili；不给就用全局 fetch，测试注入假的） */
     bilibiliFetch?: BiliFetch;
@@ -418,7 +417,7 @@ export interface AppOptions {
 const STOP_ORDER = [
     'stopped',
     'diaries', 'promises', 'memory', 'tastes',
-    'jokes', 'idioms', 'modules',
+    'jokes', 'modules',
     'dsh-asks', 'mobile-companion', 'probing',
     'passive-reads', 'sticker-work', 'account-guard', 'notices',
     'context', 'incoming', 'photo-discovery', 'crisis', 'pokes', 'heartbeat',
@@ -789,27 +788,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         charName: contact => cardFor(contact.tier).character.name, history: qq => history.load(qq),
     }) : undefined;
     lifetime.own('jokes', () => jokes?.stop?.());
-    // 他的口头习惯（ADR 0138）：解释器的模块（modules/idioms.ts）；派生数据存 <数据目录>/idioms/<QQ>.json。
-    // 不收进去的词：联系人和角色的名字、卡上的禁用词
-    // 少规矩（ADR 0342）开着时 idiom 槽整类不放（RULE_SLOTS），危机回合它自己也让路：学了也用不上，模块不建（后台学习那次模型调用省掉）
-    if (config.idioms && config.fewerRules) log('口头习惯：fewerRules 开着，段落不放，学习也不跑');
-    const idioms = config.idioms && !config.fewerRules ? idiomsModule({
-        exec, dataDir: config.dataDir, log, contacts: config.contacts, llm: config.llm,
-        charName: contact => cardFor(contact.tier).character.name, history: qq => history.load(qq),
-        blocked: contact => {
-            const character = cardFor(contact.tier).character;
-            return [contact.name, character.name, ...config.contacts.map(person => person.name), ...character.banned];
-        },
-    }) : undefined;
-    lifetime.own('idioms', () => idioms?.stop?.());
     // 网络热梗（ADR 0129）：派生数据，存 <数据目录>/memes/memes.json；放进提示词的是下面的模块，刷新在后面（要她的 B 站号）
     const memesFile = memesPath(config.dataDir);
     // 梗百科词库（2026-10-29）：6668 条，只读；文件不在就是没有，不影响自己学的那些
     const memeDict = config.memes ? openMemeDict(join(config.dataDir, 'memes', 'dict.json'), log) : undefined;
-    // 真人例子（ADR 0190，默认关）：语料由 scripts/build-exemplars.mjs 从已批准的真人语料生成
-    const exemplarCorpus = join(config.dataDir, 'exemplars', 'corpus.jsonl');
-    const exemplars = config.exemplars ? loadExemplars(exemplarCorpus, log) : [];
-    log(`真人例子：${config.exemplars ? `开（${exemplars.length} 条）` : '关'}${config.exemplars && !exemplars.length ? `——语料没读到（${exemplarCorpus}）` : ''}`);
     if (memeDict) log(`梗百科：词库 ${memeDict.count()} 条（他提到的词查这里，不写进她自己学的库）`);
     // 她自己在 B 站看过的（ADR 0130）：派生数据，存 <数据目录>/watching/watched.json；放进提示词的是下面的模块，“看”在后面（要她的 B 站号）
     const watchedFile = watchedPath(config.dataDir);
@@ -953,11 +935,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.herNo ? { refuse: true } : {}), ...(config.afterNo ? { afterNo: true } : {}), ...(config.jealousy ? { jealous: true } : {}), ...(config.curious ? { curious: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}), ...(config.pursuits ? { pursuits: true } : {}),
         },
-        // 形状控制（ADR 0091，配置 shape 及各分项）：shapeAll（ADR 0220）App 从来没接配置，只有模拟器用；分项同给联系人流水线的（都要 shape 开着）
-        shape: {
-            shape: config.shape, shapeAgenda: config.shape && config.shapeAgenda, shapeFiller: config.shape && config.shapeFiller, shapeFeel: config.shape && config.shapeFeel,
-            shapeSplit: config.shape && config.shapeSplit, shapeAsk: config.shape && config.shapeAsk, shapeLong: config.shape && config.shapeLong,
-        },
         // 她此刻（她那边、身体、状态行）的另几样
         herNow: {
             ...(config.projectChoice && lifeRunner ? { projectChoice: true } : {}),
@@ -1085,8 +1062,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         },
         // 她学的时候没想通的地方（DSH 10-31）：两天内存下的那个问题，想问就问他；只给男朋友档，危机、只想一想时不放
         learningQuestion: () => questionLine(loadQuestion(config.dataDir), clockNow().getTime()),
-        // 真人例子（ADR 0190，配置 exemplars）：语料上面启动时读过一次，有条目才挂
-        exemplars,
         // 她最近心里在想什么（ADR 0101，配置 innerLife）：念头是主动消息的计划器想的，计划器在后面才建，每次现取
         ...(config.innerLife ? { innerLine: (contact: Contact) => planners.get(contact.qq)?.innerLine() } : {}),
         // 她能替他操作的设备的菜单（ADR 0148，配置 deviceControl）：名单里有男朋友档才有设备控制（同下面的 deviceOwner）；服务是异步起的，起来之前菜单是空串，每轮现取
@@ -1137,21 +1112,18 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         } } : {}),
         // 话说到一半（ADR 0141）：跟着 speechCheck
         speechCheck: config.speechCheck,
-        // 挑候选（ADR 0041，配置 candidates 大于 1 才挂）：说话的毛病跟着 speechCheck / tailCap
-        ...(config.candidates > 1 ? { candidates: { count: config.candidates, speechCheck: config.speechCheck, tailCap: config.tailCap } } : {}),
+        // 挑候选（ADR 0041，配置 candidates 大于 1 才挂）：说话的毛病跟着 speechCheck
+        ...(config.candidates > 1 ? { candidates: { count: config.candidates, speechCheck: config.speechCheck } } : {}),
         // 连续性（ADR 0157–0163）、群里最近的事、真人数值和人格成长层（ADR 0222 / 0251）：facts 由联系人流水线原位取，没有开关，总是挂
         continuity: true,
         group: true,
         humanState: true,
-        // 发出去之前的修饰（ADR 0336 第 11 步）：质感（ADR 0131，配置 texture）跟着开关挂；打错字总是挂
-        texture: config.texture,
         // 关系阶段（ADR 0113）、陪玩（ADR 0111）、被打断（ADR 0115）：跟着各自的开关
         relationship: config.relationship,
         together: config.together,
         interruptions: config.interruptions,
-        // 小梗（ADR 0114）、口头习惯（ADR 0138）：上面建好的那两个（带定时抽取和收尾）
+        // 小梗（ADR 0114）：上面建好的那个（带定时抽取和收尾）
         ...(jokes ? { jokes } : {}),
-        ...(idioms ? { idioms } : {}),
         // 网络热梗（ADR 0129）：每一轮从库里现读（作者可以在两轮之间改 / 删，别用改之前的快照），停下之后不再读；从热榜学新梗还在下面（要她的 B 站号）
         ...(config.memes ? { memes: () => (stopped ? [] : loadMemes(memesFile, log).entries) } : {}),
         // 她看视频（ADR 0130）：他问起时放她真看过的两条；用的是内存里那份（她看完一个就换新的），每次现取
@@ -1170,8 +1142,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         }, groupRoomEntry, friendRequests, pokes, recalls, followUps, ...turnModules, worldUpkeep, dshInbox, tastesJob, memorySync, nowExport, outbox, reflections, dreams, leaveNote, dshStateExport, selfExport],
         exec,
     });
-    // 解释器接手各模块的停（关定时任务、拒新工作；小梗、口头习惯的收尾在里面）
-    lifetime.handOver(['jokes', 'idioms'], 'modules', () => interpreter.stop());
+    // 解释器接手各模块的停（关定时任务、拒新工作；小梗的收尾在里面）
+    lifetime.handOver(['jokes'], 'modules', () => interpreter.stop());
     // 照片货架（ADR 0109）：作者放进去的照片；没有照片就什么都不做
     const photoDiscovery = new AbortController();
     lifetime.own('photo-discovery', () => photoDiscovery.abort());
@@ -1810,7 +1782,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             schedule: config.schedule,
             moody: config.moody,
             speechCheck: config.speechCheck,
-            ...(config.tailCap ? { tailCap: true } : {}),
             herDays: config.herDays,
             ...contextWindowFor(contact),
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
@@ -1829,8 +1800,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             } } : {}),
             ...(stickerChance !== undefined ? { stickerChance } : {}),
             ...(config.biliStickers ? { stickerUncued: STICKER_UNCUED_CHANCE } : {}),
-            // 抽到发表情的轮次里一半只发表情（ADR 0099）：跟着情绪轮的开关走；测试可以直接给概率
-            ...((stickerOnlyChance ?? (config.shape && config.shapeFeel ? STICKER_ONLY_SHARE : 0)) > 0 ? { stickerOnlyChance: stickerOnlyChance ?? STICKER_ONLY_SHARE } : {}),
+            // 抽到发表情的轮次里只发表情（ADR 0099）：原来跟着情绪轮 shapeFeel 走，11-24 删了；测试可以直接给概率
+            ...(stickerOnlyChance !== undefined && stickerOnlyChance > 0 ? { stickerOnlyChance } : {}),
             ...(noteHerDay ? { onHerDay: noteHerDay } : {}),
             history,
             historyContent: historyText,
@@ -2678,8 +2649,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 schedule: config.schedule,
                 moody: config.moody,
                 speechCheck: config.speechCheck,
-                ...(config.tailCap ? { tailCap: true } : {}),
-                herDays: config.herDays,
+                    herDays: config.herDays,
                 ...(herDaysCard ? { today: herDayStatus(herDaysCard.schedule!, herDaysCard, now,
                     herDaysCard.herWorld && sharedWorld ? sharedWorld.at(herDaysCard.herWorld, herDaysCard.schedule!, now) : undefined) } : {}),
                 proactive: config.proactive,

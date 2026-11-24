@@ -17,7 +17,7 @@ async function fixture(failure = false) {
     for (const tier of ['classmate', 'classmate-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, 'synthetic-{tier}.json'), dataDir,
         contacts: [{ qq: 10001, tier: 'classmate', name: '合成联系人' }], memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic-health', timeoutMs: 5000, recallTimeoutMs: 100 },
-        jokes: false, idioms: false, schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
+        jokes: false, schedule: false, moody: false, speechCheck: false, herDays: false, realWeather: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
     globalThis.fetch = async () => { calls++; await held; if (failure) throw new Error('SYNTHETIC_HEALTH_FAILURE'); return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }); };
     const cleanup = async () => { release(); await app?.stop(); await settle(); globalThis.fetch = oldFetch; assert.equal(dirname(resolve(root)), resolve(tmpdir())); assert.ok(basename(root).startsWith('qqbot-app-health-owner-')); rmSync(root, { recursive: true, force: true }); };
     try {

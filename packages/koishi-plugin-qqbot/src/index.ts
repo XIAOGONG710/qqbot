@@ -192,10 +192,6 @@ export interface Config {
     bilibiliDm: PresenceMode;
     bilibiliReplies: PresenceMode;
     bilibiliCommentKeywords: string[];
-    shape: boolean;
-    shapeAgenda: boolean;
-    shapeFiller: boolean;
-    shapeFeel: boolean;
     proactiveReach: boolean;
     proactiveInvite: boolean;
     photos: boolean;
@@ -214,11 +210,8 @@ export interface Config {
     smallNews: boolean;
     memes: boolean;
     watching: boolean;
-    texture: boolean;
     biliStickers: boolean;
     quoteReply: boolean;
-    idioms: boolean;
-    tailCap: boolean;
     deviceControl: PresenceMode;
     deviceLinks: string[];
     deviceApps: string[];
@@ -237,9 +230,6 @@ export interface Config {
     realNights: boolean;
     chatReview: boolean;
     pursuits: boolean;
-    shapeSplit: boolean;
-    shapeAsk: boolean;
-    shapeLong: boolean;
     deliberate: boolean;
     deliberateModel: string;
     identityLedger: boolean;
@@ -304,7 +294,6 @@ export interface Config {
     hisReactions: boolean;
     herGuesses: boolean;
     openQuestions: boolean;
-    exemplars: boolean;
     rhythm: boolean;
     candidates: number;
     contextTurns: number;
@@ -391,10 +380,6 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         bilibiliReplies: choice('bilibiliReplies'),
         bilibiliCommentKeywords: Schema.array(Schema.string()).default([...DEFAULTS.bilibiliCommentKeywords])
             .description('**评论的话题关键词**（ADR 0092）：填了，评论就不再跟着分享走，而是她自己每天按其中一个关键词搜视频（比如「大肥鱼 插件」「DSH 插件」「deepseek harness」），在播放多的前几个里挑一个，读字幕和热评后评论并 @ 他。不看分区，所以 AI 视频、DSH 插件视频搜得到；约一半的日子想评论一次，仍受「隔至少一天、一周最多 3 条」管。前期专评 AI 视频和 DSH 插件视频用。不填就是老样子（分享之后在那个视频下评论）。最多 10 个，每个不超过 30 个字'),
-        shape: toggle('shape'),
-        shapeAgenda: toggle('shapeAgenda'),
-        shapeFiller: toggle('shapeFiller'),
-        shapeFeel: toggle('shapeFeel'),
         proactiveReach: toggle('proactiveReach'),
         proactiveInvite: toggle('proactiveInvite'),
         photos: toggle('photos'),
@@ -413,16 +398,13 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         smallNews: toggle('smallNews'),
         memes: toggle('memes'),
         watching: toggle('watching'),
-        texture: toggle('texture'),
         biliStickers: toggle('biliStickers'),
         quoteReply: toggle('quoteReply'),
-        idioms: toggle('idioms'),
         deviceControl: choice('deviceControl'),
         deviceLinks: Schema.array(Schema.string()).default([...DEFAULTS.deviceLinks])
             .description('他登记的网页（她只能说名字），每行“名字=https://地址”，最多 8 个；电脑上的 device-agent.config.json 里也要有同名的才会打开'),
         deviceApps: Schema.array(Schema.string()).default([...DEFAULTS.deviceApps])
             .description('他登记的应用名字，最多 8 个；电脑上的 device-agent.config.json 里要有同名的路径才会打开'),
-        tailCap: toggle('tailCap'),
         factCheck: choice('factCheck'),
         innerLife: toggle('innerLife'),
         adultSiteUrls: Schema.array(Schema.string()).default([...DEFAULTS.adultSiteUrls])
@@ -439,9 +421,6 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         worldThreads: toggle('worldThreads'),
         worldDrama: toggle('worldDrama'),
         pursuits: toggle('pursuits'),
-        shapeSplit: toggle('shapeSplit'),
-        shapeAsk: toggle('shapeAsk'),
-        shapeLong: toggle('shapeLong'),
         deliberate: toggle('deliberate'),
         deliberateModel: Schema.string().default(DEFAULTS.deliberateModel)
             .description('深思轮次用的模型名（和聊天用的同一个接口）。默认 deepseek-v4-pro'),
@@ -511,7 +490,6 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         feltLedgerRecall: toggle('feltLedgerRecall'),
         desktopConflict: toggle('desktopConflict'),
         selfPursuits: toggle('selfPursuits'),
-        exemplars: toggle('exemplars'),
         speechNotes: toggle('speechNotes'),
         diaryInsights: toggle('diaryInsights'),
         selfPortrait: toggle('selfPortrait'),
@@ -679,10 +657,6 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.bilibiliDm !== undefined ? { bilibiliDm: config.bilibiliDm } : {}),
         ...(config.bilibiliReplies !== undefined ? { bilibiliReplies: config.bilibiliReplies } : {}),
         ...(config.bilibiliCommentKeywords !== undefined ? { bilibiliCommentKeywords: config.bilibiliCommentKeywords } : {}),
-        ...(config.shape !== undefined ? { shape: config.shape } : {}),
-        ...(config.shapeAgenda !== undefined ? { shapeAgenda: config.shapeAgenda } : {}),
-        ...(config.shapeFiller !== undefined ? { shapeFiller: config.shapeFiller } : {}),
-        ...(config.shapeFeel !== undefined ? { shapeFeel: config.shapeFeel } : {}),
         ...(config.proactiveReach !== undefined ? { proactiveReach: config.proactiveReach } : {}),
         ...(config.proactiveInvite !== undefined ? { proactiveInvite: config.proactiveInvite } : {}),
         ...(config.photos !== undefined ? { photos: config.photos } : {}),
@@ -701,11 +675,8 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.smallNews !== undefined ? { smallNews: config.smallNews } : {}),
         ...(config.memes !== undefined ? { memes: config.memes } : {}),
         ...(config.watching !== undefined ? { watching: config.watching } : {}),
-        ...(config.texture !== undefined ? { texture: config.texture } : {}),
         ...(config.biliStickers !== undefined ? { biliStickers: config.biliStickers } : {}),
         ...(config.quoteReply !== undefined ? { quoteReply: config.quoteReply } : {}),
-        ...(config.idioms !== undefined ? { idioms: config.idioms } : {}),
-        ...(config.tailCap !== undefined ? { tailCap: config.tailCap } : {}),
         ...(config.deviceControl !== undefined ? { deviceControl: config.deviceControl } : {}),
         ...(config.deviceLinks !== undefined ? { deviceLinks: config.deviceLinks } : {}),
         ...(config.deviceApps !== undefined ? { deviceApps: config.deviceApps } : {}),
@@ -724,9 +695,6 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.realNights !== undefined ? { realNights: config.realNights } : {}),
         ...(config.chatReview !== undefined ? { chatReview: config.chatReview } : {}),
         ...(config.pursuits !== undefined ? { pursuits: config.pursuits } : {}),
-        ...(config.shapeSplit !== undefined ? { shapeSplit: config.shapeSplit } : {}),
-        ...(config.shapeAsk !== undefined ? { shapeAsk: config.shapeAsk } : {}),
-        ...(config.shapeLong !== undefined ? { shapeLong: config.shapeLong } : {}),
         ...(config.deliberate !== undefined ? { deliberate: config.deliberate } : {}),
         ...(config.deliberateModel !== undefined ? { deliberateModel: config.deliberateModel } : {}),
         ...(config.identityLedger !== undefined ? { identityLedger: config.identityLedger } : {}),
@@ -779,7 +747,6 @@ export function toAppConfigInput(config: Config): Record<string, unknown> {
         ...(config.desktopConflict !== undefined ? { desktopConflict: config.desktopConflict } : {}),
         ...(config.selfPursuits !== undefined ? { selfPursuits: config.selfPursuits } : {}),
         ...(config.speechNotes !== undefined ? { speechNotes: config.speechNotes } : {}),
-        ...(config.exemplars !== undefined ? { exemplars: config.exemplars } : {}),
         ...(config.diaryInsights !== undefined ? { diaryInsights: config.diaryInsights } : {}),
         ...(config.selfPortrait !== undefined ? { selfPortrait: config.selfPortrait } : {}),
         ...(config.fewerRules !== undefined ? { fewerRules: config.fewerRules } : {}),
@@ -975,7 +942,7 @@ function applyNow(ctx: Context, config: Config) {
         setConsoleState({ dataDir: appConfig.dataDir });
         // 开关合并的说明（还写着旧键、表达不了……）：合并表是空的时候没有
         for (const note of configSwitchNotes(input)) ctx.logger('qqbot').warn(note);
-        ctx.logger('qqbot').info(`开关：exemplars=${appConfig.exemplars} speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} hisReactions=${appConfig.hisReactions} herGuesses=${appConfig.herGuesses} diaryLookback=${appConfig.diaryLookback ?? false} memoryFeelings=${appConfig.memoryFeelings ?? false} realNights=${appConfig.realNights ?? false} chatReview=${appConfig.chatReview ?? false} worldThreads=${appConfig.worldThreads ?? false} afterNo=${appConfig.afterNo ?? false} openQuestions=${appConfig.openQuestions}`);
+        ctx.logger('qqbot').info(`开关：speechNotes=${appConfig.speechNotes} diaryInsights=${appConfig.diaryInsights} herFeelings=${appConfig.herFeelings} feelingReview=${appConfig.feelingReview} memoryReconcile=${appConfig.memoryReconcile} depthRouting=${appConfig.depthRouting} factHim=${appConfig.factHim} readingTakes=${appConfig.readingTakes} hisReactions=${appConfig.hisReactions} herGuesses=${appConfig.herGuesses} diaryLookback=${appConfig.diaryLookback ?? false} memoryFeelings=${appConfig.memoryFeelings ?? false} realNights=${appConfig.realNights ?? false} chatReview=${appConfig.chatReview ?? false} worldThreads=${appConfig.worldThreads ?? false} afterNo=${appConfig.afterNo ?? false} openQuestions=${appConfig.openQuestions}`);
         // 她的时区（ADR 0331）：整个 Koishi 进程跟着她的时区走，作息和日界不再取决于机器设置；
         // 插件停用或重载时还原（还原只在没有更新的实例占用时才做，见 claimTimeZone）
         releaseTimeZone = claimTimeZone(appConfig.timeZone);

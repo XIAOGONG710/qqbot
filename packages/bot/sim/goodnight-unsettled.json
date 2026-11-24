@@ -5,12 +5,6 @@
     "user": "宝宝",
     "start": "2026-11-10T23:10:00+08:00",
     "memory": false,
-    "shape": true,
-    "shapeAgenda": true,
-    "shapeFiller": true,
-    "shapeFeel": true,
-    "shapeSplit": true,
-    "texture": true,
     "herFeelings": true,
     "herNo": true,
     "history": [

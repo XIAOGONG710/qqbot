@@ -6,7 +6,6 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { contextSummarizer } from '../src/language/context-window.ts';
 import { jokeStore } from '../src/language/jokes.ts';
-import { idiomStore } from '../src/language/idioms.ts';
 import { archiveTestData } from '../src/memory/archive.ts';
 import { fileOps, writeJsonAtomic } from '../src/memory/json-file.ts';
 import { auditContactPrivacy } from '../src/memory/privacy-audit.ts';
@@ -43,8 +42,9 @@ function lexicalResidues(data: string): string[] {
         fs.renameSync = (() => { throw Object.assign(new Error('synthetic rename failure'), { code: 'EPERM' }); }) as typeof rename;
         syncBuiltinESMExports();
         assert.throws(() => jokeStore({ dir: join(data, 'jokes'), log: () => {} }).save(10001, { version: 1, jokes: [{ phrase: secret, origin: secret }] }));
-        assert.throws(() => idiomStore({ dir: join(data, 'idioms'), log: () => {} }).save(10001, { version: 1, items: [{ phrase: secret, kind: '合成习惯', count: 4, days: 2 }] }));
     } finally { fs.renameSync = rename; syncBuiltinESMExports(); }
+    // 口头习惯（idioms）11-24 删了，旧数据目录里可能还留着当年写失败的残留：照样要审到、导出、忘掉
+    fs.writeFileSync(join(data, 'idioms', '10001.json.tmp'), JSON.stringify({ version: 1, items: [{ phrase: secret, kind: '合成习惯', count: 4, days: 2 }] }));
     return [join('jokes', '10001.json.tmp'), join('idioms', '10001.json.tmp')];
 }
 

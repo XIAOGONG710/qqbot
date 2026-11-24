@@ -72,10 +72,6 @@ export const DEFAULTS = {
     bilibiliDm: 'off' as PresenceMode,
     bilibiliReplies: 'off' as PresenceMode,
     bilibiliCommentKeywords: [] as readonly string[],
-    shape: false,
-    shapeAgenda: false,
-    shapeFiller: false,
-    shapeFeel: false,
     proactiveReach: false,
     proactiveInvite: false,
     photos: false,
@@ -94,11 +90,8 @@ export const DEFAULTS = {
     smallNews: false,
     memes: false,
     watching: false,
-    texture: false,
     biliStickers: false,
     quoteReply: false,
-    idioms: false,
-    tailCap: false,
     deviceControl: 'off' as PresenceMode,
     deviceLinks: [] as readonly string[],
     deviceApps: [] as readonly string[],
@@ -109,8 +102,6 @@ export const DEFAULTS = {
     herNo: false,
     /** 拒绝之后（ADR 0214）：他又提同一类请求、上次她推了他只回「行吧」就不吭声 / 她被磨着勉强答应了，给她一句方向（要不要还是她定，变的是说法）；什么都不存 */
     afterNo: false,
-    /** 真人例子（ADR 0190）：从已批准的真人语料里挑几条放进提示词；默认关 */
-    exemplars: false,
     lagTail: false,
     everydayLife: false,
     worldDrama: false,
@@ -129,9 +120,6 @@ export const DEFAULTS = {
     /** 她每天回顾聊天（ADR 0221）：每晚看今天和他的聊天里数得出来的几处（他说她说错、他只回嗯、连问、说太长、同一件事说好几遍），她自己判断、记一句；私人空间 */
     chatReview: false,
     pursuits: false,
-    shapeSplit: false,
-    shapeAsk: false,
-    shapeLong: false,
     deliberate: false,
     deliberateModel: 'deepseek-v4-pro',
     identityLedger: false,
@@ -327,26 +315,6 @@ export interface AppConfig {
      */
     bilibiliCommentKeywords: readonly string[];
     /**
-     * 形状控制（ADR 0091）：按他这一轮说了多长，定她每条最多几个字、最多几条（字数档取自真人聊天的分布），写进提示词，超了重写一次、还超就在分句处截断；
-     * 代替 shortReplies 那句软提示（模型不听：开着它每条气泡中位还是 16 字，真人 6–7）。主动找他、收尾、他明着让她讲、危机回合不用。默认关
-     */
-    shape: boolean;
-    /**
-     * 带自己的小事（ADR 0094，要 shape 开着）：适用的轮次里约五分之一（不是收尾、不是认真接话、不是亲近、心情不安静），让她答完他的话之后，
-     * 从「你那边」的事实里挑一件自己的事顺带说一句。真人女生一侧 30% 的轮次这样，她在开形状控制后只有 12–15%。默认关
-     */
-    shapeAgenda: boolean;
-    /**
-     * 废话（ADR 0095，要 shape 开着）：适用的轮次里约 7% 她只回一条不带内容的话（笑一下、应一声、拖个长音、叹一句自己此刻的状态）；
-     * 他用「～」或拖长音说话时，约六成的轮次她也跟着拖音。真人聊天里有这类话，她的线上回复几乎没有（0.5%，真人 5–10%；拖音 1.5%，他自己 26%）。默认关
-     */
-    shapeFiller: boolean;
-    /**
-     * 情绪轮（ADR 0099，要 shape 开着）：适用的轮次里约 18% 她这一轮先说自己对他的一点小情绪（撒娇要确认 / 夸张装崩溃 / 小委屈 / 不讲理地考验他），不把他的话处理完整。
-     * 带上文重放 72 对真人情侣聊天：真人女生 38% 的回复主要在表达情绪 / 态度，她 25%；她“处理得完整”的 39%（真人 22%）。默认关
-     */
-    shapeFeel: boolean;
-    /**
      * 他没回也继续找他（ADR 0100）：原来她主动发的有一条没回就整个停下等他回；开了以后没回的可以再发到 3 条，一条比一条隔得久（2 小时、4 小时），
      * 并且她自己想一想要不要催他（第一次轻轻戳一下，第二次带点小脾气，也可以决定先不发）；到 3 条就停到他回。要主动消息开着。默认关
      */
@@ -440,11 +408,6 @@ export interface AppConfig {
      */
     watching: boolean;
     /**
-     * 说话的质感（ADR 0131）：用「像不像真人」的尺子量，她的话和真人差在写法上——句末几乎不带标点（95% 对 79%）、问句不带问号（3% 对 10%）、没有「～」（0 对 10%）、没有小黄脸（0 对 18%）、不叠字、很少回两个字的反应。
-     * 模型自己不会写这些（提示词里写了也没用），所以放在代码里：发出去之前按概率、按语气加（问号、「～」、语气对得上的小黄脸、叠字、偶尔 ok / hhh、去掉结尾的省略号、两条短的并一条、先回一个字的反应）。危机和他难过 / 生病 / 小别扭的回合不加。只对男朋友档。默认关
-     */
-    texture: boolean;
-    /**
      * 她自己在 B 站找表情包（ADR 0132，要 stickers 和 bilibiliAccount 开着）：用户 10-23「表情包让她在 bilibili 自己找，不要用或者少用黄豆表情」。
      * 表情包的候选来源换成 B 站：她的号读官方表情包（热词系列、tv_小电视，不要小黄脸 / 颜文字）+ 热门视频评论区里像表情包的图（真人照片、截图、广告的不收）；公开目录只在 B 站这路没东西时兜底。
      * 并且没有明确反应的、允许发表情的轮次里也约 12% 发一个（原来她线上 437 轮里只发了 1 个），顶替小黄脸。默认关
@@ -456,19 +419,6 @@ export interface AppConfig {
      * 他自己 654 条消息里引用过 1 次，所以这是很少出现的事。引用发不出去就去掉引用再发一次。默认关
      */
     quoteReply: boolean;
-    /**
-     * 被他带出来的口头习惯（ADR 0138）：处久了的两个人会互相沾说话的习惯——他爱说“笑死”，她过阵子也会顺口来一句。
-     * 隔一阵让模型从他最近一个月的话里挑最多 8 个口头习惯（口头禅、句首句尾的语气词、爱用的网络说法），代码硬校验：必须是他的话里原样出现过至少 4 条、分布在至少 3 个不同日子的 1–6 个字的短语；
-     * 名词 / 人名 / 数字 / 脏话 / 危机相关的词 / 卡上的禁用词 / 太泛的一律丢掉。存在 <数据目录>/idioms/<QQ>.json（派生数据，导出和遗忘时跟着走）。
-     * 用的时候约一半的轮次多一行“他平时爱说 X、Y，这一轮正好用得上就顺口用一个”；她最近三次回复里用过的不再给；只对男朋友档，他难过 / 危机 / 小别扭时不给。她的语气、长短、条数都不变。默认关
-     */
-    idioms: boolean;
-    /**
-     * 句尾「吧」「呢」封顶（ADR 0146）：她多出来的句尾语气字几乎全在这两个字上（吧 5.0% 对他的 2.2%，呢 5.0% 对他的 1.8%；啊 / 嘛 / 呀 / 啦在真人范围内，不动）。
-     * 开了以后，她最近 80 条气泡里以「吧」收尾的占比到 3%、以「呢」收尾的到 2.5% 时，这一轮再用它收尾的就把那个字去掉（不重写）；
-     * 固定搭配（干嘛 / 好吧 / 行吧 / 网吧）、省略问句（你呢）和太短的应声不动。默认关。
-     */
-    tailCap: boolean;
     /**
      * 她对他的电脑和手机的有限控制（ADR 0148）：off 关 / dryRun 只写草稿（会做什么，不执行）/ on 真做。只给男朋友档。
      * 动作表只有通知、定时、音乐、音量、打开他登记过的网页 / 应用、让手机响（自动，有次数限制），锁屏 / 休眠（他回「批准」才执行），
@@ -505,8 +455,6 @@ export interface AppConfig {
     herNo: boolean;
     /** 拒绝之后（ADR 0214）：默认关；只男朋友档。每一轮从聊天记录重算，什么都不存 */
     afterNo?: boolean;
-    /** 真人例子（ADR 0190）：默认关（可选，老配置不用写） */
-    exemplars?: boolean;
     /**
      * 回复延迟的长尾（ADR 0105）：真人回消息的延迟是长尾的（WhatsApp 111 人的数据里只有 57.8% 的回复在 1 分钟内），她醒着空着时原来 100% 在十几秒内。
      * 开了以后一部分消息她在做别的，20 秒到一小时才看到（一来一回很快时少，冷场时多，他难受 / 问她在不在时更快）；
@@ -546,21 +494,6 @@ export interface AppConfig {
      * 配合 herNo：她正在修片 / 拍照时他让她先放下，她可以先弄完这一小段。作者可以在 pursuits.json 里暂停 / 放下 / 加自己的。默认关
      */
     pursuits: boolean;
-    /**
-     * 分成几条（ADR 0096，要 shape 开着）：形状里抽出的条数（1 条约 55%、2 条约 28%、3 条约 17%）本来只是上限，真模型多半只写一行——
-     * 线上和重放里 85% 的轮次只有 1 条，真人女生 59%。开了以后抽到 2 / 3 条的轮次，提示词写“分成 N 条发，一条一行”，并说明每条是一个小意思。默认关
-     */
-    shapeSplit: boolean;
-    /**
-     * 被问直接问题时答完再接着说（ADR 0149，要 shape 开着）：他问了她一个问题（意图行「先直接回答他刚问的」）的轮次，不加「顺着他说：应一声、附和」那一句（和意图行是反的），
-     * 条数按真人被问问题时的分布抽（52% 一条、平均 2.0 条；线上她 86% 一条、平均 1.19 条）。每条多长不动。默认关
-     */
-    shapeAsk: boolean;
-    /**
-     * 长答（ADR 0150，要 shape 开着）：他认真问她的想法 / 原因（意图行认出的很大很抽象的问题，或「先直接回答」的轮次里问「你觉得 / 为什么 / 什么感觉」），
-     * 约六成的这类轮次每条放开到 60 字、最多 3 条，提示词写“把想法说清楚、别排比别总结式的漂亮话”。心情安静 / 身体不舒服时不拉长。默认关
-     */
-    shapeLong: boolean;
     /**
      * 深思（ADR 0151）：他认真问她的轮次（很大很抽象的问题、问想法 / 原因 / 要她给主意、他明着让她讲、追着要答案、说她不像真人）不套字数和条数、
      * 换成 deliberateModel 的更强模型（同一个接口，开思考）、提示词只留一句“先想清楚再回”。危机 / 小别扭 / 亲近 / 发图等别的轮次不动。更慢（几秒到十几秒）、更贵。默认关
@@ -981,10 +914,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         bilibiliDm: oneOf(file.bilibiliDm, 'bilibiliDm', PRESENCE_MODES, DEFAULTS.bilibiliDm),
         bilibiliReplies: oneOf(file.bilibiliReplies, 'bilibiliReplies', PRESENCE_MODES, DEFAULTS.bilibiliReplies),
         bilibiliCommentKeywords: bilibiliCommentKeywords(file.bilibiliCommentKeywords),
-        shape: bool(file, 'shape', '', DEFAULTS.shape),
-        shapeAgenda: bool(file, 'shapeAgenda', '', DEFAULTS.shapeAgenda),
-        shapeFiller: bool(file, 'shapeFiller', '', DEFAULTS.shapeFiller),
-        shapeFeel: bool(file, 'shapeFeel', '', DEFAULTS.shapeFeel),
         proactiveReach: bool(file, 'proactiveReach', '', DEFAULTS.proactiveReach),
         proactiveInvite: bool(file, 'proactiveInvite', '', DEFAULTS.proactiveInvite),
         photos: bool(file, 'photos', '', DEFAULTS.photos),
@@ -1003,11 +932,8 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         smallNews: bool(file, 'smallNews', '', DEFAULTS.smallNews),
         memes: bool(file, 'memes', '', DEFAULTS.memes),
         watching: bool(file, 'watching', '', DEFAULTS.watching),
-        texture: bool(file, 'texture', '', DEFAULTS.texture),
         biliStickers: bool(file, 'biliStickers', '', DEFAULTS.biliStickers),
         quoteReply: bool(file, 'quoteReply', '', DEFAULTS.quoteReply),
-        idioms: bool(file, 'idioms', '', DEFAULTS.idioms),
-        tailCap: bool(file, 'tailCap', '', DEFAULTS.tailCap),
         deviceControl: oneOf(file.deviceControl, 'deviceControl', PRESENCE_MODES, DEFAULTS.deviceControl),
         deviceLinks: deviceLinks(file.deviceLinks),
         deviceApps: deviceApps(file.deviceApps),
@@ -1017,7 +943,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         herFeelings: bool(file, 'herFeelings', '', DEFAULTS.herFeelings),
         herNo: bool(file, 'herNo', '', DEFAULTS.herNo),
         afterNo: bool(file, 'afterNo', '', DEFAULTS.afterNo),
-        exemplars: bool(file, 'exemplars', '', DEFAULTS.exemplars),
         lagTail: bool(file, 'lagTail', '', DEFAULTS.lagTail),
         everydayLife: bool(file, 'everydayLife', '', DEFAULTS.everydayLife),
         worldDrama: bool(file, 'worldDrama', '', DEFAULTS.worldDrama),
@@ -1029,9 +954,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         realNights: bool(file, 'realNights', '', DEFAULTS.realNights),
         chatReview: bool(file, 'chatReview', '', DEFAULTS.chatReview),
         pursuits: bool(file, 'pursuits', '', DEFAULTS.pursuits),
-        shapeSplit: bool(file, 'shapeSplit', '', DEFAULTS.shapeSplit),
-        shapeAsk: bool(file, 'shapeAsk', '', DEFAULTS.shapeAsk),
-        shapeLong: bool(file, 'shapeLong', '', DEFAULTS.shapeLong),
         deliberate: bool(file, 'deliberate', '', DEFAULTS.deliberate),
         deliberateModel: deliberateModel(file.deliberateModel),
         identityLedger: bool(file, 'identityLedger', '', DEFAULTS.identityLedger),

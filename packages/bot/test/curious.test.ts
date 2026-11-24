@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { CURIOUS_ASK_NOTE, CURIOUS_INTENT, CURIOUS_MIN_CHARS, CURIOUS_RECENT, CURIOUS_SHARE, curiousTurn } from '../src/language/curious.ts';
-import { ENGAGED_INTENT } from '../src/language/expression.ts';
 import { describeIntent } from '../src/language/intent.ts';
 import { candidatesOn, occasionNote, withAsk, withCurious, type Candidate, type ProactiveInput } from '../src/proactive/proactive.ts';
-import { planShape } from '../src/language/shape.ts';
 import { loadCharacterCard } from '../src/st/card.ts';
 import { syntheticCardPath } from './fixtures/card.ts';
 
@@ -59,10 +57,9 @@ describe('意图行', () => {
         assert.match(describeIntent({ history, now, curious: true })!, /别急着追问细节/, '不是男朋友档');
     });
 
-    test('追问的意图行：问这件事本身、一个就够、不问客套、不是反问；不给台词；长短照“认真接话”算', () => {
+    test('追问的意图行：问这件事本身、一个就够、不问客套、不是反问；不给台词', () => {
         for (const phrase of ['这件事本身', '一个问题就够', '在干嘛', '吃了吗', '不是客套', '更不是反问']) assert.ok(CURIOUS_INTENT.includes(phrase), phrase);
         assert.doesNotMatch(CURIOUS_INTENT, /[「」]“/, '不给整句台词');
-        assert.match(CURIOUS_INTENT, ENGAGED_INTENT);
     });
 
     test('他难过 / 问她 / 收尾的时候让路：走原来的意图', () => {
@@ -72,18 +69,6 @@ describe('意图行', () => {
         assert.equal(intentOf(ask), '[这一轮你想：先直接回答他刚问的，不另起话题]');
         const ending = [her('在呢'), him('今天去面试了，我先去睡了晚安')];
         assert.notEqual(intentOf(ending), CURIOUS_INTENT);
-    });
-});
-
-describe('说话的形状：追问的轮次留得下一个问题', () => {
-    const plans = (extra: Partial<Parameters<typeof planShape>[0]> = {}) => Array.from({ length: 600 }, (_, i) => planShape({
-        history: [{ role: 'assistant', content: '在呢', time: '2026-11-12T20:00:00+08:00' }, { role: 'user', content: `今天去面试了一家公司${i}`, time: '2026-11-12T20:10:00+08:00' }],
-        intent: CURIOUS_INTENT, ...extra,
-    })!);
-
-    test('不是极短的几个字、不是废话 / 情绪轮 / 带自己的事、没有“顺着说，别用反问句”', () => {
-        const all = plans({ filler: true, feel: true, agenda: true });
-        assert.ok(all.every(plan => plan.kind !== 'micro' && !plan.filler && !plan.feel && !plan.agenda && !plan.plain && plan.cap >= 14), '追问轮次留够字数');
     });
 });
 

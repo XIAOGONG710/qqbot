@@ -5,13 +5,10 @@ import { contextSummarizer, SUMMARY_RETRY_MS } from '../src/language/context-win
 import { crisisFallback, inspectReply, reviewCrisisReply } from '../src/language/exit-check.ts';
 import { asksToExplain, lengthHint } from '../src/language/expression.ts';
 import { auditMessages, dropClaimLines, parseClaims } from '../src/language/fact-check.ts';
-import { refreshIdioms, type IdiomState } from '../src/language/idioms.ts';
 import { refreshJokes, type JokeState } from '../src/language/jokes.ts';
 import { chatCompletion, completionMaxTokens, ModelUnreachable, type LlmOptions } from '../src/language/llm.ts';
 import { ModelGuard } from '../src/language/model-guard.ts';
 import { buildPrompt, type OpenAIMessage } from '../src/language/prompt.ts';
-import { planShape } from '../src/language/shape.ts';
-import { applyTexture } from '../src/language/texture.ts';
 import { togetherNow } from '../src/language/together.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 import { deliberateLlm } from '../src/platform/config.ts';
@@ -19,7 +16,6 @@ import { createContactResponder, type ContactPipelineOptions } from '../src/plat
 import { crisisModule } from '../src/modules/crisis.ts';
 import { deliberateModule } from '../src/modules/deliberate.ts';
 import { intentModule } from '../src/modules/intent.ts';
-import { shapeModule } from '../src/modules/shape.ts';
 import { reviewFinalizeModule } from '../src/modules/review-finalize.ts';
 import { reviewExitModule } from '../src/modules/review-exit.ts';
 import { reviewFactsModule } from '../src/modules/review-facts.ts';
@@ -67,16 +63,14 @@ function contact(overrides: Partial<ContactPipelineOptions> = {}) {
 }
 
 describe('最终草稿、硬规则与设备动作', () => {
-    for (const stage of ['shape', 'unfinished'] as const) {
+    for (const stage of ['unfinished'] as const) {
         test(`${stage} 重写加入禁用词仍被最终检查拦截`, async () => {
             let calls = 0;
             const fixture = contact({
-                // ADR 0220 之后形状控制只在 shapeAll / 有提示 / 特定意图时生效：这里要它生效
-                // 形状是解释器的模块（ADR 0336）：挂上它，开着 shapeAll
-                ...(stage === 'shape' ? { turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewExitModule(), shapeModule({ shape: true, shapeAll: true, log: quiet }), reviewFinalizeModule()] } : { speechCheck: true, turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewExitModule(), reviewFinalizeModule(), reviewUnfinishedModule()] }),
+                speechCheck: true, turnModules: [crisisModule({ log: () => {} }), intentModule(), reviewExitModule(), reviewFinalizeModule(), reviewUnfinishedModule()],
                 generate: async () => {
                     calls++;
-                    if (calls === 1) return stage === 'shape' ? '今天我有好多好多好多事情想跟你说'.repeat(10) : '我知道了\n不过你别得意';
+                    if (calls === 1) return '我知道了\n不过你别得意';
                     return calls === 2 ? '秘密\n好呀' : '好呀';
                 },
             });
@@ -218,28 +212,25 @@ describe('摘要异常不会丢原文或产生后台未处理拒绝', () => {
 
 describe('滑动窗口按新消息游标刷新，兼容旧状态', () => {
     const history = Array.from({ length: 90 }, (_, i): StoredMessage => ({ role: 'user', content: `今天开心第${i}句`, time: new Date(NOW - (90 - i) * DAY / 10).toISOString() }));
-    test('窗口条数不变但有足够新消息，小梗和口头习惯仍刷新', async () => {
+    test('窗口条数不变但有足够新消息，小梗仍刷新（口头习惯 11-24 删了）', async () => {
         let joke: JokeState = { version: 1, jokes: [] };
-        let idiom: IdiomState = { version: 1, items: [] };
         let calls = 0;
         const extract = async () => { calls++; return '[]'; };
         const run = async (rows: StoredMessage[], now: number) => {
             const base = { qq: 1, userName: '小明', charName: '小红', now, history: rows, log: quiet, extract };
             return [
                 await refreshJokes({ ...base, store: { load: () => joke, save: (_qq, value) => { joke = value; } } }),
-                await refreshIdioms({ ...base, blocked: [], store: { load: () => idiom, save: (_qq, value) => { idiom = value; } } }),
             ];
         };
-        assert.deepEqual(await run(history, NOW), [true, true]);
-        assert.deepEqual(await run(history, NOW + DAY), [false, false]);
+        assert.deepEqual(await run(history, NOW), [true]);
+        assert.deepEqual(await run(history, NOW + DAY), [false]);
         const next = [...history.slice(25), ...Array.from({ length: 25 }, (_, i) => ({ ...history[i]!, content: `新消息${i}`, time: new Date(NOW + (i + 1) * 60_000).toISOString() }))];
         assert.equal(next.length, history.length);
-        assert.deepEqual(await run(next, NOW + DAY), [true, true]);
-        assert.equal(calls, 4);
+        assert.deepEqual(await run(next, NOW + DAY), [true]);
+        assert.equal(calls, 2);
         assert.match(joke.messageCursor!, /^[a-f0-9]{64}$/);
-        assert.match(idiom.messageCursor!, /^[a-f0-9]{64}$/);
-        delete joke.messageCursor; delete idiom.messageCursor;
-        assert.deepEqual(await run(next, NOW + 2 * DAY), [false, false], '旧状态沿用更新时间作迁移边界');
+        delete joke.messageCursor;
+        assert.deepEqual(await run(next, NOW + 2 * DAY), [false], '旧状态沿用更新时间作迁移边界');
     });
 });
 
@@ -254,19 +245,9 @@ describe('语境、形状与事实边界', () => {
     });
     test('连发中的详细请求保留，后续明确撤销则取消', () => {
         const history = [{ role: 'user' as const, content: '帮我详细解释一下梯度下降' }, { role: 'user' as const, content: '谢谢你' }];
-        assert.equal(planShape({ history }), undefined);
         assert.equal(lengthHint({ history }), 'long');
         assert.equal(asksToExplain('详细解释一下\n不用解释了'), false);
         assert.equal(asksToExplain('不用解释了\n还是详细讲讲吧'), true);
-    });
-    test('陈述和否定句不会被质感层改成问句，真正问句仍可补问号', () => {
-        let questions = 0;
-        for (let i = 0; i < 100; i++) {
-            const context = { seed: String(i), serious: false, recentFaces: 0, maxBubbles: 1 };
-            for (const text of ['我没什么想说的', '不知道为什么', '你怎么都行', '谁也没来']) assert.ok(!applyTexture([text], context).parts[0]!.endsWith('？'), text);
-            if (applyTexture(['你今晚吃什么'], context).parts[0]!.endsWith('？')) questions++;
-        }
-        assert.ok(questions > 0);
     });
     test('示例对话不进事实证据，真实历史仍保留；跨行证据删除覆盖行', () => {
         const example = '上周我和你去海边看了日出，然后一起吃早饭，还拍了许多照片';

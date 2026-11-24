@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { contributeTurn, type Turn, type TurnFacts } from '../src/interpreter/interpreter.ts';
 import type { Piece } from '../src/interpreter/slots.ts';
-import { DELIBERATE_NOTE } from '../src/language/shape.ts';
+import { DELIBERATE_NOTE } from '../src/language/deliberate.ts';
 import { ROUTED_HINTS, WEIGH_SYSTEM } from '../src/language/turn-weight.ts';
 import { deliberateModule } from '../src/modules/deliberate.ts';
 import type { BotConfig } from '../src/platform/config.ts';

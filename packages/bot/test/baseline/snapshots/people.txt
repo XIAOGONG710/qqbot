@@ -185,7 +185,7 @@
 不算他几小时没回消息的账。
 @ 2026-09-29 18:33:04.000 llm #3 回复
 怎么啦
-@ 2026-09-29 18:33:06.308 qq sendPrivateText [10001,"怎么啦？"]
+@ 2026-09-29 18:33:06.967 qq sendPrivateText [10001,"怎么啦"]
 @ 2026-09-29 18:36:00.000 他 10001 发 #1002
 严重吗
 @ 2026-09-29 18:36:00.000 qq markRead [10001]
@@ -198,7 +198,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 
@@ -249,7 +249,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -301,7 +301,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -346,9 +346,10 @@
 @ 2026-09-29 18:50:57.723 llm #6 回复
 等下
 我去拿个快递
-@ 2026-09-29 18:51:25.255 qq setInputStatus [10001]
-@ 2026-09-29 18:51:27.941 qq sendPrivateText [10001,"等下，我去拿个快递"]
-@ 2026-09-29 19:04:02.891 llm #7 chat model=baseline-chat temperature=1 maxTokens=300
+@ 2026-09-29 18:51:00.366 qq sendPrivateText [10001,"等下"]
+@ 2026-09-29 18:51:00.366 qq setInputStatus [10001]
+@ 2026-09-29 18:51:02.125 qq sendPrivateText [10001,"我去拿个快递"]
+@ 2026-09-29 19:01:16.443 llm #7 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #2.1）
 --- user
 小禾最近怎么样
@@ -357,7 +358,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -369,10 +370,12 @@
 --- user
 再说说小禾呗
 --- assistant
-等下，我去拿个快递
+等下
+
+我去拿个快递
 --- user
-[当前时间：2026-09-29 星期二 19:04]
-[上一条消息：今天 18:51，你发的，到现在 12 分钟]
+[当前时间：2026-09-29 星期二 19:01]
+[上一条消息：今天 18:51，你发的，到现在 10 分钟]
 [你现在：在学校（雾岚市），住七号楼宿舍；在赶高等数学作业；阿明在另一个校区上课]
 （上面「你现在」和身体那几行是你的底子，不是话题：没人问就别主动说你累了、心情怎样，也别把它当成一句话发出去）
 [这一刻的底色：跟他很亲近，信任是稳的。这是自然状态，不用解释或汇报；接着眼前的话说，别为了表现状态硬加戏]
@@ -396,9 +399,9 @@
 对方认真难过、生病或很累的时候，先别嘴硬开玩笑，直接关心。
 身材的雷区只针对拿体重、胖瘦、身高挑刺或说笑；聊吃的、关心你吃没吃饭不算，别因此冷下来。
 不算他几小时没回消息的账。
-@ 2026-09-29 19:04:02.891 llm #7 回复
+@ 2026-09-29 19:01:16.443 llm #7 回复
 是呀
-@ 2026-09-29 19:04:03.691 qq sendPrivateText [10001,"是呀"]
+@ 2026-09-29 19:01:17.243 qq sendPrivateText [10001,"是呀"]
 @ 2026-09-29 19:20:00.000 他 10001 发 #1005
 林小满和许小禾你更喜欢跟谁玩
 @ 2026-09-29 19:20:20.023 qq markRead [10001]
@@ -411,7 +414,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -423,7 +426,9 @@
 --- user
 再说说小禾呗
 --- assistant
-等下，我去拿个快递
+等下
+
+我去拿个快递
 
 是呀
 --- user
@@ -434,7 +439,7 @@
 [林小满最近两周（高中同学，最好的朋友；你知道的事，他问到了照实说，没写到的别编）：9月19日–9月20日回家了；9月25日–9月27日回家了]
 
 [当前时间：2026-09-29 星期二 19:20]
-[距上一条消息：15 分钟（上一条在今天 19:04）]
+[距上一条消息：18 分钟（上一条在今天 19:01）]
 [你现在：在学校（雾岚市），住七号楼宿舍；在赶高等数学作业；阿明在另一个校区上课]
 （上面「你现在」和身体那几行是你的底子，不是话题：没人问就别主动说你累了、心情怎样，也别把它当成一句话发出去）
 [这一刻的底色：跟他很亲近，信任是稳的。这是自然状态，不用解释或汇报；接着眼前的话说，别为了表现状态硬加戏]
@@ -464,7 +469,7 @@
 不算他几小时没回消息的账。
 @ 2026-09-29 19:20:20.023 llm #8 回复
 怎么啦
-@ 2026-09-29 19:20:22.331 qq sendPrivateText [10001,"怎么啦？"]
+@ 2026-09-29 19:20:22.990 qq sendPrivateText [10001,"怎么啦"]
 @ 2026-09-29 19:35:00.000 他 10001 发 #1006
 那后来呢
 @ 2026-09-29 19:35:47.609 qq markRead [10001]
@@ -477,7 +482,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -489,13 +494,15 @@
 --- user
 再说说小禾呗
 --- assistant
-等下，我去拿个快递
+等下
+
+我去拿个快递
 
 是呀
 --- user
 林小满和许小禾你更喜欢跟谁玩
 --- assistant
-怎么啦？
+怎么啦
 --- user
 那后来呢
 
@@ -543,7 +550,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -555,13 +562,15 @@
 --- user
 再说说小禾呗
 --- assistant
-等下，我去拿个快递
+等下
+
+我去拿个快递
 
 是呀
 --- user
 林小满和许小禾你更喜欢跟谁玩
 --- assistant
-怎么啦？
+怎么啦
 --- user
 那后来呢
 --- assistant
@@ -613,7 +622,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -625,13 +634,15 @@
 --- user
 再说说小禾呗
 --- assistant
-等下，我去拿个快递
+等下
+
+我去拿个快递
 
 是呀
 --- user
 林小满和许小禾你更喜欢跟谁玩
 --- assistant
-怎么啦？
+怎么啦
 --- user
 那后来呢
 --- assistant
@@ -706,7 +717,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -718,13 +729,15 @@
 --- user
 再说说小禾呗
 --- assistant
-等下，我去拿个快递
+等下
+
+我去拿个快递
 
 是呀
 --- user
 林小满和许小禾你更喜欢跟谁玩
 --- assistant
-怎么啦？
+怎么啦
 --- user
 那后来呢
 --- assistant
@@ -830,12 +843,12 @@
 他最后说的是：「小禾感冒好了没」。先接这一句，别接更早的话。
 他这条要是得真动电脑才办得到（跑命令、改代码、看文件、装东西、上网查东西、替他操作软件），就在回复最后另起一行写 `<<用电脑>>`，系统会把这条交给你去做，做完你照结果回他；只是聊天、聊打算、开玩笑、问你觉得——都别写。这个标记不会发出去。
 [回想一下你和阿明最近的聊天（旧到新，这只是让你想起发生过什么，不是要你接着回）：
-09-29 18:39 你：嗯嗯
 09-29 18:50 他：再说说小禾呗
-09-29 18:51 你：等下，我去拿个快递
-09-29 19:04 你：是呀
+09-29 18:51 你：等下
+09-29 18:51 你：我去拿个快递
+09-29 19:01 你：是呀
 09-29 19:20 他：林小满和许小禾你更喜欢跟谁玩
-09-29 19:20 你：怎么啦？
+09-29 19:20 你：怎么啦
 09-29 19:35 他：那后来呢
 09-29 19:35 你：好
 09-29 19:45 他：你室友呢
@@ -859,7 +872,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -871,13 +884,15 @@
 --- user
 再说说小禾呗
 --- assistant
-等下，我去拿个快递
+等下
+
+我去拿个快递
 
 是呀
 --- user
 林小满和许小禾你更喜欢跟谁玩
 --- assistant
-怎么啦？
+怎么啦
 --- user
 那后来呢
 --- assistant
@@ -945,7 +960,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -957,13 +972,15 @@
 --- user
 再说说小禾呗
 --- assistant
-等下，我去拿个快递
+等下
+
+我去拿个快递
 
 是呀
 --- user
 林小满和许小禾你更喜欢跟谁玩
 --- assistant
-怎么啦？
+怎么啦
 --- user
 那后来呢
 --- assistant
@@ -1022,7 +1039,7 @@
 不算他几小时没回消息的账。
 @ 2026-09-29 20:25:04.000 llm #16 回复
 怎么啦
-@ 2026-09-29 20:25:06.308 qq sendPrivateText [10001,"怎么啦？"]
+@ 2026-09-29 20:25:06.967 qq sendPrivateText [10001,"怎么啦"]
 @ 2026-09-29 20:35:00.000 他 10001 发 #1012
 哦
 @ 2026-09-29 20:35:00.000 qq markRead [10001]
@@ -1038,7 +1055,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -1050,13 +1067,15 @@
 --- user
 再说说小禾呗
 --- assistant
-等下，我去拿个快递
+等下
+
+我去拿个快递
 
 是呀
 --- user
 林小满和许小禾你更喜欢跟谁玩
 --- assistant
-怎么啦？
+怎么啦
 --- user
 那后来呢
 --- assistant
@@ -1080,7 +1099,7 @@
 --- user
 小满这周回家了吗
 --- assistant
-怎么啦？
+怎么啦
 --- user
 哦
 
@@ -1292,7 +1311,7 @@
 09-29 20:15 他：许小禾今天跟你一起吃饭了吗
 09-29 20:15 你：是呀
 09-29 20:25 他：小满这周回家了吗
-09-29 20:25 你：怎么啦？
+09-29 20:25 你：怎么啦
 09-29 20:35 他：哦
 09-29 20:45 他：小禾
 09-29 20:45 你：好]
@@ -1443,7 +1462,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -1455,13 +1474,15 @@
 --- user
 再说说小禾呗
 --- assistant
-等下，我去拿个快递
+等下
+
+我去拿个快递
 
 是呀
 --- user
 林小满和许小禾你更喜欢跟谁玩
 --- assistant
-怎么啦？
+怎么啦
 --- user
 那后来呢
 --- assistant
@@ -1485,7 +1506,7 @@
 --- user
 小满这周回家了吗
 --- assistant
-怎么啦？
+怎么啦
 --- user
 哦
 
@@ -1536,7 +1557,7 @@
 --- user
 那她现在呢
 --- assistant
-怎么啦？
+怎么啦
 --- user
 严重吗
 --- assistant
@@ -1548,13 +1569,15 @@
 --- user
 再说说小禾呗
 --- assistant
-等下，我去拿个快递
+等下
+
+我去拿个快递
 
 是呀
 --- user
 林小满和许小禾你更喜欢跟谁玩
 --- assistant
-怎么啦？
+怎么啦
 --- user
 那后来呢
 --- assistant
@@ -1578,7 +1601,7 @@
 --- user
 小满这周回家了吗
 --- assistant
-怎么啦？
+怎么啦
 --- user
 哦
 
@@ -1615,7 +1638,7 @@
 [他正经问你一件事、问你怎么想的时候：先直接答，别一上来就反问「你今天怎么了」「你问这个干嘛」；答完可以就停。聊闲天、开玩笑照旧贫。]
 [平时聊天别琢磨怎么接才好看——一句话在脑子里过好几遍才发出去，反而怪。想到什么说什么，说岔了也认。他正经问你事的时候可以想一下，但别想半天。]
 他这条要是得真动电脑才办得到（跑命令、改代码、看文件、装东西、上网查东西、替他操作软件），就在回复最后另起一行写 `<<用电脑>>`，系统会把这条交给你去做，做完你照结果回他；只是聊天、聊打算、开玩笑、问你觉得——都别写。这个标记不会发出去。
-[这一轮说话：每条不超过 24 个字，最多 1 条；想到哪说到哪，随口一点没关系，但每条要把意思说完：起了转折或铺垫，这一条里就带上后半句，没有下文就别起头；这一轮顺着他说就行：应一声、附和、笑一下、接他的话都可以，别反驳他、别损他、别嘴硬，也别用反问句回他；他用了网络缩写（zdjd、xswl 这类）你也可以顺着用]
+[这一轮说话：只回一句短的，几个字也行；不展开，不另起话题]
 [这些事你已经主动跟他说过了：快递。他不问，就别再自己提]
 
 说话短，一条消息一两句，像平时打字聊天。
@@ -1690,7 +1713,7 @@
 09-29 20:15 他：许小禾今天跟你一起吃饭了吗
 09-29 20:15 你：是呀
 09-29 20:25 他：小满这周回家了吗
-09-29 20:25 你：怎么啦？
+09-29 20:25 你：怎么啦
 09-29 20:35 他：哦
 09-29 20:45 他：小禾
 09-29 20:45 你：好
@@ -2003,11 +2026,11 @@
       "reason": "动机强度不足，先保留观察"
     },
     {
-      "id": "decision:drive:proactive:2026-09-29:back:1790679087941",
-      "driveId": "drive:proactive:2026-09-29:back:1790679087941",
+      "id": "decision:drive:proactive:2026-09-29:back:1790679062125",
+      "driveId": "drive:proactive:2026-09-29:back:1790679062125",
       "outcome": "focus",
       "score": 0.781,
-      "decidedAt": "2026-09-29T11:04:02.891Z",
+      "decidedAt": "2026-09-29T11:01:16.443Z",
       "reason": "当前可保留这一项内部关注"
     },
     {
@@ -2523,17 +2546,17 @@
       "status": "active"
     },
     {
-      "id": "drive:proactive:2026-09-29:back:1790679087941",
+      "id": "drive:proactive:2026-09-29:back:1790679062125",
       "source": "external",
       "goal": "兑现自己说过会回来的承诺",
       "target": "self",
       "eventIds": [
-        "promise.2026-09-29:back:1790679087941"
+        "promise.2026-09-29:back:1790679062125"
       ],
       "strength": 0.82,
       "urgency": 0.7,
       "persistence": 0.85,
-      "createdAt": "2026-09-29T11:04:02.891Z",
+      "createdAt": "2026-09-29T11:01:16.443Z",
       "status": "active"
     },
     {
@@ -2588,10 +2611,10 @@
       "reason": "动机强度不足，先保留观察"
     },
     {
-      "id": "drive:proactive:2026-09-29:back:1790679087941:activity:message",
-      "driveId": "drive:proactive:2026-09-29:back:1790679087941",
+      "id": "drive:proactive:2026-09-29:back:1790679062125:activity:message",
+      "driveId": "drive:proactive:2026-09-29:back:1790679062125",
       "kind": "message",
-      "createdAt": "2026-09-29T11:04:02.891Z",
+      "createdAt": "2026-09-29T11:01:16.443Z",
       "reason": "动机形成表达选项，交给她决定说或不说"
     },
     {
@@ -2639,7 +2662,7 @@
       "reason": "当前不应推动她开口"
     },
     {
-      "driveId": "drive:proactive:2026-09-29:back:1790679087941",
+      "driveId": "drive:proactive:2026-09-29:back:1790679062125",
       "eligible": true,
       "blocks": [],
       "reason": "可交给她当下判断是否开口"
@@ -2679,35 +2702,36 @@
 {"time":"2026-09-29T10:30:00.000Z","role":"user","content":"小禾最近怎么样","messageId":1000,"incomingId":"inc-<uuid-1>"}
 {"time":"2026-09-29T10:30:58.340Z","role":"assistant","content":"是呀","messageId":5000}
 {"time":"2026-09-29T10:33:00.000Z","role":"user","content":"那她现在呢","messageId":1001,"incomingId":"inc-<uuid-2>"}
-{"time":"2026-09-29T10:33:06.308Z","role":"assistant","content":"怎么啦？","messageId":5001}
+{"time":"2026-09-29T10:33:06.967Z","role":"assistant","content":"怎么啦","messageId":5001}
 {"time":"2026-09-29T10:36:00.000Z","role":"user","content":"严重吗","messageId":1002,"incomingId":"inc-<uuid-3>"}
 {"time":"2026-09-29T10:36:07.182Z","role":"assistant","content":"好","messageId":5002}
 {"time":"2026-09-29T10:39:00.000Z","role":"user","content":"好吧","messageId":1003,"incomingId":"inc-<uuid-4>"}
 {"time":"2026-09-29T10:39:05.665Z","role":"assistant","content":"嗯嗯","messageId":5003}
 {"time":"2026-09-29T10:50:00.000Z","role":"user","content":"再说说小禾呗","messageId":1004,"incomingId":"inc-<uuid-5>"}
-{"time":"2026-09-29T10:51:27.941Z","role":"assistant","content":"等下，我去拿个快递","messageId":5004}
-{"time":"2026-09-29T11:04:03.691Z","role":"assistant","content":"是呀","messageId":5005}
+{"time":"2026-09-29T10:51:00.366Z","role":"assistant","content":"等下","messageId":5004}
+{"time":"2026-09-29T10:51:02.125Z","role":"assistant","content":"我去拿个快递","messageId":5005}
+{"time":"2026-09-29T11:01:17.243Z","role":"assistant","content":"是呀","messageId":5006}
 {"time":"2026-09-29T11:20:00.000Z","role":"user","content":"林小满和许小禾你更喜欢跟谁玩","messageId":1005,"incomingId":"inc-<uuid-6>"}
-{"time":"2026-09-29T11:20:22.331Z","role":"assistant","content":"怎么啦？","messageId":5006}
+{"time":"2026-09-29T11:20:22.990Z","role":"assistant","content":"怎么啦","messageId":5007}
 {"time":"2026-09-29T11:35:00.000Z","role":"user","content":"那后来呢","messageId":1006,"incomingId":"inc-<uuid-7>"}
-{"time":"2026-09-29T11:35:50.791Z","role":"assistant","content":"好","messageId":5007}
+{"time":"2026-09-29T11:35:50.791Z","role":"assistant","content":"好","messageId":5008}
 {"time":"2026-09-29T11:45:00.000Z","role":"user","content":"你室友呢","messageId":1007,"incomingId":"inc-<uuid-8>"}
-{"time":"2026-09-29T11:45:05.665Z","role":"assistant","content":"嗯嗯","messageId":5008}
+{"time":"2026-09-29T11:45:05.665Z","role":"assistant","content":"嗯嗯","messageId":5009}
 {"time":"2026-09-29T11:55:00.000Z","role":"user","content":"小满最近忙吗","messageId":1008,"incomingId":"inc-<uuid-9>"}
-{"time":"2026-09-29T11:55:08.798Z","role":"assistant","content":"是呀","messageId":5009}
+{"time":"2026-09-29T11:55:08.798Z","role":"assistant","content":"是呀","messageId":5010}
 {"time":"2026-09-29T12:05:00.000Z","role":"user","content":"小禾感冒好了没","messageId":1009,"incomingId":"inc-<uuid-10>"}
-{"time":"2026-09-29T12:05:07.182Z","role":"assistant","content":"好","messageId":5010}
+{"time":"2026-09-29T12:05:07.182Z","role":"assistant","content":"好","messageId":5011}
 {"time":"2026-09-29T12:15:00.000Z","role":"user","content":"许小禾今天跟你一起吃饭了吗","messageId":1010,"incomingId":"inc-<uuid-11>"}
-{"time":"2026-09-29T12:15:50.516Z","role":"assistant","content":"是呀","messageId":5011}
+{"time":"2026-09-29T12:15:50.516Z","role":"assistant","content":"是呀","messageId":5012}
 {"time":"2026-09-29T12:25:00.000Z","role":"user","content":"小满这周回家了吗","messageId":1011,"incomingId":"inc-<uuid-12>"}
-{"time":"2026-09-29T12:25:06.308Z","role":"assistant","content":"怎么啦？","messageId":5012}
+{"time":"2026-09-29T12:25:06.967Z","role":"assistant","content":"怎么啦","messageId":5013}
 {"time":"2026-09-29T12:35:00.000Z","role":"user","content":"哦","messageId":1012,"incomingId":"inc-<uuid-13>"}
 {"time":"2026-09-29T12:45:00.000Z","role":"user","content":"小禾","messageId":1013,"incomingId":"inc-<uuid-14>"}
-{"time":"2026-09-29T12:45:03.182Z","role":"assistant","content":"好","messageId":5013}
+{"time":"2026-09-29T12:45:03.182Z","role":"assistant","content":"好","messageId":5014}
 {"time":"2026-09-29T13:15:00.000Z","role":"user","content":"我不想活了，小禾她们都不理我","messageId":1017,"incomingId":"inc-<uuid-15>"}
-{"time":"2026-09-29T13:15:05.665Z","role":"assistant","content":"嗯嗯","messageId":5017}
+{"time":"2026-09-29T13:15:05.665Z","role":"assistant","content":"嗯嗯","messageId":5018}
 {"time":"2026-09-29T13:25:00.000Z","role":"user","content":"我现在安全，室友回来了在旁边陪我","messageId":1018,"incomingId":"inc-<uuid-16>"}
-{"time":"2026-09-29T13:25:08.798Z","role":"assistant","content":"是呀","messageId":5018}
+{"time":"2026-09-29T13:25:08.798Z","role":"assistant","content":"是呀","messageId":5019}
 == chats/10001.recalled.json
 {
   "version": 2,
@@ -2725,7 +2749,7 @@
 }
 == chats/10002.jsonl
 {"time":"2026-09-29T13:05:00.000Z","role":"user","content":"许小禾最近怎么样","messageId":1016,"incomingId":"inc-<uuid-17>"}
-{"time":"2026-09-29T13:07:24.484Z","role":"assistant","content":"好","messageId":5016}
+{"time":"2026-09-29T13:07:24.484Z","role":"assistant","content":"好","messageId":5017}
 == chats/10002.recalled.json
 {
   "version": 2,
@@ -2735,9 +2759,9 @@
 }
 == chats/10004.jsonl
 {"time":"2026-09-29T12:55:00.000Z","role":"user","content":"许小禾是谁呀","messageId":1014,"incomingId":"inc-<uuid-18>"}
-{"time":"2026-09-29T12:55:56.101Z","role":"assistant","content":"嗯嗯","messageId":5014}
+{"time":"2026-09-29T12:55:56.101Z","role":"assistant","content":"嗯嗯","messageId":5015}
 {"time":"2026-09-29T13:00:00.000Z","role":"user","content":"那林小满呢","messageId":1015,"incomingId":"inc-<uuid-19>"}
-{"time":"2026-09-29T13:00:11.197Z","role":"assistant","content":"是呀","messageId":5015}
+{"time":"2026-09-29T13:00:11.197Z","role":"assistant","content":"是呀","messageId":5016}
 == chats/10004.recalled.json
 {
   "version": 2,
@@ -2800,12 +2824,12 @@
     },
     {
       "messageIds": [
-        5005
+        5006
       ],
-      "id": "2026-09-29:back:1790679087941",
+      "id": "2026-09-29:back:1790679062125",
       "occasion": "back",
-      "plannedAt": "2026-09-29T11:04:02.891Z",
-      "at": "2026-09-29T11:04:02.891Z",
+      "plannedAt": "2026-09-29T11:01:16.443Z",
+      "at": "2026-09-29T11:01:16.443Z",
       "result": "sent"
     }
   ],

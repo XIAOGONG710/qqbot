@@ -55,9 +55,8 @@ const girlFriend: Contact = { qq: 10004, name: '小林', tier: 'girl_friend' };
 export const RICH: Partial<AppConfig> = {
     schedule: true, moody: true, speechCheck: true, herDays: true,
     autonomousLife: true, projectChoice: true, lifeInPrompt: true, grievance: true, npcAsks: true,
-    shape: true, shapeAgenda: true, shapeFiller: true, shapeSplit: true, shapeAsk: true, shapeLong: true, shapeFeel: true,
-    relationship: true, jokes: true, idioms: true, tailCap: true, interruptions: true, together: true, jealousy: true,
-    texture: true, curious: true, everydayLife: true, menu: true, pursuits: true, herFeelings: true, herNo: true,
+    relationship: true, jokes: true, interruptions: true, together: true, jealousy: true,
+    curious: true, everydayLife: true, menu: true, pursuits: true, herFeelings: true, herNo: true,
     lagTail: true, rhythm: true, typingStatus: true, selfRecall: true, readReceipts: true, quoteReply: true,
     festivals: 'greet', pokes: true, pokeBack: true, recalls: true,
     proactive: 'on', proactiveReach: true, innerLife: true, proactiveInvite: true, proactiveAsk: true, comeBack: true,
@@ -303,40 +302,6 @@ export const SCENARIOS: readonly Scenario[] = [
                 d.say(boyfriend.qq, text);
             }
             await d.at('2026-11-21T02:00:00+08:00');
-        },
-    },
-    {
-        name: 'idioms',
-        about: '口头习惯（ADR 0138）：以前两周他发了 72 条、常说「笑死」「绝了」；连上后学一次，之后几轮回复里约一半放进提示词（她刚用过的不再给），跨过 6 小时的定时检查',
-        start: '2026-11-22T19:00:00+08:00',
-        contacts: [boyfriend],
-        config: { ...RICH, proactive: 'off' },
-        seed: (dataDir, start) => {
-            const chats = new ChatHistory(dataDir);
-            const his = ['今天上课好困', '食堂的饭一般', '刚打完球', '室友又在打游戏', '老师拖堂了', '晚上吃什么', '图书馆人好多', '作业写完了', '明天降温'];
-            for (let i = 0; i < 72; i++) {
-                const at = start - (14 * 24 - i * 4.5) * 3600_000;
-                const text = i % 3 === 0 ? `笑死 ${his[i % his.length]}` : i % 5 === 0 ? `${his[i % his.length]} 绝了` : his[i % his.length]!;
-                chats.append(boyfriend.qq, { time: new Date(at).toISOString(), role: 'user', content: text, messageId: 300 + i * 2 });
-                chats.append(boyfriend.qq, { time: new Date(at + 60_000).toISOString(), role: 'assistant', content: '嗯嗯', messageId: 301 + i * 2 });
-            }
-        },
-        reply: () => {
-            const chat = rotating([...CHAT_LINES, '笑死\n你也太逗了']);
-            return (call: LlmCall) => (/口头习惯/.test(call.messages.at(-1)?.content ?? '') && /JSON/.test(call.messages.at(-1)?.content ?? '')
-                ? '[{"说法":"笑死","类型":"口头禅"},{"说法":"绝了","类型":"网络说法"},{"说法":"阿明","类型":"口头禅"}]'
-                : chat(call));
-        },
-        script: async d => {
-            for (const [at, text] of [
-                ['2026-11-22T19:30:00+08:00', '笑死 今天又迟到了'], ['2026-11-22T20:10:00+08:00', '你吃饭了吗'], ['2026-11-22T20:40:00+08:00', '这个视频绝了'],
-                ['2026-11-22T21:20:00+08:00', '周末有空吗'], ['2026-11-22T22:00:00+08:00', '笑死 室友摔了一跤'], ['2026-11-22T22:30:00+08:00', '你在干嘛'],
-                ['2026-11-22T23:00:00+08:00', '明天早八吗'], ['2026-11-22T23:20:00+08:00', '晚安啦'],
-            ] as const) {
-                await d.at(at);
-                d.say(boyfriend.qq, text);
-            }
-            await d.at('2026-11-23T03:00:00+08:00');
         },
     },
     {
@@ -991,62 +956,6 @@ export const SCENARIOS: readonly Scenario[] = [
         },
     },
     {
-        name: 'exemplars',
-        about: '真人例子（ADR 0190，ADR 0336 迁出之前）：语料里预置几条合成的「他说 / 她回」，男朋友的话和哪条像就放最像的几条（最多 4 条）；一条都不像不放；他消失几天回来的头两轮（小别扭还没散）、她说了等下之后自己回来的那一轮（主动找他）、危机的话（这几轮不放）；同学说了一样的话（不放）',
-        start: '2026-12-01T06:30:00+08:00',
-        contacts: [boyfriend, classmate],
-        config: { ...RICH, exemplars: true },
-        seed: (dataDir, start) => {
-            const row = (id: string, said: string, replied: string[]) => JSON.stringify({ id, source: `synthetic.jsonl|${id}`, license: 'synthetic', said, replied });
-            mkdirSync(join(dataDir, 'exemplars'), { recursive: true });
-            writeFileSync(join(dataDir, 'exemplars', 'corpus.jsonl'), [
-                row('e1', '今天好累啊', ['累就早点歇着', '别硬撑']),
-                row('e2', '今天上课好累', ['辛苦啦']),
-                row('e3', '吃饭了吗', ['刚吃完', '你呢']),
-                row('e4', '晚上吃什么好', ['想吃火锅']),
-                row('e5', '周末去看电影吗', ['好呀', '看什么']),
-                row('e6', '今天好冷', ['多穿点']),
-                row('e7', '我好累不想动', ['那就躺会儿']),
-            ].join('\n') + '\n');
-            // 男朋友：10 天前到 5 天前天天聊；之后他四天没出现、她发了两次没人回——他今天第一次回来那一轮是小别扭（ADR 0074）
-            const chats = new ChatHistory(dataDir);
-            for (let day = 10; day >= 5; day--) {
-                ['早', '晚安'].forEach((text, i) => {
-                    const at = start - day * 86_400_000 + (2 + i * 12) * 3600_000;
-                    const id = 700 + (10 - day) * 4 + i * 2;
-                    chats.append(boyfriend.qq, { time: new Date(at).toISOString(), role: 'user', content: text, messageId: id });
-                    chats.append(boyfriend.qq, { time: new Date(at + 60_000).toISOString(), role: 'assistant', content: '嗯嗯', messageId: id + 1 });
-                });
-            }
-            for (const [day, text] of [[3, '在吗'], [2, '你怎么都不理我']] as const) {
-                chats.append(boyfriend.qq, { time: new Date(start - day * 86_400_000 + 12 * 3600_000).toISOString(), role: 'assistant', content: text, messageId: 690 + day });
-            }
-        },
-        reply: () => {
-            const chat = rotating(['嗯嗯', '是呀', '怎么啦', '好']);
-            let away = false;
-            return (call: LlmCall) => {
-                const his = call.messages.findLast(m => m.role === 'user');
-                // 她说了等下（只说这一次）：过几分钟自己回来说一声（ADR 0112），那一轮是她主动找他
-                if (!away && typeof his?.content === 'string' && his.content.includes('周末去看电影')) { away = true; return '等下\n我去拿个快递'; }
-                return chat(call);
-            };
-        },
-        script: async d => {
-            await d.at('2026-12-01T12:20:00+08:00'); d.say(boyfriend.qq, '吃饭了吗');
-            await d.at('2026-12-01T12:40:00+08:00'); d.say(boyfriend.qq, '今天好累啊');
-            await d.at('2026-12-01T12:50:00+08:00'); d.say(boyfriend.qq, 'ok');
-            await d.at('2026-12-01T15:00:00+08:00'); d.say(classmate.qq, '今天好累啊');
-            await d.at('2026-12-01T18:30:00+08:00'); d.say(boyfriend.qq, '晚上吃什么好');
-            await d.at('2026-12-01T19:00:00+08:00'); d.say(boyfriend.qq, '那这周末去看电影吗');
-            await d.at('2026-12-01T19:40:00+08:00'); d.say(boyfriend.qq, '今天好冷');
-            await d.at('2026-12-01T20:40:00+08:00'); d.say(boyfriend.qq, '我不想活了，好累');
-            await d.wait(10 * 60_000);
-            d.say(boyfriend.qq, '我现在安全，室友回来了在旁边陪我');
-            await d.at('2026-12-01T21:20:00+08:00');
-        },
-    },
-    {
         name: 'devices',
         about: '设备控制（ADR 0148，ADR 0336 迁出之前）：假的设备服务、真的控制器，12:30 才起来——之前男朋友那几轮菜单是空的（照样放一段空的），之后放菜单；她回复里写的指令行摘掉，打开登记过的应用直接做，锁屏要他回「/批准」才做；同学说同样的话（不放菜单，指令行照样摘掉）；危机的话（不放）；一天里有她主动找他、只想一想的轮次',
         start: '2026-12-03T06:30:00+08:00',
@@ -1307,7 +1216,7 @@ export const SCENARIOS: readonly Scenario[] = [
             ['那天还下了大雪', invented('那天还下了大雪')],
         ];
         // 每一轮：他说的话里认得出的一段 → 她的初稿，和各种重写说明下她写的版本（没写的照初稿）
-        interface Turn { his: string; draft: string; fact?: string; recalled?: string; unfinished?: string; shape?: string; crisis?: string }
+        interface Turn { his: string; draft: string; fact?: string; recalled?: string; unfinished?: string; crisis?: string }
         const TURNS: readonly Turn[] = [
             { his: '在干嘛呢', draft: '刚洗完头\n室友把我的酸奶喝了\n你肯定又在打游戏', fact: '刚洗完头\n在吹头发' },
             { his: '今天食堂吃的啥', draft: '麻辣香锅\n还碰到了班主任', fact: '麻辣香锅\n还碰到了辅导员' },
@@ -1315,8 +1224,7 @@ export const SCENARIOS: readonly Scenario[] = [
             { his: '借你的那本书呢', draft: '<<查：借书>>\n我找找哈' },
             { his: '周末去看电影吗', draft: '可以呀\n不过要是下雨的话', unfinished: '可以呀\n下雨就在宿舍看' },
             { his: '想我没', draft: '想啊，上课的时候都在想，就是觉得' },
-            { his: '你今天下午干嘛了', draft: '下午去图书馆借了两本书，回来的路上顺便买了杯奶茶，到宿舍才发现吸管忘拿了，只好拿勺子挖着喝，室友在旁边笑了我半天，说我像在吃冰沙',
-                shape: '去图书馆借书了，回来买了杯奶茶，吸管忘拿了，只好拿勺子挖着喝，室友在旁边笑了我半天，说我像在吃冰沙一样' },
+            { his: '你今天下午干嘛了', draft: '下午去图书馆借了两本书，回来的路上顺便买了杯奶茶，到宿舍才发现吸管忘拿了，只好拿勺子挖着喝，室友在旁边笑了我半天，说我像在吃冰沙' },
             { his: '下周三是我生日哦', draft: '记住啦\n<<记住：他的生日是下周三>>' },
             { his: '今天好开心', draft: '我也是<<日记：今天和他聊了很久，很开心>>' },
             { his: '你在忙吗', draft: '等我一下，我去收个衣服' },
@@ -1328,10 +1236,10 @@ export const SCENARIOS: readonly Scenario[] = [
             name: 'review',
             about: '生成之后的审稿（ADR 0336「生成之后那一段」第 0 步，迁出之前）：逐条事实检查（factCheck fix + factHim：编的和替他说的带说明重写后通过、重写后仍有就删行、她说了等下之后自己回来的主动消息删完撑不住整条不发、'
                 + '后面几步改过的最后核对一次删掉编的那一行）、<<查：…>>（查到了带着重写、没查到摘掉标记）、话说到一半（重写后好了；重写后还是这样：退到上一个逗号、最后一条停在转折上并回前一条）、'
-                + '形状太长重写后还长按分句截断、她回复里的 <<记住>>（单独一行的气泡发送前处理）和 <<日记>>（普通气泡发出去时处理，本地也留一份）、危机回合（重写后还不过发固定兜底、重写后通过）',
+                + '她回复里的 <<记住>>（单独一行的气泡发送前处理）和 <<日记>>（普通气泡发出去时处理，本地也留一份）、危机回合（重写后还不过发固定兜底、重写后通过）',
             start: '2026-12-10T19:00:00+08:00',
             contacts: [boyfriend],
-            config: { shape: true, factCheck: 'fix', factHim: true, selfDirectedMemory: true, diaryInsights: true, proactive: 'on', proactiveReach: true, comeBack: true },
+            config: { factCheck: 'fix', factHim: true, selfDirectedMemory: true, diaryInsights: true, proactive: 'on', proactiveReach: true, comeBack: true },
             memory: {
                 recall: [
                     { bank: boyfriend.qq, query: '第一次约会的地方', results: [
@@ -1359,7 +1267,6 @@ export const SCENARIOS: readonly Scenario[] = [
                 if (last.includes('你只能说上面写了的事实')) return turn.fact ?? turn.draft;
                 if (last.includes('（你刚才想起来了：')) return turn.recalled ?? turn.draft;
                 if (last.includes('有一条话没说完')) return turn.unfinished ?? turn.draft;
-                if (last.includes('太长了——')) return turn.shape ?? turn.draft;
                 if (last.includes('重写这次的回复：认真接住他的感受')) return turn.crisis ?? turn.draft;
                 return turn.draft;
             },
@@ -1390,11 +1297,11 @@ export const SCENARIOS: readonly Scenario[] = [
             name: 'media',
             about: '图片表情和照片（ADR 0063 / 0099 / 0109，ADR 0336「生成之后那一段」迁出之前）：真的收藏库（连上之前经它自己的收藏路径收进三张）、真的照片货架（作者手动加的三张）。'
                 + '男朋友：带反应的问句（不发表情，她照写的编号摘掉）；要看风景照（清单进提示词，先带一句、另起一行发照片，聊天记录写「她发了张照片：…」；这一轮不发表情，她顺手写的编号摘掉）；'
-                + '刚发过又要一张（不给清单，她照写的照片编号摘掉）；危机（不发，摘掉）；只发表情的一轮（清单写明只发一个，她多写的文字去掉、只发图）；最近八条回复里发过（不发，摘掉）；'
+                + '刚发过又要一张（不给清单，她照写的照片编号摘掉）；危机（不发，摘掉）；原来只发表情的那一轮（情绪轮 shapeFeel 11-24 删了，照常文字加表情）；最近八条回复里发过（不发，摘掉）；'
                 + '过了八条之后文字加表情（发图，聊天记录写「她发了个表情包：…」，收藏库记一次用过）。同学（没有收藏库，编号摘掉）',
             start: '2026-12-11T19:00:00+08:00',
             contacts: [boyfriend, classmate],
-            config: { shape: true, shapeFeel: true, stickers: 'send', photos: true },
+            config: { stickers: 'send', photos: true },
             stickers: STICKERS,
             seed: dataDir => seedPhotos(dataDir, [
                 { kind: 'view', caption: '傍晚在宿舍阳台拍的晚霞，云是粉紫色的' },

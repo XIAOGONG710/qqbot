@@ -31,7 +31,7 @@ import { readingActivities } from '.././life/her-days.ts';
 import { crisisInHistory } from '.././emotion/crisis.ts';
 import { quoteFix, type QuotePlan } from '.././social/quote-reply.ts';
 import type { TurnWeight } from '.././language/turn-weight.ts';
-import { DELIBERATE_MAX_BUBBLES } from '.././language/shape.ts';
+import { DELIBERATE_MAX_BUBBLES } from '.././language/deliberate.ts';
 import { recapDay, unavailableAt, worldAt, type WorldNow, type WorldState } from '.././world/world.ts';
 import type { CurrentAiPhotoResult } from '.././proactive/ai-photo-requests.ts';
 import { dayPlan, describeSlot } from '.././life/day-plan.ts';
@@ -168,7 +168,7 @@ export interface ContactPipelineOptions {
     dreams?: () => { appraisals: Appraisal[]; line?: string };
     /** 允许发图片表情的轮次里抽中发的概率（默认 STICKER_TURN_CHANCE；模拟器场景可以调高来测）*/
     stickerChance?: number;
-    /** 抽到发表情的轮次里只发表情不写文字的概率（不写 = 0，不开；app.ts 在 shapeFeel 开着时给 STICKER_ONLY_SHARE；模拟器场景可以调来测，ADR 0099） */
+    /** 抽到发表情的轮次里只发表情不写文字的概率（不写 = 0，不开；原来 app.ts 在 shapeFeel 开着时给 STICKER_ONLY_SHARE，11-24 删了；测试和模拟器场景可以调来测，ADR 0099） */
     stickerOnlyChance?: number;
     /** 他这句话没有明确反应、但允许发图片表情的轮次里，抽到发一个的概率（ADR 0132，配置 biliStickers）：原来只有有明确反应的轮次才抽，她线上 437 轮里发了 1 个；不给就还是原来的 */
     stickerUncued?: number;
@@ -206,8 +206,6 @@ export interface ContactPipelineOptions {
     moody?: boolean;
     /** 出口检查里查说话的毛病（ADR 0014）；默认否 */
     speechCheck?: boolean;
-    /** 句尾语气字封顶（ADR 0146，配置 tailCap，要 speechCheck 开着）：她最近的气泡里挂尾巴的占比到了真人的水平，这一轮再挂的把那个字去掉 */
-    tailCap?: boolean;
     /**
      * 她自己的日子（ADR 0015）：心情行、「在读的书」、看书的空闲活动、进度数字的检查；默认否。
      * 一天怎么算、课多不多按卡上的作息，所以卡上没有作息（或者没有心情、书）就没有；schedule 关着时心情和书照样有，只是没有看书的空闲活动
@@ -476,10 +474,9 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             // 这个判断是解释器的模块（modules/media-offers.ts 的 decideAt.photo）：货架和「现在的照片」的解析经 DecideCtx 给，结果写进 turn.facts（photo、photoDish、photoPrompt、photoUnavailable），下面读
             decideStage(options.turnModules ?? [], 'photo', turn, decideCtx);
             // 陪玩（ADR 0111）、关系阶段（ADR 0113）、被打断（ADR 0115）是解释器的模块（见上面 assess 那里）
-            // 小梗（ADR 0114）、他的口头习惯（ADR 0138）是解释器的模块（modules/jokes.ts、modules/idioms.ts），经 turnModules 放进 joke、idiom 槽
+            // 小梗（ADR 0114）是解释器的模块（modules/jokes.ts），经 turnModules 放进 joke 槽
             // 网络热梗（ADR 0129）是解释器的模块（modules/memes.ts），经 turnModules 放进 meme 槽
             // 她看视频（ADR 0130）是解释器的模块（modules/watched.ts），经 turnModules 放进 watched 槽
-            // 真人例子（ADR 0190）是解释器的模块（modules/exemplars.ts），经 turnModules 放进 exemplar 槽
             // 他这句到底在说什么（2026-10-30）是解释器的模块（modules/reading.ts），经 turnModules 放进 reading 槽
             // 场景应答（2026-10-31：哄睡 / 报错 / 自我怀疑 / 暗号）是解释器的模块（modules/scenes.ts），经 turnModules 放进 scene 槽
             // 多问一句、先表态、拿不准就直说（2026-10-31）是解释器的模块（modules/asks.ts），经 turnModules 放进 askHint、opinion、unsure 槽
@@ -521,12 +518,10 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             // 引用回复（ADR 0136）是解释器的模块（modules/quote.ts）：contribute 时算、写回 turn.facts.quote，放进 quote 槽；拼完段落之后取回来，发送时引用那条。这里先清掉上一轮的
             quoteNow = undefined;
             // 挑候选（ADR 0041）是解释器的模块（modules/candidates.ts）：contribute 时按最终的意图行定这一轮挑不挑、按什么规则，写进 turn.facts.pick；生成时经 candidatePlan 问
-            // 长短和形状要的两样——她这会儿低落不低落（low）、带自己的事时能挑的话题（agendaTopics）——是形状模块的 decideAt.length（modules/shape.ts），今天的心情也在那里现算
+            // 长短要的她这会儿低落不低落（low）是长短模块的 decideAt.length（modules/length.ts），今天的心情也在那里现算
             decideStage(options.turnModules ?? [], 'length', turn, decideCtx);
             // 别重复自己（反复说的字词、主动找他的开头、说过了的事，ADR 0098 / 0135）是解释器的模块（modules/repetition.ts），经 turnModules 放进 crutch、opener、told 槽
             // 她最近心里在想的（ADR 0101）是解释器的模块（modules/inner.ts），经 turnModules 放进 inner 槽
-            // 质感（ADR 0131）发出去之前用的上下文是解释器的模块（modules/decorate.ts 的 decideAt.texture，开了 texture 才挂）：写进 turn.facts.texture
-            decideStage(options.turnModules ?? [], 'texture', turn, decideCtx);
             // 聊天原文放多少（最近几天 / 最近几轮 + 更早的要点，ADR 0018 / 0043）和记忆这一组的收尾（拼上要点和那一天，写进 turn.facts.memory）是记忆模块的 decideAt.context：
             // 在这里原位调（要点那一下会在后台起一次整理）；放进提示词的原文写进 turn.facts.shown
             decideStage(options.turnModules ?? [], 'context', turn, {
@@ -556,8 +551,6 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             const ran = contributeTurn(options.turnModules ?? [], turn, options.onManifest ? list => { placed.list = list; } : undefined);
             // 都是同步的钩子时不 await，免得多等一个微任务（行为基线核对事件顺序）
             const { afterMain, afterHistory } = ran instanceof Promise ? await ran : ran;
-            // 形状控制（ADR 0091，modules/shape.ts）contribute 时算好写回 turn.facts.shape：生成时按它调最多几条
-            const shapeNow = turn.facts.shape;
             quoteNow = turn.facts.quote;
             const prompt = buildPrompt({
                 character: turnCard.character,
@@ -583,7 +576,7 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
                 ...prompt,
                 messages: postProcessPrompt(prompt.messages, llm.promptPostProcessing, names),
                 // 少规矩（ADR 0342）：除了危机回合，不再按心境、意图、形状压条数
-                ...(crisisNow ? { maxBubbles: 3 } : fewerRules() ? {} : feltNow.length && !grievanceActive ? { maxBubbles: tunedMaxBubbles(shapeNow ? shapeNow.maxBubbles : 3, moodNow) } : ((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) || grievanceActive) ? { maxBubbles: shapeNow ? Math.min(2, shapeNow.maxBubbles) : 2 } : shapeNow ? { maxBubbles: shapeNow.maxBubbles } : deliberateNow ? { maxBubbles: DELIBERATE_MAX_BUBBLES } : {}),
+                ...(crisisNow ? { maxBubbles: 3 } : fewerRules() ? {} : feltNow.length && !grievanceActive ? { maxBubbles: tunedMaxBubbles(3, moodNow) } : ((intent && /先接住他此刻的情绪|只接他刚说的你们两个人的事|顺着他的话收尾/.test(intent)) || grievanceActive) ? { maxBubbles: 2 } : deliberateNow ? { maxBubbles: DELIBERATE_MAX_BUBBLES } : {}),
                 ...(shown.omitted ? { note: `较早的聊天原文 ${shown.omitted} 条不放（事实靠长期记忆${summary ? '和前面的要点' : ''}）` } : {}),
             };
             // 清单跟着这一份提示词走（回复器拿它调 onPrompt 时取）：同一个对象，主动和回复同时在拼也不会串
@@ -623,7 +616,7 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             const onRewriteAccepted = () => { chosen = rewrite; };
             // 审稿顺序表上的位置（ADR 0336「生成之后那一段」）：挂了 reviewAt 的模块在对应的那一步之后跑；都没挂时同步返回原稿，不多等
             const reviewCtx: ReviewCtx = {
-                exit: { speechCheck: Boolean(options.speechCheck), tailCap: Boolean(options.tailCap), imageStickers: Boolean(options.stickers) }, history: () => options.history.load(contact.qq),
+                exit: { speechCheck: Boolean(options.speechCheck), imageStickers: Boolean(options.stickers) }, history: () => options.history.load(contact.qq),
                 regenerate, accept: onRewriteAccepted, dropDevices: () => { chosen = chosen && { text: chosen.text }; }, scratch: {}, log, names, ...(promptSource ? { promptSource } : {}),
                 ...(reviewContext?.initiating ? { initiating: true } : {}), ...(reviewContext?.allowRepeat ? { allowRepeat: true } : {}),
             };
@@ -648,15 +641,9 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             if (atPull instanceof Promise) atPull = await atPull;
             if (atPull.stop) return atPull.text;
             reviewed = atPull.text;
-            // 形状控制（配置 shape）：出口检查之后再看字数和条数，超了重写一次、还超就在分句处截断
-            // 形状裁剪是形状模块（modules/shape.ts）的 reviewAt.shape：有形状时超字数重写一次、还超就按分句截断
-            let atShape = at('shape', reviewed);
-            if (atShape instanceof Promise) atShape = await atShape;
-            if (atShape.stop) return atShape.text;
-            const shaped = atShape.text;
-            // 话说到一半（ADR 0141）：形状之后再看，并回去 / 退回去会让一条变长，放在字数检查前面会被再截一次；危机回合不走
+            // 话说到一半（ADR 0141）：并回去 / 退回去会让一条变长；危机回合不走（原来排在形状裁剪之后，形状控制 11-24 随 fewerRules 转正删了）
             // 话说到一半（ADR 0141）是解释器的模块（modules/review-unfinished.ts），开着 speechCheck 时挂在 unfinished 位置
-            let atUnfinished = at('unfinished', shaped);
+            let atUnfinished = at('unfinished', reviewed);
             if (atUnfinished instanceof Promise) atUnfinished = await atUnfinished;
             if (atUnfinished.stop) return atUnfinished.text;
             const finished = atUnfinished.text;

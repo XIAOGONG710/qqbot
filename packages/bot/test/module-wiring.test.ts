@@ -36,7 +36,6 @@ const APP_ONLY: Record<string, string> = {
     selfNotes: '摘 <<记住>> / <<日记>> / <<私密>>：模拟器没有 absorb',
     soul: '她在本机的灵魂目录',
     learningQuestion: '她学的时候没想通的地方',
-    exemplars: '真人例子',
     consent: '他的请求等她点头',
     continuity: '连续性（模拟器不取，facts 里没有）',
     group: '群聊（模拟器只有私聊）',
@@ -57,8 +56,8 @@ describe('一轮回复的模块接线只有一份（ADR 0336 第 6 步）', () =
             assert.equal(code(source(file)).split('buildTurnModules(').length - 1, 1, `${file} 只调一次 buildTurnModules`);
         }
         assert.deepEqual(factories(appWiring), []);
-        // 模拟器的小梗、口头习惯直接给场景里写好的（只放提示词的那一半）；App 的在列表外建好（带定时抽取和收尾）
-        assert.deepEqual(factories(simWiring), ['jokesTurnModule', 'idiomsTurnModule']);
+        // 模拟器的小梗直接给场景里写好的（只放提示词的那一半）；App 的在列表外建好（带定时抽取和收尾）
+        assert.deepEqual(factories(simWiring), ['jokesTurnModule']);
     });
 
     test('App：「旧逻辑」那一个在解释器的最前面，然后是群聊的入口，后面是 buildTurnModules 的结果，最后是只有定时任务的（不进一轮回复）', () => {

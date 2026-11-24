@@ -14,10 +14,9 @@ describe('表达层（ADR 0024）', () => {
         assert.equal(lengthHint({ history: said(7) }), lengthHint({ history: said(7) }));
     });
 
-    test('抽到「短」的轮次不管意图行、是不是问起朋友，都是「短」（更短的那一版 shortReplies 的让路规则 11-24 删了）', () => {
+    test('抽到「短」的轮次不管意图行，都是「短」（更短的那一版 shortReplies 的让路规则 11-24 删了）', () => {
         const shortOne = Array.from({ length: 200 }, (_, i) => i).find(i => lengthHint({ history: said(i) }) === 'short')!;
         assert.equal(lengthHint({ history: said(shortOne), intent: '[这一轮你想：先接住他此刻的情绪，一两句回应他刚说的就够]' }), 'short');
-        assert.equal(lengthHint({ history: said(shortOne), aboutPerson: true }), 'short');
     });
 
     test('收尾、主动找他时不加；心情安静、身体不舒服时不加「话多」；他还没说话不加', () => {

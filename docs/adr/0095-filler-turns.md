@@ -1,6 +1,7 @@
 # ADR 0095：偶尔只回一句不带内容的话，他拖音时跟着拖（配置 `shapeFiller`，默认关）
 
 - 状态：**已实现；2026-10-22 随 bili9 上线（`shapeFiller: true`，要 `shape` 开着）**；回滚：配置里改回 false 并重启
+- 2026-11-24：fewerRules 转正（用户拍板，[减法单子 二.1](../plans/2026-11-24-subtraction-round.md)），`shapeFiller`连开关和代码一起删了；线上 fewerRules 开着时它本来就不生效。
 - 日期：2026-10-21
 - 关联：[ADR 0091](0091-reply-shape.md)、[ADR 0094](0094-her-own-agenda.md)（同一套“适用的轮次”）
 - 用户提出：2026-10-21「真人聊天是有废话的，要不要给她加上？」→「做吧」

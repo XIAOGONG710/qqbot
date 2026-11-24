@@ -77,7 +77,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         herDays: false,
         autonomousLife: false,
         projectChoice: false,
-        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], shape: false, shapeAgenda: false, shapeFiller: false, shapeFeel: false, proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, memes: false, watching: false, texture: false, biliStickers: false, quoteReply: false, factCheck: 'off', idioms: false, tailCap: false, deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, worldDrama: false, pursuits: false, shapeSplit: false, shapeAsk: false, shapeLong: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, acquaintances: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        lifeInPrompt: false, grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliAccount: false, bilibiliComment: 'off', bilibiliDm: 'off', bilibiliReplies: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, memes: false, watching: false, biliStickers: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, lagTail: false, everydayLife: false, worldDrama: false, pursuits: false, deliberate: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, acquaintances: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, signature: 'off', qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWeather: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false,
         media: true,
@@ -256,43 +256,9 @@ describe('编排（app.ts）', () => {
         if (existsSync(queue)) assert.deepEqual(JSON.parse(readFileSync(queue, 'utf8')).items, []);
     });
 
-    // 27facc0「语言松绑」改了形状的适用面：只有「先接住他此刻的情绪 / 他刚说了件好事 / 回应他刚说的那件事 /
-    // 只接他刚说的你们两个人的事 / 他在向你要亲近 / 他在撒娇要你哄他 / 他到现在才看到你前面发的」和问到过去的事才给形状，
-    // 普通闲聊（「在干嘛」，意图行是「先直接回答他刚问的」）只留 lengthHint 那句软提示、不圈字数和条数。
-    // 原来的用例拿「在干嘛」当形状生效的样本，所以一直红；改成按新规则分别验两条路。
-    test('形状控制（ADR 0091，27facc0 松绑后）：要认真接的轮次有字数和条数、太长重写一次；普通闲聊只给软提示、不圈数字；关着也没有这一行；危机回合不受影响', async () => {
-        const long = '今天真的好累啊，而且还要写作业，烦死了，'.repeat(4);
-        const run = async (shape: boolean, said: string) => {
-            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], shape });
-            const prompts: string[] = [];
-            const { app, sent, logs } = setup(cfg, {}, { generate: messages => { const text = messages.map(m => m.content).join('\n'); prompts.push(text); return /太长了/.test(text) ? '好累啊' : long; } });
-            app.receive(event(10001, 1, said));
-            await until(() => sent.length >= 1);
-            return { prompts, sent, logs };
-        };
-        // 他在难受：意图行是「先接住他此刻的情绪」，形状生效（开的形状只落在后三档，最宽 40 字 + 余量也拦得住 88 字）
-        const on = await run(true, '今天好累啊，烦死了');
-        assert.match(on.prompts[0]!, /\[这一轮说话：[^\]]*每条不超过 \d+ 个字/);
-        assert.ok(on.prompts.some(prompt => prompt.includes('太长了')), '太长，带说明重写了一次');
-        assert.deepEqual(on.sent, ['10001:好累啊']);
-        assert.ok(on.logs.some(line => line.includes('这一轮形状：每条不超过')) && on.logs.some(line => line.includes('形状：') && line.includes('带说明重写一次')), on.logs.join('|'));
-        // 普通闲聊：软提示有没有、是哪一种按轮抽（shortHint 的 roll 随消息时间变），所以只断言「没有数字、没有重写」
-        const chatty = await run(true, '在干嘛');
-        assert.doesNotMatch(chatty.prompts[0]!, /每条不超过/, '普通闲聊不圈数字');
-        assert.ok(!chatty.prompts.some(prompt => prompt.includes('太长了')), '普通闲聊不按字数重写');
-        assert.ok(chatty.logs.every(line => !line.includes('这一轮形状')));
-        // 关着：同一个要认真接的轮次也没有数字、不重写
-        const off = await run(false, '今天好累啊，烦死了');
-        assert.doesNotMatch(off.prompts[0]!, /每条不超过/);
-        assert.ok(!off.prompts.some(prompt => prompt.includes('太长了')));
-        assert.ok(off.logs.every(line => !line.includes('这一轮形状')));
-        const crisis = await run(true, '我不想活了');
-        assert.doesNotMatch(crisis.prompts[0]!, /每条不超过/, '危机回合不加形状');
-    });
-
     test('深思（ADR 0151）：认真问她的轮次不套字数和条数、用深思用的模型、提示词只留一句“先想清楚”；闲聊、危机、关着的时候都不动', async () => {
         const run = async (deliberate: boolean, said: string) => {
-            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], shape: true, shapeAsk: true, shapeLong: true, deliberate });
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], deliberate });
             const calls: { prompt: string; model?: string }[] = [];
             const { app, sent, logs } = setup(cfg, {}, { generate: (messages, use) => { calls.push({ prompt: messages.map(m => m.content).join('\n'), ...(use ? { model: use.model } : {}) }); return '想去就去，不过先想清楚你到底图什么'; } });
             app.receive(event(10001, 1, said));
@@ -318,7 +284,7 @@ describe('编排（app.ts）', () => {
     test('语义路由（ADR 0202，depthRouting）：关键词没认出来、但意思上是认真的轮次也深思（换模型、不套字数、按类别多一小句方向）；关键词已经认出来的不再问；闲聊、危机、没开、没配深思、问不成的时候都照旧', async () => {
         const WEIGH = '你只做分类，不回复他';
         const run = async (patch: Partial<AppConfig>, said: string, router: string | Error) => {
-            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], shape: true, shapeAsk: true, shapeLong: true, deliberate: true, depthRouting: true, ...patch });
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier: 'boyfriend' as const }], deliberate: true, depthRouting: true, ...patch });
             const calls: { prompt: string; model?: string }[] = [];
             let asked = 0;
             const { app, sent, logs } = setup(cfg, {}, { generate: (messages, use) => {
@@ -1053,17 +1019,10 @@ describe('编排（app.ts）', () => {
         const textOnly = await run(1, '哈哈哈哈笑死', 10003);
         assert.deepEqual(textOnly.sent, ['哈哈哈哈笑死'], '抽到只发表情但模型没写表情：照它写的发');
         assert.equal(textOnly.images.length, 0);
-        // 没给概率：shapeFeel 没开就是 0（文字加表情照旧）；开了（要 shape 一起开）按 STICKER_ONLY_SHARE，同一句每次一样
+        // 没给概率就是 0（文字加表情照旧；原来 shapeFeel 开着时按 STICKER_ONLY_SHARE，11-24 随形状控制删了）
         const unset = await run(undefined, '哈哈哈哈\n<sticker:123456abcdef>', 10004, 2);
         assert.deepEqual(unset.sent, ['哈哈哈哈']);
         assert.notEqual(prompts.at(-1)?.only, true);
-        // shapeFeel（和 shape）开着：走 STICKER_ONLY_SHARE 的抽签，不同的话抽到不同的结果（12 句里两种都有；全是同一种的概率约 1/2000）
-        const seen = new Set<boolean>();
-        for (let i = 0; i < 12; i++) {
-            await run(undefined, '哈哈哈哈\n<sticker:123456abcdef>', 10010 + i, 1, { shape: true, shapeFeel: true }, `哈哈哈哈笑死我了第${i}句`);
-            seen.add(prompts.at(-1)?.only === true);
-        }
-        assert.deepEqual([...seen].sort(), [false, true], '开了 shapeFeel 之后有的轮次只发表情、有的不');
     });
 
     test('图片表情 collect：只收男朋友发来的候选，不进提示词、不发送图片', async () => {
@@ -2933,7 +2892,7 @@ describe('全开冒烟（整包上线用）', () => {
                 contacts: bf, schedule: true, herDays: true, pokes: true, pokeBack: true, pokeOut: true, recalls: true, readReceipts: true,
                 onlineStatus: true, profileLikes: true, signature: 'dryRun', qzone: 'dryRun', bilibili: 'dryRun', typingStatus: true, selfRecall: true,
                 rhythm: true, festivals: 'greet', npcAsks: true,
-                herFeelings: true, herNo: true, proactiveInvite: true, photos: true, together: true, comeBack: true, relationship: true, jokes: true, interruptions: true, proactiveAsk: true, weeklyReport: true, jealousy: true, proactiveRoom: true, menu: true, curious: true, smallNews: true, memes: true, watching: true, texture: true, biliStickers: true, lagTail: true, everydayLife: true, pursuits: true, shape: true, shapeAgenda: true, shapeFiller: true, shapeFeel: true, shapeSplit: true, grievance: true,
+                herFeelings: true, herNo: true, proactiveInvite: true, photos: true, together: true, comeBack: true, relationship: true, jokes: true, interruptions: true, proactiveAsk: true, weeklyReport: true, jealousy: true, proactiveRoom: true, menu: true, curious: true, smallNews: true, memes: true, watching: true, biliStickers: true, lagTail: true, everydayLife: true, pursuits: true, grievance: true,
             });
             const { app, sent, logs } = setup(cfg, { 10001: [] }, {
                 clock, generate: () => '在呢，刚忙完', bilibiliFetch: bili,

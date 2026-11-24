@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { ENGAGED_INTENT } from '../src/language/expression.ts';
 import { describeGrievance, GRIEVANCE_GAP_MS, grievanceNow, ignoredNow, IGNORED_GAP_MS, IGNORED_MAX_MS, isRepairText, MAKEUP_MARK, SULK_MARK } from '../src/emotion/grievance.ts';
 import { describeIntent } from '../src/language/intent.ts';
 
@@ -169,7 +168,6 @@ describe('她倾诉了几条、他隔了很久才回（ignoredNow，10-20 用户
         const grievance = ignoredNow(history)!;
         const line = describeGrievance(grievance);
         assert.ok(line.includes(SULK_MARK));
-        assert.ok(ENGAGED_INTENT.test(line), '不然 shortReplies 会把这一轮压成一句');
         assert.ok(/不翻旧账、不冷战、不长篇大论/.test(line));
         assert.equal(describeIntent({ history, state: undefined, schedule: undefined, now: new Date(NOW), intimate: true, playful: true, grievance }), line);
     });

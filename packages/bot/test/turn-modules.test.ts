@@ -17,10 +17,9 @@ describe('模块接线（ADR 0336 第 6 步）', () => {
         log: trap('log'), now: trap('now'), history: trap('history'), contacts: trap('contacts'),
         worldState: trap('worldState'), appointmentsAt: trap('appointmentsAt'), promises: trap('promises'),
         schedule: true, herDays: true, grievance: true, lagTail: true, lifeInPrompt: true,
-        intent: { refuse: true }, shape: { shape: true, shapeAgenda: true },
+        intent: { refuse: true },
     });
     const jokes: Module = { id: 'jokes', contribute: trap('jokes.contribute') };
-    const idioms: Module = { id: 'idioms', contribute: trap('idioms.contribute') };
     const full = (): TurnModuleDeps => ({
         ...base(),
         herNow: { projectChoice: true, realNights: true, herPlan: trap('herPlan') },
@@ -33,16 +32,15 @@ describe('模块接线（ADR 0336 第 6 步）', () => {
         selfNotes: { keepPrivate: trap('keepPrivate'), remember: trap('remember'), log: trap('notes.log') },
         soul: { selfThread: trap('selfThread'), refusals: trap('refusals'), rating: trap('rating'), life: trap('life') },
         learningQuestion: trap('learningQuestion'),
-        exemplars: [{ his: '在吗', her: '在' }] as never,
         innerLine: trap('innerLine'),
         devices: { menu: trap('menu'), allowed: trap('allowed') },
         consent: { ask: trap('ask') },
         quote: { share: 1 },
         factCheck: { mode: 'fix', audit: trap('audit'), onRecord: trap('onRecord') },
         speechCheck: true,
-        candidates: { count: 3, speechCheck: true, tailCap: true },
-        continuity: true, group: true, texture: true, humanState: true, solveFrame: true, relationship: true,
-        jokes, idioms, together: true, interruptions: true,
+        candidates: { count: 3, speechCheck: true },
+        continuity: true, group: true, humanState: true, solveFrame: true, relationship: true,
+        jokes, together: true, interruptions: true,
         memes: trap('memes'), watched: trap('watched'), memeDict: { mention: trap('mention') },
     });
     const ids = (modules: readonly Module[]) => modules.map(module => module.id);
@@ -53,16 +51,15 @@ describe('模块接线（ADR 0336 第 6 步）', () => {
         assert.deepEqual(ids(modules), [
             'her-now', 'crisis', 'intent', 'reply-basics', 'asks', 'reading', 'register', 'scenes', 'voice',
             'self-memory', 'work-mode', 'self-notes', 'her-notes', 'soul', 'learning-question', 'shell',
-            'repetition', 'books', 'past', 'people-around', 'meetup', 'exemplars', 'practice', 'inner', 'devices', 'consent',
-            'shape', 'length', 'quote', 'initiate-note', 'review-finalize', 'review-exit', 'review-facts', 'review-unfinished', 'review-pull',
+            'repetition', 'books', 'past', 'people-around', 'meetup', 'practice', 'inner', 'devices', 'consent',
+            'length', 'quote', 'initiate-note', 'review-finalize', 'review-exit', 'review-facts', 'review-unfinished', 'review-pull',
             'time-block', 'continuity', 'group', 'memory', 'warm', 'feelings', 'time-notes', 'media-offers', 'candidates',
-            'texture', 'typo', 'intent-line', 'human-state', 'deliberate', 'transcript', 'solve-frame',
-            'closeness', 'jokes', 'idioms', 'together', 'interruptions', 'memes', 'watched', 'meme-dict',
+            'typo', 'intent-line', 'human-state', 'deliberate', 'transcript', 'solve-frame',
+            'closeness', 'jokes', 'together', 'interruptions', 'memes', 'watched', 'meme-dict',
         ]);
         assert.equal(new Set(ids(modules)).size, modules.length, 'id 不重复（App 的解释器会查）');
-        // 小梗、口头习惯是外面建好的那一个（App 的带定时抽取和收尾），原样放进来
+        // 小梗是外面建好的那一个（App 的带定时抽取和收尾），原样放进来
         assert.equal(modules.find(module => module.id === 'jokes'), jokes);
-        assert.equal(modules.find(module => module.id === 'idioms'), idioms);
         assert.deepEqual(calls, []);
     });
 
@@ -95,15 +92,15 @@ describe('模块接线（ADR 0336 第 6 步）', () => {
         assert.deepEqual(ids(buildTurnModules(base())), [
             'her-now', 'crisis', 'intent', 'reply-basics', 'asks', 'reading', 'register', 'scenes', 'voice',
             'her-notes', 'shell', 'repetition', 'books', 'past', 'people-around', 'meetup', 'practice',
-            'shape', 'length', 'initiate-note', 'review-finalize', 'review-exit', 'review-pull',
+            'length', 'initiate-note', 'review-finalize', 'review-exit', 'review-pull',
             'time-block', 'memory', 'warm', 'feelings', 'time-notes', 'media-offers', 'typo', 'intent-line', 'deliberate', 'transcript',
         ]);
         assert.deepEqual(calls, []);
     });
 
-    test('开关是假的、真人例子是空的：不挂', () => {
+    test('开关是假的：不挂', () => {
         const off = buildTurnModules({
-            ...base(), exemplars: [], speechCheck: false, continuity: false, group: false, texture: false, humanState: false,
+            ...base(), speechCheck: false, continuity: false, group: false, humanState: false,
             solveFrame: false, relationship: false, together: false, interruptions: false,
         });
         assert.deepEqual(ids(off), ids(buildTurnModules(base())));
@@ -116,11 +113,9 @@ describe('模块接线（ADR 0336 第 6 步）', () => {
         before('crisis', 'intent');
         before('intent', 'interruptions');
         before('intent', 'repetition');
-        before('shape', 'length');
         before('memes', 'watched');
         before('memes', 'meme-dict');
         before('closeness', 'jokes');
-        before('jokes', 'idioms');
-        before('idioms', 'together');
+        before('jokes', 'together');
     });
 });

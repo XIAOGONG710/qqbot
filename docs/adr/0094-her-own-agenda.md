@@ -1,6 +1,7 @@
 # ADR 0094：答完他的话之后，偶尔带一件自己的事（配置 `shapeAgenda`，默认关）
 
 - 状态：**已实现；2026-10-22 随 bili9 上线（`shapeAgenda: true`，要 `shape` 开着）**；回滚：配置里改回 false 并重启
+- 2026-11-24：fewerRules 转正（用户拍板，[减法单子 二.1](../plans/2026-11-24-subtraction-round.md)），`shapeAgenda`连开关和代码一起删了；线上 fewerRules 开着时它本来就不生效。
 - 日期：2026-10-21
 - 关联：[ADR 0091](0091-reply-shape.md)（形状控制）、DSH `exchange/research/2026-10-21-aliveness`（活人感研究，第 2 步）、`exchange/research/2026-10-real-chat`（真人聊天样本）
 - 用户提出：「现在长短什么的已经和真人相似了，但内容还是差距有点大」；10-21 晚「看 ds 的推送」「继续吧」
