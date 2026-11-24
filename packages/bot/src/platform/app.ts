@@ -548,18 +548,18 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 补充的日常小事（ADR 0106）：第一次开的时候定下“从哪天起”（第二天）并存起来，以后重启读同一个；她已经过完的日子不改写
     exec.files.mkdir(join(config.dataDir, 'world'));
     const everydayFrom = config.everydayLife ? loadEverydayFrom(join(config.dataDir, 'world', 'everyday-from.json'), new Date(), log) : undefined;
-    // 每顿吃什么（ADR 0125）：同样第一次开的时候定下“从哪天起”
-    // 她那边的事有后续（ADR 0216）：要日常小事和小起伏都开着（后续接在小起伏后面）
-    const threadsFrom = config.worldThreads && config.everydayLife && config.worldDrama ? loadThreadsFrom(join(config.dataDir, 'world', 'threads-from.json'), new Date(), log) : undefined;
-    if (config.worldThreads && !threadsFrom) log('她那边的事有后续：worldThreads 开着，但要 everydayLife 和 worldDrama 都开着才起作用');
-    const menuFrom = config.menu ? loadMenuFrom(join(config.dataDir, 'world', 'menu-from.json'), new Date(), log) : undefined;
+    // 每顿吃什么（ADR 0125，跟着 everydayLife）：同样第一次开的时候定下“从哪天起”
+    // 她那边的事有后续（ADR 0216，跟着 worldDrama）：要日常小事和小起伏都开着（后续接在小起伏后面）
+    const threadsFrom = config.everydayLife && config.worldDrama ? loadThreadsFrom(join(config.dataDir, 'world', 'threads-from.json'), new Date(), log) : undefined;
+    if (config.worldDrama && !threadsFrom) log('她那边的事有后续：worldDrama 开着，但要 everydayLife 也开着才起作用');
+    const menuFrom = config.everydayLife ? loadMenuFrom(join(config.dataDir, 'world', 'menu-from.json'), new Date(), log) : undefined;
     const cards = new Map<string, TierCard>();
     const cardFor = (tier: string) => {
         let card = cards.get(tier);
         if (!card) {
             card = loadTierCard(config.characterCard, tier, { ...(everydayFrom ? { everydayLife: true, everydayFrom } : {}), ...(menuFrom ? { menu: true, menuFrom } : {}), ...(config.worldDrama ? { worldDrama: true } : {}), ...(threadsFrom ? { threadsFrom } : {}) });
-            // 闺蜜的约（ADR 0061，配置 npcAsks）：开关设在这张卡的世界上，其余代码照旧读世界
-            if (config.npcAsks && card.character.herWorld) card.character.herWorld.asks = true;
+            // 闺蜜的约（ADR 0061，跟着 everydayLife）：开关设在这张卡的世界上，其余代码照旧读世界
+            if (config.everydayLife && card.character.herWorld) card.character.herWorld.asks = true;
             // 公共节日（ADR 0076，配置 festivals）：并进这一档的重要的日子，时间块和主动消息照旧读 dates
             card.character.dates = withFestivals(card.character.dates, new Date(), config.festivals);
             withFestivalActivities(card.character.schedule, new Date(), config.festivals);

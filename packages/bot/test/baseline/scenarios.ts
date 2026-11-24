@@ -54,9 +54,9 @@ const girlFriend: Contact = { qq: 10004, name: '小林', tier: 'girl_friend' };
 /** 本地就能跑的功能全开（不连网的那些）；连网的仍按生产默认关着 */
 export const RICH: Partial<AppConfig> = {
     schedule: true, moody: true, speechCheck: true, herDays: true,
-    autonomousLife: true, grievance: true, npcAsks: true,
+    autonomousLife: true, grievance: true,
     relationship: true, jokes: true, interruptions: true, together: true, jealousy: true,
-    curious: true, everydayLife: true, menu: true, pursuits: true, herFeelings: true, herNo: true,
+    curious: true, everydayLife: true, pursuits: true, herFeelings: true, herNo: true,
     rhythm: true, typingStatus: true, selfRecall: true, readReceipts: true, quoteReply: true,
     festivals: 'greet', pokes: true, pokeBack: true, recalls: true,
     proactive: 'on', proactiveReach: true, innerLife: true, proactiveInvite: true, proactiveAsk: true, comeBack: true,

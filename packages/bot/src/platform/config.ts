@@ -57,7 +57,6 @@ export const DEFAULTS = {
     herDays: true,
     autonomousLife: false,
     grievance: false,
-    npcAsks: false,
     pokes: false,
     recalls: false,
     pokeBack: false,
@@ -82,7 +81,6 @@ export const DEFAULTS = {
     weeklyReport: false,
     jealousy: false,
     proactiveRoom: false,
-    menu: false,
     curious: false,
     smallNews: false,
     memes: false,
@@ -100,8 +98,6 @@ export const DEFAULTS = {
     afterNo: false,
     everydayLife: false,
     worldDrama: false,
-    /** 她那边的事有后续（ADR 0216）：昨天的事今天可能有个尾巴（拌嘴第二天和好、淋雨第二天嗓子发紧……），一天最多一条；闹心的事有冷却期。要 everydayLife + worldDrama */
-    worldThreads: false,
     /** 翻回去看自己的日记（ADR 0217）：他问到前几天的事时，把她那天自己写的日记（JOURNAL.md 那天的段落 + 聊天里写的 <<日记>>）也给她 */
     diaryLookback: false,
     /** 回忆带着当时的感觉（ADR 0218）：想起某一天的事时附一句她那天有依据的感觉；因为他而难过 / 烦 / 担心的不附 */
@@ -224,6 +220,9 @@ export const LEGACY_DEFAULTS = {
     deliberate: false,
     depthRouting: false,
     lagTail: false,
+    npcAsks: false,
+    menu: false,
+    worldThreads: false,
 } as const;
 
 /** 开关合并的输入映射用的默认值：DEFAULTS 加上 AppConfig 里已经删掉的旧键（parseAppConfig、Koishi 迁移、盘点、adr-map 都用这份） */
@@ -289,8 +288,6 @@ export interface AppConfig {
      */
     /** 有起因的小别扭与和好（ADR 0074）：男朋友档，他隔了 ≥ 3 天才来、她发的一直没回时，头一两轮淡一点，他一哄就软下来。默认关 */
     grievance: boolean;
-    /** @deprecated 已并进 everydayLife（开关合并）：输入只有旧键时原样、否则由 everydayLife 派生；新代码读 everydayLife。闺蜜的约（ADR 0061）：约、迟到、改约、取消进她的一天和「你那边」；默认关 */
-    npcAsks: boolean;
     /** 戳一戳（ADR 0079）：名单里的人在 QQ 里戳她，变成一条「[戳了戳你]」走原来的回复流程；睡着、上课时不理，5 分钟最多 3 下。默认关 */
     pokes: boolean;
     /** 撤回（ADR 0082）：他撤回一条她还没回的消息，她看到的是「[撤回了一条消息]」而不是原文（危机的话除外）。默认关 */
@@ -398,8 +395,6 @@ export interface AppConfig {
      * 开了以后每天每顿从一张通用的学生菜单里按日期随机取一道（同一天对所有人一样、重启重放都一样、一个循环不重样），写进她那边的事实、此刻在做的事和复盘；
      * 第一次开的时候定下“从哪天起”（第二天），已经过完的日子不改。默认关
      */
-    /** @deprecated 已并进 everydayLife（开关合并）：输入只有旧键时原样、否则由 everydayLife 派生；新代码读 everydayLife */
-    menu: boolean;
     /**
      * 会追问（ADR 0126）：量过，她问句率 12% 和真人持平，但问的多是口头语（「睡吧？」），问他生活、问他刚说那件事的很少——
      * 因为他说自己的事时意图行写着“别急着追问细节，真要问也只问一两个字”。开了以后：他说了件有细节的事，约六成回完反应后问一个关于这件事本身的问题（最近几条里问过就不问）；
@@ -485,8 +480,6 @@ export interface AppConfig {
     everydayLife: boolean;
     /** 她日子里的小起伏（2026-11-02，用户「直接模拟现实世界」）：一天之内的难过、烦、高兴，强度 2–3 */
     worldDrama: boolean;
-    /** @deprecated 已并进 worldDrama（开关合并）：输入只有旧键时原样、否则由 worldDrama 派生；新代码读 worldDrama。她那边的事有后续（ADR 0216）：默认关；要 everydayLife 和 worldDrama 都开着。从第一次开的第二天起才有（world/threads-from.json），已经过完的日子不改写 */
-    worldThreads?: boolean;
     /** 翻回去看自己的日记（ADR 0217）：默认关；只男朋友档。他问到前几天（ADR 0032 的那几天）时，那天她自己写的日记也放进那一段流水账 */
     diaryLookback?: boolean;
     /** 回忆带着当时的感觉（ADR 0218）：默认关；只男朋友档；感觉来自心境那一套（要 herFeelings，最好也开 feelingReview / everydayLife） */
@@ -899,7 +892,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         herDays: bool(file, 'herDays', '', DEFAULTS.herDays),
         autonomousLife: bool(file, 'autonomousLife', '', DEFAULTS.autonomousLife),
         grievance: bool(file, 'grievance', '', DEFAULTS.grievance),
-        npcAsks: bool(file, 'npcAsks', '', DEFAULTS.npcAsks),
         pokes: bool(file, 'pokes', '', DEFAULTS.pokes),
         recalls: bool(file, 'recalls', '', DEFAULTS.recalls),
         pokeBack: bool(file, 'pokeBack', '', DEFAULTS.pokeBack),
@@ -924,7 +916,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         weeklyReport: bool(file, 'weeklyReport', '', DEFAULTS.weeklyReport),
         jealousy: bool(file, 'jealousy', '', DEFAULTS.jealousy),
         proactiveRoom: bool(file, 'proactiveRoom', '', DEFAULTS.proactiveRoom),
-        menu: bool(file, 'menu', '', DEFAULTS.menu),
         curious: bool(file, 'curious', '', DEFAULTS.curious),
         smallNews: bool(file, 'smallNews', '', DEFAULTS.smallNews),
         memes: bool(file, 'memes', '', DEFAULTS.memes),
@@ -941,7 +932,6 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
         afterNo: bool(file, 'afterNo', '', DEFAULTS.afterNo),
         everydayLife: bool(file, 'everydayLife', '', DEFAULTS.everydayLife),
         worldDrama: bool(file, 'worldDrama', '', DEFAULTS.worldDrama),
-        worldThreads: bool(file, 'worldThreads', '', DEFAULTS.worldThreads),
         diaryLookback: bool(file, 'diaryLookback', '', DEFAULTS.diaryLookback),
         memoryFeelings: bool(file, 'memoryFeelings', '', DEFAULTS.memoryFeelings),
         feltLedgerRecall: bool(file, 'feltLedgerRecall', '', DEFAULTS.feltLedgerRecall),

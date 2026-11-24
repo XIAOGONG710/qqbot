@@ -76,7 +76,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
         speechCheck: false,
         herDays: false,
         autonomousLife: false,
-        grievance: false, npcAsks: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, menu: false, curious: false, smallNews: false, memes: false, watching: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, everydayLife: false, worldDrama: false, pursuits: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
+        grievance: false, pokes: false, pokeBack: false, pokeOut: false, readReceipts: false, bilibili: 'off', bilibiliCommentKeywords: [], proactiveReach: false, proactiveInvite: false, photos: false, together: false, comeBack: false, relationship: false, jokes: false, interruptions: false, proactiveAsk: false, weeklyReport: false, jealousy: false, proactiveRoom: false, curious: false, smallNews: false, memes: false, watching: false, quoteReply: false, factCheck: 'off', deviceControl: 'off', deviceLinks: [], deviceApps: [], innerLife: false, herFeelings: false, herNo: false, everydayLife: false, worldDrama: false, pursuits: false, deliberateModel: 'deepseek-v4-pro', identityLedger: false, memoryAudit: false, dormancy: false, timeline: false, webLookup: 'off', tastes: false, bilibiliAtName: '', bilibiliAtUid: 0, onlineStatus: false, profileLikes: false, qzone: 'off', qzoneVisibility: 'friends', recalls: false,
         feedbackCommands: false,
         realWorld: false, festivals: 'off', typingStatus: false, selfRecall: false, rhythm: false,
         media: true,
@@ -761,7 +761,7 @@ describe('编排（app.ts）', () => {
         };
         let releaseHistory!: () => void;
         const holdHistory = new Promise<void>(resolve => { releaseHistory = resolve; });
-        const cfg = config({ photos: true, menu: true, stickers: 'collect',
+        const cfg = config({ photos: true, everydayLife: true, stickers: 'collect',
             contacts: [{ qq: 10001, name: '合成人甲', tier: 'boyfriend' }] });
         const { app, asked, sent, images } = setup(cfg, { 10001: [] }, { photoSource: photos, stickers, holdHistory });
         const counts = () => [photoScans, stickerScans];
@@ -2887,8 +2887,8 @@ describe('全开冒烟（整包上线用）', () => {
             const cfg = config({
                 contacts: bf, schedule: true, herDays: true, pokes: true, pokeBack: true, pokeOut: true, recalls: true, readReceipts: true,
                 onlineStatus: true, profileLikes: true, qzone: 'dryRun', bilibili: 'dryRun', typingStatus: true, selfRecall: true,
-                rhythm: true, festivals: 'greet', npcAsks: true,
-                herFeelings: true, herNo: true, proactiveInvite: true, photos: true, together: true, comeBack: true, relationship: true, jokes: true, interruptions: true, proactiveAsk: true, weeklyReport: true, jealousy: true, proactiveRoom: true, menu: true, curious: true, smallNews: true, memes: true, watching: true, everydayLife: true, pursuits: true, grievance: true,
+                rhythm: true, festivals: 'greet',
+                herFeelings: true, herNo: true, proactiveInvite: true, photos: true, together: true, comeBack: true, relationship: true, jokes: true, interruptions: true, proactiveAsk: true, weeklyReport: true, jealousy: true, proactiveRoom: true, curious: true, smallNews: true, memes: true, watching: true, everydayLife: true, pursuits: true, grievance: true,
             });
             const { app, sent, logs } = setup(cfg, { 10001: [] }, {
                 clock, generate: () => '在呢，刚忙完', bilibiliFetch: bili,
