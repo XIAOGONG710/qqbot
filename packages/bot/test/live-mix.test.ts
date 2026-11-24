@@ -1,9 +1,9 @@
 // 线上组合盘点（test/inventory/live-mix.ts）的解析和统计；整套两天的跑法约 5 分钟，不放进 npm test，用 npm run inventory:live 跑。
+// 不读 exchange/live 里的真实快照（里面有真实联系人；快照还落后于代码时会一直红）：快照里有 DEFAULTS 不认识的键，盘点报告头上会列出来。
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { inventory, latestSnapshot, liveSwitches, NOT_COPIED, renderReport, withAlsoOn } from './inventory/live-mix.ts';
+import { inventory, liveSwitches, NOT_COPIED, renderReport, withAlsoOn } from './inventory/live-mix.ts';
 import type { PromptManifest } from '../src/platform/prompt-manifest.ts';
 
 const YAML = `plugins:
@@ -41,13 +41,6 @@ test('快照之后补开的开关：布尔开 true、档位开 on；没有的开
     assert.equal(live.config.groupChat, 'on');
     assert.deepEqual(live.alsoOn, ['jokes', 'groupChat']);
     assert.throws(() => withAlsoOn(liveSwitches(YAML), ['noSuchSwitch']), /没有这个开关/);
-});
-
-test('仓库里最新的线上快照能解析，开着的开关配置都认识', () => {
-    const live = liveSwitches(readFileSync(latestSnapshot(), 'utf8'));
-    assert.ok(live.on.length > 50, `开着 ${live.on.length} 个`);
-    // 插件自己的块（群、手机伴侣）不归 App 配置；多出别的说明快照里有已经删掉的开关，盘点会漏
-    assert.deepEqual(live.unknown.filter(key => !['groups', 'mobileCompanion'].includes(key)), []);
 });
 
 const piece = (slot: string, module: string, chars: number, list: 'main' | 'history' | 'now' = 'now', omitted = false) =>
