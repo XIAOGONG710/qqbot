@@ -1,6 +1,6 @@
 // 真的 WebSocket + HTTP，对着开发用的假中继（dev/mock-server.mjs）把协议走一遍。
 import assert from 'node:assert/strict';
-import { after, before, test } from 'node:test';
+import { after, afterEach, before, test } from 'node:test';
 import { startMockServer, type MockServer } from '../dev/mock-server.mjs';
 import { Connection, type SocketLike } from '../src/connection.js';
 import { Outbox } from '../src/outbox.js';
@@ -16,6 +16,9 @@ before(async () => {
     server = await startMockServer({ port: 0, seed: 30, quiet: true, replyDelayMs: 20 });
 });
 after(async () => { await server.close(); });
+// 断言失败时那条连接还开着、会一直重连，进程退不掉（11-25 全量里挂了 40 分钟）：每个用例完了都停掉
+const connections: Connection[] = [];
+afterEach(() => { for (const connection of connections.splice(0)) connection.stop(); });
 
 async function pair(code: string, deviceName = '测试手机') {
     const request = buildPairRequest(code, deviceName);
@@ -48,6 +51,7 @@ function client(creds: Credentials, initial: ConversationState = createState()) 
         onStatus: info => { if (info.status !== 'ready' && info.status !== 'syncing') { outbox.reset(); set(disconnected(state)); } },
         config: { baseDelayMs: 20, maxDelayMs: 50 },
     });
+    connections.push(connection);
     const outbox = new Outbox({ send: frame => connection.send(frame) });
     const flush = () => { outbox.flush(sendable(state), connection.generation, Date.now()); };
     return {
@@ -61,7 +65,7 @@ function client(creds: Credentials, initial: ConversationState = createState()) 
         until(check: (s: ConversationState) => boolean, label: string) {
             if (check(state)) return Promise.resolve();
             return new Promise<void>((resolve, reject) => {
-                const timer = setTimeout(() => reject(new Error(`等不到：${label}`)), 4000);
+                const timer = setTimeout(() => reject(new Error(`等不到：${label}`)), 15_000);
                 waiters.push({ test: check, done: () => { clearTimeout(timer); resolve(); } });
             });
         },
@@ -109,13 +113,16 @@ test('hello → 补发 → ready；发一条 → ack 对上本地气泡 → 已�
     assert.ok(c.state.messages.length >= 30);
     assert.ok(c.urls.every(url => !url.includes(credentials.token) && !url.includes(credentials.deviceId)));
 
+    // 「正在输入」只亮一下（她的回话一到就收掉）：发之前就挂上等它。机器忙时中继的已读、正在输入、回话几个定时器同一拍到点，
+    // 三帧一起到、一口气处理完，等 ack、已读之后再挂就看不到了（11-25 全量偶发「等不到：正在输入」）
+    const typing = c.until(s => s.typing, '正在输入');
     c.send('c-hello', '在吗');
     assert.equal(c.state.pending.length, 1);
     await c.until(s => s.pending.length === 0, 'ack');
     const mine = c.state.messages.find(m => m.clientId === 'c-hello');
     assert.ok(mine && mine.from === 'me' && mine.seq > 0);
     await c.until(s => s.readSeq >= mine.seq, '已读');
-    await c.until(s => s.typing, '正在输入');
+    await typing;
     await c.until(s => s.messages.some(m => m.from === 'her' && m.seq > mine.seq), '她的回话');
     assert.equal(c.state.typing, false);
     assert.equal(c.state.messages.filter(m => m.clientId === 'c-hello').length, 1);
@@ -225,6 +232,8 @@ test('设备被撤销：unauthorized，不再重连', async () => {
     server.revokeAll();
     const c = client(fresh.credentials);
     c.connection.start();
+    // 等它连上、被拒（原来固定等 200 毫秒，机器忙时还没连上）；被拒以后不再重连，状态就停在 unauthorized
+    for (const deadline = Date.now() + 15_000; c.connection.status !== 'unauthorized' && Date.now() < deadline;) await new Promise(resolve => setTimeout(resolve, 20));
     await new Promise(resolve => setTimeout(resolve, 200));
     assert.equal(c.connection.status, 'unauthorized');
     assert.equal(c.state.synced, false);
