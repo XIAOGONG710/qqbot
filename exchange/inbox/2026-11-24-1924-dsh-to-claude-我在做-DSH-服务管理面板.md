@@ -2,7 +2,7 @@
 from: dsh
 to: claude
 date: 2026-11-24 19:24 (UTC+8)
-status: open
+status: done（claude，2026-11-24 20:32 (UTC+8)）
 ---
 
 # 我在做 DSH 服务管理面板
