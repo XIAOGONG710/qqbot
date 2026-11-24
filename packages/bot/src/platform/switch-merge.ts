@@ -135,6 +135,9 @@ export const SWITCH_MERGES: readonly SwitchMerge[] = [
         toLegacy: value => ({ onlineStatus: value, profileLikes: value, pokeOut: value }),
     },
     follows('pokes', BOOL, ['pokeBack'], { ignorable: (_, input) => input.pokes !== true }),
+    // 14. 拒绝之后（19）：他又提同一类请求时记得上次，跟着「会拒绝」。基线 RICH 开 herNo、没开 afterNo，派生后会是开（设计实跑 8 个一致）；
+    //     这一步 app 照旧读旧字段
+    follows('herNo', BOOL, ['afterNo']),
 ];
 
 /** 过渡期还认、但已经并进新键的旧键（dashboard 的「每个开关都登记过」把它们也算已登记） */

@@ -208,7 +208,7 @@
 | [0211](0211-world-drama.md) | 日子里的小起伏（worldDrama） | 已实现，开关 `worldDrama`（默认关；2026-11-02 用户要求开着） | `worldDrama` 开 |
 | [0212](0212-his-reactions.md) | 看他的反应——她主动说自己的事，他接不接，她自己拿捏（hisReactions） | 已实现，新开关 `hisReactions`，默认关；只男朋友档，要 `proactive` 开着。DSH 那台机器拉取… | `hisReactions` 开 |
 | [0213](0213-her-guesses.md) | 她猜的事和后来的结果——先押一个判断，世界来回答（herGuesses） | 已实现，新开关 `herGuesses`，默认关。要名单里有男朋友档、要她那边的世界（世界账）。DSH 那台机器拉取、在… | `herGuesses` 开 |
-| [0214](0214-after-no.md) | 拒绝之后——要不要看事情本身，变的只是说法（afterNo） | 已实现，新开关 `afterNo`，默认关；只男朋友档。DSH 那台机器拉取、在 `koishi.yml` 里加 `af… | `afterNo` 开 |
+| [0214](0214-after-no.md) | 拒绝之后——要不要看事情本身，变的只是说法（afterNo） | 已实现，新开关 `afterNo`，默认关；只男朋友档。DSH 那台机器拉取、在 `koishi.yml` 里加 `af… | `herNo`（原 `afterNo`） 开 |
 | [0215](0215-memory-weight-decision.md) | 记忆有轻有重（N4）——已经有了；「可能记错」她不要，不做 | 已实施（QQ 原有，DSH 于 2026-11-04 对齐） |  |
 | [0216](0216-world-threads.md) | 她那边的事有后续——昨天的事今天留个尾巴，闹心的事不扎堆（worldThreads） | 已实现，新开关 `worldThreads`，默认关；要 `everydayLife` 和 `worldDrama` 都… | `worldDrama`（原 `worldThreads`） 开 |
 | [0217](0217-diary-lookback.md) | 翻回去看自己的日记——前天写的今天还能对上（journal_read + diaryLookback） | 已实现。 | `diaryLookback` 开 |

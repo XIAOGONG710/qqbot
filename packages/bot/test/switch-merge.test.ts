@@ -170,6 +170,7 @@ describe('真表：已经并了的组', () => {
         qqSurface: true,
         qqPresence: true,
         pokes: true,
+        herNo: true,
     };
     const env = { QQBOT_LLM_API_KEY: 'k' };
     const base = {

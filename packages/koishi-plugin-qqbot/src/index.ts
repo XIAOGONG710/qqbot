@@ -235,7 +235,8 @@ export interface Config {
     adultSiteUrls: string[];
     herFeelings: boolean;
     herNo: boolean;
-    afterNo: boolean;
+    /** 已并进 herNo（开关合并），koishi.yml 里还写着才有 */
+    afterNo?: boolean;
     /** 已并进 rhythm（开关合并），koishi.yml 里还写着才有 */
     lagTail?: boolean;
     everydayLife: boolean;
@@ -451,7 +452,7 @@ export const Config: Koishi.Schema<Config> = Schema.intersect([
         adultSiteUrls: Schema.array(Schema.string()).default([...DEFAULTS.adultSiteUrls])
             .description('成人网站访问。填写允许访问的 HTTPS 网页地址，留空关闭。需要内心、主动消息和自主生活。'),
         herFeelings: toggle('herFeelings'),
-        afterNo: toggle('afterNo'),
+        afterNo: legacy(),
         herNo: toggle('herNo'),
         lagTail: legacy(),
         everydayLife: toggle('everydayLife'),
