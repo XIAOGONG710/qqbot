@@ -128,13 +128,11 @@ export async function runGroupScenario(scenario: GroupScenario, options: GroupRu
             },
             ...(options.generate ? { pipeline: { generate: async messages => options.generate!(messages), settle: { quietMs: 0, maxMs: 0 } } } : {}),
             // 模拟钩子只在这里传，线上不传：off 路径一个字段都不多
-            ...(options.motiveOverride || options.onDecision || options.now || (options.base.groupAgency && options.base.groupAgency !== 'off') ? {
-                groupAgencyHooks: {
-                    ...(options.motiveOverride ? { motiveOverride: options.motiveOverride } : {}),
-                    ...(options.now ? { now: options.now } : {}),
-                    onDecision: (trace: GroupDecisionTrace) => { decisions.push(trace); options.onDecision?.(trace); },
-                },
-            } : {}),
+            groupAgencyHooks: {
+                ...(options.motiveOverride ? { motiveOverride: options.motiveOverride } : {}),
+                ...(options.now ? { now: options.now } : {}),
+                onDecision: (trace: GroupDecisionTrace) => { decisions.push(trace); options.onDecision?.(trace); },
+            },
         });
         try {
             await app.connected(GROUP_SIM.self);
@@ -179,5 +177,14 @@ export async function runGroupScenario(scenario: GroupScenario, options: GroupRu
 export function renderGroupRun(scenario: GroupScenario, run: GroupRun): string {
     const transcript = run.lines.map(line => `- ${line.at.slice(11, 19)} ${line.mine ? '**她**' : line.who}：${line.text}`).join('\n');
     const reasons = Object.entries(run.reasons).map(([reason, n]) => `${reason} ${n}`).join('、') || '无';
-    return [`# ${scenario.group.name}`, '', scenario.about, '', `她开口 ${run.spoke} 次（${reasons}）`, '', '## 群聊', '', transcript, '', '## 日志', '', ...run.logs.map(line => `- ${line}`), ''].join('\n');
+    const replay = run.decisions.map(decision => {
+        const deliveries = decision.deliveries ?? [];
+        const target = decision.replyTargetId ?? '无';
+        const quotes = deliveries.flatMap(delivery => delivery.replyTo === undefined ? [] : [delivery.replyTo]);
+        const outcome = decision.failed ? '处理失败' : decision.draftCount ? `草稿 ${decision.draftCount} 条`
+            : deliveries.length ? '已发送' : decision.blockedBy && decision.blockedBy !== 'none' ? `拦截 ${decision.blockedBy}` : '未发送';
+        const memory = decision.memoryIncluded === undefined ? '未检查' : decision.memoryIncluded ? '有' : '无';
+        return `- 触发 ${decision.reason ?? decision.source} · 来源 ${decision.messageId || '无'} · 目标 ${target} · 实际引用 ${quotes.join('、') || '无'} · 发送 ${deliveries.length} 条 · 记忆 ${memory} · ${outcome}`;
+    });
+    return [`# ${scenario.group.name}`, '', scenario.about, '', `她开口 ${run.spoke} 次（${reasons}）`, '', '## 群聊', '', transcript, '', '## 接话回放', '', ...replay, '', '## 日志', '', ...run.logs.map(line => `- ${line}`), ''].join('\n');
 }

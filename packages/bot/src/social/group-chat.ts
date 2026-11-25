@@ -90,6 +90,11 @@ export interface GroupDecisionTrace {
     motiveEligible: boolean;
     passed: boolean;
     blockedBy?: 'budget' | 'line' | 'none';
+    replyTargetId?: number;
+    memoryIncluded?: boolean;
+    draftCount?: number;
+    deliveries?: Array<{ messageId: number; replyTo?: number }>;
+    failed?: true;
 }
 
 export interface SpeakContext {

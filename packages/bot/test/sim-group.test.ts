@@ -36,6 +36,12 @@ describe('群聊模拟', () => {
         const page = renderGroupRun(scenario, run);
         assert.match(page, /她开口 1 次（mentioned 1）/);
         assert.match(page, /\*\*她\*\*：写完了，明早交/);
+        const reply = run.decisions.find(decision => decision.reason === 'mentioned');
+        assert.equal(reply?.messageId, 6002);
+        assert.equal(reply?.replyTargetId, 6002);
+        assert.deepEqual(reply?.deliveries, [{ messageId: 9000, replyTo: 6002 }]);
+        assert.match(page, /来源 6002 · 目标 6002 · 实际引用 6002 · 发送 1 条/);
+        assert.doesNotMatch(page.split('## 接话回放')[1]!.split('## 日志')[0]!, /你作业写完没|写完了，明早交/);
     });
 
     test('插话抽签按消息编号定：换一组编号，同一句话会抽到不同的签（多次跑才不是同一次重复）', async () => {

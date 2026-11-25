@@ -421,6 +421,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
                 ...(sourceItem.decision?.source === 'motive' ? { motive: true } : {}),
             });
         } catch (error) {
+            if (trace) trace.failed = true;
             log(`[群 ${groupId}] 说话出错：${error instanceof Error ? error.message : String(error)}`);
         } finally {
             // 决策痕迹只发一次：所有 blockedBy / passed 的改动到这里都已定稿
@@ -470,6 +471,10 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             ? groupScheduleRecall(groupLogs!.load, group.id, question.from, question.content, Date.parse(question.time)) : undefined;
         // 这个群里她认识谁（聊过就认得，改名也认得）；心情只说「这会儿怎么样」，不说来由（都在私聊里）
         const memory = groupPeopleBook?.render(group.id, { ...(bf ? { exclude: bf.qq } : {}), now: worldNow() });
+        if (extra.trace) {
+            if (quotedTarget) extra.trace.replyTargetId = quotedTarget.messageId;
+            extra.trace.memoryIncluded = Boolean(memory || recalled);
+        }
         const roster = rosterOf(group.id);
         const style = styleOf(group.id);
         // 她自己（ADR 0341）：on 时每次开口都带，dryRun 时只有她自己冒的那句带（那句只写草稿）
@@ -525,6 +530,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             log(`[群 ${group.id}] 看了一眼，没说话（${reason}）`); return;
         }
         if (config.groupChat === 'dryRun' || !transport.sendGroupText || (ownMode === 'dryRun' && own) || (agencyMode === 'dryRun' && extra.motive)) {
+            if (extra.trace) extra.trace.draftCount = parts.length;
             const dir = join(config.dataDir, 'groups');
             exec.files.mkdir(dir);
             exec.files.append(join(dir, 'drafts.md'), `- ${new Date(worldNow()).toLocaleString('zh-CN')} 群「${group.name}」（${reason}）：${parts.join(' / ')}\n`);
@@ -543,6 +549,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             const messageId = transport.sendGroupMessage && segments
                 ? await transport.sendGroupMessage(group.id, segments, replyTo)
                 : await transport.sendGroupText(group.id, part, replyTo);
+            if (extra.trace) (extra.trace.deliveries ??= []).push({ messageId, ...(replyTo === undefined ? {} : { replyTo }) });
             groupLogs!.append(group.id, { time: new Date(worldNow()).toISOString(), from: selfId(), name: '你', content: part, messageId, mine: true });
         }
         log(`[群 ${group.id}] 说了 ${parts.length} 条（${reason}；日志不记内容）`);
@@ -630,6 +637,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             try {
                 await speakInGroup(group, plan.kind, bf, { ...(plan.kind === 'news' ? { news: plan.news } : {}), ...(trace ? { trace } : {}), ...(motive ? { motive: true } : {}) });
             } catch (error) {
+                if (trace) trace.failed = true;
                 log(`[群 ${group.id}] 自己冒一句出错：${error instanceof Error ? error.message : String(error)}`);
             } finally {
                 emit();
