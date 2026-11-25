@@ -212,7 +212,32 @@ export function createProjectPanels({ root, readConfig, dataDir, now = () => new
         load('packages/bot/src/platform/config.ts'), load('packages/bot/src/ops/golive-check.ts'),
       ])
       const { migrating, unrepresentable } = switchMergeCheck(switchInput(block, SWITCH_DEFAULTS))
-      return { available: true, switches: { migrating, unrepresentable } }
+      return { available: true, switches: { migrating, unrepresentable }, restarts: await restarts(block) }
     },
+  }
+
+  /**
+   * 重启记录（ops/restart-log.ts，<数据目录>/restarts.log）：最近 20 次重启和「距上次行为变化的重启满没满 48 小时」——
+   * golive-check 拦的就是这个。原因是 agent 写的运维说明，截短并过一遍日志页的 redact；文件是链接或超过 2MB 就当没有。
+   */
+  async function restarts(block) {
+    const file = join(dataDirectory(block), 'restarts.log')
+    try {
+      const stat = lstatSync(file)
+      if (!stat.isFile() || stat.size > 2_000_000) return null
+    } catch { return null }
+    const [{ readRestartLog, behaviorGap, BEHAVIOR_GAP_MS }, { redact }] = await Promise.all([
+      load('packages/bot/src/ops/restart-log.ts'), import('./logs-view.js'),
+    ])
+    const entries = readRestartLog(file)
+    const gap = behaviorGap(entries, now())
+    const row = entry => ({ at: entry.at, to: redact(String(entry.to)).slice(0, 40), kind: entry.kind,
+      reason: redact(String(entry.reason)).slice(0, 120), by: redact(String(entry.by)).slice(0, 40) })
+    return {
+      count: entries.length,
+      recent: entries.slice(-20).reverse().map(row),
+      behavior: { ok: gap.ok, gapHours: BEHAVIOR_GAP_MS / 3_600_000, hoursSince: gap.sinceMs === undefined ? null : Math.floor(gap.sinceMs / 3_600_000),
+        last: gap.last ? row(gap.last) : null },
+    }
   }
 }

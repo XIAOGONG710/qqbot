@@ -151,7 +151,28 @@ test('上线前检查：只做开关合并预检', async () => {
   assert.equal(view.switches.unrepresentable.length, 1)
   assert.ok(view.switches.migrating.some(line => line.startsWith('realWorld（realWeather')))
   assert.ok(!view.switches.migrating.some(line => line.startsWith('bilibili')))
-  assert.deepEqual(Object.keys(view).sort(), ['available', 'switches'])
+  assert.deepEqual(Object.keys(view).sort(), ['available', 'restarts', 'switches'])
+  assert.equal(view.restarts, null, '合成数据目录里没有 restarts.log')
+})
+
+test('上线前检查：重启记录给最近几次和「距上次行为变化满没满 48 小时」，原因过一遍脱敏', async () => {
+  const { writeFileSync, rmSync } = await import('node:fs')
+  const file = join(root, 'data', 'restarts.log')
+  const at = hours => new Date(NOW.getTime() - hours * 3_600_000).toISOString()
+  writeFileSync(file, [
+    { at: at(30), to: 'abc1234', kind: 'safety', reason: '修热重载', by: 'claude' },
+    { at: at(10), to: 'def5678', kind: 'behavior', reason: '开 desktopDay，token=sk-abcdefghijklmnopqrstuvwx', by: 'dsh' },
+    { not: 'a restart' },
+  ].map(row => JSON.stringify(row)).join('\n') + '\n')
+  try {
+    const { restarts } = await panels().golive()
+    assert.equal(restarts.count, 2, '坏行跳过')
+    assert.deepEqual(restarts.recent.map(row => row.to), ['def5678', 'abc1234'], '新的在前')
+    assert.equal(restarts.behavior.ok, false, '上次行为变化才过 10 小时')
+    assert.equal(restarts.behavior.hoursSince, 10)
+    assert.equal(restarts.behavior.gapHours, 48)
+    assert.doesNotMatch(JSON.stringify(restarts), /sk-abcdefghijklmnopqrstuvwx/, '令牌被抹掉')
+  } finally { rmSync(file, { force: true }) }
 })
 
 test('每周效果数：窗口到昨天、只有数，和日志里的上一次比；不写日志', async () => {

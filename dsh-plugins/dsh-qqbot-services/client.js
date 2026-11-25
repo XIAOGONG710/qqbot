@@ -1217,7 +1217,18 @@ window.__ModuleLoader__.load({
               h('p', { className: 'qqb-note' }, `重启后插件会把 koishi.yml 里这 ${migrating.length} 组旧键改写成新键（值等价），改之前先备份一份：`),
               h('ul', null, ...migrating.map((line, index) => h('li', { key: index }, line)))),
             !blockers.length && !migrating.length && kv('开关合并', badge('没有要处理的', 'ok')),
-            h('p', { className: 'qqb-note' }, '这里只做开关合并预检；监听地址、git 那几项要跑命令，在运维流程里做。'))
+            // 重启记录（ops/restart-log.ts）：golive-check 拦的「距上次行为变化的重启不满 48 小时」
+            data.restarts === null ? kv('重启记录', '没有（restarts.log 不在或读不了）')
+              : data.restarts && h('div', null,
+                kv('距上次行为变化的重启', data.restarts.behavior.hoursSince === null ? '没有记录'
+                  : `${data.restarts.behavior.hoursSince} 小时`,
+                  data.restarts.behavior.ok ? badge(`满 ${data.restarts.behavior.gapHours} 小时`, 'ok') : badge(`不满 ${data.restarts.behavior.gapHours} 小时`, 'warn')),
+                data.restarts.recent.length > 0 && h('table', { className: 'qqb-table' },
+                  h('thead', null, h('tr', null, h('th', null, '时刻'), h('th', null, '类型'), h('th', null, '到'), h('th', null, '原因'))),
+                  h('tbody', null, ...data.restarts.recent.map((row, index) => h('tr', { key: index },
+                    h('td', null, when(row.at)), h('td', null, ({ behavior: '行为变化', safety: '修故障', recovery: '恢复' })[row.kind] ?? row.kind),
+                    h('td', null, row.to), h('td', null, row.reason)))))),
+            h('p', { className: 'qqb-note' }, '这里只做开关合并预检和看重启记录；监听地址、git 那几项要跑命令，在运维流程里做。'))
         }, '读不到插件配置，上线前检查这一块没有数。'))
     }
 
