@@ -103,7 +103,8 @@
 
 - **11-26 凌晨：DSH 面板化用成我们自己的插件**（用户 11-26 交代，计划 `docs/plans/2026-11-26-dsh-panel-our-own.md`）：面板 `dsh-plugins/dsh-qqbot-services` 加了「她的状态」（记忆 / 情绪 / 她的账只出数和新鲜度、一个生活、她的一天）、「项目」（开关总览、效果数、提示词构成、上线预检）；
   「她心里的」做好但默认关（herInnerPanel，ADR 0350 提议中）、会客室默认关（companionRoom，ADR 0349）。修了面板 /state 一直 503（a9c07f3a）和审查的另外 17 条（`docs/reports/2026-11-26-dsh-qqbot-services-review.md`）。
-  **等 DSH 开机**：ADR 0350 三问 + 会客室提示词给她看；真 DSH 窗口里点一遍；守护重启后心跳生效（要用户点头）。
+  **等 DSH 开机**：照 `docs/plans/2026-11-26-dsh-boot-checklist.md` 一次走完——问她（ADR 0349 提示词、ADR 0350 三问）、只读验收（golive-check、真窗口点一遍、两条 curl 应 403）、带 ★ 的要用户当次点头（重载 DSH、重启守护、部署、开两个开关）。
+  面板审查两份：`docs/reports/2026-11-26-dsh-qqbot-services-review.md`、`docs/reports/2026-11-26-panel-integration-review.md`（面板原来会改写 QQ 的撤回状态文件，已改只读）。
 
 ## 4. 已知问题
 
