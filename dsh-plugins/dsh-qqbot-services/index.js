@@ -472,7 +472,7 @@ export function apply(ctx, config = {}) {
   }
   const manualOwner = () => configuredManualOwner(readKoishiConfig())
   const local = createLocalPanels({ root, readConfig: readKoishiConfig, hindsightUrl: process.env.QQBOT_HINDSIGHT_URL, async runGit(args) {
-    const { stdout } = await exec('git', args, { cwd: root, timeout: 5000, windowsHide: true, maxBuffer: 4096 })
+    const { stdout } = await exec('git', args, { cwd: root, timeout: 15_000, windowsHide: true, maxBuffer: 64 * 1024 })
     return stdout
   } })
   const details = async (kind, query) => {

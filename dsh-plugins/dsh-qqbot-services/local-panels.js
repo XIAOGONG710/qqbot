@@ -2,6 +2,7 @@ import { lstatSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { activeKoishiPlugin, configuredManualOwner } from './chat.js'
+import { createUpdateCheck } from '../../scripts/update-check.mjs'
 
 const cardDefault = 'characters/linmengyao/st/linmengyao-{tier}.json'
 const imageTypes = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' }
@@ -42,20 +43,11 @@ export function createLocalPanels({ root, readConfig, runGit, now = () => new Da
   return {
     async details(kind, query) {
       if (kind === 'versions') {
-        const revision = async ref => {
-          try {
-            const sha = (await runGit(['rev-parse', '--verify', ref])).trim()
-            return /^[0-9a-f]{40}$/.test(sha) ? sha : null
-          } catch { return null }
-        }
-        const [local, tracked] = await Promise.all([revision('HEAD'), revision('refs/remotes/origin/main')])
-        if (query?.get('refresh') !== '1') return { local, tracked }
-        let remote = null
-        try {
-          const ref = await runGit(['ls-remote', '--exit-code', 'origin', 'refs/heads/main'])
-          remote = /^([a-f0-9]{40})\s+refs\/heads\/main\s*$/.exec(ref)?.[1] ?? null
-        } catch { /* Keep the last locally known revision. */ }
-        return { local, tracked, remote }
+        const check = createUpdateCheck({ root, runGit, now: () => now().getTime() })
+        const result = await check.check()
+        // 不刷新时只回本地已知的两个提交，避免每次都碰远端。
+        if (query?.get('refresh') !== '1') return { local: result.local, tracked: result.tracked }
+        return result
       }
       if (kind === 'restore-check') {
         const day = query.get('day') ?? ''

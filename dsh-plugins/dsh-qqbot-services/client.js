@@ -830,11 +830,31 @@ window.__ModuleLoader__.load({
             data.common?.types && h('ul', { className: 'qqb-memory-grid', 'aria-label': '公共记忆分类' },
               ...data.common.types.map(item => h('li', { key: item.type },
                 `${{ world: '世界事实', experience: '共同经历', observation: '归纳观察', opinion: '观点' }[item.type]} · ${item.count}`))))
-          : kind === 'versions' ? h('div', null,
-            h('div', { className: 'qqb-kv' }, h('span', null, '本地提交'), h('code', null, data.local?.slice(0, 12) ?? '未知')),
-            h('div', { className: 'qqb-kv' }, h('span', null, '本地记录的 origin/main'), h('code', null, data.tracked?.slice(0, 12) ?? '未知')),
-            Object.hasOwn(data, 'remote') && h('div', { className: 'qqb-kv' }, h('span', null, '远端 main'),
-              h('code', null, data.remote?.slice(0, 12) ?? '未能读取')))
+          : kind === 'versions' ? (() => {
+            const relation = { same: '和远端一致', behind: '远端有新的', ahead: '本地有新的', diverged: '两边都有新提交', unknown: '没能比较' }
+            const blockerNames = { 'not-main': '当前不在 main 上', 'dirty-tree': '工作区有没提交的改动', 'backup-stale': '先用一份今天的备份', diverged: '先手动处理分叉', 'no-remote': '连不上远端' }
+            const backupNames = { fresh: '今天有一份', stale: '最近一份已经过期', missing: '还没备份' }
+            return h('div', null,
+              h('div', { className: 'qqb-kv' }, h('span', null, '本地提交'), h('code', null, data.local?.slice(0, 12) ?? '未知')),
+              h('div', { className: 'qqb-kv' }, h('span', null, '远端 main'),
+                h('code', null, (data.remote ?? data.tracked)?.slice(0, 12) ?? '未能读取')),
+              data.relationship && h('div', { className: 'qqb-kv' }, h('span', null, '版本差异'),
+                h('span', null, relation[data.relationship] ?? '没能比较')),
+              Number.isFinite(data.behind) && data.behind > 0 && h('div', { className: 'qqb-kv' },
+                h('span', null, '落后的提交'),
+                h('span', null, `${data.behind} 个 · 涉及 ${data.changed?.count ?? 0} 个文件`)),
+              data.commits?.length ? h('ul', null, ...data.commits.map(item => h('li', { key: item.short }, `${item.short} ${item.subject}`))) : null,
+              data.changed?.paths?.length ? h('p', { className: 'qqb-note' }, `改动：${data.changed.paths.join('、')}`) : null,
+              data.backup && h('div', { className: 'qqb-kv' }, h('span', null, '更新前备份'),
+                h('span', null, `${backupNames[data.backup.state] ?? '未知'}${data.backup.latest ? `（${data.backup.latest}）` : ''}`)),
+              data.blockers?.length ? h('div', null,
+                h('h4', null, '更新前要处理'),
+                h('ul', null, ...data.blockers.map(key => h('li', { key }, blockerNames[key] ?? key)))) : null,
+              data.canFastForward ? h('div', null,
+                h('p', { className: 'qqb-note' }, '可以快进；更新和服务重载在运维流程里手动做，面板不执行。'),
+                h('code', null, data.commands.join(' && '))) : null,
+              data.rollback?.commit && h('p', { className: 'qqb-note' }, `回滚点：${data.rollback.hint}`))
+          })()
           : kind === 'logs' ? h('div', null,
             h('h4', null, '运维事件'),
             ...data.operations.map(({ at, service, event }, index) => h('div', { className: 'qqb-kv', key: `op-${index}` },

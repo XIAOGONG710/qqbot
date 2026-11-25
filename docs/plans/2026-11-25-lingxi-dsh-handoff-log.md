@@ -209,4 +209,42 @@
 - 没在真 PostgreSQL 隔离实例里跑 `hindsight-restore-drill.mjs`：本批的隔离库是假库，真库恢复要等一份真备份加一个隔离实例。
 - 正式切换按设计没有执行，只写在 `docs/operations/restore.md`，等单独的上线授权。
 
+## 第 4 批：更新检查（2026-11-25）
+
+### 数据源
+
+- `scripts/update-check.mjs`（新）：`createUpdateCheck({ root, runGit, now })`，只认 `origin/main`
+- `dsh-plugins/dsh-qqbot-services/local-panels.js`：`details('versions')` 改走它；不刷新时仍只回 `local`／`tracked`，`?refresh=1` 才碰远端
+- `dsh-plugins/dsh-qqbot-services/index.js`：`runGit` 超时 5 秒→15 秒、输出上限 4 KB→64 KB（`fetch` 与 `diff` 的输出更大）
+- `dsh-plugins/dsh-qqbot-services/client.js`：版本卡展示差异、提交列表、改动文件、更新前备份、挡路原因和回滚点
+- `scripts/dsh-update-check.test.mjs`（新）：本地假 Git 远端（裸仓库 + 克隆）跑真 git 命令
+
+### 检查什么、不做什么
+
+| 项 | 做法 |
+| --- | --- |
+| 远端检查 | `ls-remote --exit-code origin refs/heads/main`，只认这一个分支 |
+| 版本差异 | `fetch --no-tags origin refs/heads/main` 取到 `FETCH_HEAD`（不动工作区、不动本地分支），再 `merge-base --is-ancestor` 判 same／behind／ahead／diverged，`rev-list --count` 给数量，`log` 给提交，`diff --name-only` 给改动文件（最多 20 条） |
+| 更新前备份 | `runtime/backups` 里最近一份完成标记有效且不超两天，否则 `backup-stale` |
+| 回滚检查 | 记下当前 `HEAD` 作为回滚点，附 `git checkout <sha>` 提示 |
+| 挡路条件 | 不在 `main`、工作区有改动、备份过期、两边分叉、连不上远端 |
+
+`pull`／`merge`／`rebase`／`reset`／`checkout` 一条都不发，`commands` 里只有一条 `git pull --ff-only` 的建议，页面写明「更新和服务重载在运维流程里手动做」。不从任何第三方更新器执行下载来的脚本。
+
+### 模拟结果
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 更新检查 | `node --test scripts/dsh-update-check.test.mjs` | 9 通过 |
+| 本地面板 | `node --test scripts/dsh-local-panels.test.mjs` | 8 通过 |
+| 脚本测试全量 | `npm run test:scripts` | 131 项、130 通过、1 跳过（符号链接）、0 失败 |
+
+用例覆盖：远端领先给差异／提交／改动文件／回滚点且只建议快进、非 `main` 挡住、工作区脏挡住、没有今天备份挡住、备份过期挡住、本地领先不给 pull、两边分叉挡住、没有远端只报 `no-remote` 且不发改写类命令、同一个提交无事可做。
+
+### 尚未验证的运行条件
+
+- 版本卡前端只做了语法检查，没在真实 DSH 窗口里点过。
+- 真实的 `origin` 远端（GitHub）没有参与测试：所有用例都在临时目录的本地裸仓库里跑，避免测试联网。
+- `fetch` 会更新本地的 `FETCH_HEAD` 与 `refs/remotes/origin/main`，这是检查远端差异的必要代价；面板不做任何本地分支移动。
+
 
