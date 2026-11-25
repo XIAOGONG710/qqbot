@@ -286,5 +286,41 @@
 - 真实的第二台设备与真实局域网没测：测试里的客户端在同一台机器上连 `127.0.0.1`，只在证书校验和 `Host`／`Origin` 上模拟了 `192.168.50.5`。
 - 生产证书、私网绑定和防火墙规则属于部署环节：`openLanRoom` 只接受私网 IPv4（`10.`、`192.168.`、`172.16`–`172.31`）与 1024 以上端口，证书或私钥读不到就不启动监听。这三样都等上线授权时再配。
 
+## 第 6 批：她的家（2026-11-25）
+
+### 数据源
+
+- `dsh-plugins/dsh-linmengyao-memory/home-status.js`：`publishedHomeStatus(data, now)` 只认 `version: 1`、`audience: 'owner'`、安全整数时间、地点与活动在白名单里，且一小时内的状态；`publishHomeStatus(file, { place, doing, hide }, at)` 用临时文件加 `rename` 原子写，`hide: true` 写 `null`
+- `dsh-plugins/dsh-qqbot-services/home-scene/state.js`：`homeSceneState(data, now)` 把状态映射成 `{ place, label, marker }`，`place === 'outside'` 时 `marker` 为 `null`，缺地点或活动文案就返回 `null`，不猜
+- `dsh-plugins/dsh-qqbot-services/home-scene/scene.js`：`scene.js:13` 拿不到 WebGL 就显示 `#fallback`，`scene.js:99` 三种文案（没有公开状态／暂时读不到／正常标签），`scene.js:143` 到点自己撤下标签
+- `scripts/dsh-home-scene.test.mjs`（补）：原有 3 项测角色姿态、标记只跟随当前公开状态、场景资源要房主会话；这次补 4 项测发布与收回、拒未知地点与活动、坏文件读成 `null`、加速时钟换房间。全部用临时目录，不碰真实 `HOME-PUBLIC.json`
+
+### 验收了什么
+
+| 项 | 做法 | 结果 |
+| --- | --- | --- |
+| 未公开 | 没有状态文件、文件是坏 JSON、收回后写 `null`，三种都读成 `null` | 通过 |
+| 过期 | 一小时后差 1 毫秒仍公开，到一小时后变 `null` | 通过 |
+| 在外面 | `place: 'outside'` 保留标签「在外面 · 走走」，`marker` 为 `null`，不画到任何房间 | 通过 |
+| 读取失败 | 坏文件不抛错，读成 `null`，页面走「暂时读不到公开状态」那一路 | 通过 |
+| 不猜位置 | 缺 `places` 或 `activities` 文案、房间不在 `rooms`、活动不在白名单，都返回 `null` | 通过 |
+| 加速时钟 | 十分钟换一次房间走客厅→厨房→花园，再走到外面，一小时后自动消失，收回后也消失 | 通过 |
+| 发布只写该写的 | 落盘字段只有 `version`／`audience`／`place`／`doing`／`at`，别的字段进不去 | 通过 |
+
+### 模拟结果
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 她的家状态层 | `node --test scripts/dsh-home-scene.test.mjs` | 7 通过 |
+| 脚本全量 | `npm run test:scripts` | 140 项／139 通过／1 跳过（符号链接）／0 失败 |
+
+### 尚未验证的运行条件
+
+- WebGL 不可用时的回退、窄窗口下的 `fit()`，都要真浏览器才知道；本次只按代码位置记录。
+- DSH 内嵌房间与面板的实机验收要重载 DSH，本次没有授权。
+- 正式模型与动作资源的授权来源还没定，仍用现有低模角色，不引入来源不明的资产。
+- 整套对照写进了 `docs/plans/2026-11-25-lingxi-feature-parity.md`，每行都停在「模拟验收」。
+
+
 
 
