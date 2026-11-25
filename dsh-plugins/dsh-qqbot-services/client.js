@@ -884,6 +884,7 @@ window.__ModuleLoader__.load({
       const [sending, setSending] = React.useState(false)
       const [diagnosticOpen, setDiagnosticOpen] = React.useState(false)
       const [copyStatus, setCopyStatus] = React.useState('')
+      const [loadError, setLoadError] = React.useState('')
       const [tab, setTab] = React.useState(readTab)
       const instanceId = React.useId()
       const selectTab = value => {
@@ -900,10 +901,13 @@ window.__ModuleLoader__.load({
           clearTimeout(timer)
           pending = true
           try {
-            const response = await fetch(`${api}/state`, { signal: controller.signal })
-            if (!response.ok) throw Error()
+            const response = await fetch(`${api}/state`, { cache: 'no-store', credentials: 'same-origin', signal: controller.signal })
+            if (!response.ok) {
+              if (!controller.signal.aborted) setLoadError(`读取失败（${response.status}）`)
+              throw Error()
+            }
             const data = await response.json()
-            if (!controller.signal.aborted) setState(data)
+            if (!controller.signal.aborted) { setState(data); setLoadError('') }
           } catch {
             if (!controller.signal.aborted) setState(null)
           } finally {
@@ -961,7 +965,8 @@ window.__ModuleLoader__.load({
           h('span', { className: `qqb-pill ${linked && !health?.maintenance ? 'is-ok' : health ? 'is-warn' : ''}`, role: 'status' },
             h('span', { className: 'qqb-pill-dot', 'aria-hidden': true }), statusText)),
         h(Tabs, { value: tab, onChange: selectTab, instanceId }),
-        !state && h('p', { className: 'qqb-note', role: 'status' }, '正在获取服务状态，无法连接时会自动重试。'),
+        !state && h('p', { className: 'qqb-note', role: 'status' },
+          loadError ? `${loadError}，正在重试。` : '正在获取服务状态，无法连接时会自动重试。'),
         health?.maintenance && h('p', { className: 'qqb-warnline', role: 'status' }, '正在维护，启动暂不可用。'),
         notice && h('p', { className: 'qqb-note', role: 'status' }, notice),
         section('chat', tab === 'chat' && state && h(Chat)),

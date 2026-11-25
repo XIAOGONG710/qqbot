@@ -45,9 +45,13 @@ export function allowedRequest(req) {
 }
 
 function authenticatedBrowser(connection, req) {
-  // Check the browser cookie on a fixed non-root URL. Never forward a launch-token
-  // query to the host's index login flow or relay its response headers.
+  // Route this Web route through Connection's own Host/Origin and browser checks.
+  // authorizeIndex belongs to the frontend index request (it may mint a token
+  // redirect or a 401); borrowing it here misreads a panel fetch as an index load.
   try {
+    if (typeof connection?.requestRejection === 'function') {
+      return connection.requestRejection({ headers: req.headers }) === undefined
+    }
     return connection?.authorizeIndex?.(
       { method: req.method, url: prefix, headers: req.headers },
       { writeHead() {}, end() {} },

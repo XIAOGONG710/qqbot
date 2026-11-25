@@ -38,8 +38,30 @@ test('connection and backup panels read only projected data through the DSH brow
     assert.equal((await call('POST', 'details/access', headers)).status, 404);
 });
 
-async function settled(controller) {
-    for (let n = 0; n < 30; n++) {
+test('panel routes ask Connection whether the request is trusted instead of borrowing the index check', async () => {
+    const seen = [];
+    const connection = {
+        requestRejection(request) {
+            seen.push(request.headers.cookie);
+            return request.headers.cookie === 'session=owner' ? undefined : 403;
+        },
+        authorizeIndex() { throw new Error('authorizeIndex belongs to the index request'); },
+    };
+    const handler = createHandler({}, () => [], undefined, connection, Date.now, async () => ({ ok: true }));
+    const call = async (route, headers = {}) => {
+        let status, payload;
+        await handler({
+            method: 'GET', url: '/api/qqbot-services/' + route, socket: { remoteAddress: '127.0.0.1' },
+            headers: { host: '127.0.0.1', ...headers },
+        }, { writeHead(code) { status = code; }, end(value) { payload = JSON.parse(value); } });
+        return { status, payload };
+    };
+    assert.deepEqual(await call('details/access'), { status: 403, payload: { error: 'forbidden' } });
+    assert.deepEqual(await call('details/access', { cookie: 'session=owner' }), { status: 200, payload: { ok: true } });
+    assert.deepEqual(seen, [undefined, 'session=owner']);
+});
+
+async function settled(controller) {    for (let n = 0; n < 30; n++) {
         const state = await controller.state();
         if (!state.operation?.running) return state.operation;
         await sleep(0);
@@ -207,7 +229,7 @@ test('the DSH chat form commits only after the operator accepts the server previ
     } });
     const find = (node, predicate) => node && typeof node === 'object' &&
         (predicate(node) ? node : node.children?.map(child => find(child, predicate)).find(Boolean));
-    states = [{ health: {} }, '', false, false, '', 'chat'];
+    states = [{ health: {} }, '', false, false, '', '', 'chat'];
     const root = panel();
     assert.equal(theme.id, 'qqb-style');
     assert.match(theme.textContent, /\.qqb-hero.*radial-gradient/s);
