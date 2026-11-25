@@ -202,3 +202,16 @@ test('version status only touches the remote when the owner asks for a refresh (
   await local.details('versions', new URLSearchParams({ refresh: '1' }))
   assert.ok(calls.includes('ls-remote'), '点了「检查远端」才去问远端')
 })
+
+test('panel git never takes optional locks and never prompts for credentials (review finding 11)', async () => {
+  const { panelGit } = await import('../dsh-plugins/dsh-qqbot-services/local-panels.js')
+  const calls = []
+  const run = panelGit('/repo', async (file, args, options) => { calls.push({ file, args, options }); return { stdout: 'ok\n' } })
+  assert.equal(await run(['status', '--porcelain']), 'ok\n')
+  assert.equal(calls[0].file, 'git')
+  assert.deepEqual(calls[0].args, ['--no-optional-locks', 'status', '--porcelain'])
+  assert.equal(calls[0].options.cwd, '/repo')
+  assert.equal(calls[0].options.env.GIT_TERMINAL_PROMPT, '0')
+  assert.equal(calls[0].options.env.GCM_INTERACTIVE, 'never')
+  assert.equal(calls[0].options.windowsHide, true)
+})

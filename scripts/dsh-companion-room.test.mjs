@@ -21,6 +21,7 @@ test('guests redeem one-use invites; replies only run on room messages and can d
   assert.equal(room.view(guest).length, 1)
   now += 2000
   await room.post(guest, '@林梦瑶 在吗')
+  await room.idle()
   assert.equal(room.view(guest).at(-1).role, 'assistant')
   assert.deepEqual(calls.map(turn => turn.called), [false, true])
   assert.deepEqual(Object.keys(calls[0]).sort(), ['called', 'messages'])
@@ -97,6 +98,7 @@ test('closing a room discards an in-flight reply before a new guest joins', asyn
   const newGuest = room.join(room.invite(), '来宾乙')
   release('旧房间回复')
   await posting
+  await room.idle()
   assert.deepEqual(room.view(newGuest), [])
   assert.equal(room.view(oldGuest), null)
 })
@@ -115,9 +117,11 @@ test('a newly invited guest does not receive content from the previous audience 
   const newGuest = room.join(room.invite(), '来宾乙')
   release('重复入场前的私事')
   await posting
+  await room.idle()
   assert.deepEqual(room.view(newGuest), [])
   now += 2000
   await room.post(newGuest, '@林梦瑶 新话题')
+  await room.idle()
   assert.deepEqual(contexts[1].map(item => item.text), ['@林梦瑶 新话题'])
   assert.doesNotMatch(JSON.stringify(room.view(newGuest)), /入场前/)
 })
@@ -180,6 +184,7 @@ test('room media never reaches the room model, only the placeholder text', async
   assert.equal(await room.postMedia(guest, png), 200)
   now += 2_000
   await room.post(guest, '@林梦瑶 看这张')
+  await room.idle()
   assert.equal(turns.length, 1)
   for (const item of turns[0].messages) assert.deepEqual(Object.keys(item).sort(), ['name', 'role', 'text'])
   assert.doesNotMatch(JSON.stringify(turns[0].messages), /89504e47/)
@@ -216,4 +221,25 @@ test('ADR 0349：房间提示词按她的话改——不写自我说明，底线
   assert.match(ROOM_PROMPT, /查记忆/)
   assert.match(ROOM_PROMPT, /JSON/)
   assert.match(ROOM_PROMPT, /认识的人随口接，不熟的多听/, '她：得看进来的是谁')
+})
+
+test('a guest post returns as soon as the message is in the room, without waiting for the model (review finding 12)', async () => {
+  let release
+  const slow = new Promise(resolve => { release = resolve })
+  let now = 1000
+  const room = createCompanionRoom({ now: () => now, reply: () => slow })
+  const guest = room.join(room.invite(), '来宾甲')
+  let settled = false
+  const status = await Promise.race([
+    room.post(guest, '@林梦瑶 在吗').then(value => { settled = true; return value }),
+    new Promise(resolve => setTimeout(() => resolve('still waiting'), 200)),
+  ])
+  assert.equal(status, 200, '模型还没回，发言已经确认送达')
+  assert.equal(settled, true)
+  now += 2000
+  assert.equal(await room.post(guest, '下一句不用等'), 200, '同一个来宾可以接着发')
+  assert.deepEqual(room.view(guest).map(row => row.role), ['guest', 'guest'])
+  release('我在')
+  await room.idle()
+  assert.equal(room.view(guest).at(-1).text, '我在', '回复照样出现在房间里')
 })

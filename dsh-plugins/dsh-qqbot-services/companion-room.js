@@ -19,6 +19,8 @@ export function createCompanionRoom({ now = Date.now, reply, sniffMime } = {}) {
   let nextAmbient = 0
   let running = false
   let requested
+  /** 正在跑的回复循环；测试和关房间之外没人等它 */
+  let active = Promise.resolve()
   const owner = { name: '房主', role: 'owner', last: -Infinity }
 
   function member(credential, isOwner) {
@@ -35,22 +37,24 @@ export function createCompanionRoom({ now = Date.now, reply, sniffMime } = {}) {
     }
   }
 
-  async function consider(turn) {
+  function consider(turn) {
     if (running) {
       if (turn.called) requested = turn
       return
     }
     running = true
-    try {
-      for (let current = turn; current; current = requested) {
-        requested = undefined
-        if (current.generation !== generation) continue
-        const answer = await Promise.resolve().then(() => reply({ called: current.called, messages: current.messages })).catch(() => '')
-        if (current.generation === generation && typeof answer === 'string' && answer.trim()) {
-          append('assistant', '林梦瑶', answer.trim().slice(0, 240))
+    active = (async () => {
+      try {
+        for (let current = turn; current; current = requested) {
+          requested = undefined
+          if (current.generation !== generation) continue
+          const answer = await Promise.resolve().then(() => reply({ called: current.called, messages: current.messages })).catch(() => '')
+          if (current.generation === generation && typeof answer === 'string' && answer.trim()) {
+            append('assistant', '林梦瑶', answer.trim().slice(0, 240))
+          }
         }
-      }
-    } finally { running = false }
+      } finally { running = false }
+    })()
   }
 
   return {
@@ -114,10 +118,14 @@ export function createCompanionRoom({ now = Date.now, reply, sniffMime } = {}) {
       if (reply && (called || (!running && time >= nextAmbient))) {
         nextAmbient = time + ambientGap
         const context = messages.filter(row => row.id > contextAfter).slice(-12).map(({ role, name, text }) => ({ role, name, text }))
-        await consider({ called, generation, messages: context })
+        // 不等模型（审查第 12 条）：消息已经进了房间就回 200，回复在后台跑，照样经轮询 messages 出现。
+        // 换了观众、关了房间，generation 一变，旧回复照旧被丢掉。
+        consider({ called, generation, messages: context })
       }
       return 200
     },
+    /** 等后台的回复循环跑完（测试用） */
+    idle: () => active,
     close() {
       generation++
       messages = []

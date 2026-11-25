@@ -12,7 +12,7 @@ import { promisify } from 'node:util'
 import { createController } from './controller.js'
 import { activeKoishiPlugin, configuredManualOwner, createChat, createNapCatManualSender, createNapCatReader } from './chat.js'
 import { createCompanionRoom, createRoomReply, roomMediaLimit } from './companion-room.js'
-import { createLocalPanels } from './local-panels.js'
+import { createLocalPanels, panelGit } from './local-panels.js'
 import { createHistoryMedia } from './history-media.js'
 import { createConfigEditor } from './config-editor.js'
 import { createCharacterBridge } from './character-bridge.js'
@@ -21,7 +21,7 @@ import { createLogsView, summarizeRecallLog, summarizeWatchdog } from './logs-vi
 import { createRestoreStages } from '../../scripts/restore-stages.mjs'
 import { nodeCommand } from './node-run.js'
 import { failedStatus } from './status-fallback.js'
-import { localStatus } from './local-status.js'
+import { localStatus, mergeStatus } from './local-status.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -250,6 +250,7 @@ export function summarizeConnectionConfig(config) {
 
 export function createHandler(controller, events, chat, connection, now = Date.now, details, companion) {
   const confirmations = new Map()
+  let staging = false
   return async (req, res) => {
     const send = (status, value) => {
       res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
@@ -385,13 +386,23 @@ export function createHandler(controller, events, chat, connection, now = Date.n
       return send(200, { day, stages: companion.restoreStages.stages })
     }
     if (companion?.restoreStages && req.method === 'POST' && path === `${prefix}/backup/stage`) {
-      const { body, status, error } = await readJson(req)
-      if (status) return send(status, { error })
-      if (typeof body?.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.day)) return send(400, { error: 'invalid_backup' })
-      // 正式切换不在这里执行：只把运行手册的步骤交出去。
-      if (body.stage === 'switch') return send(403, { error: 'needs_approval', ...companion.restoreStages.switchPlan(body.day) })
-      if (!['artifacts', 'files', 'database'].includes(body.stage)) return send(400, { error: 'invalid_stage' })
-      return send(200, companion.restoreStages[body.stage](body.day))
+      // 和别的读请求体的路由一样兜住：请求体读到一半断开、阶段里抛错，都不能让 handler 的 Promise 被拒绝
+      try {
+        const { body, status, error } = await readJson(req)
+        if (status) return send(status, { error })
+        if (typeof body?.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.day)) return send(400, { error: 'invalid_backup' })
+        // 正式切换不在这里执行：只把运行手册的步骤交出去。
+        if (body.stage === 'switch') {
+          const plan = companion.restoreStages.switchPlan(body.day)
+          return plan.ok ? send(403, { error: 'needs_approval', ...plan }) : send(404, { error: 'backup_not_found' })
+        }
+        if (!['artifacts', 'files', 'database'].includes(body.stage)) return send(400, { error: 'invalid_stage' })
+        // 同一时间只跑一个阶段：解压和复制 dump 都不便宜
+        if (staging) return send(409, { error: 'stage_busy' })
+        staging = true
+        try { return send(200, await companion.restoreStages[body.stage](body.day)) }
+        finally { staging = false }
+      } catch { return send(503, { error: 'restore_stage_failed' }) }
     }
     if (chat && path.startsWith(`${prefix}/chat/`)) {
       if (req.method !== 'POST') return send(403, { error: 'forbidden' })
@@ -466,7 +477,11 @@ export const companionRoomEnabled = config => config?.companionRoom === true
 export function apply(ctx, config = {}) {
   const root = realpathSync(resolve(config.repoRoot || join(dirname(fileURLToPath(import.meta.url)), '../..')))
   const probeLog = join(root, 'runtime', 'log', 'panel-probe.log')
+  let lastNote = ''
   const noteProbe = text => {
+    // 子进程一直失败时每 30 秒一次：同样的原因只记一行，探测日志不再无限变长
+    if (text === lastNote) return
+    lastNote = text
     try {
       mkdirSync(dirname(probeLog), { recursive: true })
       appendFileSync(probeLog, `${new Date().toISOString()} ${text}\n`)
@@ -494,7 +509,7 @@ export function apply(ctx, config = {}) {
   const controller = createController({
     async probe() {
       try {
-        return { ...await localStatus({ root }), ...(detailedStatus() ?? {}) }
+        return mergeStatus(await localStatus({ root }), detailedStatus())
       } catch (error) {
         noteProbe(`local ${String(error?.message ?? error).slice(0, 200)}`)
         return failedStatus(error)
@@ -511,10 +526,7 @@ export function apply(ctx, config = {}) {
     catch { return null }
   }
   const manualOwner = () => configuredManualOwner(readKoishiConfig())
-  const local = createLocalPanels({ root, readConfig: readKoishiConfig, hindsightUrl: process.env.QQBOT_HINDSIGHT_URL, async runGit(args) {
-    const { stdout } = await exec('git', args, { cwd: root, timeout: 15_000, windowsHide: true, maxBuffer: 64 * 1024 })
-    return stdout
-  } })
+  const local = createLocalPanels({ root, readConfig: readKoishiConfig, hindsightUrl: process.env.QQBOT_HINDSIGHT_URL, runGit: panelGit(root, exec) })
   const details = async (kind, query) => {
     if (kind === 'access') return summarizeConnectionConfig(readKoishiConfig())
     if (kind === 'logs') return {
@@ -562,6 +574,7 @@ export function apply(ctx, config = {}) {
       sourceDir: join(characterDir, 'source'),
       stDir: join(characterDir, 'st'),
       prefix: config.characterPrefix || 'linmengyao',
+      note: text => noteProbe(`character ${text}`),
     }),
     logs: createLogsView({ root }),
     restoreStages: createRestoreStages({ root }),

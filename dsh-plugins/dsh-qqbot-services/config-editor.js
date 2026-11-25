@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { isDeepStrictEqual } from 'node:util'
 import { activeKoishiPlugin } from './chat.js'
 
 const tiers = ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger']
@@ -24,7 +25,15 @@ function editAccess(config, edit) {
   if (before.length !== 1 || after.length !== 1 || before[0].qq !== after[0].qq) return null
   const pluginKey = Object.keys(config.plugins).find(key => /^qqbot(?::[^:]+)?$/.test(key))
   config.plugins[pluginKey] = { ...plugin, contacts, ...edit.modes }
-  return { contacts: contacts.map(({ qq, name, tier }) => ({ qq, name, tier })), modes: edit.modes }
+  return { pluginKey, contacts: contacts.map(({ qq, name, tier }) => ({ qq, name, tier })), modes: edit.modes }
+}
+
+/** 去掉这次编辑的字段（contacts 和改到的模式），剩下的部分应当和原来一模一样 */
+function withoutEdited(config, pluginKey, modeKeys) {
+  const copy = structuredClone(config)
+  const plugin = copy?.plugins?.[pluginKey]
+  if (plugin && typeof plugin === 'object') for (const key of ['contacts', ...modeKeys]) delete plugin[key]
+  return copy
 }
 
 export function createConfigEditor({ file, yaml, now = Date.now }) {
@@ -38,10 +47,18 @@ export function createConfigEditor({ file, yaml, now = Date.now }) {
   return {
     preview(edit, session) {
       const original = current()
-      const config = yaml.load(original)
-      const scope = editAccess(config, edit)
-      if (!scope) return { status: 400, error: 'invalid_config_edit' }
-      const next = yaml.dump(config, { lineWidth: -1 })
+      // 读写都用 CORE_SCHEMA（审查第 10 条）：默认 schema 会把不加引号的 2026-11-01 读成 Date、写成
+      // 2026-11-01T00:00:00.000Z，<< 合并键也会被摊开。CORE 下它们原样是字符串 / 普通键，写回去还是原来的写法。
+      const config = yaml.load(original, { schema: yaml.CORE_SCHEMA })
+      const edited = editAccess(config, edit)
+      if (!edited) return { status: 400, error: 'invalid_config_edit' }
+      const { pluginKey, ...scope } = edited
+      const next = yaml.dump(config, { lineWidth: -1, schema: yaml.CORE_SCHEMA })
+      // 签发 ticket 之前再核一遍：按 Koishi 自己的读法（默认 schema），除了这次编辑的字段，别的一个都不能变
+      if (!isDeepStrictEqual(withoutEdited(yaml.load(original), pluginKey, Object.keys(edit.modes)),
+        withoutEdited(yaml.load(next), pluginKey, Object.keys(edit.modes)))) {
+        return { status: 422, error: 'config_roundtrip_unsafe' }
+      }
       const clock = now()
       for (const [id, draft] of drafts) if (draft.expires <= clock) drafts.delete(id)
       if (drafts.size >= 8) drafts.delete(drafts.keys().next().value)

@@ -106,3 +106,19 @@ export async function localStatus({
     locallyChecked: true,
   }
 }
+
+/** 子进程探测才拿得到的字段：进程列表、启动窗口、Koishi 日志里最后一次连接、外网 */
+const DETAILED_ONLY = ['net', 'koishiProcesses', 'lastConnection', 'launchers']
+
+/**
+ * 合并刚测的本地结果和子进程结果（审查第 8 条）。子进程结果最多是 30 秒前、再加最长 20 秒执行时间测的，
+ * 本地测得到的字段（napcat、hindsight、koishi、koishiListening、maintenance、ports）一律以本地为准，
+ * 子进程只补本地测不到的；守护本地说不准（null）时才用子进程从进程列表里看到的。
+ */
+export function mergeStatus(local, detailed) {
+  if (!detailed || typeof detailed !== 'object') return local
+  const merged = { ...local }
+  for (const key of DETAILED_ONLY) if (Object.hasOwn(detailed, key)) merged[key] = detailed[key]
+  if (local.watchdog === null && typeof detailed.watchdog === 'boolean') merged.watchdog = detailed.watchdog
+  return merged
+}

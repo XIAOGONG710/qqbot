@@ -29,6 +29,22 @@ function stickerIndex(directory) {
   } catch { return [] }
 }
 
+/** 面板里跑 git 的环境：不弹凭据窗口、不在终端里等输入 */
+export const PANEL_GIT_ENV = Object.freeze({ GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' })
+
+/**
+ * 面板的 git 一律加 --no-optional-locks（git status 不顺手刷新 index、不去抢两台 agent 正在用的 index.lock），
+ * 凭据管理器也不许从 DSH 进程里弹 GUI（审查第 11 条）。
+ */
+export function panelGit(root, exec) {
+  return async args => {
+    const { stdout } = await exec('git', ['--no-optional-locks', ...args], {
+      cwd: root, timeout: 15_000, windowsHide: true, maxBuffer: 64 * 1024, env: { ...process.env, ...PANEL_GIT_ENV },
+    })
+    return stdout
+  }
+}
+
 function zonedClock(now, timeZone) {
   const format = new Intl.DateTimeFormat('en-CA', { timeZone, hourCycle: 'h23',
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })

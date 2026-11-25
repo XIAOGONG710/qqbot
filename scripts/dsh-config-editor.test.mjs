@@ -143,3 +143,33 @@ test('一次草稿只能应用一次', () => {  const dir = setup()
     assert.deepEqual(editor.apply(ticket, 'session-a'), { status: 403, error: 'confirmation_required' })
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
+
+test('不加引号的日期和锚点、合并键原样写回，Koishi 读到的其他配置一个字都不变（审查第 10 条）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'qqbot-config-'))
+  const withDates = `shared: &shared
+  retries: 3
+  since: 2026-11-01
+${original}  dated-plugin:
+    <<: *shared
+    startedAt: 2026-01-05
+    label: 合成
+`
+  writeFileSync(join(dir, 'koishi.yml'), withDates)
+  try {
+    const before = yaml.load(withDates)
+    assert.ok(before.plugins['dated-plugin'].startedAt instanceof Date, '前提：Koishi 的读法会把它当日期')
+    const editor = editorFor(dir)
+    const { status, ticket } = editor.preview(edit, 'session-a')
+    assert.equal(status, 200)
+    assert.equal(editor.apply(ticket, 'session-a').status, 200)
+    const text = readFileSync(join(dir, 'koishi.yml'), 'utf8')
+    assert.match(text, /startedAt: 2026-01-05\n/, '日期还是原来的写法')
+    assert.match(text, /since: 2026-11-01\n/)
+    assert.ok(!text.includes('T00:00:00'), '没有被改写成时间戳')
+    assert.match(text, /<<: \*\w+/, '合并键还在，没有被摊开')
+    const after = yaml.load(text)
+    assert.deepEqual(after.plugins['dated-plugin'], before.plugins['dated-plugin'])
+    assert.deepEqual(after.shared, before.shared)
+    assert.equal(after.plugins['qqbot:local2'].groupChat, 'read')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})

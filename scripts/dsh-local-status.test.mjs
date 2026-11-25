@@ -115,3 +115,18 @@ test('the watchdog heartbeat round-trips and a live pid with a fresh beat is run
 test('a closed port reads as down, not as an error', async () => {
     assert.equal(await tcpOpen(1, { timeout: 200 }), false);
 });
+
+test('fresh local probes win over the 30-second-old child probe; the child only fills what local cannot see (review finding 8)', async () => {
+    const { mergeStatus } = await import('../dsh-plugins/dsh-qqbot-services/local-status.js');
+    const local = { napcat: true, hindsight: false, koishi: true, koishiListening: true, maintenance: false, ports: { napcat: 3001 },
+        net: false, koishiProcesses: 0, lastConnection: null, launchers: {}, watchdog: null, locallyChecked: true };
+    const stale = { napcat: false, hindsight: true, koishi: false, koishiListening: false, maintenance: true, ports: { napcat: 1 },
+        net: true, koishiProcesses: 2, lastConnection: { state: 'connected', at: 'x' }, launchers: { napcat: true }, watchdog: true };
+    const merged = mergeStatus(local, stale);
+    assert.deepEqual([merged.napcat, merged.hindsight, merged.koishi, merged.koishiListening, merged.maintenance], [true, false, true, true, false]);
+    assert.deepEqual(merged.ports, { napcat: 3001 });
+    assert.deepEqual([merged.net, merged.koishiProcesses, merged.launchers.napcat, merged.lastConnection.state], [true, 2, true, 'connected']);
+    assert.equal(merged.watchdog, true, '本地说不准时用子进程从进程列表里看到的');
+    assert.equal(mergeStatus({ ...local, watchdog: false }, stale).watchdog, false, '本地心跳说停了就是停了');
+    assert.equal(mergeStatus(local, null), local);
+});
