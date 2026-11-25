@@ -102,9 +102,9 @@ export function dreamNoteLine(dream: Dream | undefined): string | undefined {
     return `[${when}：${body}${feel}。那是梦，不是真的事；想跟他说就提一句，不想说就搁着]`;
 }
 
-/** 最近几天做过的梦（给「连着梦到同一件事」用） */
-export function recentDreams(dataDir: string, days = 3): Dream[] {
-    const cutoff = Date.now() - days * 86_400_000;
+/** 最近几天做过的梦（给「连着梦到同一件事」用）；now 是她那边的现在（做梦那一拍的时钟），不给就是真实时钟 */
+export function recentDreams(dataDir: string, days = 3, now = Date.now()): Dream[] {
+    const cutoff = now - days * 86_400_000;
     return readDreams(dataDir).filter(item => item.at >= cutoff);
 }
 

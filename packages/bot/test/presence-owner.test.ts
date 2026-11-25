@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
+import { readingActivities } from '../src/life/her-days.ts';
+import { HER_PLAN_FILE, windowAt } from '../src/life/her-plans.ts';
 import { formatDate, herDay, stateAt } from '../src/life/schedule.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 import { DEFAULTS, type AppConfig, type Contact } from '../src/platform/config.ts';
 import { loadTierCard, type TierCard } from '../src/platform/contact.ts';
 import { POKE_OUT_TEXT } from '../src/social/pokes.ts';
-import { pokeOutPlan, POKE_OUT_LATEST, type PresenceTransport } from '../src/social/presence.ts';
+import { LISTENING, pokeOutPlan, POKE_OUT_LATEST, type PresenceTransport } from '../src/social/presence.ts';
 import { presenceOwner, type PresenceOwnerDeps } from '../src/social/presence-owner.ts';
 import { syntheticCardPattern } from './fixtures/card.ts';
 
@@ -115,6 +117,27 @@ describe('存在感起不起', () => {
         h.owner.start();
         await flush();
         assert.deepEqual(h.calls, []);
+    });
+
+    test('她今天的打算（her-plan.json）按她那边的日期（worldNow；模拟器是虚拟时钟）认，不看真实日期', async () => {
+        // 虚拟时间离真实时间好几年：找一个空闲时刻，加上「听歌单里的歌」这个打算时正好挑中它（挂「听歌中」），不加时不是听歌
+        const schedule = boyfriendCard.character.schedule!;
+        const books = readingActivities(boyfriendCard.character.books ?? []);
+        const plan = (at: Date) => ({ window: windowAt(at), text: '听歌单里的歌' });
+        let at: Date | undefined;
+        for (let hour = 0; !at && hour < 60 * 12; hour++) {
+            const candidate = new Date(2020, 2, 2 + Math.floor(hour / 12), 9 + (hour % 12), 30);
+            const withPlan = stateAt(schedule, candidate, [...books, plan(candidate)]).activity;
+            const without = stateAt(schedule, candidate, books).activity;
+            if (withPlan.kind === 'free' && withPlan.text === '听歌单里的歌' && without.kind === 'free' && !/听歌|听音乐|歌单/.test(without.text)) at = candidate;
+        }
+        assert.ok(at, '合成作息里找得到这样的时刻');
+        const h = harness({ config: { qqPresence: true, herDays: true }, now: at.getTime() });
+        const day = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
+        writeFileSync(join(h.dir, HER_PLAN_FILE), JSON.stringify({ date: day, ...plan(at), at: at.toISOString() }));
+        h.owner.start();
+        await flush();
+        assert.deepEqual(h.calls.filter(c => c.startsWith('status:')), [`status:${LISTENING.status}:${LISTENING.ext}`]);
     });
 
     test('reapply：醒来、重连后重新挂一次在线状态', async () => {

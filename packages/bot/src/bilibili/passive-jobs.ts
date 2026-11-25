@@ -93,7 +93,7 @@ export function passiveJobs(deps: PassiveJobsDeps): PassiveJobs {
             rawFetch(url, { headers: init.headers, signal: init.signal ?? new AbortController().signal });
         const nowDate = new Date(exec.now());
         const schedule = worldCard?.schedule;
-        const extraFree = config.herDays && worldCard ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [];
+        const extraFree = config.herDays && worldCard ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, nowDate, log)] : [];
         feedRunning = true;
         return ownPassiveRead(async () => {
         try {

@@ -23,6 +23,8 @@ export interface IncomingDeps {
     /** 连上后正在补回漏掉的消息 */
     syncing: () => boolean;
     exec: Pick<Executor, 'after' | 'cancel'>;
+    /** 她那边的「现在」（App 的 worldNow；模拟器是虚拟时钟）。不给就是真实时钟 */
+    now?: () => number;
     chatHistory: ChatHistory;
     history: ReturnType<typeof currentTierHistory>;
     tierRecord: Pick<TierRecord, 'since'>;
@@ -40,7 +42,7 @@ export interface IncomingDeps {
     log: Log;
 }
 
-export function incomingReceipts({ config, stopped, syncing, exec, chatHistory, history, tierRecord, dormancy, responders, readerFor, quoteLookup, forwardLookup, markCrisis, syncRecalledMemory, deviceOwner, plainTextOf, inbox, log }: IncomingDeps) {
+export function incomingReceipts({ config, stopped, syncing, exec, now: nowMs = Date.now, chatHistory, history, tierRecord, dormancy, responders, readerFor, quoteLookup, forwardLookup, markCrisis, syncRecalledMemory, deviceOwner, plainTextOf, inbox, log }: IncomingDeps) {
     const activeIncoming = new Map<string, number>();
     const claimIncoming = (id: string) => activeIncoming.set(id, (activeIncoming.get(id) ?? 0) + 1);
     const releaseIncoming = (id: string) => { const count = activeIncoming.get(id) ?? 0; if (count > 1) activeIncoming.set(id, count - 1); else activeIncoming.delete(id); };
@@ -85,7 +87,7 @@ export function incomingReceipts({ config, stopped, syncing, exec, chatHistory, 
                         chatHistory.flushIncoming(contact.qq);
                         const count = await queueIncomingRecovery(contact.qq);
                         syncRecalledMemory(contact.qq);
-                        if (count && !dormancy?.isDormant() && shouldCatchUp(history.load(contact.qq), new Date())) responders.get(contact.qq)?.catchUp();
+                        if (count && !dormancy?.isDormant() && shouldCatchUp(history.load(contact.qq), new Date(nowMs()))) responders.get(contact.qq)?.catchUp();
                     } catch (error) { failed = true; incomingFailure(error); }
                 }
                 if (!failed) incomingRetryLogged = false;

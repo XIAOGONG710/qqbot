@@ -24,7 +24,7 @@ const event = (userId: number, message: Segment[] | string, over: Partial<Messag
 const text = (value: string): Segment[] => [{ type: 'text', data: { text: value } }];
 
 type FakeTimer = { fn: () => void; ms: number | undefined; cancelled: boolean; unref: () => void };
-function harness(over: { recalls?: boolean; stopped?: () => boolean; syncing?: () => boolean; dormant?: boolean; since?: Date; deviceOwner?: Contact; reader?: { needs: (m: Segment[] | string) => boolean; read: (m: Segment[] | string) => Promise<Segment[] | string> } } = {}) {
+function harness(over: { now?: () => number; recalls?: boolean; stopped?: () => boolean; syncing?: () => boolean; dormant?: boolean; since?: Date; deviceOwner?: Contact; reader?: { needs: (m: Segment[] | string) => boolean; read: (m: Segment[] | string) => Promise<Segment[] | string> } } = {}) {
     const dir = dataDir();
     const chatHistory = new ChatHistory(dir);
     const timers: FakeTimer[] = [];
@@ -41,6 +41,7 @@ function harness(over: { recalls?: boolean; stopped?: () => boolean; syncing?: (
             after: (fn, ms) => { const timer: FakeTimer = { fn, ms, cancelled: false, unref: () => {} }; timers.push(timer); return timer as unknown as ReturnType<typeof setTimeout>; },
             cancel: timer => { if (timer) (timer as unknown as FakeTimer).cancelled = true; },
         },
+        ...(over.now ? { now: over.now } : {}),
         chatHistory,
         history: chatHistory,
         tierRecord: { since: () => over.since },
@@ -231,6 +232,19 @@ describe('失败重试和停止', () => {
         assert.deepEqual(h.synced.sort(), [HIM.qq, HIM.qq, FRIEND.qq].sort(), '每个人都让记忆跟上');
         h.receipts.incomingFailure(new Error('第二轮'));
         assert.equal(h.logs.length, 2, '一轮成功之后再失败会重新记日志');
+    });
+
+    test('重试时「最近没回」按注入的时钟算（App 的 worldNow；模拟器是虚拟时钟），不看真实时钟', async () => {
+        // 他说话的时刻和「现在」都在虚拟时间里（离真实时间好几年）：过了 10 分钟要回，过了 5 小时不回
+        const said = Date.UTC(2020, 0, 6, 2, 0) / 1000;
+        for (const [later, expected] of [[10 * 60_000, [HIM.qq]], [5 * 3_600_000, []]] as const) {
+            const h = harness({ now: () => said * 1000 + later });
+            h.receipts.stageEvent(event(HIM.qq, text('在吗'), { time: said }));
+            h.receipts.incomingFailure(new Error('x'));
+            h.timers[0]!.fn();
+            await flush();
+            assert.deepEqual(h.caughtUp, expected, `过了 ${later / 60_000} 分钟`);
+        }
     });
 
     test('正在补回漏掉的消息时：重试往后推一秒，不同时跑', () => {

@@ -94,6 +94,8 @@ export interface LeaveAnnouncerDeps {
     generate: (messages: OpenAIMessage[]) => Promise<string>;
     log: (message: string) => void;
     stopped: () => boolean;
+    /** 她那边的「现在」（App 的 worldNow；模拟器是虚拟时钟）。不给就是真实时钟 */
+    now?: () => number;
 }
 
 /**
@@ -107,8 +109,8 @@ export function leaveAnnouncer(deps: LeaveAnnouncerDeps): { check(): Promise<voi
     let leaveCount = 0;
     async function checkLeave(): Promise<void> {
         if (deps.stopped() || !deps.worldAt || !owner) return;
-        if (deps.paused(owner.qq, Date.now())) return;
-        const at = new Date();
+        const at = new Date((deps.now ?? Date.now)());
+        if (deps.paused(owner.qq, at.getTime())) return;
         const span = awayNow(deps.worldAt(at), at);
         const history = deps.history(owner.qq);
         const lastAt = Date.parse(history.at(-1)?.time ?? '');

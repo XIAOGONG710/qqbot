@@ -138,7 +138,7 @@ export function dreamJobs(deps: DreamJobsDeps): { tick(): void } {
         if (deps.stopped() || !owner) return;
         const now = deps.now().getTime();
         if (now - lastInsightAt(dataDir) < 25 * 86_400_000) return;
-        const dreams = recentDreams(dataDir, 31);
+        const dreams = recentDreams(dataDir, 31, now);
         if (dreams.length < 5) return;
         try {
             const prompt = monthlyInsightPrompt(dreams, deps.character(owner.tier).name);
@@ -163,7 +163,7 @@ export function dreamJobs(deps: DreamJobsDeps): { tick(): void } {
             const journal = journalTail(at, 400);
             const lastFeelings = deps.lastFeelings();
             const fell = lastFeelings ? lastFeelings.felt.filter(item => item.level !== 'faint').map(item => `${item.cause}（${item.kind}）`) : [];
-            const previous = recentDreams(dataDir, 3).map(item => item.dream);
+            const previous = recentDreams(dataDir, 3, at.getTime()).map(item => item.dream);
             const prompt = dreamPrompt({ events: own, feelings: fell, journal, name: deps.character(owner.tier).name, previous });
             const raw = await deps.generate(0.95)([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
             const text = String(raw ?? '');

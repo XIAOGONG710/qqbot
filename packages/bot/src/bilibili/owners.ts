@@ -139,7 +139,7 @@ export function bilibiliOwners(deps: BilibiliOwnersDeps): BilibiliOwners {
             } : {}),
             target: { qq, name: target.name },
             schedule: worldCard.schedule,
-            extraFree: config.herDays ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [],
+            extraFree: config.herDays ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(worldNow()), log)] : [],
             dir: join(config.dataDir, 'presence'),
             now: worldNow, log,
             saidSleep: now => Boolean(asleepSince(worldCard.schedule!, bedtimes(worldCard.schedule!, now), new Date(now))),
@@ -202,7 +202,7 @@ ${video.link}`);
             log('回复 B 站评论：陌生人档和同学档的卡都读不了，不回复');
             return undefined;
         }
-        const extraFree = config.herDays && worldCard ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [];
+        const extraFree = config.herDays && worldCard ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(worldNow()), log)] : [];
         const gate = bilibiliRisk();
         return {
             mode, account, userUid: config.bilibiliAtUid,

@@ -59,7 +59,7 @@ export function presenceOwner(deps: PresenceOwnerDeps): PresenceOwner {
             return;
         }
         const schedule = worldCard.schedule;
-        const extraFree = config.herDays ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(), log)] : [];
+        const extraFree = config.herDays ? [...readingActivities(worldCard.books), ...herPlanActivities(config.dataDir, new Date(worldNow()), log)] : [];
         const dir = join(config.dataDir, 'presence');
         // 说说用最低隐私档的卡来写（陌生人档，没有就同学档）；两张都读不了就不发说说
         let lowest: TierCard | undefined;

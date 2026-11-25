@@ -894,7 +894,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         send: (qq, text) => transport.sendPrivateText(qq, text),
         generate: messages => exec.llm({ purpose: 'background', config: { ...config.llm, temperature: 0.9 }, messages }, log),
         log,
-        stopped: () => stopped,
+        stopped: () => stopped, now: worldNow,
     }).check : undefined);
     const dshStateExport = dshStateModule(dshEnabled ? () => exportDshState() : undefined, NOW_REFRESH_MS);
     // 「此刻的她」（SELF.json，ADR 0347 第 2 层，配置 selfExport）：每 5 分钟、validUntil 到点、给他回完一条之后写；怎么写在后面的 exportSelf。关着时没有定时任务
@@ -2132,7 +2132,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     };
     // 入站收据：收到的私聊先记一笔、读完才进聊天记录，中途断了下次补上；失败后台重试（ADR 0336 第 6 步搬到 incoming.ts）。停法照旧在这里登记
     const incoming = incomingReceipts({
-        config, stopped: () => stopped, syncing: () => syncing, exec, chatHistory, history, tierRecord, dormancy, responders, readerFor,
+        config, stopped: () => stopped, syncing: () => syncing, exec, now: worldNow, chatHistory, history, tierRecord, dormancy, responders, readerFor,
         quoteLookup: qq => quoteLookup(qq), forwardLookup: qq => forwardLookup(qq), markCrisis, syncRecalledMemory, deviceOwner, plainTextOf, inbox, log,
     });
     lifetime.own('incoming', () => incoming.stop());
