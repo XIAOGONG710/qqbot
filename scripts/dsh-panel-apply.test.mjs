@@ -88,3 +88,49 @@ test('herInnerPanel: true 时才有「她心里的」，读的是 QQBOT_SOUL_DIR
     rmSync(soul, { recursive: true, force: true })
   }
 })
+
+test('我们自己的三块（/project、/her、/inner）都在浏览器认证之后；局域网来宾那条监听根本到不了；她心里的没开就不碰', async () => {
+  const { createHandler, createLanGuestHandler } = await import('../dsh-plugins/dsh-qqbot-services/index.js')
+  const touched = []
+  const spy = name => async () => { touched.push(name); return { available: true } }
+  const companion = {
+    project: { switches: spy('switches'), metrics: spy('metrics'), promptInventory: spy('inventory'), golive: spy('golive') },
+    her: { memoryHealth: spy('memory'), emotionHealth: spy('emotion'), lifeHealth: spy('life'), qqHealth: spy('qq'), herDay: spy('day') },
+    inner: { today: spy('today'), ledger: spy('ledger') },
+  }
+  const paths = ['project/switches', 'project/metrics', 'project/inventory', 'project/golive', 'her/memory', 'her/emotion',
+    'her/life', 'her/qq', 'her/day', 'inner/today', 'inner/ledger']
+  const request = (handler, path, extra = {}) => new Promise(done => {
+    let status
+    handler({ method: 'GET', url: '/api/qqbot-services/' + path, socket: { remoteAddress: '127.0.0.1' }, headers: { host: '127.0.0.1' }, ...extra },
+      { writeHead(code) { status = code }, end(value) { done({ status, body: JSON.parse(value) }) } })
+  })
+  // 认证不过：一律 403，一个方法都没被调用
+  const rejected = createHandler({}, () => [], {}, { requestRejection: () => ({ status: 401 }) }, Date.now, undefined, companion)
+  for (const path of paths) assert.deepEqual(await request(rejected, path), { status: 403, body: { error: 'forbidden' } }, path)
+  // 认证接口抛错也算没过
+  const throwing = createHandler({}, () => [], {}, { requestRejection: () => { throw Error('boom') } }, Date.now, undefined, companion)
+  for (const path of paths) assert.equal((await request(throwing, path)).status, 403, path)
+  assert.deepEqual(touched, [])
+  // 局域网来宾监听：只有 room/guest/，别的 404
+  const origin = 'https://192.168.50.5:4443'
+  const lan = createLanGuestHandler({}, origin)
+  for (const path of paths) {
+    const result = await request(lan, path, { socket: { encrypted: true, remoteAddress: '192.168.50.24' }, headers: { host: '192.168.50.5:4443', origin } })
+    assert.deepEqual(result, { status: 404, body: { error: 'not_found' } }, path)
+  }
+  assert.deepEqual(touched, [])
+  // 认证通过、她心里的没开：/inner 回 inner_disabled，不调别的
+  const open = createHandler({}, () => [], {}, { requestRejection: () => undefined }, Date.now, undefined, { ...companion, inner: undefined })
+  assert.deepEqual(await request(open, 'inner/today'), { status: 404, body: { error: 'inner_disabled' } })
+  assert.deepEqual(touched, [])
+  // 模块抛了带路径的错误：只回固定错误码
+  const leaky = createHandler({}, () => [], {}, { requestRejection: () => undefined }, Date.now, undefined, {
+    project: { switches: async () => { throw Error('C:\Users\secret\runtime 原文') } },
+    her: { memoryHealth: async () => { throw Error('C:\Users\secret 原文') } },
+    inner: { today: async () => { throw Error('C:\Users\secret 原文') } },
+  })
+  assert.deepEqual(await request(leaky, 'project/switches'), { status: 503, body: { error: 'project_unavailable' } })
+  assert.deepEqual(await request(leaky, 'her/memory'), { status: 503, body: { error: 'her_unavailable' } })
+  assert.deepEqual(await request(leaky, 'inner/today'), { status: 503, body: { error: 'inner_unavailable' } })
+})

@@ -11,7 +11,6 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { createHerState, herDayOf } from '../dsh-plugins/dsh-qqbot-services/her-state.js'
 import { entryHash, GENESIS_PREV } from '../packages/bot/src/memory/ledger.ts'
-import { dayKey } from '../packages/bot/src/language/speech-notes.ts'
 import { FEELING_KINDS } from '../packages/bot/src/emotion/feelings.ts'
 import { ingestDesktopRecent } from '../packages/bot/src/memory/desktop-log.ts'
 
@@ -71,7 +70,7 @@ function setup() {
   json(join(data, 'feeling-review.json'), {
     items: [{ id: 'r-1', at: Date.parse('2026-11-25T12:00:00Z'), kind: 'annoyed', strength: 2, cause: 'SECRET_REVIEW_CAUSE', aboutHim: true, evidence: ['m1'], addedAt: Date.parse('2026-11-25T13:00:00Z') }],
     retired: [{ at: 1, text: 'SECRET_RETIRED', why: 'SECRET_WHY' }], rejected: [],
-    lastReflectionAt: Date.parse('2026-11-25T13:00:00Z'), lastAttemptAt: Date.parse('2026-11-25T13:00:00Z'), attempts: { day: dayKey(NIGHT.getTime()), n: 3 },
+    lastReflectionAt: Date.parse('2026-11-25T13:00:00Z'), lastAttemptAt: Date.parse('2026-11-25T13:00:00Z'), attempts: { day: '2026-11-26', n: 3 },
   })
 
   // ── 她自己的账 ──
@@ -321,4 +320,72 @@ test('QQ 那边：心跳只给时刻和提交号；主动消息按她的一天�
     const stale = await make(env, { now: () => new Date(NIGHT.getTime() + 20 * 60_000) }).qqHealth()
     assert.equal(stale.heartbeat.stale, true, '心跳 25 分钟没更新')
   } finally { env.cleanup() }
+})
+
+test('子进程版（面板用的）：结果和进程内一样；标签页同时打开的 5 个请求只起一次子进程；配置只带数据目录、时区和他是谁', async () => {
+  const env = setup()
+  try {
+    const { createOffThreadHerState, herStateConfig } = await import('../dsh-plugins/dsh-qqbot-services/her-state.js')
+    const { runPanelJob } = await import('../dsh-plugins/dsh-qqbot-services/panel-jobs.js')
+    const full = { plugins: { qqbot: { dataDir: 'runtime/bot', timeZone: 'Asia/Shanghai', llm: { apiKey: 'SECRET_KEY' },
+      contacts: [{ qq: OWNER, name: 'SECRET_NAME', tier: 'boyfriend' }, { qq: 456, name: 'SECRET_OTHER', tier: 'classmate' }] } } }
+    const narrowed = herStateConfig(full)
+    assert.deepEqual(narrowed, { plugins: { qqbot: { dataDir: 'runtime/bot', timeZone: 'Asia/Shanghai', contacts: [{ qq: OWNER, tier: 'boyfriend' }] } } })
+    assert.equal(herStateConfig({ plugins: {} }), null)
+
+    const runs = []
+    const run = (job, input, options) => { runs.push({ job, input, options }); return runPanelJob(job, input, options) }
+    // 本机拒绝连接的端口：Hindsight「连不上」，两边一样
+    const hindsightUrl = 'http://127.0.0.1:1'
+    const off = createOffThreadHerState({ root: env.root, readConfig: () => full, soulDir: env.soul, hindsightUrl, now: () => NIGHT, run })
+    const [memory, emotion, life, qq, day] = await Promise.all([off.memoryHealth(), off.emotionHealth(), off.lifeHealth(), off.qqHealth(), off.herDay()])
+    assert.equal(runs.length, 1, '一次子进程')
+    assert.equal(runs[0].options.timeZone, 'Asia/Shanghai')
+    assert.doesNotMatch(JSON.stringify(runs[0].input), /SECRET/, '子进程拿不到联系人名单和密钥')
+
+    const inline = createHerState({ root: env.root, readConfig: () => full, soulDir: env.soul, hindsightUrl, now: () => NIGHT })
+    assert.deepEqual(memory, await inline.memoryHealth())
+    assert.deepEqual(emotion, await inline.emotionHealth())
+    assert.deepEqual(life, await inline.lifeHealth())
+    assert.deepEqual(qq, await inline.qqHealth())
+    assert.deepEqual(day, await inline.herDay())
+    assertNothingLeaks([memory, emotion, life, qq, day])
+
+    // 指定日期另起一次；日期不对不起子进程
+    assert.deepEqual(await off.herDay({ date: '2026-11-24' }), await inline.herDay({ date: '2026-11-24' }))
+    assert.equal(runs.length, 2)
+    assert.equal(await off.herDay({ date: '../2026-11-24' }), null)
+    assert.equal(runs.length, 2)
+    // 没有插件块：不起子进程，回 null
+    const none = createOffThreadHerState({ root: env.root, readConfig: () => ({}), soulDir: env.soul, run })
+    assert.equal(await none.lifeHealth(), null)
+    assert.equal(runs.length, 2)
+    // 子进程里某一块失败：只有那一块抛（路由回 503），别的照常
+    const partial = createOffThreadHerState({ root: env.root, readConfig: () => full, soulDir: env.soul,
+      run: async () => ({ memory: { failed: true }, emotion: { value: { ledger: null } } }) })
+    await assert.rejects(partial.memoryHealth(), /her_section_failed/)
+    assert.deepEqual(await partial.emotionHealth(), { ledger: null })
+    await assert.rejects(partial.qqHealth(), /her_section_failed/)
+  } finally { env.cleanup() }
+})
+
+test('「今天」按配置的时区，不按跑面板那台机器的：机器在洛杉矶时，回想次数、日记的日子照样对得上 bot 写下的', async () => {
+  const env = setup()
+  const { captureTimeZone, restoreTimeZone } = await import('../packages/bot/src/platform/time-zone.ts')
+  const base = captureTimeZone()
+  try {
+    // bot（上海）在 11-26 写下 attempts.day；她那边 11-26 01:40，洛杉矶还是 11-25 09:40
+    json(join(env.data, 'feeling-review.json'), { items: [], retired: [], rejected: [], lastReflectionAt: 0, lastAttemptAt: 0, attempts: { day: '2026-11-26', n: 2 } })
+    // 她自己写的日记：上海 11-26 00:30（洛杉矶 11-25）
+    json(join(env.data, 'self-diary.json'), { entries: [{ at: Date.parse('2026-11-25T16:30:00Z'), text: 'SECRET_SELF_DIARY' }] })
+    process.env.TZ = 'America/Los_Angeles'
+    const emotion = await make(env).emotionHealth()
+    assert.equal(emotion.review.runsToday, 2)
+    const life = await make(env).lifeHealth()
+    assert.equal(life.diary.lastDay, '2026-11-26')
+    assertNothingLeaks([emotion, life])
+  } finally {
+    restoreTimeZone(base)
+    env.cleanup()
+  }
 })

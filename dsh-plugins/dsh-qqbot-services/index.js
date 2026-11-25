@@ -23,8 +23,9 @@ import { nodeCommand } from './node-run.js'
 import { failedStatus } from './status-fallback.js'
 import { localStatus, mergeStatus } from './local-status.js'
 import { createProjectPanels } from './project-panels.js'
-import { createHerState } from './her-state.js'
+import { createOffThreadHerState } from './her-state.js'
 import { createHerInner, herInnerEnabled } from './her-inner.js'
+import { configuredTimeZone } from './panel-time.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -617,9 +618,10 @@ export function apply(ctx, config = {}) {
   const companion = {
     room,
     project: createProjectPanels({ root, readConfig: readKoishiConfig }),
-    her: createHerState({ root, readConfig: readKoishiConfig, soulDir, hindsightUrl: process.env.QQBOT_HINDSIGHT_URL }),
-    // 她心里的（ADR 0350）：默认关，先问她、用户点头再开
-    inner: herInnerEnabled(config) ? createHerInner({ soulDir, root }) : undefined,
+    // 她的状态：几本账在子进程里读（panel-jobs.js），不卡 DSH 主线程
+    her: createOffThreadHerState({ root, readConfig: readKoishiConfig, soulDir, hindsightUrl: process.env.QQBOT_HINDSIGHT_URL }),
+    // 她心里的（ADR 0350）：默认关，先问她、用户点头再开；她的一天按 bot 的时区（koishi.yml 里 qqbot 的 timeZone）
+    inner: herInnerEnabled(config) ? createHerInner({ soulDir, root, timeZone: () => configuredTimeZone(readKoishiConfig()) }) : undefined,
     configEditor: createConfigEditor({ file: configPath, yaml: require('js-yaml') }),
     memory: createPublicMemory({
       root,

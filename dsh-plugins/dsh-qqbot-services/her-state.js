@@ -40,18 +40,23 @@
 //   Freshness = { at: ISO, ageMinutes: number, stale: boolean }
 //
 // 读不到配置里的 qqbot 插件块（也没注入 dataDir）时，四个方法都回 null。
+//
+// 面板里用的是 createOffThreadHerState（同样的方法名）：几本账可能有几十 MB，整份同步读会卡住 DSH 主线程，
+// 所以放到子进程（panel-jobs.js）里跑 createHerState；同时打开标签页的 5 个请求共用一次子进程，5 秒内的重复请求给缓存。
 
 import { lstatSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { activeKoishiPlugin, configuredManualOwner } from './chat.js'
+import { HER_DAY_START_HOUR, herDayOf, validTimeZone, zoned } from './panel-time.js'
+import { runPanelJob, sharedJob } from './panel-jobs.js'
+
+export { HER_DAY_START_HOUR, herDayOf }
 
 const LOOPBACK = ['127.0.0.1', 'localhost', '[::1]']
 const COMMON_BANK = /^([a-zA-Z0-9_-]{1,80})-common$/
 const DAY = /^\d{4}-\d{2}-\d{2}$/
-/** 她的一天从这个钟点开始（schedule.ts herDay：睡觉时刻 02:00 之前算前一天） */
-export const HER_DAY_START_HOUR = 2
 /** 一天最多给多少件；days 往回列多少个有事的日子 */
 const DAY_EVENTS_MAX = 80
 const DAYS_LISTED = 14
@@ -104,20 +109,21 @@ function freshness(atMs, nowMs, stale) {
 
 const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null
 
-/** 某时刻在 timeZone 里的年月日时分 */
-function zoned(date, timeZone) {
-  const format = new Intl.DateTimeFormat('en-CA', { timeZone, hourCycle: 'h23',
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-  const parts = Object.fromEntries(format.formatToParts(date).map(({ type, value }) => [type, value]))
-  return { day: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour), time: `${parts.hour}:${parts.minute}` }
-}
+const finiteNumber = value => typeof value === 'number' && Number.isFinite(value) ? value : 0
 
-/** 她的哪一天：02:00 之前算前一天 */
-export function herDayOf(date, timeZone = 'Asia/Shanghai') {
-  const { day, hour } = zoned(date, timeZone)
-  if (hour >= HER_DAY_START_HOUR) return day
-  const [y, m, d] = day.split('-').map(Number)
-  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10)
+/**
+ * 给子进程用的最小配置（panel-jobs.js）：只留数据目录、时区和「他是谁」，联系人名单、模型、密钥都不往外带。
+ * 没有 qqbot 插件块回 null。
+ */
+export function herStateConfig(config) {
+  const plugin = activeKoishiPlugin(config)
+  if (!plugin) return null
+  const owner = configuredManualOwner(config)
+  return { plugins: { qqbot: {
+    ...(typeof plugin.dataDir === 'string' ? { dataDir: plugin.dataDir } : {}),
+    ...(validTimeZone(plugin.timeZone) ? { timeZone: validTimeZone(plugin.timeZone) } : {}),
+    contacts: owner ? [{ qq: Number(owner), tier: 'boyfriend' }] : [],
+  } } }
 }
 
 /**
@@ -141,8 +147,8 @@ export function createHerState({ root, readConfig, dataDir, soulDir, hindsightUr
     const plugin = activeKoishiPlugin(config)
     if (!plugin && !dataDir) return null
     const owner = plugin ? configuredManualOwner(config) : null
-    let timeZone = typeof plugin?.timeZone === 'string' && plugin.timeZone ? plugin.timeZone : 'Asia/Shanghai'
-    try { new Intl.DateTimeFormat('en', { timeZone }) } catch { timeZone = 'Asia/Shanghai' }
+    // 日子按 bot 的时区算（ADR 0331），不按面板进程的：两边不一样时日界会差几个小时
+    const timeZone = validTimeZone(plugin?.timeZone) ?? 'Asia/Shanghai'
     return { data: resolve(root, dataDir || plugin?.dataDir || 'runtime/bot'), soul: soul(), owner, timeZone, at: now() }
   }
 
@@ -209,12 +215,11 @@ export function createHerState({ root, readConfig, dataDir, soulDir, hindsightUr
       if (!ctx) return null
       const memoryDir = join(ctx.data, 'memory')
       let published
-      // owner-bank.json 的读法遇到坏文件会隔离它：先自己解析，坏了就当没登记
-      if (ctx.owner && peekJson(join(memoryDir, 'owner-bank.json'))) {
-        try {
-          const { readOwnerBank } = await load('packages/bot/src/memory/owner-bank.ts')
-          published = readOwnerBank(memoryDir)
-        } catch { published = undefined }
+      // owner-bank.json：bot 的 readOwnerBank 遇到坏文件会隔离它（改名），面板不替线上做这个决定——只自己解析一次，
+      // 照 readOwnerBank 的规矩认字段；解析和取值之间不再读第二次，不留「先看是好的、再读时坏了被挪走」的空当
+      const bank = ctx.owner ? peekJson(join(memoryDir, 'owner-bank.json')) : undefined
+      if (bank && typeof bank === 'object' && typeof bank.ownerBank === 'string' && typeof bank.commonBank === 'string' && typeof bank.legacyBank === 'string') {
+        published = { ownerBank: bank.ownerBank, commonBank: bank.commonBank, writtenAt: typeof bank.writtenAt === 'string' ? bank.writtenAt : undefined }
       }
       const named = published ? banks(published) : null
       const url = base()
@@ -251,10 +256,10 @@ export function createHerState({ root, readConfig, dataDir, soulDir, hindsightUr
         load('packages/bot/src/emotion/feeling-export.ts'), load('packages/bot/src/emotion/feeling-ledger.ts'),
       ])
       let feelingsExport = null
-      // readSavedFeelings 读坏文件会隔离：先确认它是能解析的 JSON。只取时刻，感受本身一条不出去
+      // readSavedFeelings 默认读坏文件会隔离：先确认它是能解析的普通小文件，再用 'throw' 读法（坏了只抛、不挪）。只取时刻，感受本身一条不出去
       if (peekJson(feelingsExportPath(ctx.soul))) {
         try {
-          const saved = readSavedFeelings(ctx.soul)
+          const saved = readSavedFeelings(ctx.soul, { invalid: 'throw' })
           if (saved) feelingsExport = freshness(saved.at, nowMs, nowMs - saved.at > FEELINGS_STALE_MS)
         } catch { feelingsExport = null }
       }
@@ -268,18 +273,17 @@ export function createHerState({ root, readConfig, dataDir, soulDir, hindsightUr
         } catch { ledger = null }
       }
       let review = null
-      const [{ reviewPath, loadReviewState }, { dayKey }] = await Promise.all([
-        load('packages/bot/src/emotion/feeling-review.ts'), load('packages/bot/src/language/speech-notes.ts'),
-      ])
-      // loadReviewState 读坏文件会隔离：先确认能解析。只出次数和时刻，记下的感受一条不出去
-      if (peekJson(reviewPath(ctx.data))) {
-        try {
-          const state = loadReviewState(ctx.data)
-          review = {
-            runsToday: state.attempts.day === dayKey(nowMs) ? count(state.attempts.n) ?? 0 : 0,
-            lastAt: state.lastReflectionAt > 0 ? iso(state.lastReflectionAt) : null,
-          }
-        } catch { review = null }
+      const { reviewPath } = await load('packages/bot/src/emotion/feeling-review.ts')
+      // loadReviewState 读坏文件会隔离：这里只自己解析一次，取 attempts 和 lastReflectionAt 两样（同 loadReviewState 的认法）。
+      // attempts.day 是 bot 按它的时区（配置的 timeZone）写的日历日，所以「今天」也按那个时区算，不按面板进程的
+      const raw = peekJson(reviewPath(ctx.data))
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        const attempts = raw.attempts && typeof raw.attempts === 'object' && typeof raw.attempts.day === 'string' ? raw.attempts : { day: '', n: 0 }
+        const last = finiteNumber(raw.lastReflectionAt)
+        review = {
+          runsToday: attempts.day === zoned(ctx.at, ctx.timeZone).day ? count(attempts.n) ?? 0 : 0,
+          lastAt: last > 0 ? iso(last) : null,
+        }
       }
       return { feelingsExport, ledger, review }
     },
@@ -410,8 +414,8 @@ export function createHerState({ root, readConfig, dataDir, soulDir, hindsightUr
   /** 日记最近写到哪天：JOURNAL.md 的标题日期、自动日记的进度、她自己写的那几篇；只要日期 */
   async function diaryLastDay(ctx) {
     const days = []
-    const [{ parseJournal, loadSelfDiary, selfDiaryPath }, { readDiaryState }, { dayKey }] = await Promise.all([
-      load('packages/bot/src/life/diary-insights.ts'), load('packages/bot/src/life/diary.ts'), load('packages/bot/src/language/speech-notes.ts'),
+    const [{ parseJournal, selfDiaryPath }, { readDiaryState }] = await Promise.all([
+      load('packages/bot/src/life/diary-insights.ts'), load('packages/bot/src/life/diary.ts'),
     ])
     const journal = join(ctx.soul, 'JOURNAL.md')
     if (ordinary(journal, LARGE)) {
@@ -424,9 +428,14 @@ export function createHerState({ root, readConfig, dataDir, soulDir, hindsightUr
         if (state) days.push(...Object.keys(state.written), ...Object.keys(state.texts))
       } catch { /* 坏了不挪（'throw' 读法），只是不算 */ }
     }
-    // loadSelfDiary 读坏文件会隔离：先确认能解析
-    if (peekJson(selfDiaryPath(ctx.data), LARGE)) {
-      try { days.push(...loadSelfDiary(ctx.data).filter(item => item.at > 0).map(item => dayKey(item.at))) } catch { /* 同上 */ }
+    // loadSelfDiary 读坏文件会隔离：只自己解析一次，同它的认法（有字的那几篇），日子按 bot 的时区算
+    const self = peekJson(selfDiaryPath(ctx.data), LARGE)
+    if (self && typeof self === 'object' && Array.isArray(self.entries)) {
+      for (const item of self.entries) {
+        if (!item || typeof item !== 'object' || typeof item.text !== 'string' || !item.text.trim()) continue
+        const at = finiteNumber(item.at)
+        if (at > 0) days.push(zoned(new Date(at), ctx.timeZone).day)
+      }
     }
     const valid = days.filter(day => DAY.test(day))
     return valid.length ? { lastDay: valid.reduce((max, day) => day > max ? day : max) } : null
@@ -454,4 +463,60 @@ function summarize(event, owner, typedOccupation) {
     ...(event.meal === true ? { meal: true } : {}),
   }
   return typedOccupation(probe, new Date(start), []) || undefined
+}
+
+const SECTIONS = ['memory', 'emotion', 'life', 'qq', 'day']
+const HER_TTL_MS = 5_000
+
+/**
+ * createHerState 的子进程版：方法名、返回值一样；没有 qqbot 插件块时直接回 null，不起子进程。
+ * @param {object} options
+ * @param {string} options.root
+ * @param {() => any} options.readConfig
+ * @param {string} [options.soulDir]
+ * @param {string} [options.hindsightUrl]
+ * @param {() => Date} [options.now]
+ * @param {typeof runPanelJob} [options.run] 测试替身
+ */
+export function createOffThreadHerState({ root, readConfig, soulDir, hindsightUrl, now = () => new Date(), run = runPanelJob }) {
+  const jobs = sharedJob({ ttl: HER_TTL_MS, now: () => now().getTime(), max: 8 })
+  const soul = () => resolve(soulDir || process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao'))
+
+  function settings() {
+    let config = null
+    try { config = herStateConfig(readConfig()) } catch { config = null }
+    return config
+  }
+
+  /** 一次子进程算几块；某一块失败只让那一块 503 */
+  async function sections(names, date) {
+    const config = settings()
+    if (!config) return null
+    const timeZone = config.plugins.qqbot.timeZone ?? 'Asia/Shanghai'
+    const at = now()
+    const key = `${names.join(',')}|${date ?? ''}|${JSON.stringify(config)}|${soul()}`
+    return jobs(key, () => run('her', { root, config, soulDir: soul(), hindsightUrl, now: at.getTime(), sections: names, ...(date === undefined ? {} : { date }) },
+      { root, timeZone }))
+  }
+
+  const pick = async (name, promise) => {
+    const all = await promise
+    if (all === null) return null
+    const item = all?.[name]
+    if (!item || item.failed || !('value' in item)) throw Error('her_section_failed')
+    return item.value
+  }
+
+  return {
+    memoryHealth: () => pick('memory', sections(SECTIONS)),
+    emotionHealth: () => pick('emotion', sections(SECTIONS)),
+    lifeHealth: () => pick('life', sections(SECTIONS)),
+    qqHealth: () => pick('qq', sections(SECTIONS)),
+    async herDay({ date } = {}) {
+      if (date === undefined) return pick('day', sections(SECTIONS))
+      // 日期不对不起子进程（和 createHerState.herDay 一样回 null）
+      if (typeof date !== 'string' || !DAY.test(date)) return null
+      return pick('day', sections(['day'], date))
+    },
+  }
 }
