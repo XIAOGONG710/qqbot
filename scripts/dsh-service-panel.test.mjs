@@ -148,6 +148,7 @@ test('client registers the same bridge console in DSH settings and the sidebar',
 
 test('the DSH chat form commits only after the operator accepts the server preview', async () => {
     let panel, plugin, accepted = false;
+    let theme;
     const requests = [], previews = [];
     const account = { id: '100', name: '测试账号' };
     const recipient = { key: 'private:200', target: '200', kind: 'private', name: '测试收件人' };
@@ -163,6 +164,7 @@ test('the DSH chat form commits only after the operator accepts the server previ
         useId: () => 'test',
     };
     runInNewContext(source, {
+        document: { getElementById: () => theme ?? null, createElement: () => ({}), head: { appendChild: style => { theme = style; } } },
         window: {
             __ModuleLoader__: { load(bundle) { plugin = bundle.factory(() => React); } },
             confirm(message) { previews.push(message); return accepted; },
@@ -179,11 +181,17 @@ test('the DSH chat form commits only after the operator accepts the server previ
     const find = (node, predicate) => node && typeof node === 'object' &&
         (predicate(node) ? node : node.children?.map(child => find(child, predicate)).find(Boolean));
     states = [{ health: {} }, '', false, false, '', 'chat'];
-    const chat = find(panel(), node => node.type?.name === 'Chat');
+    const root = panel();
+    assert.equal(theme.id, 'qqb-style');
+    assert.match(theme.textContent, /\.qqb-hero.*radial-gradient/s);
+    assert.match(theme.textContent, /\.qqb-bubble\{/);
+    assert.ok(find(root, node => node.props?.className === 'qqb-hero'));
+    const chat = find(root, node => node.type?.name === 'Chat');
     states = [{ account, sessions: [recipient], sendKey: recipient.key, sendPrefix: '【本人手动代发】' }, recipient.key, '', 0, false];
     const conversation = find(chat.type(chat.props), node => node.type?.name === 'Conversation');
     states = [30, null, '', draft, false, 0];
     const { props: form } = find(conversation.type(conversation.props), node => node.type === 'form');
+    assert.equal(form.className, 'qqb-composer');
     await form.onSubmit({ preventDefault() {} });
     assert.deepEqual(requests.map(([operation]) => operation), ['prepare']);
     accepted = true;
