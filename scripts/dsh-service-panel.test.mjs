@@ -7,9 +7,36 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { createController } from '../dsh-plugins/dsh-qqbot-services/controller.js';
-import { allowedRequest, createHandler, summarizeWatchdog } from '../dsh-plugins/dsh-qqbot-services/index.js';
+import { allowedRequest, createHandler, summarizeWatchdog, summarizeConnectionConfig } from '../dsh-plugins/dsh-qqbot-services/index.js';
 
 const health = { napcat: false, hindsight: false, koishi: false, koishiListening: false, maintenance: false, watchdog: true };
+
+test('connection and backup panels read only projected data through the DSH browser session', async () => {
+    const config = { plugins: { 'qqbot:local': {
+        contacts: [{ qq: 200, name: '测试联系人', tier: 'boyfriend', intro: 'private-intro' }],
+        groupChat: 'read', proactive: 'dryRun', oneLife: 'off', token: 'private-token',
+    } } };
+    const summary = summarizeConnectionConfig(config);
+    assert.deepEqual(summary, { contacts: [{ qq: 200, name: '测试联系人', tier: 'boyfriend' }],
+        modes: { groupChat: 'read', proactive: 'dryRun', oneLife: 'off' } });
+    assert.equal(summarizeConnectionConfig({ plugins: { ...config.plugins, qqbot: {} } }), null);
+    const details = async kind => kind === 'access' ? summary : [{ name: '2026-11-25', complete: true }];
+    const auth = { authorizeIndex: req => req.headers.cookie === 'test-session=owner' };
+    const handler = createHandler({}, () => [], undefined, auth, Date.now, details);
+    const call = async (method, route, headers = {}) => {
+        let status, payload;
+        await handler({
+            method, url: '/api/qqbot-services/' + route, socket: { remoteAddress: '127.0.0.1' },
+            headers: { host: '127.0.0.1', ...headers },
+        }, { writeHead(code) { status = code; }, end(value) { payload = JSON.parse(value); } });
+        return { status, payload };
+    };
+    assert.equal((await call('GET', 'details/access')).status, 403);
+    const headers = { cookie: 'test-session=owner', 'x-qqbot-service-panel': '1' };
+    assert.deepEqual(await call('GET', 'details/access', headers), { status: 200, payload: summary });
+    assert.deepEqual((await call('GET', 'details/backups', headers)).payload, [{ name: '2026-11-25', complete: true }]);
+    assert.equal((await call('POST', 'details/access', headers)).status, 404);
+});
 
 async function settled(controller) {
     for (let n = 0; n < 30; n++) {

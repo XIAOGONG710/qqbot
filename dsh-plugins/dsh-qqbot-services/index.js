@@ -4,10 +4,10 @@ import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, real
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { createController } from './controller.js'
-import { configuredManualOwner, createChat, createNapCatManualSender, createNapCatReader } from './chat.js'
+import { activeKoishiPlugin, configuredManualOwner, createChat, createNapCatManualSender, createNapCatReader } from './chat.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -105,7 +105,27 @@ export function diagnosticReport({ health, checkedAt, operation, events }) {
   return lines.join('\n')
 }
 
-export function createHandler(controller, events, chat, connection, now = Date.now) {
+const tiers = ['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger']
+const modeValues = {
+  groupChat: ['off', 'read', 'dryRun', 'on'],
+  proactive: ['off', 'dryRun', 'on'],
+  oneLife: ['off', 'read', 'export', 'desktop'],
+}
+
+export function summarizeConnectionConfig(config) {
+  const plugin = activeKoishiPlugin(config)
+  if (!plugin) return null
+  const contacts = (Array.isArray(plugin.contacts) ? plugin.contacts : []).flatMap(contact => {
+    if (!Number.isSafeInteger(contact?.qq) || contact.qq <= 0 || !tiers.includes(contact.tier)) return []
+    const name = typeof contact.name === 'string' ? contact.name.trim().slice(0, 80) : ''
+    return [{ qq: contact.qq, name, tier: contact.tier }]
+  })
+  const modes = Object.fromEntries(Object.entries(modeValues).map(([key, values]) =>
+    [key, values.includes(plugin[key]) ? plugin[key] : null]))
+  return { contacts, modes }
+}
+
+export function createHandler(controller, events, chat, connection, now = Date.now, details) {
   const confirmations = new Map()
   return async (req, res) => {
     const send = (status, value) => {
@@ -114,6 +134,12 @@ export function createHandler(controller, events, chat, connection, now = Date.n
     }
     if (!allowedRequest(req) || !authenticatedBrowser(connection, req)) return send(403, { error: 'forbidden' })
     const path = (req.url ?? '').split('?')[0]
+    if (details && req.method === 'GET' && [`${prefix}/details/access`, `${prefix}/details/backups`].includes(path)) {
+      try {
+        const data = await details(path.split('/').at(-1))
+        return data === null ? send(503, { error: 'details_unavailable' }) : send(200, data)
+      } catch { return send(503, { error: 'details_unavailable' }) }
+    }
     if (chat && path.startsWith(`${prefix}/chat/`)) {
       if (req.method !== 'POST') return send(403, { error: 'forbidden' })
       const query = new URLSearchParams((req.url ?? '').split('?')[1])
@@ -206,9 +232,16 @@ export function apply(ctx, config = {}) {
   const events = () => summarizeWatchdog(tail(join(root, 'runtime', 'services-watchdog.log')))
   const configPath = resolve(root, process.env.QQBOT_KOISHI_DIR || 'runtime/koishi', 'koishi.yml')
   const require = createRequire(join(root, 'package.json'))
-  const manualOwner = () => {
-    try { return configuredManualOwner(require('js-yaml').load(readFileSync(configPath, 'utf8'))) }
+  const readKoishiConfig = () => {
+    try { return require('js-yaml').load(readFileSync(configPath, 'utf8')) }
     catch { return null }
+  }
+  const manualOwner = () => configuredManualOwner(readKoishiConfig())
+  const details = async kind => {
+    if (kind === 'access') return summarizeConnectionConfig(readKoishiConfig())
+    const { backupEntries } = await import(pathToFileURL(join(root, 'scripts', 'backup-state.mjs')).href)
+    return backupEntries(join(root, 'runtime', 'backups'))
+      .sort((a, b) => b.name.localeCompare(a.name)).slice(0, 14)
   }
   const token = process.env.QQBOT_ONEBOT_TOKEN
   const ownerId = manualOwner()
@@ -220,6 +253,8 @@ export function apply(ctx, config = {}) {
       return send(message)
     },
   })
-  const unregister = ctx.webServer.register({ kind: 'prefix', path: prefix, handler: createHandler(controller, events, chat, ctx.connection) })
+  const unregister = ctx.webServer.register({
+    kind: 'prefix', path: prefix, handler: createHandler(controller, events, chat, ctx.connection, Date.now, details),
+  })
   ctx.on('dispose', () => { controller.dispose(); unregister() })
 }

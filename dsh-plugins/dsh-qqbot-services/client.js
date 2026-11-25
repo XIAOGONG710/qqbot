@@ -298,6 +298,44 @@ window.__ModuleLoader__.load({
           notice && h('p', { className: 'qqb-note', role: 'status' }, notice)))
     }
 
+    const tierLabels = { boyfriend: '本人', bestie: '挚友', girl_friend: '女性朋友', known: '熟人', classmate: '同学', stranger: '陌生人' }
+    const modeLabels = { off: '关闭', read: '只读', dryRun: '只演练', on: '开启', export: '导出状态', desktop: '桌面联动' }
+
+    function DetailsCard({ kind }) {
+      const [data, setData] = React.useState(undefined)
+      const [revision, setRevision] = React.useState(0)
+      React.useEffect(() => {
+        const controller = new AbortController()
+        setData(undefined)
+        fetch(`${api}/details/${kind}`, { cache: 'no-store', signal: controller.signal })
+          .then(response => {
+            if (!response.ok) throw Error()
+            return response.json()
+          }).then(value => { if (!controller.signal.aborted) setData(value) })
+          .catch(() => { if (!controller.signal.aborted) setData(null) })
+        return () => controller.abort()
+      }, [kind, revision])
+      const access = kind === 'access'
+      return h('section', { className: 'qqb-card' },
+        h('div', { className: 'qqb-actions' },
+          h('h3', { className: 'qqb-title' }, access ? 'QQ 接入配置' : '备份清单'),
+          h('button', { className: 'qqb-btn', type: 'button', onClick: () => setRevision(value => value + 1) }, '刷新')),
+        data === undefined ? h('p', { className: 'qqb-note', role: 'status' }, '正在读取…')
+          : data === null ? h('p', { className: 'qqb-err', role: 'status' }, '暂时无法读取。')
+          : access ? h('div', null,
+            ...Object.entries({ groupChat: '群聊', proactive: '主动消息', oneLife: '桌面联动' }).map(([key, label]) =>
+              h('div', { className: 'qqb-kv', key }, h('span', null, label), h('span', null, modeLabels[data.modes[key]] ?? '配置未显式指定'))),
+            h('h4', null, '私聊名单'),
+            data.contacts.length ? data.contacts.map((contact, index) =>
+              h('div', { className: 'qqb-kv', key: `${contact.qq}-${index}` },
+                h('span', null, contact.name || '未命名', ' · ', String(contact.qq)), h('span', null, tierLabels[contact.tier])))
+              : h('p', { className: 'qqb-note' }, '配置里没有联系人。'))
+          : data.length ? data.map(backup => h('div', { className: 'qqb-kv', key: backup.name },
+              h('span', null, backup.name), h('span', null, backup.complete ? '完整' : '未完成',
+                Number.isFinite(backup.stateBytes) ? ` · 状态包 ${(backup.stateBytes / 1048576).toFixed(1)} MB` : '')))
+            : h('p', { className: 'qqb-note' }, '暂无备份。'))
+    }
+
     function Panel() {
       ensureStyle()
       const [state, setState] = React.useState(null)
@@ -398,8 +436,10 @@ window.__ModuleLoader__.load({
         section('link', h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '服务连接'),
           ...['napcat', 'koishi', 'hindsight'].map(service => h('div', { key: service, className: 'qqb-kv' },
             h('span', null, names[service]),
-            h('span', null, health?.ports?.[service] ? `${health.ports[service]} · ${summary(health, service)}` : summary(health, service)))))),
+            h('span', null, health?.ports?.[service] ? `${health.ports[service]} · ${summary(health, service)}` : summary(health, service))))),
+          tab === 'link' && h(DetailsCard, { kind: 'access' })),
         section('sys',
+          tab === 'sys' && h(DetailsCard, { kind: 'backups' }),
           state?.diagnostic && h('section', { className: 'qqb-card', 'aria-label': '链路诊断' },
             h('div', { className: 'qqb-actions' }, h('h3', { className: 'qqb-title' }, '链路诊断'),
               h('button', { className: 'qqb-btn', onClick: copyDiagnostic }, '复制诊断')),

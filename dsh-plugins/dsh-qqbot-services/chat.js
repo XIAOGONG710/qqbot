@@ -16,10 +16,14 @@ function textOf(message) {
   }).join('')
 }
 
-export function configuredManualOwner(config) {
+export function activeKoishiPlugin(config) {
   const plugins = Object.entries(config?.plugins ?? {}).filter(([key]) => /^qqbot(?::[^:]+)?$/.test(key))
-  if (plugins.length !== 1) return null
-  const owners = list(plugins[0][1]?.contacts).filter(contact => contact?.tier === 'boyfriend')
+  const plugin = plugins.length === 1 ? plugins[0][1] : null
+  return plugin && typeof plugin === 'object' && !Array.isArray(plugin) ? plugin : null
+}
+
+export function configuredManualOwner(config) {
+  const owners = list(activeKoishiPlugin(config)?.contacts).filter(contact => contact?.tier === 'boyfriend')
   return owners.length === 1 ? id(owners[0].qq) : null
 }
 
