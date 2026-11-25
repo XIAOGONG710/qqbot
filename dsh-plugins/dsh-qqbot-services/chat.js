@@ -1,4 +1,5 @@
-import manualOrigin from './manual-origin.json' with { type: 'json' }
+// 本人代发的前缀归 QQ 核心定义（它据此把代发挡在她的聊天账外），插件引用核心那一份
+import manualOrigin from '../../packages/bot/src/platform/desktop-manual-origin.json' with { type: 'json' }
 
 const id = value => (typeof value === 'string' || typeof value === 'number') &&
   /^\d{1,16}$/.test(String(value)) && Number.isSafeInteger(Number(value)) && Number(value) > 0

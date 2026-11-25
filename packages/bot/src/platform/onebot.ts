@@ -11,7 +11,8 @@
 import { faceText, textToSegments } from '.././language/qq-faces.ts';
 import { logBody } from './sensitive.ts';
 import { FORWARD_TEXT, fileText, shareText } from '.././proactive/shares.ts';
-import manualOrigin from '../../../../dsh-plugins/dsh-qqbot-services/manual-origin.json' with { type: 'json' };
+// 桌面「本人代发」的前缀（DSH 服务面板 chat.js 引用同一份）：带这个前缀、由她账号发出的消息不进她的聊天账
+import manualOrigin from './desktop-manual-origin.json' with { type: 'json' };
 
 export interface Segment {
     type: string;
