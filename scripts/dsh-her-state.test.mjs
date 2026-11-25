@@ -299,3 +299,26 @@ test('A 层一个生活：桌面回合只给条数和最近一次的时刻，原
     assertNothingLeaks(life)
   } finally { env.cleanup() }
 })
+
+test('QQ 那边：心跳只给时刻和提交号；主动消息按她的一天（02:00 换天）数今天发了几条，不读正文、不给 QQ 号', async () => {
+  const env = setup()
+  try {
+    const at = minutes => minutesBefore(NIGHT, minutes).toISOString()
+    writeFileSync(join(env.data, 'heartbeat.json'), JSON.stringify({ at: at(5), pid: 4242, ref: 'abc1234', startedAt: at(600), connectedAt: at(590), lastMessageAt: at(30), note: 'SECRET_HEARTBEAT' }))
+    mkdirSync(join(env.data, 'proactive'), { recursive: true })
+    writeFileSync(join(env.data, 'proactive', `${OWNER}-boyfriend.json`), JSON.stringify({ records: [
+      { id: 'a', at: '2026-11-25T03:00:00.000Z', result: 'sent', text: 'SECRET_PROACTIVE_A' }, // 她那边 11:00，今天
+      { id: 'b', at: '2026-11-25T10:00:00.000Z', result: 'skipped', text: 'SECRET_PROACTIVE_B' }, // 18:00，今天，没发
+      { id: 'c', at: '2026-11-25T17:00:00.000Z', result: 'sent', text: 'SECRET_PROACTIVE_C' }, // 11-26 01:00，02:00 之前还算 11-25
+      { id: 'd', at: '2026-11-24T05:00:00.000Z', result: 'sent', text: 'SECRET_PROACTIVE_D' }, // 前一天
+      { id: 'e', at: '2026-11-25T18:30:00.000Z', result: 'sent', text: 'SECRET_PROACTIVE_E' }, // 还没到
+    ] }))
+    const qq = await make(env).qqHealth()
+    assert.deepEqual(qq.heartbeat, { at: at(5), ageMinutes: 5, stale: false, ref: 'abc1234', startedAt: at(600), connectedAt: at(590), lastMessageAt: at(30) })
+    assert.deepEqual(qq.proactive, { sentToday: 2, triedToday: 3, lastSentAt: '2026-11-25T17:00:00.000Z' })
+    assertNothingLeaks(qq)
+    assert.doesNotMatch(JSON.stringify(qq), new RegExp(`(^|\\D)${OWNER}(\\D|$)`), '不给 QQ 号（完整的数字，不算 abc1234 里那段）')
+    const stale = await make(env, { now: () => new Date(NIGHT.getTime() + 20 * 60_000) }).qqHealth()
+    assert.equal(stale.heartbeat.stale, true, '心跳 25 分钟没更新')
+  } finally { env.cleanup() }
+})

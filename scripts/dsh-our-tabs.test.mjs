@@ -88,6 +88,8 @@ test('她的状态 shows counts, freshness badges and her day; unavailable and e
             own: null, episodes: { pending: 2, requeued: 1, lastWrittenAt: null }, audit: null, reconcile: { recorded: false } }, error: '' },
         { data: { feelingsExport: { at: '2026-11-26T01:00:00.000Z', ageMinutes: 300, stale: true }, ledger: { rows: 41, lastAt: null }, review: null }, error: '' },
         { data: null, error: 'her_unavailable' },
+        { data: { heartbeat: { at: '2026-11-26T01:55:00.000Z', ageMinutes: 5, stale: false, ref: 'abc1234', connectedAt: null, lastMessageAt: null },
+            proactive: { sentToday: 2, triedToday: 3, lastSentAt: null } }, error: '' },
         '',
         { data: { date: '2026-11-26', today: '2026-11-26', events: [{ time: '08:10', kind: 'eat', summary: '吃了早饭' }],
             days: [{ date: '2026-11-26', count: 1 }, { date: '2026-11-25', count: 4 }] }, error: '' },
@@ -98,6 +100,9 @@ test('她的状态 shows counts, freshness badges and her day; unavailable and e
     assert.match(all, /连不上/);
     assert.match(all, /待确认 2 · 重排过 1 次/);
     assert.match(all, /41 条/);
+    assert.match(all, /QQ 那边/);
+    assert.match(all, /发了 2 条（试了 3 次）/);
+    assert.match(all, /abc1234/);
     assert.match(all, /过期/);
     assert.match(all, /暂时读不到/);
     assert.match(all, /08:10/);

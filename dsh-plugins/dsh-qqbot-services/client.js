@@ -972,6 +972,7 @@ window.__ModuleLoader__.load({
       const memory = useJson(`${api}/her/memory`, revision)
       const emotion = useJson(`${api}/her/emotion`, revision)
       const life = useJson(`${api}/her/life`, revision)
+      const qq = useJson(`${api}/her/qq`, revision)
       const off = '读不到插件配置，这一块没有数。'
       return h(React.Fragment, null,
         h('section', { className: 'qqb-card' },
@@ -1006,7 +1007,15 @@ window.__ModuleLoader__.load({
               kv('NOW', ...freshness(data.nowExport)),
               // 一个生活（ADR 0347 第 3 层）：接口回了才显示，只有回合数和最近一次的时刻
               data.desktop !== undefined && kv('电脑上（近 14 天）',
-                data.desktop ? `电脑上和他聊了 ${count(data.desktop.turns)} 回，最近一次 ${when(data.desktop.lastAt)}` : '没有记录')), off))),
+                data.desktop ? `电脑上和他聊了 ${count(data.desktop.turns)} 回，最近一次 ${when(data.desktop.lastAt)}` : '没有记录')), off)),
+          // QQ 那边：bot 的心跳（只有时刻）和今天主动找他的次数（只有数）
+          h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, 'QQ 那边'),
+            loaded(qq, data => h('div', null,
+              kv('心跳', ...(data.heartbeat ? freshness(data.heartbeat) : ['没有心跳文件'])),
+              data.heartbeat && kv('代码版本', data.heartbeat.ref ?? '—'),
+              data.heartbeat && kv('最近连上 NapCat', when(data.heartbeat.connectedAt)),
+              data.heartbeat && kv('最近收到他的消息', when(data.heartbeat.lastMessageAt)),
+              kv('今天主动找他', data.proactive ? `发了 ${count(data.proactive.sentToday)} 条（试了 ${count(data.proactive.triedToday)} 次）· 上次 ${when(data.proactive.lastSentAt)}` : '没有记录')), off))),
         h(HerDay, { revision }))
     }
 

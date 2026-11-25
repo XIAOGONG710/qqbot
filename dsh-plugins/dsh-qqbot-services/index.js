@@ -345,6 +345,7 @@ export function createHandler(controller, events, chat, connection, now = Date.n
         const result = kind === 'memory' ? await companion.her.memoryHealth()
           : kind === 'emotion' ? await companion.her.emotionHealth()
           : kind === 'life' ? await companion.her.lifeHealth()
+          : kind === 'qq' ? await companion.her.qqHealth()
           : kind === 'day' ? await companion.her.herDay(query.has('date') ? { date: query.get('date') } : {})
           : undefined
         if (result === undefined) return send(404, { error: 'not_found' })

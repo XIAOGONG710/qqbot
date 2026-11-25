@@ -331,6 +331,45 @@ export function createHerState({ root, readConfig, dataDir, soulDir, hindsightUr
       return { world: world ? { events: world.length, latestDay } : null, timeline, diary, selfExport, nowExport, desktop }
     },
 
+    /**
+     * QQ 那边还在不在转（platform/heartbeat.ts 的 heartbeat.json，只有时刻、进程号、提交号）和今天主动找了他几次
+     * （proactive/<他的QQ>-boyfriend.json 的 records，只数 at 和 result，不读正文，也不给 QQ 号）。
+     */
+    async qqHealth() {
+      const ctx = context()
+      if (!ctx) return null
+      const nowMs = ctx.at.getTime()
+      let heartbeat = null
+      const beat = peekJson(join(ctx.data, 'heartbeat.json'))
+      if (beat && typeof beat.at === 'string' && Number.isFinite(Date.parse(beat.at))) {
+        const { HEARTBEAT_STALE_MS } = await load('packages/bot/src/platform/heartbeat.ts')
+        const at = Date.parse(beat.at)
+        const time = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? iso(Date.parse(value)) : null
+        heartbeat = {
+          ...freshness(at, nowMs, nowMs - at > HEARTBEAT_STALE_MS),
+          ref: typeof beat.ref === 'string' && /^[0-9a-f]{7,40}$|^unknown$/.test(beat.ref) ? beat.ref : null,
+          startedAt: time(beat.startedAt), connectedAt: time(beat.connectedAt), lastMessageAt: time(beat.lastMessageAt),
+        }
+      }
+      let proactive = null
+      const file = ctx.owner ? peekJson(join(ctx.data, 'proactive', `${ctx.owner}-boyfriend.json`), LARGE) : null
+      if (file && Array.isArray(file.records)) {
+        const today = herDayOf(ctx.at, ctx.timeZone)
+        let sentToday = 0, triedToday = 0, lastSentAt = -Infinity
+        for (const record of file.records) {
+          const at = typeof record?.at === 'string' ? Date.parse(record.at) : NaN
+          if (!Number.isFinite(at) || at > nowMs) continue
+          const sent = record.result === 'sent'
+          if (sent) lastSentAt = Math.max(lastSentAt, at)
+          if (herDayOf(new Date(at), ctx.timeZone) !== today) continue
+          triedToday++
+          if (sent) sentToday++
+        }
+        proactive = { sentToday, triedToday, lastSentAt: Number.isFinite(lastSentAt) ? iso(lastSentAt) : null }
+      }
+      return { heartbeat, proactive }
+    },
+
     async herDay({ date } = {}) {
       const ctx = context()
       if (!ctx) return null
