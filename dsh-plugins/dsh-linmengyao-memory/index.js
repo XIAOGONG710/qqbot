@@ -854,9 +854,11 @@ async function recallAll(cfg, query, currentUserText, checkImportant) {
   const extra = supplement ? settled.pop() : undefined
   const seen = new Set()
   const out = []
+  let important = extra?.status === 'rejected' ? 'failed' : extra ? 'no-match' : 'not-queried'
   if (extra?.status === 'fulfilled') {
     const item = extra.value.find(candidate => isOwnImportant(candidate) && isRelated(candidate))
     if (item) {
+      important = 'matched'
       seen.add(item.id)
       out.push(item)
     }
@@ -872,13 +874,14 @@ async function recallAll(cfg, query, currentUserText, checkImportant) {
     }
   }
   // 与 QQ 一致的五档记忆：旧事只在明确实体线索下复活；不再用二字词重叠造成误召回。
-  return out.flatMap((item) => {
+  const items = out.flatMap((item) => {
     const clarity = desktopMemoryClarity(item, query)
     if (clarity === 'forgotten') return []
     const text = withoutMemoryMarks(item.text)
     const prefix = clarity === 'vague' ? '（记不太清了）' : clarity === 'recognized' ? '（他一提才想起来，记不太清了）' : ''
     return [{ ...item, text: `${prefix}${text}`, clarity }]
   })
+  return { items, important, failedBanks: settled.filter(result => result.status === 'rejected').length }
 }
 
 let personaCache = { path: '', at: 0, text: '' }
@@ -1290,7 +1293,7 @@ export function apply(ctx, config = {}) {
             try { if (touchPresence(cfg)) log(cfg, '在场：续了桌面租约') } catch (e) { log(cfg, `presence error ${e}`) }
           }
           if (query) {
-            const all = await recallAll(cfg, query, cache.user, messages.at(-1)?.role === 'user')
+            const { items: all, important, failedBanks } = await recallAll(cfg, query, cache.user, messages.at(-1)?.role === 'user')
             if (version !== inputVersion || !privateTurn()) return next()
             // 第 5 层：她自己的口气 + 多久以前（ADR 0347）。原来原样贴「林梦瑶……」，
             // 她说那读起来像在翻别人的日记；这里只换人称和加远近，事实一个字不加。
@@ -1337,9 +1340,9 @@ export function apply(ctx, config = {}) {
               cache.bridge,
             ].filter(Boolean).join('\n\n')
             cache.firstStep = false
-            log(cfg, `recall q=${query.slice(0, 40)} items=${all.length} picked=${cache.text.length}chars`)
+            log(cfg, `recall items=${all.length} selected=${Math.min(cfg.pick, all.length)} memoryChars=${text.length} important=${important} failedBanks=${failedBanks}`)
           }
-        } catch (e) { log(cfg, `recall error ${e}`) }
+        } catch { log(cfg, 'recall error') }
         return next()
       }))
 

@@ -45,7 +45,7 @@ profile：`%USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml`，在末尾加�
 
 ## 装完怎么验
 
-1. `~/.dsh/linmengyao-memory.log` 里出现 `apply presets=` 和 `agent created <id> preset=<名字>`；之后每轮有 `recall q=… items=N picked=Mchars`。
+1. `~/.dsh/linmengyao-memory.log` 里出现 `apply presets=` 和 `agent created <id> preset=<名字>`；完成召回后会记录候选数、选择条数、记忆段字符数、重要记忆补查状态和失败库数。查询原话、记忆正文和库名不写入该条诊断。
 2. 问一句只有账里才有的事（例如「相机基金攒到多少了」），看它会不会自己带出 3250。
 3. `runtime/bot-shadow/memory/desktop-recent.jsonl` 会不会开始追加——那说明桌面的话能进 QQ 侧的提示词（`packages/bot/src/platform/app.ts:1873`，需要 `crossRecent: true` 且 `contact.qq === deviceOwner.qq`）。
 4. 检查 `STATE.json`/`NOW.md` 是否新鲜：过期（30 分钟）时插件不注入，日志里会写「过期」——QQ 没在跑时这是正常的，别当成插件坏了。
