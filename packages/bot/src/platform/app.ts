@@ -657,8 +657,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // promiseKeeper 要等聊天记录打开后才能建；生活执行器先拿稳定代理，真正第一次推进前再接上。
     let loadAppointments: ((from: Date, to: Date) => readonly Appointment[]) | undefined;
     let appointmentsAvailable = () => true;
-    // 排一轮生活时约定来源每人只读一次（promises.reading，只为快；结果和不包一样）
-    let readingAppointments: <T>(work: () => T) => T = work => work();
+    let readingAppointments: <T>(work: () => T) => T = work => work(); // 排一轮生活时约定来源每人只读一次（promises.reading，只为快；结果和不包一样）
     let appointmentPlanningPaused = false;
     // 作息冲突开着时，她在电脑上说的「睡了」也算（desktop.chat()，30 秒刷新一次；关着是空的，和原来一样）
     const bedtimesSince = (schedule: Schedule, since: number) => (loadChat

@@ -53,7 +53,7 @@ describe('翻回去看自己的日记：DSH 那边（journal_read）', () => {
         const handlers: Record<string, (...args: unknown[]) => unknown> = {};
         const agentCtx = {
             effect: (fn: () => unknown) => fn(),
-            on: () => () => undefined,
+            on: (name: string, fn: (...args: unknown[]) => unknown) => { handlers[name] = fn; return () => undefined; },
             get: (key: string) => (key === 'tools' ? { register: (tool: Tool) => { tools[tool.name] = tool; return () => undefined; } } : key === 'systemPrompt' ? { context: () => () => undefined } : undefined),
         };
         const rootCtx = {
@@ -64,8 +64,11 @@ describe('翻回去看自己的日记：DSH 那边（journal_read）', () => {
             soulFile: f('SOUL.md'), ledgerFile: f('LEDGER.md'), journalFile: f('JOURNAL.md'), privateFile: f('PRIVATE.dat'), wishesFile: f('WISHES.md'),
             interestsFile: f('INTERESTS.md'), outboxFile: f('OUTBOX.jsonl'), offlineFile: f('OFFLINE.json'), nowFile: f('NOW.md'), storyFile: f('STORY.md'),
             ratingFile: f('RATINGS.json'), insightsFile: f('INSIGHTS.json'), feelingsFile: f('FEELINGS.json'), logFile: f('plugin.log'),
+            // 55736af0 起私密记忆的工具只给核实过的主人私聊：会话在名单里、这一轮是他本人发的（同 soul-plugin.test 的 claim）
+            ownerPrivateSessions: ['a1'],
         });
         handlers.created!({ agent: { id: 'a1', ctx: agentCtx } });
+        handlers['agent/inbox/claimed']!({ message: { source: { kind: 'user', rpcId: 'test-rpc' } } });
         assert.ok(tools.journal_read, '注册了 journal_read');
         writeFileSync(f('JOURNAL.md'), JOURNAL);
         await tools.journal_read!.execute({});
