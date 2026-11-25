@@ -155,3 +155,33 @@ test('the LAN listener exposes no owner routes and media stays scoped to room me
   room.close()
   assert.equal((await call(`room/guest/media/${id}`, { method: 'GET', headers })).status, 404)
 })
+
+test('a guest credential expires eight hours after joining', async () => {
+  let now = 1_000
+  const room = createCompanionRoom({ now: () => now })
+  const guest = room.join(room.invite(), '来宾甲')
+  now += 8 * 60 * 60_000 - 1
+  assert.notEqual(room.view(guest), null)
+  now += 1
+  assert.equal(room.view(guest), null)
+  assert.equal(await room.post(guest, '过期以后想说话'), 403)
+  const fresh = room.join(room.invite(), '来宾甲')
+  assert.ok(fresh)
+  assert.notEqual(fresh, guest)
+  assert.deepEqual(room.view(fresh), [])
+})
+
+test('room media never reaches the room model, only the placeholder text', async () => {
+  const turns = []
+  let now = 1_000
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex')
+  const room = createCompanionRoom({ now: () => now, sniffMime: () => 'image/png', reply: turn => { turns.push(turn); return '' } })
+  const guest = room.join(room.invite(), '来宾甲')
+  assert.equal(await room.postMedia(guest, png), 200)
+  now += 2_000
+  await room.post(guest, '@林梦瑶 看这张')
+  assert.equal(turns.length, 1)
+  for (const item of turns[0].messages) assert.deepEqual(Object.keys(item).sort(), ['name', 'role', 'text'])
+  assert.doesNotMatch(JSON.stringify(turns[0].messages), /89504e47/)
+  assert.match(JSON.stringify(turns[0].messages), /房间图片/)
+})

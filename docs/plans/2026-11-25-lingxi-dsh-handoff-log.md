@@ -247,4 +247,44 @@
 - 真实的 `origin` 远端（GitHub）没有参与测试：所有用例都在临时目录的本地裸仓库里跑，避免测试联网。
 - `fetch` 会更新本地的 `FETCH_HEAD` 与 `refs/remotes/origin/main`，这是检查远端差异的必要代价；面板不做任何本地分支移动。
 
+## 第 5 批：会客室跨设备与房间媒体（2026-11-25）
+
+### 数据源
+
+- `dsh-plugins/dsh-qqbot-services/companion-room.js`：邀请 15 分钟一次性、来宾凭证 8 小时、每条 500 字、发言与上传各 1 秒一次、附件最多 16 个且单个 512 KB、只收 PNG／JPEG／WebP／WAV／MP3／Ogg／WebM
+- `dsh-plugins/dsh-qqbot-services/index.js` 的 `createLanGuestHandler`：只放行加密连接、`Host` 必须等于配置的 origin、带 `forwarded`／`x-forwarded-*` 一律 403、`sec-fetch-site: cross-site` 与跨站 `Origin` 一律 403、POST 还要求 `x-qqbot-service-panel: 1`
+- `dsh-plugins/dsh-qqbot-services/room-guest.js`：来宾页前端，失败提示分别是 `room-guest.js:97`（超过 512 KB）、`room-guest.js:91`（邀请无效／已用／房间满）、`room-guest.js:71`（权限结束）、`room-guest.js:106`（附件未送达）、`room-guest.js:31`（媒体加载失败可重试）
+- `scripts/dsh-room-https.test.mjs`（新）：真 HTTPS 监听 + 测试证书，客户端按 `192.168.50.5` 校验证书，用来模拟第二台设备
+- `scripts/fixtures/room-test/`（新）：只给测试用的自签证书与私钥，SAN 含 `192.168.50.5` 与 `127.0.0.1`，有效期十年；私钥是公开的合成资料，跟真实域名和证书无关
+
+### 验收了什么
+
+| 项 | 做法 | 结果 |
+| --- | --- | --- |
+| 第二设备路径 | 起真 `https` 监听，客户端用证书当 CA 校验 `192.168.50.5`，再走房间页、邀请兑换、发言、读消息 | 通过 |
+| 页面头部 | 断言房间页与脚本的 `content-security-policy`（`frame-ancestors 'none'`）、`x-content-type-options: nosniff`、`referrer-policy: no-referrer` | 通过 |
+| 伪造来源 | 伪造 `Host`、带 `x-forwarded-for`、跨站 `Origin` 全部 403 | 通过 |
+| 房主路由 | 来宾监听上访问 `room/owner/invite`、`details/access` 一律 404，房主路由只挂在 DSH 宿主 | 通过 |
+| 图片与语音 | 上传 PNG 得 `image`、读回字节一致，上传 Ogg 得 `audio`、`content-type: audio/ogg` | 通过 |
+| 上传限制 | 文本内容 415、超过 512 KB 413、`content-type` 不是 `application/octet-stream` 415 | 通过 |
+| 附件隔离 | 另一个来宾读不到上一批的媒体，房间关闭后原来宾也读不到 | 通过 |
+| 来宾到期 | 加入后 8 小时差 1 毫秒仍可用，过期后读消息与发言都被拒；重新邀请得到新凭证且看不到旧内容 | 通过 |
+| 入场前内容 | 新来宾看不到旧观众的消息与附件，模型回复也只用新观众的上下文（既有用例） | 通过 |
+| 附件不进模型 | 发图片再叫她的那一轮，模型上下文只有 `role`／`name`／`text` 三个字段，正文是占位符「[房间图片]」，没有图片字节 | 通过 |
+
+### 模拟结果
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 会客室 | `node --test scripts/dsh-companion-room.test.mjs` | 9 通过 |
+| HTTPS 第二设备 | `node --test scripts/dsh-room-https.test.mjs` | 3 通过 |
+| 脚本测试全量 | `npm run test:scripts` | 136 项、135 通过、1 跳过（符号链接）、0 失败 |
+
+### 尚未验证的运行条件
+
+- 真实浏览器里没点过：图片渲染、语音播放、系统文件选择框、失败提示的实际样子都只做了代码检查。
+- 真实的第二台设备与真实局域网没测：测试里的客户端在同一台机器上连 `127.0.0.1`，只在证书校验和 `Host`／`Origin` 上模拟了 `192.168.50.5`。
+- 生产证书、私网绑定和防火墙规则属于部署环节：`openLanRoom` 只接受私网 IPv4（`10.`、`192.168.`、`172.16`–`172.31`）与 1024 以上端口，证书或私钥读不到就不启动监听。这三样都等上线授权时再配。
+
+
 
