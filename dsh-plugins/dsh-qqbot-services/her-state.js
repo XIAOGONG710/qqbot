@@ -1,0 +1,408 @@
+// 她的状态（DSH 面板第 2 块，docs/plans/2026-11-26-dsh-panel-our-own.md 模块 2，A 层 + B 层）：纯数据模块，不注册路由、不写任何文件。
+//
+// 边界（计划「边界」一节，她定过的，不因为是面板就破）：
+//   · A 层只有数和新鲜度：记忆只碰公共库和他本人的 bank 的**计数**（Hindsight 的 stats 接口），不列记忆原文、不枚举别的 bank、不出库名；
+//     情绪只给 FEELINGS.json 多久前导出、感觉账总条数和最近一条的时间——不给种类、不给来由、不给换过的说法（ADR 0347 第 5 层）；
+//   · B 层「她的一天」只来自世界账（<数据目录>/world/events.json）里她真做过的事，用 QQ 状态行同一套说法（life/actions.ts typedOccupation、
+//     world.ts recapDay、life/promises.ts describeAppointment），去掉原因、联系人、片段号这些字段；
+//   · 不读 ADR 0200 的私人空间：PRIVATE.dat、拒绝过的、她猜的事、自我认识（INSIGHTS）、说话习惯笔记、追求的原文，这个模块一个都不打开；
+//   · 只读：TS 那边有些读法遇到坏文件会把它挪到 .corrupt-*（json-file.ts 的 quarantine），面板不能替线上进程做这个决定——
+//     会隔离的读法之前先自己解析一遍，解析不了就当「读不了」（null），原文件不动；
+//   · 返回的只有白名单字段，不带路径、库名、原始错误。
+//
+// API（工厂 createHerState，见下方 JSDoc）：
+//   memoryHealth()  → {
+//     linked: boolean,                     // owner-bank.json 登记过（他的 bank + 公共库，QQ 启动时写的）
+//     registeredAt: string | null,         // 登记写入的时刻（ISO）
+//     hindsight: { reachable: boolean | null },   // null = 地址不是本机 http、没去连
+//     common: { facts, documents } | null, // 公共库条数（stats 的 total_nodes / total_documents）
+//     own: { facts, documents } | null,    // 他本人的 bank 条数
+//     episodes: { pending, requeued, lastWrittenAt } | null,  // 他的进度文件：异步派发还没确认的片段数、对账重排过的次数、最近一次提交片段的时刻
+//     audit: { entries, lastAt, verified } | null,           // 记忆账本（identity/memory.jsonl，memoryAudit 开着才有）
+//     reconcile: { recorded: false },      // 对账时刻只在 QQ 进程内存里（long-term.ts #reconciled），不落盘，面板给不出；重排次数在 episodes.requeued
+//   }
+//   emotionHealth() → {
+//     feelingsExport: Freshness | null,    // FEELINGS.json 的导出时刻；stale = 超过 FEELINGS_STALE_MS（3 小时）
+//     ledger: { rows, lastAt },            // 感觉账总条数与最近一条的时刻（不分种类）
+//     review: { runsToday, lastAt } | null // 心境回想：今天试了几次（feeling-review.json 的 attempts）、上一次想成的时刻
+//   }
+//   lifeHealth()    → {
+//     world: { events, latestDay } | null, // 世界账条数、最近一条落在她的哪一天
+//     timeline: { entries, lastAt } | null,// 跨渠道时间线（timeline.jsonl，timeline 开着才有）
+//     diary: { lastDay } | null,           // 日记最近写到哪天（JOURNAL.md、自动日记 memory/diary.json、她自己写的）
+//     selfExport: Freshness | null,        // SELF.json；stale = 过了它自己写的 validUntil
+//     nowExport: Freshness | null,         // NOW.md；stale = 超过 NOW_STALE_MS（30 分钟）
+//   }
+//   herDay({ date? }) → { date, today, events: [{ time, kind, summary }], days: [{ date, count }] } | null
+//     date 缺省是她的今天（她的一天从 02:00 开始，schedule.ts herDay）；格式不对回 null。
+//     事件按世界账自己记的 day 分组（写的时候按她的作息算好的），time 是开始的钟点（插件配置 timeZone，默认 Asia/Shanghai）；
+//     days 是最近 14 个有事的日子和条数，给面板翻页。
+//   Freshness = { at: ISO, ageMinutes: number, stale: boolean }
+//
+// 读不到配置里的 qqbot 插件块（也没注入 dataDir）时，四个方法都回 null。
+
+import { lstatSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { activeKoishiPlugin, configuredManualOwner } from './chat.js'
+
+const LOOPBACK = ['127.0.0.1', 'localhost', '[::1]']
+const COMMON_BANK = /^([a-zA-Z0-9_-]{1,80})-common$/
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+/** 她的一天从这个钟点开始（schedule.ts herDay：睡觉时刻 02:00 之前算前一天） */
+export const HER_DAY_START_HOUR = 2
+/** 一天最多给多少件；days 往回列多少个有事的日子 */
+const DAY_EVENTS_MAX = 80
+const DAYS_LISTED = 14
+const SUMMARY_MAX = 60
+/** 文件大小上限：超了当读不了，不把大文件读进面板进程 */
+const SMALL = 2_000_000
+const LARGE = 32_000_000
+
+/** 世界账里不给面板的种类（life/development.ts PRIVATE_EVENT 同一条）：钱、冲突、危机、医疗、私事 */
+const PRIVATE_EVENT = /crisis|medical|money|receive_money|conflict|private/i
+/** 状态行认得的类型化行动（life/actions.ts TypedActionKind）：说法交给 typedOccupation */
+const TYPED = new Set(['sleep', 'eat', 'meet', 'attend_class', 'study', 'rest', 'read_book', 'leisure', 'work_on_project', 'interact_npc'])
+/** 世界动作（world.ts WorldActionKind，去掉 receive_money）：recapDay 的说法，不带猫名、快递名、课名 */
+const WORLD_ACTION = {
+  feed_cat: event => event.seen === false ? '下楼喂了猫，没见着它' : '下楼喂了猫',
+  pick_parcel: () => '去驿站取了快递',
+  finish_homework: () => '写完了作业',
+  family_call: () => '和家里视频了',
+}
+/** subject 存的是编号（course-5、lunch）时不当人话：只认带中文的（life/dream-jobs.ts 同一条） */
+const HAN = /\p{Script=Han}/u
+
+const clean = (value, max) => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max) : ''
+const iso = ms => Number.isFinite(ms) ? new Date(ms).toISOString() : null
+
+/** 普通文件（不是链接、不是目录）且不太大；不存在回 false */
+function ordinary(path, size) {
+  try {
+    const info = lstatSync(path)
+    return info.isFile() && !info.isSymbolicLink() && info.size <= size
+  } catch { return false }
+}
+
+function exists(path) {
+  try { lstatSync(path); return true } catch { return false }
+}
+
+/** 只读地解析一份 JSON：不存在 → undefined；读不了 / 坏了 → null（不挪、不改） */
+function peekJson(path, size = SMALL) {
+  let info
+  try { info = lstatSync(path) } catch { return undefined }
+  if (!info.isFile() || info.isSymbolicLink() || info.size > size) return null
+  try { return JSON.parse(readFileSync(path, 'utf8')) } catch { return null }
+}
+
+function freshness(atMs, nowMs, stale) {
+  if (!Number.isFinite(atMs)) return null
+  return { at: new Date(atMs).toISOString(), ageMinutes: Math.max(0, Math.floor((nowMs - atMs) / 60_000)), stale }
+}
+
+const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null
+
+/** 某时刻在 timeZone 里的年月日时分 */
+function zoned(date, timeZone) {
+  const format = new Intl.DateTimeFormat('en-CA', { timeZone, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const parts = Object.fromEntries(format.formatToParts(date).map(({ type, value }) => [type, value]))
+  return { day: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour), time: `${parts.hour}:${parts.minute}` }
+}
+
+/** 她的哪一天：02:00 之前算前一天 */
+export function herDayOf(date, timeZone = 'Asia/Shanghai') {
+  const { day, hour } = zoned(date, timeZone)
+  if (hour >= HER_DAY_START_HOUR) return day
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10)
+}
+
+/**
+ * @param {object} options
+ * @param {string} options.root 仓库根
+ * @param {() => any} options.readConfig 读 Koishi 配置（找 qqbot 插件块：dataDir、timeZone、联系人）
+ * @param {string} [options.dataDir] 直接给数据目录（测试用）；不给就按插件块的 dataDir（默认 runtime/bot）
+ * @param {string} [options.soulDir] 灵魂目录；不给就 QQBOT_SOUL_DIR 或 ~/.dsh/linmengyao
+ * @param {string} [options.hindsightUrl] 不给就 http://127.0.0.1:8899；只认本机 http、不带账号密码
+ * @param {typeof fetch} [options.fetcher]
+ * @param {() => Date} [options.now]
+ * @param {number} [options.timeoutMs] 每个 Hindsight 请求的超时
+ */
+export function createHerState({ root, readConfig, dataDir, soulDir, hindsightUrl, fetcher = fetch, now = () => new Date(), timeoutMs = 3000 }) {
+  const load = file => import(pathToFileURL(join(root, file)).href)
+  const soul = () => resolve(soulDir || process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao'))
+
+  /** 这一次调用要用的东西；没有插件块又没注入数据目录 → null */
+  function context() {
+    const config = readConfig()
+    const plugin = activeKoishiPlugin(config)
+    if (!plugin && !dataDir) return null
+    const owner = plugin ? configuredManualOwner(config) : null
+    let timeZone = typeof plugin?.timeZone === 'string' && plugin.timeZone ? plugin.timeZone : 'Asia/Shanghai'
+    try { new Intl.DateTimeFormat('en', { timeZone }) } catch { timeZone = 'Asia/Shanghai' }
+    return { data: resolve(root, dataDir || plugin?.dataDir || 'runtime/bot'), soul: soul(), owner, timeZone, at: now() }
+  }
+
+  function base() {
+    try {
+      const url = new URL(hindsightUrl || 'http://127.0.0.1:8899')
+      return url.protocol === 'http:' && LOOPBACK.includes(url.hostname) && !url.username && !url.password ? url : null
+    } catch { return null }
+  }
+
+  const request = async (path, url) => fetcher(new URL(path, url), { signal: AbortSignal.timeout(timeoutMs), redirect: 'error' })
+
+  /** 一个 bank 的条数；名字不是这次登记的那两个之一就根本不会走到这里 */
+  async function stats(bank, url) {
+    const response = await request(`/v1/default/banks/${encodeURIComponent(bank)}/stats`, url)
+    if (!response.ok) throw Error('stats_unavailable')
+    const result = await response.json()
+    const facts = count(result?.total_nodes)
+    const documents = count(result?.total_documents)
+    if (result?.bank_id !== bank || facts === null || documents === null) throw Error('stats_unavailable')
+    return { facts, documents }
+  }
+
+  /** 登记的两个 bank：公共库必须是 <前缀>-common，他的必须是同一前缀 + 16 位哈希（long-term.ts bankId） */
+  function banks(published) {
+    const common = COMMON_BANK.exec(published?.commonBank ?? '')
+    if (!common) return null
+    const own = typeof published.ownerBank === 'string' && new RegExp(`^${common[1]}-[0-9a-f]{16}$`).test(published.ownerBank)
+      ? published.ownerBank : null
+    return { common: published.commonBank, own }
+  }
+
+  async function episodes(memoryDir, owner, ownBank) {
+    if (!owner || !ownBank) return null
+    // 男朋友档的进度文件（long-term.ts #key：<QQ>-<档位>.json）；读法是 'throw'，坏了不会被挪走
+    const path = join(memoryDir, `${owner}-boyfriend.json`)
+    if (!ordinary(path, LARGE)) return null
+    try {
+      const { readContactMemoryState } = await load('packages/bot/src/memory/long-term.ts')
+      const state = readContactMemoryState(path)
+      if (!state || state.bankId !== ownBank) return null
+      const pending = Object.keys(state.pendingOwn ?? {}).length + Object.keys(state.pendingCommon ?? {}).length
+      const requeued = Object.values(state.requeued ?? {}).reduce((sum, n) => sum + n, 0)
+      const times = [...Object.values(state.retainedAt ?? {}), ...Object.values(state.commonAt ?? {})].filter(Number.isFinite)
+      return { pending, requeued, lastWrittenAt: times.length ? iso(Math.max(...times)) : null }
+    } catch { return null }
+  }
+
+  async function audit(data) {
+    const path = join(data, 'identity', 'memory.jsonl')
+    if (!ordinary(path, LARGE)) return null
+    try {
+      const { Ledger } = await load('packages/bot/src/memory/ledger.ts')
+      const ledger = new Ledger(path)
+      const entries = ledger.read()
+      const last = entries.findLast(entry => entry.kind !== 'unreadable')
+      return { entries: entries.length, lastAt: last ? iso(Date.parse(last.at)) : null, verified: ledger.verify().ok }
+    } catch { return null }
+  }
+
+  return {
+    async memoryHealth() {
+      const ctx = context()
+      if (!ctx) return null
+      const memoryDir = join(ctx.data, 'memory')
+      let published
+      // owner-bank.json 的读法遇到坏文件会隔离它：先自己解析，坏了就当没登记
+      if (ctx.owner && peekJson(join(memoryDir, 'owner-bank.json'))) {
+        try {
+          const { readOwnerBank } = await load('packages/bot/src/memory/owner-bank.ts')
+          published = readOwnerBank(memoryDir)
+        } catch { published = undefined }
+      }
+      const named = published ? banks(published) : null
+      const url = base()
+      let reachable = null
+      let common = null
+      let own = null
+      if (url) {
+        const [health, commonStats, ownStats] = await Promise.allSettled([
+          request('/health', url).then(response => response.ok),
+          named ? stats(named.common, url) : Promise.reject(Error('unlinked')),
+          named?.own ? stats(named.own, url) : Promise.reject(Error('unlinked')),
+        ])
+        common = commonStats.status === 'fulfilled' ? commonStats.value : null
+        own = ownStats.status === 'fulfilled' ? ownStats.value : null
+        reachable = (health.status === 'fulfilled' && health.value) || Boolean(common || own)
+      }
+      return {
+        linked: Boolean(named),
+        registeredAt: named && published.writtenAt ? iso(Date.parse(published.writtenAt)) : null,
+        hindsight: { reachable },
+        common,
+        own,
+        episodes: named ? await episodes(memoryDir, ctx.owner, named.own) : null,
+        audit: await audit(ctx.data),
+        reconcile: { recorded: false },
+      }
+    },
+
+    async emotionHealth() {
+      const ctx = context()
+      if (!ctx) return null
+      const nowMs = ctx.at.getTime()
+      const [{ readSavedFeelings, FEELINGS_STALE_MS, feelingsExportPath }, { readLedger, ledgerPath }] = await Promise.all([
+        load('packages/bot/src/emotion/feeling-export.ts'), load('packages/bot/src/emotion/feeling-ledger.ts'),
+      ])
+      let feelingsExport = null
+      // readSavedFeelings 读坏文件会隔离：先确认它是能解析的 JSON。只取时刻，感受本身一条不出去
+      if (peekJson(feelingsExportPath(ctx.soul))) {
+        try {
+          const saved = readSavedFeelings(ctx.soul)
+          if (saved) feelingsExport = freshness(saved.at, nowMs, nowMs - saved.at > FEELINGS_STALE_MS)
+        } catch { feelingsExport = null }
+      }
+      // 没有账本 = 还没记过（0 条）；有但读不了（不是普通文件、太大）= null
+      let ledger = exists(ledgerPath(ctx.soul)) ? null : { rows: 0, lastAt: null }
+      if (ordinary(ledgerPath(ctx.soul), LARGE)) {
+        try {
+          const rows = readLedger(ctx.soul, nowMs)
+          const latest = rows.reduce((max, row) => Math.max(max, row.at), -Infinity)
+          ledger = { rows: rows.length, lastAt: rows.length ? iso(latest) : null }
+        } catch { ledger = null }
+      }
+      let review = null
+      const [{ reviewPath, loadReviewState }, { dayKey }] = await Promise.all([
+        load('packages/bot/src/emotion/feeling-review.ts'), load('packages/bot/src/language/speech-notes.ts'),
+      ])
+      // loadReviewState 读坏文件会隔离：先确认能解析。只出次数和时刻，记下的感受一条不出去
+      if (peekJson(reviewPath(ctx.data))) {
+        try {
+          const state = loadReviewState(ctx.data)
+          review = {
+            runsToday: state.attempts.day === dayKey(nowMs) ? count(state.attempts.n) ?? 0 : 0,
+            lastAt: state.lastReflectionAt > 0 ? iso(state.lastReflectionAt) : null,
+          }
+        } catch { review = null }
+      }
+      return { feelingsExport, ledger, review }
+    },
+
+    async lifeHealth() {
+      const ctx = context()
+      if (!ctx) return null
+      const nowMs = ctx.at.getTime()
+      const world = await worldEvents(ctx.data)
+      const latestDay = world?.reduce((max, event) => event.day > max ? event.day : max, '') || null
+
+      let timeline = null
+      const timelinePath = join(ctx.data, 'timeline.jsonl')
+      if (ordinary(timelinePath, LARGE)) {
+        try {
+          const { Timeline } = await load('packages/bot/src/memory/timeline.ts')
+          const entries = new Timeline(timelinePath).read()
+          const last = entries.reduce((max, entry) => Math.max(max, Date.parse(entry.at)), -Infinity)
+          timeline = { entries: entries.length, lastAt: entries.length ? iso(last) : null }
+        } catch { timeline = null }
+      }
+
+      const diary = await diaryLastDay(ctx)
+
+      let selfExport = null
+      const [{ isSelfExport, selfExportPath }, { nowGeneratedAt, NOW_STALE_MS }] = await Promise.all([
+        load('packages/bot/src/life/self-export.ts'), load('packages/bot/src/life/now-export.ts'),
+      ])
+      const self = peekJson(selfExportPath(ctx.soul))
+      if (self && isSelfExport(self)) selfExport = freshness(Date.parse(self.generatedAt), nowMs, nowMs >= Date.parse(self.validUntil))
+      let nowExport = null
+      const nowPath = join(ctx.soul, 'NOW.md')
+      if (ordinary(nowPath, SMALL)) {
+        try {
+          const at = nowGeneratedAt(readFileSync(nowPath, 'utf8'))
+          if (at !== undefined) nowExport = freshness(at, nowMs, nowMs - at > NOW_STALE_MS)
+        } catch { nowExport = null }
+      }
+      return { world: world ? { events: world.length, latestDay } : null, timeline, diary, selfExport, nowExport }
+    },
+
+    async herDay({ date } = {}) {
+      const ctx = context()
+      if (!ctx) return null
+      const today = herDayOf(ctx.at, ctx.timeZone)
+      const day = date ?? today
+      if (typeof day !== 'string' || !DAY.test(day)) return null
+      const events = await worldEvents(ctx.data)
+      if (!events) return { date: day, today, events: [], days: [] }
+      const { typedOccupation } = await load('packages/bot/src/life/actions.ts')
+      const owner = ctx.owner ? Number(ctx.owner) : null
+      const lived = events.filter(event => event.result !== 'failed' && event.day <= today && !PRIVATE_EVENT.test(event.kind))
+      const items = lived.filter(event => event.day === day)
+        .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))
+        .flatMap(event => {
+          const summary = clean(summarize(event, owner, typedOccupation), SUMMARY_MAX)
+          return summary ? [{ time: zoned(new Date(event.startedAt), ctx.timeZone).time, kind: event.kind, summary }] : []
+        })
+        .slice(0, DAY_EVENTS_MAX)
+      const counts = new Map()
+      for (const event of lived) if (summarize(event, owner, typedOccupation)) counts.set(event.day, (counts.get(event.day) ?? 0) + 1)
+      const days = [...counts].sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0)).slice(0, DAYS_LISTED).map(([d, n]) => ({ date: d, count: n }))
+      return { date: day, today, events: items, days }
+    },
+  }
+
+  /** 世界账（生活事件）：读法是 'throw'，坏了不挪；读不了 → null */
+  async function worldEvents(data) {
+    const path = join(data, 'world', 'events.json')
+    let info
+    try { info = lstatSync(path) } catch { return [] }
+    if (!info.isFile() || info.isSymbolicLink() || info.size > LARGE) return null
+    try {
+      const { readLifeEvents } = await load('packages/bot/src/world/life-events.ts')
+      return readLifeEvents(path, () => undefined)
+    } catch { return null }
+  }
+
+  /** 日记最近写到哪天：JOURNAL.md 的标题日期、自动日记的进度、她自己写的那几篇；只要日期 */
+  async function diaryLastDay(ctx) {
+    const days = []
+    const [{ parseJournal, loadSelfDiary, selfDiaryPath }, { readDiaryState }, { dayKey }] = await Promise.all([
+      load('packages/bot/src/life/diary-insights.ts'), load('packages/bot/src/life/diary.ts'), load('packages/bot/src/language/speech-notes.ts'),
+    ])
+    const journal = join(ctx.soul, 'JOURNAL.md')
+    if (ordinary(journal, LARGE)) {
+      try { days.push(...parseJournal(readFileSync(journal, 'utf8')).map(entry => entry.date)) } catch { /* 读不了就不算这一份 */ }
+    }
+    const auto = join(ctx.data, 'memory', 'diary.json')
+    if (ordinary(auto, LARGE)) {
+      try {
+        const state = readDiaryState(auto)
+        if (state) days.push(...Object.keys(state.written), ...Object.keys(state.texts))
+      } catch { /* 坏了不挪（'throw' 读法），只是不算 */ }
+    }
+    // loadSelfDiary 读坏文件会隔离：先确认能解析
+    if (peekJson(selfDiaryPath(ctx.data), LARGE)) {
+      try { days.push(...loadSelfDiary(ctx.data).filter(item => item.at > 0).map(item => dayKey(item.at))) } catch { /* 同上 */ }
+    }
+    const valid = days.filter(day => DAY.test(day))
+    return valid.length ? { lastDay: valid.reduce((max, day) => day > max ? day : max) } : null
+  }
+}
+
+/**
+ * 一件事给他看的那一句；不给看的回 undefined。
+ * 类型化行动用状态行的 typedOccupation（「在上课」「在吃午饭」）；编号式的 subject 不当人话；
+ * 赴约只有约的是他本人才写约了什么，别人约的照 describeAppointment 只说「在外面，约了人」。
+ */
+function summarize(event, owner, typedOccupation) {
+  if (PRIVATE_EVENT.test(event.kind)) return undefined
+  if (Object.hasOwn(WORLD_ACTION, event.kind)) return WORLD_ACTION[event.kind](event)
+  if (!TYPED.has(event.kind)) return undefined
+  if (event.kind === 'meet' && !(owner && event.contact === owner)) return '在外面，约了人'
+  // 上课、学习的 subject 可能是编号（course-5）：只认带中文的；休闲、项目、和人打交道的 subject 本来就是状态行那几个字
+  const coded = event.kind === 'attend_class' || event.kind === 'study'
+  const humanSubject = typeof event.subject === 'string' && (!coded || HAN.test(event.subject)) ? event.subject : undefined
+  // 只带 typedOccupation 用得到的字段；时间窗换成「开始那一刻正在做」，失败 / 中断都不影响说法
+  const start = Date.parse(event.startedAt)
+  const probe = {
+    kind: event.kind, result: 'succeeded', startedAt: event.startedAt, endedAt: new Date(start + 60_000).toISOString(),
+    ...(event.kind === 'eat' || event.kind === 'read_book' ? { subject: event.subject } : humanSubject ? { subject: humanSubject } : {}),
+    ...(event.meal === true ? { meal: true } : {}),
+  }
+  return typedOccupation(probe, new Date(start), []) || undefined
+}
