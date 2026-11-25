@@ -13,6 +13,7 @@ import { createHerState, herDayOf } from '../dsh-plugins/dsh-qqbot-services/her-
 import { entryHash, GENESIS_PREV } from '../packages/bot/src/memory/ledger.ts'
 import { dayKey } from '../packages/bot/src/language/speech-notes.ts'
 import { FEELING_KINDS } from '../packages/bot/src/emotion/feelings.ts'
+import { ingestDesktopRecent } from '../packages/bot/src/memory/desktop-log.ts'
 
 const repo = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const OWNER = 123
@@ -207,6 +208,7 @@ test('A 层她自己的账：世界账、时间线、日记、SELF / NOW 的新�
       diary: { lastDay: '2026-11-24' },
       selfExport: { at: minutesBefore(NIGHT, 3).toISOString(), ageMinutes: 3, stale: false },
       nowExport: { at: minutesBefore(NIGHT, 45).toISOString(), ageMinutes: 45, stale: true },
+      desktop: null,
     })
     assertNothingLeaks(life)
     // SELF 过了它自己写的 validUntil 就算旧
@@ -279,5 +281,21 @@ test('坏文件：当读不了（null），原文件不挪不改；没有插件�
     assert.equal(await none.lifeHealth(), null)
     assert.equal(await none.herDay(), null)
     assert.ok(existsSync(join(env.soul, 'PRIVATE.dat')))
+  } finally { env.cleanup() }
+})
+
+test('A 层一个生活：桌面回合只给条数和最近一次的时刻，原话不出', async () => {
+  const env = setup()
+  try {
+    const recent = join(env.data, 'memory', 'desktop-recent.jsonl')
+    const turns = [
+      { at: minutesBefore(NIGHT, 90).getTime(), user: 'SECRET_DESKTOP_HE_1', assistant: 'SECRET_DESKTOP_SHE_1' },
+      { at: minutesBefore(NIGHT, 20).getTime(), user: 'SECRET_DESKTOP_HE_2', assistant: 'SECRET_DESKTOP_SHE_2' },
+    ]
+    writeFileSync(recent, turns.map(turn => JSON.stringify(turn)).join('\n') + '\n')
+    ingestDesktopRecent({ recentFile: recent, logFile: join(env.data, 'memory', 'desktop-log.jsonl'), now: NIGHT.getTime(), log: () => {} })
+    const life = await make(env).lifeHealth()
+    assert.deepEqual(life.desktop, { turns: 2, lastAt: minutesBefore(NIGHT, 20).toISOString() })
+    assertNothingLeaks(life)
   } finally { env.cleanup() }
 })

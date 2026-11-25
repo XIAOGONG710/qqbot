@@ -318,7 +318,17 @@ export function createHerState({ root, readConfig, dataDir, soulDir, hindsightUr
           if (at !== undefined) nowExport = freshness(at, nowMs, nowMs - at > NOW_STALE_MS)
         } catch { nowExport = null }
       }
-      return { world: world ? { events: world.length, latestDay } : null, timeline, diary, selfExport, nowExport }
+      // 一个生活（ADR 0347 第 3 层）：她在电脑上和他聊过的回合，QQ 收进了 desktop-log.jsonl——只给近 14 天的回合数和最近一次的时刻，不给原话
+      let desktop = null
+      if (ordinary(join(ctx.data, 'memory', 'desktop-log.jsonl'), LARGE)) {
+        try {
+          const { desktopTurns } = await load('packages/bot/src/memory/desktop-log.ts')
+          const turns = desktopTurns(ctx.data, nowMs)
+          const last = turns.reduce((max, turn) => Math.max(max, turn.at), -Infinity)
+          desktop = { turns: turns.length, lastAt: turns.length ? iso(last) : null }
+        } catch { desktop = null }
+      }
+      return { world: world ? { events: world.length, latestDay } : null, timeline, diary, selfExport, nowExport, desktop }
     },
 
     async herDay({ date } = {}) {
