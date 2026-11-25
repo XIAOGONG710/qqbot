@@ -2616,7 +2616,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                     ...(planners.has(contact.qq) ? { proactive: planners.get(contact.qq)!.status() } : {}),
                 };
             };
-            if (hindsight && !stopped && !probing && (!health || now.getTime() - health.at >= HEALTH_PROBE_MS)) {
+            if (hindsight && !stopped && !probing && (!health || Date.now() - health.at >= HEALTH_PROBE_MS)) { // Hindsight 健康是真服务的事：探测时刻和间隔都按真实时钟（时钟扫查 4f5422df 记下的混用）
                 probing = true;
                 hindsight.health()
                     .then(() => { if (!stopped) health = { at: Date.now(), ok: true }; }, error => {
