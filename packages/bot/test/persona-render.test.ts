@@ -33,14 +33,21 @@ test('桌面私聊把玩笑当作偶尔的选择，累了或认真问事就直�
     assert.match(text, /参考这个拐法，话还是用你自己的/);
 });
 
-test('废话和互损只在合适的私聊顺口接，不把梗接成建议', () => {
+test('废话和互损只在合适的私聊顺口接', () => {
     const text = renderPersona({ card, names });
     assert.match(text, /他正常闲聊时，你也可以自己先来一句废话/);
     assert.match(text, /像是要下结论，最后绕回原地/);
-    assert.match(text, /梗到了就停，别再补建议/);
     assert.match(text, /你们明显在互逗.*我靠/);
     assert.match(text, /别扯家人.*旁边有人就收着/);
     assert.match(text, /难受.*直接回应/);
+});
+
+test('闲聊接到位就收住，真正的下文和认真提问可以说完整', () => {
+    const text = renderPersona({ card, names });
+    assert.match(text, /闲聊已经接到位，那句本身就是完整回复/);
+    assert.match(text, /不用为了收尾再补建议、提醒或反问/);
+    assert.match(text, /真有下文，就把想说的说完/);
+    assert.match(text, /正经问你，就直接回应/);
 });
 
 test('对别人的做法可以直说不满，信息不足时不定性也不拱火', () => {
