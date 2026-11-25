@@ -1,6 +1,8 @@
-# QQ 机器人服务管理
+# 林梦瑶 · QQ 桥接
 
-DSH 桌面侧边栏的「服务管理」面板，适用于运行 QQ 机器人服务的 Windows 主机。面板显示 NapCat 的 OneBot 监听、Hindsight 的健康接口、Koishi 的监听及最近连接状态、守护进程和最近后台事件。
+DSH 的「林梦瑶 · QQ 桥接」设置页与桌面侧边栏的「服务管理」共用一份控制台。总览提供现有启动操作，连接页显示 NapCat、Hindsight 和 Koishi 的端口及状态，系统页提供按白名单字段生成的诊断报告与近期后台事件。
+
+设置页入口和标签交互改编自 [灵犀 QQ 桥接](https://github.com/2524034412-boop/DSH-QQ/blob/edf9f853341ac049708dc4c68ed432c74f2ad6d4/plugin/dsh-qq-bridge/lib/client.js)，上游 `dsh-qq-bridge` 包声明 MIT 许可。我们的控制台连接仓库现有的 Windows 服务探测与启动锁。
 
 - 单项启动直接调用相应服务的现有脚本。批量启动按 NapCat → Hindsight → Koishi 检查并补齐缺失服务，等前一项就绪才继续。
 - 面板、守护和 Windows 登录启动都通过 `scripts/start-managed-service.ps1` 进入三项服务。每项使用独立的 Windows 独占文件句柄，前台脚本退出后系统自动释放。

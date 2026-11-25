@@ -113,7 +113,7 @@ test('desktop proxy can submit only with the token from the local state route', 
     assert.deepEqual((await settled(controller)).steps, { napcat: 'skipped', hindsight: 'skipped', koishi: 'skipped' });
 });
 
-test('client seats a single DSH main view and sidebar entry', () => {
+test('client registers the same bridge console in DSH settings and the sidebar', () => {
     const entries = [];
     const ctx = { slots: {
         inject(_name, callback) { callback(); },
@@ -134,7 +134,9 @@ test('client seats a single DSH main view and sidebar entry', () => {
     plugin.apply(ctx);
     assert.deepEqual(entries.map(({ name, key, id }) => [name, key ?? id]), [
         ['main', 'dsh-qqbot-services'], ['sidebar.panellist', 'dsh-qqbot-services'],
+        ['settings.section', 'linmengyao-qq-bridge'],
     ]);
+    assert.equal(entries[0].render, entries[2].render);
 });
 
 test('PowerShell launchers hold one shared lock for the whole foreground run', { skip: process.platform !== 'win32', timeout: 20_000 }, async () => {
