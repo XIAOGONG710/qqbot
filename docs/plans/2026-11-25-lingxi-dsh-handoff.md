@@ -34,8 +34,8 @@
 
 **入口** `dsh-plugins/dsh-qqbot-services/index.js` 的 `createHandler`，以及 `scripts/dsh-service-panel.test.mjs`、`scripts/dsh-companion-room.test.mjs`、`scripts/dsh-home-scene.test.mjs`、`scripts/dsh-local-panels.test.mjs`。
 
-- [ ] 运行 `npm run test:scripts`、`npm run typecheck --workspace @qqbot/bot`，重跑 `packages/bot/test/soul-plugin.test.ts`。交接基线的脚本测试有 85 项通过、1 项跳过。若主线已有新提交，以重跑结果为准。
-- [ ] 用临时 host 和假的 NapCat、Hindsight、Koishi 配置验证总览、聊天、会客室、她的家和运维页。记录模拟调用数。取消 QQ 发送时，发送接口调用数须为 0。
+- [x] 运行 `npm run test:scripts`、`npm run typecheck --workspace @qqbot/bot`，重跑 `packages/bot/test/soul-plugin.test.ts`。交接基线的脚本测试有 85 项通过、1 项跳过。若主线已有新提交，以重跑结果为准。
+- [x] 用临时 host 和假的 NapCat、Hindsight、Koishi 配置验证总览、聊天、会客室、她的家和运维页。记录模拟调用数。取消 QQ 发送时，发送接口调用数须为 0。
 - [ ] DSH 窗口正常且得到新的重载授权后，再用临时模拟插件做实机对照。结束时恢复正式插件链接。用 NapCat、Hindsight、Koishi PID 和端口前后对照证明验收未操作服务。
 
 ### 2. DSH 内接入人设与配置
