@@ -19,6 +19,7 @@ import { createCharacterBridge } from './character-bridge.js'
 import { createPublicMemory } from './public-memory.js'
 import { createLogsView } from './logs-view.js'
 import { createRestoreStages } from '../../scripts/restore-stages.mjs'
+import { nodeCommand } from './node-run.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -459,8 +460,9 @@ export function apply(ctx, config = {}) {
   const root = realpathSync(resolve(config.repoRoot || join(dirname(fileURLToPath(import.meta.url)), '../..')))
   const controller = createController({
     async probe() {
-      const { stdout } = await exec(process.execPath, [join(root, 'scripts', 'services-watchdog.mjs'), '--once', '--local-only'], {
-        cwd: root, timeout: 45_000, windowsHide: true, maxBuffer: 32_000,
+      const node = nodeCommand()
+      const { stdout } = await exec(node.command, [join(root, 'scripts', 'services-watchdog.mjs'), '--once', '--local-only'], {
+        cwd: root, timeout: 45_000, windowsHide: true, maxBuffer: 32_000, env: node.env,
       })
       return JSON.parse(stdout)
     },
@@ -536,8 +538,9 @@ export function apply(ctx, config = {}) {
         const target = keep ? `runtime/restore-drills/panel-${day}-${randomBytes(8).toString('hex')}` : null
         const args = [join(root, 'scripts', 'restore-drill.mjs'), '--backup', join(root, 'runtime', 'backups', day)]
         if (target) args.push('--target', join(root, target), '--keep')
-        await exec(process.execPath, args, {
-          cwd: root, timeout: 660_000, windowsHide: true, maxBuffer: 16_384,
+        const node = nodeCommand()
+        await exec(node.command, args, {
+          cwd: root, timeout: 660_000, windowsHide: true, maxBuffer: 16_384, env: node.env,
         })
         return { ok: true, target }
       } finally { drilling = false }

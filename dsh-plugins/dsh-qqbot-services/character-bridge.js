@@ -4,6 +4,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { nodeCommand } from './node-run.js'
 
 const parts = ['persona', 'scenes', 'schedule', 'tiers', 'moods', 'books']
 
@@ -22,11 +23,12 @@ export function createCharacterBridge({ root, sourceDir, stDir, prefix, timeout 
   if (!existsSync(script)) throw Error('character_cli_missing')
 
   function once(command, input) {
-    const args = [process.execPath, '--import', 'tsx', script, command, '--source', sourceDir, '--out', stDir, '--prefix', prefix]
+    const node = nodeCommand()
+    const args = [node.command, '--import', 'tsx', script, command, '--source', sourceDir, '--out', stDir, '--prefix', prefix]
     return new Promise((resolve, reject) => {
       const child = spawn(args[0], args.slice(1), {
         cwd: root, windowsHide: true, timeout,
-        env: { ...process.env, NODE_OPTIONS: '', NO_COLOR: '1' },
+        env: { ...node.env, NODE_OPTIONS: '', NO_COLOR: '1' },
       })
       let out = ''
       let failed = false
