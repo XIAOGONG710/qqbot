@@ -25,6 +25,7 @@
 - `platform/weekly-report.ts`
 - `platform/consistency.ts`
 - `platform/onebot.ts`
+- `platform/desktop-manual-origin.json`
 - `platform/command-receipts.ts`
 - `platform/lock.ts`
 - `platform/lifetime.ts`
