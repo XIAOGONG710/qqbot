@@ -303,4 +303,5 @@
 | [0346](0346-her-identity-in-system-prompt.md) | 0346 她的身份写进系统提示（profile 补丁覆盖 preset-cordis） | 已落地（本机 desktop profile），待验收 |  |
 | [0347](0347-one-life-two-places.md) | 同一个她·一个生活，两个地方 | 已采纳（方向）；第 1 层已上线（2026-11-22，QQ / 常驻侧；DSH 桌面还没重启，插件那部分没生效）；第 … | `oneLife`（原 `selfExport`、`selfReceipts`、`desktopDay`） 开、`ownDays` 默认、`desktopReview` 默认、`desktopPromises` 默认、`oneDiary` 默认、`desktopFeelings` 默认、`desktopConflict` 默认、`feltLedgerRecall` 默认、`herFeelings`（原 `feelingLedger`） 开 |
 | [0348](0348-weekly-effect-metrics.md) | 每周效果数（weekly metrics） | 已采纳（工具已落地：`npm run metrics:weekly -w @qqbot/bot`；只读聊天记录，只追加一… |  |
-| [0349](0349-guest-room-and-home-status.md) | 会客室与「她的家」公开状态 | 提议中：她的原话已取得（会客室要「看人」、她的家只给熟人看且能关）；开关代码与提示词措辞等用户点头 | 计划中的 `companionRoom` 默认关（尚未接入） |
+| [0349](0349-guest-room-and-home-status.md) | 会客室与「她的家」公开状态：先问她本人 | 提议中（她的原话已取得；开关代码与提示词措辞等用户点头后再落地） |  |
+| [0350](0350-her-inner-panel.md) | DSH 面板「她心里的」：先问她本人，默认关 | 提议中（代码已写、默认关；她的原话还没取得，DSH 关机，ask-her 跑不了） |  |
