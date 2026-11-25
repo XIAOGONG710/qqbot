@@ -772,18 +772,18 @@ async function allBanks(cfg) {
   return wanted.filter((id, i) => existing.includes(id) && wanted.indexOf(id) === i)
 }
 
-async function recallBank(cfg, bank, query) {
+async function recallBank(cfg, bank, query, ownImportant = false) {
   const res = await fetch(`${cfg.baseUrl}/v1/default/banks/${encodeURIComponent(bank)}/memories/recall`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       query,
-      types: ['world', 'experience', 'observation'],
-      prefer_observations: true,
+      types: ownImportant ? ['world', 'experience'] : ['world', 'experience', 'observation'],
+      prefer_observations: !ownImportant,
       budget: 'low',
       max_tokens: 1200,
-      tags: [],
-      tags_match: 'any',
+      tags: ownImportant ? ['dsh', 'important'] : [],
+      tags_match: ownImportant ? 'all_strict' : 'any',
       query_timestamp: new Date().toISOString(),
       include: { entities: { max_tokens: 128 }, source_facts: { max_tokens: 400 } },
     }),
@@ -799,6 +799,7 @@ async function recallBank(cfg, bank, query) {
       date: item.date || item.occurred_start || item.mentioned_at || '',
       type: item.fact_type || item.type || '',
       documentId: String(item.document_id || ''),
+      tags: Array.isArray(item.tags) ? item.tags : [],
       occurredStart: item.occurred_start || undefined,
       occurredEnd: item.occurred_end || undefined,
       mentionedAt: item.mentioned_at || undefined,
@@ -831,18 +832,40 @@ export const herOwnCommonDoc = (documentId, ownerHashValue) => {
   return Boolean(mine && ownerHashValue && mine[1] === ownerHashValue)
 }
 
-/** 所有库做语义召回，合并去重后取前 pick 条 */
-async function recallAll(cfg, query) {
+const IMPORTANT_TOPICS = [
+  /熬夜|晚睡|早睡|早点睡|没睡好|睡得[晚迟]|(?:昨晚|半夜|凌晨).{0,12}(?:到|才)[一二三四五六两1-6１-６]点/,
+  /早饭|早餐|早上.{0,5}(?:没吃|没顾上吃)/,
+]
+
+/** 所有库做语义召回，合并去重后取前 pick 条。命中明确话题时给亲手记的相关项留一个位置。 */
+async function recallAll(cfg, query, currentUserText, checkImportant) {
   const banks = await allBanks(cfg)
-  const common = ownerBanks(cfg)?.common ?? `${cfg.prefix}-common`
+  const owner = ownerBanks(cfg)
+  const common = owner?.common ?? `${cfg.prefix}-common`
   const mineHash = ownerHash(cfg)
-  const settled = await Promise.allSettled(banks.map((bank) => recallBank(cfg, bank, query)))
+  const topics = IMPORTANT_TOPICS.filter(topic => topic.test(currentUserText))
+  const isRelated = item => topics.some(topic => topic.test(item.text))
+  const isOwnImportant = item => Boolean(owner?.owner && item.documentId.startsWith(`dsh-${owner.owner}-`)
+    && item.tags.includes('dsh') && item.tags.includes('important'))
+  const jobs = banks.map(bank => recallBank(cfg, bank, query))
+  const supplement = checkImportant && topics.length && banks.includes(owner?.owner)
+  if (supplement) jobs.push(recallBank(cfg, owner.owner, currentUserText, true))
+  const settled = await Promise.allSettled(jobs)
+  const extra = supplement ? settled.pop() : undefined
   const seen = new Set()
   const out = []
+  if (extra?.status === 'fulfilled') {
+    const item = extra.value.find(candidate => isOwnImportant(candidate) && isRelated(candidate))
+    if (item) {
+      seen.add(item.id)
+      out.push(item)
+    }
+  }
   for (const [index, result] of settled.entries()) {
     if (result.status !== 'fulfilled') continue
     for (const item of result.value) {
       if (banks[index] === common && !herOwnCommonDoc(item.documentId, mineHash)) continue
+      if (isOwnImportant(item) && IMPORTANT_TOPICS.some(topic => topic.test(item.text)) && !isRelated(item)) continue
       if (seen.has(item.id)) continue
       seen.add(item.id)
       out.push(item)
@@ -1267,7 +1290,7 @@ export function apply(ctx, config = {}) {
             try { if (touchPresence(cfg)) log(cfg, '在场：续了桌面租约') } catch (e) { log(cfg, `presence error ${e}`) }
           }
           if (query) {
-            const all = await recallAll(cfg, query)
+            const all = await recallAll(cfg, query, cache.user, messages.at(-1)?.role === 'user')
             if (version !== inputVersion || !privateTurn()) return next()
             // 第 5 层：她自己的口气 + 多久以前（ADR 0347）。原来原样贴「林梦瑶……」，
             // 她说那读起来像在翻别人的日记；这里只换人称和加远近，事实一个字不加。

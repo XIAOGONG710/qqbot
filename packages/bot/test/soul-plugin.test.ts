@@ -279,7 +279,7 @@ describe('不再写死某个用户的路径', () => {
 // ───────── 同一个她（ADR 0176）：DSH 桌面上的她读写哪些 bank ─────────
 
 interface Call { method: string; url: string; body?: Record<string, any> }
-function fakeHindsight(options: { banks: string[]; items?: Array<Record<string, unknown>>; recall?: Record<string, Array<Record<string, unknown>>> }) {
+function fakeHindsight(options: { banks: string[]; items?: Array<Record<string, unknown>>; recall?: Record<string, Array<Record<string, unknown>>>; importantRecall?: Array<Record<string, unknown>> }) {
     const calls: Call[] = [];
     const original = globalThis.fetch;
     globalThis.fetch = (async (url: string, init?: { method?: string; body?: string }) => {
@@ -288,7 +288,7 @@ function fakeHindsight(options: { banks: string[]; items?: Array<Record<string, 
         const path = new URL(String(url)).pathname;
         const json = path.endsWith('/banks') ? { banks: options.banks.map(id => ({ bank_id: id })) }
             : path.endsWith('/memories/list') ? { items: options.items ?? [] }
-            : path.endsWith('/memories/recall') ? { results: options.recall?.[decodeURIComponent(path.split('/')[4]!)] ?? [] }
+            : path.endsWith('/memories/recall') ? { results: calls.at(-1)?.body?.tags?.includes('important') ? options.importantRecall ?? [] : options.recall?.[decodeURIComponent(path.split('/')[4]!)] ?? [] }
             : {};
         return { ok: true, status: 200, json: async () => json };
     }) as unknown as typeof fetch;
@@ -306,6 +306,33 @@ function ownerFile(contents: unknown): string {
     if (contents !== undefined) writeFileSync(file, JSON.stringify(contents));
     return file;
 }
+
+test('16:04 圆珠笔不补查，16:05 作息早餐只补进本人亲手记下的相关项', async () => {
+    const note = { id: 'synthetic-note', document_id: `dsh-${OWNER}-123`, type: 'world', tags: ['dsh', 'important'], text: '合成对象关心晚睡和早餐。' };
+    const ordinary = [note];
+    const fake = fakeHindsight({ banks: ALL_BANKS, recall: { [OWNER]: ordinary }, importantRecall: [
+        { ...note, id: 'unrelated', text: '合成对象记下了图书归还日期。' },
+        { ...note, id: 'other-source', document_id: 'qq-import', text: '外部来源提及早餐。' },
+        note,
+    ] });
+    try {
+        const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common', legacyBank: 'linmengyao' }) });
+        const step = (content: string) => h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content }] }, async () => undefined);
+        const output = () => h.contexts.map(entry => entry.text()).join('\n');
+        const extra = () => fake.calls.filter(call => call.body?.tags?.includes('important'));
+        await step('刚换了支圆珠笔，写第一个字就断墨了。');
+        assert.equal(extra().length, 0);
+        assert.ok(!output().includes(note.text));
+        await h.handlers['agent/turn-stopping']!();
+        ordinary.length = 0; // 复现 16:05：普通召回没返回这条，只有补查才能捞到。
+        await step('还真让你说中了，昨晚刷视频刷到两点，今天出门又急，早饭没顾上吃。');
+        assert.equal(extra().length, 1);
+        assert.equal(bankOf(extra()[0]!.url), OWNER);
+        assert.deepEqual(extra()[0]!.body?.tags, ['dsh', 'important']);
+        assert.equal(output().split(note.text).length - 1, 1);
+        assert.doesNotMatch(output(), /图书归还|外部来源/);
+    } finally { fake.restore(); }
+});
 
 describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，且读不到别人的私聊（ADR 0176）', () => {
     test('DSH 与 QQ 对同一条记忆给出相同清晰度，明确记住和重复事实不会被普通遗忘', () => {
