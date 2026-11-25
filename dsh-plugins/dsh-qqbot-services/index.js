@@ -22,6 +22,9 @@ import { createRestoreStages } from '../../scripts/restore-stages.mjs'
 import { nodeCommand } from './node-run.js'
 import { failedStatus } from './status-fallback.js'
 import { localStatus, mergeStatus } from './local-status.js'
+import { createProjectPanels } from './project-panels.js'
+import { createHerState } from './her-state.js'
+import { createHerInner, herInnerEnabled } from './her-inner.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -316,6 +319,53 @@ export function createHandler(controller, events, chat, connection, now = Date.n
         return send(200, await companion.memory.search(query.get('q'), Number(query.get('page')), Number(query.get('limit'))))
       } catch { return send(503, { error: 'memory_unavailable' }) }
     }
+    // 我们自己的项目工具（docs/plans/2026-11-26-dsh-panel-our-own.md 模块 1）：开关、效果数、提示词构成、上线预检——只读、只有数和名字
+    if (req.method === 'GET' && path.startsWith(`${prefix}/project/`)) {
+      if (!companion?.project) return send(404, { error: 'not_found' })
+      const query = new URLSearchParams((req.url ?? '').split('?')[1])
+      const kind = path.slice(`${prefix}/project/`.length)
+      try {
+        if (kind === 'switches') return send(200, await companion.project.switches())
+        if (kind === 'metrics') {
+          const days = query.has('days') ? Number(query.get('days')) : 7
+          if (!Number.isInteger(days) || days < 1 || days > 31) return send(400, { error: 'invalid_query' })
+          return send(200, await companion.project.metrics({ days }))
+        }
+        if (kind === 'inventory') return send(200, await companion.project.promptInventory())
+        if (kind === 'golive') return send(200, await companion.project.golive())
+        return send(404, { error: 'not_found' })
+      } catch (error) { return error instanceof RangeError ? send(400, { error: 'invalid_query' }) : send(503, { error: 'project_unavailable' }) }
+    }
+    // 她的状态（模块 2）：记忆 / 情绪 / 她自己的账的运维数（只有数和新鲜度），加「她的一天」（她会说给他听的那些事）
+    if (req.method === 'GET' && path.startsWith(`${prefix}/her/`)) {
+      if (!companion?.her) return send(404, { error: 'not_found' })
+      const query = new URLSearchParams((req.url ?? '').split('?')[1])
+      const kind = path.slice(`${prefix}/her/`.length)
+      try {
+        const result = kind === 'memory' ? await companion.her.memoryHealth()
+          : kind === 'emotion' ? await companion.her.emotionHealth()
+          : kind === 'life' ? await companion.her.lifeHealth()
+          : kind === 'day' ? await companion.her.herDay(query.has('date') ? { date: query.get('date') } : {})
+          : undefined
+        if (result === undefined) return send(404, { error: 'not_found' })
+        return send(200, result ?? { available: false })
+      } catch { return send(503, { error: 'her_unavailable' }) }
+    }
+    // 她心里的（模块 3，ADR 0350）：插件配置 herInnerPanel 为 true 才有；没开就不建、不读她的文件
+    if (req.method === 'GET' && path.startsWith(`${prefix}/inner/`)) {
+      if (!companion?.inner) return send(404, { error: 'inner_disabled' })
+      const query = new URLSearchParams((req.url ?? '').split('?')[1])
+      const kind = path.slice(`${prefix}/inner/`.length)
+      try {
+        if (kind === 'today') return send(200, await companion.inner.today())
+        if (kind === 'ledger') {
+          const days = query.has('days') ? Number(query.get('days')) : 14
+          if (!Number.isInteger(days) || days < 1 || days > 400) return send(400, { error: 'invalid_query' })
+          return send(200, await companion.inner.ledger({ days }))
+        }
+        return send(404, { error: 'not_found' })
+      } catch { return send(503, { error: 'inner_unavailable' }) }
+    }
     if (companion?.memory && req.method === 'GET' && path === `${prefix}/memory/graph`) {
       const query = new URLSearchParams((req.url ?? '').split('?')[1])
       try { return send(200, await companion.memory.graph(query.get('q'))) }
@@ -443,7 +493,7 @@ export function createHandler(controller, events, chat, connection, now = Date.n
     if (req.method === 'GET' && path === `${prefix}/state`) {
       try {
         const state = { ...await controller.state(), events: events() }
-        return send(200, { ...state, diagnostic: diagnosticReport(state) })
+        return send(200, { ...state, diagnostic: diagnosticReport(state), panels: { herInner: Boolean(companion?.inner) } })
       }
       catch { return send(503, { error: 'status_unavailable' }) }
     }
@@ -562,8 +612,13 @@ export function apply(ctx, config = {}) {
   const homeFile = resolve(process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao'), 'HOME-PUBLIC.json')
   const characterDir = resolve(root, config.characterDir || 'characters/linmengyao')
   let drilling = false
+  const soulDir = resolve(process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao'))
   const companion = {
     room,
+    project: createProjectPanels({ root, readConfig: readKoishiConfig }),
+    her: createHerState({ root, readConfig: readKoishiConfig, soulDir, hindsightUrl: process.env.QQBOT_HINDSIGHT_URL }),
+    // 她心里的（ADR 0350）：默认关，先问她、用户点头再开
+    inner: herInnerEnabled(config) ? createHerInner({ soulDir, root }) : undefined,
     configEditor: createConfigEditor({ file: configPath, yaml: require('js-yaml') }),
     memory: createPublicMemory({
       root,
