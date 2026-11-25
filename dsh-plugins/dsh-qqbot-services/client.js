@@ -324,11 +324,17 @@ window.__ModuleLoader__.load({
         method: 'POST', headers: { 'content-type': 'application/json', 'x-qqbot-service-panel': '1' },
         body: JSON.stringify(data), signal,
       })
-      if (!response.ok) throw Error()
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        const error = Error(body.error || 'room_failed')
+        error.code = body.error
+        throw error
+      }
       return response.json()
     }
 
     function GuestRoom() {
+      const [disabled, setDisabled] = React.useState(false)
       const [messages, setMessages] = React.useState(null)
       const [draft, setDraft] = React.useState('')
       const [invite, setInvite] = React.useState('')
@@ -342,8 +348,12 @@ window.__ModuleLoader__.load({
           try {
             const data = await roomRequest('messages', {}, controller.signal)
             if (!controller.signal.aborted) setMessages(data.messages)
-          } catch { if (!controller.signal.aborted) setMessages(null) }
-          finally { if (!controller.signal.aborted) timer = setTimeout(read, 2500) }
+          } catch (error) {
+            // 会客室没开（ADR 0349）：不再轮询
+            if (error?.code === 'room_disabled') { if (!controller.signal.aborted) setDisabled(true); return }
+            if (!controller.signal.aborted) setMessages(null)
+          }
+          if (!controller.signal.aborted) timer = setTimeout(read, 2500)
         }
         void read()
         return () => { controller.abort(); clearTimeout(timer) }
@@ -379,6 +389,9 @@ window.__ModuleLoader__.load({
         } catch { setNotice('附件未能发送。') }
         finally { pending.current = false; setBusy(false) }
       }
+      if (disabled) return h('section', { className: 'qqb-card' },
+        h('h3', { className: 'qqb-title' }, '网页会客室'),
+        h('p', { className: 'qqb-note', role: 'status' }, '会客室没开。插件配置 companionRoom 设为 true 才会开（她说要看进来的是谁；开之前要用户点头，见 ADR 0349）。'))
       return h('section', { className: 'qqb-card' },
         h('div', { className: 'qqb-actions' }, h('h3', { className: 'qqb-title' }, '网页会客室'),
           h('div', { className: 'qqb-actions' },

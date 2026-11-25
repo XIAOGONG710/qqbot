@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createCompanionRoom, createRoomReply } from '../dsh-plugins/dsh-qqbot-services/companion-room.js'
+import { createCompanionRoom, createRoomReply, ROOM_PROMPT } from '../dsh-plugins/dsh-qqbot-services/companion-room.js'
 import { publishedHomeStatus } from '../dsh-plugins/dsh-linmengyao-memory/home-status.js'
-import { createHandler, createLanGuestHandler } from '../dsh-plugins/dsh-qqbot-services/index.js'
+import { companionRoomEnabled, createHandler, createLanGuestHandler } from '../dsh-plugins/dsh-qqbot-services/index.js'
 
 test('guests redeem one-use invites; replies only run on room messages and can decline', async () => {
   let now = 1000
@@ -42,7 +42,7 @@ test('the room model receives room-only data and has no tools', async () => {
   } })
   assert.equal(await reply({ called: false, messages: [{ role: 'guest', name: '来宾', text: '模拟私事' }] }), '')
   assert.equal(request.tools, undefined)
-  assert.match(request.messages[0].content, /住在房间里的对话|房间内/)
+  assert.equal(request.messages[0].content, ROOM_PROMPT)
   assert.match(request.messages[1].content, /模拟私事/)
 })
 
@@ -184,4 +184,36 @@ test('room media never reaches the room model, only the placeholder text', async
   for (const item of turns[0].messages) assert.deepEqual(Object.keys(item).sort(), ['name', 'role', 'text'])
   assert.doesNotMatch(JSON.stringify(turns[0].messages), /89504e47/)
   assert.match(JSON.stringify(turns[0].messages), /房间图片/)
+})
+
+test('ADR 0349：会客室默认关——只认插件配置里明写的 companionRoom: true', () => {
+  assert.equal(companionRoomEnabled(undefined), false)
+  assert.equal(companionRoomEnabled({}), false)
+  assert.equal(companionRoomEnabled({ companionRoom: 'true' }), false, '字符串不算')
+  assert.equal(companionRoomEnabled({ companionRoom: 1 }), false)
+  assert.equal(companionRoomEnabled({ companionRoom: true }), true)
+})
+
+test('ADR 0349：会客室没开时房间路由明说 room_disabled（主人认证之后才说；来宾路由不暴露）', async () => {
+  const auth = { requestRejection: request => (request.headers.cookie === 'session=owner' ? undefined : 403) }
+  const handler = createHandler({}, () => [], undefined, auth, Date.now, undefined, {})
+  const call = async (path, headers = {}) => {
+    let status, payload
+    await handler({ method: 'POST', url: '/api/qqbot-services/' + path, socket: { remoteAddress: '127.0.0.1' },
+      headers: { host: '127.0.0.1', 'x-qqbot-service-panel': '1', 'content-type': 'application/json', ...headers } },
+    { writeHead(code) { status = code }, end(value) { payload = JSON.parse(value) } })
+    return { status, payload }
+  }
+  assert.deepEqual(await call('room/owner/messages', { cookie: 'session=owner' }), { status: 404, payload: { error: 'room_disabled' } })
+  assert.equal((await call('room/owner/messages')).status, 403, '没登录：先被认证挡掉')
+  assert.equal((await call('room/guest/join')).status, 403, '来宾路由没开就不存在，走到认证被挡')
+})
+
+test('ADR 0349：房间提示词按她的话改——不写自我说明，底线还在（草稿，待她确认）', () => {
+  assert.doesNotMatch(ROOM_PROMPT, /先看气氛|有话才接/, '她说这句像说明书')
+  assert.match(ROOM_PROMPT, /私事/)
+  assert.match(ROOM_PROMPT, /别编/)
+  assert.match(ROOM_PROMPT, /查记忆/)
+  assert.match(ROOM_PROMPT, /JSON/)
+  assert.match(ROOM_PROMPT, /认识的人随口接，不熟的多听/, '她：得看进来的是谁')
 })

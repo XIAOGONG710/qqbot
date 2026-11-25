@@ -281,6 +281,8 @@ export function createHandler(controller, events, chat, connection, now = Date.n
       try { return await roomRoute(path, req, res, send, companion.room, true, companion.guestOrigin?.()) }
       catch { return send(503, { error: 'room_unavailable' }) }
     }
+    // 会客室默认关（ADR 0349 决定 1）：没开就明说，面板据此停住轮询、显示怎么开
+    if (companion && !companion.room && path.startsWith(`${prefix}/room/`)) return send(404, { error: 'room_disabled' })
     if (companion?.home && req.method === 'GET' && path === `${prefix}/home`) {
       try { return send(200, await companion.home()) }
       catch { return send(503, { error: 'home_unavailable' }) }
@@ -458,6 +460,9 @@ function launchService(root, service) {
   } finally { closeSync(file) }
 }
 
+/** 会客室开没开：只认插件配置里明写的 companionRoom: true（ADR 0349，默认关） */
+export const companionRoomEnabled = config => config?.companionRoom === true
+
 export function apply(ctx, config = {}) {
   const root = realpathSync(resolve(config.repoRoot || join(dirname(fileURLToPath(import.meta.url)), '../..')))
   const probeLog = join(root, 'runtime', 'log', 'panel-probe.log')
@@ -536,8 +541,11 @@ export function apply(ctx, config = {}) {
       return send(message)
     },
   })
-  const room = createCompanionRoom({ sniffMime: sniff, reply: createRoomReply({ key: process.env.QQBOT_LLM_API_KEY, model: config.roomModel }) })
-  const lane = openLanRoom(config.roomLan, room, root)
+  // 会客室默认关（ADR 0349 决定 1，她说「得看进来的是谁」）：插件配置 companionRoom 为 true 才建房间、开局域网监听、调模型；开它要用户点头
+  const room = companionRoomEnabled(config)
+    ? createCompanionRoom({ sniffMime: sniff, reply: createRoomReply({ key: process.env.QQBOT_LLM_API_KEY, model: config.roomModel }) })
+    : undefined
+  const lane = room ? openLanRoom(config.roomLan, room, root) : null
   const homeFile = resolve(process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao'), 'HOME-PUBLIC.json')
   const characterDir = resolve(root, config.characterDir || 'characters/linmengyao')
   let drilling = false
@@ -583,5 +591,5 @@ export function apply(ctx, config = {}) {
   const unregister = ctx.webServer.register({
     kind: 'prefix', path: prefix, handler: createHandler(controller, events, chat, ctx.connection, Date.now, details, companion),
   })
-  ctx.on('dispose', () => { lane?.close(); room.close(); controller.dispose(); unregister() })
+  ctx.on('dispose', () => { lane?.close(); room?.close(); controller.dispose(); unregister() })
 }
