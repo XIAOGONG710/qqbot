@@ -21,6 +21,8 @@ import type { SensitiveSwitch } from './sensitive.ts';
 export interface MissedMessagesDeps {
     config: Pick<AppConfig, 'contacts' | 'schedule'>;
     stopped: () => boolean;
+    /** 她那边的「现在」（App 的 worldNow；模拟器是虚拟时钟）。不给就是真实时钟，同原来 */
+    now?: () => number;
     transport: Pick<Executor['qq'], 'friendHistory'>;
     history: ReturnType<typeof currentTierHistory>;
     chatHistory: ChatHistory;
@@ -39,7 +41,7 @@ export interface MissedMessagesDeps {
     log: Log;
 }
 
-export function missedMessages({ config, stopped, transport, history, chatHistory, tierRecord, feedback, collectingStickers, ownStickerWork, readerFor, incoming, quoted, markCrisis, sensitive, cardFor, responders, log }: MissedMessagesDeps) {
+export function missedMessages({ config, stopped, now: nowMs = Date.now, transport, history, chatHistory, tierRecord, feedback, collectingStickers, ownStickerWork, readerFor, incoming, quoted, markCrisis, sensitive, cardFor, responders, log }: MissedMessagesDeps) {
     const { recoverIncoming, incomingFailure, tracksIncoming, activeIncoming, bufferedIncomingIds, claimIncoming, releaseIncoming } = incoming;
     const { missingQuotes, fetchQuotes, missingForwards, fetchForwards, quoteLookup, forwardLookup } = quoted;
 
@@ -51,7 +53,7 @@ export function missedMessages({ config, stopped, transport, history, chatHistor
                 try { await recoverIncoming(contact.qq); } catch (error) { incomingFailure(error); }
                 if (stopped()) return;
                 // 聊天先于副状态保存：上次中断可能已存同ID消息，不能只等NapCat重新补回。
-                const recoveredAt = Date.now();
+                const recoveredAt = nowMs();
                 for (const message of history.load(contact.qq)) {
                     const at = Date.parse(message.time);
                     if (message.role !== 'user' || !Number.isFinite(at) || at > recoveredAt || recoveredAt - at >= CRISIS_PAUSE_MS) continue;
@@ -145,7 +147,7 @@ export function missedMessages({ config, stopped, transport, history, chatHistor
     }
 
     function catchUpAll(): void {
-        const now = new Date();
+        const now = new Date(nowMs());
         for (const contact of config.contacts) {
             try {
                 const stored = history.load(contact.qq);

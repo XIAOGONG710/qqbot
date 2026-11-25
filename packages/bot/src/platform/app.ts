@@ -2482,7 +2482,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
 
     // 连上之后补回漏掉的消息、有没回的就回：在 missed-messages.ts（ADR 0336 第 6 步）
     const { syncMissed, catchUpAll } = missedMessages({
-        config, stopped: () => stopped, transport, history, chatHistory, tierRecord, feedback, collectingStickers, ownStickerWork, readerFor, incoming, quoted, markCrisis, sensitive, cardFor, responders, log,
+        config, stopped: () => stopped, now: worldNow, transport, history, chatHistory, tierRecord, feedback, collectingStickers, ownStickerWork, readerFor, incoming, quoted, markCrisis, sensitive, cardFor, responders, log,
     });
 
     // 「/休眠」「/唤醒」（ADR 0161）：在 memory/dormancy-commands.ts（ADR 0336 第 6 步）

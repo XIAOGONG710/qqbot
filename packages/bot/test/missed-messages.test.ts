@@ -38,6 +38,7 @@ interface Options {
     callAction?: (action: string, params: Record<string, unknown>) => Promise<unknown>;
     schedule?: boolean;
     onFetch?: () => void;
+    now?: () => number;
 }
 function harness(options: Options = {}) {
     const dir = dataDir();
@@ -57,6 +58,7 @@ function harness(options: Options = {}) {
     const deps: MissedMessagesDeps = {
         config: { contacts, schedule: options.schedule ?? false },
         stopped: options.stopped ?? (() => false),
+        ...(options.now ? { now: options.now } : {}),
         transport: {
             friendHistory: async (qq, count) => {
                 friendHistoryCalls.push([qq, count]);
@@ -259,6 +261,18 @@ describe('补回复（catchUpAll）', () => {
         h.missed.catchUpAll();
         assert.deepEqual(h.caughtUp, [HIM.qq]);
         assert.deepEqual(h.logs, [`[${HIM.qq}] 有没回的消息，回复`]);
+    });
+
+    test('「现在」按注入的时钟算（模拟器的虚拟时钟），不看真实时钟', () => {
+        const sent = at('2026-01-01T09:00:00+08:00');
+        const h = harness({ now: () => sent + 10 * 60_000 });
+        h.chatHistory.append(HIM.qq, { time: new Date(sent).toISOString(), role: 'user', content: '在吗', messageId: 1 });
+        h.missed.catchUpAll();
+        assert.deepEqual(h.caughtUp, [HIM.qq], '虚拟时钟上才过 10 分钟：回；按真实时钟早就超过 3 小时了');
+        const late = harness({ now: () => sent + 5 * 3_600_000 });
+        late.chatHistory.append(HIM.qq, { time: new Date(sent).toISOString(), role: 'user', content: '在吗', messageId: 1 });
+        late.missed.catchUpAll();
+        assert.deepEqual(late.caughtUp, []);
     });
 
     test('没回的超过 3 小时：只补记录，等他下一条一起回；最后是她说的就什么都不做', () => {
