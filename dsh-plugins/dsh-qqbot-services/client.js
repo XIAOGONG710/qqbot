@@ -11,7 +11,8 @@ window.__ModuleLoader__.load({
       { id: 'link', label: '连接' }, { id: 'sys', label: '系统' }]
     const names = { napcat: 'NapCat', hindsight: 'Hindsight', koishi: 'Koishi', watchdog: '守护', backup: '备份' }
     const steps = { checking: '正在检查', starting: '正在等待服务就绪', skipped: '已运行，跳过启动', ready: '已就绪', timeout: '等待就绪超时', failed: '启动或检查失败', maintenance: '维护期间暂停启动' }
-    const eventNames = { watching: '开始监测', recovered: '恢复正常', starting: '尝试启动', failed: '运行异常' }
+    const eventNames = { watching: '开始监测', recovered: '恢复正常', starting: '尝试启动', prepared: '准备启动', failed: '运行异常', backup: '备份',
+  matched: '配对成功', 'no-match': '没有配对', 'not-queried': '没查到' }
 
     // 灵犀 QQ 桥接的 MIT 主题。命名空间与上游独立，避免共装时串样式。
     const STYLE_ID = 'qqb-style'
@@ -623,6 +624,82 @@ window.__ModuleLoader__.load({
               h('small', { className: 'qqb-note' }, `共现 ${edge.memories.length} 条`))))))
     }
 
+    const LOG_EVENT_OPTIONS = {
+      operations: ['watching', 'recovered', 'starting', 'failed', 'backup'],
+      recall: ['matched', 'no-match', 'not-queried', 'failed'],
+    }
+
+    function LogsPanel() {
+      const [source, setSource] = React.useState('operations')
+      const [events, setEvents] = React.useState([])
+      const [page, setPage] = React.useState(1)
+      const [data, setData] = React.useState(null)
+      const [notice, setNotice] = React.useState('')
+      const [busy, setBusy] = React.useState(false)
+
+      React.useEffect(() => {
+        let alive = true
+        const query = new URLSearchParams({ source, page: String(page), limit: '20' })
+        for (const event of events) query.append('event', event)
+        fetch(`${api}/logs/list?${query}`)
+          .then(response => response.ok ? response.json() : Promise.reject(Error('read')))
+          .then(result => { if (alive) { setData(result); setNotice('') } })
+          .catch(() => { if (alive) { setData(null); setNotice('读不到日志，稍后再试。') } })
+        return () => { alive = false }
+      }, [source, events, page])
+
+      const pick = value => {
+        setSource(value)
+        setEvents([])
+        setPage(1)
+      }
+      const toggle = event => {
+        setEvents(current => current.includes(event) ? current.filter(item => item !== event) : [...current, event])
+        setPage(1)
+      }
+      const download = async () => {
+        setBusy(true)
+        try {
+          const query = new URLSearchParams({ source })
+          for (const event of events) query.append('event', event)
+          const response = await fetch(`${api}/logs/export?${query}`)
+          if (!response.ok) throw Error('export')
+          const text = await response.text()
+          const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }))
+          const link = document.createElement('a')
+          link.href = url
+          link.download = `linmengyao-${source}-${new Date().toISOString().slice(0, 10)}.txt`
+          link.click()
+          URL.revokeObjectURL(url)
+          setNotice('已导出：只有时间、服务、事件类别和计数。')
+        } catch { setNotice('导出没有完成，请稍后重试。') }
+        finally { setBusy(false) }
+      }
+
+      const pages = data && data.total > 0 ? Math.ceil(data.total / data.limit) : 1
+      return h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '日志'),
+        h('div', { className: 'qqb-actions' },
+          h('button', { className: `qqb-btn${source === 'operations' ? ' qqb-primary' : ''}`, type: 'button', onClick: () => pick('operations') }, '运维事件'),
+          h('button', { className: `qqb-btn${source === 'recall' ? ' qqb-primary' : ''}`, type: 'button', onClick: () => pick('recall') }, '召回诊断'),
+          h('button', { className: 'qqb-btn', type: 'button', disabled: busy, onClick: () => void download() }, '导出脱敏摘要')),
+        h('div', { className: 'qqb-actions' }, ...LOG_EVENT_OPTIONS[source].map(event =>
+          h('button', { key: event, className: `qqb-btn${events.includes(event) ? ' qqb-primary' : ''}`, type: 'button',
+            'aria-pressed': events.includes(event), onClick: () => toggle(event) }, eventNames[event] ?? event))),
+        notice && h('p', { className: 'qqb-note', role: 'status' }, notice),
+        data && h('p', { className: 'qqb-note' },
+          `共 ${data.total} 条（第 ${data.page}/${pages} 页）。只显示结构化摘要，原文不在这里。`),
+        data?.items?.map((row, index) => h('div', { className: 'qqb-kv', key: `${row.at}-${index}` },
+          h('span', null, row.at),
+          h('span', null, source === 'recall'
+            ? `${eventNames[row.important] ?? row.important} · 候选 ${row.items} · 选入 ${row.selected} · 失败库 ${row.failed}`
+            : `${names[row.service] ?? row.service} · ${eventNames[row.event] ?? row.event}`))),
+        data && !data.items.length && h('p', { className: 'qqb-note' }, '这一组里没有记录。'),
+        data && pages > 1 && h('div', { className: 'qqb-actions' },
+          h('button', { className: 'qqb-btn', type: 'button', disabled: page <= 1, onClick: () => setPage(current => Math.max(1, current - 1)) }, '上一页'),
+          h('small', { className: 'qqb-note' }, `${data.page} / ${pages}`),
+          h('button', { className: 'qqb-btn', type: 'button', disabled: page >= pages, onClick: () => setPage(current => current + 1) }, '下一页')))
+    }
+
     function DetailsCard({ kind }) {
       const [data, setData] = React.useState(undefined)
       const [revision, setRevision] = React.useState(0)
@@ -851,7 +928,8 @@ window.__ModuleLoader__.load({
         section('sys',
           tab === 'sys' && h(DetailsCard, { kind: 'backups' }),
           tab === 'sys' && h(DetailsCard, { kind: 'versions' }),
-          tab === 'sys' && h(DetailsCard, { kind: 'logs' }),
+          tab === 'sys' && h(LogsPanel),
+        tab === 'sys' && h(DetailsCard, { kind: 'logs' }),
           state?.diagnostic && h('section', { className: 'qqb-card', 'aria-label': '链路诊断' },
             h('div', { className: 'qqb-actions' }, h('h3', { className: 'qqb-title' }, '链路诊断'),
               h('button', { className: 'qqb-btn', onClick: copyDiagnostic }, '复制诊断')),

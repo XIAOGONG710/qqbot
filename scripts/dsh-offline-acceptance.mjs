@@ -13,6 +13,7 @@ import { createCompanionRoom } from '../dsh-plugins/dsh-qqbot-services/companion
 import { createController } from '../dsh-plugins/dsh-qqbot-services/controller.js'
 import { createCharacterBridge } from '../dsh-plugins/dsh-qqbot-services/character-bridge.js'
 import { createPublicMemory } from '../dsh-plugins/dsh-qqbot-services/public-memory.js'
+import { createLogsView } from '../dsh-plugins/dsh-qqbot-services/logs-view.js'
 import { createHandler, summarizeConnectionConfig } from '../dsh-plugins/dsh-qqbot-services/index.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -23,7 +24,7 @@ cpSync(join(fixture, 'st'), join(characterDir, 'st'), { recursive: true })
 
 const counts = {
   probe: 0, launch: 0, state: 0, events: 0,
-  napcatRead: 0, qqSend: 0, details: 0, home: 0, roomReply: 0, character: 0, memory: 0,
+  napcatRead: 0, qqSend: 0, details: 0, home: 0, roomReply: 0, character: 0, memory: 0, logs: 0,
 }
 const deltas = []
 
@@ -98,6 +99,16 @@ const bridge = createCharacterBridge({
   stDir: join(characterDir, 'st'),
   prefix: 'synthetic',
 })
+const logsView = createLogsView({
+  root,
+  home: characterDir,
+  readTail: () => [
+    '2026/11/24 18:00:05 hindsight：启动失败 token=SECRET-ABC',
+    '2026/11/24 18:04:00 备份：完成 runtime/backups/2026-11-24',
+    '2026/11/24 18:05:00 对话：他说「今晚早点睡」 https://example.test/cb?code=SECRET123',
+  ],
+})
+
 const publicMemory = createPublicMemory({
   root,
   readConfig: () => koishiConfig,
@@ -117,6 +128,10 @@ const companion = {
   memory: {
     search: (...args) => { counts.memory++; return publicMemory.search(...args) },
     graph: (...args) => { counts.memory++; return publicMemory.graph(...args) },
+  },
+  logs: {
+    list: (...args) => { counts.logs++; return logsView.list(...args) },
+    exportText: (...args) => { counts.logs++; return logsView.exportText(...args) },
   },
 }
 const connection = { authorizeIndex: req => req.headers.cookie === 'test-session=owner' }
@@ -232,6 +247,24 @@ assert.equal(response.payload.linked, true)
 assert.ok(response.payload.nodes.some(node => node.name === '她'))
 assert.equal(counts.qqSend, 0, '记忆面板不得触达发送接口')
 
+// 日志：列表与导出只出结构化摘要，原文、令牌、URL 参数不进响应。
+response = await call('GET', 'logs/list?source=operations&limit=20')
+assert.equal(response.status, 200)
+assert.equal(response.payload.total, 2, '只有能归类的两行进入列表')
+assert.deepEqual(response.payload.items.map(row => row.event), ['backup', 'failed'])
+assert.ok(!JSON.stringify(response.payload).includes('SECRET-ABC'), '令牌不进列表')
+assert.ok(!JSON.stringify(response.payload).includes('今晚早点睡'), '对话原文不进列表')
+response = await call('GET', 'logs/export?source=operations')
+assert.equal(response.status, 200)
+assert.equal(typeof response.payload, 'string', '导出是纯文本')
+assert.match(response.payload, /hindsight 运行异常/)
+for (const secret of ['SECRET-ABC', '今晚早点睡', 'code=SECRET123']) {
+  assert.ok(!response.payload.includes(secret), `导出里不该出现 ${secret}`)
+}
+response = await call('GET', 'logs/list?source=secrets')
+assert.equal(response.status, 400, '只认白名单里的日志来源')
+assert.equal(counts.qqSend, 0, '日志页不得触达发送接口')
+
 // 非本机来源与非主人会话直接拒绝，且不触达任何下游。
 response = await call('GET', 'home', { remote: '192.168.1.50' })
 assert.equal(response.status, 403, '非回环来源必须拒绝')
@@ -244,6 +277,10 @@ const memoryBefore = counts.memory
 response = await call('GET', 'memory/search?q=' + encodeURIComponent('海边'), { remote: '192.168.1.50' })
 assert.equal(response.status, 403, '非回环来源不得查公共记忆')
 assert.equal(counts.memory, memoryBefore, '被拒绝的请求不得触达公共库')
+const logsBefore = counts.logs
+response = await call('GET', 'logs/list?source=operations', { remote: '192.168.1.50' })
+assert.equal(response.status, 403, '非回环来源不得读日志')
+assert.equal(counts.logs, logsBefore, '被拒绝的请求不得触达日志')
 
 const width = Math.max(...deltas.map(row => row.route.length))
 const pad = value => String(value).padEnd(width)
@@ -254,6 +291,6 @@ const lines = [
 ]
 console.log(lines.join('\n'))
 console.log('')
-console.log(`模拟调用合计：probe=${counts.probe} events=${counts.events} napcatRead=${counts.napcatRead} qqSend=${counts.qqSend} details=${counts.details} home=${counts.home} launch=${counts.launch} character=${counts.character} memory=${counts.memory}`)
+console.log(`模拟调用合计：probe=${counts.probe} events=${counts.events} napcatRead=${counts.napcatRead} qqSend=${counts.qqSend} details=${counts.details} home=${counts.home} launch=${counts.launch} character=${counts.character} memory=${counts.memory} logs=${counts.logs}`)
 console.log(`取消/未经确认的 QQ 发送调用数：${counts.qqSend}（要求 0）`)
 rmSync(characterDir, { recursive: true, force: true })

@@ -17,6 +17,7 @@ import { createHistoryMedia } from './history-media.js'
 import { createConfigEditor } from './config-editor.js'
 import { createCharacterBridge } from './character-bridge.js'
 import { createPublicMemory } from './public-memory.js'
+import { createLogsView } from './logs-view.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -184,29 +185,7 @@ function tail(file) {
   finally { if (fd !== undefined) closeSync(fd) }
 }
 
-export function summarizeWatchdog(lines, limit = 12) {
-  return lines.flatMap(line => {
-    const stamp = /^(\d{4}\/\d{1,2}\/\d{1,2} \d{2}:\d{2}:\d{2})\s+(.*)$/.exec(line)
-    if (!stamp) return []
-    const text = stamp[2]
-    const service = /^(napcat|hindsight|koishi)[:：]/i.exec(text)?.[1]?.toLowerCase()
-    const event = text.startsWith('服务守护：') ? 'watching'
-      : /恢复正常/.test(text) ? 'recovered'
-      : /拉起|重拉/.test(text) ? 'starting'
-      : /失败|不健康|出错|起不来/.test(text) ? 'failed'
-      : undefined
-    const target = service ?? (text.startsWith('备份：') ? 'backup' : 'watchdog')
-    return event ? [{ at: stamp[1], service: target, event }] : []
-  }).slice(-limit).reverse()
-}
-
-export function summarizeRecallLog(lines) {
-  return lines.flatMap(line => {
-    const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z) recall items=(\d{1,7}) selected=(\d{1,7}) memoryChars=(\d{1,7}) important=(failed|no-match|not-queried|matched) failedBanks=(\d{1,7})$/.exec(line)
-    return match ? [{ at: match[1], items: Number(match[2]), selected: Number(match[3]), chars: Number(match[4]),
-      important: match[5], failed: Number(match[6]) }] : []
-  }).slice(-60).reverse()
-}
+export { summarizeWatchdog, summarizeRecallLog } from './logs-view.js'
 
 export function diagnosticReport({ health, checkedAt, operation, events }) {
   const status = value => value === true ? '正常' : value === false ? '未就绪' : '未知'
@@ -330,6 +309,29 @@ export function createHandler(controller, events, chat, connection, now = Date.n
       const query = new URLSearchParams((req.url ?? '').split('?')[1])
       try { return send(200, await companion.memory.graph(query.get('q'))) }
       catch { return send(503, { error: 'memory_unavailable' }) }
+    }
+    if (companion?.logs && req.method === 'GET' && path === `${prefix}/logs/list`) {
+      const query = new URLSearchParams((req.url ?? '').split('?')[1])
+      const events = query.getAll('event').filter(Boolean)
+      const result = companion.logs.list({
+        source: query.get('source') ?? 'operations',
+        events,
+        page: Number(query.get('page')),
+        limit: Number(query.get('limit')),
+      })
+      return result ? send(200, result) : send(400, { error: 'bad_source' })
+    }
+    if (companion?.logs && req.method === 'GET' && path === `${prefix}/logs/export`) {
+      const query = new URLSearchParams((req.url ?? '').split('?')[1])
+      const events = query.getAll('event').filter(Boolean)
+      const text = companion.logs.exportText({ source: query.get('source') ?? 'operations', events })
+      if (text === null) return send(400, { error: 'bad_source' })
+      res.writeHead(200, {
+        'content-type': 'text/plain; charset=utf-8',
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+      })
+      return res.end(text)
     }
     if (details && req.method === 'GET' && path.startsWith(`${prefix}/details/`)) {
       const kind = path.slice(`${prefix}/details/`.length)
@@ -503,6 +505,7 @@ export function apply(ctx, config = {}) {
       stDir: join(characterDir, 'st'),
       prefix: config.characterPrefix || 'linmengyao',
     }),
+    logs: createLogsView({ root }),
     guestOrigin: () => lane?.origin(),
     sticker: local.sticker,
     async restoreDrill(day, keep) {
