@@ -26,6 +26,8 @@ window.__ModuleLoader__.load({
       const [state, setState] = React.useState(null)
       const [notice, setNotice] = React.useState('')
       const [sending, setSending] = React.useState(false)
+      const [diagnosticOpen, setDiagnosticOpen] = React.useState(false)
+      const [copyStatus, setCopyStatus] = React.useState('')
       const refresh = React.useRef(null)
       React.useEffect(() => {
         const controller = new AbortController()
@@ -72,6 +74,15 @@ window.__ModuleLoader__.load({
       const operation = state?.operation
       const blocked = !health || health.maintenance || sending || operation?.running
       const isReady = name => name === 'koishi' ? health?.koishiListening : health?.[name]
+      const copyDiagnostic = async () => {
+        setDiagnosticOpen(true)
+        try {
+          await navigator.clipboard.writeText(state.diagnostic)
+          setCopyStatus('已复制诊断')
+        } catch {
+          setCopyStatus('可选中下方诊断，手动复制。')
+        }
+      }
       return h('section', { style: { padding: 24, maxWidth: 740, margin: '0 auto', overflow: 'auto', height: '100%' } },
         h('header', { style: row },
           h('h2', { style: { margin: 0 } }, 'QQ 机器人服务'),
@@ -88,6 +99,12 @@ window.__ModuleLoader__.load({
         h('div', { style: row }, h('strong', null, '自动守护'),
           h('span', null, health ? (health.watchdog ? '运行中' : '未运行') : '状态未知')),
         state?.checkedAt && h('small', null, `最近探测 ${new Date(state.checkedAt).toLocaleTimeString('zh-CN')}`),
+        state?.diagnostic && h('section', { 'aria-label': '链路诊断', style: { marginTop: 16 } },
+          h('div', { style: row }, h('strong', null, '链路诊断'),
+            h('button', { style: button, onClick: copyDiagnostic }, '复制诊断')),
+          copyStatus && h('p', { role: 'status' }, copyStatus),
+          diagnosticOpen && h('textarea', { 'aria-label': '诊断报告', readOnly: true, value: state.diagnostic,
+            rows: 10, style: { width: '100%', boxSizing: 'border-box' } })),
         h('h3', null, '最近后台事件'),
         state?.events?.length
           ? h('ul', null, ...state.events.map(({ at, service, event }, index) =>

@@ -291,6 +291,7 @@ async function check() {
     if (once) {
         console.log(JSON.stringify({ ...status, net, koishiProcesses: koishiProcs.length,
             koishiListening: await portOpen(5140), lastConnection: connection, maintenance: existsSync(MAINTENANCE),
+            ports: { napcat: 3001, hindsight: HINDSIGHT_PORT, koishi: 5140 },
             watchdog: procs.some(p => p.pid !== process.pid && p.name === 'node.exe' && /services-watchdog\.mjs/i.test(p.cmd) && !/\s--once(?:\s|$)/.test(p.cmd)),
             launchers: { napcat: running('napcat'), hindsight: running('hindsight'), koishi: running('koishi') },
         }));

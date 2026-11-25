@@ -59,6 +59,39 @@ export function summarizeWatchdog(lines) {
   }).slice(-12).reverse()
 }
 
+export function diagnosticReport({ health, checkedAt, operation, events }) {
+  const status = value => value === true ? '正常' : value === false ? '未就绪' : '未知'
+  const port = key => Number.isInteger(health.ports?.[key]) && health.ports[key] > 0 && health.ports[key] <= 65535
+    ? `（端口 ${health.ports[key]}）` : ''
+  const connection = { connected: '最近记录为已连接', disconnected: '最近记录为断开' }
+  const link = health.napcat === false || health.koishiListening === false ? '未就绪'
+    : Object.hasOwn(connection, health.lastConnection?.state) ? connection[health.lastConnection.state] : '未知'
+  const steps = { checking: '检查中', starting: '启动中', skipped: '已跳过', ready: '已就绪', timeout: '超时', failed: '失败', maintenance: '维护暂停' }
+  const services = { napcat: 'NapCat', hindsight: 'Hindsight', koishi: 'Koishi', watchdog: '守护', backup: '备份' }
+  const kinds = { watching: '开始监测', recovered: '恢复正常', starting: '尝试启动', failed: '运行异常' }
+  const lines = [
+    '林梦瑶 · DSH 服务诊断',
+    `探测时间 ${new Date(checkedAt).toISOString()}`,
+    `NapCat OneBot${port('napcat')} ${status(health.napcat)}`,
+    `Hindsight${port('hindsight')} ${status(health.hindsight)}`,
+    `Koishi 控制台${port('koishi')} ${status(health.koishiListening)}`,
+    `Koishi → NapCat ${link}`,
+    `自动守护 ${status(health.watchdog)}`,
+    `维护模式 ${health.maintenance ? '开启' : '关闭'}`,
+  ]
+  for (const key of ['napcat', 'hindsight', 'koishi']) {
+    const step = operation?.steps?.[key]
+    if (Object.hasOwn(steps, step)) lines.push(`${services[key]} 启动 ${steps[step]}`)
+  }
+  for (const event of events.slice(0, 5)) {
+    if (Object.hasOwn(services, event.service) && Object.hasOwn(kinds, event.event)
+      && /^\d{4}\/\d{1,2}\/\d{1,2} \d{2}:\d{2}:\d{2}$/.test(event.at)) {
+      lines.push(`${event.at} ${services[event.service]} ${kinds[event.event]}`)
+    }
+  }
+  return lines.join('\n')
+}
+
 export function createHandler(controller, events) {
   const panelToken = randomBytes(32).toString('hex')
   return async (req, res) => {
@@ -69,7 +102,10 @@ export function createHandler(controller, events) {
     if (!allowedRequest(req, panelToken)) return send(403, { error: 'forbidden' })
     const path = (req.url ?? '').split('?')[0]
     if (req.method === 'GET' && path === `${prefix}/state`) {
-      try { return send(200, { ...await controller.state(), events: events(), panelToken }) }
+      try {
+        const state = { ...await controller.state(), events: events() }
+        return send(200, { ...state, diagnostic: diagnosticReport(state), panelToken })
+      }
       catch { return send(503, { error: 'status_unavailable' }) }
     }
     if (req.method === 'POST' && path.startsWith(`${prefix}/start/`)) {

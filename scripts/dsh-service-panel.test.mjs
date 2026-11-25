@@ -86,7 +86,8 @@ test('routes accept only local panel operations and event texts never leave the 
 });
 
 test('desktop proxy can submit only with the token from the local state route', async () => {
-    const current = { ...health, napcat: true, hindsight: true, koishi: true, koishiListening: true };
+    const current = { ...health, napcat: true, hindsight: true, koishi: true, koishiListening: true,
+        ports: { napcat: 3001, hindsight: 8899, koishi: 5140 }, lastConnection: { state: 'connected', detail: 'PRIVATE' } };
     const controller = createController({ probe: async () => current, launch: async () => assert.fail(), sleep: async () => {} });
     const handler = createHandler(controller, () => []);
     const call = async (method, path, headers = {}) => {
@@ -98,6 +99,10 @@ test('desktop proxy can submit only with the token from the local state route', 
         return { status, body };
     };
     const { body } = await call('GET', 'state');
+    assert.match(body.diagnostic, /Hindsight（端口 8899） 正常/);
+    assert.match(body.diagnostic, /Koishi → NapCat 最近记录为已连接/);
+    assert.doesNotMatch(body.diagnostic, /PRIVATE|panelToken/);
+    assert.ok(!body.diagnostic.includes(body.panelToken));
     const marker = { 'x-qqbot-service-panel': '1' };
     const authorized = { ...marker, 'x-qqbot-service-token': body.panelToken };
     assert.equal((await call('POST', 'start/all', marker)).status, 403);
