@@ -9,7 +9,7 @@ import { activeKoishiPlugin, configuredManualOwner } from './chat.js'
 
 const BANK = /^[a-zA-Z0-9_-]{1,80}-common$/
 const LOOPBACK = ['127.0.0.1', 'localhost', '[::1]']
-/** 一页默认几条；翻页最多到第 5 页，面板不用翻完整个库 */
+/** 一页默认几条；最多留 60 条（每页 12 条时 5 页），面板不用翻完整个库 */
 export const PAGE_LIMIT = 8
 const MAX_LIMIT = 12
 const MAX_PAGE = 5
@@ -117,9 +117,9 @@ export function createPublicMemory({ root, readConfig, hindsightUrl, fetcher = f
   async function search(rawQuery, rawPage, rawLimit) {
     const query = clean(rawQuery, 120)
     if (!query) return { linked: true, page: 1, limit: PAGE_LIMIT, total: 0, items: [], cached: false }
-    const page = Number.isSafeInteger(rawPage) && rawPage >= 1 && rawPage <= MAX_PAGE ? rawPage : 1
     const limit = Number.isSafeInteger(rawLimit) && rawLimit >= 1 && rawLimit <= MAX_LIMIT ? rawLimit : PAGE_LIMIT
-    if (page * limit > MAX_ITEMS) return { linked: true, page, limit, total: 0, items: [], cached: false }
+    // 页数上限跟着每页条数走：面板每页 8 条时 60 条是 8 页，原来只认到第 5 页，第 6–8 页悄悄回第 1 页（审查第 13 条）
+    const page = Number.isSafeInteger(rawPage) && rawPage >= 1 && rawPage <= Math.ceil(MAX_ITEMS / limit) ? rawPage : 1
     let rows = paged(query)
     const cached = rows !== null
     if (!rows) {

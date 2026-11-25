@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { lstatSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { activeKoishiPlugin } from './chat.js'
 
@@ -34,6 +35,22 @@ function withoutEdited(config, pluginKey, modeKeys) {
   const plugin = copy?.plugins?.[pluginKey]
   if (plugin && typeof plugin === 'object') for (const key of ['contacts', ...modeKeys]) delete plugin[key]
   return copy
+}
+
+/** 留几份 apply 前的整份配置（里面有令牌）：够撤销最近几次就行（审查第 17 条） */
+export const KEEP_BACKUPS = 5
+
+/** 只删这个编辑器自己留的 koishi.yml.qqbot-<ticket>.bak，按修改时间留最新的 keep 份 */
+export function pruneBackups(file, keep = KEEP_BACKUPS) {
+  try {
+    const directory = dirname(file)
+    const prefix = `${basename(file)}.qqbot-`
+    const backups = readdirSync(directory)
+      .filter(name => name.startsWith(prefix) && name.endsWith('.bak'))
+      .map(name => ({ path: join(directory, name), at: lstatSync(join(directory, name)).mtimeMs }))
+      .sort((a, b) => b.at - a.at)
+    for (const old of backups.slice(keep)) rmSync(old.path, { force: true })
+  } catch { /* 清理失败不影响这次保存 */ }
 }
 
 export function createConfigEditor({ file, yaml, now = Date.now }) {
@@ -80,6 +97,7 @@ export function createConfigEditor({ file, yaml, now = Date.now }) {
         if (digest(current()) !== draft.digest) return { status: 409, error: 'config_changed' }
         renameSync(stage, file)
       } finally { rmSync(stage, { force: true }) }
+      pruneBackups(file)
       return { status: 200, ok: true }
     },
   }

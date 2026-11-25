@@ -68,8 +68,9 @@ export function createLocalPanels({ root, readConfig, runGit, now = () => new Da
         const day = query.get('day') ?? ''
         if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null
         const backup = join(root, 'runtime', 'backups', day)
-        const directory = lstatSync(backup)
-        if (!directory.isDirectory() || directory.isSymbolicLink()) return null
+        // 没有这份备份是正常情况（回 null → 404），不是探测出错（审查第 14 条）
+        const directory = lstatSync(backup, { throwIfNoEntry: false })
+        if (!directory?.isDirectory() || directory.isSymbolicLink()) return null
         const { restoreDrillPlan } = await load('scripts/restore-drill-state.mjs')
         const plan = restoreDrillPlan(backup)
         return { day, databaseBytes: plan.database.bytes, stateBytes: plan.state.bytes }

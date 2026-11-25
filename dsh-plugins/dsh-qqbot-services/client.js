@@ -683,7 +683,8 @@ window.__ModuleLoader__.load({
           link.href = url
           link.download = `linmengyao-${source}-${new Date().toISOString().slice(0, 10)}.txt`
           link.click()
-          URL.revokeObjectURL(url)
+          // 点完立刻释放，Firefox 等环境下载会失败；和导出名单一样隔一会儿再释放
+          setTimeout(() => URL.revokeObjectURL(url), 1000)
           setNotice('已导出：只有时间、服务、事件类别和计数。')
         } catch { setNotice('导出没有完成，请稍后重试。') }
         finally { setBusy(false) }
@@ -785,6 +786,10 @@ window.__ModuleLoader__.load({
         finally { busy.current = false }
       }
       const stageLabels = { artifacts: '制品校验', files: '文件隔离恢复', database: '隔离数据库恢复', switch: '正式切换' }
+      // 阶段只回错误码（原始错误只在本机 panel-probe.log 里）
+      const stageErrors = { invalid_day: '备份日期不对', backup_missing: '这份备份不存在', artifact_invalid: '备份制品和完成标记对不上',
+        extract_failed: '状态包解不开', restored_state_invalid: '解出来的内容没通过检查', not_a_dump: '数据库备份不是可识别的 dump',
+        size_mismatch: '复制到隔离目录后大小不一致', stage_failed: '中途出错' }
       const stageView = day => {
         if (stageDay !== day) return null
         return h('div', { className: 'qqb-stage' },
@@ -803,7 +808,7 @@ window.__ModuleLoader__.load({
               ? (stagePick.result.stage === 'artifacts' ? `尺寸对得上 · ${stagePick.result.state.source}`
                 : stagePick.result.stage === 'files' ? `${stagePick.result.files} 个文件 · 已清理`
                   : `${stagePick.result.bytes} 字节 · ${stagePick.result.isolated === 'executed' ? '已在隔离库跑过' : '只预演命令'}`)
-              : `没走通：${stagePick.result.error}`)))
+              : `没走通：${stageErrors[stagePick.result.error] ?? '中途出错'}`)))
       }
       return h('section', { className: 'qqb-card' },
         h('div', { className: 'qqb-actions' },

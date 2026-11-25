@@ -173,3 +173,25 @@ ${original}  dated-plugin:
     assert.equal(after.plugins['qqbot:local2'].groupChat, 'read')
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
+
+test('含令牌的 .bak 只留最近 5 份，别的文件不碰（审查第 17 条）', async () => {
+  const { utimesSync } = await import('node:fs')
+  const dir = setup()
+  try {
+    writeFileSync(join(dir, 'unrelated.bak'), 'keep me')
+    writeFileSync(join(dir, 'koishi.yml.manual.bak'), 'keep me too')
+    for (let index = 0; index < 6; index++) {
+      const name = join(dir, `koishi.yml.qqbot-old${index}.bak`)
+      writeFileSync(name, 'old')
+      utimesSync(name, 1_000 + index, 1_000 + index)
+    }
+    const editor = editorFor(dir)
+    const { ticket } = editor.preview(edit, 'session-a')
+    assert.equal(editor.apply(ticket, 'session-a').status, 200)
+    const left = readdirSync(dir).filter(name => /^koishi\.yml\.qqbot-.*\.bak$/.test(name)).sort()
+    assert.equal(left.length, 5)
+    assert.ok(left.includes(`koishi.yml.qqbot-${ticket}.bak`), '这次的备份一定留着')
+    assert.ok(!left.includes('koishi.yml.qqbot-old0.bak') && !left.includes('koishi.yml.qqbot-old1.bak'), '最旧的两份删掉')
+    assert.ok(existsSync(join(dir, 'unrelated.bak')) && existsSync(join(dir, 'koishi.yml.manual.bak')), '不是编辑器留的不碰')
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})

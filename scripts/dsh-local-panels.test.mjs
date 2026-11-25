@@ -215,3 +215,17 @@ test('panel git never takes optional locks and never prompts for credentials (re
   assert.equal(calls[0].options.env.GCM_INTERACTIVE, 'never')
   assert.equal(calls[0].options.windowsHide, true)
 })
+
+test('a backup day that does not exist reads as not found, not as a probe failure (review finding 14)', async () => {
+  const empty = mkdtempSync(join(tmpdir(), 'qqbot-no-backups-'))
+  try {
+    const local = createLocalPanels({ root: empty, readConfig: () => null, runGit: async () => '' })
+    assert.equal(await local.details('restore-check', new URLSearchParams({ day: '2026-11-25' })), null)
+    const handler = createHandler({}, () => [], undefined, { requestRejection: () => undefined }, Date.now,
+      (kind, query) => local.details(kind, query))
+    let status
+    await handler({ method: 'GET', url: '/api/qqbot-services/details/restore-check?day=2026-11-25', socket: { remoteAddress: '127.0.0.1' },
+      headers: { host: '127.0.0.1' } }, { writeHead(code) { status = code }, end() {} })
+    assert.equal(status, 404)
+  } finally { rmSync(empty, { recursive: true, force: true }) }
+})

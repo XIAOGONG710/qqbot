@@ -50,7 +50,7 @@ test('制品校验：大小与标记不一致就停下，不进入后面阶段',
         writeFileSync(join(root, 'runtime', 'backups', DAY, 'hindsight.sql'), 'PGDMP-more-bytes');
         const stage = await createRestoreStages({ root }).artifacts(DAY);
         assert.equal(stage.ok, false);
-        assert.match(stage.error, /不一致/);
+        assert.equal(stage.error, 'artifact_invalid');
     } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -89,7 +89,7 @@ test('文件隔离恢复：解压中途失败要回滚成空，不留半成品',
             },
         }).files(DAY);
         assert.equal(stage.ok, false);
-        assert.match(stage.error, /60%/);
+        assert.equal(stage.error, 'extract_failed');
         assert.deepEqual(drillDirectories(root), [], '失败后不留任何演练目录');
     } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -105,7 +105,7 @@ test('文件隔离恢复：隔离内容含禁区目录时判失败并清理', as
             },
         }).files(DAY);
         assert.equal(stage.ok, false);
-        assert.match(stage.error, /敏感/);
+        assert.equal(stage.error, 'restored_state_invalid');
         assert.deepEqual(drillDirectories(root), []);
     } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -130,7 +130,7 @@ test('隔离数据库恢复：dump 头部不认识就判失败', async () => {
     try {
         const stage = await createRestoreStages({ root }).database(DAY);
         assert.equal(stage.ok, false);
-        assert.match(stage.error, /dump/);
+        assert.equal(stage.error, 'not_a_dump');
     } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -216,5 +216,29 @@ test('面板的 /backup/stage：找不到备份回 404、请求体读坏和阶�
         assert.ok(!JSON.stringify(failed.payload).includes('secret'));
         throwing = false;
         assert.equal((await call({ day: DAY, stage: 'artifacts' })).status, 200, '出过错以后不会一直卡在「正在跑」');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('阶段结果不带本机绝对路径和原始错误文本，原始文本只进本机日志（审查第 15 条）', async () => {
+    const root = workspace();
+    try {
+        const logged = [];
+        const stages = createRestoreStages({
+            root,
+            log: text => logged.push(text),
+            extract: () => { throw new Error(`EPERM: open '${join(root, 'private', 'x.json')}'`); },
+        });
+        const ok = await stages.artifacts(DAY);
+        assert.equal(ok.day, DAY);
+        assert.ok(!JSON.stringify(ok).includes(root), '成功结果里没有本机路径');
+        const failed = await stages.files(DAY);
+        assert.deepEqual(failed, { ok: false, stage: 'files', error: 'extract_failed' });
+        assert.equal(logged.length, 1);
+        assert.match(logged[0], /files extract_failed: EPERM/);
+        assert.equal((await stages.artifacts('2026-01-01')).error, 'backup_missing');
+        assert.equal((await stages.artifacts('../etc')).error, 'invalid_day');
+        const kept = await createRestoreStages({ root, extract: (archive, target) => writeFileSync(join(target, 'memory.json'), '{"items":[]}') })
+            .files(DAY, { keep: true });
+        assert.match(kept.target, /^runtime\/restore-drills\/[\w-]+$/, '留下的演练目录只给相对路径');
     } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -349,6 +349,7 @@ export function createHandler(controller, events, chat, connection, now = Date.n
       if (!['access', 'backups', 'books', 'library', 'memory', 'versions', 'restore-check', 'logs'].includes(kind)) return send(404, { error: 'not_found' })
       try {
         const data = await details(kind, new URLSearchParams((req.url ?? '').split('?')[1]))
+        if (data === null && kind === 'restore-check') return send(404, { error: 'backup_not_found' })
         return data === null ? send(503, { error: 'details_unavailable' }) : send(200, data)
       } catch { return send(503, { error: 'details_unavailable' }) }
     }
@@ -577,7 +578,7 @@ export function apply(ctx, config = {}) {
       note: text => noteProbe(`character ${text}`),
     }),
     logs: createLogsView({ root }),
-    restoreStages: createRestoreStages({ root }),
+    restoreStages: createRestoreStages({ root, log: text => noteProbe(`restore ${text}`) }),
     guestOrigin: () => lane?.origin(),
     sticker: local.sticker,
     async restoreDrill(day, keep) {

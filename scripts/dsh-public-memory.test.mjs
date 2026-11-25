@@ -215,3 +215,21 @@ test('指向非回环地址时什么都不查', async () => {
     assert.equal(calls.length, 0)
   } finally { rmSync(ctx.root, { recursive: true, force: true }) }
 })
+
+test('每页 8 条时 60 条能翻到第 8 页，每一页都是自己的内容（审查第 13 条）', async () => {
+  const ctx = setup()
+  try {
+    const rows = Array.from({ length: 70 }, (_, index) => memoryRow({ id: `mem-${index}`, text: `第 ${index} 条` }))
+    const { memory } = build(ctx, rows)
+    const first = await memory.search('海边', 1, 8)
+    const pages = Math.ceil(first.total / first.limit)
+    assert.equal(pages, 8, '面板算出来的页数')
+    for (let page = 2; page <= pages; page++) {
+      const result = await memory.search('海边', page, 8)
+      assert.equal(result.page, page, `第 ${page} 页不该被打回第 1 页`)
+      assert.equal(result.items[0].text, `第 ${(page - 1) * 8} 条`)
+    }
+    assert.equal((await memory.search('海边', 8, 8)).items.length, 4, '最后一页只剩 4 条')
+    assert.equal((await memory.search('海边', 9, 8)).page, 1, '超出的页数仍按第 1 页回')
+  } finally { rmSync(ctx.root, { recursive: true, force: true }) }
+})
