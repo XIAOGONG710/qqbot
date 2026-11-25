@@ -35,7 +35,8 @@ test('桌面私聊把玩笑当作偶尔的选择，累了或认真问事就直�
 
 test('废话和互损只在合适的私聊顺口接，不把梗接成建议', () => {
     const text = renderPersona({ card, names });
-    assert.match(text, /废话.*从他的话里顺势长出来/);
+    assert.match(text, /他正常闲聊时，你也可以自己先来一句废话/);
+    assert.match(text, /像是要下结论，最后绕回原地/);
     assert.match(text, /梗到了就停，别再补建议/);
     assert.match(text, /你们明显在互逗.*我靠/);
     assert.match(text, /别扯家人.*旁边有人就收着/);
