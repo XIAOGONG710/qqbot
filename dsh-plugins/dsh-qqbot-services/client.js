@@ -704,6 +704,8 @@ window.__ModuleLoader__.load({
       const [data, setData] = React.useState(undefined)
       const [revision, setRevision] = React.useState(0)
       const [drillStatus, setDrillStatus] = React.useState('')
+      const [stageDay, setStageDay] = React.useState(null)
+      const [stagePick, setStagePick] = React.useState(null)
       const busy = React.useRef(false)
       React.useEffect(() => {
         const controller = new AbortController()
@@ -748,6 +750,47 @@ window.__ModuleLoader__.load({
           setDrillStatus(result.target ? `隔离副本已验证：${result.target}` : `${day} 文件级恢复演练通过。`)
         } catch { setDrillStatus('未能完成隔离演练。') }
         finally { busy.current = false }
+      }
+      const runStage = async (day, stage) => {
+        if (busy.current) return
+        busy.current = true
+        setStageDay(day)
+        setStagePick({ stage, status: '正在跑…' })
+        try {
+          const response = await fetch(`${api}/backup/stage`, {
+            method: 'POST', headers: { 'content-type': 'application/json', 'x-qqbot-service-panel': '1' },
+            body: JSON.stringify({ day, stage }),
+          })
+          const payload = await response.json()
+          if (response.status === 403 && payload.error === 'needs_approval') {
+            setStagePick({ stage, steps: payload.steps })
+            return
+          }
+          if (!response.ok) throw Error()
+          setStagePick({ stage, result: payload })
+        } catch { setStagePick({ stage, error: true }) }
+        finally { busy.current = false }
+      }
+      const stageLabels = { artifacts: '制品校验', files: '文件隔离恢复', database: '隔离数据库恢复', switch: '正式切换' }
+      const stageView = day => {
+        if (stageDay !== day) return null
+        return h('div', { className: 'qqb-stage' },
+          h('div', { className: 'qqb-actions' },
+            ...['artifacts', 'files', 'database'].map(stage =>
+              h('button', { className: 'qqb-btn', key: stage, type: 'button', onClick: () => void runStage(day, stage) }, stageLabels[stage])),
+            h('button', { className: 'qqb-btn', key: 'switch', type: 'button', onClick: () => void runStage(day, 'switch') }, '切换步骤')),
+          stagePick?.status && h('p', { className: 'qqb-note', role: 'status' }, `${stageLabels[stagePick.stage]}：${stagePick.status}`),
+          stagePick?.error && h('p', { className: 'qqb-err', role: 'status' }, `${stageLabels[stagePick.stage]}没走通，先看运维事件。`),
+          stagePick?.steps && h('div', null,
+            h('p', { className: 'qqb-note' }, '正式切换会覆盖当前数据，只能按手册手动做：'),
+            h('ol', null, ...stagePick.steps.map((step, index) => h('li', { key: index }, step)))),
+          stagePick?.result && h('div', { className: 'qqb-kv' },
+            h('span', null, stageLabels[stagePick.stage]),
+            h('span', null, stagePick.result.ok
+              ? (stagePick.result.stage === 'artifacts' ? `尺寸对得上 · ${stagePick.result.state.source}`
+                : stagePick.result.stage === 'files' ? `${stagePick.result.files} 个文件 · 已清理`
+                  : `${stagePick.result.bytes} 字节 · ${stagePick.result.isolated === 'executed' ? '已在隔离库跑过' : '只预演命令'}`)
+              : `没走通：${stagePick.result.error}`)))
       }
       return h('section', { className: 'qqb-card' },
         h('div', { className: 'qqb-actions' },
@@ -801,12 +844,16 @@ window.__ModuleLoader__.load({
               h('span', null, new Date(row.at).toLocaleString('zh-CN')),
               h('span', null, `候选 ${row.items} · 选入 ${row.selected} · 失败库 ${row.failed}`))),
             !data.operations.length && !data.recall.length && h('p', { className: 'qqb-note' }, '暂无可显示的诊断日志。'))
-          : data.length ? data.map(backup => h('div', { className: 'qqb-kv', key: backup.name },
+          : data.length ? data.map(backup => h('div', { key: backup.name },
+            h('div', { className: 'qqb-kv' },
               h('span', null, backup.name), h('span', null, backup.complete ? '完整' : '未完成',
                 Number.isFinite(backup.stateBytes) ? ` · 状态包 ${(backup.stateBytes / 1048576).toFixed(1)} MB` : ''),
               backup.complete && Number.isFinite(backup.stateBytes) && h('span', null,
                 h('button', { className: 'qqb-btn', type: 'button', onClick: () => void drill(backup.name) }, '隔离演练'),
-                h('button', { className: 'qqb-btn', type: 'button', onClick: () => void drill(backup.name, true) }, '保留隔离副本'))))
+                h('button', { className: 'qqb-btn', type: 'button', onClick: () => void drill(backup.name, true) }, '保留隔离副本'),
+                h('button', { className: 'qqb-btn', type: 'button', onClick: () => { setStageDay(stageDay === backup.name ? null : backup.name); setStagePick(null) } }, '分阶段'))),
+            // 四阶段：前三个可以在这里跑，正式切换只给步骤。
+            backup.complete && stageView(backup.name)))
             : h('p', { className: 'qqb-note' }, '暂无备份。'))
     }
 

@@ -144,4 +144,69 @@
 - 真实 Hindsight 与真实公共库没有参与验收：全部是假 fetcher 加合成 `owner-bank.json`，`runtime/` 下的真实数据未被读写。
 - 新旧摘要并存只按「同一查询复用缓存」验证；真实库里旧摘要已被新摘要取代的情形没有样本来对照。
 
+## 第 4 批：日志页（2026-11-25）
+
+### 数据源
+
+- `dsh-plugins/dsh-qqbot-services/logs-view.js`（新）：把 `runtime/services-watchdog.log` 与 `~/.dsh/linmengyao-memory.log` 解析成结构化事件，来源白名单只有这两份
+- `dsh-plugins/dsh-qqbot-services/index.js`：新增 `GET logs/list`、`GET logs/export`；原来的 `summarizeWatchdog`、`summarizeRecallLog` 搬到新模块并再导出，旧测试的 import 不变
+- `dsh-plugins/dsh-qqbot-services/client.js`：系统页新增来源切换、事件多选、分页和导出按钮，原诊断卡保留作回退
+- `scripts/dsh-logs-view.test.mjs`（新）、`scripts/dsh-offline-acceptance.mjs`
+
+### 只出结构化字段
+
+解析阶段就把自由文本丢掉：只留时间、服务名、事件类别；召回诊断只留 `items`、`selected`、`chars`、`important`、`failed` 五个计数。导出再走一遍 `redact()` 兜底，抹掉 `token=`／`secret=`／`password=`／`session=`／`cookie=`／`authorization=`／`api_key=` 这类赋值、URL 里的参数值和 32 位以上长串。补齐了备份行（`备份：完成 …` 以前会被静默丢弃）和 `prepared`／`backup`／`matched`／`no-match`／`not-queried` 五个事件类别。
+
+### 模拟结果
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 日志页 | `node --test scripts/dsh-logs-view.test.mjs` | 8 通过 |
+| 脚本测试全量 | `npm run test:scripts` | 111 项、110 通过、1 跳过（符号链接）、0 失败 |
+| 离线验收 | `node scripts/dsh-offline-acceptance.mjs` | 全部符合预期，`logs=3`、`qqSend=0` |
+
+测试覆盖：白名单来源（`source: 'secrets'` 返回 `null`）、列表里没有对话原文／令牌／URL 参数／堆栈、事件多选取并集、分页越界夹回默认且翻到空页不报错、召回只留计数且查询词不进响应、导出不含 `SECRET-ABC`／`今晚早点睡`／`code=SECRET123`／`TypeError`、导出最多 500 条且两次一致、`redact()` 兜底。
+
+### 尚未验证的运行条件
+
+- 日志页前端只做了语法检查和离线路由验收，没在真实 DSH 窗口里点过；需要一次插件重载授权。
+- 解析按现有两份日志的格式写，日志格式若改要同步改 `summarizeWatchdog`。
+
+## 第 4 批：备份恢复四阶段（2026-11-25）
+
+### 数据源
+
+- `scripts/restore-stages.mjs`（新）：制品校验、文件隔离恢复、隔离数据库恢复、正式切换四个阶段；复用 `restore-drill-state.mjs` 的 `restoreDrillPlan`、`safeRestoreDrillTarget`、`verifyRestoredState`
+- `dsh-plugins/dsh-qqbot-services/index.js`：新增 `GET backup/stages`、`POST backup/stage`；`switch` 一律 403 `needs_approval` 且只回步骤
+- `dsh-plugins/dsh-qqbot-services/client.js`：备份清单每行加「分阶段」，前三个阶段有按钮，第四阶段只展开步骤
+- `docs/operations/restore.md`（新）：四阶段手册，正式切换的授权边界写在里面；`docs/operations/rollback.md` 第 2 步链到它
+- `scripts/dsh-restore-stages.test.mjs`（新）、已有的 `scripts/restore-drill.mjs`、`scripts/hindsight-restore-drill.mjs`
+
+### 阶段边界
+
+| 阶段 | 写哪里 | 失败怎么收场 |
+| --- | --- | --- |
+| 制品校验 | 不写盘 | 大小与完成标记不符就停，不进入后面阶段 |
+| 文件隔离恢复 | `runtime/restore-drills/<时间戳>/` | 解压或检查失败就把整个目录删掉，不留半成品 |
+| 隔离数据库恢复 | 系统临时目录里的一次性假库 | dump 头部不认识就失败；临时目录 `finally` 里删掉 |
+| 正式切换 | 不执行 | 只回 7 步手册，`executed: false` |
+
+隔离数据库那一步默认**只预演命令**（`isolated: 'planned'`），库名固定 `hindsight_restore_drill`，命令里不出现正式库名；真正的恢复仍由 `scripts/hindsight-restore-drill.mjs` 在隔离实例里跑。
+
+### 模拟结果
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 四阶段 | `node --test scripts/dsh-restore-stages.test.mjs` | 11 通过 |
+| 脚本测试全量 | `npm run test:scripts` | 122 项、121 通过、1 跳过（符号链接）、0 失败 |
+| 离线验收 | `node scripts/dsh-offline-acceptance.mjs` | `backup/stages` 200、`switch` 403 带步骤、未知阶段 400，`qqSend=0` |
+
+测试覆盖：四阶段顺序与「正式切换需要单独授权」、制品校验读出大小与摘要、大小不符即停、非法日期与不存在的备份都不算可演练、文件隔离恢复成功即清理且不碰 `runtime/bot`、解压中途失败回滚成空、隔离内容含 `secrets` 判失败并清理、隔离库只预演且命令里不出现正式库名、dump 头部不认识就失败、正式切换只给步骤不调执行器、临时目录用完即删且原备份不动。
+
+### 尚未验证的运行条件
+
+- 备份页的「分阶段」按钮只做了语法检查和离线路由验收，没在真实 DSH 窗口里点过。
+- 没在真 PostgreSQL 隔离实例里跑 `hindsight-restore-drill.mjs`：本批的隔离库是假库，真库恢复要等一份真备份加一个隔离实例。
+- 正式切换按设计没有执行，只写在 `docs/operations/restore.md`，等单独的上线授权。
+
 

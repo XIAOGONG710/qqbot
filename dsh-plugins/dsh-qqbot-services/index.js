@@ -18,6 +18,7 @@ import { createConfigEditor } from './config-editor.js'
 import { createCharacterBridge } from './character-bridge.js'
 import { createPublicMemory } from './public-memory.js'
 import { createLogsView } from './logs-view.js'
+import { createRestoreStages } from '../../scripts/restore-stages.mjs'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -369,6 +370,20 @@ export function createHandler(controller, events, chat, connection, now = Date.n
         return typeof result === 'number' ? send(result, { ok: result === 200 }) : send(200, result)
       } catch { return send(503, { error: 'restore_drill_failed' }) }
     }
+    if (companion?.restoreStages && req.method === 'GET' && path === `${prefix}/backup/stages`) {
+      const day = new URLSearchParams((req.url ?? '').split('?')[1]).get('day')
+      if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return send(400, { error: 'invalid_backup' })
+      return send(200, { day, stages: companion.restoreStages.stages })
+    }
+    if (companion?.restoreStages && req.method === 'POST' && path === `${prefix}/backup/stage`) {
+      const { body, status, error } = await readJson(req)
+      if (status) return send(status, { error })
+      if (typeof body?.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.day)) return send(400, { error: 'invalid_backup' })
+      // 正式切换不在这里执行：只把运行手册的步骤交出去。
+      if (body.stage === 'switch') return send(403, { error: 'needs_approval', ...companion.restoreStages.switchPlan(body.day) })
+      if (!['artifacts', 'files', 'database'].includes(body.stage)) return send(400, { error: 'invalid_stage' })
+      return send(200, companion.restoreStages[body.stage](body.day))
+    }
     if (chat && path.startsWith(`${prefix}/chat/`)) {
       if (req.method !== 'POST') return send(403, { error: 'forbidden' })
       const query = new URLSearchParams((req.url ?? '').split('?')[1])
@@ -506,6 +521,7 @@ export function apply(ctx, config = {}) {
       prefix: config.characterPrefix || 'linmengyao',
     }),
     logs: createLogsView({ root }),
+    restoreStages: createRestoreStages({ root }),
     guestOrigin: () => lane?.origin(),
     sticker: local.sticker,
     async restoreDrill(day, keep) {

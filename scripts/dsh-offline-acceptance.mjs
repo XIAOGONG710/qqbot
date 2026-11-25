@@ -14,6 +14,7 @@ import { createController } from '../dsh-plugins/dsh-qqbot-services/controller.j
 import { createCharacterBridge } from '../dsh-plugins/dsh-qqbot-services/character-bridge.js'
 import { createPublicMemory } from '../dsh-plugins/dsh-qqbot-services/public-memory.js'
 import { createLogsView } from '../dsh-plugins/dsh-qqbot-services/logs-view.js'
+import { createRestoreStages } from './restore-stages.mjs'
 import { createHandler, summarizeConnectionConfig } from '../dsh-plugins/dsh-qqbot-services/index.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -21,6 +22,22 @@ const fixture = join(root, 'packages/bot/test/fixtures/synthetic-character')
 const characterDir = mkdtempSync(join(tmpdir(), 'qqbot-acceptance-'))
 cpSync(join(fixture, 'source'), join(characterDir, 'source'), { recursive: true })
 cpSync(join(fixture, 'st'), join(characterDir, 'st'), { recursive: true })
+
+// 一份合成的完整备份，只用来验证四阶段路由；里面的内容都是占位字节。
+const backupDay = '2026-11-24'
+const backupDir = join(characterDir, 'runtime', 'backups', backupDay)
+mkdirSync(backupDir, { recursive: true })
+const dumpBytes = 'PGDMP\u0001synthetic'
+const stateBytes = 'PK\u0003\u0004synthetic'
+writeFileSync(join(backupDir, 'hindsight.sql'), dumpBytes)
+writeFileSync(join(backupDir, 'her-state.zip'), stateBytes)
+writeFileSync(join(backupDir, '.complete.json'), JSON.stringify({
+  completed: true,
+  components: {
+    database: { ok: true, bytes: Buffer.byteLength(dumpBytes) },
+    state: { ok: true, bytes: Buffer.byteLength(stateBytes), source: 'runtime/bot' },
+  },
+}))
 
 const counts = {
   probe: 0, launch: 0, state: 0, events: 0,
@@ -133,6 +150,7 @@ const companion = {
     list: (...args) => { counts.logs++; return logsView.list(...args) },
     exportText: (...args) => { counts.logs++; return logsView.exportText(...args) },
   },
+  restoreStages: createRestoreStages({ root: characterDir }),
 }
 const connection = { authorizeIndex: req => req.headers.cookie === 'test-session=owner' }
 const handler = createHandler(controller, () => { counts.events++; return [] }, chat, connection, () => 1_800_000_000_000, details, companion)
@@ -264,6 +282,18 @@ for (const secret of ['SECRET-ABC', '今晚早点睡', 'code=SECRET123']) {
 response = await call('GET', 'logs/list?source=secrets')
 assert.equal(response.status, 400, '只认白名单里的日志来源')
 assert.equal(counts.qqSend, 0, '日志页不得触达发送接口')
+
+// 备份恢复：四阶段清单可见，正式切换只回步骤、不给执行。
+response = await call('GET', 'backup/stages?day=2026-11-24')
+assert.equal(response.status, 200)
+assert.deepEqual(response.payload.stages.map(stage => stage.id), ['artifacts', 'files', 'database', 'switch'])
+response = await call('POST', 'backup/stage', { body: { day: '2026-11-24', stage: 'switch' } })
+assert.equal(response.status, 403, '正式切换不在面板里执行')
+assert.equal(response.payload.requiresApproval, true)
+assert.ok(response.payload.steps.length >= 5)
+response = await call('POST', 'backup/stage', { body: { day: '2026-11-24', stage: 'rm-rf' } })
+assert.equal(response.status, 400, '只认四阶段里的名字')
+assert.equal(counts.qqSend, 0, '备份页不得触达发送接口')
 
 // 非本机来源与非主人会话直接拒绝，且不触达任何下游。
 response = await call('GET', 'home', { remote: '192.168.1.50' })
