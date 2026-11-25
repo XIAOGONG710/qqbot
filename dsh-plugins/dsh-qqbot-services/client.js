@@ -6,7 +6,7 @@ window.__ModuleLoader__.load({
     const panel = 'dsh-qqbot-services'
     const api = '/api/qqbot-services'
     const tabKey = 'qqbot-services:tab'
-    const tabs = [{ id: 'home', label: '总览' }, { id: 'link', label: '连接' }, { id: 'sys', label: '系统' }]
+    const tabs = [{ id: 'home', label: '总览' }, { id: 'chat', label: '聊天' }, { id: 'link', label: '连接' }, { id: 'sys', label: '系统' }]
     const names = { napcat: 'NapCat', hindsight: 'Hindsight', koishi: 'Koishi', watchdog: '守护', backup: '备份' }
     const steps = { checking: '正在检查', starting: '正在等待服务就绪', skipped: '已运行，跳过启动', ready: '已就绪', timeout: '等待就绪超时', failed: '启动或检查失败', maintenance: '维护期间暂停启动' }
     const eventNames = { watching: '开始监测', recovered: '恢复正常', starting: '尝试启动', failed: '运行异常' }
@@ -48,6 +48,132 @@ window.__ModuleLoader__.load({
       }
       if (health[service]) return service === 'napcat' ? 'OneBot 端口已监听' : '探测正常'
       return health.launchers?.[service] ? '进程已启动，尚未就绪' : '未就绪'
+    }
+
+    function readHistoryCount(viewKey) {
+      try {
+        const value = Number(window.localStorage.getItem(viewKey))
+        if ([15, 30, 60].includes(value)) return value
+      } catch { /* 使用默认条数 */ }
+      return 30
+    }
+
+    // 灵犀 WebChat 的发送者配色，保持同一人各条消息颜色一致。
+    const senderColors = ['#e2686f', '#e0a44b', '#4bb07a', '#4b8fe0', '#9a6fe0', '#e07fa8', '#5fb8c9', '#c98f5f']
+    function colorOf(sender) {
+      let hash = 0
+      for (const ch of sender) hash = (hash * 31 + ch.codePointAt(0)) >>> 0
+      return senderColors[hash % senderColors.length]
+    }
+
+    // 沿用灵犀 WebChat 的消息流、发送者和输入区结构，数据改走本地 QQ 接口。
+    function Chat({ token }) {
+      const [data, setData] = React.useState(null)
+      const [key, setKey] = React.useState('')
+      const [filter, setFilter] = React.useState('')
+      const [revision, setRevision] = React.useState(0)
+      const [listError, setListError] = React.useState(false)
+      const session = data?.sessions.find(item => item.key === key)
+      const request = async (path, options = {}) => {
+        const response = await fetch(`${api}/chat/${path}`, {
+          method: 'POST', ...options, headers: {
+            ...options.headers, 'x-qqbot-service-panel': '1', 'x-qqbot-service-token': token,
+          },
+        })
+        if (!response.ok) throw Error()
+        return response.json()
+      }
+      React.useEffect(() => {
+        const controller = new AbortController()
+        setListError(false)
+        request('list', { signal: controller.signal }).then(value => {
+          if (!controller.signal.aborted) setData(value)
+        }).catch(() => { if (!controller.signal.aborted) { setListError(true); setData(null) } })
+        return () => controller.abort()
+      }, [token, revision])
+      return h('section', { style: { marginTop: 16 } },
+        h('div', { style: row },
+          h('span', null, data?.account ? `QQ 账号 ${data.account.name}（${data.account.id}）` : 'QQ 会话'),
+          h('button', { type: 'button', style: button, onClick: () => setRevision(value => value + 1) }, '刷新会话')),
+        listError && h('p', { role: 'alert' }, '读不到 QQ 会话，请检查 NapCat 登录状态后刷新。'),
+        !data && !listError && h('p', { role: 'status' }, '正在读取 QQ 会话…'),
+        data && h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 12 } },
+          h('nav', { 'aria-label': 'QQ 会话', style: { flex: '1 1 175px', maxHeight: 360, overflow: 'auto' } },
+            h('input', { value: filter, placeholder: '搜索群或好友', 'aria-label': '搜索群或好友',
+              onChange: event => setFilter(event.target.value) }),
+            ...data.sessions.filter(item => `${item.name} ${item.target}`.toLowerCase().includes(filter.trim().toLowerCase()))
+              .map(item => h('div', { key: item.key },
+                h('button', { type: 'button', style: { ...button, marginTop: 4 }, 'aria-pressed': item.key === key,
+                  onClick: () => setKey(item.key) }, `${item.kind === 'group' ? '群' : '私聊'} · ${item.name}`)))),
+          h('div', { style: { flex: '3 1 320px', minWidth: 0 } },
+            session ? h(Conversation, { key: `${data.account.id}:${session.key}`, session, account: data.account,
+              canSend: data.sendKey === session.key, request, revision }) : h('p', null, '选择一个好友或群聊。'))))
+    }
+
+    function Conversation({ session, account, canSend, request, revision }) {
+      const viewKey = `qqbot-services:history-count:${account.id}:${session.key}`
+      const [count, setCount] = React.useState(() => readHistoryCount(viewKey))
+      const [messages, setMessages] = React.useState(null)
+      const [notice, setNotice] = React.useState('')
+      const [draft, setDraft] = React.useState('')
+      const [sending, setSending] = React.useState(false)
+      const [refresh, setRefresh] = React.useState(0)
+      const busy = React.useRef(false)
+      React.useEffect(() => {
+        const controller = new AbortController()
+        let timer
+        const update = async () => {
+          try {
+            const query = new URLSearchParams({ key: session.key, count: String(count) })
+            const result = await request(`history?${query}`, { signal: controller.signal })
+            if (!controller.signal.aborted) setMessages(result.messages)
+          } catch {
+            if (!controller.signal.aborted) setMessages(false)
+          } finally {
+            if (!controller.signal.aborted) timer = setTimeout(update, 5000)
+          }
+        }
+        void update()
+        return () => { controller.abort(); clearTimeout(timer) }
+      }, [session.key, count, revision, refresh])
+      const submit = async event => {
+        event.preventDefault()
+        if (!canSend || busy.current || !draft.trim()) return
+        if (!window.confirm(`从 ${account.name}（${account.id}）发送给 ${session.name}（${session.target}）？`)) return
+        busy.current = true
+        setSending(true)
+        setNotice('')
+        try {
+          await request('send', { headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ key: session.key, accountId: account.id, text: draft }) })
+          setDraft('')
+          setRefresh(value => value + 1)
+          setNotice('已发送')
+        } catch { setNotice('发送结果未能确认，请先刷新历史再决定是否重试。') }
+        finally { busy.current = false; setSending(false) }
+      }
+      return h('section', { 'aria-label': session.name },
+        h('h3', null, `${session.name}（${session.target}）`),
+        h('label', null, '最近消息条数 ', h('select', { value: count, onChange: event => {
+          const value = Number(event.target.value)
+          setCount(value)
+          try { window.localStorage.setItem(viewKey, String(value)) } catch { /* 当前页面仍可设置 */ }
+        } }, ...[15, 30, 60].map(value => h('option', { value, key: value }, value)))),
+        messages === null && h('p', { role: 'status' }, '正在读取消息…'),
+        messages === false && h('p', { role: 'status' }, '暂时读不到消息，将自动重试。'),
+        messages?.length === 0 && h('p', null, '近期没有消息。'),
+        Array.isArray(messages) && h('ol', { style: { padding: 0, listStyle: 'none', maxHeight: 360, overflow: 'auto' } },
+          ...messages.map((message, index) => h('li', { key: `${message.id}-${index}`,
+            style: { ...row, flexDirection: 'column', alignItems: message.senderId === account.id ? 'flex-end' : 'flex-start' } },
+          h('small', null, h('strong', { style: { color: colorOf(message.senderId || message.sender) } }, message.sender),
+            ' ', message.at && new Date(message.at * 1000).toLocaleString('zh-CN')),
+          h('div', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxWidth: '100%' } }, message.text)))),
+        h('form', { onSubmit: submit },
+          h('textarea', { rows: 2, maxLength: 2000, value: draft, disabled: !canSend || sending, 'aria-label': 'QQ 消息',
+            onChange: event => setDraft(event.target.value), style: { width: '100%', boxSizing: 'border-box' } }),
+          h('button', { type: 'submit', style: button, disabled: !canSend || sending || !draft.trim() }, '发送'),
+          !canSend && h('small', null, ' 此会话未启用手动发送。'),
+          notice && h('p', { role: 'status' }, notice)))
     }
 
     function Panel() {
@@ -125,6 +251,8 @@ window.__ModuleLoader__.load({
         !state && h('p', { role: 'status' }, '正在获取服务状态，无法连接时会自动重试。'),
         health?.maintenance && h('p', { role: 'status' }, '正在维护，启动暂不可用。'),
         notice && h('p', { role: 'status' }, notice),
+        tab === 'chat' && h('div', { role: 'tabpanel', id: `${instanceId}-panel-chat`, 'aria-labelledby': `${instanceId}-tab-chat` },
+          state?.panelToken && h(Chat, { key: state.panelToken, token: state.panelToken })),
         h('div', { role: 'tabpanel', id: `${instanceId}-panel-home`, 'aria-labelledby': `${instanceId}-tab-home`, hidden: tab !== 'home' },
         ...['napcat', 'hindsight', 'koishi'].map(service => h('div', { key: service, style: row },
           h('div', null, h('strong', null, names[service]), h('div', null, summary(health, service)),

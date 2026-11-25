@@ -6,6 +6,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { createController } from './controller.js'
+import { createChat, createNapCatReader } from './chat.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer']
@@ -92,7 +93,7 @@ export function diagnosticReport({ health, checkedAt, operation, events }) {
   return lines.join('\n')
 }
 
-export function createHandler(controller, events) {
+export function createHandler(controller, events, chat) {
   const panelToken = randomBytes(32).toString('hex')
   return async (req, res) => {
     const send = (status, value) => {
@@ -101,6 +102,30 @@ export function createHandler(controller, events) {
     }
     if (!allowedRequest(req, panelToken)) return send(403, { error: 'forbidden' })
     const path = (req.url ?? '').split('?')[0]
+    if (chat && path.startsWith(`${prefix}/chat/`)) {
+      if (req.method !== 'POST' || req.headers['x-qqbot-service-token'] !== panelToken) return send(403, { error: 'forbidden' })
+      const query = new URLSearchParams((req.url ?? '').split('?')[1])
+      try {
+        if (path === `${prefix}/chat/list`) return send(200, await chat.list())
+        if (path === `${prefix}/chat/history`) {
+          const messages = await chat.history(query.get('key'), query.get('count'))
+          return messages ? send(200, { messages }) : send(404, { error: 'unknown_conversation' })
+        }
+        if (path === `${prefix}/chat/send`) {
+          if (req.headers['content-type']?.split(';')[0] !== 'application/json') return send(415, { error: 'invalid_format' })
+          let raw = ''
+          for await (const chunk of req) {
+            raw += chunk
+            if (Buffer.byteLength(raw) > 16_384) return send(413, { error: 'message_too_large' })
+          }
+          let payload
+          try { payload = JSON.parse(raw) } catch { return send(400, { error: 'invalid_message' }) }
+          const result = await chat.send(payload)
+          return send(result.status, { error: result.error })
+        }
+        return send(404, { error: 'not_found' })
+      } catch { return send(503, { error: 'qq_unavailable' }) }
+    }
     if (req.method === 'GET' && path === `${prefix}/state`) {
       try {
         const state = { ...await controller.state(), events: events() }
@@ -146,6 +171,7 @@ export function apply(ctx, config = {}) {
     sleep,
   })
   const events = () => summarizeWatchdog(tail(join(root, 'runtime', 'services-watchdog.log')))
-  const unregister = ctx.webServer.register({ kind: 'prefix', path: prefix, handler: createHandler(controller, events) })
+  const chat = createChat(createNapCatReader({ token: process.env.QQBOT_ONEBOT_TOKEN }))
+  const unregister = ctx.webServer.register({ kind: 'prefix', path: prefix, handler: createHandler(controller, events, chat) })
   ctx.on('dispose', () => { controller.dispose(); unregister() })
 }
