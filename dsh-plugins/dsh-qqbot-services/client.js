@@ -968,6 +968,8 @@ window.__ModuleLoader__.load({
         !state && h('p', { className: 'qqb-note', role: 'status' },
           loadError ? `${loadError}，正在重试。` : '正在获取服务状态，无法连接时会自动重试。'),
         health?.maintenance && h('p', { className: 'qqb-warnline', role: 'status' }, '正在维护，启动暂不可用。'),
+        health?.probeFailed && h('p', { className: 'qqb-warnline', role: 'status' },
+          `状态探测没跑通：${health.probeFailed}。其余页面照常可用，明细写在 runtime/log/panel-probe.log。`),
         notice && h('p', { className: 'qqb-note', role: 'status' }, notice),
         section('chat', tab === 'chat' && state && h(Chat)),
         section('room', tab === 'room' && state && h(GuestRoom)),

@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs'
+import { appendFileSync, closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs'
 import { createServer as createHttpsServer } from 'node:https'
 import { isIPv4 } from 'node:net'
 import { createRequire } from 'node:module'
@@ -20,6 +20,7 @@ import { createPublicMemory } from './public-memory.js'
 import { createLogsView } from './logs-view.js'
 import { createRestoreStages } from '../../scripts/restore-stages.mjs'
 import { nodeCommand } from './node-run.js'
+import { failedStatus } from './status-fallback.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -458,13 +459,27 @@ function launchService(root, service) {
 
 export function apply(ctx, config = {}) {
   const root = realpathSync(resolve(config.repoRoot || join(dirname(fileURLToPath(import.meta.url)), '../..')))
+  const probeLog = join(root, 'runtime', 'log', 'panel-probe.log')
+  let probeFailure = null
   const controller = createController({
     async probe() {
+      if (probeFailure && Date.now() - probeFailure.at < 60_000) return probeFailure.value
       const node = nodeCommand()
-      const { stdout } = await exec(node.command, [join(root, 'scripts', 'services-watchdog.mjs'), '--once', '--local-only'], {
-        cwd: root, timeout: 45_000, windowsHide: true, maxBuffer: 32_000, env: node.env,
-      })
-      return JSON.parse(stdout)
+      try {
+        const { stdout } = await exec(node.command, [join(root, 'scripts', 'services-watchdog.mjs'), '--once', '--local-only'], {
+          cwd: root, timeout: 45_000, windowsHide: true, maxBuffer: 32_000, env: node.env,
+        })
+        probeFailure = null
+        return JSON.parse(stdout)
+      } catch (error) {
+        const value = failedStatus(error)
+        probeFailure = { at: Date.now(), value }
+        try {
+          mkdirSync(dirname(probeLog), { recursive: true })
+          appendFileSync(probeLog, `${new Date().toISOString()} ${node.command} ${value.probeFailed}\n`)
+        } catch { /* 写不进去也不再影响面板 */ }
+        return value
+      }
     },
     launch: service => launchService(root, service),
     sleep,
