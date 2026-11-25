@@ -21,21 +21,15 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\reload-dsh.ps1
 ```
 
-它延迟十秒结束主进程，等八秒重新拉起，四十五秒后探一次端口，全程写 `runtime/log/dsh-reload.log`。
+它自己再用 `Win32_Process` 起一份脱离的副本，所以敲完命令就返回，宿主被杀也不会把重启流程带死；被复制出来的那份延迟十秒结束主进程，等八秒重新拉起，四十五秒后记一次监听端口，全程写 `runtime/log/dsh-reload.log`。
 
-需要脚本在宿主被杀之后继续跑时，用独立进程启动：
-
-```powershell
-Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-  CommandLine = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "E:\qqbot-dsh-control\scripts\reload-dsh.ps1"'
-}
-```
+要它直接在当前进程里跑（不脱离），加 `-Detached`——从 DSH 内部调用时别这么用，结束主进程会连它自己一起结束，日志就停在 `stopping main pid=` 那一行。
 
 手工也行：托盘或任务栏退出 DeepSeek Harness，再启动它。
 
 ## 重启之后
 
-1. 端口会变，本次实测从 `58842` 变成 `63264`，以侧栏里显示的地址为准。
+1. 端口会变（实测 `58842` → `63264` → `64372`），新值记在日志的 `loopback ports listening:` 那行，以侧栏里显示的地址为准。
 2. 从左侧会话列表点回原来的对话，会话是持久化的，上下文都在。
 3. 跑一遍真机巡检：
 
