@@ -998,8 +998,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 refused: reason => addRefusal(reason),
                 taskOf: contact => lastUserText.get(contact.qq),
                 // 她自己判断这条要动电脑（2026-10-29）：当轮交给 dsh 干，干完把结果单独发回去。不落工作模式，所以他不用发 /dsh，也不用事后 /QQ 切回来
-                // 干完的结果也进聊天记录（和 /dsh 工作模式一样，ADR 0176），活记在他自己的 bank 里；没干成那句也记（work-handoff.ts）
-                start: (contact, task) => work.handOff(contact.qq, task, work.recentFor(contact.qq), () => memory?.bankId(contact), '她判断要动电脑、没干成'),
+                // 回复进聊天记录（和 /dsh 工作模式一样，ADR 0176），工作桥只带当轮任务。
+                start: (contact, task) => work.handOff(contact.qq, task, '她判断要动电脑、没干成'),
                 notTyped: () => tellOwner(WANTED_BUT_NOT_TYPED_NOTICE),
                 log,
             },
@@ -2334,12 +2334,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 工作模式：不进普通聊天回复器，交给 headless 的她干活，干完再回（工具桥）
         if (event.user_id === deviceOwner?.qq && typed && !text.startsWith('/') && readWorkMode(config.dataDir, event.user_id) === 'work') {
             const qq = event.user_id;
-            const recent = work.recentFor(qq);
-            log(`[${qq}] 工作模式：交给 dsh 干活（带 ${recent ? '最近对话' : '无'}上下文）`);
+            log(`[${qq}] 工作模式：交给 dsh 干活`);
             // 他的话、她的回复都进聊天记录（ADR 0176）：原来工作模式里的来回不进记录，切回聊天后她不知道刚才说过什么
             history.append(qq, accepted);
-            // 活记在他自己的 bank 里（和 QQ 聊天、DSH 桌面对话同一个），不再单独放 linmengyao
-            work.handOff(qq, text, recent, () => memory?.bankId(deviceOwner), '工作桥出错');
+            work.handOff(qq, text, '工作桥出错');
             return;
         }
         responder.receive(accepted.content, event.message_id, new Date(accepted.time), accepted.messageSeq, accepted.incomingId);

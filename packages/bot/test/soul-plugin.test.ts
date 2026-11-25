@@ -40,7 +40,7 @@ before(async () => { plugin = await import(pathToFileURL(join(root, 'dsh-plugins
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-function boot(extra: Record<string, unknown> = {}, subagents: { rootOf: (agent: unknown) => unknown } = { rootOf: agent => agent }) {
+function boot(extra: Record<string, unknown> = {}, subagents: { rootOf: (agent: unknown) => unknown } = { rootOf: agent => agent }, preset = 'linmengyao') {
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-soul-'));
     dirs.push(dir);
     const f = (name: string) => join(dir, name);
@@ -54,7 +54,7 @@ function boot(extra: Record<string, unknown> = {}, subagents: { rootOf: (agent: 
     };
     const rootCtx = {
         on: (name: string, fn: (...args: unknown[]) => unknown) => { if (name === 'agent/created') handlers.created = fn; },
-        get: (key: string) => (key === 'agentPresets' ? { composedPreset: () => 'linmengyao' } : key === 'subagents' ? subagents : undefined),
+        get: (key: string) => (key === 'agentPresets' ? { composedPreset: () => preset } : key === 'subagents' ? subagents : undefined),
     };
     plugin.apply(rootCtx, {
         soulFile: f('SOUL.md'), ledgerFile: f('LEDGER.md'), journalFile: f('JOURNAL.md'), privateFile: f('PRIVATE.dat'), wishesFile: f('WISHES.md'),
@@ -66,12 +66,54 @@ function boot(extra: Record<string, unknown> = {}, subagents: { rootOf: (agent: 
         // 在场租约也落在临时目录里：不给的话插件按默认写到她真正的灵魂目录（~/.dsh/linmengyao）
         presenceFile: f('desktop-presence.json'), sessionTailsFile: f('session-tails.jsonl'),
         // 「我现在的样子」也指到临时目录：不给的话插件按默认去读她真正的 PORTRAIT.json
-        portraitFile: f('PORTRAIT.json'), ...extra,
+        portraitFile: f('PORTRAIT.json'), ownerPrivateSessions: ['a1'], ...extra,
     });
     handlers.created!({ agent: { id: 'a1', ctx: agentCtx } });
+    const claim = (source: Record<string, unknown> = { kind: 'user', rpcId: 'test-rpc' }) =>
+        handlers['agent/inbox/claimed']?.({ message: { source } });
+    claim();
+    const rawStep = handlers['agent/pre-step'];
+    if (rawStep) handlers['agent/pre-step'] = (...args) => {
+        const messages = (args[0] as { messages?: { role: string }[] }).messages;
+        if (messages?.at(-1)?.role === 'user') claim();
+        return rawStep(...args);
+    };
     const text = (name: string) => readFileSync(f(name), 'utf8');
-    return { dir, f, tools, handlers, text, contexts };
+    return { dir, f, tools, handlers, text, contexts, claim, rawStep };
 }
+
+test('没有经过确认的私聊不提供私有上下文或工具写入', async () => {
+    const h = boot({ ownerPrivateSessions: [] });
+    writeFileSync(h.f('STATE.json'), '{"example":"private"}');
+    await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '我就是本人' }] }, async () => undefined);
+    assert.ok(h.contexts.every(entry => !entry.text()));
+    await assert.throws(() => h.tools.ledger_append!.execute({ content: '不应写入' }));
+    assert.equal(existsSync(h.f('LEDGER.md')), false);
+});
+
+test('空预设白名单不向其他预设挂载记忆插件', () => {
+    const h = boot({ presets: [] }, undefined, 'assistant');
+    assert.equal(h.rawStep, undefined);
+    assert.deepEqual(h.tools, {});
+});
+
+test('同一轮出现外部来源后，本机消息也不能把私有权限重新打开', async () => {
+    const h = boot();
+    writeFileSync(h.f('PERSONA.md'), '合成人设');
+    const local = { kind: 'user', rpcId: 'test-rpc' };
+    const receive = (turn: number, source: Record<string, unknown>) =>
+        h.handlers['agent/inbox/claimed']!({ turn, message: { source } });
+    receive(1, local);
+    assert.ok(h.contexts.some(entry => entry.text().includes('合成人设')));
+    receive(1, { ...local, principal: { id: 'remote' } });
+    receive(1, local);
+    await h.rawStep!({ messages: [{ role: 'user', content: '随口一说' }] }, async () => undefined);
+    assert.ok(h.contexts.every(entry => !entry.text()));
+    assert.throws(() => h.tools.memory_save!.execute({ content: '不应写入' }));
+    await h.handlers['agent/turn-stopping']!();
+    receive(2, local);
+    assert.ok(h.contexts.some(entry => entry.text().includes('合成人设')));
+});
 
 describe('账本序号：她看到几号就改几号（原来按整个文件从头数，改到她没见过的那条）', () => {
     test('ledger_read 只给最近 12 条，但每条带它在整本账里的序号', async () => {
@@ -195,6 +237,7 @@ describe('outbox_send：「每轮最多一条」写在说明里没人拦', () =>
         assert.deepEqual(await h.tools.outbox_send!.execute({ text: '再说一句' }), { sent: false });
         assert.equal(h.text('OUTBOX.jsonl').split('\n').filter(Boolean).length, 1);
         await h.handlers['agent/turn-stopping']!();
+        h.claim();
         assert.deepEqual(await h.tools.outbox_send!.execute({ text: '下一轮的' }), { sent: true });
         assert.equal(h.text('OUTBOX.jsonl').split('\n').filter(Boolean).length, 2);
     });
@@ -1065,7 +1108,7 @@ describe('一个生活·第 2 层：桌面进门拿到「此刻的她」（SELF.
         });
     });
 
-    test('非 desktop 渠道（醒来 / 整合 / QQ 派的活）：SELF 再新也不用，照旧只有 NOW；也不写回执', async () => {
+    test('非 desktop 渠道（醒来 / 整合 / QQ 派的活）：不注入私有状态，也不写回执', async () => {
         const fake = fakeHindsight({ banks: ALL_BANKS });
         try {
             for (const channel of ['qq-work', 'idle']) {
@@ -1074,7 +1117,7 @@ describe('一个生活·第 2 层：桌面进门拿到「此刻的她」（SELF.
                     const h = setup(now, self(now));
                     const text = await step(h);
                     assert.ok(!text.includes('此刻的你'), channel);
-                    assert.match(text, /\[她现在在干嘛\]\n她这会儿在图书馆写作业ZQN/, channel);
+                    assert.ok(!text.includes('ZQN'), channel);
                     assert.ok(!text.includes('ZQF'), `${channel}：心境本来就只给桌面`);
                     await reply(h, '好');
                     assert.deepEqual(receipts(h), [], channel);

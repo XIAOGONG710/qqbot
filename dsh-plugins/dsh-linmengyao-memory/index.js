@@ -19,6 +19,8 @@ const DEFAULTS = {
   baseUrl: 'http://127.0.0.1:8888',
   prefix: 'linmengyao',
   presets: ['linmengyao'],
+  // 由部署方确认仅本机私聊、没有转发的专用会话。
+  ownerPrivateSessions: [],
   pick: 6,
   maxChars: 1400,
   // QQ 那边写的「他的 bank 在哪」（ADR 0176）；QQBOT_OWNER_BANK_FILE 可以改，默认是这个仓库的 runtime/bot/memory/owner-bank.json
@@ -1139,13 +1141,13 @@ function readStateBlock(cfg, now = Date.now()) {
   } catch { return '' }
 }
 
-async function retain(cfg, content, bank, tags = ['dsh'], context = 'DSH') {
+async function retain(cfg, content, bank, tags = ['dsh'], context = 'DSH', at = Date.now()) {
   const body = {
     items: [{
       content,
       context,
       document_id: `dsh-${bank}-${Date.now()}`,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(at).toISOString(),
       tags,
       metadata: {},
     }],
@@ -1174,7 +1176,8 @@ function isChildAgent(ctx, agent) {
 
 export function apply(ctx, config = {}) {
   const cfg = { ...DEFAULTS, ...config }
-  const allow = new Set(Array.isArray(cfg.presets) ? cfg.presets : [])
+  const allow = new Set(Array.isArray(cfg.presets) && cfg.presets.length ? cfg.presets : DEFAULTS.presets)
+  const privateSessions = new Set(Array.isArray(cfg.ownerPrivateSessions) ? cfg.ownerPrivateSessions : [])
   log(cfg, `apply presets=${[...allow].join(',')}`)
 
   ctx.on('agent/created', ({ agent }) => {
@@ -1184,7 +1187,7 @@ export function apply(ctx, config = {}) {
     // 子 agent 一律不挂：它的「用户」是父 agent 的委派提示词，不是他在桌上说的话
     if (isChildAgent(ctx, agent)) { log(cfg, `子 agent ${agent.id}：不挂记忆工具，也不写桌面痕迹`); return }
     // 只给她的预设挂记忆/灵魂工具；助手窗口（cordis）和其他预设不挂
-    if (allow.size && (!preset || !allow.has(preset))) return
+    if (!allow.has(preset)) return
 
     // self：这一步放进「此刻的你」的 SELF（selfBlock 的结果，没有就是 null）；selfShown / selfAt：这一轮放给她看过的攒着的事，turn-stopping 写回执后清空
     // userAt：本轮第一次记下他原话（cache.user）的时刻，turn-stopping 清空
@@ -1192,12 +1195,38 @@ export function apply(ctx, config = {}) {
 
     const off = agent.ctx.effect(() => {
       const disposers = []
+      let ownerInput = false
+      let rejectedTurn
+      let inputVersion = 0
+      const privateTurn = () => ownerInput && channel() === 'desktop'
+        && allow.has(ctx.get('agentPresets')?.composedPreset?.(agent.ctx))
+      disposers.push(agent.ctx.on('agent/inbox/claimed', ({ message, turn }) => {
+        inputVersion++
+        const source = message?.source
+        // 宿主 RPC 的 principal 缺省表示本机主人；rpcId 本身不能证明受众。
+        const trusted = privateSessions.has(agent.id) && source?.kind === 'user'
+          && typeof source.rpcId === 'string' && source.rpcId.length > 0
+          && Object.keys(source).every(key => ['kind', 'rpcId', 'clientTimeZone'].includes(key))
+        if (!trusted) rejectedTurn = turn
+        ownerInput = trusted && (turn === undefined || turn !== rejectedTurn)
+        if (!ownerInput) {
+          cache.text = ''
+          cache.self = null
+          cache.bridge = ''
+          cache.user = ''
+          cache.userAt = undefined
+          cache.assistant = ''
+          cache.selfShown.clear()
+        }
+      }))
 
       disposers.push(agent.ctx.on('agent/pre-step', async (payload, next) => {
         // 每个模型步骤都重新构造上下文。召回超时、坏文件或空输入时也不能沿用上一轮，
         // 否则旧问题的 QQ 最近对话 / 记忆会悄悄串进新一轮。
         cache.text = ''
         cache.self = null
+        if (!privateTurn()) return next()
+        const version = inputVersion
         // 串会话（2026-11-22）：这一场第一次跑起来时，把上一场留下的收尾读进来；同一场只读一次
         if (!cache.bridge) {
           try {
@@ -1239,6 +1268,7 @@ export function apply(ctx, config = {}) {
           }
           if (query) {
             const all = await recallAll(cfg, query)
+            if (version !== inputVersion || !privateTurn()) return next()
             // 第 5 层：她自己的口气 + 多久以前（ADR 0347）。原来原样贴「林梦瑶……」，
             // 她说那读起来像在翻别人的日记；这里只换人称和加远近，事实一个字不加。
             const voice = cfg.memoryVoice === true
@@ -1297,6 +1327,12 @@ export function apply(ctx, config = {}) {
 
       // 混合记忆：每轮结束自动把这段对话写进 DSH 库
       disposers.push(agent.ctx.on('agent/turn-stopping', async () => {
+        const canRemember = privateTurn()
+        ownerInput = false
+        rejectedTurn = undefined
+        inputVersion++
+        cache.text = ''
+        cache.self = null
         cache.outbox = 0
         const user = cache.user
         const userAt = cache.userAt
@@ -1308,7 +1344,7 @@ export function apply(ctx, config = {}) {
         cache.assistant = ''
         cache.selfShown = new Set()
         cache.selfAt = ''
-        if (!user && !assistant) return
+        if (!canRemember || !user) return
         let p = cache.preset
         if (!p) {
           try { p = ctx.get('agentPresets')?.composedPreset?.(agent.ctx) || '' } catch {}
@@ -1335,7 +1371,7 @@ export function apply(ctx, config = {}) {
         }
         if (shouldAutoSaveTurn(user, assistant)) {
           try {
-            await retain(cfg, `宝宝：${user}\n林梦瑶：${assistant.slice(0, 2000)}`, writeBank(cfg), ['dsh'], 'DSH')
+            await retain(cfg, `宝宝：${user}\n林梦瑶：${assistant.slice(0, 2000)}`, writeBank(cfg), ['dsh'], 'DSH 对话原话；角色回复中的猜测和计划不当成已发生的事实', userAt)
             log(cfg, `auto-saved turn user=${user.slice(0, 20)} assistant=${assistant.length}chars`)
           } catch (e) {
             log(cfg, `auto-save error ${e}`)
@@ -1349,6 +1385,7 @@ export function apply(ctx, config = {}) {
           name: 'linmengyao-memory',
           order: 90,
           text: () => {
+            if (!privateTurn()) return ''
             if (channel() !== 'desktop') return cache.text || ''
             const owner = ownerBanks(cfg)
             if (!owner?.desktopFile || (!owner.desktopDiary && !owner.desktopPromises)) return cache.text || ''
@@ -1364,6 +1401,7 @@ export function apply(ctx, config = {}) {
           name: 'linmengyao-persona',
           order: 10,
           text: () => {
+            if (!privateTurn()) return ''
             const persona = readPersona(cfg)
             if (persona) warnIfPersonaStale(cfg)
             return persona ? `[她的设定]
@@ -1374,6 +1412,7 @@ ${persona}` : ''
           name: 'linmengyao-now',
           order: 80,
           text: () => {
+            if (!privateTurn()) return ''
             // SELF 能用时整块换成「此刻的你」；不能用就完全走原来的 NOW 行，一个字不变
             if (cache.self) return cache.self.text
             const now = readNowLine(cfg)
@@ -1384,12 +1423,12 @@ ${now}` : ''
         disposers.push(sp.context({
           name: 'linmengyao-state',
           order: 75,
-          text: () => readStateBlock(cfg),
+          text: () => privateTurn() ? readStateBlock(cfg) : '',
         }))
         disposers.push(sp.context({
           name: 'linmengyao-bridge-rules',
           order: 70,
-          text: () => '[桌面同步规则]\n只有桌面动作已经实际完成后，才可以记录 timeline_record 或 world_event；计划、猜测、模型回复和用户要求本身都不是事实。摘要不写原文、路径、账号、令牌或隐私内容。',
+          text: () => privateTurn() ? '[桌面同步规则]\n只记录有依据的事实，日期以消息或事件来源为准，不确定就不补写。她没有亲口说过的话不能替她写。桌面动作实际完成后才能记录 timeline_record 或 world_event；摘要不写原文、路径、账号、令牌或隐私内容。' : '',
         }))
         if (cfg.personaFile && !fs.existsSync(cfg.personaFile)) log(cfg, '人设：没有 PERSONA.md（跑 scripts/build-dsh-persona.mjs 生成）')
         log(cfg, `context registered ${agent.id}`)
@@ -1399,7 +1438,14 @@ ${now}` : ''
 
       const tools = agent.ctx.get('tools')
       if (tools) {
-        disposers.push(tools.register({
+        const register = tool => tools.register({
+          ...tool,
+          execute(...args) {
+            if (!privateTurn()) throw new Error('本轮未确认是主人的私聊，不能使用这项工具')
+            return tool.execute(...args)
+          },
+        })
+        disposers.push(register({
           name: 'memory_save',
           description: '把值得记住的事写进林梦瑶的记忆（工作房）。只在有长期价值时用；写入成功会自动记一条不含正文的桌面时间线，不要为同一件事重复调用 timeline_record。',
           parameters: {
@@ -1426,7 +1472,7 @@ ${now}` : ''
           },
         }))
 
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'timeline_record',
           description: '记录已经完成的桌面行为，供 QQ 的统一时间线读取。只有动作实际完成后调用；只写动作和结果，不写原文、路径、账号、令牌或隐私内容。',
           parameters: {
@@ -1456,7 +1502,7 @@ ${now}` : ''
           },
         }))
 
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'world_event',
           description: '把桌面上确实完成的生活动作交给 QQ 世界账。只有实际发生后调用，不能用来计划、猜测或修改 QQ 事实；QQ 侧仍会按世界前置条件裁决。',
           parameters: {
@@ -1520,7 +1566,7 @@ ${now}` : ''
           },
         }))
 
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'soul_read',
           description: '读你自己现在的 SOUL.md（你是谁、在意什么、边界）。',
           parameters: { type: 'object', properties: {}, additionalProperties: false },
@@ -1531,7 +1577,7 @@ ${now}` : ''
           async execute() { return { text: readSoul(cfg) } },
         }))
 
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'soul_update',
           description: '改你自己的 SOUL.md：只有真的想清楚、值得长期留下的自我认识才写。追加一段，<=800 字符。',
           parameters: {
@@ -1580,7 +1626,7 @@ ${now}` : ''
           },
         }))
 
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'ledger_read',
           description: '读你自己的判断账本 LEDGER.md（事件、判断、立场）。',
           parameters: { type: 'object', properties: {}, additionalProperties: false },
@@ -1591,7 +1637,7 @@ ${now}` : ''
           async execute() { return { text: readLedger(cfg) } },
         }))
 
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'ledger_append',
           description: '往判断账本追加一条：发生了什么 + 你的判断/立场（<=300 字符）。只记真的改变了你怎么看人事的事。',
           parameters: {
@@ -1640,9 +1686,9 @@ ${now}` : ''
             return { saved: true }
           },
         })
-        disposers.push(tools.register(diaryTool('journal_write', 'journalFile', '写公开日记：愿意给他看的那部分日子。', '<=2000 字')))
+        disposers.push(register(diaryTool('journal_write', 'journalFile', '写公开日记：愿意给他看的那部分日子。', '<=2000 字')))
         // 翻回去看自己写过的公开日记（ADR 0217）：只读
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'journal_read',
           description: '翻自己写过的公开日记（只读）：默认看最近两天的；要看某一天就给 date（YYYY-MM-DD）。',
           parameters: {
@@ -1666,7 +1712,7 @@ ${now}` : ''
           },
         }))
         // 私密日记：DPAPI 加密，只有她的进程（和专门的查看脚本）能解
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'private_write',
           description: '写私密日记（加密，不给他看）：没说完的话、没兑现的念头、情绪。',
           parameters: {
@@ -1688,7 +1734,7 @@ ${now}` : ''
           },
         }))
 
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'private_read',
           description: '读自己的私密日记（只有你能看）。',
           parameters: { type: 'object', properties: {}, additionalProperties: false },
@@ -1699,7 +1745,7 @@ ${now}` : ''
           async execute() { return { text: privateRead(cfg) } },
         }))
 
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'wish_add',
           description: '记一个没兑现的念头（以后可能做、可能放弃）。',
           parameters: {
@@ -1723,7 +1769,7 @@ ${now}` : ''
         }))
 
         // 长期兴趣：她自己定、自己追、自己放弃
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'interest_list',
           description: '读我自己定的长期兴趣（INTERESTS.md）。',
           parameters: { type: 'object', properties: {}, additionalProperties: false },
@@ -1736,7 +1782,7 @@ ${now}` : ''
           },
         }))
 
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'interest_add',
           description: '给自己加一个长期兴趣（最多同时 3 件）。这是我自己想做的，不是别人派的。',
           parameters: {
@@ -1762,7 +1808,7 @@ ${now}` : ''
           },
         }))
 
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'interest_log',
           description: '给某个兴趣记进度/感受（今天读到哪、做了什么）。',
           parameters: {
@@ -1789,7 +1835,7 @@ ${now}` : ''
           },
         }))
 
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'interest_done',
           description: '把某个兴趣标成做完/放下（可以随时放弃，不用有负担）。',
           parameters: {
@@ -1817,7 +1863,7 @@ ${now}` : ''
         }))
 
         // 她想让他知道的事：写进 outbox，Koishi 会发给他
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'outbox_send',
           description: '有想让他知道的事（比如你刚看了什么、留了个小彩蛋），写一句给他；每轮最多一条，别刷屏。',
           parameters: {
@@ -1843,7 +1889,7 @@ ${now}` : ''
         }))
 
         // 她可以自己决定“离开电脑”：接下来一段时间不接活、不主动醒
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'go_offline',
           description: '自己决定离开电脑一会儿（不接活、不主动醒）。想清静、出门、睡觉时用。',
           parameters: {
@@ -1864,7 +1910,7 @@ ${now}` : ''
           },
         }))
 
-        disposers.push(tools.register({
+        disposers.push(register({
           name: 'ledger_revise',
           description: '改口：改账本里某一条判断。序号就是 ledger_read 里每条前面的号（别数行数）。原文会留在历史里。',
           parameters: {

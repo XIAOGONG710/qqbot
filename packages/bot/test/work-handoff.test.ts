@@ -34,29 +34,21 @@ function setup(run: WorkHandoffDeps['runWork']) {
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
 describe('交给 dsh 干活', () => {
-    test('最近十条按「他 / 我」排好当上下文', () => {
-        const { work } = setup(async () => '');
-        assert.equal(work.recentFor(1001), '他：帮我看下日志\n我：好');
-    });
-
-    test('干完：结果发回去、进聊天记录，活记在干完时取到的 bank 里', async () => {
+    test('干完：结果发回去、进聊天记录，不带近期私聊也不把回复当事实入长期记忆', async () => {
         const contexts: (string | undefined)[] = [];
         const { work, sent, appended, logs, remembered } = setup(async (_task, options) => { contexts.push(options?.context); return '看完了，没报错'; });
-        let bank = 'early';
-        work.handOff(1001, '看日志', '他：帮我看下日志', () => bank, '工作桥出错');
-        bank = 'his-bank';
+        work.handOff(1001, '看日志', '工作桥出错');
         for (let i = 0; i < 5; i++) await settle();
-        assert.deepEqual(contexts, ['他：帮我看下日志']);
+        assert.deepEqual(contexts, [undefined]);
         assert.deepEqual(sent, [{ qq: 1001, text: '看完了，没报错' }]);
         assert.deepEqual(appended, [{ qq: 1001, message: { time: NOW.toISOString(), role: 'assistant', content: '看完了，没报错', messageId: 500 } }]);
-        assert.equal(remembered.length, 1);
-        assert.match(remembered[0]!, /\/banks\/his-bank\/memories$/);
+        assert.deepEqual(remembered, []);
         assert.deepEqual(logs, []);
     });
 
     test('没干成：日志记标签和原因，回他一句，这句也进聊天记录', async () => {
         const { work, sent, appended, logs, remembered } = setup(async () => { throw new Error('dsh 没起来'); });
-        work.handOff(1001, '看日志', '', () => undefined, '她判断要动电脑、没干成');
+        work.handOff(1001, '看日志', '她判断要动电脑、没干成');
         for (let i = 0; i < 5; i++) await settle();
         assert.deepEqual(logs, ['[1001] 她判断要动电脑、没干成：dsh 没起来']);
         assert.deepEqual(sent, [{ qq: 1001, text: WORK_FAILED_LINE }]);

@@ -20,27 +20,6 @@ export interface WorkTaskOptions {
     context?: string
 }
 
-const HINDSIGHT = 'http://127.0.0.1:8899'
-
-/** 把这次活写进 DSH 记忆库，聊天里的她也能看到 */
-export async function rememberWorkTask(task: string, reply: string, bank = 'linmengyao'): Promise<void> {
-    try {
-        await fetch(`${HINDSIGHT}/v1/default/banks/${bank}/memories`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                items: [{
-                    content: `林梦瑶今天帮宝宝干活：他让她${task}；林梦瑶做了：${reply}`,
-                    context: 'DSH 工作',
-                    document_id: `qq-work-${Date.now()}`,
-                    timestamp: new Date().toISOString(),
-                }],
-            }),
-            signal: AbortSignal.timeout(5000),
-        })
-    } catch { /* 记忆写不进去不挡回复 */ }
-}
-
 function spawnWorkTask(task: string, options: WorkTaskOptions = {}): Promise<string> {
     const profile = options.profile ?? 'lmy'
     const timeoutMs = options.timeoutMs ?? 180_000
