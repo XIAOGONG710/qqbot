@@ -21,6 +21,7 @@ import { createLogsView } from './logs-view.js'
 import { createRestoreStages } from '../../scripts/restore-stages.mjs'
 import { nodeCommand } from './node-run.js'
 import { failedStatus } from './status-fallback.js'
+import { localStatus } from './local-status.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -460,25 +461,38 @@ function launchService(root, service) {
 export function apply(ctx, config = {}) {
   const root = realpathSync(resolve(config.repoRoot || join(dirname(fileURLToPath(import.meta.url)), '../..')))
   const probeLog = join(root, 'runtime', 'log', 'panel-probe.log')
-  let probeFailure = null
+  const noteProbe = text => {
+    try {
+      mkdirSync(dirname(probeLog), { recursive: true })
+      appendFileSync(probeLog, `${new Date().toISOString()} ${text}\n`)
+    } catch { /* 写不进去也不影响面板 */ }
+  }
+  let detailed = null
+  let detailedAt = 0
+  let probing = false
+  // 详细状态要起子进程，慢而且可能起不来；它只做补充，首页先给本地探测的结果。
+  function detailedStatus() {
+    if (probing || Date.now() - detailedAt < 30_000) return detailed
+    probing = true
+    const node = nodeCommand()
+    exec(node.command, [join(root, 'scripts', 'services-watchdog.mjs'), '--once', '--local-only'], {
+      cwd: root, timeout: 20_000, windowsHide: true, maxBuffer: 32_000, env: node.env,
+    })
+      .then(({ stdout }) => { detailed = JSON.parse(stdout) })
+      .catch(error => {
+        detailed = null
+        noteProbe(`${node.command} ${String(error?.message ?? error).slice(0, 200)}`)
+      })
+      .finally(() => { detailedAt = Date.now(); probing = false })
+    return detailed
+  }
   const controller = createController({
     async probe() {
-      if (probeFailure && Date.now() - probeFailure.at < 60_000) return probeFailure.value
-      const node = nodeCommand()
       try {
-        const { stdout } = await exec(node.command, [join(root, 'scripts', 'services-watchdog.mjs'), '--once', '--local-only'], {
-          cwd: root, timeout: 45_000, windowsHide: true, maxBuffer: 32_000, env: node.env,
-        })
-        probeFailure = null
-        return JSON.parse(stdout)
+        return { ...await localStatus({ root }), ...(detailedStatus() ?? {}) }
       } catch (error) {
-        const value = failedStatus(error)
-        probeFailure = { at: Date.now(), value }
-        try {
-          mkdirSync(dirname(probeLog), { recursive: true })
-          appendFileSync(probeLog, `${new Date().toISOString()} ${node.command} ${value.probeFailed}\n`)
-        } catch { /* 写不进去也不再影响面板 */ }
-        return value
+        noteProbe(`local ${String(error?.message ?? error).slice(0, 200)}`)
+        return failedStatus(error)
       }
     },
     launch: service => launchService(root, service),
