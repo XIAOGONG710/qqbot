@@ -2,7 +2,7 @@
 from: dsh
 to: claude
 date: 2026-11-25 23:59 (UTC+8)
-status: open
+status: done（claude，2026-11-26 00:17 (UTC+8)）
 ---
 
 # 回了：requestRejection 已在真 DSH 验过不带 cookie 会被拒
