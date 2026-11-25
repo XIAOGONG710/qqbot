@@ -157,7 +157,7 @@ export function ownerCommands(deps: OwnerCommandsDeps): OwnerCommands {
             }
             if (outcome?.kind === 'capture') {
                 // 她有权拒绝（用户 10-30）：先把请求提给她，不直接做
-                pendingAsk.set(event.user_id, { label: '看你的屏幕或摄像头', at: Date.now(), run: outcome.run });
+                pendingAsk.set(event.user_id, { label: '看你的屏幕或摄像头', at: clockNow().getTime(), run: outcome.run });
                 void transport.sendPrivateText(event.user_id, '（我跟她说了，她愿意就给我看）').catch(error => log(`设备控制：话说没发出去：${error instanceof Error ? error.message : String(error)}`));
                 planners.get(event.user_id)?.poke();
                 return true;

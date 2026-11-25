@@ -547,12 +547,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     };
     // 补充的日常小事（ADR 0106）：第一次开的时候定下“从哪天起”（第二天）并存起来，以后重启读同一个；她已经过完的日子不改写
     exec.files.mkdir(join(config.dataDir, 'world'));
-    const everydayFrom = config.everydayLife ? loadEverydayFrom(join(config.dataDir, 'world', 'everyday-from.json'), new Date(), log) : undefined;
+    const everydayFrom = config.everydayLife ? loadEverydayFrom(join(config.dataDir, 'world', 'everyday-from.json'), new Date(exec.now()), log) : undefined;
     // 每顿吃什么（ADR 0125，跟着 everydayLife）：同样第一次开的时候定下“从哪天起”
     // 她那边的事有后续（ADR 0216，跟着 worldDrama）：要日常小事和小起伏都开着（后续接在小起伏后面）
-    const threadsFrom = config.everydayLife && config.worldDrama ? loadThreadsFrom(join(config.dataDir, 'world', 'threads-from.json'), new Date(), log) : undefined;
+    const threadsFrom = config.everydayLife && config.worldDrama ? loadThreadsFrom(join(config.dataDir, 'world', 'threads-from.json'), new Date(exec.now()), log) : undefined;
     if (config.worldDrama && !threadsFrom) log('她那边的事有后续：worldDrama 开着，但要 everydayLife 也开着才起作用');
-    const menuFrom = config.everydayLife ? loadMenuFrom(join(config.dataDir, 'world', 'menu-from.json'), new Date(), log) : undefined;
+    const menuFrom = config.everydayLife ? loadMenuFrom(join(config.dataDir, 'world', 'menu-from.json'), new Date(exec.now()), log) : undefined;
     const cards = new Map<string, TierCard>();
     const cardFor = (tier: string) => {
         let card = cards.get(tier);
@@ -561,8 +561,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 闺蜜的约（ADR 0061，跟着 everydayLife）：开关设在这张卡的世界上，其余代码照旧读世界
             if (config.everydayLife && card.character.herWorld) card.character.herWorld.asks = true;
             // 公共节日（ADR 0076，配置 festivals）：并进这一档的重要的日子，时间块和主动消息照旧读 dates
-            card.character.dates = withFestivals(card.character.dates, new Date(), config.festivals);
-            withFestivalActivities(card.character.schedule, new Date(), config.festivals);
+            card.character.dates = withFestivals(card.character.dates, new Date(exec.now()), config.festivals);
+            withFestivalActivities(card.character.schedule, new Date(exec.now()), config.festivals);
             cards.set(tier, card);
         }
         return card;
@@ -975,7 +975,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         },
         // 她想查才查（<<查：…>>）：总是挂（摘标记和开关无关）；开了长期记忆和 selfDirectedMemory 才真的去查。memory 在后面才建，查的时候现取
         reviewPull: { ...(config.memory && config.selfDirectedMemory ? { recall: async (contact: Contact, query: string) => {
-            const recalled = await memory!.recallPull(contact, query, new Date(), config.contacts);
+            const recalled = await memory!.recallPull(contact, query, clockNow(), config.contacts);
             if (!recalled || !deviceOwner || contact.qq !== deviceOwner.qq) return recalled;
             return attachMatchingMemoryReviews(recalled, readMemoryReviews(config.dataDir).reviews);
         }, finishReview: (contact, offers, resolution) => {
@@ -984,9 +984,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         } } : {}) },
         // 她自己决定记不记（selfDirectedMemory，DSH 10-30 / 10-31）：「记忆由你自己决定」、理解偏过、他最近的事
         ...(config.selfDirectedMemory ? { selfMemory: {
-            understanding: hisWords => understandingLine(config.dataDir, hisWords),
+            understanding: hisWords => understandingLine(config.dataDir, hisWords, worldNow()),
             immediateCorrection: (contact, hisWords) => deviceOwner && contact.qq === deviceOwner.qq ? correctionReplyLine(hisWords) : undefined,
-            traces: () => tracesLine(config.dataDir),
+            traces: () => tracesLine(config.dataDir, worldNow()),
         } } : {}),
         // 工作模式的三行（DSH 10-29 / 10-30）：按他现在的状态放其中一行；只给男朋友档
         workMode: {
@@ -1048,15 +1048,15 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 wake: (contact: Contact): string | undefined => {
                     try {
                         // 刚收的这条已经进聊天记录了，算间隔要拿它之前的那条（5 分钟内的都当成本轮）
-                        const cutoff = Date.now() - 5 * 60_000;
+                        const cutoff = worldNow() - 5 * 60_000;
                         const older = history.load(contact.qq).filter(message => Date.parse(message.time) < cutoff);
                         // 一本日记（oneDiary）：从同一本取，不看 JOURNAL.md 最后一段
                         if (config.oneDiary) {
-                            const now = Date.now();
+                            const now = worldNow();
                             return wakeBackfill({ lastAt: older.at(-1)?.time, now, journal: '', diaries: oneDiaryEntries({ soulDir: soulDir(), dataDir: config.dataDir }, now), log });
                         }
                         const journal = exec.files.read(join(soulDir(), 'JOURNAL.md'));
-                        return wakeBackfill({ lastAt: older.at(-1)?.time, now: Date.now(), journal, log });
+                        return wakeBackfill({ lastAt: older.at(-1)?.time, now: worldNow(), journal, log });
                     } catch { return undefined; }
                 },
             } : {}),
@@ -1074,8 +1074,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ask: contact => {
                 if (contact.tier !== 'boyfriend') return undefined;
                 const pending = pendingAsk.get(contact.qq);
-                if (!pending || askExpired(pending.at, Date.now())) return undefined;
-                return askLine(pending.label, Math.floor((Date.now() - pending.at) / 60_000));
+                if (!pending || askExpired(pending.at, worldNow())) return undefined;
+                return askLine(pending.label, Math.floor((worldNow() - pending.at) / 60_000));
             },
             // 她写了 <<同意>> 就做，写了 <<拒绝：原因>> 就作罢（2026-10-30）
             answer: {
@@ -1084,7 +1084,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 claim: contact => {
                     const userId = contact.qq;
                     const pending = pendingAsk.get(userId);
-                    if (!pending || askExpired(pending.at, Date.now())) return undefined;
+                    if (!pending || askExpired(pending.at, worldNow())) return undefined;
                     pendingAsk.delete(userId);
                     return {
                         label: pending.label,
@@ -1181,7 +1181,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
 
     const tierRecord = new TierRecord(join(config.dataDir, 'tiers.json'));
     for (const contact of config.contacts) {
-        const warning = tierRecord.update(contact.qq, contact.tier);
+        const warning = tierRecord.update(contact.qq, contact.tier, new Date(exec.now()));
         if (warning) log(warning);
     }
     // 换过档的联系人只看换档之后的记录：提示词、长期记忆、补回都一样（ADR 0003 后果一节）
@@ -1405,7 +1405,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             dir: join(config.dataDir, 'memory'),
             bankPrefix: config.memory.bankPrefix,
             recallTimeoutMs: config.memory.recallTimeoutMs,
-            log,
+            log, now: worldNow,
             common: true,
             ...(deviceOwner ? { privateContact: deviceOwner } : {}),
             reconcile: config.ledgers,
@@ -1881,7 +1881,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.memoryFeelings && config.herFeelings ? { memoryFeelings: true } : {}),
             // 感觉账（ADR 0347 第 5 层）：几天以前的事想起时，从账里配当时的感觉（说法照她定的换过）。
             // 只写账是纯文件（跟着 herFeelings）；这一半会进给她的提示词、改她说话，所以另有一个默认关的开关
-            ...(config.herFeelings && config.feltLedgerRecall ? { feltLedger: () => readLedger(soulDir()) } : {}),
+            ...(config.herFeelings && config.feltLedgerRecall ? { feltLedger: () => readLedger(soulDir(), worldNow()) } : {}),
             ...(config.realNights ? { realNights: true } : {}),
             ...(config.rhythm ? { lagTail: true } : {}),
             ...(config.everydayLife ? { everydayLife: true } : {}),
@@ -2347,7 +2347,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             const lastHer = [...chat].reverse().find(m => m.role === 'assistant');
             const prevHis = [...chat].reverse().filter(m => m.role === 'user')[1];
             if (lastHer && prevHis) {
-                recordCorrection(config.dataDir, { his: prevHis.content, her: lastHer.content, fix: text });
+                recordCorrection(config.dataDir, { his: prevHis.content, her: lastHer.content, fix: text }, worldNow());
                 log(`[${event.user_id}] 理解：他这次是在纠正上一次的接法，记下了（日志不记内容）`);
             }
         }
@@ -2356,7 +2356,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 只记男朋友档那位的：traces.json 不分人，同学档说的「我喜欢你」会变成“他说喜欢我”，还会出现在别人的对话里
         if (config.selfDirectedMemory && deviceOwner && event.user_id === deviceOwner.qq) {
             const trace = traceOf(text);
-            if (trace && recordTrace(config.dataDir, trace)) log(`[${event.user_id}] 痕迹：记下${trace.kind === 'affection' ? '他说的话' : trace.kind === 'promise' ? '他答应的事' : '他做过的事'}（日志不记内容）`);
+            if (trace && recordTrace(config.dataDir, trace, worldNow())) log(`[${event.user_id}] 痕迹：记下${trace.kind === 'affection' ? '他说的话' : trace.kind === 'promise' ? '他答应的事' : '他做过的事'}（日志不记内容）`);
         }
         syncRecalledMemory(event.user_id);
         const crisis = detectCrisis(accepted.content);

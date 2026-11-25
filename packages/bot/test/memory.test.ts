@@ -1216,4 +1216,17 @@ describe('她主动写下的记忆权重', () => {
             rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    test('写下的时刻按注入的时钟（App 的 worldNow；模拟器是虚拟时钟），不看真实时钟', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-memory-'));
+        const { api, calls } = fakeApi();
+        const virtual = Date.UTC(2020, 2, 4, 12, 0);
+        const memory = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: () => {}, common: true, now: () => virtual });
+        try {
+            await memory.rememberSelfNote({ ...A, name: '阿明' }, '今天在操场拍了晚霞', '日记');
+            assert.equal(calls.retain[0]!.timestamp, new Date(virtual).toISOString());
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });

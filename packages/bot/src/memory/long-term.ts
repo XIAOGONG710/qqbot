@@ -1412,7 +1412,7 @@ export class LongTermMemory {
             content: `${kind === '记住' ? IMPORTANT : ''}林梦瑶自己记下的${kind}：${text}`,
             context: kind,
             document_id: `${kind === '日记' ? 'diary-self' : 'self'}:${this.#hash(contact)}:${Date.now()}`,
-            timestamp: new Date().toISOString(),
+            timestamp: new Date(this.#now()).toISOString(),
             tags: ['qq-private', 'self'],
             metadata: {},
         });

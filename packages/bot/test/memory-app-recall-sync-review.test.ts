@@ -41,7 +41,7 @@ afterEach(async () => {
     for (const root of roots.splice(0)) { assert.equal(dirname(resolve(root)), resolve(tmpdir())); assert.ok(basename(root).startsWith('qqbot-app-recall-sync-')); rmSync(root, { recursive: true, force: true }); }
 });
 async function until(check: () => boolean) { const end = Date.now() + 3500; while (!check()) { if (Date.now() > end) assert.fail('合成等待超时'); await new Promise(resolve => setTimeout(resolve, 5)); } }
-function fixture(options: { memory?: boolean; dormant?: boolean; previousTier?: boolean } = {}) {
+function fixture(options: { memory?: boolean; dormant?: boolean; previousTier?: boolean; at?: number } = {}) {
     const root = mkdtempSync(join(tmpdir(), 'qqbot-app-recall-sync-')); roots.push(root); const dataDir = join(root, 'bot'); mkdirSync(dataDir);
     for (const tier of ['classmate', 'classmate-open', 'boyfriend', 'boyfriend-open']) writeFileSync(join(root, `synthetic-${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
     const tier = options.dormant ? 'boyfriend' : 'classmate';
@@ -49,18 +49,18 @@ function fixture(options: { memory?: boolean; dormant?: boolean; previousTier?: 
         contacts: [{ qq: PEER, name: '合成联系人', tier }], ...(options.memory === false ? {} : { memory: { baseUrl: 'http://synthetic.invalid', timeoutMs: 1000, recallTimeoutMs: 100, bankPrefix: 'synthetic' } }),
         recalls: true, media: true, dormancy: options.dormant === true, schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off',
     }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
-    const at = Math.floor(Date.now() / 1000) - 120; const history = new ChatHistory(dataDir);
+    const at = options.at ?? Math.floor(Date.now() / 1000) - 120; const history = new ChatHistory(dataDir);
     for (let i = 1; i <= OPEN_EPISODE_STEP; i++) history.append(PEER, { role: 'user', time: new Date((at + i) * 1000).toISOString(), messageId: i, messageSeq: String(81000 + i), content: i === OPEN_EPISODE_STEP ? MARKER : `合成消息${i}` });
     if (options.dormant) writeFileSync(join(dataDir, 'dormancy.json'), JSON.stringify({ state: 'dormant', since: new Date((at - 1) * 1000).toISOString(), archive: join(root, 'synthetic-archive') }));
     if (options.previousTier) writeFileSync(join(dataDir, 'tiers.json'), JSON.stringify({ [PEER]: 'boyfriend' }));
     return { root, dataDir, config, at };
 }
-function start(f: ReturnType<typeof fixture>, media?: { voiceToText(): Promise<string> }) {
+function start(f: ReturnType<typeof fixture>, media?: { voiceToText(): Promise<string> }, now?: () => number) {
     let release!: (value: string) => void; const held = new Promise<string>(resolve => { release = resolve; }); releases.push(() => release('合成迟到模型结果'));
     let generated = 0;
     const app = startApp({ config: f.config, transport: { friendHistory: async () => [], sendPrivateText: async () => 999 }, log() {},
         ...(media ? { media } : {}), sensitive: { on: () => false, describe: () => '' },
-        pipeline: { generate: async () => { generated++; return held; }, settle: { quietMs: 0, maxMs: 0 } } });
+        pipeline: { generate: async () => { generated++; return held; }, settle: { quietMs: 0, maxMs: 0 }, ...(now ? { now } : {}) } });
     apps.push(app); return { app, generated: () => generated };
 }
 const recall = (app: App, id = OPEN_EPISODE_STEP) => app.receiveRecall({ post_type: 'notice', notice_type: 'friend_recall', self_id: SELF, user_id: PEER, message_id: id });
@@ -126,4 +126,12 @@ test('媒体排队撤回期间同步只看已发布视图，完成后占位且�
     await until(() => new ChatHistory(f.dataDir).load(PEER).some(message => message.messageId === 99 && message.content === RECALLED_TEXT));
     await until(() => own().some(call => call.content.includes(RECALLED_TEXT) && !call.content.includes(MARKER)));
     assert.ok(calls.every(call => !call.content.includes(mediaMarker)));
+});
+
+test('长期记忆按 App 的 worldNow 判断「聊天记录是不是现在以前的」（模拟器是虚拟时钟），不看真实时钟', async () => {
+    // 虚拟时间在真实时间好几年以后：按真实时钟看这些消息都「还没发生」，不会写
+    const virtual = Date.UTC(2031, 2, 4, 12, 0);
+    const offset = virtual - Date.now(), f = fixture({ at: Math.floor(virtual / 1000) - 120 }), run = start(f, undefined, () => Date.now() + offset);
+    await initiallyRetained(run);
+    assert.ok(calls.some(call => call.content.includes(MARKER)));
 });

@@ -3155,6 +3155,27 @@ describe('设备控制：他的命令在回复器之前截住（ADR 0148）', ()
         assert.deepEqual(fake.jobs, [], '她还没答应，什么都不做');
     });
 
+    test('请求等她点头的「过了几分钟」和过期按她那边的现在算（worldNow；模拟器是虚拟时钟）', async () => {
+        const cfg = config({ contacts: bf, deviceControl: 'on' });
+        const fake = fakeDevices();
+        const clock = new VirtualClock(new Date(2020, 2, 4, 20, 0));
+        const prompts: string[] = [];
+        const { app, sent } = setup(cfg, {}, { clock, startDevices: fake.start, generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '嗯'; } });
+        await new Promise(r => setTimeout(r, 30));
+        app.receive(event(10001, 6, '/屏幕 看这个'));
+        await until(() => sent.length === 1);
+        clock.advance(3 * 60_000);
+        app.receive(event(10001, 7, '在吗'));
+        const deadline = Date.now() + 8000;
+        while (sent.length < 2 && Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 20));
+            const next = clock.nextTimer();
+            if (next !== undefined) clock.advanceTo(next);
+        }
+        const minutes = Number(/他刚才想看你的屏幕或摄像头[^\n]*已经过了 (\d+) 分钟/.exec(prompts.find(text => text.includes('在吗')) ?? '')?.[1]);
+        assert.ok(minutes >= 3 && minutes < 10, `虚拟时钟上过了 3 分钟多（实际 ${minutes}）`);
+    });
+
     test('没有待批准时「批准」是普通的话；「屏幕，好亮」这种闲聊也是；都照常回', async () => {
         const cfg = config({ contacts: bf, deviceControl: 'on' });
         const fake = fakeDevices();
@@ -3425,5 +3446,68 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
         assert.ok(readSelf().lines.some(line => line.text.includes('[你现在：')));
         assert.ok(readSelf().lines.some(line => line.slot === 'feeling'), '是他的快照');
         assert.ok(both.logs.some(line => /此刻的她：SELF\.json/.test(line)));
+    });
+});
+
+describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不直接读真实时钟', () => {
+    // 虚拟时间放在真实时间好几年以前：按真实时钟算的话，下面这些「最近」「几小时」「哪一天」全都对不上
+    const virtualStart = new Date(2020, 2, 4, 20, 0);
+    const bf = [{ qq: 10002, name: '宝宝', tier: 'boyfriend' as const }];
+    const drive = async (clock: VirtualClock, done: () => boolean) => {
+        const deadline = Date.now() + 8000;
+        while (!done() && Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 20));
+            const next = clock.nextTimer();
+            if (next !== undefined) clock.advanceTo(next);
+        }
+        assert.ok(done(), '等不到');
+    };
+
+    test('启动时定下的日子（日常小事 / 吃什么 / 事有后续从哪天起）和换档时刻按她那边的日期记', async () => {
+        const cfg = config({ contacts: bf, everydayLife: true, worldDrama: true });
+        writeFileSync(join(cfg.dataDir, 'tiers.json'), JSON.stringify({ 10002: { tier: 'classmate' } }));
+        const clock = new VirtualClock(virtualStart);
+        setup(cfg, {}, { clock });
+        for (const file of ['everyday-from.json', 'menu-from.json', 'threads-from.json']) {
+            assert.equal(JSON.parse(readFileSync(join(cfg.dataDir, 'world', file), 'utf8')).from, '2020-03-05', `${file}：她那边的第二天`);
+        }
+        assert.match(JSON.parse(readFileSync(join(cfg.dataDir, 'tiers.json'), 'utf8'))[10002].since, /^2020-03-04T/, '换档时刻是她那边的现在');
+    });
+
+    test('留痕和被纠正过的事：记的时间、「最近几天」「三十天内」都按她那边的现在算', async () => {
+        const cfg = config({ contacts: bf, selfDirectedMemory: true });
+        const dayAgo = new Date(virtualStart.getTime() - 86_400_000).toISOString();
+        writeFileSync(join(cfg.dataDir, 'traces.json'), JSON.stringify({ traces: [{ id: 'tr-1', at: dayAgo, kind: 'promise', text: '他答应周末带我去看海' }] }));
+        writeFileSync(join(cfg.dataDir, 'understanding.json'), JSON.stringify({ corrections: [{ his: '周末去看电影吧', her: '你想一个人去？', fix: '我是说我们一起去', at: dayAgo }] }));
+        const clock = new VirtualClock(virtualStart);
+        const prompts: string[] = [];
+        const { app, sent } = setup(cfg, {}, { clock, generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '嗯'; } });
+        app.receive(event(10002, 1, '周末看电影怎么样，我想你了'));
+        await drive(clock, () => sent.length >= 1);
+        const prompt = prompts.find(text => text.includes('周末看电影怎么样')) ?? '';
+        assert.match(prompt, /你记得他最近这些事[^\n]*他答应周末带我去看海/, '一天前的痕迹在「最近几天」里');
+        assert.match(prompt, /这件事你以前理解偏过/, '一天前的纠正在三十天内');
+        const traces = JSON.parse(readFileSync(join(cfg.dataDir, 'traces.json'), 'utf8')) as { traces: { at: string; text: string }[] };
+        assert.match(traces.traces.find(item => item.text === '他说想我')?.at ?? '', /^2020-03-0/, '新记的痕迹是她那边的时间');
+    });
+
+    test('首轮铺底：他走了几小时按她那边的现在算', async () => {
+        const soul = mkdtempSync(join(tmpdir(), 'qqbot-app-soul-wake-'));
+        dirs.push(soul);
+        const before = process.env.QQBOT_SOUL_DIR;
+        process.env.QQBOT_SOUL_DIR = soul;
+        try {
+            writeFileSync(join(soul, 'JOURNAL.md'), ['', '## 2020-03-04', '下午去图书馆还书，在窗边坐了很久。', ''].join('\n'));
+            const cfg = config({ contacts: bf, herDays: true, schedule: false, autonomousLife: true });
+            new ChatHistory(cfg.dataDir).append(10002, { role: 'user', content: '我先去忙了', time: new Date(virtualStart.getTime() - 8 * 3_600_000).toISOString(), messageId: 50 });
+            const clock = new VirtualClock(virtualStart);
+            const prompts: string[] = [];
+            const { app, sent } = setup(cfg, {}, { clock, generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '嗯'; } });
+            app.receive(event(10002, 51, '我回来啦'));
+            await drive(clock, () => sent.length >= 1);
+            assert.match(prompts.find(text => text.includes('我回来啦')) ?? '', /（他走了 8 小时。这期间你自己过的日子/);
+        } finally {
+            if (before === undefined) delete process.env.QQBOT_SOUL_DIR; else process.env.QQBOT_SOUL_DIR = before;
+        }
     });
 });
