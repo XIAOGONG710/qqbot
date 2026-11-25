@@ -118,9 +118,7 @@ window.__ModuleLoader__.load({
         '.qqb-composer{padding:10px 12px;border-top:1px solid var(--q-line);background:var(--q-surf)}',
         '.qqb-composer-bar{display:flex;align-items:flex-end;gap:8px}.qqb-composer textarea{flex:1;min-width:0;resize:vertical}',
         '.qqb-chat-empty{margin:0;padding:12px 14px;color:var(--q-fg2)}.qqb-diagnostic{width:100%;box-sizing:border-box;resize:vertical}',
-        '.qqb-house-map{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,120px),1fr));gap:8px;margin-top:14px}',
-        '.qqb-house-place{border:1px solid var(--q-line);border-radius:10px;background:var(--q-surf);padding:16px 10px;text-align:center}',
-        '.qqb-house-place.is-here{border-color:var(--q-acc);background:color-mix(in srgb,var(--q-acc) 14%,var(--q-surf));font-weight:600}',
+        '.qqb-house-scene{display:block;width:100%;height:clamp(310px,65vh,680px);border:1px solid var(--q-line);border-radius:14px;background:#151b28}',
         '.qqb-room-invite{width:100%;box-sizing:border-box;margin-top:8px}',
         '@container (max-width:540px){.qqb-workspace{grid-template-columns:1fr}.qqb-peers{max-height:140px;border-right:0;border-bottom:1px solid var(--q-line)}.qqb-feed{height:clamp(145px,24vh,230px)}}'
       ].join('\n')
@@ -371,31 +369,7 @@ window.__ModuleLoader__.load({
     }
 
     function HerHome() {
-      const [data, setData] = React.useState(undefined)
-      React.useEffect(() => {
-        const controller = new AbortController()
-        let timer
-        const read = async () => {
-          try {
-            const response = await fetch(`${api}/home`, { cache: 'no-store', signal: controller.signal })
-            if (!response.ok) throw Error()
-            const value = await response.json()
-            if (!controller.signal.aborted) setData(value)
-          } catch { if (!controller.signal.aborted) setData(null) }
-          finally { if (!controller.signal.aborted) timer = setTimeout(read, 10000) }
-        }
-        void read()
-        return () => { controller.abort(); clearTimeout(timer) }
-      }, [])
-      const status = data?.status
-      return h('section', { className: 'qqb-card' },
-        h('h3', { className: 'qqb-title' }, '她的家'),
-        h('p', { className: 'qqb-note', role: 'status' }, data === undefined ? '正在读取…'
-          : data === null ? '暂时无法读取。'
-          : status ? `${data.places[status.place]} · ${data.activities[status.doing]}` : '她现在没有公开状态。'),
-        data && h('div', { className: 'qqb-house-map', 'aria-label': '地点' }, ...Object.entries(data.places).map(([key, label]) =>
-          h('div', { key, className: `qqb-house-place${status?.place === key ? ' is-here' : ''}`,
-            'aria-current': status?.place === key ? 'location' : undefined }, label))))
+      return h('iframe', { className: 'qqb-house-scene', src: `${api}/home/scene/`, title: '林梦瑶 · 她的家', referrerPolicy: 'no-referrer' })
     }
 
     const tierLabels = { boyfriend: '本人', bestie: '挚友', girl_friend: '女性朋友', known: '熟人', classmate: '同学', stranger: '陌生人' }

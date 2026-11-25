@@ -1,0 +1,16 @@
+:root { color-scheme: dark; font: 14px/1.5 system-ui, "Microsoft YaHei", sans-serif; color: #e8edf7; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100dvh; background: radial-gradient(ellipse at 50% 45%, #263649, #131923 78%); }
+#scene { position: fixed; inset: 0; touch-action: none; }
+#scene canvas { display: block; }
+header, nav, #fallback { position: fixed; }
+header { top: 16px; left: 18px; pointer-events: none; }
+h1 { margin: 0 0 2px; font-size: 18px; font-weight: 600; }
+p { margin: 0; color: #c6d2e6; }
+nav { bottom: 15px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; padding: 4px;
+  border: 1px solid #90a9d24d; background: #111824dc; border-radius: 12px; }
+nav[hidden] { display: none; }
+button { font: inherit; border: 0; border-radius: 8px; padding: 5px 10px; background: none; color: #e0e8f6; cursor: pointer; white-space: nowrap; }
+button:hover { background: #b9d7ff24; }
+button:focus-visible { outline: 2px solid #9fc7ff; }
+#fallback { left: 18px; right: 18px; top: 88px; }

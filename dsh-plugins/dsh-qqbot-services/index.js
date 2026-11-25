@@ -14,6 +14,12 @@ import { createCompanionRoom, createRoomReply } from './companion-room.js'
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
 const prefix = '/api/qqbot-services'
+const scenePrefix = `${prefix}/home/scene/`
+const sceneAssets = new Map([
+  ['', ['index.html', 'text/html']],
+  ['scene.css', ['scene.css', 'text/css']],
+  ...['scene.js', 'state.js', 'furniture.js', 'three.module.min.js'].map(file => [file, [file, 'text/javascript']]),
+])
 const exec = promisify(execFile)
 const localAddresses = ['127.0.0.1', '::1', '::ffff:127.0.0.1']
 const localHost = /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?$/i
@@ -195,6 +201,21 @@ export function createHandler(controller, events, chat, connection, now = Date.n
       catch { return send(503, { error: 'room_unavailable' }) }
     }
     if (!authenticatedBrowser(connection, req)) return send(403, { error: 'forbidden' })
+    if (companion?.home && req.method === 'GET' && path.startsWith(scenePrefix)) {
+      const asset = sceneAssets.get(path.slice(scenePrefix.length))
+      if (!asset) return send(404, { error: 'not_found' })
+      try {
+        const [file, type] = asset
+        const content = readFileSync(new URL(`./home-scene/${file}`, import.meta.url))
+        res.writeHead(200, {
+          'content-type': `${type}; charset=utf-8`,
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+          'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'none'",
+        })
+        return res.end(content)
+      } catch { return send(503, { error: 'scene_unavailable' }) }
+    }
     if (companion?.room && path.startsWith(`${prefix}/room/owner/`)) {
       try { return await roomRoute(path, req, res, send, companion.room, true) }
       catch { return send(503, { error: 'room_unavailable' }) }
