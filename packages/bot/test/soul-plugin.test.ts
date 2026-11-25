@@ -107,6 +107,40 @@ test('只有确认的桌面私聊可发布或收回她的家公开状态，正�
     assert.equal(JSON.parse(allowed.text('HOME-PUBLIC.json')), null);
 });
 
+test('她的家：工具发布的时间线在加速时钟下依次是换房间、收回、再发布、一小时后过期、在外面', async () => {
+    const statusUrl = pathToFileURL(join(root, 'dsh-plugins/dsh-linmengyao-memory/home-status.js')).href;
+    const { readPublishedHomeStatus, homeStatusLifetime } = await import(statusUrl) as {
+        readPublishedHomeStatus: (file: string, now?: number) => { place: string; doing: string; at: number } | null;
+        homeStatusLifetime: number;
+    };
+    const h = boot();
+    const file = h.f('HOME-PUBLIC.json');
+    const publish = (args: Record<string, unknown>) => h.tools.home_publish!.execute(args);
+    const read = (now: number) => readPublishedHomeStatus(file, now);
+    assert.equal(read(Date.now()), null, '没发布过就是没有公开');
+
+    publish({ place: 'study', doing: 'reading' });
+    const first = read(Date.now())!;
+    assert.deepEqual({ place: first.place, doing: first.doing }, { place: 'study', doing: 'reading' });
+    publish({ place: 'kitchen', doing: 'cooking' });
+    assert.equal(read(Date.now())?.place, 'kitchen', '换到另一个公开房间，只保留最新一条');
+    // 收回时顺手带的地点不会被发布
+    assert.deepEqual(publish({ hide: true, place: 'garden', doing: 'walking' }), { visible: false });
+    assert.equal(read(Date.now()), null);
+
+    publish({ place: 'living', doing: 'resting' });
+    const again = read(Date.now())!;
+    assert.equal(again.place, 'living');
+    assert.equal(read(again.at + homeStatusLifetime - 1)?.place, 'living');
+    assert.equal(read(again.at + homeStatusLifetime), null, '正好一小时过期');
+    assert.equal(read(again.at - 1), null, '时间戳在未来（时钟被往回拨）时先不公开');
+
+    publish({ place: 'outside', doing: 'walking' });
+    assert.equal(read(Date.now())?.place, 'outside');
+    writeFileSync(file, '{"version":1');
+    assert.throws(() => read(Date.now()), SyntaxError, '坏文件是读取失败，不冒充没有公开');
+});
+
 test('空预设白名单不向其他预设挂载记忆插件', () => {
     const h = boot({ presets: [] }, undefined, 'assistant');
     assert.equal(h.rawStep, undefined);

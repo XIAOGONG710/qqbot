@@ -293,17 +293,17 @@
 
 - `dsh-plugins/dsh-linmengyao-memory/home-status.js`：`publishedHomeStatus(data, now)` 只认 `version: 1`、`audience: 'owner'`、安全整数时间、地点与活动在白名单里，且一小时内的状态；`publishHomeStatus(file, { place, doing, hide }, at)` 用临时文件加 `rename` 原子写，`hide: true` 写 `null`
 - `dsh-plugins/dsh-qqbot-services/home-scene/state.js`：`homeSceneState(data, now)` 把状态映射成 `{ place, label, marker }`，`place === 'outside'` 时 `marker` 为 `null`，缺地点或活动文案就返回 `null`，不猜
-- `dsh-plugins/dsh-qqbot-services/home-scene/scene.js`：`scene.js:13` 拿不到 WebGL 就显示 `#fallback`，`scene.js:99` 三种文案（没有公开状态／暂时读不到／正常标签），`scene.js:143` 到点自己撤下标签
+- `dsh-plugins/dsh-qqbot-services/home-scene/scene.js`：拿不到 WebGL 就显示 `#fallback`，三种文案（没有公开状态／暂时读不到／正常标签），到点自己撤下标签（11-26 起这些判断在 `state.js` 的 `chooseRenderer`、`homeView`，见下文）
 - `scripts/dsh-home-scene.test.mjs`（补）：原有 3 项测角色姿态、标记只跟随当前公开状态、场景资源要房主会话；这次补 4 项测发布与收回、拒未知地点与活动、坏文件读成 `null`、加速时钟换房间。全部用临时目录，不碰真实 `HOME-PUBLIC.json`
 
 ### 验收了什么
 
 | 项 | 做法 | 结果 |
 | --- | --- | --- |
-| 未公开 | 没有状态文件、文件是坏 JSON、收回后写 `null`，三种都读成 `null` | 通过 |
+| 未公开 | 没有状态文件、收回后写 `null`，都读成 `null`（坏 JSON 见下一节，11-26 起改为读取失败） | 通过 |
 | 过期 | 一小时后差 1 毫秒仍公开，到一小时后变 `null` | 通过 |
 | 在外面 | `place: 'outside'` 保留标签「在外面 · 走走」，`marker` 为 `null`，不画到任何房间 | 通过 |
-| 读取失败 | 坏文件不抛错，读成 `null`，页面走「暂时读不到公开状态」那一路 | 通过 |
+| 读取失败 | ~~坏文件不抛错，读成 `null`，页面走「暂时读不到公开状态」那一路~~ 这条记错了：读成 `null` 时接口回 200，页面显示的是「没有公开状态」。11-26 已修，见下一节 | 当时未通过 |
 | 不猜位置 | 缺 `places` 或 `activities` 文案、房间不在 `rooms`、活动不在白名单，都返回 `null` | 通过 |
 | 加速时钟 | 十分钟换一次房间走客厅→厨房→花园，再走到外面，一小时后自动消失，收回后也消失 | 通过 |
 | 发布只写该写的 | 落盘字段只有 `version`／`audience`／`place`／`doing`／`at`，别的字段进不去 | 通过 |
@@ -315,9 +315,46 @@
 | 她的家状态层 | `node --test scripts/dsh-home-scene.test.mjs` | 7 通过 |
 | 脚本全量 | `npm run test:scripts` | 140 项／139 通过／1 跳过（符号链接）／0 失败 |
 
+### 加速时钟验收（2026-11-26 补）
+
+把判断从 `scene.js` 挪进 `home-scene/state.js` 的纯函数，`scene.js` 只剩把结果贴到页面和 WebGL 上的胶水：
+
+- `homeView(data, now, unavailable)`：这一刻的文字、标记房间、坐标、原地动作、距过期还有多久
+- `chooseRenderer(create)`／`sceneChrome(hasRenderer)`：建渲染器失败返回 `null`，显示回退说明、藏起视角按钮
+- `viewportSize`／`cameraFrustum`／`cameraPosition`／`clampZoom`／`clampElevation`：窗口尺寸与相机
+- 活动到动作的对照表从 `avatar.js` 挪到 `state.js`（`avatar.js` 原样转出 `poseForActivity`），Node 里不加载 three 也能测
+- 新代码都放在已有的 `state.js` 里：`dsh-qqbot-services/index.js` 的 `sceneAssets` 是白名单，加新文件要改 `index.js`。测试会从 `scene.js` 顺着 `import` 逐个经接口取文件，有一个不在白名单就失败
+
+| 项 | 做法 | 结果 |
+| --- | --- | --- |
+| 整条时间线 | 经 `createHandler` 的 `/home` 接口（与 `index.js` 的 `home()` 同样读 `readPublishedHomeStatus`）加 `homeView`，假时钟每 5 秒看一次：从没发布→书房看书→厨房做饭→收回→客厅休息→差 1 毫秒满一小时仍在→正好一小时过期→过期后再收回→在外面→坏文件／读不了的文件→文件删掉→阳台发呆。每步核对文字、标记房间、坐标、动作、剩余时间 | 通过 |
+| 不自己走动 | 半小时、一小时内每 5 秒取一次，没有新发布时只出现同一个房间和同一个动作；收回、在外面期间始终不画人 | 通过 |
+| 过期边界与时钟 | 服务端过滤、页面过滤、页面直接判断三层在 `at-1`／`at`／`at+1h-1`／`at+1h`／`at+1h+1` 结果一致；时钟往回拨时先不显示，追上后仍在原定时间过期；两边公开时长常量相等 | 通过 |
+| 坏数据与未知房间 | `version` 不对、`at` 是字符串或小数或超出安全整数、地点是 `__proto__`／`constructor`／`hasOwnProperty`、活动是 `toString`、接口认识但场景里没房间的地点，一律不画；响应不是对象算读不到 | 通过 |
+| 词表不漂移 | 能发布的每个地点在场景里都有房间（或是在外面），每个活动都有原地动作 | 通过 |
+| WebGL 不可用 | 给 three 一个 `getContext` 返回 `null` 的画布，它抛 `Error creating WebGL context.`，`chooseRenderer` 返回 `null` | 通过 |
+| 真 `scene.js` 回退路径 | 假 DOM 加 `node:test` 的 mock 计时器直接加载 `scene.js`：显示回退说明、藏视角按钮、每 5 秒轮询；发布、换房间、收回、再发布、在外面、坏文件、恢复都更新文字；一小时到点落在两次轮询之间，由页面自己的计时器撤下（期间没有请求）；`pagehide` 后不再轮询 | 通过 |
+| 窄窗口 | 用 three 把房子外接盒投影到相机：280×900、320×568、360×800、390×844、768×1024、800×600、1280×720、1920×1080、1×1 默认视角都在画面内；320×640 转 8 个角度都在；最大俯角最小缩放在 1200×400 也能收回整座房子；容器为 0 时按 1 像素、像素比最多 2 | 通过 |
+| 工具一侧 | `packages/bot/test/soul-plugin.test.ts` 用真 `home_publish` 工具走一遍：换房间只留最新一条、收回时带的地点不发布、正好一小时过期、未来时间戳不公开、坏文件抛错 | 通过 |
+
+修掉的问题：
+
+- **坏文件被说成「没有公开」**：`readPublishedHomeStatus` 把坏 JSON 和读不了的文件都吞成 `null`，接口回 200，页面显示「她现在没有公开状态」，和真的没发布分不开，上面那行记录也记错了。现在只有文件不存在才算没有公开；坏 JSON、读不了（例如被占用、是目录）就抛错，`index.js` 已有的 `catch` 回 503，页面显示「暂时读不到公开状态」。`readPublishedHomeStatus` 只有 `index.js` 的 `home()` 在用，`index.js` 没改
+- **到点撤下只算一次**：原来计时器一触发就直接清空。现在触发时用当时的时钟重算，浏览器提前几毫秒触发也会再排一次，不会多公开也不会提前清
+- **响应是 `null` 时报错走读不到**：以前靠 `data.status` 抛 `TypeError` 碰巧落进读不到；现在 `homeView` 明确把非对象响应当读不到
+
+没改的（有意保留）：时钟往回拨时已发布的状态先藏起来，宁可少显示，不延长公开时间。
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 她的家 | `node --test scripts/dsh-home-scene.test.mjs` | 14 通过 |
+| 工具一侧 | `node --import ./test/time-zone-setup.ts --test test/soul-plugin.test.ts`（`packages/bot`） | 100 通过 |
+| 脚本全量 | `npm run test:scripts` 的同一组文件 | 159 项／158 通过／1 跳过（符号链接）／0 失败 |
+| 类型检查 | `npm run typecheck`（`packages/bot`） | 通过 |
+
 ### 尚未验证的运行条件
 
-- WebGL 不可用时的回退、窄窗口下的 `fit()`，都要真浏览器才知道；本次只按代码位置记录。
+- 真浏览器里的样子：回退说明和状态文字在窄屏上的换行、底部视角按钮会不会压住房子、`ResizeObserver` 在 DSH 内嵌 iframe 里的触发、真实 GPU 上的渲染和上下文丢失，都只能真浏览器看。逻辑部分已在 Node 里验收（上一节）
 - DSH 内嵌房间与面板的实机验收要重载 DSH，本次没有授权。
 - 正式模型与动作资源的授权来源还没定，仍用现有低模角色，不引入来源不明的资产。
 - 整套对照写进了 `docs/plans/2026-11-25-lingxi-feature-parity.md`，每行都停在「模拟验收」。

@@ -1,12 +1,7 @@
 import * as THREE from './three.module.min.js'
 
-const activities = {
-  resting: 'sit', reading: 'book', cooking: 'work', tidying: 'work', zoningOut: 'idle', walking: 'walk',
-}
-
-export function poseForActivity(activity) {
-  return typeof activity === 'string' && Object.hasOwn(activities, activity) ? activities[activity] : null
-}
+// 活动到动作的对应放在 state.js，Node 里不用加载 three 也能测
+export { poseForActivity } from './state.js'
 
 export function createHouseAvatar() {
   const root = new THREE.Group()

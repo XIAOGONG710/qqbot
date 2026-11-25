@@ -1,18 +1,19 @@
 import * as THREE from './three.module.min.js'
 import { box, furniture, makeLabel } from './furniture.js'
-import { homeSceneState, rooms } from './state.js'
-import { createHouseAvatar, poseForActivity } from './avatar.js'
+import {
+  cameraFrustum, cameraPosition, chooseRenderer, clampElevation, clampZoom, defaultView, homeView, rooms, sceneCenter, sceneChrome,
+  viewportSize,
+} from './state.js'
+import { createHouseAvatar } from './avatar.js'
 
 const container = document.getElementById('scene')
 const statusLine = document.getElementById('status')
 const fallback = document.getElementById('fallback')
-let renderer
-try {
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-} catch {
-  fallback.hidden = false
-  document.querySelector('nav').hidden = true
-}
+// 判断都在 state.js（chooseRenderer、homeView、cameraFrustum…），这里只把结果贴到页面上
+const renderer = chooseRenderer(() => new THREE.WebGLRenderer({ antialias: true, alpha: true }))
+const chrome = sceneChrome(Boolean(renderer))
+fallback.hidden = chrome.fallbackHidden
+document.querySelector('nav').hidden = chrome.navHidden
 
 const scene = new THREE.Scene()
 const house = new THREE.Group()
@@ -23,29 +24,18 @@ key.position.set(-5, 14, 8)
 scene.add(key)
 
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100)
-let angle = Math.PI * 0.28
-let elevation = 0.69
-let zoom = 1
-const center = new THREE.Vector3(1.9, 0.2, -0.1)
+let { angle, elevation, zoom } = defaultView
+const center = new THREE.Vector3(sceneCenter.x, sceneCenter.y, sceneCenter.z)
 let width = 1
 let height = 1
 let labelsBuilt = false
 
 function render() {
   if (!renderer) return
-  const aspect = width / height
-  const span = Math.max(14.3, 22 / aspect) / zoom
-  camera.left = -span * aspect / 2
-  camera.right = span * aspect / 2
-  camera.top = span / 2
-  camera.bottom = -span / 2
+  Object.assign(camera, cameraFrustum(width, height, zoom))
   camera.updateProjectionMatrix()
-  const radius = 24
-  camera.position.set(
-    center.x + Math.cos(angle) * radius * Math.cos(elevation),
-    center.y + Math.sin(elevation) * radius,
-    center.z + Math.sin(angle) * radius * Math.cos(elevation),
-  )
+  const { x, y, z } = cameraPosition(angle, elevation)
+  camera.position.set(x, y, z)
   camera.lookAt(center)
   renderer.render(scene, camera)
 }
@@ -95,13 +85,17 @@ function buildHouse() {
 }
 
 let animation
-function updateStatus(snapshot, unavailable = false, activity) {
-  statusLine.textContent = snapshot?.label ?? (unavailable ? '暂时读不到公开状态。' : '她现在没有公开状态。')
-  const location = snapshot?.marker ? rooms[snapshot.marker] : null
-  marker.visible = Boolean(location)
-  if (location) marker.position.set(location.x, 0, location.z)
+let expiration
+function show(data, unavailable = false) {
+  const view = homeView(data, Date.now(), unavailable)
+  statusLine.textContent = view.text
+  marker.visible = Boolean(view.position)
+  if (view.position) marker.position.set(view.position.x, 0, view.position.z)
   cancelAnimationFrame(animation)
-  const pose = location && poseForActivity(activity)
+  clearTimeout(expiration)
+  // 到点重新判断一次：计时器提前触发也只会再排一次，不会把过期的状态留在页面上
+  if (view.expiresIn !== null) expiration = setTimeout(() => show(data), view.expiresIn)
+  const { pose } = view
   if (renderer && pose) {
     const animate = time => {
       avatar.frame(pose, time / 1000)
@@ -113,7 +107,6 @@ function updateStatus(snapshot, unavailable = false, activity) {
   render()
 }
 
-let expiration
 let activeRequest
 let pollTimer
 let closed = false
@@ -128,7 +121,7 @@ async function refresh() {
     if (!response.ok) throw Error()
     const data = await response.json()
     if (closed) return
-    if (renderer && !labelsBuilt && data.places) {
+    if (renderer && !labelsBuilt && data?.places) {
       for (const [id, room] of Object.entries(rooms)) {
         if (!Object.hasOwn(data.places, id) || typeof data.places[id] !== 'string') continue
         const label = makeLabel(data.places[id], '#edf4ff', room.w)
@@ -137,25 +130,22 @@ async function refresh() {
       }
       labelsBuilt = true
     }
-    const snapshot = homeSceneState(data)
-    clearTimeout(expiration)
-    updateStatus(snapshot, false, data.status?.doing)
-    if (snapshot) expiration = setTimeout(() => updateStatus(null), Math.max(0, data.status.at + 3_600_000 - Date.now()))
+    show(data)
   } catch {
-    clearTimeout(expiration)
-    if (!closed) updateStatus(null, true)
+    if (!closed) show(null, true)
   }
   finally { if (!closed) pollTimer = setTimeout(refresh, 5000) }
 }
 
 if (renderer) {
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   renderer.domElement.setAttribute('aria-hidden', 'true')
   container.append(renderer.domElement)
   buildHouse()
   const fit = () => {
-    width = Math.max(1, container.clientWidth)
-    height = Math.max(1, container.clientHeight)
+    const size = viewportSize(container.clientWidth, container.clientHeight, devicePixelRatio)
+    width = size.width
+    height = size.height
+    renderer.setPixelRatio(size.pixelRatio)
     renderer.setSize(width, height)
     render()
   }
@@ -171,17 +161,17 @@ if (renderer) {
   container.addEventListener('pointermove', event => {
     if (!drag || !event.isPrimary) return
     angle -= (event.clientX - drag.x) * 0.009
-    elevation = THREE.MathUtils.clamp(elevation + (event.clientY - drag.y) * 0.007, 0.32, 1.3)
+    elevation = clampElevation(elevation + (event.clientY - drag.y) * 0.007)
     drag = { x: event.clientX, y: event.clientY }
     render()
   })
   container.addEventListener('lostpointercapture', () => { drag = undefined })
-  const adjustZoom = scale => { zoom = THREE.MathUtils.clamp(zoom * scale, 0.72, 1.8); render() }
+  const adjustZoom = scale => { zoom = clampZoom(zoom * scale); render() }
   container.addEventListener('wheel', event => { event.preventDefault(); adjustZoom(Math.exp(-event.deltaY * 0.001)) }, { passive: false })
   document.getElementById('rotate').onclick = () => { angle += Math.PI / 4; render() }
   document.getElementById('zoom-in').onclick = () => adjustZoom(1.18)
   document.getElementById('zoom-out').onclick = () => adjustZoom(1 / 1.18)
-  document.getElementById('reset').onclick = () => { angle = Math.PI * 0.28; elevation = 0.69; zoom = 1; render() }
+  document.getElementById('reset').onclick = () => { ({ angle, elevation, zoom } = defaultView); render() }
   addEventListener('pagehide', () => { resize.disconnect(); renderer.dispose() }, { once: true })
 }
 
