@@ -63,8 +63,9 @@ export function writeFeelingsExport(soulDir: string, report: FeelingsReport): bo
  * 读回落盘的那份（ADR 0341 G3：重启后私聊还没算过心境时，群里用它）。只认种类、轻重认得出的那几条；分量按轻重取门槛值。
  * 坏了、没有就是 undefined；新不新由用的地方按 at 判断（FEELINGS_STALE_MS）
  */
-export function readSavedFeelings(soulDir: string): FeelingsReport | undefined {
-    const value = readJsonOr<unknown>(feelingsExportPath(soulDir), undefined);
+/** invalid：坏文件怎么办——bot 自己读按默认隔离（改名 .corrupt-…）；只读的旁观者（DSH 面板）传 'throw'，读坏了只抛错、不动她的文件 */
+export function readSavedFeelings(soulDir: string, options: { invalid?: 'quarantine' | 'throw' } = {}): FeelingsReport | undefined {
+    const value = readJsonOr<unknown>(feelingsExportPath(soulDir), undefined, undefined, options.invalid ? { invalid: options.invalid } : {});
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
     const saved = value as Partial<FeelingsExport>;
     const at = typeof saved.generatedAt === 'string' ? Date.parse(saved.generatedAt) : NaN;

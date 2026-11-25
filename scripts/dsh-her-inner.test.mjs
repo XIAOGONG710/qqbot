@@ -154,3 +154,18 @@ test('ledger：没有账就是空的', async () => {
   rmSync(join(root, soul, 'feeling-ledger.jsonl'), { force: true })
   assert.deepEqual(await inner().ledger(), { days: [] })
 })
+
+test('只读：FEELINGS.json 坏了不改名隔离、不动文件，当作没有', async () => {
+  const { mkdtempSync, writeFileSync, readdirSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { createHerInner } = await import('../dsh-plugins/dsh-qqbot-services/her-inner.js')
+  const soul = mkdtempSync(join(tmpdir(), 'her-inner-corrupt-'))
+  try {
+    writeFileSync(join(soul, 'FEELINGS.json'), '{"kind":')
+    const inner = createHerInner({ soulDir: soul, now: () => Date.now() })
+    const today = await inner.today()
+    assert.deepEqual(today.feelings, [])
+    assert.deepEqual(readdirSync(soul), ['FEELINGS.json'], '没有被改名成 .corrupt-…')
+  } finally { rmSync(soul, { recursive: true, force: true }) }
+})

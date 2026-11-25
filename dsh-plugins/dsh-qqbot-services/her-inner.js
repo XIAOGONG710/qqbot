@@ -62,7 +62,8 @@ export function createHerInner({ soulDir, root = repoRoot, now = () => Date.now(
       const empty = { day, at: null, stale: false, feelings: [] }
       const { readSavedFeelings, withholdOf, ledgerSaid, FEELING_NAME, FEELINGS_STALE_MS } = await modules()
       let saved
-      try { saved = readSavedFeelings(directory) } catch { return empty }
+      // 只读：坏文件不隔离改名（那是 bot 自己读时的做法），读不了就当没有
+      try { saved = readSavedFeelings(directory, { invalid: 'throw' }) } catch { return empty }
       if (!saved || herDayKey(saved.at) !== day || saved.at > at) return empty
       const seen = new Set()
       const feelings = []
