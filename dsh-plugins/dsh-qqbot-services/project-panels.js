@@ -2,11 +2,14 @@
 // 开关总览、每周效果数、提示词构成、上线前检查，给 DSH 主人面板用。纯数据模块：不起服务、不跑 git、不连网、不写文件。
 // 只回名字和数：不回聊天原文、联系人、QQ 号、模型配置、密钥、路径和原始错误。路由接线在 index.js（认证之后），这里只出数据。
 //
-// API —— createProjectPanels({ root, readConfig, dataDir?, now? })
+// API —— createProjectPanels({ root, readConfig, dataDir?, now?, run? })
 //   root        仓库根（packages/bot/src 的 .ts 从这里动态 import）
 //   readConfig  () => 解析过的 koishi.yml；qqbot 插件那一块用 chat.js 的 activeKoishiPlugin 找
 //   dataDir     可选，数据目录；不给就用插件块的 dataDir（相对 root，默认 runtime/bot），同 local-panels.js
-//   now         可选，() => Date；效果数的窗口按它算「到昨天为止」
+//   now         可选，() => Date；效果数的窗口按它算「到昨天为止」（「昨天」按插件配置的时区，和 bot 一样）
+//   run         可选，panel-jobs.js runPanelJob 的替身（测试用）
+// 效果数和提示词构成要读整份聊天记录 / 所有清单，放在子进程里算（panel-jobs.js），不卡 DSH 主线程；
+// 同时来的同一个请求共用一次计算，算完 10 分钟内给缓存。
 // 返回的四个方法都是 async，读不到 qqbot 插件块时回 { available: false }：
 //   switches()  → { available, counts: { total, on, merged, legacyWritten }, groups: string[],
 //                   features: [{ key, label, group, adr, kind: 'bool'|'mode', value, written, on,
@@ -16,20 +19,23 @@
 //                   fewerRules: { on, forced: [{ key, value, feature }] } }
 //                 value 只会是 true / false / 档位名（字母）/ null；dsh 那种对象只取 enabled。
 //   metrics({ days = 7 })
-//               → { available, reason?, window: { from, to, days }, contacts, zone: { process, configured, matches },
+//               → { available, reason?, window: { from, to, days }, contacts, zone: { used, configured },
 //                   week: Metrics, days: [{ day, ...Metrics }], previous: { at, deltas } | null }
 //                 Metrics 是 ops/weekly-metrics.ts 的那组数（只留数字和 null，latency 是嵌套的数）；不写 weekly-metrics.jsonl。
 //                 reason：'no_chats'（数据目录里没有 chats/）。同一窗口 10 分钟内重复取用缓存（检测器跑整份记录，慢）。
+//                 zone.used：日界用的时区（插件配置的 timeZone，没写就是 bot 的默认 Asia/Shanghai）；configured：配置里写的（没写是 null）。
 //   promptInventory()
 //               → { available, reason?, files, firstDay, lastDay, inventory: Inventory }（ops/prompt-inventory.ts，没有 llmPurposes 的数）
 //                 reason：'no_manifests'。槽名、模块名、种类按标识符过滤，别的字一律换成 '?'。
 //   golive()    → { available, switches: { migrating: string[], unrepresentable: string[] } }
 //                 只做开关合并预检（ops/golive-check.ts 的 switchMergeCheck）；监听地址、git 那几项要跑命令，不在面板里做。
 
-import { lstatSync, readdirSync } from 'node:fs'
+import { lstatSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { activeKoishiPlugin } from './chat.js'
+import { runPanelJob, sharedJob } from './panel-jobs.js'
+import { DEFAULT_TIME_ZONE, shiftDay, validTimeZone, zoned } from './panel-time.js'
 
 const METRICS_TTL_MS = 10 * 60_000
 const IDENT = /^[A-Za-z0-9_.:/-]{1,60}$/
@@ -45,6 +51,8 @@ function switchValue(value) {
   return null
 }
 
+const isoOrNull = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null
+
 /** 只留数字、null 和嵌套的数（效果数的「只出数」再兜一层：字符串一律丢掉） */
 function numbersOnly(value) {
   if (value === null || (typeof value === 'number' && Number.isFinite(value))) return value
@@ -59,9 +67,9 @@ function numbersOnly(value) {
   return undefined
 }
 
-const localDay = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const DAY = /^\d{4}-\d{2}-\d{2}$/
 
-export function createProjectPanels({ root, readConfig, dataDir, now = () => new Date() }) {
+export function createProjectPanels({ root, readConfig, dataDir, now = () => new Date(), run = runPanelJob }) {
   const load = file => import(pathToFileURL(join(root, file)).href)
   const plugin = () => {
     try { return activeKoishiPlugin(readConfig()) } catch { return null }
@@ -83,7 +91,10 @@ export function createProjectPanels({ root, readConfig, dataDir, now = () => new
     return input
   }
 
-  const metricsCache = new Map()
+  // 10 分钟缓存 + 同键共用一次计算；缓存时刻用 now()（测试可控）
+  const nowMs = () => now().getTime()
+  const metricsJobs = sharedJob({ ttl: METRICS_TTL_MS, now: nowMs, max: 8 })
+  const inventoryJobs = sharedJob({ ttl: METRICS_TTL_MS, now: nowMs, max: 4 })
 
   return {
     async switches() {
@@ -147,34 +158,24 @@ export function createProjectPanels({ root, readConfig, dataDir, now = () => new
       const directory = dataDirectory(block)
       const chats = lstatSync(join(directory, 'chats'), { throwIfNoEntry: false })
       if (!chats?.isDirectory() || chats.isSymbolicLink()) return { available: false, reason: 'no_chats' }
-      const at = now()
-      const until = localDay(new Date(at.getFullYear(), at.getMonth(), at.getDate() - 1))
-      const key = `${directory}|${until}|${count}`
-      const cached = metricsCache.get(key)
-      if (cached && at.getTime() - cached.at < METRICS_TTL_MS && at.getTime() >= cached.at) return cached.value
-      const w = await load('packages/bot/src/ops/weekly-metrics.ts')
-      const window = w.windowOf(until, count)
-      const { chats: history, proactiveIds } = w.loadMetricsData(directory)
-      const result = w.computeWeeklyMetrics({ chats: history, proactiveIds, ...window, scope: 'all' })
-      const previous = w.previousRun(w.metricsLogPath(directory), 'all')
-      const processZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-      const configured = typeof block.timeZone === 'string' && /^[A-Za-z_/+-]{1,40}$/.test(block.timeZone) ? block.timeZone : null
-      const value = {
-        available: true,
-        window: { from: result.from, to: result.to, days: count },
-        contacts: result.contacts,
-        // 她的日界按插件配置的时区；面板不改 DSH 进程的 TZ，两边不一致时这里标出来
-        zone: { process: processZone, configured, matches: configured === null || configured === processZone },
-        week: numbersOnly(result.week),
-        days: result.days.map(day => ({ day: /^\d{4}-\d{2}-\d{2}$/.test(day.day) ? day.day : '?', ...numbersOnly({ ...day, day: undefined }) })),
-        previous: previous ? {
-          at: Number.isFinite(Date.parse(previous.at)) ? new Date(previous.at).toISOString() : null,
-          deltas: numbersOnly(w.compareMetrics(previous.week, result.week)),
-        } : null,
-      }
-      metricsCache.clear()
-      metricsCache.set(key, { at: at.getTime(), value })
-      return value
+      // 「到昨天为止」的昨天按 bot 的时区算；子进程的 TZ 也设成它，窗口和按天分组的日界都和 bot 一致
+      const configured = validTimeZone(block.timeZone)
+      const zone = configured ?? DEFAULT_TIME_ZONE
+      const until = shiftDay(zoned(now(), zone).day, -1)
+      const key = `${directory}|${zone}|${until}|${count}`
+      return metricsJobs(key, async () => {
+        const { result, previous } = await run('metrics', { root, directory, until, count }, { root, timeZone: zone, timeout: 120_000 })
+        const at = previous && typeof previous.at === 'string' ? Date.parse(previous.at) : NaN
+        return {
+          available: true,
+          window: { from: isoOrNull(result?.from), to: isoOrNull(result?.to), days: count },
+          contacts: Number.isSafeInteger(result?.contacts) ? result.contacts : null,
+          zone: { used: zone, configured },
+          week: numbersOnly(result?.week) ?? {},
+          days: (Array.isArray(result?.days) ? result.days : []).map(day => ({ day: DAY.test(day?.day) ? day.day : '?', ...numbersOnly({ ...day, day: undefined }) })),
+          previous: previous ? { at: Number.isFinite(at) ? new Date(at).toISOString() : null, deltas: numbersOnly(previous.deltas) ?? {} } : null,
+        }
+      })
     },
 
     async promptInventory() {
@@ -183,24 +184,25 @@ export function createProjectPanels({ root, readConfig, dataDir, now = () => new
       const logs = join(dataDirectory(block), 'logs')
       const folder = lstatSync(logs, { throwIfNoEntry: false })
       if (!folder?.isDirectory() || folder.isSymbolicLink()) return { available: false, reason: 'no_manifests' }
-      const [{ inventory, readManifests }, { MANIFEST_FILE }] = await Promise.all([
-        load('packages/bot/src/ops/prompt-inventory.ts'), load('packages/bot/src/platform/prompt-manifest.ts'),
-      ])
-      const days = readdirSync(logs).map(name => MANIFEST_FILE.exec(name)?.[1]).filter(Boolean).sort()
-      if (!days.length) return { available: false, reason: 'no_manifests' }
-      const inv = inventory(readManifests(logs))
-      const tally = map => Object.fromEntries(Object.entries(map).map(([name, n]) => [ident(name), n]))
-      return {
-        available: true, files: days.length, firstDay: days[0], lastDay: days.at(-1),
-        inventory: {
-          rounds: numbersOnly(inv.rounds), chars: numbersOnly(inv.chars), piecesPerRound: numbersOnly(inv.piecesPerRound),
-          byKind: inv.byKind.map(row => ({ kind: ident(row.kind), rounds: row.rounds, avgChars: row.avgChars, avgNow: row.avgNow, maxNow: row.maxNow })),
-          slots: inv.slots.map(row => ({ slot: ident(row.slot), module: ident(row.module), list: ident(row.list),
-            rounds: row.rounds, chars: row.chars, omitted: row.omitted, kinds: numbersOnly(row.kinds) })),
-          modules: inv.modules.map(row => ({ module: ident(row.module), rounds: row.rounds, chars: row.chars })),
-          extra: { reviewStages: tally(inv.extra.reviewStages), candidateCalls: inv.extra.candidateCalls, groupReasons: tally(inv.extra.groupReasons) },
-        },
-      }
+      return inventoryJobs(logs, async () => {
+        const { days: listed, inventory: inv } = await run('inventory', { root, logs }, { root, timeZone: validTimeZone(block.timeZone) ?? DEFAULT_TIME_ZONE })
+        const days = (Array.isArray(listed) ? listed : []).filter(day => DAY.test(day)).sort()
+        if (!days.length || !inv) return { available: false, reason: 'no_manifests' }
+        const tally = map => Object.fromEntries(Object.entries(map ?? {}).filter(([, n]) => Number.isFinite(n)).map(([name, n]) => [ident(name), n]))
+        const num = value => Number.isFinite(value) ? value : null
+        const rows = value => Array.isArray(value) ? value : []
+        return {
+          available: true, files: days.length, firstDay: days[0], lastDay: days.at(-1),
+          inventory: {
+            rounds: numbersOnly(inv.rounds) ?? {}, chars: numbersOnly(inv.chars) ?? {}, piecesPerRound: numbersOnly(inv.piecesPerRound) ?? {},
+            byKind: rows(inv.byKind).map(row => ({ kind: ident(row.kind), rounds: num(row.rounds), avgChars: num(row.avgChars), avgNow: num(row.avgNow), maxNow: num(row.maxNow) })),
+            slots: rows(inv.slots).map(row => ({ slot: ident(row.slot), module: ident(row.module), list: ident(row.list),
+              rounds: num(row.rounds), chars: num(row.chars), omitted: num(row.omitted), kinds: numbersOnly(row.kinds) ?? {} })),
+            modules: rows(inv.modules).map(row => ({ module: ident(row.module), rounds: num(row.rounds), chars: num(row.chars) })),
+            extra: { reviewStages: tally(inv.extra?.reviewStages), candidateCalls: num(inv.extra?.candidateCalls), groupReasons: tally(inv.extra?.groupReasons) },
+          },
+        }
+      })
     },
 
     async golive() {

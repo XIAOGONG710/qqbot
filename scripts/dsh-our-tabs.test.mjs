@@ -174,7 +174,7 @@ test('项目 renders switches with merge and fewerRules badges, metrics deltas, 
                     merged: { legacyWritten: ['oldKey'], absorbs: [{ key: 'oldKey', label: '旧开关', adr: null, written: true, value: true }] } },
             ] }, error: '' },
         7,
-        { data: { available: true, window: { from: 'x', to: 'y', days: 7 }, contacts: 1, zone: { process: 'UTC', configured: 'Asia/Shanghai', matches: false },
+        { data: { available: true, window: { from: 'x', to: 'y', days: 7 }, contacts: 1, zone: { used: 'Asia/Shanghai', configured: null },
             week: metric(20), days: [{ day: '2026-11-25', ...metric(3) }],
             previous: { at: '2026-11-19T00:00:00.000Z', deltas: { turns: { before: 18, after: 20, delta: 2 },
                 assistantToneRate: { before: 0.08, after: 0.05, delta: -0.03 }, avgChars: { before: 14, after: 14, delta: 0 } } } }, error: '' },
@@ -182,16 +182,19 @@ test('项目 renders switches with merge and fewerRules badges, metrics deltas, 
             inventory: { rounds: { total: 10, fallback: 0 }, chars: { avg: 3000, max: 5000, min: 900 }, piecesPerRound: { main: 5, history: 8, now: 2 },
                 byKind: [{ kind: 'reply', rounds: 10, avgChars: 3000, avgNow: 200, maxNow: 400 }],
                 slots: [{ slot: 'small', module: 'm1', list: 'main', rounds: 10, chars: 100, omitted: 0 },
-                    { slot: 'big', module: 'm2', list: 'main', rounds: 5, chars: 9000, omitted: 1 }],
+                    { slot: 'big', module: 'm2', list: 'main', rounds: 5, chars: 9000, omitted: 1 },
+                    { slot: 'gap', module: 'm3', list: 'main', rounds: null, chars: null, omitted: null }],
                 modules: [{ module: 'm2', rounds: 5, chars: 9000 }] } }, error: '' },
         { data: { available: true, switches: { migrating: ['合成组：旧键 → 新键'], unrepresentable: ['合成阻断'] } }, error: '' },
     ]);
     const tree = expand(project);
     const all = texts(tree).join('\n');
     for (const want of ['出口检查', '少规矩强制关', '合并', '旧键还写着：oldKey', '旧开关（oldKey=开）', '合成合并：旧键 a=1', '共 2 项 · 生效 1',
-        '时区 UTC', '↑ 2', '↓ 3.0 个百分点', '持平', '2026-11-25', '9000', '50%', '合成组：旧键 → 新键', '合成阻断', '40秒']) {
+        '日界按 Asia/Shanghai（插件配置没写 timeZone，用默认）', '↑ 2', '↓ 3.0 个百分点', '持平', '2026-11-25', '9000', '50%', '合成组：旧键 → 新键', '合成阻断', '40秒']) {
         assert.ok(all.includes(want), want);
     }
     const slotRows = find(tree, node => node.type === 'tbody' && texts(node).includes('big'));
     assert.equal(texts(slotRows.children[0])[0], 'big');
+    // 缺数（null）的槽、模块：显示「—」，不出 NaN / undefined，也不打乱排序
+    assert.doesNotMatch(all, /NaN|undefined/);
 });

@@ -1115,7 +1115,7 @@ window.__ModuleLoader__.load({
       correctedRate: ['他当场纠正', 'rate'], 'latency.p50': ['回复延迟中位', 'seconds'], 'latency.p90': ['回复延迟 p90', 'seconds'],
     }
     const pct = value => Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : '—'
-    const secs = value => !Number.isFinite(value) ? '—' : value < 120 ? `${value}秒` : value < 7200 ? `${(value / 60).toFixed(1)}分` : `${(value / 3600).toFixed(1)}时`
+    const secs = value => !Number.isFinite(value) ? '—' : value < 120 ? `${Math.round(value)}秒` : value < 7200 ? `${(value / 60).toFixed(1)}分` : `${(value / 3600).toFixed(1)}时`
     const metricText = (kind, value) => kind === 'rate' ? pct(value) : kind === 'seconds' ? secs(value) : count(value)
     const metricOf = (metrics, key) => key.startsWith('latency.') ? metrics?.latency?.[key.slice(8)] : metrics?.[key]
     const deltaText = (kind, delta) => kind === 'rate' ? `${Math.abs(delta * 100).toFixed(1)} 个百分点`
@@ -1138,8 +1138,8 @@ window.__ModuleLoader__.load({
             return h('div', null,
               h('p', { className: 'qqb-note' },
                 `到昨天为止 ${data.window?.days ?? days} 天${list.length ? `（${list[0].day}～${list.at(-1).day}）` : ''} · ${count(data.contacts)} 个联系人。只有数，没有聊天原文。`),
-              data.zone && data.zone.matches === false && h('p', { className: 'qqb-warnline', role: 'status' },
-                `面板进程时区 ${data.zone.process} 和插件配置的 ${data.zone.configured} 不一致，日界可能差几个小时。`),
+              typeof data.zone?.used === 'string' && h('p', { className: 'qqb-note' },
+                `日界按 ${data.zone.used}${data.zone.configured ? '' : '（插件配置没写 timeZone，用默认）'}，和 QQ 那边一致。`),
               kv('轮数', `${count(week.turns)}（回他 ${count(week.replyTurns)} / 自己找他 ${count(week.proactiveTurns)} / 接着说 ${count(week.followOnTurns)}）`),
               ...Object.entries(metricLabels).filter(([key]) => key !== 'turns').map(([key, [label, kind]]) => kv(label, metricText(kind, metricOf(week, key)))),
               kv('有延迟可算的轮', count(week.latency?.count)),
@@ -1173,8 +1173,8 @@ window.__ModuleLoader__.load({
           : loaded(result, data => {
             const inv = data.inventory ?? {}
             const total = inv.rounds?.total ?? 0
-            const share = rounds => total > 0 ? `${Math.round(rounds / total * 100)}%` : '—'
-            const slots = [...(inv.slots ?? [])].sort((a, b) => b.chars - a.chars).slice(0, 15)
+            const share = rounds => total > 0 && Number.isFinite(rounds) ? `${Math.round(rounds / total * 100)}%` : '—'
+            const slots = [...(inv.slots ?? [])].sort((a, b) => (b.chars ?? 0) - (a.chars ?? 0)).slice(0, 15)
             return h('div', null,
               h('p', { className: 'qqb-note' }, `${count(data.files)} 天的清单（${data.firstDay}～${data.lastDay}）。只有槽名、模块名和数。`),
               kv('轮数', `${count(total)}（兜底 ${count(inv.rounds?.fallback)}）`),
@@ -1198,7 +1198,7 @@ window.__ModuleLoader__.load({
               inv.modules?.length > 0 && h('h4', null, '模块'),
               inv.modules?.length > 0 && h('div', { className: 'qqb-scroll' }, h('table', { className: 'qqb-table' },
                 h('thead', null, h('tr', null, h('th', null, '模块'), h('th', { className: 'qqb-num' }, '出现轮数'), h('th', { className: 'qqb-num' }, '合计字数'))),
-                h('tbody', null, ...[...inv.modules].sort((a, b) => b.chars - a.chars).map(row => h('tr', { key: row.module },
+                h('tbody', null, ...[...inv.modules].sort((a, b) => (b.chars ?? 0) - (a.chars ?? 0)).map(row => h('tr', { key: row.module },
                   h('td', null, row.module), h('td', { className: 'qqb-num' }, `${count(row.rounds)}（${share(row.rounds)}）`),
                   h('td', { className: 'qqb-num' }, count(row.chars))))))))
           }, '读不到插件配置，提示词构成这一块没有数。'))

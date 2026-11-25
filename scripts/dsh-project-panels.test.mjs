@@ -2,7 +2,7 @@
 // 仓库根指到临时目录：代码目录（node_modules、packages、scripts）用目录链接挂进来，koishi 配置是合成的对象，
 // 聊天记录和指纹清单是合成的、放在临时数据目录；runtime、characters 这些真实数据一个都不挂。
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,7 +18,9 @@ const SHA = 'ab'.repeat(32)
 
 let root
 let links = []
-const local = (day, hour, minute = 0, second = 0) => new Date(2026, 10, day, hour, minute, second).toISOString()
+/** 她那边（插件没写 timeZone：bot 的默认 Asia/Shanghai，UTC+8）的 11 月某日某时；不随跑测试那台机器的时区变 */
+const local = (day, hour, minute = 0, second = 0) => new Date(Date.UTC(2026, 10, day, hour - 8, minute, second)).toISOString()
+const NOW = new Date(local(20, 12))
 
 function config(extra = {}) {
   return {
@@ -43,7 +45,7 @@ function config(extra = {}) {
   }
 }
 
-const panels = (cfg = config()) => createProjectPanels({ root, readConfig: () => cfg, now: () => new Date(2026, 10, 20, 12) })
+const panels = (cfg = config(), options = {}) => createProjectPanels({ root, readConfig: () => cfg, now: () => NOW, ...options })
 
 function leakCheck(value) {
   const text = JSON.stringify(value)
@@ -70,6 +72,8 @@ before(() => {
     { time: local(10, 9), role: 'user', content: '很早以前的一句', messageId: 5 },
   ]
   writeFileSync(join(data, 'chats', `${OWNER}.jsonl`), rows.map(row => JSON.stringify(row)).join('\n') + '\n')
+  // 旧格式的撤回状态（数组）：bot 的 ChatHistory.load 不带 readOnly 时会把它迁成 v2 写回去——面板不许替线上写
+  writeFileSync(join(data, 'chats', `${OWNER}.recalled.json`), '[3]')
   writeFileSync(join(data, 'logs', 'weekly-metrics.jsonl'), JSON.stringify({
     version: 1, at: '2026-11-13T01:00:00.000Z', from: '2026-11-05T16:00:00.000Z', to: '2026-11-12T16:00:00.000Z', scope: 'all', contacts: 1, days: [],
     week: { hisMessages: 5, turns: 5, latency: { count: 0, p50: null, p90: null } },
@@ -155,8 +159,9 @@ test('每周效果数：窗口到昨天、只有数，和日志里的上一次�
   leakCheck(view)
   assert.equal(view.available, true)
   assert.equal(view.window.days, 7)
-  assert.equal(view.window.from, new Date(2026, 10, 13).toISOString())
-  assert.equal(view.window.to, new Date(2026, 10, 20).toISOString())
+  // 窗口按 bot 的时区（这里是默认的 Asia/Shanghai）：上海 11-13 00:00 ～ 11-20 00:00
+  assert.equal(view.window.from, '2026-11-12T16:00:00.000Z')
+  assert.equal(view.window.to, '2026-11-19T16:00:00.000Z')
   assert.equal(view.contacts, 1)
   assert.equal(view.week.hisMessages, 2)
   assert.equal(view.week.turns, 2)
@@ -174,7 +179,9 @@ test('每周效果数：窗口到昨天、只有数，和日志里的上一次�
   }
   walk({ week: view.week, days: view.days.map(({ day: _day, ...rest }) => rest), previous: view.previous.deltas }, '')
   assert.deepEqual(strings, [])
-  assert.equal(typeof view.zone.matches, 'boolean')
+  assert.deepEqual(view.zone, { used: 'Asia/Shanghai', configured: null })
+  assert.equal(readFileSync(join(root, 'data', 'chats', `${OWNER}.recalled.json`), 'utf8'), '[3]', '旧格式撤回状态原样不动（只读读法）')
+  assert.ok(!readdirSync(join(root, 'data', 'chats')).some(name => name.includes('.tmp') || name.includes('.corrupt-')))
   assert.equal(readFileSync(join(root, 'data', 'logs', 'weekly-metrics.jsonl'), 'utf8').trim().split(/\n/).length, 1, '面板不追加日志')
   await assert.rejects(panels().metrics({ days: 0 }), RangeError)
   assert.deepEqual(await panels(config({ dataDir: 'nowhere' })).metrics(), { available: false, reason: 'no_chats' })
@@ -206,4 +213,80 @@ test('读不到 qqbot 插件块：四个都回 available: false', async () => {
     const view = createProjectPanels({ root, readConfig: () => { if (!cfg) throw Error(SECRET_KEY); return cfg } })
     for (const name of ['switches', 'metrics', 'promptInventory', 'golive']) assert.deepEqual(await view[name](), { available: false })
   }
+})
+
+test('效果数、提示词构成：同时来的请求共用一次子进程，10 分钟内给缓存；失败不缓存，下次重算', async () => {
+  let clock = NOW.getTime()
+  const calls = []
+  let release
+  let gate = new Promise(done => { release = done })
+  const run = async (job, input, options) => {
+    calls.push({ job, input, options })
+    await gate
+    if (job === 'inventory') return { days: ['2026-11-17'], inventory: { rounds: { total: 1 }, chars: {}, piecesPerRound: {}, byKind: [], slots: [], modules: [], extra: {} } }
+    return { result: { from: '2026-11-12T16:00:00.000Z', to: '2026-11-19T16:00:00.000Z', contacts: 1, days: [], week: { turns: 4 } }, previous: null }
+  }
+  const view = panels(config(), { run, now: () => new Date(clock) })
+  const both = Promise.all([view.metrics({ days: 7 }), view.metrics({ days: 7 }), view.promptInventory(), view.promptInventory()])
+  release()
+  const [a, b, c, d] = await both
+  assert.equal(a, b, '同一次计算')
+  assert.equal(c, d)
+  assert.deepEqual(calls.map(call => call.job).sort(), ['inventory', 'metrics'])
+  // 子进程的时区是 bot 的时区；输入里只有路径、日子和天数，没有配置原文
+  const metricsCall = calls.find(call => call.job === 'metrics')
+  assert.equal(metricsCall.options.timeZone, 'Asia/Shanghai')
+  assert.deepEqual(Object.keys(metricsCall.input).sort(), ['count', 'directory', 'root', 'until'])
+  assert.equal(metricsCall.input.until, '2026-11-19')
+  leakCheck(calls.map(call => ({ ...call.input, directory: undefined, root: undefined, logs: undefined })))
+
+  clock += 9 * 60_000
+  await view.metrics({ days: 7 })
+  assert.equal(calls.length, 2, '10 分钟内用缓存')
+  await view.metrics({ days: 14 })
+  assert.equal(calls.length, 3, '天数不同另算')
+  clock += 2 * 60_000
+  await view.metrics({ days: 7 })
+  assert.equal(calls.length, 4, '过了 10 分钟重算')
+
+  // 子进程失败：错误码是固定的，不缓存
+  let failing = true
+  const flaky = panels(config(), { run: async () => { if (failing) throw Error('panel_job_failed'); return { result: { days: [], week: {} }, previous: null } } })
+  await assert.rejects(flaky.metrics(), /^Error: panel_job_failed$/)
+  failing = false
+  assert.equal((await flaky.metrics()).available, true)
+})
+
+test('效果数：插件配置了时区就按它算「昨天」和子进程的 TZ', async () => {
+  const calls = []
+  const run = async (job, input, options) => { calls.push({ input, options }); return { result: { days: [], week: {} }, previous: null } }
+  // 檀香山（UTC-10）：上海 11-20 12:00 在那边还是 11-19 18:00，所以「到昨天」是 11-18
+  const view = await panels(config({ timeZone: 'Pacific/Honolulu' }), { run }).metrics()
+  assert.deepEqual(view.zone, { used: 'Pacific/Honolulu', configured: 'Pacific/Honolulu' })
+  assert.equal(calls[0].input.until, '2026-11-18')
+  assert.equal(calls[0].options.timeZone, 'Pacific/Honolulu')
+  // 写错的时区：用默认，配置项显示为 null
+  const fallback = await panels(config({ timeZone: 'Not/AZone' }), { run }).metrics()
+  assert.deepEqual(fallback.zone, { used: 'Asia/Shanghai', configured: null })
+})
+
+test('子进程回来的东西再过一遍白名单：字符串、文件名、联系人一律不出去', async () => {
+  const run = async job => job === 'metrics'
+    ? { result: { from: 'SECRET', to: '2026-11-19T16:00:00.000Z', contacts: '阿明', scope: String(OWNER),
+      days: [{ day: '../etc', turns: 'SECRET', text: HIS_WORDS }], week: { turns: 1, sample: HER_WORDS, latency: { p50: 'x' } } },
+      previous: { at: 'nope', deltas: { turns: { before: 1, after: 'SECRET', delta: null } } } }
+    : { days: ['2026-11-17', '../secret'], inventory: { rounds: { total: 1, note: HIS_WORDS }, chars: {}, piecesPerRound: {},
+      byKind: [{ kind: HIS_WORDS, rounds: '1' }], slots: [{ slot: 'a b', module: HER_WORDS, list: 'main', rounds: 1, chars: 2, omitted: 0, kinds: { reply: 1, x: 'y' } }],
+      modules: [], extra: { reviewStages: { [HER_WORDS]: 1 }, candidateCalls: 'x', groupReasons: { ok: 'bad' } } } }
+  const view = panels(config(), { run })
+  const metrics = await view.metrics()
+  const inventory = await view.promptInventory()
+  leakCheck([metrics, inventory])
+  assert.doesNotMatch(JSON.stringify([metrics, inventory]), /SECRET|etc|secret|阿明/)
+  assert.equal(metrics.window.from, null)
+  assert.equal(metrics.contacts, null)
+  assert.equal(metrics.days[0].day, '?')
+  assert.deepEqual(metrics.week, { turns: 1, latency: {} })
+  assert.deepEqual(inventory.firstDay, '2026-11-17')
+  assert.equal(inventory.files, 1)
 })
