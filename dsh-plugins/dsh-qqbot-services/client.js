@@ -123,6 +123,7 @@ window.__ModuleLoader__.load({
         '.qqb-house-scene{display:block;width:100%;height:clamp(310px,65vh,680px);border:1px solid var(--q-line);border-radius:14px;background:#151b28}',
         '.qqb-room-invite{width:100%;box-sizing:border-box;margin-top:8px}',
         '.qqb-library{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px}.qqb-library figure{margin:0;padding:7px;border:1px solid var(--q-line);border-radius:10px;overflow:hidden}.qqb-library img{width:100%;height:76px;object-fit:contain}.qqb-library figcaption{overflow-wrap:anywhere;font-size:12px}',
+        '.qqb-memory-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;padding:0;list-style:none}.qqb-memory-grid li{border:1px solid var(--q-line);border-radius:10px;padding:8px}',
         '@media(max-width:580px){.qqb-tabs{grid-template-columns:repeat(4,1fr)}.qqb-tabs::before{display:none}.qqb-tab[aria-selected=true]{background:color-mix(in srgb,var(--q-acc) 12%,transparent)}}',
         '@container (max-width:540px){.qqb-workspace{grid-template-columns:1fr}.qqb-peers{max-height:140px;border-right:0;border-bottom:1px solid var(--q-line)}.qqb-feed{height:clamp(145px,24vh,230px)}}'
       ].join('\n')
@@ -226,10 +227,10 @@ window.__ModuleLoader__.load({
               sendPrefix: data.sendKey === session.key ? data.sendPrefix : null, request, revision }) : h('p', { className: 'qqb-chat-empty' }, '选择一个好友或群聊。'))))
     }
 
-    function ChatMedia({ item }) {
+    function ChatMedia({ item, base = `${api}/chat/media` }) {
       const [open, setOpen] = React.useState(false)
       const [failed, setFailed] = React.useState(false)
-      const source = `${api}/chat/media/${item.id}`
+      const source = `${base}/${item.id}`
       return h('details', { className: 'qqb-chat-media', onToggle: event => setOpen(event.currentTarget.open) },
         h('summary', null, item.kind === 'image' ? '查看图片' : '播放语音'),
         open && (failed ? h('small', null, '来源已失效或格式不支持。') : item.kind === 'image'
@@ -360,19 +361,39 @@ window.__ModuleLoader__.load({
         } catch { setNotice('操作未能确认，请查看房间消息。') }
         finally { pending.current = false; setBusy(false) }
       }
+      const upload = async event => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (!file || pending.current) return
+        if (file.size > 512 * 1024) { setNotice('附件不能超过 512 KB。'); return }
+        pending.current = true
+        setBusy(true)
+        setNotice('')
+        try {
+          const response = await fetch(`${api}/room/owner/upload`, {
+            method: 'POST', body: file,
+            headers: { 'content-type': 'application/octet-stream', 'x-qqbot-service-panel': '1' },
+          })
+          if (!response.ok) throw Error()
+        } catch { setNotice('附件未能发送。') }
+        finally { pending.current = false; setBusy(false) }
+      }
       return h('section', { className: 'qqb-card' },
         h('div', { className: 'qqb-actions' }, h('h3', { className: 'qqb-title' }, '网页会客室'),
           h('div', { className: 'qqb-actions' },
             h('button', { className: 'qqb-btn', type: 'button', disabled: busy, onClick: () => action('invite') }, '生成邀请'),
             h('button', { className: 'qqb-btn', type: 'button', disabled: busy, onClick: () => action('close') }, '关闭房间'))),
-        invite && h('label', null, '本机邀请链接，一次有效',
+        invite && h('label', null, '邀请链接，一次有效',
           h('input', { className: 'qqb-input qqb-room-invite', readOnly: true, value: invite, onFocus: event => event.target.select() })),
         h('p', { className: 'qqb-note' }, '受邀成员可见。发言可能交给模型判断是否接话。'),
         messages === null ? h('p', { className: 'qqb-note', role: 'status' }, '等待读取房间消息…')
           : h('ol', { className: 'qqb-feed', 'aria-label': '会客室消息' }, ...messages.map(row =>
             h('li', { key: row.id, className: `qqb-message${row.role === 'owner' ? ' is-mine' : ''}` },
               h('div', { className: 'qqb-body' }, h('small', { className: 'qqb-sender' }, row.name, row.role === 'guest' ? ' · 来宾' : ''),
-                h('div', { className: 'qqb-bubble' }, row.text))))),
+                h('div', { className: 'qqb-bubble' }, row.text),
+                row.media && h(ChatMedia, { item: { id: String(row.id), kind: row.media }, base: `${api}/room/owner/media` }))))),
+        h('label', { className: 'qqb-note' }, '图片或语音（最多 512 KB） ',
+          h('input', { type: 'file', disabled: busy, onChange: upload, accept: 'image/png,image/jpeg,image/webp,audio/wav,audio/mpeg,audio/ogg,audio/webm' })),
         h('form', { className: 'qqb-composer-bar', onSubmit: event => {
           event.preventDefault()
           if (draft.trim()) void action('post', draft)
@@ -391,6 +412,55 @@ window.__ModuleLoader__.load({
     const tierLabels = { boyfriend: '本人', bestie: '挚友', girl_friend: '女性朋友', known: '熟人', classmate: '同学', stranger: '陌生人' }
     const modeLabels = { off: '关闭', read: '只读', dryRun: '只演练', on: '开启', export: '导出状态', desktop: '桌面联动' }
 
+    function AccessEditor({ data, onSaved }) {
+      const [draft, setDraft] = React.useState(() => JSON.stringify({
+        contacts: data.contacts, modes: Object.fromEntries(Object.entries(data.modes).filter(([, value]) => value !== null)),
+      }, null, 2))
+      const [notice, setNotice] = React.useState('')
+      const [busy, setBusy] = React.useState(false)
+      async function request(action, body) {
+        const response = await fetch(`${api}/config/${action}`, {
+          method: 'POST', headers: { 'content-type': 'application/json', 'x-qqbot-service-panel': '1' },
+          body: JSON.stringify(body),
+        })
+        if (!response.ok) throw Error(response.status === 409 ? '配置已变化，请刷新后重新编辑。' : '配置校验或保存失败。')
+        return response.json()
+      }
+      const submit = async event => {
+        event.preventDefault()
+        if (busy) return
+        let data
+        try { data = JSON.parse(draft) }
+        catch { setNotice('导入内容需要是有效 JSON。'); return }
+        setBusy(true)
+        setNotice('')
+        try {
+          const { ticket, scope } = await request('preview', data)
+          const names = scope.contacts.map(row => `${row.name}（${row.qq}，${tierLabels[row.tier]}）`).join('\n')
+          const modes = Object.entries(scope.modes).map(([key, value]) => `${key}：${modeLabels[value]}`).join('\n')
+          if (!window.confirm(`应用到本机 Koishi？原 YAML 会留备份，配置排版与注释会重新生成。保存后 Koishi 可能自动重载插件。\n\n${names}\n${modes}`)) return
+          await request('apply', { ticket })
+          onSaved()
+        } catch (error) { setNotice(error.message) }
+        finally { setBusy(false) }
+      }
+      return h('details', { className: 'qqb-note' },
+        h('summary', null, '编辑或导入名单与模式'),
+        h('form', { onSubmit: submit },
+          h('label', null, '导入 JSON ', h('input', { type: 'file', accept: '.json,application/json', disabled: busy,
+            onChange: async event => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (!file) return
+              if (file.size > 16_384) { setNotice('导入文件太大。'); return }
+              try { setDraft(await file.text()) } catch { setNotice('读取导入文件失败。') }
+            } })),
+          h('textarea', { className: 'qqb-input qqb-diagnostic', rows: 9, value: draft, disabled: busy,
+            onChange: event => setDraft(event.target.value), 'aria-label': '名单与模式 JSON' }),
+          h('button', { className: 'qqb-btn', type: 'submit', disabled: busy }, '校验并预览'),
+          notice && h('p', { role: 'status' }, notice)))
+    }
+
     function DetailsCard({ kind }) {
       const [data, setData] = React.useState(undefined)
       const [revision, setRevision] = React.useState(0)
@@ -399,7 +469,7 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         const controller = new AbortController()
         setData(undefined)
-        fetch(`${api}/details/${kind}`, { cache: 'no-store', signal: controller.signal })
+        fetch(`${api}/details/${kind}${kind === 'versions' && revision > 0 ? '?refresh=1' : ''}`, { cache: 'no-store', signal: controller.signal })
           .then(response => {
             if (!response.ok) throw Error()
             return response.json()
@@ -416,7 +486,7 @@ window.__ModuleLoader__.load({
         link.click()
         setTimeout(() => URL.revokeObjectURL(url), 1000)
       }
-      const drill = async day => {
+      const drill = async (day, keep = false) => {
         if (busy.current) return
         busy.current = true
         setDrillStatus('正在校验备份…')
@@ -424,29 +494,32 @@ window.__ModuleLoader__.load({
           const verified = await fetch(`${api}/details/restore-check?${new URLSearchParams({ day })}`)
           if (!verified.ok) throw Error()
           const { databaseBytes, stateBytes } = await verified.json()
-          if (!window.confirm(`对 ${day} 的备份执行隔离演练？数据库制品 ${databaseBytes} 字节，状态包 ${stateBytes} 字节。演练只解压到临时目录。`)) {
+          const target = keep ? '校验通过后保留隔离副本。' : '演练结束后清理临时目录。'
+          if (!window.confirm(`对 ${day} 的备份执行隔离演练？数据库制品 ${databaseBytes} 字节，状态包 ${stateBytes} 字节。${target}`)) {
             setDrillStatus('')
             return
           }
           setDrillStatus('正在隔离演练…')
           const response = await fetch(`${api}/backup/restore-drill`, {
             method: 'POST', headers: { 'content-type': 'application/json', 'x-qqbot-service-panel': '1' },
-            body: JSON.stringify({ day }),
+            body: JSON.stringify({ day, keep }),
           })
           if (!response.ok) throw Error()
-          setDrillStatus(`${day} 文件级恢复演练通过。`)
+          const result = await response.json()
+          setDrillStatus(result.target ? `隔离副本已验证：${result.target}` : `${day} 文件级恢复演练通过。`)
         } catch { setDrillStatus('未能完成隔离演练。') }
         finally { busy.current = false }
       }
       return h('section', { className: 'qqb-card' },
         h('div', { className: 'qqb-actions' },
-          h('h3', { className: 'qqb-title' }, { access: 'QQ 接入配置', backups: '备份清单', books: '书架', library: '梗与表情', memory: '记忆连接', versions: '版本状态' }[kind]),
-          h('button', { className: 'qqb-btn', type: 'button', onClick: () => setRevision(value => value + 1) }, '刷新')),
+          h('h3', { className: 'qqb-title' }, { access: 'QQ 接入配置', backups: '备份清单', books: '书架', library: '梗与表情', memory: '记忆连接', versions: '版本状态', logs: '本地诊断日志' }[kind]),
+          h('button', { className: 'qqb-btn', type: 'button', onClick: () => setRevision(value => value + 1) }, kind === 'versions' ? '检查远端' : '刷新')),
         drillStatus && h('p', { className: 'qqb-note', role: 'status' }, drillStatus),
         data === undefined ? h('p', { className: 'qqb-note', role: 'status' }, '正在读取…')
           : data === null ? h('p', { className: 'qqb-err', role: 'status' }, '暂时无法读取。')
           : access ? h('div', null,
             h('button', { className: 'qqb-btn', type: 'button', onClick: exportAccess }, '导出名单和模式'),
+            h(AccessEditor, { data, onSaved: () => { setDrillStatus('已保存本机配置。'); setRevision(value => value + 1) } }),
             ...Object.entries({ groupChat: '群聊', proactive: '主动消息', oneLife: '桌面联动' }).map(([key, label]) =>
               h('div', { className: 'qqb-kv', key }, h('span', null, label), h('span', null, modeLabels[data.modes[key]] ?? '配置未显式指定'))),
             h('h4', null, '私聊名单'),
@@ -471,15 +544,30 @@ window.__ModuleLoader__.load({
           : kind === 'memory' ? h('div', null,
             h('div', { className: 'qqb-kv' }, h('span', null, '桌面与 QQ 的本人记忆'), h('span', null, data.linked ? '已登记' : '未登记')),
             h('div', { className: 'qqb-kv' }, h('span', null, '公共库统计'), h('span', null,
-              data.common ? `${data.common.facts} 条记忆 · ${data.common.documents} 份来源文档` : '暂无可用统计')))
+              data.common ? `${data.common.facts} 条记忆 · ${data.common.documents} 份来源文档` : '暂无可用统计')),
+            data.common?.types && h('ul', { className: 'qqb-memory-grid', 'aria-label': '公共记忆分类' },
+              ...data.common.types.map(item => h('li', { key: item.type },
+                `${{ world: '世界事实', experience: '共同经历', observation: '归纳观察', opinion: '观点' }[item.type]} · ${item.count}`))))
           : kind === 'versions' ? h('div', null,
             h('div', { className: 'qqb-kv' }, h('span', null, '本地提交'), h('code', null, data.local?.slice(0, 12) ?? '未知')),
-            h('div', { className: 'qqb-kv' }, h('span', null, '本地记录的 origin/main'), h('code', null, data.tracked?.slice(0, 12) ?? '未知')))
+            h('div', { className: 'qqb-kv' }, h('span', null, '本地记录的 origin/main'), h('code', null, data.tracked?.slice(0, 12) ?? '未知')),
+            Object.hasOwn(data, 'remote') && h('div', { className: 'qqb-kv' }, h('span', null, '远端 main'),
+              h('code', null, data.remote?.slice(0, 12) ?? '未能读取')))
+          : kind === 'logs' ? h('div', null,
+            h('h4', null, '运维事件'),
+            ...data.operations.map(({ at, service, event }, index) => h('div', { className: 'qqb-kv', key: `op-${index}` },
+              h('span', null, at), h('span', null, `${names[service]} · ${eventNames[event]}`))),
+            h('h4', null, '召回诊断'),
+            ...data.recall.map((row, index) => h('div', { className: 'qqb-kv', key: `recall-${index}` },
+              h('span', null, new Date(row.at).toLocaleString('zh-CN')),
+              h('span', null, `候选 ${row.items} · 选入 ${row.selected} · 失败库 ${row.failed}`))),
+            !data.operations.length && !data.recall.length && h('p', { className: 'qqb-note' }, '暂无可显示的诊断日志。'))
           : data.length ? data.map(backup => h('div', { className: 'qqb-kv', key: backup.name },
               h('span', null, backup.name), h('span', null, backup.complete ? '完整' : '未完成',
                 Number.isFinite(backup.stateBytes) ? ` · 状态包 ${(backup.stateBytes / 1048576).toFixed(1)} MB` : ''),
-              backup.complete && Number.isFinite(backup.stateBytes) && h('button', { className: 'qqb-btn', type: 'button',
-                onClick: () => void drill(backup.name) }, '隔离演练')))
+              backup.complete && Number.isFinite(backup.stateBytes) && h('span', null,
+                h('button', { className: 'qqb-btn', type: 'button', onClick: () => void drill(backup.name) }, '隔离演练'),
+                h('button', { className: 'qqb-btn', type: 'button', onClick: () => void drill(backup.name, true) }, '保留隔离副本'))))
             : h('p', { className: 'qqb-note' }, '暂无备份。'))
     }
 
@@ -600,6 +688,7 @@ window.__ModuleLoader__.load({
         section('sys',
           tab === 'sys' && h(DetailsCard, { kind: 'backups' }),
           tab === 'sys' && h(DetailsCard, { kind: 'versions' }),
+          tab === 'sys' && h(DetailsCard, { kind: 'logs' }),
           state?.diagnostic && h('section', { className: 'qqb-card', 'aria-label': '链路诊断' },
             h('div', { className: 'qqb-actions' }, h('h3', { className: 'qqb-title' }, '链路诊断'),
               h('button', { className: 'qqb-btn', onClick: copyDiagnostic }, '复制诊断')),

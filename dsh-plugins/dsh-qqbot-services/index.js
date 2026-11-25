@@ -1,6 +1,8 @@
 import { execFile, spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs'
+import { createServer as createHttpsServer } from 'node:https'
+import { isIPv4 } from 'node:net'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -9,9 +11,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { createController } from './controller.js'
 import { activeKoishiPlugin, configuredManualOwner, createChat, createNapCatManualSender, createNapCatReader } from './chat.js'
-import { createCompanionRoom, createRoomReply } from './companion-room.js'
+import { createCompanionRoom, createRoomReply, roomMediaLimit } from './companion-room.js'
 import { createLocalPanels } from './local-panels.js'
 import { createHistoryMedia } from './history-media.js'
+import { createConfigEditor } from './config-editor.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -20,7 +23,7 @@ const scenePrefix = `${prefix}/home/scene/`
 const sceneAssets = new Map([
   ['', ['index.html', 'text/html']],
   ['scene.css', ['scene.css', 'text/css']],
-  ...['scene.js', 'state.js', 'furniture.js', 'three.module.min.js'].map(file => [file, [file, 'text/javascript']]),
+  ...['scene.js', 'state.js', 'furniture.js', 'avatar.js', 'three.module.min.js'].map(file => [file, [file, 'text/javascript']]),
 ])
 const exec = promisify(execFile)
 const localAddresses = ['127.0.0.1', '::1', '::ffff:127.0.0.1']
@@ -66,8 +69,18 @@ async function readJson(req) {
   catch { return { status: 400, error: 'invalid_message' } }
 }
 
-async function roomRoute(path, req, res, send, room, owner) {
+async function roomRoute(path, req, res, send, room, owner, guestOrigin) {
   const base = `${prefix}/room/guest/`
+  const credential = /^Bearer ([A-Za-z0-9_-]{32})$/.exec(req.headers.authorization ?? '')?.[1]
+  const side = owner ? `${prefix}/room/owner/` : base
+  if (req.method === 'GET' && path.startsWith(side + 'media/')) {
+    const id = path.slice((side + 'media/').length)
+    if (!/^\d{1,12}$/.test(id)) return send(404, { error: 'not_found' })
+    const media = room.media(credential, Number(id), owner)
+    if (!media) return send(404, { error: 'not_found' })
+    res.writeHead(200, { 'content-type': media.type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' })
+    return res.end(media.body)
+  }
   if (!owner && req.method === 'GET' && [base, base + 'guest.js'].includes(path)) {
     const script = path.endsWith('.js')
     const asset = readFileSync(new URL(script ? './room-guest.js' : './room-guest.html', import.meta.url))
@@ -76,22 +89,36 @@ async function roomRoute(path, req, res, send, room, owner) {
       'cache-control': 'no-store',
       'referrer-policy': 'no-referrer',
       'x-content-type-options': 'nosniff',
-      'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+      'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; img-src blob:; media-src blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
     })
     return res.end(asset)
   }
   if (req.method !== 'POST') return send(404, { error: 'not_found' })
   const action = path.split('/').at(-1)
-  if (path !== (owner ? `${prefix}/room/owner/` : base) + action) return send(404, { error: 'not_found' })
+  if (path !== side + action) return send(404, { error: 'not_found' })
   if (owner && action === 'invite') {
     const scheme = req.socket.encrypted ? 'https' : 'http'
-    return send(200, { url: `${scheme}://${req.headers.host}${base}#invite=${room.invite()}` })
+    const origin = guestOrigin || `${scheme}://${req.headers.host}`
+    return send(200, { url: `${origin}${base}#invite=${room.invite()}` })
   }
   if (owner && action === 'close') { room.close(); return send(200, { ok: true }) }
-  const credential = /^Bearer ([A-Za-z0-9_-]{32})$/.exec(req.headers.authorization ?? '')?.[1]
   if (action === 'messages') {
     const messages = room.view(credential, owner)
     return messages ? send(200, { messages }) : send(403, { error: 'room_forbidden' })
+  }
+  if (action === 'upload') {
+    if (!owner && !room.view(credential)) return send(403, { error: 'room_forbidden' })
+    if (req.headers['content-type'] !== 'application/octet-stream') return send(415, { error: 'invalid_format' })
+    const chunks = []
+    let size = 0
+    for await (const chunk of req) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      size += bytes.length
+      if (size > roomMediaLimit) return send(413, { error: 'media_too_large' })
+      chunks.push(bytes)
+    }
+    const result = await room.postMedia(credential, Buffer.concat(chunks, size), owner)
+    return send(result, { ok: result === 200 })
   }
   if ((!owner && action === 'join') || action === 'post') {
     const { body, status, error } = await readJson(req)
@@ -104,6 +131,41 @@ async function roomRoute(path, req, res, send, room, owner) {
     return send(result, { ok: result === 200 })
   }
   return send(404, { error: 'not_found' })
+}
+
+export function createLanGuestHandler(room, origin) {
+  const authority = new URL(origin).host
+  return async (req, res) => {
+    const send = (status, value) => {
+      res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+      res.end(JSON.stringify(value))
+    }
+    const path = (req.url ?? '').split('?')[0]
+    if (!req.socket?.encrypted || req.headers.host !== authority || req.headers.forwarded ||
+      req.headers['x-forwarded-for'] || req.headers['x-forwarded-host'] || req.headers['sec-fetch-site'] === 'cross-site' ||
+      (req.headers.origin !== undefined && req.headers.origin !== origin) ||
+      (req.method === 'POST' && (req.headers.origin !== origin || req.headers['x-qqbot-service-panel'] !== '1'))) {
+      return send(403, { error: 'forbidden' })
+    }
+    if (!path.startsWith(`${prefix}/room/guest/`)) return send(404, { error: 'not_found' })
+    try { return await roomRoute(path, req, res, send, room, false) }
+    catch { return send(503, { error: 'room_unavailable' }) }
+  }
+}
+
+function openLanRoom(config, room, root) {
+  if (!config) return null
+  const { host, port, certFile, keyFile } = config
+  if (!isIPv4(host) || !/^(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(host)
+    || !Number.isInteger(port) || port < 1024 || port > 65535 || typeof certFile !== 'string' || typeof keyFile !== 'string') return null
+  const origin = `https://${host}:${port}`
+  try {
+    const server = createHttpsServer({ cert: readFileSync(resolve(root, certFile)), key: readFileSync(resolve(root, keyFile)) },
+      createLanGuestHandler(room, origin))
+    server.on('error', () => server.close())
+    server.listen(port, host)
+    return { origin: () => server.listening ? origin : null, close: () => server.close() }
+  } catch { return null }
 }
 
 function tail(file) {
@@ -120,7 +182,7 @@ function tail(file) {
   finally { if (fd !== undefined) closeSync(fd) }
 }
 
-export function summarizeWatchdog(lines) {
+export function summarizeWatchdog(lines, limit = 12) {
   return lines.flatMap(line => {
     const stamp = /^(\d{4}\/\d{1,2}\/\d{1,2} \d{2}:\d{2}:\d{2})\s+(.*)$/.exec(line)
     if (!stamp) return []
@@ -133,7 +195,15 @@ export function summarizeWatchdog(lines) {
       : undefined
     const target = service ?? (text.startsWith('备份：') ? 'backup' : 'watchdog')
     return event ? [{ at: stamp[1], service: target, event }] : []
-  }).slice(-12).reverse()
+  }).slice(-limit).reverse()
+}
+
+export function summarizeRecallLog(lines) {
+  return lines.flatMap(line => {
+    const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z) recall items=(\d{1,7}) selected=(\d{1,7}) memoryChars=(\d{1,7}) important=(failed|no-match|not-queried|matched) failedBanks=(\d{1,7})$/.exec(line)
+    return match ? [{ at: match[1], items: Number(match[2]), selected: Number(match[3]), chars: Number(match[4]),
+      important: match[5], failed: Number(match[6]) }] : []
+  }).slice(-60).reverse()
 }
 
 export function diagnosticReport({ health, checkedAt, operation, events }) {
@@ -219,16 +289,26 @@ export function createHandler(controller, events, chat, connection, now = Date.n
       } catch { return send(503, { error: 'scene_unavailable' }) }
     }
     if (companion?.room && path.startsWith(`${prefix}/room/owner/`)) {
-      try { return await roomRoute(path, req, res, send, companion.room, true) }
+      try { return await roomRoute(path, req, res, send, companion.room, true, companion.guestOrigin?.()) }
       catch { return send(503, { error: 'room_unavailable' }) }
     }
     if (companion?.home && req.method === 'GET' && path === `${prefix}/home`) {
       try { return send(200, await companion.home()) }
       catch { return send(503, { error: 'home_unavailable' }) }
     }
+    if (companion?.configEditor && req.method === 'POST' && [`${prefix}/config/preview`, `${prefix}/config/apply`].includes(path)) {
+      try {
+        const { body, status, error } = await readJson(req)
+        if (status) return send(status, { error })
+        const session = createHash('sha256').update(req.headers.cookie ?? '').digest('hex')
+        const result = path.endsWith('/preview') ? companion.configEditor.preview(body, session)
+          : companion.configEditor.apply(body?.ticket, session)
+        return send(result.status, result)
+      } catch { return send(503, { error: 'config_unavailable' }) }
+    }
     if (details && req.method === 'GET' && path.startsWith(`${prefix}/details/`)) {
       const kind = path.slice(`${prefix}/details/`.length)
-      if (!['access', 'backups', 'books', 'library', 'memory', 'versions', 'restore-check'].includes(kind)) return send(404, { error: 'not_found' })
+      if (!['access', 'backups', 'books', 'library', 'memory', 'versions', 'restore-check', 'logs'].includes(kind)) return send(404, { error: 'not_found' })
       try {
         const data = await details(kind, new URLSearchParams((req.url ?? '').split('?')[1]))
         return data === null ? send(503, { error: 'details_unavailable' }) : send(200, data)
@@ -257,8 +337,9 @@ export function createHandler(controller, events, chat, connection, now = Date.n
         const { body, status, error } = await readJson(req)
         if (status) return send(status, { error })
         if (typeof body?.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.day)) return send(400, { error: 'invalid_backup' })
-        const result = await companion.restoreDrill(body.day)
-        return send(result, { ok: result === 200 })
+        if (body.keep !== undefined && typeof body.keep !== 'boolean') return send(400, { error: 'invalid_backup' })
+        const result = await companion.restoreDrill(body.day, body.keep === true)
+        return typeof result === 'number' ? send(result, { ok: result === 200 }) : send(200, result)
       } catch { return send(503, { error: 'restore_drill_failed' }) }
     }
     if (chat && path.startsWith(`${prefix}/chat/`)) {
@@ -354,6 +435,10 @@ export function apply(ctx, config = {}) {
   } })
   const details = async (kind, query) => {
     if (kind === 'access') return summarizeConnectionConfig(readKoishiConfig())
+    if (kind === 'logs') return {
+      operations: summarizeWatchdog(tail(join(root, 'runtime', 'services-watchdog.log')), 120),
+      recall: summarizeRecallLog(tail(join(homedir(), '.dsh', 'linmengyao-memory.log'))),
+    }
     if (kind !== 'backups') return local.details(kind, query)
     const { backupEntries } = await import(pathToFileURL(join(root, 'scripts', 'backup-state.mjs')).href)
     return backupEntries(join(root, 'runtime', 'backups'))
@@ -362,32 +447,39 @@ export function apply(ctx, config = {}) {
   const token = process.env.QQBOT_ONEBOT_TOKEN
   const ownerId = manualOwner()
   const send = createNapCatManualSender({ token, ownerId })
+  const sniff = async bytes => {
+    const { sniffMime } = await import(pathToFileURL(join(root, 'packages', 'chat-bridge', 'src', 'media.ts')).href)
+    return sniffMime(bytes)
+  }
   const chat = createChat(createNapCatReader({ token }), {
     ownerId,
-    historyMedia: createHistoryMedia({ async sniffMime(bytes) {
-      const { sniffMime } = await import(pathToFileURL(join(root, 'packages', 'chat-bridge', 'src', 'media.ts')).href)
-      return sniffMime(bytes)
-    } }),
+    historyMedia: createHistoryMedia({ sniffMime: sniff }),
     send: message => {
       if (manualOwner() !== ownerId) throw Error('manual_owner_changed')
       return send(message)
     },
   })
-  const room = createCompanionRoom({ reply: createRoomReply({ key: process.env.QQBOT_LLM_API_KEY, model: config.roomModel }) })
+  const room = createCompanionRoom({ sniffMime: sniff, reply: createRoomReply({ key: process.env.QQBOT_LLM_API_KEY, model: config.roomModel }) })
+  const lane = openLanRoom(config.roomLan, room, root)
   const homeFile = resolve(process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao'), 'HOME-PUBLIC.json')
   let drilling = false
   const companion = {
     room,
+    configEditor: createConfigEditor({ file: configPath, yaml: require('js-yaml') }),
+    guestOrigin: () => lane?.origin(),
     sticker: local.sticker,
-    async restoreDrill(day) {
+    async restoreDrill(day, keep) {
       if (drilling) return 409
       drilling = true
       try {
         if (!await local.details('restore-check', new URLSearchParams({ day }))) return 404
-        await exec(process.execPath, [join(root, 'scripts', 'restore-drill.mjs'), '--backup', join(root, 'runtime', 'backups', day)], {
+        const target = keep ? `runtime/restore-drills/panel-${day}-${randomBytes(8).toString('hex')}` : null
+        const args = [join(root, 'scripts', 'restore-drill.mjs'), '--backup', join(root, 'runtime', 'backups', day)]
+        if (target) args.push('--target', join(root, target), '--keep')
+        await exec(process.execPath, args, {
           cwd: root, timeout: 660_000, windowsHide: true, maxBuffer: 16_384,
         })
-        return 200
+        return { ok: true, target }
       } finally { drilling = false }
     },
     async home() {
@@ -399,5 +491,5 @@ export function apply(ctx, config = {}) {
   const unregister = ctx.webServer.register({
     kind: 'prefix', path: prefix, handler: createHandler(controller, events, chat, ctx.connection, Date.now, details, companion),
   })
-  ctx.on('dispose', () => { room.close(); controller.dispose(); unregister() })
+  ctx.on('dispose', () => { lane?.close(); room.close(); controller.dispose(); unregister() })
 }

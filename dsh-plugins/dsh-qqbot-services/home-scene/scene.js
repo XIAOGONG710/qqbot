@@ -1,6 +1,7 @@
 import * as THREE from './three.module.min.js'
 import { box, furniture, makeLabel } from './furniture.js'
 import { homeSceneState, rooms } from './state.js'
+import { createHouseAvatar, poseForActivity } from './avatar.js'
 
 const container = document.getElementById('scene')
 const statusLine = document.getElementById('status')
@@ -56,10 +57,9 @@ const marker = new THREE.Group()
 const ring = new THREE.Mesh(new THREE.RingGeometry(0.32, 0.43, 32), new THREE.MeshBasicMaterial({ color: 0xffedb3, side: THREE.DoubleSide }))
 ring.rotation.x = -Math.PI / 2
 ring.position.y = 0.05
-const point = new THREE.Mesh(new THREE.OctahedronGeometry(0.27), new THREE.MeshBasicMaterial({ color: 0xffe6a4 }))
-point.position.y = 1.05
-point.rotation.y = Math.PI / 4
-marker.add(ring, point)
+const avatar = createHouseAvatar()
+avatar.root.rotation.y = Math.PI / 4
+marker.add(ring, avatar.root)
 marker.visible = false
 house.add(marker)
 
@@ -94,11 +94,22 @@ function buildHouse() {
   }
 }
 
-function updateStatus(snapshot, unavailable = false) {
+let animation
+function updateStatus(snapshot, unavailable = false, activity) {
   statusLine.textContent = snapshot?.label ?? (unavailable ? '暂时读不到公开状态。' : '她现在没有公开状态。')
   const location = snapshot?.marker ? rooms[snapshot.marker] : null
   marker.visible = Boolean(location)
   if (location) marker.position.set(location.x, 0, location.z)
+  cancelAnimationFrame(animation)
+  const pose = location && poseForActivity(activity)
+  if (renderer && pose) {
+    const animate = time => {
+      avatar.frame(pose, time / 1000)
+      render()
+      animation = requestAnimationFrame(animate)
+    }
+    animation = requestAnimationFrame(animate)
+  }
   render()
 }
 
@@ -128,7 +139,7 @@ async function refresh() {
     }
     const snapshot = homeSceneState(data)
     clearTimeout(expiration)
-    updateStatus(snapshot)
+    updateStatus(snapshot, false, data.status?.doing)
     if (snapshot) expiration = setTimeout(() => updateStatus(null), Math.max(0, data.status.at + 3_600_000 - Date.now()))
   } catch {
     clearTimeout(expiration)
@@ -179,5 +190,6 @@ addEventListener('pagehide', () => {
   activeRequest?.abort()
   clearTimeout(expiration)
   clearTimeout(pollTimer)
+  cancelAnimationFrame(animation)
 }, { once: true })
 void refresh()

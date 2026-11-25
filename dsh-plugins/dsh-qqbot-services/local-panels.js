@@ -49,7 +49,13 @@ export function createLocalPanels({ root, readConfig, runGit, now = () => new Da
           } catch { return null }
         }
         const [local, tracked] = await Promise.all([revision('HEAD'), revision('refs/remotes/origin/main')])
-        return { local, tracked }
+        if (query?.get('refresh') !== '1') return { local, tracked }
+        let remote = null
+        try {
+          const ref = await runGit(['ls-remote', '--exit-code', 'origin', 'refs/heads/main'])
+          remote = /^([a-f0-9]{40})\s+refs\/heads\/main\s*$/.exec(ref)?.[1] ?? null
+        } catch { /* Keep the last locally known revision. */ }
+        return { local, tracked, remote }
       }
       if (kind === 'restore-check') {
         const day = query.get('day') ?? ''
@@ -85,6 +91,11 @@ export function createLocalPanels({ root, readConfig, runGit, now = () => new Da
             if (result?.bank_id === name && Number.isSafeInteger(result.total_nodes) && result.total_nodes >= 0
               && Number.isSafeInteger(result.total_documents) && result.total_documents >= 0) {
               common = { facts: result.total_nodes, documents: result.total_documents }
+              const types = ['world', 'experience', 'observation', 'opinion'].flatMap(type => {
+                const count = result.nodes_by_fact_type?.[type]
+                return Number.isSafeInteger(count) && count >= 0 && count <= result.total_nodes ? [{ type, count }] : []
+              })
+              if (types.length && types.reduce((sum, item) => sum + item.count, 0) <= result.total_nodes) common.types = types
             }
           }
         } catch { /* Display availability without exposing Hindsight errors. */ }

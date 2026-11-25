@@ -2,6 +2,16 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createHandler } from '../dsh-plugins/dsh-qqbot-services/index.js'
 import { homeSceneState } from '../dsh-plugins/dsh-qqbot-services/home-scene/state.js'
+import { createHouseAvatar, poseForActivity } from '../dsh-plugins/dsh-qqbot-services/home-scene/avatar.js'
+
+test('published activities select an original in-place pose, without inventing movement across rooms', () => {
+  const avatar = createHouseAvatar()
+  assert.equal(poseForActivity('reading'), 'book')
+  assert.equal(poseForActivity('hidden-private-activity'), null)
+  avatar.frame(poseForActivity('walking'), 2)
+  assert.deepEqual(avatar.root.position.toArray(), [0, 0, 0])
+  assert.ok(avatar.root.children[0].position.y > 0)
+})
 
 test('the 3D marker follows only a current, recognized publication', () => {
   const at = 1000

@@ -4,11 +4,14 @@ const token = () => randomBytes(24).toString('base64url')
 const inviteLifetime = 15 * 60_000
 const guestLifetime = 8 * 60 * 60_000
 const ambientGap = 90_000
+export const roomMediaLimit = 512 * 1024
+const roomMediaTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'audio/wav', 'audio/mpeg', 'audio/ogg', 'audio/webm'])
 const cleanName = value => typeof value === 'string' ? value.trim().replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 24) : ''
 
-export function createCompanionRoom({ now = Date.now, reply } = {}) {
+export function createCompanionRoom({ now = Date.now, reply, sniffMime } = {}) {
   const invites = new Map()
   const guests = new Map()
+  const attachments = new Map()
   let messages = []
   let generation = 0
   let nextMessage = 0
@@ -24,9 +27,12 @@ export function createCompanionRoom({ now = Date.now, reply } = {}) {
     return guest?.until > now() ? guest : null
   }
 
-  function append(role, name, text) {
-    messages.push({ id: ++nextMessage, role, name, text, at: now() })
-    if (messages.length > 100) messages.shift()
+  function append(role, name, text, media) {
+    messages.push({ id: ++nextMessage, role, name, text, at: now(), ...(media ? { media } : {}) })
+    if (messages.length > 100) {
+      const removed = messages.shift()
+      if (removed.media) attachments.delete(removed.id)
+    }
   }
 
   async function consider(turn) {
@@ -75,6 +81,26 @@ export function createCompanionRoom({ now = Date.now, reply } = {}) {
       const author = member(credential, isOwner)
       return author ? messages.filter(row => row.id > (author.after ?? 0)).map(row => ({ ...row })) : null
     },
+    async postMedia(credential, body, isOwner = false) {
+      if (!member(credential, isOwner)) return 403
+      if (!Buffer.isBuffer(body) || !body.length || body.length > roomMediaLimit || !sniffMime) return 415
+      const epoch = generation
+      const type = await sniffMime(body)
+      const author = member(credential, isOwner)
+      if (!author || epoch !== generation) return 403
+      if (!roomMediaTypes.has(type)) return 415
+      const time = now()
+      if (time - author.last < 1000 || attachments.size >= 16) return 429
+      author.last = time
+      const kind = type.startsWith('image/') ? 'image' : 'audio'
+      append(author.role, author.name, kind === 'image' ? '[房间图片]' : '[房间语音]', kind)
+      attachments.set(nextMessage, { type, body: Buffer.from(body) })
+      return 200
+    },
+    media(credential, id, isOwner = false) {
+      const author = member(credential, isOwner)
+      return author && id > (author.after ?? 0) ? attachments.get(id) ?? null : null
+    },
     async post(credential, text, isOwner = false) {
       const author = member(credential, isOwner)
       if (!author) return 403
@@ -101,6 +127,7 @@ export function createCompanionRoom({ now = Date.now, reply } = {}) {
       owner.last = -Infinity
       guests.clear()
       invites.clear()
+      attachments.clear()
     },
   }
 }

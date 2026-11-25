@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createCompanionRoom, createRoomReply } from '../dsh-plugins/dsh-qqbot-services/companion-room.js'
 import { publishedHomeStatus } from '../dsh-plugins/dsh-linmengyao-memory/home-status.js'
-import { createHandler } from '../dsh-plugins/dsh-qqbot-services/index.js'
+import { createHandler, createLanGuestHandler } from '../dsh-plugins/dsh-qqbot-services/index.js'
 
 test('guests redeem one-use invites; replies only run on room messages and can decline', async () => {
   let now = 1000
@@ -120,4 +120,38 @@ test('a newly invited guest does not receive content from the previous audience 
   await room.post(newGuest, '@林梦瑶 新话题')
   assert.deepEqual(contexts[1].map(item => item.text), ['@林梦瑶 新话题'])
   assert.doesNotMatch(JSON.stringify(room.view(newGuest)), /入场前/)
+})
+
+test('the LAN listener exposes no owner routes and media stays scoped to room membership', async () => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex')
+  const room = createCompanionRoom({ sniffMime: bytes => bytes.equals(png) ? 'image/png' : undefined })
+  const origin = 'https://192.168.50.5:4443'
+  const handler = createLanGuestHandler(room, origin)
+  const call = async (path, options = {}) => {
+    let status, body
+    await handler({
+      method: options.method ?? 'POST', url: '/api/qqbot-services/' + path,
+      socket: { encrypted: options.encrypted ?? true, remoteAddress: '192.168.50.24' },
+      headers: { host: '192.168.50.5:4443', origin, 'x-qqbot-service-panel': '1',
+        'content-type': options.type ?? 'application/json', ...options.headers },
+      async *[Symbol.asyncIterator]() { yield options.bytes ?? JSON.stringify(options.body ?? {}) },
+    }, { writeHead(code) { status = code }, end(value) { body = value } })
+    return { status, body }
+  }
+  assert.equal((await call('room/owner/invite')).status, 404)
+  assert.equal((await call('details/access', { method: 'GET' })).status, 404)
+  assert.equal((await call('room/guest/join', { encrypted: false })).status, 403)
+  assert.equal((await call('room/guest/join', { headers: { origin: 'https://other.invalid' } })).status, 403)
+  const join = await call('room/guest/join', { body: { invitation: room.invite(), name: '远端来宾' } })
+  const credential = JSON.parse(join.body).credential
+  const headers = { authorization: `Bearer ${credential}` }
+  assert.equal((await call('room/guest/upload', { headers, bytes: png, type: 'application/octet-stream' })).status, 200)
+  const { id, media } = room.view(credential)[0]
+  assert.equal(media, 'image')
+  assert.equal((await call(`room/guest/media/${id}`, { method: 'GET' })).status, 404)
+  assert.deepEqual((await call(`room/guest/media/${id}`, { method: 'GET', headers })).body, png)
+  const late = room.join(room.invite(), '后来者')
+  assert.equal((await call(`room/guest/media/${id}`, { method: 'GET', headers: { authorization: `Bearer ${late}` } })).status, 404)
+  room.close()
+  assert.equal((await call(`room/guest/media/${id}`, { method: 'GET', headers })).status, 404)
 })

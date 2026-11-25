@@ -6,12 +6,16 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { createLocalPanels } from '../dsh-plugins/dsh-qqbot-services/local-panels.js'
 import { createHandler } from '../dsh-plugins/dsh-qqbot-services/index.js'
+import { summarizeRecallLog } from '../dsh-plugins/dsh-qqbot-services/index.js'
+import { createConfigEditor } from '../dsh-plugins/dsh-qqbot-services/config-editor.js'
+import { createRequire } from 'node:module'
 import { createHistoryMedia } from '../dsh-plugins/dsh-qqbot-services/history-media.js'
 import { sniffMime } from '../packages/chat-bridge/src/media.ts'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const card = 'packages/bot/test/fixtures/synthetic-character/st/synthetic-{tier}.json'
 const sha = 'a'.repeat(40)
+const yaml = createRequire(import.meta.url)('js-yaml')
 const make = plugin => createLocalPanels({
   root, readConfig: () => ({ plugins: { qqbot: { contacts: [{ qq: 123, tier: 'boyfriend' }], characterCard: card, ...plugin } } }),
   now: () => new Date('2026-11-25T12:00:00Z'),
@@ -143,4 +147,45 @@ test('QQ inline media uses opaque expiring references and only fetches supported
   assert.equal(calls.length, 2)
   now += 300_000
   assert.equal(await media.read(refs[0].id), null)
+})
+
+test('config import previews an allowlisted edit and applies once only if the local revision matches', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'qqbot-config-editor-'))
+  try {
+    const file = join(dir, 'koishi.yml')
+    const original = { plugins: { qqbot: { contacts: [{ qq: 100, name: '原名', tier: 'boyfriend', knowsBot: true }],
+      oneDiary: false, databasePassword: 'mock-secret', proactive: 'off' }, other: { untouched: true } } }
+    writeFileSync(file, yaml.dump(original))
+    const edit = createConfigEditor({ file, yaml })
+    const patch = { contacts: [{ qq: 100, name: '测试新名', tier: 'boyfriend' }], modes: { proactive: 'dryRun' } }
+    assert.equal(edit.preview({ ...patch, modes: { oneDiary: 'on' } }, 'A').status, 400)
+    assert.equal(edit.preview({ ...patch, contacts: [{ qq: 222, name: '其他', tier: 'boyfriend' }] }, 'A').status, 400)
+    const planned = edit.preview(patch, 'A')
+    assert.equal(planned.status, 200)
+    assert.doesNotMatch(JSON.stringify(planned), /mock-secret/)
+    assert.equal(edit.apply(planned.ticket, 'B').status, 403)
+    assert.equal(edit.apply(planned.ticket, 'A').status, 200)
+    assert.equal(edit.apply(planned.ticket, 'A').status, 403)
+    const changed = yaml.load(readFileSync(file, 'utf8'))
+    assert.equal(changed.plugins.qqbot.contacts[0].knowsBot, true)
+    assert.equal(changed.plugins.qqbot.contacts[0].name, '测试新名')
+    assert.equal(changed.plugins.qqbot.proactive, 'dryRun')
+    assert.equal(changed.plugins.qqbot.oneDiary, false)
+    assert.equal(changed.plugins.qqbot.databasePassword, 'mock-secret')
+    assert.deepEqual(changed.plugins.other, original.plugins.other)
+    const next = edit.preview(patch, 'A')
+    writeFileSync(file, yaml.dump(original))
+    assert.equal(edit.apply(next.ticket, 'A').status, 409)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('panel diagnostics never return old query text or raw error messages', () => {
+  const at = '2026-11-25T00:00:00.000Z'
+  const lines = [
+    `${at} recall q=synthetic private text items=2`,
+    `${at} recall error synthetic private error`,
+    `${at} recall items=1 selected=1 memoryChars=20 important=matched failedBanks=0`,
+    `${at} recall items=1 selected=1 memoryChars=20 important=matched failedBanks=0 extra-content`,
+  ]
+  assert.deepEqual(summarizeRecallLog(lines), [{ at, items: 1, selected: 1, chars: 20, important: 'matched', failed: 0 }])
 })
