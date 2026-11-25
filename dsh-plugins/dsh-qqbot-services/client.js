@@ -1143,6 +1143,8 @@ window.__ModuleLoader__.load({
               kv('轮数', `${count(week.turns)}（回他 ${count(week.replyTurns)} / 自己找他 ${count(week.proactiveTurns)} / 接着说 ${count(week.followOnTurns)}）`),
               ...Object.entries(metricLabels).filter(([key]) => key !== 'turns').map(([key, [label, kind]]) => kv(label, metricText(kind, metricOf(week, key)))),
               kv('有延迟可算的轮', count(week.latency?.count)),
+              // 他的反馈（他在 QQ 里回「假」「像」，ADR 0073）：最直接的效果信号，只有条数
+              kv('他的反馈', data.feedback ? `说「假」${count(data.feedback.fake)} 次 · 说「像」${count(data.feedback.real)} 次` : '没有记录'),
               list.length > 0 && h('h4', null, '按天'),
               list.length > 0 && h('div', { className: 'qqb-scroll' }, h('table', { className: 'qqb-table' },
                 h('thead', null, h('tr', null, ...['日期', '他发', '她轮数', '回/主动/接着', '平均字', '助手腔', '重复', '叮嘱', '问句结尾', '被纠正', '延迟中位']

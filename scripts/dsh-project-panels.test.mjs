@@ -311,3 +311,23 @@ test('子进程回来的东西再过一遍白名单：字符串、文件名、�
   assert.deepEqual(inventory.firstDay, '2026-11-17')
   assert.equal(inventory.files, 1)
 })
+
+test('效果数带他的反馈：窗口里「假」「像」各几条，上下文不读出来', async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import('node:fs')
+  const dir = join(root, 'data', 'feedback')
+  mkdirSync(dir, { recursive: true })
+  const row = (at, label) => JSON.stringify({ at, label, turn: { text: 'SECRET_FEEDBACK_TURN' }, context: [{ content: 'SECRET_FEEDBACK_CONTEXT' }] })
+  writeFileSync(join(dir, '2026-11.jsonl'), [
+    row('2026-11-14T04:00:00.000Z', 'fake'),
+    row('2026-11-15T04:00:00.000Z', 'real'),
+    row('2026-11-16T04:00:00.000Z', 'real'),
+    row('2026-11-10T04:00:00.000Z', 'fake'), // 窗口前
+    row('2026-11-20T04:00:00.000Z', 'fake'), // 窗口后（窗口到昨天）
+    '{坏行',
+  ].join('\n') + '\n')
+  try {
+    const view = await panels().metrics({ days: 7 })
+    assert.deepEqual(view.feedback, { fake: 1, real: 2 })
+    assert.doesNotMatch(JSON.stringify(view), /SECRET_FEEDBACK/)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})

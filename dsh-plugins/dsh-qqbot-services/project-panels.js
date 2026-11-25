@@ -164,7 +164,7 @@ export function createProjectPanels({ root, readConfig, dataDir, now = () => new
       const until = shiftDay(zoned(now(), zone).day, -1)
       const key = `${directory}|${zone}|${until}|${count}`
       return metricsJobs(key, async () => {
-        const { result, previous } = await run('metrics', { root, directory, until, count }, { root, timeZone: zone, timeout: 120_000 })
+        const { result, feedback, previous } = await run('metrics', { root, directory, until, count }, { root, timeZone: zone, timeout: 120_000 })
         const at = previous && typeof previous.at === 'string' ? Date.parse(previous.at) : NaN
         return {
           available: true,
@@ -173,6 +173,8 @@ export function createProjectPanels({ root, readConfig, dataDir, now = () => new
           zone: { used: zone, configured },
           week: numbersOnly(result?.week) ?? {},
           days: (Array.isArray(result?.days) ? result.days : []).map(day => ({ day: DAY.test(day?.day) ? day.day : '?', ...numbersOnly({ ...day, day: undefined }) })),
+          // 他的反馈（他回「假」「像」）：只有这个窗口里各几条
+          feedback: feedback && Number.isSafeInteger(feedback.fake) && Number.isSafeInteger(feedback.real) ? { fake: feedback.fake, real: feedback.real } : null,
           previous: previous ? { at: Number.isFinite(at) ? new Date(at).toISOString() : null, deltas: numbersOnly(previous.deltas) ?? {} } : null,
         }
       })

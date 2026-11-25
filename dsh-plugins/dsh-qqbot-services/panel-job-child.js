@@ -62,6 +62,29 @@ function readOnlyMetricsData(directory, ChatHistory) {
   return { chats, proactiveIds }
 }
 
+/**
+ * 他的反馈（emotion/feedback.ts，ADR 0073：他回「假」「像」）：feedback/YYYY-MM.jsonl 每行只取 at 和 label，
+ * 上下文（那一轮的聊天）一律不读出来；只数窗口 [from, to) 里的。链接、太大的文件跳过。
+ */
+function feedbackCounts(directory, from, to) {
+  const dir = join(directory, 'feedback')
+  const counts = { fake: 0, real: 0 }
+  if (!realDirectory(dir)) return null
+  for (const name of readdirSync(dir).filter(file => /^\d{4}-\d{2}\.jsonl$/.test(file)).sort()) {
+    if (!ordinary(join(dir, name), STATE_MAX)) continue
+    for (const line of readFileSync(join(dir, name), 'utf8').split('\n')) {
+      if (!line.trim()) continue
+      try {
+        const row = JSON.parse(line)
+        const at = typeof row?.at === 'string' ? Date.parse(row.at) : NaN
+        if (!Number.isFinite(at) || at < from || at >= to) continue
+        if (row.label === 'fake' || row.label === 'real') counts[row.label]++
+      } catch { /* 坏行跳过 */ }
+    }
+  }
+  return counts
+}
+
 const jobs = {
   /** 效果数：{ root, directory, until, count } → { result, previous: { at, deltas } | null } */
   async metrics({ root, directory, until, count }) {
@@ -72,7 +95,8 @@ const jobs = {
     const result = w.computeWeeklyMetrics({ chats, proactiveIds, ...w.windowOf(until, count), scope: 'all' })
     const logPath = w.metricsLogPath(directory)
     const previous = ordinary(logPath, STATE_MAX) ? w.previousRun(logPath, 'all') : undefined
-    return { result, previous: previous ? { at: previous.at, deltas: w.compareMetrics(previous.week, result.week) } : null }
+    const feedback = feedbackCounts(directory, Date.parse(result.from), Date.parse(result.to))
+    return { result, feedback, previous: previous ? { at: previous.at, deltas: w.compareMetrics(previous.week, result.week) } : null }
   },
 
   /** 提示词构成：{ root, logs } → { days: string[], inventory } （没有清单时 days 为空、没有 inventory） */
