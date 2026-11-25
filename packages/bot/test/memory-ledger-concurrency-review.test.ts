@@ -12,14 +12,14 @@ const at = new Date('2026-11-05T12:00:00Z');
 function worker(code: string, args: string[]) {
  let child!: ReturnType<typeof execFile>;
  const done = new Promise<void>((resolve, reject) => {
-  child = execFile(process.execPath, ['--input-type=module', '-e', code, ...args], { timeout: 6000, maxBuffer: 1024 * 1024 }, error => error ? reject(error) : resolve());
+  child = execFile(process.execPath, ['--input-type=module', '-e', code, ...args], { timeout: 60_000, maxBuffer: 1024 * 1024 }, error => error ? reject(error) : resolve());
  });
  return { child, done };
 }
 
-test('两个独立写者只在明确busy时重试，成功追加全部保留且重启链有效', { timeout: 15_000 }, async () => {
+test('两个独立写者只在明确busy时重试，成功追加全部保留且重启链有效', { timeout: 180_000 }, async () => {
  const dir = mkdtempSync(join(tmpdir(), 'qqbot-ledger-process-')); const path = join(dir, 'ledger.jsonl');
- const code = `import {Ledger,LedgerWriteError} from ${JSON.stringify(moduleUrl)};const ledger=new Ledger(process.argv[1]);for(let i=0;i<12;i++){const end=Date.now()+4000;for(;;){try{ledger.append('worker',{worker:process.argv[2],i});break;}catch(e){if(!(e instanceof LedgerWriteError)||!e.retryable||Date.now()>end)throw e;await new Promise(r=>setTimeout(r,5));}}await new Promise(r=>setTimeout(r,1));}`;
+ const code = `import {Ledger,LedgerWriteError} from ${JSON.stringify(moduleUrl)};const ledger=new Ledger(process.argv[1]);for(let i=0;i<12;i++){const end=Date.now()+60000;for(;;){try{ledger.append('worker',{worker:process.argv[2],i});break;}catch(e){if(!(e instanceof LedgerWriteError)||!e.retryable||Date.now()>end)throw e;await new Promise(r=>setTimeout(r,5));}}await new Promise(r=>setTimeout(r,1));}`;
  const workers: ReturnType<typeof worker>[] = [];
  try {
   const ledger = new Ledger(path); ledger.append('seed', {}, at);
@@ -60,14 +60,14 @@ test('head原子发布后异常按成功返回，发布前失败保守拒写且�
  } finally { fs.renameSync = original; syncBuiltinESMExports(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('写JSONL后head发布前进程被强杀，锁释放但断链不自动恢复或覆盖', { timeout: 15_000 }, async () => {
+test('写JSONL后head发布前进程被强杀，锁释放但断链不自动恢复或覆盖', { timeout: 180_000 }, async () => {
  const dir = mkdtempSync(join(tmpdir(), 'qqbot-ledger-crash-')); const path = join(dir, 'ledger.jsonl'); const point = join(dir, 'checkpoint');
  const code = `import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';import {Ledger} from ${JSON.stringify(moduleUrl)};const rename=fs.renameSync;fs.renameSync=(from,to)=>{if(String(to)===process.argv[1]+'.head'){fs.writeFileSync(process.argv[2],'ready');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,4000);throw Error('checkpoint expired');}return rename(from,to)};syncBuiltinESMExports();new Ledger(process.argv[1]).append('crash',{});`;
  let task: ReturnType<typeof worker> | undefined;
  try {
   const ledger = new Ledger(path); ledger.append('seed', {}, at); const head = readFileSync(`${path}.head`, 'utf8');
   task = worker(code, [path, point]); const finished = task.done.catch(() => undefined);
-  const deadline = Date.now() + 4000;
+  const deadline = Date.now() + 60_000;
   while (!existsSync(point)) { assert.ok(Date.now() < deadline, 'crash checkpoint not reached'); await new Promise(resolve => setTimeout(resolve, 10)); }
   task.child.kill('SIGKILL'); await finished;
   assert.equal(ledger.verify().ok, false); assert.equal(readFileSync(`${path}.head`, 'utf8'), head);

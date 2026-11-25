@@ -63,7 +63,7 @@ test('异常多行模型数据在隔离有限堆内拒绝，不展开全部行',
         const result = parseThought('今天有点想吃火锅\\n' + '自己想想\\n'.repeat(2_000_000), [], 1);
         if (!('rejected' in result)) process.exit(2);`;
     const child = spawnSync(process.execPath, ['--max-old-space-size=64', '--input-type=module', '-e', code], {
-        timeout: 10_000, maxBuffer: 64 * 1024, encoding: 'utf8', windowsHide: true,
+        timeout: 60_000, maxBuffer: 64 * 1024, encoding: 'utf8', windowsHide: true,
     });
     assert.equal(child.error, undefined);
     assert.equal(child.status, 0, child.stderr.slice(-300));

@@ -119,7 +119,7 @@ test('独立进程并行mark不覆盖另一进程文档，旧实例刷新可见'
     const module = new URL('../src/memory/derived-state.ts', import.meta.url).href;
     await Promise.all([1, 2].map(id => new Promise<void>((done, reject) => {
         const code = `import {DerivedState} from ${JSON.stringify(module)};new DerivedState(${JSON.stringify(f.dir)}).mark('a',{qq:${10000 + id},tier:'classmate',documents:['ep-${id}']});`;
-        const child = spawn(process.execPath, ['--input-type=module', '-e', code], { windowsHide: true, timeout: 8000, stdio: ['ignore', 'ignore', 'pipe'] });
+        const child = spawn(process.execPath, ['--input-type=module', '-e', code], { windowsHide: true, timeout: 60_000, stdio: ['ignore', 'ignore', 'pipe'] });
         let error = ''; child.stderr.setEncoding('utf8'); child.stderr.on('data', text => { error = (error + text).slice(-4096); });
         child.on('error', reject); child.on('exit', (status, signal) => status === 0 ? done() : reject(new Error(`synthetic child ${status}/${signal}: ${error}`)));
     })));

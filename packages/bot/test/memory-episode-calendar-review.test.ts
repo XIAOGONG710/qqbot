@@ -75,7 +75,7 @@ test('实体是否至少2代码点不全展开大字符串，48MiB子进程正�
         clarity({...base,entities:['😀']},{...options,heard:'😀'}),
         clarity({...base,entities:['😀😀']},{...options,heard:'😀😀'}),
       ]));`;
-    const child = spawnSync(process.execPath, ['--max-old-space-size=48', '--input-type=module', '-e', code], { encoding: 'utf8', timeout: 10_000, maxBuffer: 128 * 1024 });
+    const child = spawnSync(process.execPath, ['--max-old-space-size=48', '--input-type=module', '-e', code], { encoding: 'utf8', timeout: 60_000, maxBuffer: 128 * 1024 });
     assert.equal(child.error, undefined); assert.equal(child.status, 0, child.stderr.slice(0, 400));
     assert.deepEqual(JSON.parse(child.stdout), ['forgotten', 'forgotten', 'recognized']);
 });

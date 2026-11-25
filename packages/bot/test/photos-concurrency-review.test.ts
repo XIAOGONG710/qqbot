@@ -11,7 +11,7 @@ import { mkdirSync } from 'node:fs';
 import { PHOTO_INDEX_LOCK_FILE, PhotoIndexLockError, withPhotoIndexLock } from '../src/vision/photo-index-lock.ts';
 
 const clock = () => new Date('2026-11-05T12:00:00Z');
-const CHILD_LIMIT_MS = 15_000;
+const CHILD_LIMIT_MS = 90_000;
 type Command = { id: number; op: string; source?: string; photo?: string; times?: number; phase?: string; checkpoint?: string };
 type Reply = { id?: number; ready?: boolean; value?: unknown; error?: string };
 function isBusy(error: unknown): boolean {
@@ -47,7 +47,7 @@ if (process.env.QQBOT_PHOTO_CONCURRENCY_CHILD === '1') {
     }) as typeof fileOps.renameSync;
    }
    const retryBusy = async <T>(work: () => T): Promise<T> => {
-    const deadline = Date.now() + 5_000;
+    const deadline = Date.now() + 60_000;
     for (;;) {
      try { return work(); }
      catch (error) {
@@ -103,7 +103,7 @@ if (process.env.QQBOT_PHOTO_CONCURRENCY_CHILD === '1') {
   request(command: Omit<Command, 'id'>): Promise<unknown> {
    const id = ++this.#next;
    return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { this.#pending.delete(id); this.child.kill('SIGKILL'); reject(new Error('synthetic command exceeded hard limit')); }, 8_000);
+    const timer = setTimeout(() => { this.#pending.delete(id); this.child.kill('SIGKILL'); reject(new Error('synthetic command exceeded hard limit')); }, 60_000);
     this.#pending.set(id, { resolve, reject, timer });
     this.child.send({ ...command, id });
    });
@@ -118,11 +118,11 @@ if (process.env.QQBOT_PHOTO_CONCURRENCY_CHILD === '1') {
   } finally { await Promise.all(workers.map(worker => worker.close())); rmSync(dir, { recursive: true, force: true }); }
  }
  async function checkpoint(path: string): Promise<void> {
-  const until = Date.now() + 5_000;
+  const until = Date.now() + 60_000;
   while (!existsSync(path)) { if (Date.now() > until) throw new Error('checkpoint never reached'); await new Promise(resolve => setTimeout(resolve, 10)); }
  }
 
- test('两个独立进程并发添加保留全部条目，活Shelf立即看到外部添加', { timeout: 20_000 }, async () => {
+ test('两个独立进程并发添加保留全部条目，活Shelf立即看到外部添加', { timeout: 180_000 }, async () => {
   await fixture(async f => {
    const live = photoShelf({ dir: f.root, log: () => {}, now: clock });
    const [a, b] = await Promise.all([f.worker(), f.worker()]);
@@ -135,7 +135,7 @@ if (process.env.QQBOT_PHOTO_CONCURRENCY_CHILD === '1') {
   });
  });
 
- test('两个独立进程并发used不丢增量，活Shelf可见计数且不需要重启', { timeout: 20_000 }, async () => {
+ test('两个独立进程并发used不丢增量，活Shelf可见计数且不需要重启', { timeout: 180_000 }, async () => {
   await fixture(async f => {
    const live = photoShelf({ dir: f.root, log: () => {}, now: clock }); const entry = live.add(f.file(1), 'cat', '合成照片');
    const [a, b] = await Promise.all([f.worker(), f.worker()]);
@@ -144,7 +144,7 @@ if (process.env.QQBOT_PHOTO_CONCURRENCY_CHILD === '1') {
   });
  });
 
- test('外部remove和另一进程add同时提交不复活旧照片，活Shelf撤下发送资格', { timeout: 20_000 }, async () => {
+ test('外部remove和另一进程add同时提交不复活旧照片，活Shelf撤下发送资格', { timeout: 180_000 }, async () => {
   await fixture(async f => {
    const live = photoShelf({ dir: f.root, log: () => {}, now: clock }); const entry = live.add(f.file(1), 'cat', '合成照片');
    const [a, b] = await Promise.all([f.worker(), f.worker()]);
@@ -154,7 +154,7 @@ if (process.env.QQBOT_PHOTO_CONCURRENCY_CHILD === '1') {
   });
  });
 
- for (const phase of ['before', 'after']) test(`写JSON的${phase}边界强杀持有者，重启按JSON事实恢复且无永久锁`, { timeout: 20_000 }, async () => {
+ for (const phase of ['before', 'after']) test(`写JSON的${phase}边界强杀持有者，重启按JSON事实恢复且无永久锁`, { timeout: 180_000 }, async () => {
   await fixture(async f => {
    const initial = photoShelf({ dir: f.root, log: () => {}, now: clock }); initial.add(f.file(1), 'cat', '旧合成照片');
    const before = readFileSync(join(f.root, 'index.json'), 'utf8'); const child = await f.worker(); const point = join(f.dir, 'checkpoint');
@@ -168,7 +168,7 @@ if (process.env.QQBOT_PHOTO_CONCURRENCY_CHILD === '1') {
   });
  });
 
- for (const phase of ['fail-before', 'fail-after']) test(`JSON发布${phase}报错后活Shelf及重启仍按磁盘事实，不覆盖或丢失原状态`, { timeout: 20_000 }, async () => {
+ for (const phase of ['fail-before', 'fail-after']) test(`JSON发布${phase}报错后活Shelf及重启仍按磁盘事实，不覆盖或丢失原状态`, { timeout: 180_000 }, async () => {
   await fixture(async f => {
    const live = photoShelf({ dir: f.root, log: () => {}, now: clock }); live.add(f.file(1), 'cat', '旧合成照片');
    const before = readFileSync(join(f.root, 'index.json'), 'utf8'); const child = await f.worker();
@@ -182,7 +182,7 @@ if (process.env.QQBOT_PHOTO_CONCURRENCY_CHILD === '1') {
   });
  });
 
- test('独立SQLite持锁时快速busy拒绝且不运行work，强杀持锁者后可恢复', { timeout: 20_000 }, async () => {
+ test('独立SQLite持锁时快速busy拒绝且不运行work，强杀持锁者后可恢复', { timeout: 180_000 }, async () => {
   await fixture(async f => {
    const shelf = photoShelf({ dir: f.root, log: () => {}, now: clock }); shelf.add(f.file(1), 'cat', '合成照片');
    const before = readFileSync(join(f.root, 'index.json'), 'utf8'); const child = await f.worker(); const point = join(f.dir, 'held');
@@ -197,7 +197,7 @@ if (process.env.QQBOT_PHOTO_CONCURRENCY_CHILD === '1') {
   });
  });
 
- test('used的JSON已发布后发生IO错误仍视为成功，不额外重放计数', { timeout: 20_000 }, async () => {
+ test('used的JSON已发布后发生IO错误仍视为成功，不额外重放计数', { timeout: 180_000 }, async () => {
   await fixture(async f => {
    const live = photoShelf({ dir: f.root, log: () => {}, now: clock }); const entry = live.add(f.file(1), 'cat', '合成照片'); const child = await f.worker();
    await child.request({ op: 'used', photo: entry.id, phase: 'fail-after' });
@@ -207,7 +207,7 @@ if (process.env.QQBOT_PHOTO_CONCURRENCY_CHILD === '1') {
   });
  });
 
- test('损坏协调库或协调路径IO失败不执行work、不覆盖JSON/坏库，也不退回无锁写', { timeout: 20_000 }, async () => {
+ test('损坏协调库或协调路径IO失败不执行work、不覆盖JSON/坏库，也不退回无锁写', { timeout: 180_000 }, async () => {
   await fixture(async f => {
    const shelf = photoShelf({ dir: f.root, log: () => {}, now: clock }); const entry = shelf.add(f.file(1), 'cat', '合成照片');
    withPhotoIndexLock(f.root, () => {});

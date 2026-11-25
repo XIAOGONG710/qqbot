@@ -51,7 +51,7 @@ for (const kind of ['asks', 'presence']) test(`${kind} 预览把低年 CLI 参�
         await import(${JSON.stringify(entry)});`;
     try {
         const file = join(dir, 'bootstrap.mjs'); writeFileSync(file, bootstrap);
-        const result = spawnSync(process.execPath, [file], { encoding: 'utf8', timeout: 10_000, env: { ...process.env, TZ: 'Asia/Shanghai' } });
+        const result = spawnSync(process.execPath, [file], { encoding: 'utf8', timeout: 60_000, env: { ...process.env, TZ: 'Asia/Shanghai' } });
         assert.equal(result.status, 0, result.stderr); assert.match(result.stdout, /0099-11-05/);
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });

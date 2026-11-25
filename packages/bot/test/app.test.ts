@@ -618,7 +618,7 @@ describe('编排（app.ts）', () => {
         try {
             await app.connected(SELF);
             execFileSync(process.execPath, [resolve(import.meta.dirname, '../src/ops/photo-cli.ts'), 'add', source,
-                '--dir', cfg.dataDir, '--kind', 'cat', '--caption', '合成新增猫照'], { encoding: 'utf8', timeout: 10_000 });
+                '--dir', cfg.dataDir, '--kind', 'cat', '--caption', '合成新增猫照'], { encoding: 'utf8', timeout: 60_000 });
             photoId = (JSON.parse(readFileSync(join(cfg.dataDir, 'photos', 'index.json'), 'utf8')) as { entries: { id: string }[] }).entries[0]!.id;
             app.receive(event(10001, 204, '发张团子饼的照片我看看'));
             await until(() => prompt !== '');

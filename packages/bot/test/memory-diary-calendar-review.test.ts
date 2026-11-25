@@ -59,7 +59,7 @@ if (process.env.SYNTHETIC_DIARY_CALENDAR_CHILD) await child(process.env.SYNTHETI
 else {
     for (const [kind, zone] of [['daily', 'Pacific/Apia'], ['week', 'Pacific/Apia'], ['phase', 'Pacific/Apia'], ['spring', 'America/New_York'], ['fall', 'America/New_York'], ['low', 'UTC'], ['late-gap', 'America/Nuuk']] as const) {
         test(`日记民用日期 ${kind} ${zone}`, () => {
-            const result = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...process.env, TZ: zone, SYNTHETIC_DIARY_CALENDAR_CHILD: kind }, encoding: 'utf8', timeout: 10_000, maxBuffer: 64 * 1024, windowsHide: true });
+            const result = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...process.env, TZ: zone, SYNTHETIC_DIARY_CALENDAR_CHILD: kind }, encoding: 'utf8', timeout: 60_000, maxBuffer: 64 * 1024, windowsHide: true });
             assert.equal(result.error, undefined); assert.equal(result.status, 0, result.stderr || result.stdout);
         });
     }

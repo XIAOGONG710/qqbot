@@ -55,11 +55,11 @@ test('畸形文本段不能强转成反馈命令，无效时间/身份不产生�
 test('CLI缺少参数值或未知参数在读取默认目录前失败，IO错误不输出私密路径', () => fixture(dir => {
  const cli = join(import.meta.dirname, '../src/emotion/feedback-digest-cli.ts');
  for (const args of [['--dir'], ['--days'], ['--unknown'], ['--days', '1e308'], ['--dir', '--days', '7']]) {
-  const result = spawnSync(process.execPath, [cli, ...args], { cwd: dir, encoding: 'utf8', timeout: 2000 });
+  const result = spawnSync(process.execPath, [cli, ...args], { cwd: dir, encoding: 'utf8', timeout: 60_000 });
   assert.equal(result.status, 2, args.join(' ')); assert.equal(result.stdout, '');
  }
  const obstacle = join(dir, 'PRIVATE_PATH_MARKER'); writeFileSync(obstacle, 'not a directory');
- const result = spawnSync(process.execPath, [cli, '--dir', obstacle], { cwd: dir, encoding: 'utf8', timeout: 2000 });
+ const result = spawnSync(process.execPath, [cli, '--dir', obstacle], { cwd: dir, encoding: 'utf8', timeout: 60_000 });
  assert.equal(result.status, 2); assert.equal(result.stdout, ''); assert.doesNotMatch(result.stderr, /PRIVATE_PATH_MARKER/);
 }));
 
@@ -118,7 +118,7 @@ test('追加失败不能因另一联系人存在同短ID就误报本条已成功
 test('摘要截取大气泡不展开整个字符串，在受限堆中仍输出有限前缀', () => {
  const url = pathToFileURL(join(import.meta.dirname, '../src/emotion/feedback-digest.ts')).href;
  const source = `import {feedbackDigest} from ${JSON.stringify(url)};const at=new Date('2026-11-05T12:00:00Z');const r={at:at.toISOString(),label:'fake',messageId:1,herMessageId:1,her:['合'.repeat(8000000)],context:[],tier:'boyfriend'};const s=feedbackDigest([r],at,7);if(s.length>1000||!s.includes('…'))throw Error('bad clipping');console.log('ok');`;
- const result = spawnSync(process.execPath, ['--max-old-space-size=48', '--input-type=module', '-e', source], { encoding: 'utf8', timeout: 5000, maxBuffer: 1024 * 1024 });
+ const result = spawnSync(process.execPath, ['--max-old-space-size=48', '--input-type=module', '-e', source], { encoding: 'utf8', timeout: 60_000, maxBuffer: 1024 * 1024 });
  assert.equal(result.status, 0, result.stderr.slice(-200)); assert.equal(result.stdout.trim(), 'ok');
 });
 

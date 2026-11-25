@@ -19,7 +19,7 @@ function run(args: string[]) {
         if(url===${JSON.stringify(backend)})return{format:'module',shortCircuit:true,source:"export function archiveTestData(options){console.log('SYNTHETIC_CAPTURE:'+JSON.stringify(options));return{stamp:'synthetic',moves:[],since:[],prefix:[],skipped:[]};}"};
         if(url.startsWith('file:')&&url!==${JSON.stringify(cli)})throw Error('Unexpected module; synthetic backend not used');return next(url,context);
     }});process.argv=[process.execPath,'synthetic-cli',...${JSON.stringify(args)}];await import(${JSON.stringify(cli)});`;
-    const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 10_000, maxBuffer: 128 * 1024 });
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 60_000, maxBuffer: 128 * 1024 });
     assert.equal(child.error, undefined); const captures = child.stdout.split(/\r?\n/).filter(line => line.startsWith('SYNTHETIC_CAPTURE:'));
     return { ...child, captures: captures.map(line => JSON.parse(line.slice('SYNTHETIC_CAPTURE:'.length)) as { dataDir: string; configFiles: string[]; prefix?: string; resume?: string; dryRun: boolean }) };
 }

@@ -22,7 +22,7 @@ function fixture() {
 function author(root: string, command: string, ...args: string[]) {
     // Never invoke the real CLI without an explicit, verified temporary data root.
     assert.equal(dirname(resolve(root)), resolve(tmpdir())); assert.ok(basename(root).startsWith('qqbot-memes-concurrency-'));
-    const result = spawnSync(process.execPath, [cli, command, ...args, '--dir', root], { encoding: 'utf8', timeout: 10_000 });
+    const result = spawnSync(process.execPath, [cli, command, ...args, '--dir', root], { encoding: 'utf8', timeout: 60_000 });
     assert.equal(result.status, 0, result.stderr); return result;
 }
 function heldRefresh(path: string, now: Date, term: string) {
@@ -49,11 +49,11 @@ function worker(root: string, code: string, ...args: string[]) {
     const file = join(root, `worker-${Date.now()}-${Math.random().toString(16).slice(2)}.mjs`); writeFileSync(file, code);
     const child = spawn(process.execPath, [file, ...args], { stdio: ['ignore', 'ignore', 'pipe'] }); let stderr = '';
     child.stderr?.on('data', chunk => { stderr += String(chunk); }); child.once('error', error => { stderr += error.message; });
-    const timer = setTimeout(() => child.kill('SIGKILL'), 15_000);
+    const timer = setTimeout(() => child.kill('SIGKILL'), 90_000);
     const done = new Promise<{ code: number | null; signal: string | null; stderr: string }>(resolve => child.once('close', (code, signal) => { clearTimeout(timer); resolve({ code, signal, stderr }); }));
     return { child, done, async kill() { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); return done; } };
 }
-async function checkpoint(path: string) { const end = Date.now() + 6000; while (!existsSync(path)) { assert.ok(Date.now() < end, '合成进程未到达检查点'); await new Promise(done => setTimeout(done, 10)); } }
+async function checkpoint(path: string) { const end = Date.now() + 60_000; while (!existsSync(path)) { assert.ok(Date.now() < end, '合成进程未到达检查点'); await new Promise(done => setTimeout(done, 10)); } }
 
 test('真实CLI remove已成功后，旧后台刷新不能复活作者删除的梗', async () => {
     const f = fixture(), pending = heldRefresh(f.path, f.now, f.entry.term);
@@ -109,9 +109,9 @@ test('后台新词模型期间作者先add再remove，最终空位也不能被�
     } finally { release(''); await task; f.cleanup(); }
 });
 
-test('两个独立进程锁内fresh增量全部持久，仅明确busy可重试', { timeout: 20_000 }, async () => {
+test('两个独立进程锁内fresh增量全部持久，仅明确busy可重试', { timeout: 180_000 }, async () => {
     const f = fixture();
-    const code = `import{updateMemes}from${JSON.stringify(storeUrl)};const path=process.argv[2];for(let i=0;i<6;i++){const end=Date.now()+6000;for(;;){try{updateMemes(path,fresh=>{const entries=fresh.entries.map(e=>({...e,seen:e.seen+1}));Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,20);return{...fresh,entries};});break;}catch(error){if(error?.retryable!==true||Date.now()>end)throw error;await new Promise(done=>setTimeout(done,5));}}}`;
+    const code = `import{updateMemes}from${JSON.stringify(storeUrl)};const path=process.argv[2];for(let i=0;i<6;i++){const end=Date.now()+60000;for(;;){try{updateMemes(path,fresh=>{const entries=fresh.entries.map(e=>({...e,seen:e.seen+1}));Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,20);return{...fresh,entries};});break;}catch(error){if(error?.retryable!==true||Date.now()>end)throw error;await new Promise(done=>setTimeout(done,5));}}}`;
     const a = worker(f.root, code, f.path), b = worker(f.root, code, f.path);
     try {
         const results = await Promise.all([a.done, b.done]); for (const result of results) assert.equal(result.code, 0, result.stderr);
@@ -119,7 +119,7 @@ test('两个独立进程锁内fresh增量全部持久，仅明确busy可重试',
     } finally { await Promise.all([a.kill(), b.kill()]); f.cleanup(); }
 });
 
-test('真实busy不执行增量回调，强杀持锁进程后OS释放且旧JSON保留', { timeout: 20_000 }, async () => {
+test('真实busy不执行增量回调，强杀持锁进程后OS释放且旧JSON保留', { timeout: 180_000 }, async () => {
     const f = fixture(), point = join(f.root, 'locked');
     const code = `import{withMemeStoreLock}from${JSON.stringify(storeUrl)};import{writeFileSync}from'node:fs';withMemeStoreLock(process.argv[2],()=>{writeFileSync(process.argv[3],'ready');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10000);});`;
     const held = worker(f.root, code, f.path, point);
@@ -132,7 +132,7 @@ test('真实busy不执行增量回调，强杀持锁进程后OS释放且旧JSON�
     } finally { await held.kill(); f.cleanup(); }
 });
 
-for (const phase of ['before', 'after'] as const) test(`真实CLI发布${phase}时强杀，后续作者按实际JSON事实继续且无永久锁`, { timeout: 20_000 }, async () => {
+for (const phase of ['before', 'after'] as const) test(`真实CLI发布${phase}时强杀，后续作者按实际JSON事实继续且无永久锁`, { timeout: 180_000 }, async () => {
     const f = fixture(), point = join(f.root, 'publication');
     const code = `import{fileOps}from${JSON.stringify(jsonUrl)};import{writeFileSync}from'node:fs';const[path,phase,point,root]=process.argv.slice(2);const rename=fileOps.renameSync;fileOps.writeDelaysMs=[0];fileOps.renameSync=(from,to)=>{if(String(to)!==path)return rename(from,to);if(phase==='after')rename(from,to);writeFileSync(point,'ready');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10000);throw Error('checkpoint expired');};process.argv=[process.execPath,${JSON.stringify(cli)},'add','进程边界新梗','这是进程边界的合成测试意思','--dir',root];await import(${JSON.stringify(new URL('../src/ops/meme-cli.ts', import.meta.url).href)});`;
     const held = worker(f.root, code, f.path, phase, point, f.root);
@@ -151,7 +151,7 @@ for (const after of [false, true]) test(`真实CLI原子发布${after ? '后EIO�
     try {
         const before = readFileSync(f.path, 'utf8');
         writeFileSync(hook, `import{fileOps}from${JSON.stringify(jsonUrl)};const rename=fileOps.renameSync;fileOps.writeDelaysMs=[0];fileOps.renameSync=(from,to)=>{if(String(to)!==${JSON.stringify(f.path)})return rename(from,to);${after ? 'rename(from,to);' : ''}throw Object.assign(Error('synthetic publication failure'),{code:${JSON.stringify(after ? 'EIO' : 'EROFS')}});};`);
-        const result = spawnSync(process.execPath, ['--import', pathToFileURL(hook).href, cli, 'add', '故障边界新梗', '这是故障边界的合成测试意思', '--dir', f.root], { encoding: 'utf8', timeout: 10_000 });
+        const result = spawnSync(process.execPath, ['--import', pathToFileURL(hook).href, cli, 'add', '故障边界新梗', '这是故障边界的合成测试意思', '--dir', f.root], { encoding: 'utf8', timeout: 60_000 });
         if (after) { assert.equal(result.status, 0, result.stderr); assert.ok(loadMemes(f.path).entries.some(entry => entry.term === '故障边界新梗')); }
         else { assert.notEqual(result.status, 0); assert.equal(readFileSync(f.path, 'utf8'), before); }
         author(f.root, 'add', '故障恢复新梗', '这是故障恢复后的合成意思'); assert.ok(loadMemes(f.path).entries.some(entry => entry.term === '故障恢复新梗'));

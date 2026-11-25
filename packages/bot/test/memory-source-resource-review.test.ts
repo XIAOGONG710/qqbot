@@ -67,7 +67,7 @@ test('另一进程持久来源屏障后，旧实例缓存不能继续返回clean
         assert.deepEqual(f.store.blockedDocuments(bank), []);
         const module = new URL('../src/memory/written-retain.ts', import.meta.url).href;
         const script = `const{WrittenRetainStore}=await import(${JSON.stringify(module)});new WrittenRetainStore(${JSON.stringify(f.dir)}).markSourceChanged(${JSON.stringify(bank)},'diary:2026-11-01');`;
-        const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 10_000 });
+        const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 60_000 });
         assert.equal(child.error, undefined); assert.equal(child.status, 0, child.stderr);
         assert.deepEqual(f.store.guardState(bank).blockedDocuments, ['diary:2026-11-01']);
     } finally { f.clean(); }

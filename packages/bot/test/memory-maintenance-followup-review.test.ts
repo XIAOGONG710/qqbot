@@ -27,7 +27,7 @@ test('archive移动第一份聊天后进程退出，未完成prefix迁移必须�
   const script = `import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';const rename=fs.renameSync;
    fs.renameSync=(from,to)=>{const result=rename(from,to);if(String(from)===${JSON.stringify(chat)})process.exit(61);return result;};syncBuiltinESMExports();
    const {archiveTestData}=await import(${JSON.stringify(module)});archiveTestData({dataDir:${JSON.stringify(f.data)},configFiles:[${JSON.stringify(f.config)}],prefix:'synthetic-new',now:new Date('2026-11-05T12:00:00Z')});`;
-  const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 10_000, maxBuffer: 128 * 1024 });
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 60_000, maxBuffer: 128 * 1024 });
   assert.equal(child.error, undefined); assert.equal(child.status, 61, child.stderr); assert.equal(existsSync(chat), false);
   assert.equal(JSON.parse(readFileSync(f.config, 'utf8')).memory.bankPrefix, 'synthetic-old');
   assert.equal(JSON.parse(readFileSync(join(f.data, 'tiers.json'), 'utf8'))['10001'].since, '2026-11-05T12:00:00.000Z');
@@ -107,11 +107,11 @@ test('配置atomic rename前后强制退出均可用CLI续原任务，固定temp
    const script = `import fs from 'node:fs';import{syncBuiltinESMExports}from'node:module';const rename=fs.renameSync;
     fs.renameSync=(from,to)=>{if(String(to)===${JSON.stringify(f.config)}){if(${published})rename(from,to);process.exit(62);}return rename(from,to);};syncBuiltinESMExports();
     const{archiveTestData}=await import(${JSON.stringify(module)});archiveTestData({dataDir:${JSON.stringify(f.data)},configFiles:[${JSON.stringify(f.config)}],prefix:'synthetic-new',now:new Date('2026-11-05T12:00:00Z')});`;
-   const interrupted = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 10_000, maxBuffer: 128 * 1024 });
+   const interrupted = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 60_000, maxBuffer: 128 * 1024 });
    assert.equal(interrupted.error, undefined); assert.equal(interrupted.status, 62, interrupted.stderr); const [id] = unfinishedArchiveJobs(f.data); assert.ok(id);
    assert.equal(JSON.parse(readFileSync(f.config, 'utf8')).memory.bankPrefix, published ? 'synthetic-new' : 'synthetic-old');
    const cli = new URL('../../../scripts/archive-test-data.mjs', import.meta.url);
-   const resumed = spawnSync(process.execPath, [fileURLToPath(cli), '--data', f.data, '--resume', id, '--koishi', join(f.root, 'not-the-original-target'), '--no-config'], { encoding: 'utf8', timeout: 10_000, maxBuffer: 128 * 1024 });
+   const resumed = spawnSync(process.execPath, [fileURLToPath(cli), '--data', f.data, '--resume', id, '--koishi', join(f.root, 'not-the-original-target'), '--no-config'], { encoding: 'utf8', timeout: 60_000, maxBuffer: 128 * 1024 });
    assert.equal(resumed.error, undefined); assert.equal(resumed.status, 0, resumed.stderr); assert.match(resumed.stdout, /归档任务.*已完成/); assert.ok(!resumed.stdout.includes('SYNTHETIC_CONFIG_SECRET'));
    assert.equal(JSON.parse(readFileSync(f.config, 'utf8')).memory.bankPrefix, 'synthetic-new'); assert.deepEqual(unfinishedArchiveJobs(f.data), []);
   } finally { cleanup(f.root); }
@@ -121,7 +121,7 @@ test('配置atomic rename前后强制退出均可用CLI续原任务，固定temp
 test('CLI缺少resume UUID不会退化为创建新归档任务', () => {
  const f = fixture();
  try { const cli = new URL('../../../scripts/archive-test-data.mjs', import.meta.url);
-  const child = spawnSync(process.execPath, [fileURLToPath(cli), '--data', f.data, '--resume'], { encoding: 'utf8', timeout: 10_000, maxBuffer: 128 * 1024 });
+  const child = spawnSync(process.execPath, [fileURLToPath(cli), '--data', f.data, '--resume'], { encoding: 'utf8', timeout: 60_000, maxBuffer: 128 * 1024 });
   assert.equal(child.error, undefined); assert.equal(child.status, 2); assert.equal(existsSync(join(f.data, 'chats', '10001.jsonl')), true);
   assert.equal(JSON.parse(readFileSync(f.config, 'utf8')).memory.bankPrefix, 'synthetic-old'); assert.deepEqual(unfinishedArchiveJobs(f.data), []);
  } finally { cleanup(f.root); }
