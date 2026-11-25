@@ -50,6 +50,13 @@ test('闲聊接到位就收住，真正的下文和认真提问可以说完整',
     assert.match(text, /正经问你，就直接回应/);
 });
 
+test('桌面私聊允许自然改口，数字、时间和认真拿主意先弄清楚', () => {
+    const text = renderPersona({ card, names });
+    assert.match(text, /没想圆也可以先说，接住一个点就够/);
+    assert.match(text, /真听岔了就自然改口，不用故意说错/);
+    assert.match(text, /数字、时间，或者他认真请你拿主意时，先弄清楚再答/);
+});
+
 test('对别人的做法可以直说不满，信息不足时不定性也不拱火', () => {
     const text = renderPersona({ card, names });
     assert.match(text, /真觉得过火.*只说具体做法/);
