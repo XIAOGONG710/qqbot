@@ -7,7 +7,8 @@ window.__ModuleLoader__.load({
     const api = '/api/qqbot-services'
     const tabKey = 'qqbot-services:tab'
     const tabs = [{ id: 'home', label: '总览' }, { id: 'chat', label: '聊天' }, { id: 'room', label: '会客室' },
-      { id: 'house', label: '她的家' }, { id: 'link', label: '连接' }, { id: 'sys', label: '系统' }]
+      { id: 'house', label: '她的家' }, { id: 'soul', label: '灵魂' }, { id: 'memory', label: '记忆' }, { id: 'books', label: '读书' },
+      { id: 'link', label: '连接' }, { id: 'sys', label: '系统' }]
     const names = { napcat: 'NapCat', hindsight: 'Hindsight', koishi: 'Koishi', watchdog: '守护', backup: '备份' }
     const steps = { checking: '正在检查', starting: '正在等待服务就绪', skipped: '已运行，跳过启动', ready: '已就绪', timeout: '等待就绪超时', failed: '启动或检查失败', maintenance: '维护期间暂停启动' }
     const eventNames = { watching: '开始监测', recovered: '恢复正常', starting: '尝试启动', failed: '运行异常' }
@@ -115,11 +116,14 @@ window.__ModuleLoader__.load({
         '.qqb-sender{font-size:12px;color:var(--q-fg2);padding:0 2px}',
         '.qqb-bubble{background:color-mix(in srgb,var(--q-acc) 9%,var(--q-surf));padding:9px 12px;border-radius:14px;border-top-left-radius:4px;white-space:pre-wrap;overflow-wrap:anywhere}',
         '.is-mine .qqb-bubble{background:var(--q-acc);color:#fff;border-radius:14px;border-top-right-radius:4px}',
+        '.qqb-chat-media{width:100%;padding:6px 0}.qqb-chat-media summary{cursor:pointer}.qqb-chat-media img{display:block;max-width:100%;max-height:250px;border-radius:10px}.qqb-chat-media audio{width:min(270px,100%)}',
         '.qqb-composer{padding:10px 12px;border-top:1px solid var(--q-line);background:var(--q-surf)}',
         '.qqb-composer-bar{display:flex;align-items:flex-end;gap:8px}.qqb-composer textarea{flex:1;min-width:0;resize:vertical}',
         '.qqb-chat-empty{margin:0;padding:12px 14px;color:var(--q-fg2)}.qqb-diagnostic{width:100%;box-sizing:border-box;resize:vertical}',
         '.qqb-house-scene{display:block;width:100%;height:clamp(310px,65vh,680px);border:1px solid var(--q-line);border-radius:14px;background:#151b28}',
         '.qqb-room-invite{width:100%;box-sizing:border-box;margin-top:8px}',
+        '.qqb-library{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px}.qqb-library figure{margin:0;padding:7px;border:1px solid var(--q-line);border-radius:10px;overflow:hidden}.qqb-library img{width:100%;height:76px;object-fit:contain}.qqb-library figcaption{overflow-wrap:anywhere;font-size:12px}',
+        '@media(max-width:580px){.qqb-tabs{grid-template-columns:repeat(4,1fr)}.qqb-tabs::before{display:none}.qqb-tab[aria-selected=true]{background:color-mix(in srgb,var(--q-acc) 12%,transparent)}}',
         '@container (max-width:540px){.qqb-workspace{grid-template-columns:1fr}.qqb-peers{max-height:140px;border-right:0;border-bottom:1px solid var(--q-line)}.qqb-feed{height:clamp(145px,24vh,230px)}}'
       ].join('\n')
       document.head.appendChild(style)
@@ -222,6 +226,17 @@ window.__ModuleLoader__.load({
               sendPrefix: data.sendKey === session.key ? data.sendPrefix : null, request, revision }) : h('p', { className: 'qqb-chat-empty' }, '选择一个好友或群聊。'))))
     }
 
+    function ChatMedia({ item }) {
+      const [open, setOpen] = React.useState(false)
+      const [failed, setFailed] = React.useState(false)
+      const source = `${api}/chat/media/${item.id}`
+      return h('details', { className: 'qqb-chat-media', onToggle: event => setOpen(event.currentTarget.open) },
+        h('summary', null, item.kind === 'image' ? '查看图片' : '播放语音'),
+        open && (failed ? h('small', null, '来源已失效或格式不支持。') : item.kind === 'image'
+          ? h('img', { src: source, alt: 'QQ 消息图片', onError: () => setFailed(true) })
+          : h('audio', { src: source, controls: true, preload: 'none', onError: () => setFailed(true) })))
+    }
+
     function Conversation({ session, account, sendPrefix, request, revision }) {
       const canSend = Boolean(sendPrefix)
       const viewKey = `qqbot-services:history-count:${account.id}:${session.key}`
@@ -290,7 +305,8 @@ window.__ModuleLoader__.load({
           h('div', { className: 'qqb-body' },
             h('small', { className: 'qqb-sender' }, message.sender, ' ',
               message.at && new Date(message.at * 1000).toLocaleString('zh-CN')),
-            h('div', { className: 'qqb-bubble' }, message.text))))),
+            h('div', { className: 'qqb-bubble' }, message.text),
+            ...(message.media ?? []).map(item => h(ChatMedia, { key: item.id, item })))))),
         h('form', { className: 'qqb-composer', onSubmit: submit },
           h('div', { className: 'qqb-composer-bar' },
             h('textarea', { className: 'qqb-input', rows: 2, maxLength: 2000, value: draft,
@@ -378,6 +394,8 @@ window.__ModuleLoader__.load({
     function DetailsCard({ kind }) {
       const [data, setData] = React.useState(undefined)
       const [revision, setRevision] = React.useState(0)
+      const [drillStatus, setDrillStatus] = React.useState('')
+      const busy = React.useRef(false)
       React.useEffect(() => {
         const controller = new AbortController()
         setData(undefined)
@@ -390,13 +408,45 @@ window.__ModuleLoader__.load({
         return () => controller.abort()
       }, [kind, revision])
       const access = kind === 'access'
+      const exportAccess = () => {
+        const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' }))
+        const link = document.createElement('a')
+        link.href = url
+        link.download = 'linmengyao-access.json'
+        link.click()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      }
+      const drill = async day => {
+        if (busy.current) return
+        busy.current = true
+        setDrillStatus('正在校验备份…')
+        try {
+          const verified = await fetch(`${api}/details/restore-check?${new URLSearchParams({ day })}`)
+          if (!verified.ok) throw Error()
+          const { databaseBytes, stateBytes } = await verified.json()
+          if (!window.confirm(`对 ${day} 的备份执行隔离演练？数据库制品 ${databaseBytes} 字节，状态包 ${stateBytes} 字节。演练只解压到临时目录。`)) {
+            setDrillStatus('')
+            return
+          }
+          setDrillStatus('正在隔离演练…')
+          const response = await fetch(`${api}/backup/restore-drill`, {
+            method: 'POST', headers: { 'content-type': 'application/json', 'x-qqbot-service-panel': '1' },
+            body: JSON.stringify({ day }),
+          })
+          if (!response.ok) throw Error()
+          setDrillStatus(`${day} 文件级恢复演练通过。`)
+        } catch { setDrillStatus('未能完成隔离演练。') }
+        finally { busy.current = false }
+      }
       return h('section', { className: 'qqb-card' },
         h('div', { className: 'qqb-actions' },
-          h('h3', { className: 'qqb-title' }, access ? 'QQ 接入配置' : '备份清单'),
+          h('h3', { className: 'qqb-title' }, { access: 'QQ 接入配置', backups: '备份清单', books: '书架', library: '梗与表情', memory: '记忆连接', versions: '版本状态' }[kind]),
           h('button', { className: 'qqb-btn', type: 'button', onClick: () => setRevision(value => value + 1) }, '刷新')),
+        drillStatus && h('p', { className: 'qqb-note', role: 'status' }, drillStatus),
         data === undefined ? h('p', { className: 'qqb-note', role: 'status' }, '正在读取…')
           : data === null ? h('p', { className: 'qqb-err', role: 'status' }, '暂时无法读取。')
           : access ? h('div', null,
+            h('button', { className: 'qqb-btn', type: 'button', onClick: exportAccess }, '导出名单和模式'),
             ...Object.entries({ groupChat: '群聊', proactive: '主动消息', oneLife: '桌面联动' }).map(([key, label]) =>
               h('div', { className: 'qqb-kv', key }, h('span', null, label), h('span', null, modeLabels[data.modes[key]] ?? '配置未显式指定'))),
             h('h4', null, '私聊名单'),
@@ -404,9 +454,32 @@ window.__ModuleLoader__.load({
               h('div', { className: 'qqb-kv', key: `${contact.qq}-${index}` },
                 h('span', null, contact.name || '未命名', ' · ', String(contact.qq)), h('span', null, tierLabels[contact.tier])))
               : h('p', { className: 'qqb-note' }, '配置里没有联系人。'))
+          : kind === 'books' ? h('div', null,
+            data.books.length ? data.books.map(book => h('div', { className: 'qqb-kv', key: book.id },
+              h('span', null, book.title, book.author && ` · ${book.author}`),
+              h('span', null, book.progress ? `${book.progress.amount}${book.total !== null ? ` / ${book.total}` : ''}${book.progress.unit}${book.progress.finished ? ' · 已读完' : book.progress.stopped ? ' · 已放下' : ''}` : '暂无进度')))
+              : h('p', { className: 'qqb-note' }, '本地角色卡没有书架条目。'))
+          : kind === 'library' ? h('div', null,
+            h('h4', null, '共享的梗'),
+            data.jokes.length ? h('ul', null, ...data.jokes.map((phrase, index) => h('li', { key: index }, phrase)))
+              : h('p', { className: 'qqb-note' }, '暂无能核验来源的梗。'),
+            h('h4', null, '表情库'),
+            data.stickers.length ? h('div', { className: 'qqb-library' }, ...data.stickers.map(sticker =>
+              h('figure', { key: sticker.id }, h('img', { loading: 'lazy', src: `${api}/sticker/${sticker.id}`, alt: sticker.title || '收藏表情' }),
+                h('figcaption', null, sticker.title || sticker.tags.join(' · ')))))
+              : h('p', { className: 'qqb-note' }, '暂无本地收藏。'))
+          : kind === 'memory' ? h('div', null,
+            h('div', { className: 'qqb-kv' }, h('span', null, '桌面与 QQ 的本人记忆'), h('span', null, data.linked ? '已登记' : '未登记')),
+            h('div', { className: 'qqb-kv' }, h('span', null, '公共库统计'), h('span', null,
+              data.common ? `${data.common.facts} 条记忆 · ${data.common.documents} 份来源文档` : '暂无可用统计')))
+          : kind === 'versions' ? h('div', null,
+            h('div', { className: 'qqb-kv' }, h('span', null, '本地提交'), h('code', null, data.local?.slice(0, 12) ?? '未知')),
+            h('div', { className: 'qqb-kv' }, h('span', null, '本地记录的 origin/main'), h('code', null, data.tracked?.slice(0, 12) ?? '未知')))
           : data.length ? data.map(backup => h('div', { className: 'qqb-kv', key: backup.name },
               h('span', null, backup.name), h('span', null, backup.complete ? '完整' : '未完成',
-                Number.isFinite(backup.stateBytes) ? ` · 状态包 ${(backup.stateBytes / 1048576).toFixed(1)} MB` : '')))
+                Number.isFinite(backup.stateBytes) ? ` · 状态包 ${(backup.stateBytes / 1048576).toFixed(1)} MB` : ''),
+              backup.complete && Number.isFinite(backup.stateBytes) && h('button', { className: 'qqb-btn', type: 'button',
+                onClick: () => void drill(backup.name) }, '隔离演练')))
             : h('p', { className: 'qqb-note' }, '暂无备份。'))
     }
 
@@ -467,6 +540,9 @@ window.__ModuleLoader__.load({
 
       const health = state?.health
       const operation = state?.operation
+      const koishiPort = health?.ports?.koishi
+      const koishiConsole = health?.koishiListening && Number.isInteger(koishiPort) && koishiPort > 0 && koishiPort <= 65535
+        ? `http://127.0.0.1:${koishiPort}` : null
       const blocked = !health || health.maintenance || sending || operation?.running
       const isReady = name => name === 'koishi' ? health?.koishiListening : health?.[name]
       const copyDiagnostic = async () => {
@@ -497,6 +573,11 @@ window.__ModuleLoader__.load({
         section('chat', tab === 'chat' && state && h(Chat)),
         section('room', tab === 'room' && state && h(GuestRoom)),
         section('house', tab === 'house' && state && h(HerHome)),
+        section('soul', tab === 'soul' && state && h(DetailsCard, { kind: 'library' }),
+          koishiConsole && h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '人设管理'),
+            h('a', { className: 'qqb-btn', href: `${koishiConsole}/qqbot`, target: '_blank', rel: 'noopener noreferrer' }, '打开本机人设面板'))),
+        section('books', tab === 'books' && state && h(DetailsCard, { kind: 'books' })),
+        section('memory', tab === 'memory' && state && h(DetailsCard, { kind: 'memory' })),
         section('home',
           h('div', { className: 'qqb-actions' },
             state?.checkedAt && h('small', { className: 'qqb-note' }, `最近探测 ${new Date(state.checkedAt).toLocaleTimeString('zh-CN')}`),
@@ -513,9 +594,12 @@ window.__ModuleLoader__.load({
           ...['napcat', 'koishi', 'hindsight'].map(service => h('div', { key: service, className: 'qqb-kv' },
             h('span', null, names[service]),
             h('span', null, health?.ports?.[service] ? `${health.ports[service]} · ${summary(health, service)}` : summary(health, service))))),
-          tab === 'link' && h(DetailsCard, { kind: 'access' })),
+          tab === 'link' && h(DetailsCard, { kind: 'access' }),
+          koishiConsole && h('div', { className: 'qqb-actions' },
+            h('a', { className: 'qqb-btn', href: koishiConsole, target: '_blank', rel: 'noopener noreferrer' }, '在 Koishi 管理配置'))),
         section('sys',
           tab === 'sys' && h(DetailsCard, { kind: 'backups' }),
+          tab === 'sys' && h(DetailsCard, { kind: 'versions' }),
           state?.diagnostic && h('section', { className: 'qqb-card', 'aria-label': '链路诊断' },
             h('div', { className: 'qqb-actions' }, h('h3', { className: 'qqb-title' }, '链路诊断'),
               h('button', { className: 'qqb-btn', onClick: copyDiagnostic }, '复制诊断')),

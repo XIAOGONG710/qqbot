@@ -27,7 +27,7 @@ export function configuredManualOwner(config) {
   return owners.length === 1 ? id(owners[0].qq) : null
 }
 
-export function createChat(call, { ownerId, send } = {}) {
+export function createChat(call, { ownerId, send, historyMedia } = {}) {
   const manualTarget = typeof send === 'function' && id(ownerId)
   async function conversations(kind) {
     const group = kind === 'group'
@@ -83,9 +83,11 @@ export function createChat(call, { ownerId, send } = {}) {
           senderId,
           sender: String(message.sender?.card || message.sender?.nickname || senderId || '未知发送者'),
           text: textOf(message.message),
+          ...(historyMedia ? { media: historyMedia.register(key, message.message) } : {}),
         }
       }).sort((a, b) => a.at - b.at)
     },
+    media: id => historyMedia?.read(id) ?? null,
     async prepare(payload) {
       const result = await resolveSend(payload)
       if (result.status !== 200) return result

@@ -10,6 +10,8 @@ import { promisify } from 'node:util'
 import { createController } from './controller.js'
 import { activeKoishiPlugin, configuredManualOwner, createChat, createNapCatManualSender, createNapCatReader } from './chat.js'
 import { createCompanionRoom, createRoomReply } from './companion-room.js'
+import { createLocalPanels } from './local-panels.js'
+import { createHistoryMedia } from './history-media.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -224,11 +226,40 @@ export function createHandler(controller, events, chat, connection, now = Date.n
       try { return send(200, await companion.home()) }
       catch { return send(503, { error: 'home_unavailable' }) }
     }
-    if (details && req.method === 'GET' && [`${prefix}/details/access`, `${prefix}/details/backups`].includes(path)) {
+    if (details && req.method === 'GET' && path.startsWith(`${prefix}/details/`)) {
+      const kind = path.slice(`${prefix}/details/`.length)
+      if (!['access', 'backups', 'books', 'library', 'memory', 'versions', 'restore-check'].includes(kind)) return send(404, { error: 'not_found' })
       try {
-        const data = await details(path.split('/').at(-1))
+        const data = await details(kind, new URLSearchParams((req.url ?? '').split('?')[1]))
         return data === null ? send(503, { error: 'details_unavailable' }) : send(200, data)
       } catch { return send(503, { error: 'details_unavailable' }) }
+    }
+    if (companion?.sticker && req.method === 'GET' && path.startsWith(`${prefix}/sticker/`)) {
+      try {
+        const image = await companion.sticker(path.slice(`${prefix}/sticker/`.length))
+        if (!image) return send(404, { error: 'not_found' })
+        res.writeHead(200, { 'content-type': image.type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' })
+        return res.end(image.body)
+      } catch { return send(404, { error: 'not_found' }) }
+    }
+    if (chat?.media && req.method === 'GET' && path.startsWith(`${prefix}/chat/media/`)) {
+      const id = path.slice(`${prefix}/chat/media/`.length)
+      if (!/^[A-Za-z0-9_-]{43}$/.test(id)) return send(404, { error: 'not_found' })
+      try {
+        const media = await chat.media(id)
+        if (!media) return send(404, { error: 'not_found' })
+        res.writeHead(200, { 'content-type': media.type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' })
+        return res.end(media.body)
+      } catch { return send(404, { error: 'not_found' }) }
+    }
+    if (companion?.restoreDrill && req.method === 'POST' && path === `${prefix}/backup/restore-drill`) {
+      try {
+        const { body, status, error } = await readJson(req)
+        if (status) return send(status, { error })
+        if (typeof body?.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.day)) return send(400, { error: 'invalid_backup' })
+        const result = await companion.restoreDrill(body.day)
+        return send(result, { ok: result === 200 })
+      } catch { return send(503, { error: 'restore_drill_failed' }) }
     }
     if (chat && path.startsWith(`${prefix}/chat/`)) {
       if (req.method !== 'POST') return send(403, { error: 'forbidden' })
@@ -317,8 +348,13 @@ export function apply(ctx, config = {}) {
     catch { return null }
   }
   const manualOwner = () => configuredManualOwner(readKoishiConfig())
-  const details = async kind => {
+  const local = createLocalPanels({ root, readConfig: readKoishiConfig, hindsightUrl: process.env.QQBOT_HINDSIGHT_URL, async runGit(args) {
+    const { stdout } = await exec('git', args, { cwd: root, timeout: 5000, windowsHide: true, maxBuffer: 4096 })
+    return stdout
+  } })
+  const details = async (kind, query) => {
     if (kind === 'access') return summarizeConnectionConfig(readKoishiConfig())
+    if (kind !== 'backups') return local.details(kind, query)
     const { backupEntries } = await import(pathToFileURL(join(root, 'scripts', 'backup-state.mjs')).href)
     return backupEntries(join(root, 'runtime', 'backups'))
       .sort((a, b) => b.name.localeCompare(a.name)).slice(0, 14)
@@ -328,6 +364,10 @@ export function apply(ctx, config = {}) {
   const send = createNapCatManualSender({ token, ownerId })
   const chat = createChat(createNapCatReader({ token }), {
     ownerId,
+    historyMedia: createHistoryMedia({ async sniffMime(bytes) {
+      const { sniffMime } = await import(pathToFileURL(join(root, 'packages', 'chat-bridge', 'src', 'media.ts')).href)
+      return sniffMime(bytes)
+    } }),
     send: message => {
       if (manualOwner() !== ownerId) throw Error('manual_owner_changed')
       return send(message)
@@ -335,8 +375,21 @@ export function apply(ctx, config = {}) {
   })
   const room = createCompanionRoom({ reply: createRoomReply({ key: process.env.QQBOT_LLM_API_KEY, model: config.roomModel }) })
   const homeFile = resolve(process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao'), 'HOME-PUBLIC.json')
+  let drilling = false
   const companion = {
     room,
+    sticker: local.sticker,
+    async restoreDrill(day) {
+      if (drilling) return 409
+      drilling = true
+      try {
+        if (!await local.details('restore-check', new URLSearchParams({ day }))) return 404
+        await exec(process.execPath, [join(root, 'scripts', 'restore-drill.mjs'), '--backup', join(root, 'runtime', 'backups', day)], {
+          cwd: root, timeout: 660_000, windowsHide: true, maxBuffer: 16_384,
+        })
+        return 200
+      } finally { drilling = false }
+    },
     async home() {
       const { homePlaces, homeActivities, readPublishedHomeStatus } =
         await import(pathToFileURL(join(root, 'dsh-plugins', 'dsh-linmengyao-memory', 'home-status.js')).href)

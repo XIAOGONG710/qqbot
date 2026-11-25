@@ -131,9 +131,9 @@ export class ChatHistory {
     }
 
     /** 聊天记录；他撤回的那几条（recall）里的字换成「[撤回了一条消息]」，别的原样 */
-    load(userId: number): StoredMessage[] {
+    load(userId: number, { readOnly = false }: { readOnly?: boolean } = {}): StoredMessage[] {
         const messages = this.#loadRaw(userId).map(({ recalled: _rawFlag, ...message }) => ({ ...message }));
-        const recalled = this.#recalledState(userId, messages);
+        const recalled = this.#recalledState(userId, messages, readOnly);
         const legacy = new Set(recalled.legacyIds);
         const byId = new Map<number, RecallMark[]>();
         for (const mark of recalled.messages) { const rows = byId.get(mark.messageId!) ?? []; rows.push(mark); byId.set(mark.messageId!, rows); }
@@ -176,9 +176,9 @@ export class ChatHistory {
         } else { this.#saveRecalled(userId, state); this.#recalled.set(userId, state); }
     }
 
-    #recalledState(userId: number, messages: StoredMessage[]): RecalledState {
+    #recalledState(userId: number, messages: StoredMessage[], readOnly = false): RecalledState {
         const known = this.#recalled.get(userId);
-        if (known) { this.flushIncoming(userId); return known; }
+        if (known) { if (!readOnly) this.flushIncoming(userId); return known; }
         // 撤回标记损坏不能当成“从没撤回”，否则原文会重新进入提示词。
         const stored = readJsonOr<number[] | RecalledState>(this.#recalledPath(userId), { version: 2, legacyIds: [], messages: [] }, undefined, {
             validate: (value): value is number[] | RecalledState => Array.isArray(value) ? value.every(validRecallId) : validRecalledState(value),
@@ -190,9 +190,9 @@ export class ChatHistory {
             state = { version: 2, legacyIds: stored.filter(id => !existing.some(message => message.messageId === id)), messages: existing.map(recallIdentity), order: [...new Set(stored)] };
             // Freeze only what the old wildcard already hid. Publish before
             // accepting a new occurrence, never guess an orphan legacy target.
-            this.#saveRecalled(userId, state);
+            if (!readOnly) this.#saveRecalled(userId, state);
         } else state = stored;
-        this.#recalled.set(userId, state);
+        if (!readOnly) this.#recalled.set(userId, state);
         return state;
     }
 
