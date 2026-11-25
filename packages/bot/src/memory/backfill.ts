@@ -10,7 +10,7 @@
 // （bot 运行期间小号在手机上手动发的消息不会推给 bot，也不在这里补，它们比本地最后一条旧。）
 
 import { sameMessage, sourceMessageSeq, type StoredMessage } from './history.ts';
-import { segmentsToText, type ForwardLookup, type QuoteLookup, type Segment } from '../platform/onebot.ts';
+import { isDesktopManualMessage, segmentsToText, type ForwardLookup, type QuoteLookup, type Segment } from '../platform/onebot.ts';
 import { OPS_NOTICE_PREFIX } from '.././ops/alert-qq.ts';
 import { stateObject, stateTimestamp } from './state-schema.ts';
 
@@ -57,6 +57,7 @@ export function newerThanStored(stored: StoredMessage[], fetched: HistoryMessage
     const fetchedIds = new Set<string>();
     return fetched
         .filter(validHistoryMessage)
+        .filter(m => !isDesktopManualMessage(m.message, m.sender?.user_id ?? m.user_id, selfId))
         .filter(m => {
             const key = JSON.stringify([m.message_id, m.time, m.sender?.user_id ?? m.user_id, sourceMessageSeq(m.real_seq)]);
             if (fetchedIds.has(key)) return false;
@@ -76,6 +77,7 @@ export function newerThanStored(stored: StoredMessage[], fetched: HistoryMessage
 export function toStored(messages: HistoryMessage[], selfId: number, quoted?: QuoteLookup, forwarded?: ForwardLookup): StoredMessage[] {
     return messages
         .filter(validHistoryMessage)
+        .filter(m => !isDesktopManualMessage(m.message, m.sender?.user_id ?? m.user_id, selfId))
         .map((m): StoredMessage => ({
             time: new Date(m.time * 1000).toISOString(),
             role: (m.sender?.user_id ?? m.user_id) === selfId ? 'assistant' : 'user',

@@ -96,6 +96,17 @@ function harness(options: Options = {}) {
 const contents = (rows: StoredMessage[]) => rows.map(m => `${m.role}:${m.content}`);
 
 describe('补回漏掉的消息（syncMissed）', () => {
+    test('手动代发不入聊天账，也不盖住仍待回复的本人消息', async () => {
+        const h = harness({ fetched: { [HIM.qq]: [
+            qqMessage(HIM.qq, '还等她回', 30),
+            qqMessage(SELF, text('【本人手动代发】代发正文'), 20),
+        ] } });
+        await h.missed.syncMissed(SELF);
+        await h.missed.catchUpAll();
+        assert.deepEqual(contents(h.chatHistory.load(HIM.qq)), ['user:还等她回']);
+        assert.deepEqual(h.caughtUp, [HIM.qq]);
+        assert.ok(h.logs.every(line => !line.includes('代发正文')));
+    });
     test('他发的、她在别处发的都按时间补进记录；问 NapCat 要 20 条；日志默认只记条数和字数，不记正文', async () => {
         const h = harness({ fetched: { [HIM.qq]: [qqMessage(HIM.qq, text('第二条'), 30), qqMessage(HIM.qq, text('第一条'), 90), qqMessage(SELF, text('她回的'), 20)] } });
         await h.missed.syncMissed(SELF);

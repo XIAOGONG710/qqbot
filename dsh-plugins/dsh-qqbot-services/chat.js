@@ -1,4 +1,7 @@
-const id = value => /^\d{1,16}$/.test(String(value)) && Number.isSafeInteger(Number(value)) && Number(value) > 0
+import manualOrigin from './manual-origin.json' with { type: 'json' }
+
+const id = value => (typeof value === 'string' || typeof value === 'number') &&
+  /^\d{1,16}$/.test(String(value)) && Number.isSafeInteger(Number(value)) && Number(value) > 0
   ? String(Number(value)) : null
 const list = value => Array.isArray(value) ? value : []
 const labels = { image: '图片', record: '语音', video: '视频', face: '表情', forward: '合并转发', file: '文件', reply: '引用' }
@@ -13,8 +16,13 @@ function textOf(message) {
   }).join('')
 }
 
-// The injected sender must preserve manual provenance through Koishi backfill.
-// Production wires only the read port until such a sender is approved.
+export function configuredManualOwner(config) {
+  const plugins = Object.entries(config?.plugins ?? {}).filter(([key]) => /^qqbot(?::[^:]+)?$/.test(key))
+  if (plugins.length !== 1) return null
+  const owners = list(plugins[0][1]?.contacts).filter(contact => contact?.tier === 'boyfriend')
+  return owners.length === 1 ? id(owners[0].qq) : null
+}
+
 export function createChat(call, { ownerId, send } = {}) {
   const manualTarget = typeof send === 'function' && id(ownerId)
   async function conversations(kind) {
@@ -40,7 +48,9 @@ export function createChat(call, { ownerId, send } = {}) {
   return {
     async list() {
       const [self, friends, groups] = await Promise.all([account(), conversations('private'), conversations('group')])
-      return { account: self, sessions: [...friends, ...groups], sendKey: manualTarget ? `private:${manualTarget}` : null }
+      const canSend = manualTarget && self.id !== manualTarget && friends.some(friend => friend.target === manualTarget)
+      return { account: self, sessions: [...friends, ...groups], sendKey: canSend ? `private:${manualTarget}` : null,
+        ...(canSend ? { sendPrefix: manualOrigin.prefix } : {}) }
     },
     async history(key, count = 30) {
       const session = await find(key)
@@ -69,23 +79,19 @@ export function createChat(call, { ownerId, send } = {}) {
         return { status: 400, error: 'invalid_message' }
       }
       const [self, session] = await Promise.all([account(), find(payload.key)])
-      if (!session || self.id !== payload.accountId) return { status: 409, error: 'recipient_or_account_changed' }
+      if (!session || self.id === session.target || self.id !== payload.accountId) return { status: 409, error: 'recipient_or_account_changed' }
       await send({ accountId: self.id, userId: session.target, text: payload.text })
       return { status: 200 }
     },
   }
 }
 
-export function createNapCatReader({ token, connect = url => new WebSocket(url), timeout = 5000 }) {
-  return (action, params) => new Promise((resolve, reject) => {
-    if (!['get_login_info', 'get_friend_list', 'get_group_list', 'get_friend_msg_history', 'get_group_msg_history'].includes(action)) {
-      reject(Error('read_action_required'))
-      return
-    }
+function exchange({ token, connect = url => new WebSocket(url), timeout = 5000 }, steps) {
+  return new Promise((resolve, reject) => {
     const url = new URL('ws://127.0.0.1:3001/')
     if (token) url.searchParams.set('access_token', token)
     const socket = connect(url)
-    const echo = 'dsh-qq-read'
+    let step = 0
     let finished = false
     const finish = (error, value) => {
       if (finished) return
@@ -96,18 +102,46 @@ export function createNapCatReader({ token, connect = url => new WebSocket(url),
       socket.close()
     }
     const timer = setTimeout(() => finish('napcat_timeout'), timeout)
-    socket.addEventListener('open', () => {
-      try { socket.send(JSON.stringify({ action, params, echo })) }
+    const next = value => {
+      try { socket.send(JSON.stringify({ ...steps[step](value), echo: `dsh-qq-${step}` })) }
       catch { finish('napcat_unavailable') }
-    }, { once: true })
+    }
+    socket.addEventListener('open', () => next(), { once: true })
     socket.addEventListener('message', event => {
       let response
       try { response = JSON.parse(String(event.data)) } catch { return }
-      if (response?.echo !== echo) return
+      if (finished || response?.echo !== `dsh-qq-${step}`) return
       if (response.status !== 'ok' || response.retcode !== 0) finish('napcat_action_failed')
-      else finish(null, response.data)
+      else if (++step === steps.length) finish(null, response.data)
+      else next(response.data)
     })
     socket.addEventListener('error', () => finish('napcat_unavailable'), { once: true })
     socket.addEventListener('close', () => finish('napcat_closed'), { once: true })
   })
+}
+
+export function createNapCatReader(options) {
+  return async (action, params) => {
+    if (!['get_login_info', 'get_friend_list', 'get_group_list', 'get_friend_msg_history', 'get_group_msg_history'].includes(action)) {
+      throw Error('read_action_required')
+    }
+    return exchange(options, [() => ({ action, params })])
+  }
+}
+
+export function createNapCatManualSender({ ownerId, ...options }) {
+  const owner = id(ownerId)
+  return async ({ accountId, userId, text }) => {
+    if (!owner || userId !== owner || id(accountId) !== accountId || accountId === owner
+      || typeof text !== 'string' || !text.trim() || text.length > 2000) throw Error('invalid_manual_send')
+    const result = await exchange(options, [
+      () => ({ action: 'get_login_info', params: {} }),
+      login => {
+        if (id(login?.user_id) !== accountId) throw Error('account_changed')
+        return { action: 'send_private_msg', params: { user_id: Number(owner),
+          message: [{ type: 'text', data: { text: manualOrigin.prefix + text } }] } }
+      },
+    ])
+    if (!Number.isSafeInteger(result?.message_id)) throw Error('send_unconfirmed')
+  }
 }

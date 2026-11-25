@@ -11,6 +11,7 @@
 import { faceText, textToSegments } from '.././language/qq-faces.ts';
 import { logBody } from './sensitive.ts';
 import { FORWARD_TEXT, fileText, shareText } from '.././proactive/shares.ts';
+import manualOrigin from '../../../../dsh-plugins/dsh-qqbot-services/manual-origin.json' with { type: 'json' };
 
 export interface Segment {
     type: string;
@@ -435,12 +436,17 @@ const FORWARD_LINES = 8;
 const FORWARD_LINE_CHARS = 40;
 const FORWARD_TOTAL_CHARS = 360;
 
+/** 只把当前机器人账号发出的带标记消息认作桌面手动代发。 */
+export function isDesktopManualMessage(message: Segment[] | string, sender: number | undefined, selfId: number | undefined): boolean {
+    return Boolean(selfId && sender === selfId && segmentsToText(message).startsWith(manualOrigin.prefix));
+}
+
 /**
  * 转发里的消息 → 「[转发的聊天记录（共 12 条，下面是前 8 条）：小王：今晚吃啥／他：随便／……]」。
  * 每条是 NapCat 的 node 段（data.user_id / nickname / message 或 content）或者一条 OneBot 消息（sender.user_id / nickname，message）。
  * 说话人交给 who：他就写「他」、她自己就写「你」、别人写昵称——**不把别人的话写成他的**。里面再套的转发只写「[转发的聊天记录]」
  */
-export function renderForward(items: readonly unknown[], who: (userId: number | undefined, nickname: string) => string): string | undefined {
+export function renderForward(items: readonly unknown[], who: (userId: number | undefined, nickname: string) => string, selfId?: number): string | undefined {
     const rec = (value: unknown) => (typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined);
     const lines: string[] = [];
     for (const item of items) {
@@ -452,7 +458,7 @@ export function renderForward(items: readonly unknown[], who: (userId: number | 
         const nickname = String(node.nickname ?? sender?.card ?? sender?.nickname ?? '').replace(/[\r\n\t[\]【】：:]+/g, ' ').trim().slice(0, 16);
         const segments = node.message ?? node.content;
         const text = (typeof segments === 'string' ? segments : Array.isArray(segments) ? segmentsToText(segments as Segment[]) : '').replace(/\s+/g, ' ').trim();
-        if (!text) continue;
+        if (!text || isDesktopManualMessage(text, rawId, selfId)) continue;
         const name = who(Number.isSafeInteger(rawId) ? rawId : undefined, nickname) || '别人';
         lines.push(`${name}：${text.length > FORWARD_LINE_CHARS ? `${text.slice(0, FORWARD_LINE_CHARS)}…` : text}`);
     }

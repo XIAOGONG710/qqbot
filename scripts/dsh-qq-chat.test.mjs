@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createChat, createNapCatReader } from '../dsh-plugins/dsh-qqbot-services/chat.js'
+import { configuredManualOwner, createChat, createNapCatManualSender, createNapCatReader } from '../dsh-plugins/dsh-qqbot-services/chat.js'
 import { createHandler } from '../dsh-plugins/dsh-qqbot-services/index.js'
+import { findMissed } from '../packages/bot/src/memory/backfill.ts'
 
 test('lists friends and groups and fetches only the selected conversation', async () => {
   const calls = []
@@ -39,6 +40,14 @@ test('manual sending requires an owner-only transport and explicit matching acco
   assert.equal((await chat.send({ ...payload, key: 'group:200' })).status, 403)
   assert.equal((await chat.send(payload)).status, 200)
   assert.deepEqual(dispatched, [{ accountId: '100', userId: '200', text: '合成消息' }])
+})
+
+test('manual recipient comes from a single active Koishi plugin and a unique owner contact', () => {
+  const contact = { qq: 200, tier: 'boyfriend' }
+  assert.equal(configuredManualOwner({ plugins: { 'qqbot:synthetic': { contacts: [contact] } } }), '200')
+  assert.equal(configuredManualOwner({ plugins: { '~qqbot': { contacts: [contact] } } }), null)
+  assert.equal(configuredManualOwner({ plugins: { qqbot: { contacts: [contact, { ...contact, qq: 300 }] } } }), null)
+  assert.equal(configuredManualOwner({ plugins: { qqbot: { contacts: [contact] }, 'qqbot:other': {} } }), null)
 })
 
 test('chat routes require a panel token and never expose conversations in diagnostics', async () => {
@@ -83,4 +92,48 @@ test('NapCat transport sends only allowlisted reads and ignores unsolicited even
   await assert.rejects(call('send_private_msg', {}), /read_action_required/)
   assert.equal(connected, 0)
   assert.deepEqual(await call('get_login_info', {}), { user_id: 100 })
+})
+
+test('manual QQ delivery checks the confirmed account on its sending socket and survives a lost ack in backfill', async () => {
+  const calls = []
+  let loggedIn = 777
+  let acknowledge = false
+  const connect = () => {
+    const socket = new EventTarget()
+    socket.close = () => socket.dispatchEvent(new Event('close'))
+    socket.send = frame => {
+      const { action, params, echo } = JSON.parse(frame)
+      calls.push({ socket, action, params })
+      if (action === 'get_login_info') {
+        socket.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ status: 'ok', retcode: 0, echo, data: { user_id: loggedIn } }) }))
+      } else if (acknowledge) {
+        socket.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ status: 'ok', retcode: 0, echo, data: { message_id: 1 } }) }))
+      } else socket.close()
+    }
+    queueMicrotask(() => socket.dispatchEvent(new Event('open')))
+    return socket
+  }
+  const send = createNapCatManualSender({ connect, ownerId: '200' })
+  const payload = { accountId: '100', userId: '200', text: '[CQ:at,qq=123] 合成文字' }
+  await assert.rejects(send({ ...payload, userId: '300' }))
+  assert.equal(calls.length, 0)
+  await assert.rejects(send(payload))
+  assert.deepEqual(calls.map(x => x.action), ['get_login_info'])
+  loggedIn = 100
+  await assert.rejects(send(payload))
+  assert.equal(calls[1].socket, calls[2].socket)
+  assert.equal(calls[2].action, 'send_private_msg')
+  assert.equal(calls[2].params.user_id, 200)
+  const message = calls[2].params.message
+  assert.deepEqual(message, [{ type: 'text', data: { text: '【本人手动代发】[CQ:at,qq=123] 合成文字' } }])
+  const time = 1795600000
+  const rows = [
+    { time, message_id: 1, sender: { user_id: 100 }, message },
+    { time, message_id: 2, sender: { user_id: 200 }, message },
+    { time, message_id: 3, sender: { user_id: 100 }, message: '她原本的回复' },
+  ]
+  assert.deepEqual(findMissed([], rows, 100).map(row => [row.messageId, row.role]), [[2, 'user'], [3, 'assistant']])
+  acknowledge = true
+  await send(payload)
+  assert.equal(calls.at(-1).action, 'send_private_msg')
 })

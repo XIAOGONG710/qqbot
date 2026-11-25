@@ -1,12 +1,13 @@
 import { execFile, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { closeSync, fstatSync, mkdirSync, openSync, readSync, realpathSync } from 'node:fs'
+import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { createController } from './controller.js'
-import { createChat, createNapCatReader } from './chat.js'
+import { configuredManualOwner, createChat, createNapCatManualSender, createNapCatReader } from './chat.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer']
@@ -171,7 +172,22 @@ export function apply(ctx, config = {}) {
     sleep,
   })
   const events = () => summarizeWatchdog(tail(join(root, 'runtime', 'services-watchdog.log')))
-  const chat = createChat(createNapCatReader({ token: process.env.QQBOT_ONEBOT_TOKEN }))
+  const configPath = resolve(root, process.env.QQBOT_KOISHI_DIR || 'runtime/koishi', 'koishi.yml')
+  const require = createRequire(join(root, 'package.json'))
+  const manualOwner = () => {
+    try { return configuredManualOwner(require('js-yaml').load(readFileSync(configPath, 'utf8'))) }
+    catch { return null }
+  }
+  const token = process.env.QQBOT_ONEBOT_TOKEN
+  const ownerId = manualOwner()
+  const send = createNapCatManualSender({ token, ownerId })
+  const chat = createChat(createNapCatReader({ token }), {
+    ownerId,
+    send: message => {
+      if (manualOwner() !== ownerId) throw Error('manual_owner_changed')
+      return send(message)
+    },
+  })
   const unregister = ctx.webServer.register({ kind: 'prefix', path: prefix, handler: createHandler(controller, events, chat) })
   ctx.on('dispose', () => { controller.dispose(); unregister() })
 }

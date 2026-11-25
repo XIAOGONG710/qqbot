@@ -1,7 +1,7 @@
 import type { Executor } from '../executor/executor.ts';
 import type { ChatHistory } from '../memory/history.ts';
 import type { Log } from './log.ts';
-import { quotedIds, renderForward, segmentsToText, type ForwardLookup, type QuotedMessage, type QuoteLookup, type Segment } from './onebot.ts';
+import { isDesktopManualMessage, quotedIds, renderForward, segmentsToText, type ForwardLookup, type QuotedMessage, type QuoteLookup, type Segment } from './onebot.ts';
 
 // 他引用的那一条、他转发的聊天记录：记录里没有的先问 NapCat 补上，转文字时按 id 找回来（ADR 0081；11-02「检查类似的问题」）。
 // 收消息、补回漏掉的消息、恢复入站都用同一份（两张缓存表在这里）。
@@ -39,6 +39,7 @@ export function quotedContext({ transport, history, selfId, log }: QuotedContext
             try {
                 const got = await transport.callAction!('get_msg', { message_id: id }) as { user_id?: number; sender?: { user_id?: number }; message?: Segment[] | string } | undefined;
                 const from = got?.sender?.user_id ?? got?.user_id;
+                if (got?.message && isDesktopManualMessage(got.message, from, self)) continue;
                 const role = from === qq ? 'user' : self && from === self ? 'assistant' : undefined;
                 const content = got?.message ? segmentsToText(got.message).replace(/\s+/g, ' ').trim() : '';
                 if (!role || !content) { log(`[${qq}] 引用的那一条记录里没有，问 NapCat 也没认出来`); continue; }
@@ -77,7 +78,7 @@ export function quotedContext({ transport, history, selfId, log }: QuotedContext
     const forwardLookup = (qq: number, self: number = selfId()): ForwardLookup => data => {
         const items = Array.isArray(data.content) ? data.content as unknown[] : fetchedForwards.get(String(data.id ?? ''));
         if (!items) return undefined;
-        return renderForward(items, (userId, nickname) => (userId === qq ? '他' : self && userId === self ? '你' : nickname || '别人'));
+        return renderForward(items, (userId, nickname) => (userId === qq ? '他' : self && userId === self ? '你' : nickname || '别人'), self);
     };
 
     return { quoteLookup, missingQuotes, fetchQuotes, missingForwards, fetchForwards, forwardLookup };

@@ -107,10 +107,11 @@ window.__ModuleLoader__.load({
                   onClick: () => setKey(item.key) }, `${item.kind === 'group' ? '群' : '私聊'} · ${item.name}`)))),
           h('div', { style: { flex: '3 1 320px', minWidth: 0 } },
             session ? h(Conversation, { key: `${data.account.id}:${session.key}`, session, account: data.account,
-              canSend: data.sendKey === session.key, request, revision }) : h('p', null, '选择一个好友或群聊。'))))
+              sendPrefix: data.sendKey === session.key ? data.sendPrefix : null, request, revision }) : h('p', null, '选择一个好友或群聊。'))))
     }
 
-    function Conversation({ session, account, canSend, request, revision }) {
+    function Conversation({ session, account, sendPrefix, request, revision }) {
+      const canSend = Boolean(sendPrefix)
       const viewKey = `qqbot-services:history-count:${account.id}:${session.key}`
       const [count, setCount] = React.useState(() => readHistoryCount(viewKey))
       const [messages, setMessages] = React.useState(null)
@@ -139,7 +140,7 @@ window.__ModuleLoader__.load({
       const submit = async event => {
         event.preventDefault()
         if (!canSend || busy.current || !draft.trim()) return
-        if (!window.confirm(`从 ${account.name}（${account.id}）发送给 ${session.name}（${session.target}）？`)) return
+        if (!window.confirm(`从 ${account.name}（${account.id}）发送给 ${session.name}（${session.target}）？\n\n${sendPrefix}${draft}`)) return
         busy.current = true
         setSending(true)
         setNotice('')

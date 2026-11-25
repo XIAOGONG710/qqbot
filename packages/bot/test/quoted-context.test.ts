@@ -25,6 +25,17 @@ function harness(options: { noCallAction?: boolean; selfId?: number; respond?: (
 const stored = (messageId: number, role: StoredMessage['role'], content: string): StoredMessage => ({ time: '2026-11-24T01:00:00.000Z', role, content, messageId });
 
 describe('引用的那一条', () => {
+    test('QQ 引用手动代发时不补入正文，同前缀的对方消息仍正常引用', async () => {
+        const { quoted } = harness({
+            respond: (_action, params) => ({
+                sender: { user_id: params.message_id === 1 ? SELF : HIM },
+                message: [text('【本人手动代发】合成内容')],
+            }),
+        });
+        await quoted.fetchQuotes(HIM, [1, 2]);
+        assert.equal(quoted.quoteLookup(HIM)(1), undefined);
+        assert.equal(quoted.quoteLookup(HIM)(2)?.role, 'user');
+    });
     test('quoteLookup：先查聊天记录（同 id 取最后一条），记录里没有也没问过就是 undefined', () => {
         const { quoted, rows } = harness();
         rows.set(HIM, [stored(5, 'user', '旧的'), stored(6, 'assistant', '她说的'), stored(5, 'user', '新的')]);
@@ -104,6 +115,16 @@ describe('引用的那一条', () => {
 
 describe('合并转发', () => {
     const forwardNode = (userId: number, nickname: string, message: string) => ({ type: 'node', data: { user_id: userId, nickname, content: message } });
+
+    test('合并转发保留其他消息，略过她账号的手动代发正文', () => {
+        const { quoted } = harness();
+        const body = quoted.forwardLookup(HIM)({ content: [
+            forwardNode(SELF, '她', '【本人手动代发】代发正文'),
+            forwardNode(HIM, '他', '正常对话'),
+        ] });
+        assert.match(body ?? '', /共 1 条.*正常对话/);
+        assert.doesNotMatch(body ?? '', /代发正文/);
+    });
 
     test('missingForwards：只列只有 id、没带 content 的转发段，补过的、空 id、纯文字、没有通用调用的都不列', async () => {
         const { quoted } = harness({ respond: () => ({ messages: [forwardNode(HIM, '他', '嗨')] }) });
