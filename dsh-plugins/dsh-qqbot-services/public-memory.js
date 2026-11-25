@@ -37,7 +37,7 @@ const iso = value => typeof value === 'string' && !Number.isNaN(Date.parse(value
  * @param {() => Date} [options.now]
  * @param {number} [options.timeoutMs]
  */
-export function createPublicMemory({ root, readConfig, hindsightUrl, fetcher = fetch, now = () => new Date(), timeoutMs = 3000 }) {
+export function createPublicMemory({ root, readConfig, hindsightUrl, fetcher = fetch, now = () => new Date(), timeoutMs = 6000 }) {
   const load = file => import(pathToFileURL(join(root, file)).href)
   const cache = new Map()
 
@@ -78,8 +78,10 @@ export function createPublicMemory({ root, readConfig, hindsightUrl, fetcher = f
     })
     if (!response.ok) throw Error('memory_unavailable')
     const body = await response.json()
-    if (!Array.isArray(body)) throw Error('memory_unavailable')
-    return body
+    // 真实 Hindsight 回 { results: [...] }；也认直接给数组的老形状，别的一律当不可用。
+    const rows = Array.isArray(body) ? body : Array.isArray(body?.results) ? body.results : null
+    if (!rows) throw Error('memory_unavailable')
+    return rows
   }
 
   /** 一条 Hindsight 结果 → 面板能看的东西；命中的词留在库里，只给摘要和来源 */

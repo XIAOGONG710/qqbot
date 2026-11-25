@@ -14,13 +14,13 @@ const owner = 20001
 /** 真仓库根：owner-bank.ts 要从这里加载，数据目录仍用临时目录 */
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-/** 假 Hindsight：记录每次请求，按需返回合成的公共库数据 */
+/** 假 Hindsight：记录每次请求，按需返回合成的公共库数据（真实接口回的是 { results: [...] }） */
 function fakeHindsight(rows) {
   const state = { fail: false, calls: [] }
   const fetcher = async (url, init) => {
     state.calls.push({ url: String(url), method: init?.method, body: init?.body ? JSON.parse(init.body) : null })
     if (state.fail) return { ok: false, status: 500, json: async () => ({ detail: 'private text should not leak' }) }
-    return { ok: true, json: async () => rows }
+    return { ok: true, json: async () => ({ results: rows }) }
   }
   return { fetcher, calls: state.calls, state }
 }
@@ -149,6 +149,21 @@ test('公共库故障：抛错给路由，错误正文不进结果', async () =>
       assert.equal(error.message, 'memory_unavailable')
       assert.ok(!error.message.includes('private text'))
     }
+  } finally { rmSync(ctx.root, { recursive: true, force: true }) }
+})
+
+test('公共库回了个不认识的形状：照样当不可用，不把对象塞进结果里', async () => {
+  const ctx = setup()
+  try {
+    const memory = createPublicMemory({
+      root: repoRoot, readConfig: () => ctx.config, hindsightUrl: 'http://127.0.0.1:8899',
+      now: () => new Date('2026-11-25T12:00:00.000Z'),
+      fetcher: async () => ({ ok: true, json: async () => ({ memories: [memoryRow()] }) }),
+    })
+    try {
+      await memory.search('海边', 1, 8)
+      assert.fail('应当抛错')
+    } catch (error) { assert.equal(error.message, 'memory_unavailable') }
   } finally { rmSync(ctx.root, { recursive: true, force: true }) }
 })
 
