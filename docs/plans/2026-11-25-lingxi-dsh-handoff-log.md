@@ -322,6 +322,18 @@
 - 正式模型与动作资源的授权来源还没定，仍用现有低模角色，不引入来源不明的资产。
 - 整套对照写进了 `docs/plans/2026-11-25-lingxi-feature-parity.md`，每行都停在「模拟验收」。
 
+## 重载 DSH：为什么必须整应用重启
+
+现象：插件代码在磁盘上改完，面板还是旧行为。用 `plugin_manager` 把 `include:dsh-qqbot-services` 禁用再启用，返回 `webserver: duplicate prefix route "/api/qqbot-services"`，条目的 `fiberPhase` 停在 `failed`；同时 `GET /api/qqbot-services/state` 仍回 403，说明旧的 prefix 路由还挂在 host 的 web server 上。
+
+结论：`/api/qqbot-services` 这个前缀路由注册之后在进程内撤不掉，重载插件必然撞重复前缀。要让新代码生效，只能把整个应用退掉重开（关窗口不算，得结束进程）。
+
+做法：`scripts/reload-dsh.ps1` 延迟十秒结束主进程、等八秒重新拉起、四十五秒后探端口，过程写进 `runtime/log/dsh-reload.log`。用 Win32_Process 启动可以脱离宿主进程树，宿主被杀之后脚本自己接着跑。重启后 GUI 端口会变，本次从 58842 变成 63264。
+
+重载后验证：`node --import tsx scripts/dsh-panel-live-check.mjs`，19 个只读请求 19 个 200（state、details×8、restore-check、backup/stages、home、character、logs×3、memory/search、memory/graph、chat/list、chat/history）。
+
+顺带一个真 bug：`public-memory.js` 把 Hindsight 的 `{results:[…]}` 当成非法形状（提交 37026bb4 已修），旧代码下记忆页永远走「暂时无法读取」，其实 Hindsight 一直是好的，库里有 1400 条事实、193 个文档。
+
 
 
 
