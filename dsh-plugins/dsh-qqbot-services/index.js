@@ -204,7 +204,7 @@ export function diagnosticReport({ health, checkedAt, operation, events }) {
     : Object.hasOwn(connection, health.lastConnection?.state) ? connection[health.lastConnection.state] : '未知'
   const steps = { checking: '检查中', starting: '启动中', skipped: '已跳过', ready: '已就绪', timeout: '超时', failed: '失败', maintenance: '维护暂停' }
   const services = { napcat: 'NapCat', hindsight: 'Hindsight', koishi: 'Koishi', watchdog: '守护', backup: '备份' }
-  const kinds = { watching: '开始监测', recovered: '恢复正常', starting: '尝试启动', failed: '运行异常' }
+  const kinds = { watching: '开始监测', recovered: '恢复正常', starting: '尝试启动', failed: '运行异常', backup: '有记录' }
   const lines = [
     '林梦瑶 · DSH 服务诊断',
     `探测时间 ${new Date(checkedAt).toISOString()}`,

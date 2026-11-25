@@ -14,7 +14,9 @@ export function createController({ probe, launch, sleep, now = Date.now }) {
   async function status(fresh = false) {
     if (!fresh && checked && now() - checked.at < 3_000) return checked.value
     pending ??= Promise.resolve().then(probe).then(value => {
-      if (![...services, 'koishiListening', 'watchdog', 'maintenance'].every(key => typeof value?.[key] === 'boolean')) {
+      // 守护可以是 null：没有心跳、日志里也没有近况时说不准它在不在，显示「状态未知」
+      if (![...services, 'koishiListening', 'maintenance'].every(key => typeof value?.[key] === 'boolean')
+        || !(typeof value.watchdog === 'boolean' || value.watchdog === null)) {
         throw new Error('Invalid service status')
       }
       checked = { at: now(), value }

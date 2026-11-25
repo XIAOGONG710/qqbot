@@ -51,13 +51,16 @@ export function summarizeWatchdog(lines, limit = 12) {
     if (!stamp) return []
     const text = stamp[2]
     const service = /^(napcat|hindsight|koishi)[:：]/i.exec(text)?.[1]?.toLowerCase()
+    const backup = text.startsWith('备份：')
+    // 备份出事（不健康、没做成、通知没发出去）先算 failed，再落到普通的「备份」，否则诊断和「运行异常」筛选里都看不到
     const event = text.startsWith('服务守护：') ? 'watching'
-      : text.startsWith('备份：') ? 'backup'
+      : backup && /失败|不健康|出错|没做成|没发出去/.test(text) ? 'failed'
+      : backup ? 'backup'
       : /恢复正常/.test(text) ? 'recovered'
       : /拉起|重拉/.test(text) ? 'starting'
       : /失败|不健康|出错|起不来/.test(text) ? 'failed'
       : undefined
-    const target = service ?? (text.startsWith('备份：') ? 'backup' : 'watchdog')
+    const target = service ?? (backup ? 'backup' : 'watchdog')
     return event ? [{ at: stamp[1], service: target, event }] : []
   }).slice(-limit).reverse()
 }
@@ -92,6 +95,9 @@ export function createLogsView({ root, home = homedir(), readTail = tail }) {
     ? join(home, LOG_SOURCES[source].file)
     : resolve(root, LOG_SOURCES[source].file)
 
+  // 召回行没有 event 字段，按状态筛选时比的是 important（matched / no-match / not-queried / failed）
+  const kindOf = (source, row) => source === 'recall' ? row.important : row.event
+
   function rowsOf(source) {
     const lines = readTail(pathOf(source))
     return source === 'recall' ? summarizeRecallLog(lines) : summarizeWatchdog(lines, EXPORT_MAX)
@@ -101,7 +107,7 @@ export function createLogsView({ root, home = homedir(), readTail = tail }) {
     if (!Object.hasOwn(LOG_SOURCES, source)) return null
     const wanted = Array.isArray(events) ? events.filter(event => typeof event === 'string') : []
     const all = rowsOf(source)
-    const rows = wanted.length ? all.filter(row => wanted.includes(row.event)) : all
+    const rows = wanted.length ? all.filter(row => wanted.includes(kindOf(source, row))) : all
     const size = clamp(limit, 1, MAX_LIMIT, LOG_LIMIT)
     const current = clamp(page, 1, MAX_PAGE, 1)
     const start = (current - 1) * size
@@ -120,7 +126,7 @@ export function createLogsView({ root, home = homedir(), readTail = tail }) {
     if (!Object.hasOwn(LOG_SOURCES, source)) return null
     const wanted = Array.isArray(events) ? events.filter(event => typeof event === 'string') : []
     const all = rowsOf(source)
-    const rows = (wanted.length ? all.filter(row => wanted.includes(row.event)) : all).slice(0, EXPORT_MAX)
+    const rows = (wanted.length ? all.filter(row => wanted.includes(kindOf(source, row))) : all).slice(0, EXPORT_MAX)
     const line = row => source === 'recall'
       ? `${row.at} 召回 items=${row.items} selected=${row.selected} chars=${row.chars} important=${EVENT_LABELS[row.important] ?? row.important} failed=${row.failed}`
       : `${row.at} ${row.service} ${EVENT_LABELS[row.event] ?? row.event}`

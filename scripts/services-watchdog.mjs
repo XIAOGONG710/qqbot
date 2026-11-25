@@ -21,11 +21,14 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createNetWatch } from './net-watch.mjs';
 import { backupEntries, backupHealth, configuredDataDir } from './backup-state.mjs';
+import { HEARTBEAT_FILE, writeHeartbeat } from './watchdog-heartbeat.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const once = process.argv.includes('--once');
 const localOnly = once && process.argv.includes('--local-only');
 const LOG = join(root, 'runtime', 'services-watchdog.log');
+// 心跳（11-26）：日志只在出事时写，面板靠这个文件判断守护还在不在跑（watchdog-heartbeat.mjs）
+const HEARTBEAT = join(root, HEARTBEAT_FILE);
 const MAINTENANCE = join(process.env.TEMP ?? tmpdir(), 'qqbot-maintenance');
 const EVERY_MS = 60_000;
 const KOISHI_STALE_MS = 3 * 60_000;
@@ -264,6 +267,7 @@ function allowed(service) {
 }
 
 async function check() {
+    if (!once) writeHeartbeat(HEARTBEAT);
     const procs = processes();
     if (!procs) {
         if (once) throw new Error('无法读取服务进程');

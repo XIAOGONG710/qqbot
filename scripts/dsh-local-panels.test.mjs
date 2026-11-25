@@ -189,3 +189,16 @@ test('panel diagnostics never return old query text or raw error messages', () =
   ]
   assert.deepEqual(summarizeRecallLog(lines), [{ at, items: 1, selected: 1, chars: 20, important: 'matched', failed: 0 }])
 })
+
+test('version status only touches the remote when the owner asks for a refresh (review finding 5)', async () => {
+  const calls = []
+  const local = createLocalPanels({
+    root, readConfig: () => null, now: () => new Date('2026-11-25T12:00:00Z'),
+    runGit: async args => { calls.push(args[0]); return args.at(-1) === 'HEAD' ? sha + '\n' : 'not a real SHA' },
+  })
+  assert.deepEqual(await local.details('versions', new URLSearchParams()), { local: sha, tracked: null })
+  assert.deepEqual(calls, ['rev-parse', 'rev-parse'], '不刷新：只读本地两个提交')
+  calls.length = 0
+  await local.details('versions', new URLSearchParams({ refresh: '1' }))
+  assert.ok(calls.includes('ls-remote'), '点了「检查远端」才去问远端')
+})

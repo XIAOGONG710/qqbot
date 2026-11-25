@@ -46,12 +46,18 @@ export function createUpdateCheck({ root, runGit, now = () => Date.now() }) {
         return { state: 'fresh', latest: latest.name };
     }
 
+    async function revision(ref) {
+        const result = await attempt(['rev-parse', '--verify', ref]);
+        const text = String(result.text ?? '').trim();
+        return /^[0-9a-f]{40}$/.test(text) ? text : null;
+    }
+
+    /** 只看本地已知的两个提交：不 ls-remote、不 fetch、不 status，面板不点「检查远端」时用它 */
+    async function known() {
+        return { local: await revision('HEAD'), tracked: await revision('refs/remotes/origin/main') };
+    }
+
     async function check() {
-        const revision = async ref => {
-            const result = await attempt(['rev-parse', '--verify', ref]);
-            const text = String(result.text ?? '').trim();
-            return /^[0-9a-f]{40}$/.test(text) ? text : null;
-        };
         const branch = (await attempt(['rev-parse', '--abbrev-ref', 'HEAD'])).text?.trim() ?? null;
         const local = await revision('HEAD');
         const tracked = await revision('refs/remotes/origin/main');
@@ -114,5 +120,5 @@ export function createUpdateCheck({ root, runGit, now = () => Date.now() }) {
         };
     }
 
-    return { check };
+    return { check, known };
 }

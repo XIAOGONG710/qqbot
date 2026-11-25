@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { createLogsView, redact } from '../dsh-plugins/dsh-qqbot-services/logs-view.js'
+import { createLogsView, redact, summarizeWatchdog } from '../dsh-plugins/dsh-qqbot-services/logs-view.js'
+import { diagnosticReport } from '../dsh-plugins/dsh-qqbot-services/index.js'
 
 const operationsLines = [
   '2026/11/24 18:00:00 服务守护：开始监测，每 30 秒一次',
@@ -125,4 +126,34 @@ test('redact 兜底：令牌、URL 参数和长串都抹掉', () => {
   assert.equal(redact('token=abc cookie:xyz'), 'token=<隐藏> cookie:<隐藏>')
   assert.equal(redact('https://x.test/cb?code=abc&state=1'), 'https://x.test/cb?code=<隐藏>&state=<隐藏>')
   assert.match(redact('a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6'), /<隐藏>/)
+})
+
+test('召回日志按状态筛选比的是 important，列表和导出都对得上（审查第 2 条）', () => {
+  const { view, done } = build()
+  try {
+    const matched = view.list({ source: 'recall', events: ['matched'] })
+    assert.equal(matched.total, 1)
+    assert.equal(matched.items[0].important, 'matched')
+    assert.equal(view.list({ source: 'recall', events: ['matched', 'no-match'] }).total, 2)
+    assert.equal(view.list({ source: 'recall', events: ['failed'] }).total, 0)
+    const text = view.exportText({ source: 'recall', events: ['no-match'] })
+    assert.match(text, /共 1 条/)
+    assert.match(text, /important=没有配对/)
+  } finally { done() }
+})
+
+test('备份出事算运行异常，正常的备份行仍是「备份」（审查第 3 条）', () => {
+  const lines = [
+    '2026/1/4 03:00:00 备份：没做成（[backup] 复制失败）',
+    '2026/1/4 03:00:01 备份：不健康——最近一份完整的备份是 2026-11-20，已经 4 天没有新的了',
+    '2026/1/4 03:00:02 备份：QQ 通知出错（boom）',
+    '2026/1/4 03:00:03 备份：QQ 通知没发出去（offline）',
+    '2026/1/4 03:00:04 备份：已通过她的 QQ 告诉用户',
+  ]
+  const events = summarizeWatchdog(lines, 20).reverse()
+  assert.deepEqual(events.map(row => row.event), ['failed', 'failed', 'failed', 'failed', 'backup'])
+  assert.ok(events.every(row => row.service === 'backup'))
+  const report = diagnosticReport({ health: {}, checkedAt: 0, operation: null, events: summarizeWatchdog(lines, 20) })
+  assert.ok(report.includes('2026/1/4 03:00:03 备份 运行异常'), report)
+  assert.ok(report.includes('2026/1/4 03:00:04 备份 有记录'), report)
 })

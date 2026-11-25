@@ -44,10 +44,9 @@ export function createLocalPanels({ root, readConfig, runGit, now = () => new Da
     async details(kind, query) {
       if (kind === 'versions') {
         const check = createUpdateCheck({ root, runGit, now: () => now().getTime() })
-        const result = await check.check()
-        // 不刷新时只回本地已知的两个提交，避免每次都碰远端。
-        if (query?.get('refresh') !== '1') return { local: result.local, tracked: result.tracked }
-        return result
+        // 不刷新时只回本地已知的两个提交，不碰远端：判断要放在 check() 之前，check() 一跑就是 ls-remote + fetch。
+        if (query?.get('refresh') !== '1') return check.known()
+        return check.check()
       }
       if (kind === 'restore-check') {
         const day = query.get('day') ?? ''

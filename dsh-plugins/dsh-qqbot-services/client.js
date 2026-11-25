@@ -1001,7 +1001,7 @@ window.__ModuleLoader__.load({
             h('section', { key: service, className: 'qqb-card qqb-service' },
               h('h3', { className: 'qqb-title' }, service === 'watchdog' ? '自动守护' : names[service]),
               h('small', null, h('span', { className: `qqb-dot ${isReady(service) ? 'qqb-ok' : 'qqb-idle'}`, 'aria-hidden': true }),
-                service === 'watchdog' ? (health ? (health.watchdog ? '运行中' : '未运行') : '状态未知') : summary(health, service)),
+                service === 'watchdog' ? (health?.watchdog === true ? '运行中' : health?.watchdog === false ? '未运行' : '状态未知') : summary(health, service)),
               operation?.steps?.[service] && h('small', null, steps[operation.steps[service]]),
               service !== 'watchdog' && h('button', { className: 'qqb-btn', disabled: blocked || isReady(service) || health?.launchers?.[service],
                 'aria-label': `启动 ${names[service]}`, onClick: () => start(service) }, '启动'))))),
