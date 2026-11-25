@@ -67,7 +67,7 @@ window.__ModuleLoader__.load({
     }
 
     // 沿用灵犀 WebChat 的消息流、发送者和输入区结构，数据改走本地 QQ 接口。
-    function Chat({ token }) {
+    function Chat() {
       const [data, setData] = React.useState(null)
       const [key, setKey] = React.useState('')
       const [filter, setFilter] = React.useState('')
@@ -77,7 +77,7 @@ window.__ModuleLoader__.load({
       const request = async (path, options = {}) => {
         const response = await fetch(`${api}/chat/${path}`, {
           method: 'POST', ...options, headers: {
-            ...options.headers, 'x-qqbot-service-panel': '1', 'x-qqbot-service-token': token,
+            ...options.headers, 'x-qqbot-service-panel': '1',
           },
         })
         if (!response.ok) throw Error()
@@ -90,7 +90,7 @@ window.__ModuleLoader__.load({
           if (!controller.signal.aborted) setData(value)
         }).catch(() => { if (!controller.signal.aborted) { setListError(true); setData(null) } })
         return () => controller.abort()
-      }, [token, revision])
+      }, [revision])
       return h('section', { style: { marginTop: 16 } },
         h('div', { style: row },
           h('span', null, data?.account ? `QQ 账号 ${data.account.name}（${data.account.id}）` : 'QQ 会话'),
@@ -140,17 +140,23 @@ window.__ModuleLoader__.load({
       const submit = async event => {
         event.preventDefault()
         if (!canSend || busy.current || !draft.trim()) return
-        if (!window.confirm(`从 ${account.name}（${account.id}）发送给 ${session.name}（${session.target}）？\n\n${sendPrefix}${draft}`)) return
         busy.current = true
         setSending(true)
         setNotice('')
+        let attempted = false
         try {
-          await request('send', { headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ key: session.key, accountId: account.id, text: draft }) })
+          const payload = { key: session.key, accountId: account.id, text: draft }
+          const post = (path, body) => request(path, {
+            headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+          })
+          const { preview, confirmation } = await post('prepare', payload)
+          if (!window.confirm(`从 ${preview.account.name}（${preview.account.id}）发送给 ${preview.recipient.name}（${preview.recipient.target}）？\n\n${preview.text}`)) return
+          attempted = true
+          await post('send', { ...payload, confirmation })
           setDraft('')
           setRefresh(value => value + 1)
           setNotice('已发送')
-        } catch { setNotice('发送结果未能确认，请先刷新历史再决定是否重试。') }
+        } catch { setNotice(attempted ? '发送结果未能确认，请先刷新历史再决定是否重试。' : '无法准备发送，请刷新会话后重试。') }
         finally { busy.current = false; setSending(false) }
       }
       return h('section', { 'aria-label': session.name },
@@ -221,7 +227,7 @@ window.__ModuleLoader__.load({
         try {
           const response = await fetch(`${api}/start/${service}`, {
             method: 'POST', headers: {
-              'x-qqbot-service-panel': '1', 'x-qqbot-service-token': state.panelToken,
+              'x-qqbot-service-panel': '1',
             }, signal: AbortSignal.timeout(10_000),
           })
           if (!response.ok) throw Error()
@@ -253,7 +259,7 @@ window.__ModuleLoader__.load({
         health?.maintenance && h('p', { role: 'status' }, '正在维护，启动暂不可用。'),
         notice && h('p', { role: 'status' }, notice),
         tab === 'chat' && h('div', { role: 'tabpanel', id: `${instanceId}-panel-chat`, 'aria-labelledby': `${instanceId}-tab-chat` },
-          state?.panelToken && h(Chat, { key: state.panelToken, token: state.panelToken })),
+          state && h(Chat)),
         h('div', { role: 'tabpanel', id: `${instanceId}-panel-home`, 'aria-labelledby': `${instanceId}-tab-home`, hidden: tab !== 'home' },
         ...['napcat', 'hindsight', 'koishi'].map(service => h('div', { key: service, style: row },
           h('div', null, h('strong', null, names[service]), h('div', null, summary(health, service)),

@@ -50,26 +50,55 @@ test('manual recipient comes from a single active Koishi plugin and a unique own
   assert.equal(configuredManualOwner({ plugins: { qqbot: { contacts: [contact] }, 'qqbot:other': {} } }), null)
 })
 
-test('chat routes require a panel token and never expose conversations in diagnostics', async () => {
-  const chat = createChat(async action => action === 'get_login_info' ? { user_id: 100 } : [])
-  const handler = createHandler({ state: async () => ({ health: {}, checkedAt: 1 }) }, () => [], chat)
+test('chat routes use the host session and an exact, single-use confirmation', async () => {
+  const sends = []
+  let now = 1000
+  const chat = createChat(async action => action === 'get_login_info' ? { user_id: 100 } :
+    action === 'get_friend_list' ? [{ user_id: 200 }] : [], { ownerId: '200', send: async value => sends.push(value) })
+  const connection = { authorizeIndex: req => ['test-session=owner', 'test-session=other-browser'].includes(req.headers.cookie) }
+  const handler = createHandler({ state: async () => ({ health: {}, checkedAt: 1 }) }, () => [], chat, connection, () => now)
   const call = async (method, path, headers = {}, body = '') => {
     let status, payload
     await handler({
       method, url: '/api/qqbot-services/' + path, socket: { remoteAddress: '127.0.0.1' },
       headers: { host: '127.0.0.1:3000', origin: 'http://127.0.0.1:3000', 'x-qqbot-service-panel': '1', ...headers },
-      async *[Symbol.asyncIterator]() { yield body },
+      async *[Symbol.asyncIterator]() {
+        const bytes = Buffer.from(body)
+        const split = bytes.indexOf(Buffer.from('仅')) + 1
+        yield bytes.subarray(0, split)
+        yield bytes.subarray(split)
+      },
     }, { writeHead(code) { status = code }, end(json) { payload = JSON.parse(json) } })
     return { status, payload }
   }
-  const { payload: state } = await call('GET', 'state')
+  assert.equal((await call('GET', 'state')).status, 403)
+  const headers = { cookie: 'test-session=owner', 'content-type': 'application/json' }
+  const { payload: state } = await call('GET', 'state', headers)
   assert.equal(state.account, undefined)
-  const headers = { 'x-qqbot-service-token': state.panelToken, 'content-type': 'application/json' }
+  assert.equal(state.panelToken, undefined)
   assert.equal((await call('GET', 'chat/list', headers)).status, 403)
   assert.equal((await call('POST', 'chat/list')).status, 403)
+  assert.equal((await call('POST', 'chat/list', { cookie: 'dsh-auth-forged=true' })).status, 403)
   assert.equal((await call('POST', 'chat/list', headers)).payload.account.id, '100')
   assert.equal((await call('POST', 'chat/history?key=private%3A444', headers)).status, 404)
-  assert.equal((await call('POST', 'chat/send', headers, '{"text":"仅测试"}')).status, 403)
+  const message = { key: 'private:200', accountId: '100', text: '仅测试' }
+  const post = (path, value, auth = headers) => call('POST', path, auth, JSON.stringify(value))
+  assert.equal((await post('chat/send', message)).status, 403)
+  assert.equal((await post('chat/prepare', { ...message, key: 'group:200' })).status, 403)
+  assert.equal((await post('chat/prepare', { ...message, key: 'private:300' })).status, 403)
+  const { payload: prepared } = await post('chat/prepare', message)
+  assert.equal(prepared.preview.text, '【本人手动代发】仅测试')
+  const confirmed = { ...message, confirmation: prepared.confirmation }
+  assert.equal((await post('chat/send', confirmed, { 'content-type': 'application/json' })).status, 403)
+  assert.equal((await post('chat/send', confirmed, { ...headers, cookie: 'test-session=other-browser' })).status, 403)
+  assert.equal((await post('chat/send', { ...confirmed, text: '替换正文' })).status, 403)
+  assert.deepEqual(sends, [])
+  assert.equal((await post('chat/send', confirmed)).status, 200)
+  assert.equal((await post('chat/send', confirmed)).status, 403)
+  const { payload: later } = await post('chat/prepare', message)
+  now += 121_000
+  assert.equal((await post('chat/send', { ...message, confirmation: later.confirmation })).status, 403)
+  assert.deepEqual(sends, [{ accountId: '100', userId: '200', text: '仅测试' }])
 })
 
 test('NapCat transport sends only allowlisted reads and ignores unsolicited events', async () => {

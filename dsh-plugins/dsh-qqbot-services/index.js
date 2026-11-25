@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
@@ -10,13 +10,13 @@ import { createController } from './controller.js'
 import { configuredManualOwner, createChat, createNapCatManualSender, createNapCatReader } from './chat.js'
 
 export const name = 'dsh-qqbot-services'
-export const inject = ['webServer']
+export const inject = ['webServer', 'connection']
 const prefix = '/api/qqbot-services'
 const exec = promisify(execFile)
 const localAddresses = ['127.0.0.1', '::1', '::ffff:127.0.0.1']
 const localHost = /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?$/i
 
-export function allowedRequest(req, panelToken) {
+export function allowedRequest(req) {
   if (!localAddresses.includes(req.socket?.remoteAddress) || !localHost.test(req.headers?.host ?? '')) return false
   if (req.headers.forwarded || req.headers['x-forwarded-for'] || req.headers['x-forwarded-host']) return false
   if (req.headers['sec-fetch-site'] === 'cross-site') return false
@@ -24,11 +24,22 @@ export function allowedRequest(req, panelToken) {
   const origin = req.headers.origin?.toLowerCase()
   const trustedOrigin = origin === `http://${host}` || origin === `https://${host}`
   if (origin !== undefined && !trustedOrigin) return false
-  if (req.method !== 'POST') return true
-  // The desktop protocol proxy verifies its renderer origin, then strips Origin.
-  return req.headers['x-qqbot-service-panel'] === '1'
-    && (trustedOrigin || (origin === undefined && panelToken !== undefined
-      && req.headers['x-qqbot-service-token'] === panelToken))
+  return req.method !== 'POST' || req.headers['x-qqbot-service-panel'] === '1'
+}
+
+function authenticatedBrowser(connection, req) {
+  // Check the browser cookie on a fixed non-root URL. Never forward a launch-token
+  // query to the host's index login flow or relay its response headers.
+  try {
+    return connection?.authorizeIndex?.(
+      { method: req.method, url: prefix, headers: req.headers },
+      { writeHead() {}, end() {} },
+    ) === true
+  } catch { return false }
+}
+
+function confirmationDigest(req, payload) {
+  return createHash('sha256').update(JSON.stringify([req.headers.cookie, payload?.key, payload?.accountId, payload?.text])).digest('hex')
 }
 
 function tail(file) {
@@ -94,17 +105,17 @@ export function diagnosticReport({ health, checkedAt, operation, events }) {
   return lines.join('\n')
 }
 
-export function createHandler(controller, events, chat) {
-  const panelToken = randomBytes(32).toString('hex')
+export function createHandler(controller, events, chat, connection, now = Date.now) {
+  const confirmations = new Map()
   return async (req, res) => {
     const send = (status, value) => {
       res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
       res.end(JSON.stringify(value))
     }
-    if (!allowedRequest(req, panelToken)) return send(403, { error: 'forbidden' })
+    if (!allowedRequest(req) || !authenticatedBrowser(connection, req)) return send(403, { error: 'forbidden' })
     const path = (req.url ?? '').split('?')[0]
     if (chat && path.startsWith(`${prefix}/chat/`)) {
-      if (req.method !== 'POST' || req.headers['x-qqbot-service-token'] !== panelToken) return send(403, { error: 'forbidden' })
+      if (req.method !== 'POST') return send(403, { error: 'forbidden' })
       const query = new URLSearchParams((req.url ?? '').split('?')[1])
       try {
         if (path === `${prefix}/chat/list`) return send(200, await chat.list())
@@ -112,15 +123,36 @@ export function createHandler(controller, events, chat) {
           const messages = await chat.history(query.get('key'), query.get('count'))
           return messages ? send(200, { messages }) : send(404, { error: 'unknown_conversation' })
         }
-        if (path === `${prefix}/chat/send`) {
+        if (path === `${prefix}/chat/prepare` || path === `${prefix}/chat/send`) {
           if (req.headers['content-type']?.split(';')[0] !== 'application/json') return send(415, { error: 'invalid_format' })
-          let raw = ''
+          const chunks = []
+          let bytes = 0
           for await (const chunk of req) {
-            raw += chunk
-            if (Buffer.byteLength(raw) > 16_384) return send(413, { error: 'message_too_large' })
+            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+            bytes += buffer.length
+            if (bytes > 16_384) return send(413, { error: 'message_too_large' })
+            chunks.push(buffer)
           }
           let payload
-          try { payload = JSON.parse(raw) } catch { return send(400, { error: 'invalid_message' }) }
+          try { payload = JSON.parse(Buffer.concat(chunks, bytes).toString('utf8')) }
+          catch { return send(400, { error: 'invalid_message' }) }
+          if (path === `${prefix}/chat/prepare`) {
+            const result = await chat.prepare(payload)
+            if (result.status !== 200) return send(result.status, { error: result.error })
+            const time = now()
+            for (const [key, value] of confirmations) {
+              if (value.expires <= time) confirmations.delete(key)
+            }
+            if (confirmations.size >= 64) confirmations.delete(confirmations.keys().next().value)
+            const confirmation = randomBytes(32).toString('base64url')
+            confirmations.set(confirmation, { expires: time + 120_000, digest: confirmationDigest(req, payload) })
+            return send(200, { confirmation, preview: result.preview })
+          }
+          const confirmation = confirmations.get(payload?.confirmation)
+          if (!confirmation || confirmation.expires <= now() || confirmation.digest !== confirmationDigest(req, payload)) {
+            return send(403, { error: 'confirmation_required' })
+          }
+          confirmations.delete(payload.confirmation)
           const result = await chat.send(payload)
           return send(result.status, { error: result.error })
         }
@@ -130,7 +162,7 @@ export function createHandler(controller, events, chat) {
     if (req.method === 'GET' && path === `${prefix}/state`) {
       try {
         const state = { ...await controller.state(), events: events() }
-        return send(200, { ...state, diagnostic: diagnosticReport(state), panelToken })
+        return send(200, { ...state, diagnostic: diagnosticReport(state) })
       }
       catch { return send(503, { error: 'status_unavailable' }) }
     }
@@ -188,6 +220,6 @@ export function apply(ctx, config = {}) {
       return send(message)
     },
   })
-  const unregister = ctx.webServer.register({ kind: 'prefix', path: prefix, handler: createHandler(controller, events, chat) })
+  const unregister = ctx.webServer.register({ kind: 'prefix', path: prefix, handler: createHandler(controller, events, chat, ctx.connection) })
   ctx.on('dispose', () => { controller.dispose(); unregister() })
 }

@@ -74,7 +74,7 @@ test('routes accept only local panel operations and event texts never leave the 
     assert.equal(allowedRequest({ ...request, headers: { ...request.headers, 'x-forwarded-for': '192.168.1.1' } }), false);
     assert.equal(allowedRequest({ ...request, socket: { remoteAddress: '192.168.1.1' } }), false);
     const controller = createController({ probe: async () => health, launch: async () => assert.fail(), sleep: async () => {} });
-    const handler = createHandler(controller, () => []);
+    const handler = createHandler(controller, () => [], undefined, { authorizeIndex: () => true });
     let status;
     await handler({ ...request, url: '/api/qqbot-services/start/other-script.ps1' }, {
         writeHead(value) { status = value; }, end() {},
@@ -85,11 +85,15 @@ test('routes accept only local panel operations and event texts never leave the 
     ]);
 });
 
-test('desktop proxy can submit only with the token from the local state route', async () => {
+test('desktop proxy uses the DSH host session without returning a panel token', async () => {
     const current = { ...health, napcat: true, hindsight: true, koishi: true, koishiListening: true,
         ports: { napcat: 3001, hindsight: 8899, koishi: 5140 }, lastConnection: { state: 'connected', detail: 'PRIVATE' } };
     const controller = createController({ probe: async () => current, launch: async () => assert.fail(), sleep: async () => {} });
-    const handler = createHandler(controller, () => []);
+    const connection = { authorizeIndex(req) {
+        assert.equal(req.url, '/api/qqbot-services');
+        return req.headers.cookie === 'test-session=owner';
+    } };
+    const handler = createHandler(controller, () => [], undefined, connection);
     const call = async (method, path, headers = {}) => {
         let status, body;
         await handler({ method, url: '/api/qqbot-services/' + path, socket: { remoteAddress: '127.0.0.1' },
@@ -98,14 +102,17 @@ test('desktop proxy can submit only with the token from the local state route', 
         });
         return { status, body };
     };
-    const { body } = await call('GET', 'state');
+    assert.equal((await call('GET', 'state')).status, 403);
+    const { body } = await call('GET', 'state', { cookie: 'test-session=owner' });
     assert.match(body.diagnostic, /Hindsight（端口 8899） 正常/);
     assert.match(body.diagnostic, /Koishi → NapCat 最近记录为已连接/);
     assert.doesNotMatch(body.diagnostic, /PRIVATE|panelToken/);
-    assert.ok(!body.diagnostic.includes(body.panelToken));
+    assert.equal(body.panelToken, undefined);
     const marker = { 'x-qqbot-service-panel': '1' };
-    const authorized = { ...marker, 'x-qqbot-service-token': body.panelToken };
+    const authorized = { ...marker, cookie: 'test-session=owner' };
     assert.equal((await call('POST', 'start/all', marker)).status, 403);
+    assert.equal((await call('POST', 'start/all', { ...marker, origin: 'http://127.0.0.1:3000' })).status, 403);
+    assert.equal((await call('GET', 'state?token=attacker')).status, 403);
     assert.equal((await call('GET', 'state', { origin: 'https://example.test' })).status, 403);
     assert.equal((await call('POST', 'start/all', { ...authorized, 'sec-fetch-site': 'cross-site' })).status, 403);
     assert.equal((await call('POST', 'start/all', { ...authorized, origin: 'null' })).status, 403);
@@ -137,6 +144,53 @@ test('client registers the same bridge console in DSH settings and the sidebar',
         ['settings.section', 'linmengyao-qq-bridge'],
     ]);
     assert.equal(entries[0].render, entries[2].render);
+});
+
+test('the DSH chat form commits only after the operator accepts the server preview', async () => {
+    let panel, plugin, accepted = false;
+    const requests = [], previews = [];
+    const account = { id: '100', name: '测试账号' };
+    const recipient = { key: 'private:200', target: '200', kind: 'private', name: '测试收件人' };
+    const draft = '合成消息';
+    const text = '【本人手动代发】' + draft;
+    const source = readFileSync(new URL('../dsh-plugins/dsh-qqbot-services/client.js', import.meta.url), 'utf8');
+    let states;
+    const React = {
+        createElement: (type, props, ...children) => ({ type, props, children }),
+        useState: () => [states.shift(), () => {}],
+        useRef: current => ({ current }),
+        useEffect() {},
+        useId: () => 'test',
+    };
+    runInNewContext(source, {
+        window: {
+            __ModuleLoader__: { load(bundle) { plugin = bundle.factory(() => React); } },
+            confirm(message) { previews.push(message); return accepted; },
+        },
+        fetch: async (url, options) => {
+            requests.push([url.split('/').at(-1), JSON.parse(options.body)]);
+            return { ok: true, json: async () => ({ confirmation: 'synthetic', preview: { account, recipient, text } }) };
+        },
+    });
+    plugin.apply({ slots: {
+        inject(_name, callback) { callback(); },
+        register(slot, render) { if (slot.name === 'main') panel = render; },
+    } });
+    const find = (node, predicate) => node && typeof node === 'object' &&
+        (predicate(node) ? node : node.children?.map(child => find(child, predicate)).find(Boolean));
+    states = [{ health: {} }, '', false, false, '', 'chat'];
+    const chat = find(panel(), node => node.type?.name === 'Chat');
+    states = [{ account, sessions: [recipient], sendKey: recipient.key, sendPrefix: '【本人手动代发】' }, recipient.key, '', 0, false];
+    const conversation = find(chat.type(chat.props), node => node.type?.name === 'Conversation');
+    states = [30, null, '', draft, false, 0];
+    const { props: form } = find(conversation.type(conversation.props), node => node.type === 'form');
+    await form.onSubmit({ preventDefault() {} });
+    assert.deepEqual(requests.map(([operation]) => operation), ['prepare']);
+    accepted = true;
+    await form.onSubmit({ preventDefault() {} });
+    assert.match(previews.at(-1), /测试账号（100）.*测试收件人（200）/);
+    assert.ok(previews.at(-1).endsWith(text));
+    assert.deepEqual(requests.at(-1), ['send', { key: recipient.key, accountId: account.id, text: draft, confirmation: 'synthetic' }]);
 });
 
 test('PowerShell launchers hold one shared lock for the whole foreground run', { skip: process.platform !== 'win32', timeout: 20_000 }, async () => {

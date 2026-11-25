@@ -45,6 +45,15 @@ export function createChat(call, { ownerId, send } = {}) {
     if (typeof key !== 'string' || !/^(private|group):[1-9]\d{0,15}$/.test(key)) return
     return (await conversations(key.split(':')[0])).find(session => session.key === key)
   }
+  async function resolveSend(payload) {
+    if (!manualTarget || payload?.key !== `private:${manualTarget}`) return { status: 403, error: 'send_unavailable' }
+    if (typeof payload.text !== 'string' || !payload.text.trim() || payload.text.length > 2000) {
+      return { status: 400, error: 'invalid_message' }
+    }
+    const [self, session] = await Promise.all([account(), find(payload.key)])
+    if (!session || self.id === session.target || self.id !== payload.accountId) return { status: 409, error: 'recipient_or_account_changed' }
+    return { status: 200, self, session }
+  }
   return {
     async list() {
       const [self, friends, groups] = await Promise.all([account(), conversations('private'), conversations('group')])
@@ -73,14 +82,15 @@ export function createChat(call, { ownerId, send } = {}) {
         }
       }).sort((a, b) => a.at - b.at)
     },
+    async prepare(payload) {
+      const result = await resolveSend(payload)
+      if (result.status !== 200) return result
+      return { status: 200, preview: { account: result.self, recipient: result.session, text: manualOrigin.prefix + payload.text } }
+    },
     async send(payload) {
-      if (!manualTarget || payload?.key !== `private:${manualTarget}`) return { status: 403, error: 'send_unavailable' }
-      if (typeof payload.text !== 'string' || !payload.text.trim() || payload.text.length > 2000) {
-        return { status: 400, error: 'invalid_message' }
-      }
-      const [self, session] = await Promise.all([account(), find(payload.key)])
-      if (!session || self.id === session.target || self.id !== payload.accountId) return { status: 409, error: 'recipient_or_account_changed' }
-      await send({ accountId: self.id, userId: session.target, text: payload.text })
+      const result = await resolveSend(payload)
+      if (result.status !== 200) return result
+      await send({ accountId: result.self.id, userId: result.session.target, text: payload.text })
       return { status: 200 }
     },
   }
