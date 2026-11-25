@@ -7,27 +7,27 @@
 
 ## 总表（按严重度排序）
 
-| # | 严重度 | 位置 | 一句话 |
-|---|---|---|---|
-| 1 | **bug（严重）** | index.js:196、506、520–522 | `summarizeWatchdog` / `summarizeRecallLog` 只做了转导出，模块里没有这两个名字，`/state` 和 `/details/logs` 每次都是 503 |
-| 2 | bug | logs-view.js:104、123；client.js:642 | 召回日志按状态筛选时比的是 `row.event`，召回行上没有这个字段，选任何筛选都得 0 条 |
-| 3 | bug | logs-view.js:55；index.js:207 | 「备份：不健康/没做成/出错」不再算 `failed`，诊断报告里也会丢掉 `backup` 类事件，备份失败从诊断里看不到了 |
-| 4 | bug | local-status.js:40、47 | 用「守护日志最后一行在 2 分钟内」判断守护在不在跑，但守护只在出事时才写日志；另外月、日都是一位数时 `slice(0,19)` 会切进正文，解析失败 |
-| 5 | bug | local-panels.js:47–49 | 「不刷新只回本地两个提交、不碰远端」没有生效：`check.check()` 在判断之前已经跑完 `ls-remote` + `fetch` |
-| 6 | risk | index.js:387–394；restore-stages.mjs:113–114 | `/backup/stage` 没有 try/catch：`switchPlan` 找不到备份时会抛错，读请求体出错也会抛，handler 的 Promise 被拒绝 |
-| 7 | risk | restore-stages.mjs:25–38、70–110 | 「文件隔离恢复」用 `execFileSync` 跑 PowerShell 解压（最长 10 分钟）、`readFileSync` 读整份 dump，全程同步，会卡住 DSH 进程的事件循环 |
-| 8 | risk | index.js:479–497 | 30 秒前的子进程探测结果铺在新的本地探测结果之上，旧值会盖掉新值，启动流程看到的可能是过时状态 |
-| 9 | risk | character-editing.ts:193；character-bridge.js:16 | 保存时快照 token 可以不传，不传就跳过冲突检查；两个保存子进程之间也没有锁 |
-| 10 | risk | config-editor.js:41–44 | 用 js-yaml 默认 schema 整份 load/dump 重写 koishi.yml：注释丢失（界面有提示），日期样式的标量会被改成时间戳 |
-| 11 | risk | update-check.mjs:23–27、59；index.js:514–517 | 面板里跑 `git status` / `git fetch`：可能和两台 agent 的 git 操作抢 `index.lock`，凭据管理器也可能弹窗 |
-| 12 | risk | companion-room.js:117 | 来宾的 POST 要一直等到模型回复（含排队的被叫回合）才返回，期间这个来宾发不了下一条 |
-| 13 | nit | public-memory.js:16、120；client.js:583 | `MAX_ITEMS = 12×5`，每页 8 条时最多可到 8 页，但服务端只认到第 5 页，第 6–8 页会悄悄回第 1 页的内容 |
-| 14 | nit | local-panels.js:56；index.js:574 | 备份目录不存在时 `lstatSync` 直接抛错，前端看到的是 503「演练失败」，不是 404 |
-| 15 | nit | restore-stages.mjs:60、65 等 | 阶段结果把 `backup` 绝对路径和原始 `error.message`（可能带本机路径）原样发给面板 |
-| 16 | nit | character-bridge.js:37 | 子进程只要往 stderr 写一个字节就判失败，一条无害的 Node/Electron 警告就会让角色页整个不可用 |
-| 17 | nit | config-editor.js:62 | 每次 apply 留一个 `koishi.yml.qqbot-<ticket>.bak`，从不清理；里面是含令牌的整份配置 |
-| 18 | nit | client.js:686 | 导出日志时 `click()` 之后立刻 `revokeObjectURL`，部分环境下载会失败（同文件 741 行已经用了延时） |
-| 19 | 测试 | scripts/dsh-*.test.mjs | 没有一个测试调用过 `apply()`，所以第 1 条测不出来；local-status 测试用的日志格式和守护真实写出的不一样；召回筛选没有测试 |
+| # | 严重度 | 位置 | 一句话 | 状态 |
+|---|---|---|---|---|
+| 1 | **bug（严重）** | index.js:196、506、520–522 | `summarizeWatchdog` / `summarizeRecallLog` 只做了转导出，模块里没有这两个名字，`/state` 和 `/details/logs` 每次都是 503 | 已修（a9c07f3a） |
+| 2 | bug | logs-view.js:104、123；client.js:642 | 召回日志按状态筛选时比的是 `row.event`，召回行上没有这个字段，选任何筛选都得 0 条 | 已修（0ba464f0） |
+| 3 | bug | logs-view.js:55；index.js:207 | 「备份：不健康/没做成/出错」不再算 `failed`，诊断报告里也会丢掉 `backup` 类事件，备份失败从诊断里看不到了 | 已修（0ba464f0） |
+| 4 | bug | local-status.js:40、47 | 用「守护日志最后一行在 2 分钟内」判断守护在不在跑，但守护只在出事时才写日志；另外月、日都是一位数时 `slice(0,19)` 会切进正文，解析失败 | 已修（0ba464f0），守护重启后心跳才生效 |
+| 5 | bug | local-panels.js:47–49 | 「不刷新只回本地两个提交、不碰远端」没有生效：`check.check()` 在判断之前已经跑完 `ls-remote` + `fetch` | 已修（0ba464f0） |
+| 6 | risk | index.js:387–394；restore-stages.mjs:113–114 | `/backup/stage` 没有 try/catch：`switchPlan` 找不到备份时会抛错，读请求体出错也会抛，handler 的 Promise 被拒绝 | 已修（162e6923） |
+| 7 | risk | restore-stages.mjs:25–38、70–110 | 「文件隔离恢复」用 `execFileSync` 跑 PowerShell 解压（最长 10 分钟）、`readFileSync` 读整份 dump，全程同步，会卡住 DSH 进程的事件循环 | 已修（162e6923），改异步 + 流式，没放进子进程 |
+| 8 | risk | index.js:479–497 | 30 秒前的子进程探测结果铺在新的本地探测结果之上，旧值会盖掉新值，启动流程看到的可能是过时状态 | 已修（162e6923） |
+| 9 | risk | character-editing.ts:193；character-bridge.js:16 | 保存时快照 token 可以不传，不传就跳过冲突检查；两个保存子进程之间也没有锁 | 已修（162e6923），在 bridge 里修，核心层没动 |
+| 10 | risk | config-editor.js:41–44 | 用 js-yaml 默认 schema 整份 load/dump 重写 koishi.yml：注释丢失（界面有提示），日期样式的标量会被改成时间戳 | 已修（162e6923），CORE_SCHEMA + 预览核对；注释仍会丢 |
+| 11 | risk | update-check.mjs:23–27、59；index.js:514–517 | 面板里跑 `git status` / `git fetch`：可能和两台 agent 的 git 操作抢 `index.lock`，凭据管理器也可能弹窗 | 已修（162e6923） |
+| 12 | risk | companion-room.js:117 | 来宾的 POST 要一直等到模型回复（含排队的被叫回合）才返回，期间这个来宾发不了下一条 | 已修（162e6923） |
+| 13 | nit | public-memory.js:16、120；client.js:583 | `MAX_ITEMS = 12×5`，每页 8 条时最多可到 8 页，但服务端只认到第 5 页，第 6–8 页会悄悄回第 1 页的内容 | 已修（4ae41fcc） |
+| 14 | nit | local-panels.js:56；index.js:574 | 备份目录不存在时 `lstatSync` 直接抛错，前端看到的是 503「演练失败」，不是 404 | 已修（4ae41fcc） |
+| 15 | nit | restore-stages.mjs:60、65 等 | 阶段结果把 `backup` 绝对路径和原始 `error.message`（可能带本机路径）原样发给面板 | 已修（4ae41fcc） |
+| 16 | nit | character-bridge.js:37 | 子进程只要往 stderr 写一个字节就判失败，一条无害的 Node/Electron 警告就会让角色页整个不可用 | 已修（162e6923） |
+| 17 | nit | config-editor.js:62 | 每次 apply 留一个 `koishi.yml.qqbot-<ticket>.bak`，从不清理；里面是含令牌的整份配置 | 已修（4ae41fcc） |
+| 18 | nit | client.js:686 | 导出日志时 `click()` 之后立刻 `revokeObjectURL`，部分环境下载会失败（同文件 741 行已经用了延时） | 已修（4ae41fcc），无测试 |
+| 19 | 测试 | scripts/dsh-*.test.mjs | 没有一个测试调用过 `apply()`，所以第 1 条测不出来；local-status 测试用的日志格式和守护真实写出的不一样；召回筛选没有测试 | 大部分补上（见文末「修复记录」） |
 
 审过、没发现问题的部分见文末「已核对、未发现问题」。
 
@@ -231,3 +231,35 @@ if (query?.get('refresh') !== '1') return { local: result.local, tracked: result
 - **`history.ts` 的 `readOnly`**：`readOnly` 时不 `flushIncoming`、不迁移旧撤回状态、不缓存，面板每次都新建 `ChatHistory`，不会改写线上数据。唯一的副作用是构造函数里的 `mkdirSync(chats)`，调用方已经确认过该目录存在。
 - **`isDesktopManualMessage`**：要求 `sender === selfId` 并且文本以前缀开头，别人不能伪造；backfill、引用、转发三处都接上了。`renderForward` 只有 quoted-context 一个调用方，并且传了 `selfId`。
 - **Windows**：`launchService` 在 `spawn` 返回后才关闭日志 fd，这时句柄已经传给子进程，没问题。`nodeCommand` 在 Electron 下会设置 `ELECTRON_RUN_AS_NODE`。我还实测了 `child.stdin.end()` 在子进程不存在或提前退出时会不会让 DSH 进程崩溃：没有崩溃。
+
+---
+
+## 修复记录（2026-11-26，第 2–18 条）
+
+每条都先写了在旧代码上失败、修好后通过的测试（第 18 条是浏览器下载行为，没有测试）。`npm run test:scripts` 全绿，`scripts/dsh-offline-acceptance.mjs` 通过。没有改 TypeScript，没有重载 DSH、没有重启线上服务。
+
+| # | 提交 | 怎么修的 | 测试 |
+|---|---|---|---|
+| 2 | 0ba464f0 | 召回来源按 `important` 筛选，列表和导出共用 `kindOf` | dsh-logs-view：召回筛选 |
+| 3 | 0ba464f0 | 备份行先看失败词（失败 / 不健康 / 出错 / 没做成 / 没发出去）归 `failed`，其余才是 `backup`；`diagnosticReport` 也收 `backup`（显示「有记录」） | dsh-logs-view：失败备份行 + 诊断 |
+| 4 | 0ba464f0 | 守护每次检查前写 `runtime/services-watchdog.heartbeat.json`（`{ pid, at }`，`scripts/watchdog-heartbeat.mjs`）；面板看 pid 还在、心跳 20 分钟内（一次检查可能被备份拖 15 分钟）。没心跳（守护还是旧版）时日志 2 分钟内有一行算在跑，否则是 `null`，面板显示「状态未知」，控制器接受 `null`。时刻逐段解析，只读日志末尾 4 KB | dsh-local-status：真实格式（一位数月日）、心跳新旧、pid 已死、没心跳时的 null |
+| 5 | 0ba464f0 | `createUpdateCheck().known()` 只跑两次 `rev-parse`；不刷新时在 `check()` 之前就返回 | dsh-local-panels：记录 runGit，不刷新时没有 ls-remote / fetch |
+| 6 | 162e6923 | 路由包 try/catch（503 `restore_stage_failed`）；`switchPlan` 找不到备份回 `{ ok:false }`，路由 404 | dsh-restore-stages：缺备份 404、请求体断开 503、阶段抛错 503 |
+| 7 | 162e6923 | 解压改异步 `execFile`，dump 头只读 5 字节，摘要流式，复制用 `copyFile`；路由同一时间只跑一个阶段（409 `stage_busy`）。没有放进子进程：异步以后事件循环不再被卡住，`verifyRestoredState` 仍是同步的，但它只读解出来的小文件 | dsh-restore-stages：解压未完成时事件循环照转、流式摘要与整读一致 |
+| 8 | 162e6923 | `mergeStatus`：本地测得到的字段以本地为准，子进程只补 `net / koishiProcesses / lastConnection / launchers`，守护本地是 `null` 时才用子进程的；探测日志同一原因只记一行 | dsh-local-status：mergeStatus |
+| 9 | 162e6923 | bridge 里 `save` 必须带字符串 token，不带不起子进程；保存排队串行。核心 `character-editing.ts` 没改（Koishi 控制台也在用它） | 新增 dsh-character-bridge：无 token、并发不重叠、失败不堵队列 |
+| 10 | 162e6923 | 读写都用 `CORE_SCHEMA`；签 ticket 前按默认 schema 比较，除了编辑的字段别的都相同才放行（否则 422 `config_roundtrip_unsafe`）。注释和排版仍会重新生成（界面已有提示） | dsh-config-editor：不加引号的日期、锚点 + `<<` 合并键 |
+| 11 | 162e6923 | `panelGit`：`--no-optional-locks`，`GIT_TERMINAL_PROMPT=0`、`GCM_INTERACTIVE=never` | dsh-local-panels：panelGit 参数与环境 |
+| 12 | 162e6923 | `post()` 写进房间就回 200，回复循环在后台跑（`room.idle()` 供测试等待），generation 守卫不变 | dsh-companion-room：模型没回时 POST 已返回、同一来宾可接着发 |
+| 13 | 4ae41fcc | 页数上限改成 `ceil(60 / limit)` | dsh-public-memory：每页 8 条翻到第 8 页 |
+| 14 | 4ae41fcc | `lstatSync(..., { throwIfNoEntry: false })`；`/details/restore-check` 回 404 | dsh-local-panels：缺备份 404 |
+| 15 | 4ae41fcc | 阶段只回固定错误码，原始 message 写 `panel-probe.log`；回 `day` 不回绝对路径，保留目录给相对路径；面板把错误码翻成中文 | dsh-restore-stages：结果里没有本机路径 |
+| 16 | 162e6923 | 只看退出码和 JSON；stderr 脱敏后记前 400 字节；加 `--no-warnings` | dsh-character-bridge：stderr 警告不失败 |
+| 17 | 4ae41fcc | apply 成功后只留最新 5 份 `koishi.yml.qqbot-*.bak`，别的文件不碰 | dsh-config-editor：清理 |
+| 18 | 4ae41fcc | 隔 1 秒再 `revokeObjectURL` | 无（浏览器行为） |
+
+补充两点：
+
+- 第 4 条原文举的 `2026/11/26 0:20:00` 不对：Node 的 `toLocaleString('zh-CN', { hour12: false })` 小时补零（`2026/1/5 08:05:03`、`00:05:03`），只有月、日不补零。解析时小时按一到两位都接受。
+- 心跳要等线上守护重启后才会写；重启线上服务要用户点头，这次没有做。重启前面板看不到心跳，按日志判断，最差显示「状态未知」。
+
