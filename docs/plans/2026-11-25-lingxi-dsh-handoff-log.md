@@ -100,3 +100,48 @@
 - `character-bridge.js` 依赖仓库里的 `tsx`，面板首次请求会多几百毫秒（实测 CLI 冷启动约 0.6 秒）。
 - 真实角色资料没有参与验收：验收用的是合成角色的临时副本，真实 `characters/linmengyao/` 未被读写。
 
+## 第 3 批：公共记忆关系图和摘要（2026-11-25）
+
+### 数据源
+
+- `dsh-plugins/dsh-qqbot-services/public-memory.js`（新增）：公共库查询、投影、分页缓存、关系图
+- `dsh-plugins/dsh-qqbot-services/index.js`：新增 `GET memory/search`、`GET memory/graph`
+- `dsh-plugins/dsh-qqbot-services/client.js`：记忆页新增搜索、结果列表、分页、关系图；原来的统计卡保留在下面作回退
+- `packages/bot/src/memory/owner-bank.ts`、`hindsight.ts`：沿用已有登记与召回形状，本批未改
+- 合成库：`scripts/dsh-public-memory.test.mjs` 里的假 fetcher，加上临时目录里合成的 `owner-bank.json`
+
+### 只碰公共库
+
+库名从 `owner-bank.json` 的 `commonBank` 取，且必须匹配 `^[a-zA-Z0-9_-]{1,80}-common$`；主人没公布、库名不像公共库、Hindsight 地址不是回环，一律不查。查询只打 `POST /v1/default/banks/{commonBank}/memories/recall`，`tags` 固定 `['qq-private']`、`tags_match: 'all_strict'`，不枚举、不读其他联系人的库。私有库名不会出现在请求里，也不会出现在页面返回值里。
+
+### 给页面的只有投影
+
+一条记忆只回 `text`、`withdrawn`、`certainty`、`when`、`source`、`entities`、`id`：正文截到 320 字符并去控制字符；`certainty` 把 `world`／`experience` 标成「库里直接写的」，`observation`／`opinion` 标成「整合出来的」，类型不明就是「来源不明」；`when.dated` 只在有事件发生时间时为真；`source` 只有 `document_id` 时是 `{ document }`，否则是 `null`（页面显示「来源不明」）；命中 `recalled`／`retracted`／`withdrawn`／`forgotten` 的条目 `text` 为 `null`，页面只留位置。Hindsight 原始字段、错误正文、库名都不外传。
+
+### 分页、限量、超时
+
+一页默认 8 条、最多 12 条，最多到第 5 页，最多留 60 条；同一查询 30 秒内复用召回结果（缓存最多 8 个查询），翻页不重复打 Hindsight。请求超时夹在 500ms 到 8000ms 之间，默认 3000ms，失败抛 `memory_unavailable`，路由回 503，页面只说「现在连不上」。
+
+### 关系图
+
+同一批记忆里的实体两两成边，节点带出现次数与可信度，边带共现的记忆 id，能一路追回到记忆和它的文档来源。节点最多 6 个实体一条记忆、边最多 40 条；公共库没连上时返回 `linked: false`，页面不拿空数据冒充。
+
+### 模拟结果
+
+| 检查 | 命令 | 结果 |
+| --- | --- | --- |
+| 公共记忆 | `node --test scripts/dsh-public-memory.test.mjs` | 11 通过 |
+| 脚本测试全量 | `npm run test:scripts` | 103 项、102 通过、1 跳过（符号链接）、0 失败 |
+| 离线验收 | `node scripts/dsh-offline-acceptance.mjs` | 全部符合预期，`memory=2`、`qqSend=0` |
+
+`scripts/dsh-public-memory.test.mjs` 覆盖：只问公共库且请求里不带私有库名、投影不含 `context`／`metadata`／`tags`／原始时间字段、已收回不出正文、来源不明与推断与日期不明各标各的、分页复用召回（`calls.length === 1`）且最多留 60 条、越界参数夹回默认、公共库故障只回 `memory_unavailable` 且错误正文不外泄、没公布／不像公共库／超长库名都不查、关系图节点与边可追溯、库不可用时 `linked: false`、非回环地址不查。
+
+离线验收里新增：`GET memory/search` 返回带来源的摘要、收回条目标 `withdrawn` 且无正文、响应里没有 `tags`、`GET memory/graph` 有节点、非回环来源 403 且公共库调用数不变。
+
+### 尚未验证的运行条件
+
+- 记忆页前端只做了语法检查与离线路由验收，没有在真实 DSH 窗口里点过；需要一次插件重载授权。
+- 真实 Hindsight 与真实公共库没有参与验收：全部是假 fetcher 加合成 `owner-bank.json`，`runtime/` 下的真实数据未被读写。
+- 新旧摘要并存只按「同一查询复用缓存」验证；真实库里旧摘要已被新摘要取代的情形没有样本来对照。
+
+

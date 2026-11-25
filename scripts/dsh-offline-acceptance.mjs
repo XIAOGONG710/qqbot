@@ -3,7 +3,7 @@
 // 不触碰真实服务，不发送 QQ 消息，不读写线上配置；角色资料用合成角色的一份临时副本。
 // 用法：node scripts/dsh-offline-acceptance.mjs
 import assert from 'node:assert/strict'
-import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,6 +12,7 @@ import { createChat } from '../dsh-plugins/dsh-qqbot-services/chat.js'
 import { createCompanionRoom } from '../dsh-plugins/dsh-qqbot-services/companion-room.js'
 import { createController } from '../dsh-plugins/dsh-qqbot-services/controller.js'
 import { createCharacterBridge } from '../dsh-plugins/dsh-qqbot-services/character-bridge.js'
+import { createPublicMemory } from '../dsh-plugins/dsh-qqbot-services/public-memory.js'
 import { createHandler, summarizeConnectionConfig } from '../dsh-plugins/dsh-qqbot-services/index.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -22,7 +23,7 @@ cpSync(join(fixture, 'st'), join(characterDir, 'st'), { recursive: true })
 
 const counts = {
   probe: 0, launch: 0, state: 0, events: 0,
-  napcatRead: 0, qqSend: 0, details: 0, home: 0, roomReply: 0, character: 0,
+  napcatRead: 0, qqSend: 0, details: 0, home: 0, roomReply: 0, character: 0, memory: 0,
 }
 const deltas = []
 
@@ -33,7 +34,29 @@ const controller = createController({
   sleep: async () => {},
 })
 
+// 公共记忆也走临时目录：owner-bank 是合成的公共库名，Hindsight 用假 fetcher，不碰真库。
+const memoryRoot = join(characterDir, 'memory-runtime')
+mkdirSync(join(memoryRoot, 'memory'), { recursive: true })
+writeFileSync(join(memoryRoot, 'memory', 'owner-bank.json'), JSON.stringify({
+  ownerBank: 'synthetic-owner', commonBank: 'synthetic-owner-common', legacyBank: 'synthetic-owner',
+  writtenAt: '2026-11-25T00:00:00.000Z',
+}))
+const memoryRows = [
+  { id: 'mem-1', text: '合成记忆：她和他一起去过海边。', type: 'experience',
+    occurred_start: '2026-10-02T08:00:00.000Z', mentioned_at: '2026-11-01T00:00:00.000Z',
+    document_id: 'doc-synthetic-1', tags: ['qq-private'], entities: ['她', '他'], metadata: {} },
+  { id: 'mem-2', text: '合成记忆：已经收回的那条。', type: 'world',
+    occurred_start: null, mentioned_at: null, document_id: null, tags: ['qq-private', 'recalled'],
+    entities: ['她'], metadata: {} },
+]
+const memoryCalls = []
+const memoryFetcher = async url => {
+  memoryCalls.push(String(url))
+  return { ok: true, json: async () => memoryRows }
+}
+
 const koishiConfig = { plugins: { 'qqbot:offline': {
+  dataDir: memoryRoot,
   contacts: [{ qq: 200, name: '测试联系人', tier: 'boyfriend' }],
   groupChat: 'read', proactive: 'off', oneLife: 'off', token: 'offscreen-token',
 } } }
@@ -75,6 +98,13 @@ const bridge = createCharacterBridge({
   stDir: join(characterDir, 'st'),
   prefix: 'synthetic',
 })
+const publicMemory = createPublicMemory({
+  root,
+  readConfig: () => koishiConfig,
+  hindsightUrl: 'http://127.0.0.1:8899',
+  fetcher: memoryFetcher,
+  now: () => new Date('2026-11-25T12:00:00.000Z'),
+})
 const companion = {
   room,
   home: async () => { counts.home++; return { places: ['客厅'], activities: ['读书'], status: { state: 'unpublished' } } },
@@ -83,6 +113,10 @@ const companion = {
     load: () => { counts.character++; return bridge.load() },
     preview: body => { counts.character++; return bridge.preview(body) },
     save: body => { counts.character++; return bridge.save(body) },
+  },
+  memory: {
+    search: (...args) => { counts.memory++; return publicMemory.search(...args) },
+    graph: (...args) => { counts.memory++; return publicMemory.graph(...args) },
   },
 }
 const connection = { authorizeIndex: req => req.headers.cookie === 'test-session=owner' }
@@ -180,6 +214,24 @@ const staleSave = await call('POST', 'character/save', { body: { part: 'scenes',
 assert.equal(staleSave.payload.conflict, true, '旧快照不得覆盖新内容')
 assert.equal(counts.qqSend, 0, '角色资料编辑不得触达发送接口')
 
+// 公共记忆：只查公布的公共库，只回摘要与来源，收回的不出正文。
+response = await call('GET', 'memory/search?q=' + encodeURIComponent('海边') + '&page=1&limit=8')
+assert.equal(response.status, 200)
+assert.equal(response.payload.linked, true, '公布了公共库就该连得上')
+assert.equal(memoryCalls.length, 1, '一个查询只打一次 Hindsight')
+assert.match(memoryCalls[0], /synthetic-owner-common\/memories\/recall$/)
+assert.ok(!memoryCalls[0].includes('synthetic-owner/'), '不查他的私有库')
+assert.equal(response.payload.items[0].text, '合成记忆：她和他一起去过海边。')
+assert.deepEqual(response.payload.items[0].source, { document: 'doc-synthetic-1' })
+assert.equal(response.payload.items[1].withdrawn, true, '收回的要标出来')
+assert.equal(response.payload.items[1].text, null, '收回的不给正文')
+assert.ok(!JSON.stringify(response.payload).includes('tags'), '原始字段不外传')
+response = await call('GET', 'memory/graph?q=' + encodeURIComponent('海边'))
+assert.equal(response.status, 200)
+assert.equal(response.payload.linked, true)
+assert.ok(response.payload.nodes.some(node => node.name === '她'))
+assert.equal(counts.qqSend, 0, '记忆面板不得触达发送接口')
+
 // 非本机来源与非主人会话直接拒绝，且不触达任何下游。
 response = await call('GET', 'home', { remote: '192.168.1.50' })
 assert.equal(response.status, 403, '非回环来源必须拒绝')
@@ -188,6 +240,10 @@ assert.equal(response.status, 403, '非主人浏览器会话必须拒绝')
 assert.equal(counts.home, 1, '被拒绝的请求不得触达她的家接口')
 response = await call('GET', 'character', { remote: '192.168.1.50' })
 assert.equal(response.status, 403, '非回环来源不得读角色资料')
+const memoryBefore = counts.memory
+response = await call('GET', 'memory/search?q=' + encodeURIComponent('海边'), { remote: '192.168.1.50' })
+assert.equal(response.status, 403, '非回环来源不得查公共记忆')
+assert.equal(counts.memory, memoryBefore, '被拒绝的请求不得触达公共库')
 
 const width = Math.max(...deltas.map(row => row.route.length))
 const pad = value => String(value).padEnd(width)
@@ -198,6 +254,6 @@ const lines = [
 ]
 console.log(lines.join('\n'))
 console.log('')
-console.log(`模拟调用合计：probe=${counts.probe} events=${counts.events} napcatRead=${counts.napcatRead} qqSend=${counts.qqSend} details=${counts.details} home=${counts.home} launch=${counts.launch} character=${counts.character}`)
+console.log(`模拟调用合计：probe=${counts.probe} events=${counts.events} napcatRead=${counts.napcatRead} qqSend=${counts.qqSend} details=${counts.details} home=${counts.home} launch=${counts.launch} character=${counts.character} memory=${counts.memory}`)
 console.log(`取消/未经确认的 QQ 发送调用数：${counts.qqSend}（要求 0）`)
 rmSync(characterDir, { recursive: true, force: true })

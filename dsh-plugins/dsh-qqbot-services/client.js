@@ -545,6 +545,84 @@ window.__ModuleLoader__.load({
             h('span', null, `${kindLabels[problem.kind] ?? '要改'} — ${problem.hint}`)))))
     }
 
+    const certaintyLabels = { stated: '库里直接写的', inferred: '整合出来的', unknown: '来源不明' }
+
+    function MemoryExplorer() {
+      const [query, setQuery] = React.useState('')
+      const [page, setPage] = React.useState(1)
+      const [result, setResult] = React.useState(null)
+      const [graph, setGraph] = React.useState(null)
+      const [notice, setNotice] = React.useState('')
+      const [busy, setBusy] = React.useState(false)
+
+      const search = async (text, nextPage) => {
+        const q = text.trim()
+        if (!q) { setNotice('先写个词，我再去公共库找。'); return }
+        setBusy(true)
+        setNotice('')
+        setGraph(null)
+        try {
+          const response = await fetch(`${api}/memory/search?q=${encodeURIComponent(q)}&page=${nextPage}&limit=8`)
+          const outcome = await response.json()
+          if (!response.ok) throw Error('request')
+          setResult(outcome)
+          setPage(nextPage)
+          if (!outcome.linked) setNotice('还没有公布公共库，或者公共库没在运行。')
+        } catch { setNotice('公共库现在连不上，等一会儿再试。') }
+        finally { setBusy(false) }
+      }
+
+      const readGraph = async () => {
+        const q = query.trim()
+        if (!q) { setNotice('先写个词，我再去公共库找。'); return }
+        setBusy(true)
+        setNotice('')
+        try {
+          const response = await fetch(`${api}/memory/graph?q=${encodeURIComponent(q)}`)
+          const outcome = await response.json()
+          if (!response.ok) throw Error('request')
+          setGraph(outcome)
+          if (!outcome.linked) setNotice('还没有公布公共库，或者公共库没在运行。')
+          else if (!outcome.edges.length) setNotice('这一段里没有能连起来的名字。')
+        } catch { setNotice('公共库现在连不上，等一会儿再试。') }
+        finally { setBusy(false) }
+      }
+
+      const submit = event => { event.preventDefault(); void search(query, 1) }
+      const pages = result?.linked && result.total > 0 ? Math.ceil(result.total / result.limit) : 1
+
+      return h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '公共记忆'),
+        h('form', { className: 'qqb-actions', onSubmit: submit },
+          h('input', { className: 'qqb-input', type: 'search', value: query, placeholder: '想找什么？例如 海边',
+            'aria-label': '公共记忆关键词', onChange: event => setQuery(event.target.value) }),
+          h('button', { className: 'qqb-btn qqb-primary', type: 'submit', disabled: busy }, '找记忆'),
+          h('button', { className: 'qqb-btn', type: 'button', disabled: busy, onClick: () => void readGraph() }, '看关系图')),
+        notice && h('p', { className: 'qqb-note', role: 'status' }, notice),
+        result?.linked && h('p', { className: 'qqb-note' },
+          `这一段里找到 ${result.total} 条（第 ${result.page}/${pages} 页），只显示摘要、来源和时间，收回的不出正文。`),
+        result?.items?.map(item => h('div', { className: 'qqb-kv', key: item.id },
+          h('span', { className: 'qqb-tag' }, certaintyLabels[item.certainty] ?? '来源不明'),
+          h('span', null, item.withdrawn ? '（这条已经收回，只留位置）' : (item.text || '（没有正文）')),
+          h('small', { className: 'qqb-note' },
+            [item.source ? `来源 ${item.source.document}` : '来源不明', item.when.dated ? '' : '时间不明'].filter(Boolean).join(' · ')))),
+        result?.linked && pages > 1 && h('div', { className: 'qqb-actions' },
+          h('button', { className: 'qqb-btn', type: 'button', disabled: busy || page <= 1, onClick: () => void search(query, page - 1) }, '上一页'),
+          h('small', { className: 'qqb-note' }, `${page} / ${pages}`),
+          h('button', { className: 'qqb-btn', type: 'button', disabled: busy || page >= pages, onClick: () => void search(query, page + 1) }, '下一页')),
+        graph?.linked && h('div', null,
+          h('h4', null, '关系图'),
+          graph.nodes.length
+            ? graph.nodes.map(node => h('div', { className: 'qqb-kv', key: `node-${node.name}` },
+                h('span', null, node.name),
+                h('small', { className: 'qqb-note' }, `${node.memories} 条 · ${certaintyLabels[node.certainty] ?? '来源不明'}`)))
+            : h('p', { className: 'qqb-note' }, '这段记忆里没有可连的名字。'),
+          graph.edges.length > 0 && h('div', null,
+            h('h4', null, '连起来的'),
+            graph.edges.map((edge, index) => h('div', { className: 'qqb-kv', key: `edge-${index}` },
+              h('span', null, `${edge.from} — ${edge.to}`),
+              h('small', { className: 'qqb-note' }, `共现 ${edge.memories.length} 条`))))))
+    }
+
     function DetailsCard({ kind }) {
       const [data, setData] = React.useState(undefined)
       const [revision, setRevision] = React.useState(0)
@@ -750,7 +828,7 @@ window.__ModuleLoader__.load({
           koishiConsole && h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '人设管理'),
             h('a', { className: 'qqb-btn', href: `${koishiConsole}/qqbot`, target: '_blank', rel: 'noopener noreferrer' }, '打开本机人设面板'))),
         section('books', tab === 'books' && state && h(DetailsCard, { kind: 'books' })),
-        section('memory', tab === 'memory' && state && h(DetailsCard, { kind: 'memory' })),
+        section('memory', tab === 'memory' && state && h(MemoryExplorer), tab === 'memory' && state && h(DetailsCard, { kind: 'memory' })),
         section('home',
           h('div', { className: 'qqb-actions' },
             state?.checkedAt && h('small', { className: 'qqb-note' }, `最近探测 ${new Date(state.checkedAt).toLocaleTimeString('zh-CN')}`),

@@ -16,6 +16,7 @@ import { createLocalPanels } from './local-panels.js'
 import { createHistoryMedia } from './history-media.js'
 import { createConfigEditor } from './config-editor.js'
 import { createCharacterBridge } from './character-bridge.js'
+import { createPublicMemory } from './public-memory.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -319,6 +320,17 @@ export function createHandler(controller, events, chat, connection, now = Date.n
         return send(result.status, result)
       } catch { return send(503, { error: 'config_unavailable' }) }
     }
+    if (companion?.memory && req.method === 'GET' && path === `${prefix}/memory/search`) {
+      const query = new URLSearchParams((req.url ?? '').split('?')[1])
+      try {
+        return send(200, await companion.memory.search(query.get('q'), Number(query.get('page')), Number(query.get('limit'))))
+      } catch { return send(503, { error: 'memory_unavailable' }) }
+    }
+    if (companion?.memory && req.method === 'GET' && path === `${prefix}/memory/graph`) {
+      const query = new URLSearchParams((req.url ?? '').split('?')[1])
+      try { return send(200, await companion.memory.graph(query.get('q'))) }
+      catch { return send(503, { error: 'memory_unavailable' }) }
+    }
     if (details && req.method === 'GET' && path.startsWith(`${prefix}/details/`)) {
       const kind = path.slice(`${prefix}/details/`.length)
       if (!['access', 'backups', 'books', 'library', 'memory', 'versions', 'restore-check', 'logs'].includes(kind)) return send(404, { error: 'not_found' })
@@ -480,6 +492,11 @@ export function apply(ctx, config = {}) {
   const companion = {
     room,
     configEditor: createConfigEditor({ file: configPath, yaml: require('js-yaml') }),
+    memory: createPublicMemory({
+      root,
+      readConfig: readKoishiConfig,
+      hindsightUrl: process.env.QQBOT_HINDSIGHT_URL,
+    }),
     character: createCharacterBridge({
       root,
       sourceDir: join(characterDir, 'source'),
