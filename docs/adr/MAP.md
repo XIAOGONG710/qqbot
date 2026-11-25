@@ -305,3 +305,4 @@
 | [0348](0348-weekly-effect-metrics.md) | 每周效果数（weekly metrics） | 已采纳（工具已落地：`npm run metrics:weekly -w @qqbot/bot`；只读聊天记录，只追加一… |  |
 | [0349](0349-guest-room-and-home-status.md) | 会客室与「她的家」公开状态：先问她本人 | 提议中（她的原话已取得；开关代码与提示词措辞等用户点头后再落地） |  |
 | [0350](0350-her-inner-panel.md) | DSH 面板「她心里的」：先问她本人，默认关 | 提议中（代码已写、默认关；她的原话还没取得，DSH 关机，ask-her 跑不了） |  |
+| [0351](0351-dsh-panel-boundaries.md) | DSH 面板化用成我们自己的插件——三层与边界 | 已采纳（代码在 main；DSH 那台重载后生效，重载要用户点头） |  |
