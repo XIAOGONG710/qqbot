@@ -38,12 +38,20 @@ describe('控制台的角色资料（ADR 0010）', () => {
         assert.deepEqual(paths, { stDir: join(dir, 'st'), sourceDir: join(dir, 'source'), prefix: 'synthetic' });
     });
 
-    test('只检查不写；资料没变时保存也不改 st/ 下的文件（插件监听 st/，没变就不重启）', () => {
+    test('只检查不写；保存一次后资料没变就不再写（插件监听 st/，没变就不重启）', () => {
         const source = readSource(paths.sourceDir);
         const before = mtimes();
-        assert.deepEqual(saveCharacter('scenes', source.scenes, true), { ok: true, written: [] });
-        assert.deepEqual(saveCharacter('scenes', source.scenes), { ok: true, written: [] });
-        assert.deepEqual(mtimes(), before);
+        const preview = saveCharacter('scenes', source.scenes, true);
+        assert.ok(preview.ok && preview.token.length > 0);
+        assert.deepEqual(mtimes(), before, '预览不写盘');
+
+        const first = saveCharacter('scenes', source.scenes);
+        assert.ok(first.ok);
+        const after = mtimes();
+        const again = saveCharacter('scenes', readSource(paths.sourceDir).scenes);
+        assert.ok(again.ok && again.written.length === 0, again.ok ? again.written.join(',') : '保存失败');
+        assert.deepEqual(mtimes(), after, '内容没变就不写');
+        assert.equal(again.ok && again.token, first.ok && first.token);
     });
 
     test('改了一个场景：写回 source/，重新生成用到它的世界书', () => {
@@ -54,8 +62,12 @@ describe('控制台的角色资料（ADR 0010）', () => {
         const scene = source.scenes.find(s => s.tiers.length === 1 && s.tiers[0] === group)!;
         scene.examples.push('虚构的一句新例句');
         const result = saveCharacter('scenes', source.scenes);
-        // 用到这个场景的世界书：这一档的原卡一本，加上它的承认版一本（ADR 0067）
-        assert.deepEqual(result, { ok: true, written: ['synthetic-scenes-boyfriend.json', 'synthetic-scenes-boyfriend-open.json'] });
+        // 用到这个场景的世界书：这一档的原卡一本，加上它的承认版一本（ADR 0067）；
+        // 源文件按统一表头重写，所以第一次保存也会写回 source/（第二次相同内容就不写了）
+        assert.ok(result.ok);
+        const written = result.ok ? result.written : [];
+        assert.ok(written.includes('synthetic-scenes-boyfriend.json'), written.join(','));
+        assert.ok(written.includes('synthetic-scenes-boyfriend-open.json'), written.join(','));
         assert.ok(readFileSync(join(dir, 'source', 'scenes.yml'), 'utf8').includes('虚构的一句新例句'));
         assert.ok(readFileSync(join(dir, 'st', 'synthetic-scenes-boyfriend.json'), 'utf8').includes('「虚构的一句新例句」'));
         assert.ok(readFileSync(join(dir, 'st', 'synthetic-scenes-boyfriend-open.json'), 'utf8').includes('「虚构的一句新例句」'));
@@ -69,25 +81,31 @@ describe('控制台的角色资料（ADR 0010）', () => {
         scene.avoid.push(word);
         const result = saveCharacter('scenes', source.scenes);
         assert.equal(result.ok, false);
-        assert.ok(!result.ok && result.problems?.some(p => p.tier === 'classmate' && p.where === `世界书 ${scene.id}` && p.word === word));
+        // 页面拿到的是位置和类别；命中的词和原文都不返回
+        assert.ok(!result.ok && result.problems?.some(p => p.tier === 'classmate' && p.kind === 'privacy' && p.field === `世界书 ${scene.id}`));
+        assert.doesNotMatch(JSON.stringify(result), new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
         assert.equal(readFileSync(join(dir, 'source', 'scenes.yml'), 'utf8'), before);
     });
 
-    test('结构写错、引用写错：不写，返回一句话的错误', () => {
+    test('结构写错、引用写错：不写，只给位置和类别', () => {
         const source = readSource(paths.sourceDir);
         const bad = saveCharacter('tiers', { ...source.tiers, tiers: [{ ...source.tiers.tiers[0]!, social: 'nobody' }, ...source.tiers.tiers.slice(1)] });
-        assert.deepEqual(bad, { ok: false, error: '资料中有一项引用不存在，请重新选择相关的说话方式、场景档或条目。' });
+        assert.ok(!bad.ok && bad.problems?.some(p => p.kind === 'reference' && p.part === 'tiers'));
         const shape = saveCharacter('schedule', { ...source.schedule, sleep: '2点' });
-        assert.deepEqual(shape, { ok: false, error: '时间格式不正确，请按“时:分”填写，例如 08:30。' });
-        assert.doesNotMatch(`${bad.ok ? '' : bad.error} ${shape.ok ? '' : shape.error}`, /yml|boyfriend|social|nobody|HH:MM/);
+        assert.ok(!shape.ok && shape.problems?.some(p => p.kind === 'format' && p.part === 'schedule'));
+        const shown = JSON.stringify([bad, shape]);
+        // field 是给页面看的资料位置；输入值、档位名、原文和路径都不出现
+        assert.doesNotMatch(shown, /boyfriend|social|nobody|HH:MM|2点|C:\\\\|private/);
         assert.equal(publicCharacterError(new Error('C:\\private\\source.yml token=secret')), '资料格式不正确，请检查当前页面的必填项和选择项。');
     });
 
     test('心情和在读的书（ADR 0015）：没变不写；改了重新生成带它们的卡；清空的可选项当作没写；书的内容也过档位隐私检查', () => {
         const source = readSource(paths.sourceDir);
         const before = mtimes();
-        assert.deepEqual(saveCharacter('moods', source.moods), { ok: true, written: [] });
-        assert.deepEqual(saveCharacter('books', source.books), { ok: true, written: [] });
+        const moodPreview = saveCharacter('moods', source.moods);
+        const bookPreview = saveCharacter('books', source.books);
+        assert.ok(moodPreview.ok && moodPreview.written.length === 0);
+        assert.ok(bookPreview.ok && bookPreview.written.length === 0);
         assert.deepEqual(mtimes(), before);
 
         const moods = structuredClone(source.moods)!;
@@ -108,7 +126,8 @@ describe('控制台的角色资料（ADR 0010）', () => {
         const leaky = structuredClone(source.books)!;
         leaky.books.find(book => book.nodes.length)!.nodes[0]!.points.push(`虚构的一句${word}`);
         const leak = saveCharacter('books', leaky);
-        assert.ok(!leak.ok && leak.problems?.some(p => p.tier === 'classmate' && p.word === word));
+        assert.ok(!leak.ok && leak.problems?.some(p => p.tier === 'classmate' && p.kind === 'privacy'));
+        assert.doesNotMatch(JSON.stringify(leak), new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     });
 
     test('页面的数据：插件没在跑时带上原因', () => {

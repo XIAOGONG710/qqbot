@@ -6,18 +6,20 @@ import { message, send, store } from '@koishijs/client';
 import { c, clone, tierLabel } from './common.js';
 
 /** 整份角色资料（服务端 readSource 的结果）；保存成功后只换掉存的那一部分，别的页没保存的草稿不受影响 */
-export const character = { source: ref(null), error: ref(''), loading: false };
+export const character = { source: ref(null), token: ref(''), error: ref(''), loading: false };
 
 // 控制台断线重连时会把页面重新挂载，组件里的状态全丢，但模块不会重新加载：
 // 草稿、选中的那一项放在模块里，侦听器挂在不随组件卸载的 effectScope 上，重连后接着用
 const detached = effectScope(true);
 
+/** 读资料时带一个快照 token：保存时服务端拿它比一下，资料在别处（DSH 面板、另一台电脑）改过就不写 */
 async function loadCharacter() {
     if (character.loading) return;
     character.loading = true;
     try {
-        const { source } = await send('qqbot/character/load');
+        const { source, token } = await send('qqbot/character/load');
         character.source.value = source;
+        character.token.value = token;
         character.error.value = '';
     } catch (error) {
         character.error.value = '暂时无法连接控制台，请刷新页面或检查登录状态。';
@@ -67,12 +69,18 @@ function createPart(part) {
         busy.value = true;
         result.value = null;
         try {
-            const outcome = await send(save ? 'qqbot/character/save' : 'qqbot/character/check', part, draft.value);
+            const outcome = await send(save ? 'qqbot/character/save' : 'qqbot/character/check', part, draft.value, character.token.value);
             result.value = { ...outcome, saved: save };
-            if (outcome.ok && save) {
+            if (outcome.conflict) {
+                // 别处改过：不覆盖，重新读一遍再让他决定
+                await loadCharacter();
+                initial.value = clone(character.source.value?.[part] ?? null);
+            } else if (outcome.ok && save) {
+                character.token.value = outcome.token;
                 message.success(outcome.written.length ? `已保存，重新生成了 ${outcome.written.length} 个文件，插件会自动重新读` : '已保存（生成的卡没有变化）');
                 // 服务端会规整（去掉空的说明等），读回存下来的样子
-                const { source } = await send('qqbot/character/load');
+                const { source, token } = await send('qqbot/character/load');
+                character.token.value = token;
                 character.source.value = { ...character.source.value, [part]: source[part] };
             }
         } catch (error) {
@@ -101,24 +109,30 @@ export function toolbar(state) {
     return [buttons, resultView(state.result.value)];
 }
 
+const KIND_LABELS = { privacy: '这一档不该出现的说法', reference: '引用不存在', format: '格式不对' };
+
 function resultView(result) {
     if (!result) return null;
     if (result.ok) {
         const text = result.saved ? '已保存。' : '检查通过：结构、引用和档位隐私都没问题。';
         return h(c('el-alert'), { type: 'success', title: text, showIcon: true, closable: false, class: 'qqbot-result' });
     }
+    if (result.conflict) return h(c('el-alert'), {
+        type: 'warning', showIcon: true, closable: false, class: 'qqbot-result',
+        title: `${result.saved ? '没有保存' : '检查没过'}：资料在别处改过了（可能是 DSH 面板或另一台电脑），已经重新读了最新的，请再改一次。`,
+    });
     if (result.error) return h(c('el-alert'), { type: 'error', title: `${result.saved ? '没有保存' : '检查没过'}：${result.error}`, showIcon: true, closable: false, class: 'qqbot-result' });
     const problems = result.problems ?? [];
     return h('div', { class: 'qqbot-result' }, [
         h(c('el-alert'), {
             type: 'error', showIcon: true, closable: false,
-            title: `${result.saved ? '没有保存' : '检查没过'}：有 ${problems.length} 处这一档不该出现的词（禁用词或脱敏占位符）`,
+            title: `${result.saved ? '没有保存' : '检查没过'}：有 ${problems.length} 处要改（页面只给位置和类别，不显示命中的原话）`,
         }),
         h(c('el-table'), { data: problems, border: true, size: 'small', style: 'width: 100%; margin-top: 8px' }, () => [
-            h(c('el-table-column'), { label: '档位', width: 110 }, { default: ({ row }) => tierLabel(row.tier) }),
-            h(c('el-table-column'), { label: '在哪', prop: 'where', width: 240 }),
-            h(c('el-table-column'), { label: '词', prop: 'word', width: 110 }),
-            h(c('el-table-column'), { label: '前后文', prop: 'excerpt' }),
+            h(c('el-table-column'), { label: '档位', width: 110 }, { default: ({ row }) => (row.tier ? tierLabel(row.tier) : '-') }),
+            h(c('el-table-column'), { label: '在哪', prop: 'field', width: 220 }),
+            h(c('el-table-column'), { label: '什么问题', width: 170 }, { default: ({ row }) => KIND_LABELS[row.kind] ?? '要改' }),
+            h(c('el-table-column'), { label: '怎么改', prop: 'hint' }),
         ]),
     ]);
 }

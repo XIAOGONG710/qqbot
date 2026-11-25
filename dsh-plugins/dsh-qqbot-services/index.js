@@ -15,6 +15,7 @@ import { createCompanionRoom, createRoomReply, roomMediaLimit } from './companio
 import { createLocalPanels } from './local-panels.js'
 import { createHistoryMedia } from './history-media.js'
 import { createConfigEditor } from './config-editor.js'
+import { createCharacterBridge } from './character-bridge.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -296,6 +297,18 @@ export function createHandler(controller, events, chat, connection, now = Date.n
       try { return send(200, await companion.home()) }
       catch { return send(503, { error: 'home_unavailable' }) }
     }
+    if (companion?.character && req.method === 'GET' && path === `${prefix}/character`) {
+      try { return send(200, await companion.character.load()) }
+      catch { return send(503, { error: 'character_unavailable' }) }
+    }
+    if (companion?.character && req.method === 'POST' && [`${prefix}/character/preview`, `${prefix}/character/save`].includes(path)) {
+      try {
+        const { body, status, error } = await readJson(req)
+        if (status) return send(status, { error })
+        const result = path.endsWith('/preview') ? await companion.character.preview(body) : await companion.character.save(body)
+        return send(200, result)
+      } catch { return send(503, { error: 'character_unavailable' }) }
+    }
     if (companion?.configEditor && req.method === 'POST' && [`${prefix}/config/preview`, `${prefix}/config/apply`].includes(path)) {
       try {
         const { body, status, error } = await readJson(req)
@@ -462,10 +475,17 @@ export function apply(ctx, config = {}) {
   const room = createCompanionRoom({ sniffMime: sniff, reply: createRoomReply({ key: process.env.QQBOT_LLM_API_KEY, model: config.roomModel }) })
   const lane = openLanRoom(config.roomLan, room, root)
   const homeFile = resolve(process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao'), 'HOME-PUBLIC.json')
+  const characterDir = resolve(root, config.characterDir || 'characters/linmengyao')
   let drilling = false
   const companion = {
     room,
     configEditor: createConfigEditor({ file: configPath, yaml: require('js-yaml') }),
+    character: createCharacterBridge({
+      root,
+      sourceDir: join(characterDir, 'source'),
+      stDir: join(characterDir, 'st'),
+      prefix: config.characterPrefix || 'linmengyao',
+    }),
     guestOrigin: () => lane?.origin(),
     sticker: local.sticker,
     async restoreDrill(day, keep) {

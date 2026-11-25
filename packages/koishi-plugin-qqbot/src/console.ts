@@ -17,8 +17,8 @@ import { PHOTO_MAX_BYTES, photoShelf } from '../../bot/src/vision/photos.ts';
 import { detectImageType, imageDataUrl } from '../../bot/src/vision/safe-image.ts';
 import { createExternalDraftStore, type ExternalDraftStatus } from '../../bot/src/social/external-drafts.ts';
 import type { ExternalPlatform } from '../../bot/src/social/external-platforms.ts';
-import { buildCharacter, checkPrivacy, writeOutputs, type Problem } from '../../character-tools/src/build.ts';
-import { checkSource, readSource, writeSource, type CharacterSource } from '../../character-tools/src/source.ts';
+import { createCharacterEditor, type PublicProblem } from '../../character-tools/src/character-editing.ts';
+import { readSource } from '../../character-tools/src/source.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -109,8 +109,8 @@ export interface ConsoleHealthReport {
 export type SourcePart = 'persona' | 'scenes' | 'schedule' | 'tiers' | 'moods' | 'books';
 
 export type SaveResult =
-    | { ok: true; written: string[] }
-    | { ok: false; error?: string; problems?: Problem[] };
+    | { ok: true; written: string[]; token: string }
+    | { ok: false; conflict?: boolean; error?: string; problems?: PublicProblem[]; token?: string };
 
 let state: ConsoleState = { running: false };
 let registered = false;
@@ -447,28 +447,17 @@ function character() {
     return state.character;
 }
 
-/** 用页面改过的一部分替换现有资料，校验结构、引用和档位隐私；dryRun 时不写 */
-export function saveCharacter(part: SourcePart, value: unknown, dryRun = false): SaveResult {
-    const paths = character();
-    let source: CharacterSource;
-    try {
-        const current = readSource(paths.sourceDir);
-        source = checkSource({ ...current, [part]: value });
-    } catch (error) {
-        return { ok: false, error: publicCharacterError(error) };
-    }
-    let built: ReturnType<typeof buildCharacter>;
-    try {
-        built = buildCharacter(source, paths.prefix);
-    } catch (error) {
-        return { ok: false, error: publicCharacterError(error) };
-    }
-    const problems = checkPrivacy(built, source);
-    if (problems.length) return { ok: false, problems };
-    if (dryRun) return { ok: true, written: [] };
-    writeSource(paths.sourceDir, source);
-    const { written } = writeOutputs(paths.stDir, built);
-    return { ok: true, written };
+/**
+ * 用页面改过的一部分替换现有资料：校验结构、引用和档位隐私；dryRun 时不写。
+ * 校验、构建、档位隐私检查和写入都在 packages/character-tools/src/character-editing.ts，
+ * DSH 面板和这个页面用的是同一层；token 是读资料时的快照，资料在别处变过就不写。
+ */
+export function saveCharacter(part: SourcePart, value: unknown, dryRun = false, token?: string): SaveResult {
+    const editor = createCharacterEditor(character());
+    const outcome = dryRun ? editor.preview(part, value, token) : editor.save(part, value, token);
+    if (outcome.ok) return { ok: true, written: outcome.written, token: outcome.token };
+    if (outcome.conflict) return { ok: false, conflict: true, token: outcome.token };
+    return { ok: false, problems: outcome.problems };
 }
 
 /** 每个 Koishi 进程注册一次，挂在根上下文上 */
@@ -508,12 +497,13 @@ export function registerConsole(ctx: Context, repoRoot: string): void {
         const authority = { authority: 4 };
         api.addListener('qqbot/character/load', () => {
             const paths = character();
-            return { source: readSource(paths.sourceDir) };
+            return { source: readSource(paths.sourceDir), token: createCharacterEditor(paths).load().token };
         }, authority);
-        api.addListener('qqbot/character/check', (part: SourcePart, value: unknown) => saveCharacter(part, value, true), authority);
-        api.addListener('qqbot/character/save', (part: SourcePart, value: unknown) => {
-            const result = saveCharacter(part, value);
+        api.addListener('qqbot/character/check', (part: SourcePart, value: unknown, token?: string) => saveCharacter(part, value, true, token), authority);
+        api.addListener('qqbot/character/save', (part: SourcePart, value: unknown, token?: string) => {
+            const result = saveCharacter(part, value, false, token);
             if (result.ok) root.logger('qqbot').info(`控制台保存了角色资料（${part}），重新生成 ${result.written.length} 个文件：${result.written.join('、') || '无变化'}`);
+            else if (result.conflict) root.logger('qqbot').info(`控制台没有保存角色资料（${part}）：源文件在别处变过`);
             return result;
         }, authority);
         api.addListener('qqbot/ai-photos/list', (status: unknown, limit: unknown) => listAiPhotoDrafts(status, limit), authority);

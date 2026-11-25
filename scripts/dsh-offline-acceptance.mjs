@@ -1,17 +1,28 @@
 // 离线验收基线：用临时 host 和假的 NapCat、Hindsight、Koishi 下游跑一遍
-// 总览、聊天、会客室、她的家、运维页，记录每页触发的模拟调用数。
-// 不触碰真实服务，不发送 QQ 消息，不读写线上配置。
+// 总览、聊天、会客室、她的家、运维页、角色资料，记录每页触发的模拟调用数。
+// 不触碰真实服务，不发送 QQ 消息，不读写线上配置；角色资料用合成角色的一份临时副本。
 // 用法：node scripts/dsh-offline-acceptance.mjs
 import assert from 'node:assert/strict'
+import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { createChat } from '../dsh-plugins/dsh-qqbot-services/chat.js'
 import { createCompanionRoom } from '../dsh-plugins/dsh-qqbot-services/companion-room.js'
 import { createController } from '../dsh-plugins/dsh-qqbot-services/controller.js'
+import { createCharacterBridge } from '../dsh-plugins/dsh-qqbot-services/character-bridge.js'
 import { createHandler, summarizeConnectionConfig } from '../dsh-plugins/dsh-qqbot-services/index.js'
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const fixture = join(root, 'packages/bot/test/fixtures/synthetic-character')
+const characterDir = mkdtempSync(join(tmpdir(), 'qqbot-acceptance-'))
+cpSync(join(fixture, 'source'), join(characterDir, 'source'), { recursive: true })
+cpSync(join(fixture, 'st'), join(characterDir, 'st'), { recursive: true })
 
 const counts = {
   probe: 0, launch: 0, state: 0, events: 0,
-  napcatRead: 0, qqSend: 0, details: 0, home: 0, roomReply: 0,
+  napcatRead: 0, qqSend: 0, details: 0, home: 0, roomReply: 0, character: 0,
 }
 const deltas = []
 
@@ -58,10 +69,21 @@ const detailsData = {
 const details = async kind => { counts.details++; return detailsData[kind]() }
 
 const room = createCompanionRoom({ reply: undefined, sniffMime: async () => 'image/png' })
+const bridge = createCharacterBridge({
+  root,
+  sourceDir: join(characterDir, 'source'),
+  stDir: join(characterDir, 'st'),
+  prefix: 'synthetic',
+})
 const companion = {
   room,
   home: async () => { counts.home++; return { places: ['客厅'], activities: ['读书'], status: { state: 'unpublished' } } },
   sticker: async () => null,
+  character: {
+    load: () => { counts.character++; return bridge.load() },
+    preview: body => { counts.character++; return bridge.preview(body) },
+    save: body => { counts.character++; return bridge.save(body) },
+  },
 }
 const connection = { authorizeIndex: req => req.headers.cookie === 'test-session=owner' }
 const handler = createHandler(controller, () => { counts.events++; return [] }, chat, connection, () => 1_800_000_000_000, details, companion)
@@ -132,12 +154,40 @@ for (const kind of ['access', 'backups', 'logs', 'versions', 'books', 'library',
   assert.equal(response.status, 200, kind + ' 应可读')
 }
 
+// 角色资料：读一次拿快照；预览不写盘；非法资料只回位置和类别；合法资料保存后第二次不再写。
+response = await call('GET', 'character')
+assert.equal(response.status, 200)
+assert.match(response.payload.token, /^[0-9a-f]{64}$/)
+const persona = response.payload.parts.persona
+const scenesBefore = readFileSync(join(characterDir, 'source/scenes.yml'), 'utf8')
+response = await call('POST', 'character/preview', { body: { part: 'scenes', value: response.payload.parts.scenes, token: response.payload.token } })
+assert.equal(response.status, 200)
+assert.equal(response.payload.ok, true, '原样预览应当通过')
+assert.equal(readFileSync(join(characterDir, 'source/scenes.yml'), 'utf8'), scenesBefore, '预览不得写盘')
+response = await call('POST', 'character/save', { body: { part: 'persona', value: { ...persona, name: '   ' }, token: response.payload.token } })
+assert.equal(response.status, 200)
+assert.equal(response.payload.ok, false, '非法资料不得保存')
+assert.ok(response.payload.problems.every(problem => problem.field && problem.kind && problem.hint), '只给位置、类别和改法')
+assert.ok(!JSON.stringify(response.payload.problems).includes('persona.yml.relation'), '不回显资料内容')
+// 原样保存一次（把合成资料写成统一表头），再保存一次应当什么都不写；拿旧快照保存要报冲突。
+const fresh = await call('GET', 'character')
+const firstSave = await call('POST', 'character/save', { body: { part: 'scenes', value: fresh.payload.parts.scenes, token: fresh.payload.token } })
+assert.equal(firstSave.status, 200)
+assert.equal(firstSave.payload.ok, true)
+const secondSave = await call('POST', 'character/save', { body: { part: 'scenes', value: fresh.payload.parts.scenes, token: firstSave.payload.token } })
+assert.deepEqual(secondSave.payload.written, [], '内容没变就不再写盘')
+const staleSave = await call('POST', 'character/save', { body: { part: 'scenes', value: fresh.payload.parts.scenes, token: fresh.payload.token } })
+assert.equal(staleSave.payload.conflict, true, '旧快照不得覆盖新内容')
+assert.equal(counts.qqSend, 0, '角色资料编辑不得触达发送接口')
+
 // 非本机来源与非主人会话直接拒绝，且不触达任何下游。
 response = await call('GET', 'home', { remote: '192.168.1.50' })
 assert.equal(response.status, 403, '非回环来源必须拒绝')
 response = await call('GET', 'home', { cookie: 'test-session=other-browser' })
 assert.equal(response.status, 403, '非主人浏览器会话必须拒绝')
 assert.equal(counts.home, 1, '被拒绝的请求不得触达她的家接口')
+response = await call('GET', 'character', { remote: '192.168.1.50' })
+assert.equal(response.status, 403, '非回环来源不得读角色资料')
 
 const width = Math.max(...deltas.map(row => row.route.length))
 const pad = value => String(value).padEnd(width)
@@ -148,5 +198,6 @@ const lines = [
 ]
 console.log(lines.join('\n'))
 console.log('')
-console.log(`模拟调用合计：probe=${counts.probe} events=${counts.events} napcatRead=${counts.napcatRead} qqSend=${counts.qqSend} details=${counts.details} home=${counts.home} launch=${counts.launch}`)
+console.log(`模拟调用合计：probe=${counts.probe} events=${counts.events} napcatRead=${counts.napcatRead} qqSend=${counts.qqSend} details=${counts.details} home=${counts.home} launch=${counts.launch} character=${counts.character}`)
 console.log(`取消/未经确认的 QQ 发送调用数：${counts.qqSend}（要求 0）`)
+rmSync(characterDir, { recursive: true, force: true })

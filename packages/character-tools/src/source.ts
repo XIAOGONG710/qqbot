@@ -284,7 +284,7 @@ export const SOURCE_FILES = {
     biography: 'biography.yml',
 } as const;
 
-const HEADERS: Record<keyof typeof SOURCE_FILES, string> = {
+export const SOURCE_HEADERS: Record<keyof typeof SOURCE_FILES, string> = {
     persona: '# 林梦瑶的人设（ADR 0010）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：说明写在 note 里。\n',
     scenes: '# 林梦瑶的场景（世界书，ADR 0010）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留。\n',
     schedule: '# 林梦瑶的作息（ADR 0007、0010）。控制台「林梦瑶」页面和 packages/character-tools 都会改写这个文件，注释不会保留：说明写在 note 里。\n',
@@ -307,7 +307,7 @@ export function fromYaml(text: string, filename: string): unknown {
 export function writeSource(dir: string, source: CharacterSource): void {
     for (const [key, file] of Object.entries(SOURCE_FILES) as [keyof typeof SOURCE_FILES, string][]) {
         const value = source[key];
-        if (value !== undefined) writeFileSync(join(dir, file), HEADERS[key] + toYaml(value));
+        if (value !== undefined) writeFileSync(join(dir, file), SOURCE_HEADERS[key] + toYaml(value));
     }
 }
 

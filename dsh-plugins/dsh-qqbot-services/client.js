@@ -461,6 +461,90 @@ window.__ModuleLoader__.load({
           notice && h('p', { role: 'status' }, notice)))
     }
 
+    const partLabels = { persona: '人设', scenes: '场景', schedule: '作息', tiers: '档位', moods: '心情', books: '在读的书' }
+    const kindLabels = { privacy: '这一档不该出现的说法', reference: '引用不存在', format: '格式不对' }
+
+    /** 角色资料：和 Koishi 控制台同一层（character-editing.ts），只给人要改的部分和一个快照 token */
+    function CharacterEditor() {
+      const [snapshot, setSnapshot] = React.useState(null)
+      const [part, setPart] = React.useState('persona')
+      const [draft, setDraft] = React.useState('')
+      const [base, setBase] = React.useState('')
+      const [result, setResult] = React.useState(null)
+      const [notice, setNotice] = React.useState('')
+      const [busy, setBusy] = React.useState(false)
+      const load = React.useCallback(async () => {
+        try {
+          const response = await fetch(`${api}/character`)
+          if (!response.ok) throw Error('read')
+          const data = await response.json()
+          setSnapshot(data)
+          const first = ['persona', 'scenes', 'schedule', 'tiers', 'moods', 'books'].find(key => data.parts[key] !== undefined && data.parts[key] !== null)
+          if (first) setPart(current => (data.parts[current] !== undefined && data.parts[current] !== null ? current : first))
+          return data
+        } catch {
+          setNotice('读不到角色资料，请确认插件仍在运行。')
+          return null
+        }
+      }, [])
+      React.useEffect(() => { void load() }, [load])
+      React.useEffect(() => {
+        if (!snapshot) return
+        const value = snapshot.parts[part]
+        const text = value === undefined || value === null ? '' : JSON.stringify(value, null, 2)
+        setDraft(text)
+        setBase(text)
+        setResult(null)
+      }, [snapshot, part])
+      async function submit(mode) {
+        if (busy) return
+        let value
+        try { value = JSON.parse(draft) }
+        catch { setNotice(`${partLabels[part]}这一页要改成有效 JSON 才能检查。`); return }
+        if (mode === 'save' && !window.confirm(`保存${partLabels[part]}？会同时改写 source/ 里的资料和 st/ 里重新生成的卡；Koishi 可能自动重载插件。`)) return
+        setBusy(true)
+        setNotice('')
+        try {
+          const response = await fetch(`${api}/character/${mode === 'save' ? 'save' : 'preview'}`, {
+            method: 'POST', headers: { 'content-type': 'application/json', 'x-qqbot-service-panel': '1' },
+            body: JSON.stringify({ part, value, token: snapshot?.token }),
+          })
+          if (!response.ok) throw Error('request')
+          const outcome = await response.json()
+          setResult({ ...outcome, saved: mode === 'save' })
+          if (outcome.ok && mode === 'save') {
+            setNotice(`已保存，重新生成了 ${outcome.written.length} 个文件。`)
+            await load()
+          } else if (outcome.conflict) {
+            setNotice('资料在别处改过了，已经重新读了最新的，请再改一次。')
+            await load()
+          }
+        } catch { setNotice('请求没有完成，请稍后重试。') }
+        finally { setBusy(false) }
+      }
+      if (!snapshot) return h('section', { className: 'qqb-card' },
+        h('h3', { className: 'qqb-title' }, '角色资料'), h('p', { className: 'qqb-note', role: 'status' }, notice || '正在读资料…'))
+      const dirty = draft !== base
+      return h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '角色资料'),
+        h('div', { className: 'qqb-actions' }, ...['persona', 'scenes', 'schedule', 'tiers', 'moods', 'books'].map(key =>
+          h('button', { key, className: `qqb-btn${key === part ? ' qqb-primary' : ''}`, disabled: busy || snapshot.parts[key] === undefined,
+            onClick: () => setPart(key) }, partLabels[key]))),
+        snapshot.missing?.length > 0 && h('p', { className: 'qqb-note' }, `资料里没有这些分页：${snapshot.missing.map(key => partLabels[key]).join('、')}`),
+        h('textarea', { className: 'qqb-input qqb-diagnostic', rows: 14, value: draft, disabled: busy,
+          onChange: event => setDraft(event.target.value), 'aria-label': `${partLabels[part]} JSON` }),
+        h('div', { className: 'qqb-actions' },
+          h('button', { className: 'qqb-btn', onClick: () => submit('preview'), disabled: busy || !dirty }, '检查'),
+          h('button', { className: 'qqb-btn qqb-primary', onClick: () => submit('save'), disabled: busy || !dirty }, '保存'),
+          h('button', { className: 'qqb-btn', onClick: () => { setDraft(base); setResult(null); setNotice('') }, disabled: busy || !dirty }, '还原'),
+          h('small', { className: 'qqb-note' }, dirty ? '有没保存的修改' : '和存下的一样')),
+        notice && h('p', { className: 'qqb-note', role: 'status' }, notice),
+        result && !result.ok && !result.conflict && h('div', null,
+          h('p', { className: 'qqb-warnline', role: 'status' }, `${result.saved ? '没有保存' : '检查没过'}：有 ${result.problems.length} 处要改（只显示位置和类别）`),
+          result.problems.map((problem, index) => h('div', { className: 'qqb-kv', key: index },
+            h('span', null, `${problem.field}${problem.tier ? ` · ${tierLabels[problem.tier] ?? problem.tier}` : ''}`),
+            h('span', null, `${kindLabels[problem.kind] ?? '要改'} — ${problem.hint}`)))))
+    }
+
     function DetailsCard({ kind }) {
       const [data, setData] = React.useState(undefined)
       const [revision, setRevision] = React.useState(0)
@@ -662,6 +746,7 @@ window.__ModuleLoader__.load({
         section('room', tab === 'room' && state && h(GuestRoom)),
         section('house', tab === 'house' && state && h(HerHome)),
         section('soul', tab === 'soul' && state && h(DetailsCard, { kind: 'library' }),
+          tab === 'soul' && state && h(CharacterEditor),
           koishiConsole && h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '人设管理'),
             h('a', { className: 'qqb-btn', href: `${koishiConsole}/qqbot`, target: '_blank', rel: 'noopener noreferrer' }, '打开本机人设面板'))),
         section('books', tab === 'books' && state && h(DetailsCard, { kind: 'books' })),
