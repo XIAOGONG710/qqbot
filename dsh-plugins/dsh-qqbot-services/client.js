@@ -6,9 +6,12 @@ window.__ModuleLoader__.load({
     const panel = 'dsh-qqbot-services'
     const api = '/api/qqbot-services'
     const tabKey = 'qqbot-services:tab'
-    const tabs = [{ id: 'home', label: '总览' }, { id: 'chat', label: '聊天' }, { id: 'room', label: '会客室' },
+    // 「她心里的」（inner，ADR 0350）只在 /state 的 panels.herInner 严格为 true 时出现，见 visibleTabs
+    const tabs = [{ id: 'home', label: '总览' }, { id: 'her', label: '她的状态' }, { id: 'inner', label: '她心里的' },
+      { id: 'chat', label: '聊天' }, { id: 'room', label: '会客室' },
       { id: 'house', label: '她的家' }, { id: 'soul', label: '灵魂' }, { id: 'memory', label: '记忆' }, { id: 'books', label: '读书' },
-      { id: 'link', label: '连接' }, { id: 'sys', label: '系统' }]
+      { id: 'link', label: '连接' }, { id: 'project', label: '项目' }, { id: 'sys', label: '系统' }]
+    const visibleTabs = state => tabs.filter(tab => tab.id !== 'inner' || state?.panels?.herInner === true)
     const names = { napcat: 'NapCat', hindsight: 'Hindsight', koishi: 'Koishi', watchdog: '守护', backup: '备份' }
     const steps = { checking: '正在检查', starting: '正在等待服务就绪', skipped: '已运行，跳过启动', ready: '已就绪', timeout: '等待就绪超时', failed: '启动或检查失败', maintenance: '维护期间暂停启动' }
     const eventNames = { watching: '开始监测', recovered: '恢复正常', starting: '尝试启动', prepared: '准备启动', failed: '运行异常', backup: '备份',
@@ -125,6 +128,21 @@ window.__ModuleLoader__.load({
         '.qqb-room-invite{width:100%;box-sizing:border-box;margin-top:8px}',
         '.qqb-library{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px}.qqb-library figure{margin:0;padding:7px;border:1px solid var(--q-line);border-radius:10px;overflow:hidden}.qqb-library img{width:100%;height:76px;object-fit:contain}.qqb-library figcaption{overflow-wrap:anywhere;font-size:12px}',
         '.qqb-memory-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;padding:0;list-style:none}.qqb-memory-grid li{border:1px solid var(--q-line);border-radius:10px;padding:8px}',
+        // 她的状态 / 项目 / 她心里的：小徽标、只读小表、时间线
+        '.qqb-badge{display:inline-block;margin-left:6px;padding:0 7px;border-radius:999px;font-size:11px;line-height:18px;border:1px solid var(--q-line);color:var(--q-fg2);white-space:nowrap}',
+        '.qqb-badge.is-ok{color:var(--q-ok);border-color:color-mix(in srgb,var(--q-ok) 40%,transparent)}',
+        '.qqb-badge.is-warn{color:var(--q-warn);border-color:color-mix(in srgb,var(--q-warn) 45%,transparent)}',
+        '.qqb-badge.is-bad{color:var(--q-bad);border-color:color-mix(in srgb,var(--q-bad) 45%,transparent)}',
+        '.qqb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}',
+        '.qqb-scroll{overflow-x:auto;max-width:100%}',
+        '.qqb-table{width:100%;border-collapse:collapse;font-size:12px}',
+        '.qqb-table th,.qqb-table td{text-align:left;padding:5px 8px;border-bottom:1px dashed color-mix(in srgb,var(--q-line) 70%,transparent);vertical-align:top}',
+        '.qqb-table th{font-weight:600;color:var(--q-fg2);white-space:nowrap}.qqb-table td.qqb-num,.qqb-table th.qqb-num{text-align:right;white-space:nowrap}',
+        '.qqb-banner{border:1px solid color-mix(in srgb,var(--q-warn) 45%,transparent);border-radius:10px;padding:8px 12px;font-size:12px;color:var(--q-warn);margin:0 0 10px}',
+        '.qqb-banner ul{margin:4px 0 0;padding-left:18px}',
+        '.qqb-timeline{list-style:none;margin:8px 0 0;padding:0}.qqb-timeline li{display:flex;gap:12px;font-size:12.5px;line-height:1.7;padding:4px 0;border-bottom:1px dashed color-mix(in srgb,var(--q-line) 70%,transparent)}',
+        '.qqb-timeline li:last-child{border-bottom:0}.qqb-timeline time{flex:none;min-width:3.2em;color:var(--q-fg2);font-variant-numeric:tabular-nums}',
+        '.qqb-up{color:var(--q-warn)}.qqb-down{color:var(--q-acc)}',
         '@media(max-width:580px){.qqb-tabs{grid-template-columns:repeat(4,1fr)}.qqb-tabs::before{display:none}.qqb-tab[aria-selected=true]{background:color-mix(in srgb,var(--q-acc) 12%,transparent)}}',
         '@container (max-width:540px){.qqb-workspace{grid-template-columns:1fr}.qqb-peers{max-height:140px;border-right:0;border-bottom:1px solid var(--q-line)}.qqb-feed{height:clamp(145px,24vh,230px)}}'
       ].join('\n')
@@ -140,7 +158,8 @@ window.__ModuleLoader__.load({
     }
 
     // 标签键盘切换沿用灵犀 QQ 桥接的 Tabs，绑定本项目自己的面板。
-    function Tabs({ value, onChange, instanceId }) {
+    function Tabs({ value, onChange, instanceId, list = tabs }) {
+      const tabs = list
       const index = Math.max(0, tabs.findIndex(tab => tab.id === value))
       const onKey = event => {
         if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
@@ -895,6 +914,313 @@ window.__ModuleLoader__.load({
             : h('p', { className: 'qqb-note' }, '暂无备份。'))
     }
 
+    // ---- 我们自己的三块（docs/plans/2026-11-26-dsh-panel-our-own.md）：她的状态、项目、她心里的 ----
+    // 都是只读 GET；打开标签页才取，不轮询，只有手动「刷新」。只显示接口回来的字段，文字一律走 React 文本节点。
+
+    /** 取一个 JSON：data 为 undefined = 正在读，null = 读不到（error 是接口回的错误码或 'failed'） */
+    function useJson(url, revision) {
+      const [result, setResult] = React.useState({ data: undefined, error: '' })
+      React.useEffect(() => {
+        const controller = new AbortController()
+        setResult({ data: undefined, error: '' })
+        fetch(url, { cache: 'no-store', credentials: 'same-origin', signal: controller.signal })
+          .then(async response => {
+            const body = await response.json().catch(() => null)
+            if (!response.ok) { const error = Error('read'); error.code = body?.error; throw error }
+            return body
+          })
+          .then(data => { if (!controller.signal.aborted) setResult({ data: data ?? null, error: data ? '' : 'failed' }) })
+          .catch(error => { if (!controller.signal.aborted) setResult({ data: null, error: error?.code || 'failed' }) })
+        return () => controller.abort()
+      }, [url, revision])
+      return result
+    }
+
+    const errorNotes = { inner_disabled: '这一块没开。', invalid_query: '查询参数不对。', not_found: '插件这边还没接上这一块。' }
+    /** 读取中 / 读不到 / available:false 的短提示；都正常时交给 render */
+    function loaded(result, render, unavailable = '这里暂时没有数据。') {
+      if (result.data === undefined) return h('p', { className: 'qqb-note', role: 'status' }, '正在读取…')
+      if (result.data === null) return h('p', { className: 'qqb-err', role: 'status' }, errorNotes[result.error] ?? '暂时读不到，等一会儿再刷新。')
+      if (result.data.available === false) return h('p', { className: 'qqb-note', role: 'status' }, unavailable)
+      return render(result.data)
+    }
+
+    const kv = (label, ...value) => h('div', { className: 'qqb-kv', key: label }, h('span', null, label), h('span', null, ...value))
+    const badge = (text, tone = '', title) => h('span', { className: `qqb-badge${tone ? ` is-${tone}` : ''}`, title }, text)
+    const when = value => {
+      const ms = typeof value === 'number' ? value : Date.parse(value)
+      return value !== null && value !== undefined && Number.isFinite(ms) ? new Date(ms).toLocaleString('zh-CN', { hour12: false }) : '—'
+    }
+    const ago = minutes => !Number.isFinite(minutes) ? '' : minutes < 1 ? '刚刚' : minutes < 60 ? `${Math.round(minutes)} 分钟前`
+      : minutes < 2880 ? `${Math.round(minutes / 60)} 小时前` : `${Math.round(minutes / 1440)} 天前`
+    /** Freshness = { at, ageMinutes, stale } */
+    const freshness = value => value
+      ? [`${when(value.at)}（${ago(value.ageMinutes)}）`, value.stale ? badge('过期', 'warn') : null]
+      : ['没有']
+    const count = value => Number.isFinite(value) ? String(value) : '—'
+
+    function RefreshBar({ title, onRefresh, children }) {
+      return h('div', { className: 'qqb-actions' },
+        h('h3', { className: 'qqb-title' }, title),
+        h('div', { className: 'qqb-actions' }, children,
+          h('button', { className: 'qqb-btn', type: 'button', onClick: onRefresh }, '刷新')))
+    }
+
+    // ---- 她的状态（A 层运维数 + B 层她的一天） ----
+    function HerState() {
+      const [revision, setRevision] = React.useState(0)
+      const memory = useJson(`${api}/her/memory`, revision)
+      const emotion = useJson(`${api}/her/emotion`, revision)
+      const life = useJson(`${api}/her/life`, revision)
+      const off = '读不到插件配置，这一块没有数。'
+      return h(React.Fragment, null,
+        h('section', { className: 'qqb-card' },
+          h(RefreshBar, { title: '她的状态', onRefresh: () => setRevision(value => value + 1) }),
+          h('p', { className: 'qqb-note' }, '只有数和新鲜度：不列记忆原文、不给感觉的种类和来由。')),
+        h('div', { className: 'qqb-grid' },
+          h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '记忆'),
+            loaded(memory, data => h('div', null,
+              kv('本人记忆登记', data.linked ? `已登记（${when(data.registeredAt)}）` : '未登记'),
+              kv('Hindsight', data.hindsight?.reachable === true ? '连得上' : data.hindsight?.reachable === false
+                ? badge('连不上', 'bad') : '没去连（不是本机地址）'),
+              kv('公共库', data.common ? `${count(data.common.facts)} 条 · ${count(data.common.documents)} 份文档` : '读不到'),
+              kv('他的库', data.own ? `${count(data.own.facts)} 条 · ${count(data.own.documents)} 份文档` : '读不到'),
+              kv('片段', data.episodes
+                ? `待确认 ${count(data.episodes.pending)} · 重排过 ${count(data.episodes.requeued)} 次 · 最近写入 ${when(data.episodes.lastWrittenAt)}`
+                : '没有进度文件'),
+              kv('记忆账本', ...(data.audit
+                ? [`${count(data.audit.entries)} 条 · 最近 ${when(data.audit.lastAt)}`, data.audit.verified ? badge('校验通过', 'ok') : badge('校验没过', 'bad')]
+                : ['没开或还没有'])),
+              data.reconcile?.recorded === false && h('p', { className: 'qqb-note' }, '对账时刻只在 QQ 进程内存里，这里给不出；重排次数见「片段」。')), off)),
+          h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '情绪'),
+            loaded(emotion, data => h('div', null,
+              kv('心境导出', ...freshness(data.feelingsExport)),
+              kv('感觉账', data.ledger ? `${count(data.ledger.rows)} 条 · 最近 ${when(data.ledger.lastAt)}` : '没有'),
+              kv('心境回想', data.review ? `今天试了 ${count(data.review.runsToday)} 次 · 上次想成 ${when(data.review.lastAt)}` : '没有记录')), off)),
+          h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '她的账'),
+            loaded(life, data => h('div', null,
+              kv('世界账', data.world ? `${count(data.world.events)} 件 · 最近一天 ${data.world.latestDay ?? '—'}` : '没有'),
+              kv('时间线', data.timeline ? `${count(data.timeline.entries)} 条 · 最近 ${when(data.timeline.lastAt)}` : '没开或还没有'),
+              kv('日记', data.diary?.lastDay ? `写到 ${data.diary.lastDay}` : '还没有'),
+              kv('SELF', ...freshness(data.selfExport)),
+              kv('NOW', ...freshness(data.nowExport)),
+              // 一个生活（ADR 0347 第 3 层）：接口回了才显示，只有回合数和最近一次的时刻
+              data.desktop !== undefined && kv('电脑上（近 14 天）',
+                data.desktop ? `电脑上和他聊了 ${count(data.desktop.turns)} 回，最近一次 ${when(data.desktop.lastAt)}` : '没有记录')), off))),
+        h(HerDay, { revision }))
+    }
+
+    function HerDay({ revision }) {
+      const [date, setDate] = React.useState('')
+      const day = useJson(`${api}/her/day${date ? `?${new URLSearchParams({ date })}` : ''}`, revision)
+      const data = day.data
+      const options = data && data.available !== false
+        ? [data.today, data.date, ...(data.days ?? []).map(item => item.date)].filter((value, index, list) => value && list.indexOf(value) === index)
+        : []
+      const counts = new Map((data?.days ?? []).map(item => [item.date, item.count]))
+      return h('section', { className: 'qqb-card' },
+        h('div', { className: 'qqb-actions' }, h('h3', { className: 'qqb-title' }, '她的一天'),
+          options.length > 0 && h('label', { className: 'qqb-note' }, '哪天 ',
+            h('select', { className: 'qqb-input', value: data.date, 'aria-label': '选哪一天',
+              onChange: event => setDate(event.target.value === data.today ? '' : event.target.value) },
+            ...options.map(value => h('option', { key: value, value },
+              `${value}${value === data.today ? '（今天）' : ''}${counts.has(value) ? ` · ${counts.get(value)} 件` : ''}`))))),
+        h('p', { className: 'qqb-note' }, '世界账里她那边真做过的事，按她的一天（凌晨 2 点换天）分组；不带原因和联系人。'),
+        loaded(day, value => value.events?.length
+          ? h('ol', { className: 'qqb-timeline' }, ...value.events.map((event, index) =>
+            h('li', { key: `${event.time}-${index}` }, h('time', null, event.time || '—'), h('span', null, event.summary))))
+          : h('p', { className: 'qqb-note' }, value.date === value.today ? '今天还没有记下的事。' : '这天没有记下的事。'),
+        '读不到插件配置或日期不对，这一块没有数。'))
+    }
+
+    // ---- 她心里的（C 层，ADR 0350，herInner 开着才挂） ----
+    function HerInner() {
+      const [revision, setRevision] = React.useState(0)
+      const today = useJson(`${api}/inner/today`, revision)
+      const ledger = useJson(`${api}/inner/ledger?days=14`, revision)
+      return h(React.Fragment, null,
+        h('section', { className: 'qqb-card' },
+          h(RefreshBar, { title: '她心里的', onRefresh: () => setRevision(value => value + 1) }),
+          h('p', { className: 'qqb-note' }, '这些是她愿意让你看的那部分：疼、家里的事只写换过的说法，不写是什么事。')),
+        h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '今天'),
+          loaded(today, data => h('div', null,
+            data.at === null || !data.feelings?.length
+              ? h('p', { className: 'qqb-note' }, '今天还没有算出来的心境。')
+              : h('ul', { className: 'qqb-timeline' }, ...data.feelings.map((item, index) => h('li', { key: index }, h('span', null, item.said)))),
+            data.stale && data.at !== null && h('p', { className: 'qqb-note' }, `心境是 ${when(data.at)} 算的，超过 3 小时没刷新，可能不是她现在的样子。`)))),
+        h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '这两周'),
+          loaded(ledger, data => {
+            const days = (data.days ?? []).filter(item => item.rows?.length)
+            if (!days.length) return h('p', { className: 'qqb-note' }, '这两周没记下什么。')
+            return h('div', null, ...days.map(item => h('div', { key: item.day },
+              h('h4', null, item.day),
+              h('ol', { className: 'qqb-timeline' }, ...item.rows.map((row, index) =>
+                h('li', { key: index }, h('time', null, row.time ?? ''), h('span', null, row.said)))))))
+          })))
+    }
+
+    // ---- 项目（开关、效果数、提示词构成、上线前） ----
+    const valueOnly = value => typeof value === 'boolean' ? (value ? '开' : '关')
+      : typeof value === 'string' || typeof value === 'number' ? String(value)
+        : value && typeof value === 'object' && typeof value.enabled === 'boolean' ? (value.enabled ? '开' : '关') : '默认'
+
+    function Switches({ revision }) {
+      const result = useJson(`${api}/project/switches`, revision)
+      return h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '开关'),
+        loaded(result, data => h('div', null,
+          h('p', { className: 'qqb-note' },
+            `共 ${count(data.counts?.total)} 项 · 生效 ${count(data.counts?.on)} · 合并过 ${count(data.counts?.merged)} · 旧键还写着 ${count(data.counts?.legacyWritten)}`),
+          data.invalid && h('p', { className: 'qqb-banner', role: 'status' }, '开关没能按合并表算出来（配置里有对不上的值），下面按写着的原样显示。'),
+          data.unrepresentable?.length > 0 && h('div', { className: 'qqb-banner', role: 'status' }, '这几组旧键合不成一个新键，重启前要手动改：',
+            h('ul', null, ...data.unrepresentable.map((line, index) => h('li', { key: index }, line)))),
+          data.fewerRules?.on && h('p', { className: 'qqb-note' },
+            `少规矩开着：强制关了 ${data.fewerRules.forced.length} 项（${data.fewerRules.forced.map(item => item.key).join('、')}）。`),
+          ...(data.groups ?? []).map(group => {
+            const rows = (data.features ?? []).filter(row => row.group === group)
+            if (!rows.length) return null
+            return h('div', { key: group },
+              h('h4', null, group),
+              h('div', { className: 'qqb-scroll' }, h('table', { className: 'qqb-table' },
+                h('thead', null, h('tr', null, h('th', null, '功能'), h('th', null, '值'), h('th', null, '说明'))),
+                h('tbody', null, ...rows.map(row => h('tr', { key: row.key },
+                  h('td', null, h('span', { className: `qqb-dot ${row.on ? 'qqb-ok' : 'qqb-idle'}`, 'aria-hidden': true }), row.label,
+                    h('br'), h('small', { className: 'qqb-note' }, row.key, row.adr ? ` · ADR ${row.adr}` : '')),
+                  h('td', null, valueOnly(row.value), row.written ? null : h('small', { className: 'qqb-note' }, '（没写，默认）')),
+                  h('td', null,
+                    row.forcedOff === 'fewerRules' && badge('少规矩强制关', 'warn'),
+                    row.configured && badge(`还差 ${(row.missing ?? []).join('、') || '依赖'}`, 'warn'),
+                    row.merged && badge('合并', '', row.merged.absorbs.map(item => item.key).join('、')),
+                    row.merged?.legacyWritten?.length > 0 && badge(`旧键还写着：${row.merged.legacyWritten.join('、')}`, 'warn'),
+                    row.merged && h('div', null, h('small', { className: 'qqb-note' },
+                      `吸收了：${row.merged.absorbs.map(item => `${item.label}（${item.key}${item.written ? `=${valueOnly(item.value)}` : ''}）`).join('、')}`)))))))))
+          })), '读不到插件配置，开关这一块没有数。'))
+    }
+
+    const metricLabels = {
+      hisMessages: ['他发来', 'count'], herBubbles: ['她发的气泡', 'count'], turns: ['她的轮数', 'count'],
+      proactiveShare: ['主动占比', 'rate'], avgChars: ['平均字数', 'num'], medianChars: ['字数中位', 'num'],
+      avgLines: ['平均行数', 'num'], medianLines: ['行数中位', 'num'], assistantToneRate: ['助手腔', 'rate'],
+      repeatRate: ['重复（出口检查口径）', 'rate'], duplicateRate: ['整句重复', 'rate'], nearDuplicateRate: ['近似重复', 'rate'],
+      openingRepeatRate: ['开头重复', 'rate'], nagRate: ['叮嘱', 'rate'], nagRepeatRate: ['一段里又叮嘱', 'rate'],
+      questionEndRate: ['问句结尾', 'rate'], promiseRate: ['做不到的事', 'rate'], scriptRate: ['编对话', 'rate'],
+      correctedRate: ['他当场纠正', 'rate'], 'latency.p50': ['回复延迟中位', 'seconds'], 'latency.p90': ['回复延迟 p90', 'seconds'],
+    }
+    const pct = value => Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : '—'
+    const secs = value => !Number.isFinite(value) ? '—' : value < 120 ? `${value}秒` : value < 7200 ? `${(value / 60).toFixed(1)}分` : `${(value / 3600).toFixed(1)}时`
+    const metricText = (kind, value) => kind === 'rate' ? pct(value) : kind === 'seconds' ? secs(value) : count(value)
+    const metricOf = (metrics, key) => key.startsWith('latency.') ? metrics?.latency?.[key.slice(8)] : metrics?.[key]
+    const deltaText = (kind, delta) => kind === 'rate' ? `${Math.abs(delta * 100).toFixed(1)} 个百分点`
+      : kind === 'seconds' ? secs(Math.abs(delta)) : String(Math.round(Math.abs(delta) * 100) / 100)
+
+    function Metrics({ revision }) {
+      const [days, setDays] = React.useState(7)
+      const result = useJson(`${api}/project/metrics?days=${days}`, revision)
+      const reasons = { no_chats: '数据目录里还没有聊天记录（chats/）。' }
+      const column = value => h('td', { className: 'qqb-num' }, value)
+      return h('section', { className: 'qqb-card' },
+        h('div', { className: 'qqb-actions' }, h('h3', { className: 'qqb-title' }, '效果数'),
+          h('div', { className: 'qqb-actions' }, ...[7, 14, 30].map(value => h('button', { key: value, type: 'button',
+            className: `qqb-btn${value === days ? ' qqb-primary' : ''}`, 'aria-pressed': value === days, onClick: () => setDays(value) }, `${value} 天`)))),
+        result.data?.available === false && result.data.reason ? h('p', { className: 'qqb-note', role: 'status' }, reasons[result.data.reason] ?? '这里暂时没有数据。')
+          : loaded(result, data => {
+            const week = data.week ?? {}
+            const list = data.days ?? []
+            const deltas = data.previous?.deltas ?? {}
+            return h('div', null,
+              h('p', { className: 'qqb-note' },
+                `到昨天为止 ${data.window?.days ?? days} 天${list.length ? `（${list[0].day}～${list.at(-1).day}）` : ''} · ${count(data.contacts)} 个联系人。只有数，没有聊天原文。`),
+              data.zone && data.zone.matches === false && h('p', { className: 'qqb-warnline', role: 'status' },
+                `面板进程时区 ${data.zone.process} 和插件配置的 ${data.zone.configured} 不一致，日界可能差几个小时。`),
+              kv('轮数', `${count(week.turns)}（回他 ${count(week.replyTurns)} / 自己找他 ${count(week.proactiveTurns)} / 接着说 ${count(week.followOnTurns)}）`),
+              ...Object.entries(metricLabels).filter(([key]) => key !== 'turns').map(([key, [label, kind]]) => kv(label, metricText(kind, metricOf(week, key)))),
+              kv('有延迟可算的轮', count(week.latency?.count)),
+              list.length > 0 && h('h4', null, '按天'),
+              list.length > 0 && h('div', { className: 'qqb-scroll' }, h('table', { className: 'qqb-table' },
+                h('thead', null, h('tr', null, ...['日期', '他发', '她轮数', '回/主动/接着', '平均字', '助手腔', '重复', '叮嘱', '问句结尾', '被纠正', '延迟中位']
+                  .map((label, index) => h('th', { key: label, className: index ? 'qqb-num' : undefined }, label)))),
+                h('tbody', null, ...list.map(row => h('tr', { key: row.day },
+                  h('td', null, row.day), column(count(row.hisMessages)), column(count(row.turns)),
+                  column(`${count(row.replyTurns)}/${count(row.proactiveTurns)}/${count(row.followOnTurns)}`),
+                  column(count(row.avgChars)), column(pct(row.assistantToneRate)), column(pct(row.repeatRate)),
+                  column(pct(row.nagRate)), column(pct(row.questionEndRate)), column(pct(row.correctedRate)),
+                  column(secs(row.latency?.p50))))))),
+              data.previous && h('h4', null, `比上一次跑（${when(data.previous.at)}）`),
+              data.previous && h('div', null, ...Object.entries(metricLabels).filter(([key]) => deltas[key]).map(([key, [label, kind]]) => {
+                const item = deltas[key]
+                const delta = item.delta
+                return kv(label, `${metricText(kind, item.before)} → ${metricText(kind, item.after)} `,
+                  delta === null || delta === undefined ? h('small', { className: 'qqb-note' }, '没法比')
+                    : delta === 0 ? h('small', { className: 'qqb-note' }, '持平')
+                      : h('b', { className: delta > 0 ? 'qqb-up' : 'qqb-down' }, `${delta > 0 ? '↑' : '↓'} ${deltaText(kind, delta)}`))
+              })))
+          }, '读不到插件配置，效果数这一块没有数。'))
+    }
+
+    function Inventory({ revision }) {
+      const result = useJson(`${api}/project/inventory`, revision)
+      return h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '提示词构成'),
+        result.data?.available === false && result.data.reason === 'no_manifests'
+          ? h('p', { className: 'qqb-note', role: 'status' }, '日志目录里还没有提示词清单。')
+          : loaded(result, data => {
+            const inv = data.inventory ?? {}
+            const total = inv.rounds?.total ?? 0
+            const share = rounds => total > 0 ? `${Math.round(rounds / total * 100)}%` : '—'
+            const slots = [...(inv.slots ?? [])].sort((a, b) => b.chars - a.chars).slice(0, 15)
+            return h('div', null,
+              h('p', { className: 'qqb-note' }, `${count(data.files)} 天的清单（${data.firstDay}～${data.lastDay}）。只有槽名、模块名和数。`),
+              kv('轮数', `${count(total)}（兜底 ${count(inv.rounds?.fallback)}）`),
+              kv('每轮字数', `平均 ${count(inv.chars?.avg)} · 最少 ${count(inv.chars?.min)} · 最多 ${count(inv.chars?.max)}`),
+              kv('每轮段数', `主体 ${count(inv.piecesPerRound?.main)} · 历史 ${count(inv.piecesPerRound?.history)} · 当前 ${count(inv.piecesPerRound?.now)}`),
+              inv.byKind?.length > 0 && h('h4', null, '按种类'),
+              inv.byKind?.length > 0 && h('div', { className: 'qqb-scroll' }, h('table', { className: 'qqb-table' },
+                h('thead', null, h('tr', null, h('th', null, '种类'), h('th', { className: 'qqb-num' }, '轮数'), h('th', { className: 'qqb-num' }, '平均字数'),
+                  h('th', { className: 'qqb-num' }, '当前段平均'), h('th', { className: 'qqb-num' }, '当前段最多'))),
+                h('tbody', null, ...inv.byKind.map(row => h('tr', { key: row.kind },
+                  h('td', null, row.kind), h('td', { className: 'qqb-num' }, count(row.rounds)), h('td', { className: 'qqb-num' }, count(row.avgChars)),
+                  h('td', { className: 'qqb-num' }, count(row.avgNow)), h('td', { className: 'qqb-num' }, count(row.maxNow))))))),
+              slots.length > 0 && h('h4', null, '字数最多的槽（前 15）'),
+              slots.length > 0 && h('div', { className: 'qqb-scroll' }, h('table', { className: 'qqb-table' },
+                h('thead', null, h('tr', null, h('th', null, '槽'), h('th', null, '模块'), h('th', { className: 'qqb-num' }, '合计字数'),
+                  h('th', { className: 'qqb-num' }, '每次平均'), h('th', { className: 'qqb-num' }, '出现'), h('th', { className: 'qqb-num' }, '被省略'))),
+                h('tbody', null, ...slots.map((row, index) => h('tr', { key: `${row.module}:${row.slot}:${index}` },
+                  h('td', null, row.slot), h('td', null, row.module), h('td', { className: 'qqb-num' }, count(row.chars)),
+                  h('td', { className: 'qqb-num' }, row.rounds > 0 ? count(Math.round(row.chars / row.rounds)) : '—'),
+                  h('td', { className: 'qqb-num' }, `${count(row.rounds)}（${share(row.rounds)}）`), h('td', { className: 'qqb-num' }, count(row.omitted))))))),
+              inv.modules?.length > 0 && h('h4', null, '模块'),
+              inv.modules?.length > 0 && h('div', { className: 'qqb-scroll' }, h('table', { className: 'qqb-table' },
+                h('thead', null, h('tr', null, h('th', null, '模块'), h('th', { className: 'qqb-num' }, '出现轮数'), h('th', { className: 'qqb-num' }, '合计字数'))),
+                h('tbody', null, ...[...inv.modules].sort((a, b) => b.chars - a.chars).map(row => h('tr', { key: row.module },
+                  h('td', null, row.module), h('td', { className: 'qqb-num' }, `${count(row.rounds)}（${share(row.rounds)}）`),
+                  h('td', { className: 'qqb-num' }, count(row.chars))))))))
+          }, '读不到插件配置，提示词构成这一块没有数。'))
+    }
+
+    function GoLive({ revision }) {
+      const result = useJson(`${api}/project/golive`, revision)
+      return h('section', { className: 'qqb-card' }, h('h3', { className: 'qqb-title' }, '上线前'),
+        loaded(result, data => {
+          const migrating = data.switches?.migrating ?? []
+          const blockers = data.switches?.unrepresentable ?? []
+          return h('div', null,
+            blockers.length > 0 && h('div', { className: 'qqb-banner', role: 'status' }, '要先手动处理（合不成新键）：',
+              h('ul', null, ...blockers.map((line, index) => h('li', { key: index }, line)))),
+            migrating.length > 0 && h('div', null,
+              h('p', { className: 'qqb-note' }, `重启后插件会把 koishi.yml 里这 ${migrating.length} 组旧键改写成新键（值等价），改之前先备份一份：`),
+              h('ul', null, ...migrating.map((line, index) => h('li', { key: index }, line)))),
+            !blockers.length && !migrating.length && kv('开关合并', badge('没有要处理的', 'ok')),
+            h('p', { className: 'qqb-note' }, '这里只做开关合并预检；监听地址、git 那几项要跑命令，在运维流程里做。'))
+        }, '读不到插件配置，上线前检查这一块没有数。'))
+    }
+
+    function ProjectTools() {
+      const [revision, setRevision] = React.useState(0)
+      return h(React.Fragment, null,
+        h('section', { className: 'qqb-card' },
+          h(RefreshBar, { title: '项目', onRefresh: () => setRevision(value => value + 1) }),
+          h('p', { className: 'qqb-note' }, '开关、效果数、提示词构成和上线前预检的只读投影：只有名字和数，不改配置。')),
+        h(Switches, { revision }), h(Metrics, { revision }), h(Inventory, { revision }), h(GoLive, { revision }))
+    }
+
     function Panel() {
       ensureStyle()
       const [state, setState] = React.useState(null)
@@ -971,9 +1297,13 @@ window.__ModuleLoader__.load({
         }
       }
       const linked = health?.napcat && health.lastConnection?.state === 'connected' && health.koishiListening
+      const shownTabs = visibleTabs(state)
+      // 「她心里的」关着（或 /state 还没读到）时，记住的 inner 退回总览
+      const current = shownTabs.some(item => item.id === tab) ? tab : 'home'
+      const herInner = shownTabs.some(item => item.id === 'inner')
       const statusText = !health ? '正在检查' : health.maintenance ? '维护中' : linked ? 'QQ 已连接' : 'QQ 待连接'
-      const section = (id, ...children) => h('div', { className: `qqb-sec${tab === id ? ' is-on' : ''}`, role: 'tabpanel',
-        id: `${instanceId}-panel-${id}`, 'aria-labelledby': `${instanceId}-tab-${id}`, hidden: tab !== id }, ...children)
+      const section = (id, ...children) => h('div', { className: `qqb-sec${current === id ? ' is-on' : ''}`, role: 'tabpanel',
+        id: `${instanceId}-panel-${id}`, 'aria-labelledby': `${instanceId}-tab-${id}`, hidden: current !== id }, ...children)
       return h('div', { className: 'qqb-shell' }, h('section', { className: 'qqb-page' },
         h('header', { className: 'qqb-hero' },
           h('div', { className: 'qqb-mark', 'aria-hidden': true }, h('i'), h('i')),
@@ -982,13 +1312,16 @@ window.__ModuleLoader__.load({
             h('p', { className: 'qqb-tag' }, 'QQ 桥接')),
           h('span', { className: `qqb-pill ${linked && !health?.maintenance ? 'is-ok' : health ? 'is-warn' : ''}`, role: 'status' },
             h('span', { className: 'qqb-pill-dot', 'aria-hidden': true }), statusText)),
-        h(Tabs, { value: tab, onChange: selectTab, instanceId }),
+        h(Tabs, { value: current, onChange: selectTab, instanceId, list: shownTabs }),
         !state && h('p', { className: 'qqb-note', role: 'status' },
           loadError ? `${loadError}，正在重试。` : '正在获取服务状态，无法连接时会自动重试。'),
         health?.maintenance && h('p', { className: 'qqb-warnline', role: 'status' }, '正在维护，启动暂不可用。'),
         health?.probeFailed && h('p', { className: 'qqb-warnline', role: 'status' },
           `状态探测没跑通：${health.probeFailed}。其余页面照常可用，明细写在 runtime/log/panel-probe.log。`),
         notice && h('p', { className: 'qqb-note', role: 'status' }, notice),
+        section('her', current === 'her' && state && h(HerState)),
+        herInner && section('inner', current === 'inner' && h(HerInner)),
+        section('project', current === 'project' && state && h(ProjectTools)),
         section('chat', tab === 'chat' && state && h(Chat)),
         section('room', tab === 'room' && state && h(GuestRoom)),
         section('house', tab === 'house' && state && h(HerHome)),
