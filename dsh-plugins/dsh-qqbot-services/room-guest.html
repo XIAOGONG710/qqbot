@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>林梦瑶 · 网页会客室</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0 auto;max-width:740px;padding:22px;background:#12131a;color:#e8e9ef;font:15px/1.55 system-ui,sans-serif}
+    header,form,ol{border:1px solid #303445;border-radius:14px;padding:12px 16px;background:#1a1c25}
+    h1{font-size:18px;margin:0}p{color:#b7bac8}label{display:block}
+    ol{min-height:230px;max-height:52vh;overflow:auto;list-style:none}li{width:fit-content;max-width:100%;background:#2b3550;padding:7px 12px;border-radius:12px;margin:0 0 9px;white-space:pre-wrap;overflow-wrap:anywhere}
+    li.assistant{background:#334c9c}small{color:#c4c8d7}button,input{font:inherit;border-radius:9px;padding:8px 10px;color:inherit;border:1px solid #3d4357;background:#232633}
+    button{background:#3b6df6;cursor:pointer}input{max-width:100%}#composer:not([hidden]){display:flex;gap:8px}#message{flex:1;min-width:0}
+  </style>
+</head>
+<body>
+  <header><h1>林梦瑶 · 网页会客室</h1><p>受邀成员可见。房间发言可能交给模型判断是否接话，请在了解后加入。</p></header>
+  <form id="join"><label>昵称 <input id="nickname" maxlength="24" required></label><button>加入房间</button></form>
+  <ol id="feed" aria-label="房间消息" hidden></ol>
+  <form id="composer" hidden><input id="message" aria-label="消息" maxlength="500" required><button>发送</button></form>
+  <p id="status" role="status"></p>
+  <script src="guest.js" defer></script>
+</body>
+</html>

@@ -6,7 +6,8 @@ window.__ModuleLoader__.load({
     const panel = 'dsh-qqbot-services'
     const api = '/api/qqbot-services'
     const tabKey = 'qqbot-services:tab'
-    const tabs = [{ id: 'home', label: '总览' }, { id: 'chat', label: '聊天' }, { id: 'link', label: '连接' }, { id: 'sys', label: '系统' }]
+    const tabs = [{ id: 'home', label: '总览' }, { id: 'chat', label: '聊天' }, { id: 'room', label: '会客室' },
+      { id: 'house', label: '她的家' }, { id: 'link', label: '连接' }, { id: 'sys', label: '系统' }]
     const names = { napcat: 'NapCat', hindsight: 'Hindsight', koishi: 'Koishi', watchdog: '守护', backup: '备份' }
     const steps = { checking: '正在检查', starting: '正在等待服务就绪', skipped: '已运行，跳过启动', ready: '已就绪', timeout: '等待就绪超时', failed: '启动或检查失败', maintenance: '维护期间暂停启动' }
     const eventNames = { watching: '开始监测', recovered: '恢复正常', starting: '尝试启动', failed: '运行异常' }
@@ -117,6 +118,10 @@ window.__ModuleLoader__.load({
         '.qqb-composer{padding:10px 12px;border-top:1px solid var(--q-line);background:var(--q-surf)}',
         '.qqb-composer-bar{display:flex;align-items:flex-end;gap:8px}.qqb-composer textarea{flex:1;min-width:0;resize:vertical}',
         '.qqb-chat-empty{margin:0;padding:12px 14px;color:var(--q-fg2)}.qqb-diagnostic{width:100%;box-sizing:border-box;resize:vertical}',
+        '.qqb-house-map{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,120px),1fr));gap:8px;margin-top:14px}',
+        '.qqb-house-place{border:1px solid var(--q-line);border-radius:10px;background:var(--q-surf);padding:16px 10px;text-align:center}',
+        '.qqb-house-place.is-here{border-color:var(--q-acc);background:color-mix(in srgb,var(--q-acc) 14%,var(--q-surf));font-weight:600}',
+        '.qqb-room-invite{width:100%;box-sizing:border-box;margin-top:8px}',
         '@container (max-width:540px){.qqb-workspace{grid-template-columns:1fr}.qqb-peers{max-height:140px;border-right:0;border-bottom:1px solid var(--q-line)}.qqb-feed{height:clamp(145px,24vh,230px)}}'
       ].join('\n')
       document.head.appendChild(style)
@@ -298,6 +303,101 @@ window.__ModuleLoader__.load({
           notice && h('p', { className: 'qqb-note', role: 'status' }, notice)))
     }
 
+    async function roomRequest(action, data = {}, signal) {
+      const response = await fetch(`${api}/room/owner/${action}`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-qqbot-service-panel': '1' },
+        body: JSON.stringify(data), signal,
+      })
+      if (!response.ok) throw Error()
+      return response.json()
+    }
+
+    function GuestRoom() {
+      const [messages, setMessages] = React.useState(null)
+      const [draft, setDraft] = React.useState('')
+      const [invite, setInvite] = React.useState('')
+      const [notice, setNotice] = React.useState('')
+      const [busy, setBusy] = React.useState(false)
+      const pending = React.useRef(false)
+      React.useEffect(() => {
+        const controller = new AbortController()
+        let timer
+        const read = async () => {
+          try {
+            const data = await roomRequest('messages', {}, controller.signal)
+            if (!controller.signal.aborted) setMessages(data.messages)
+          } catch { if (!controller.signal.aborted) setMessages(null) }
+          finally { if (!controller.signal.aborted) timer = setTimeout(read, 2500) }
+        }
+        void read()
+        return () => { controller.abort(); clearTimeout(timer) }
+      }, [])
+      const action = async (kind, text) => {
+        if (pending.current) return
+        if (kind === 'close' && !window.confirm('关闭会客室并撤销现有邀请和来宾权限？')) return
+        pending.current = true
+        setBusy(true)
+        setNotice('')
+        try {
+          const result = await roomRequest(kind, text === undefined ? {} : { text })
+          if (kind === 'invite') setInvite(result.url)
+          if (kind === 'close') { setInvite(''); setMessages([]) }
+          if (kind === 'post') setDraft('')
+        } catch { setNotice('操作未能确认，请查看房间消息。') }
+        finally { pending.current = false; setBusy(false) }
+      }
+      return h('section', { className: 'qqb-card' },
+        h('div', { className: 'qqb-actions' }, h('h3', { className: 'qqb-title' }, '网页会客室'),
+          h('div', { className: 'qqb-actions' },
+            h('button', { className: 'qqb-btn', type: 'button', disabled: busy, onClick: () => action('invite') }, '生成邀请'),
+            h('button', { className: 'qqb-btn', type: 'button', disabled: busy, onClick: () => action('close') }, '关闭房间'))),
+        invite && h('label', null, '本机邀请链接，一次有效',
+          h('input', { className: 'qqb-input qqb-room-invite', readOnly: true, value: invite, onFocus: event => event.target.select() })),
+        h('p', { className: 'qqb-note' }, '受邀成员可见。发言可能交给模型判断是否接话。'),
+        messages === null ? h('p', { className: 'qqb-note', role: 'status' }, '等待读取房间消息…')
+          : h('ol', { className: 'qqb-feed', 'aria-label': '会客室消息' }, ...messages.map(row =>
+            h('li', { key: row.id, className: `qqb-message${row.role === 'owner' ? ' is-mine' : ''}` },
+              h('div', { className: 'qqb-body' }, h('small', { className: 'qqb-sender' }, row.name, row.role === 'guest' ? ' · 来宾' : ''),
+                h('div', { className: 'qqb-bubble' }, row.text))))),
+        h('form', { className: 'qqb-composer-bar', onSubmit: event => {
+          event.preventDefault()
+          if (draft.trim()) void action('post', draft)
+        } }, h('textarea', { className: 'qqb-input', rows: 2, value: draft, maxLength: 500, disabled: busy,
+          onChange: event => setDraft(event.target.value), 'aria-label': '会客室消息' }),
+        h('button', { className: 'qqb-btn', type: 'button', disabled: busy,
+          onClick: () => setDraft(value => value.startsWith('@林梦瑶 ') ? value : `@林梦瑶 ${value}`.slice(0, 500)) }, '叫她'),
+        h('button', { className: 'qqb-btn qqb-primary', type: 'submit', disabled: busy || !draft.trim() }, '发送')),
+        notice && h('p', { className: 'qqb-note', role: 'status' }, notice))
+    }
+
+    function HerHome() {
+      const [data, setData] = React.useState(undefined)
+      React.useEffect(() => {
+        const controller = new AbortController()
+        let timer
+        const read = async () => {
+          try {
+            const response = await fetch(`${api}/home`, { cache: 'no-store', signal: controller.signal })
+            if (!response.ok) throw Error()
+            const value = await response.json()
+            if (!controller.signal.aborted) setData(value)
+          } catch { if (!controller.signal.aborted) setData(null) }
+          finally { if (!controller.signal.aborted) timer = setTimeout(read, 10000) }
+        }
+        void read()
+        return () => { controller.abort(); clearTimeout(timer) }
+      }, [])
+      const status = data?.status
+      return h('section', { className: 'qqb-card' },
+        h('h3', { className: 'qqb-title' }, '她的家'),
+        h('p', { className: 'qqb-note', role: 'status' }, data === undefined ? '正在读取…'
+          : data === null ? '暂时无法读取。'
+          : status ? `${data.places[status.place]} · ${data.activities[status.doing]}` : '她现在没有公开状态。'),
+        data && h('div', { className: 'qqb-house-map', 'aria-label': '地点' }, ...Object.entries(data.places).map(([key, label]) =>
+          h('div', { key, className: `qqb-house-place${status?.place === key ? ' is-here' : ''}`,
+            'aria-current': status?.place === key ? 'location' : undefined }, label))))
+    }
+
     const tierLabels = { boyfriend: '本人', bestie: '挚友', girl_friend: '女性朋友', known: '熟人', classmate: '同学', stranger: '陌生人' }
     const modeLabels = { off: '关闭', read: '只读', dryRun: '只演练', on: '开启', export: '导出状态', desktop: '桌面联动' }
 
@@ -421,6 +521,8 @@ window.__ModuleLoader__.load({
         health?.maintenance && h('p', { className: 'qqb-warnline', role: 'status' }, '正在维护，启动暂不可用。'),
         notice && h('p', { className: 'qqb-note', role: 'status' }, notice),
         section('chat', tab === 'chat' && state && h(Chat)),
+        section('room', tab === 'room' && state && h(GuestRoom)),
+        section('house', tab === 'house' && state && h(HerHome)),
         section('home',
           h('div', { className: 'qqb-actions' },
             state?.checkedAt && h('small', { className: 'qqb-note' }, `最近探测 ${new Date(state.checkedAt).toLocaleTimeString('zh-CN')}`),

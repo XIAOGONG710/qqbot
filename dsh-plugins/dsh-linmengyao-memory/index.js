@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { appendTail, closeTurn, sessionBridgeText } from './session-tail.js'
+import { homeActivities, homePlaces, publishHomeStatus } from './home-status.js'
 
 export const name = 'dsh-linmengyao-memory'
 
@@ -38,6 +39,7 @@ const DEFAULTS = {
   outboxFile: soulPath('OUTBOX.jsonl'),
   offlineFile: soulPath('OFFLINE.json'),
   nowFile: soulPath('NOW.md'),
+  homeStatusFile: soulPath('HOME-PUBLIC.json'),
   /** NOW.md 超过这么久没重写就当过期，不注入（QQ 没在跑的时候别拿旧状态冒充现在） */
   nowStaleMs: 30 * 60 * 1000,
   /** QQ 侧真人式数值快照；过期或版本不对时不注入 */
@@ -1471,6 +1473,27 @@ ${now}` : ''
             return tool.execute(...args)
           },
         })
+        disposers.push(register({
+          name: 'home_publish',
+          description: '只在你自己愿意时，把一条日常状态展示给本机「她的家」面板的主人。一小时后自动隐藏。只选预设地点和活动，不填日记、私聊或自由文本；不想展示时可用 hide 收回。',
+          parameters: {
+            type: 'object',
+            properties: {
+              place: { type: 'string', enum: Object.keys(homePlaces), description: Object.entries(homePlaces).map(([id, label]) => `${id}=${label}`).join('，') },
+              doing: { type: 'string', enum: Object.keys(homeActivities), description: Object.entries(homeActivities).map(([id, label]) => `${id}=${label}`).join('，') },
+              hide: { type: 'boolean', description: '设为 true 收回当前展示' },
+            },
+            additionalProperties: false,
+          },
+          output: {
+            schema: { type: 'object', properties: { visible: { type: 'boolean' } }, required: ['visible'] },
+            render: result => [{ type: 'text', text: result.visible ? '日常状态已展示。' : '日常状态已收回。' }],
+          },
+          execute(args) {
+            publishHomeStatus(cfg.homeStatusFile, args ?? {})
+            return { visible: args?.hide !== true }
+          },
+        }))
         disposers.push(register({
           name: 'memory_save',
           description: '把值得记住的事写进林梦瑶的记忆（工作房）。只在有长期价值时用；写入成功会自动记一条不含正文的桌面时间线，不要为同一件事重复调用 timeline_record。',

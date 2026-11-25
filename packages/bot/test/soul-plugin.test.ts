@@ -62,7 +62,7 @@ function boot(extra: Record<string, unknown> = {}, subagents: { rootOf: (agent: 
         ratingFile: f('RATINGS.json'), insightsFile: f('INSIGHTS.json'), feelingsFile: f('FEELINGS.json'), stateFile: f('STATE.json'), logFile: f('plugin.log'),
         timelineInboxFile: f('timeline-inbox.jsonl'), worldInboxFile: f('world-inbox.jsonl'), selfFile: f(SELF_FILE), selfReceiptsFile: f(SELF_RECEIPTS_FILE),
         // 人设也指到临时目录：不给的话插件按默认去读她真正的 PERSONA.md，测试就把真实人设整段注入进提示词
-        personaFile: f('PERSONA.md'),
+        personaFile: f('PERSONA.md'), homeStatusFile: f('HOME-PUBLIC.json'),
         // 在场租约也落在临时目录里：不给的话插件按默认写到她真正的灵魂目录（~/.dsh/linmengyao）
         presenceFile: f('desktop-presence.json'), sessionTailsFile: f('session-tails.jsonl'),
         // 「我现在的样子」也指到临时目录：不给的话插件按默认去读她真正的 PORTRAIT.json
@@ -89,6 +89,22 @@ test('没有经过确认的私聊不提供私有上下文或工具写入', async
     assert.ok(h.contexts.every(entry => !entry.text()));
     await assert.throws(() => h.tools.ledger_append!.execute({ content: '不应写入' }));
     assert.equal(existsSync(h.f('LEDGER.md')), false);
+});
+
+test('只有确认的桌面私聊可发布或收回她的家公开状态，正文不可发布', () => {
+    const denied = boot({ ownerPrivateSessions: [] });
+    assert.throws(() => denied.tools.home_publish!.execute({ place: 'study', doing: 'reading' }), /私聊/);
+    assert.equal(existsSync(denied.f('HOME-PUBLIC.json')), false);
+    const allowed = boot();
+    assert.throws(() => allowed.tools.home_publish!.execute({ place: 'study', doing: '日记原文' }), /预设/);
+    assert.deepEqual(allowed.tools.home_publish!.execute({ place: 'study', doing: 'reading', text: '不应落盘' }), { visible: true });
+    const published = JSON.parse(allowed.text('HOME-PUBLIC.json'));
+    assert.equal(published.audience, 'owner');
+    assert.equal(published.place, 'study');
+    assert.equal(published.doing, 'reading');
+    assert.equal(published.text, undefined);
+    assert.deepEqual(allowed.tools.home_publish!.execute({ hide: true }), { visible: false });
+    assert.equal(JSON.parse(allowed.text('HOME-PUBLIC.json')), null);
 });
 
 test('空预设白名单不向其他预设挂载记忆插件', () => {

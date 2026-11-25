@@ -2,12 +2,14 @@ import { execFile, spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { createController } from './controller.js'
 import { activeKoishiPlugin, configuredManualOwner, createChat, createNapCatManualSender, createNapCatReader } from './chat.js'
+import { createCompanionRoom, createRoomReply } from './companion-room.js'
 
 export const name = 'dsh-qqbot-services'
 export const inject = ['webServer', 'connection']
@@ -40,6 +42,60 @@ function authenticatedBrowser(connection, req) {
 
 function confirmationDigest(req, payload) {
   return createHash('sha256').update(JSON.stringify([req.headers.cookie, payload?.key, payload?.accountId, payload?.text])).digest('hex')
+}
+
+async function readJson(req) {
+  if (req.headers['content-type']?.split(';')[0] !== 'application/json') return { status: 415, error: 'invalid_format' }
+  const chunks = []
+  let bytes = 0
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    bytes += buffer.length
+    if (bytes > 16_384) return { status: 413, error: 'message_too_large' }
+    chunks.push(buffer)
+  }
+  try { return { body: JSON.parse(Buffer.concat(chunks, bytes).toString('utf8')) } }
+  catch { return { status: 400, error: 'invalid_message' } }
+}
+
+async function roomRoute(path, req, res, send, room, owner) {
+  const base = `${prefix}/room/guest/`
+  if (!owner && req.method === 'GET' && [base, base + 'guest.js'].includes(path)) {
+    const script = path.endsWith('.js')
+    const asset = readFileSync(new URL(script ? './room-guest.js' : './room-guest.html', import.meta.url))
+    res.writeHead(200, {
+      'content-type': script ? 'text/javascript; charset=utf-8' : 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      'referrer-policy': 'no-referrer',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    })
+    return res.end(asset)
+  }
+  if (req.method !== 'POST') return send(404, { error: 'not_found' })
+  const action = path.split('/').at(-1)
+  if (path !== (owner ? `${prefix}/room/owner/` : base) + action) return send(404, { error: 'not_found' })
+  if (owner && action === 'invite') {
+    const scheme = req.socket.encrypted ? 'https' : 'http'
+    return send(200, { url: `${scheme}://${req.headers.host}${base}#invite=${room.invite()}` })
+  }
+  if (owner && action === 'close') { room.close(); return send(200, { ok: true }) }
+  const credential = /^Bearer ([A-Za-z0-9_-]{32})$/.exec(req.headers.authorization ?? '')?.[1]
+  if (action === 'messages') {
+    const messages = room.view(credential, owner)
+    return messages ? send(200, { messages }) : send(403, { error: 'room_forbidden' })
+  }
+  if ((!owner && action === 'join') || action === 'post') {
+    const { body, status, error } = await readJson(req)
+    if (status) return send(status, { error })
+    if (action === 'join') {
+      const joined = room.join(body?.invitation, body?.name)
+      return joined ? send(200, { credential: joined }) : send(403, { error: 'invite_invalid' })
+    }
+    const result = await room.post(credential, body?.text, owner)
+    return send(result, { ok: result === 200 })
+  }
+  return send(404, { error: 'not_found' })
 }
 
 function tail(file) {
@@ -125,15 +181,28 @@ export function summarizeConnectionConfig(config) {
   return { contacts, modes }
 }
 
-export function createHandler(controller, events, chat, connection, now = Date.now, details) {
+export function createHandler(controller, events, chat, connection, now = Date.now, details, companion) {
   const confirmations = new Map()
   return async (req, res) => {
     const send = (status, value) => {
       res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
       res.end(JSON.stringify(value))
     }
-    if (!allowedRequest(req) || !authenticatedBrowser(connection, req)) return send(403, { error: 'forbidden' })
+    if (!allowedRequest(req)) return send(403, { error: 'forbidden' })
     const path = (req.url ?? '').split('?')[0]
+    if (companion?.room && path.startsWith(`${prefix}/room/guest/`)) {
+      try { return await roomRoute(path, req, res, send, companion.room, false) }
+      catch { return send(503, { error: 'room_unavailable' }) }
+    }
+    if (!authenticatedBrowser(connection, req)) return send(403, { error: 'forbidden' })
+    if (companion?.room && path.startsWith(`${prefix}/room/owner/`)) {
+      try { return await roomRoute(path, req, res, send, companion.room, true) }
+      catch { return send(503, { error: 'room_unavailable' }) }
+    }
+    if (companion?.home && req.method === 'GET' && path === `${prefix}/home`) {
+      try { return send(200, await companion.home()) }
+      catch { return send(503, { error: 'home_unavailable' }) }
+    }
     if (details && req.method === 'GET' && [`${prefix}/details/access`, `${prefix}/details/backups`].includes(path)) {
       try {
         const data = await details(path.split('/').at(-1))
@@ -150,18 +219,8 @@ export function createHandler(controller, events, chat, connection, now = Date.n
           return messages ? send(200, { messages }) : send(404, { error: 'unknown_conversation' })
         }
         if (path === `${prefix}/chat/prepare` || path === `${prefix}/chat/send`) {
-          if (req.headers['content-type']?.split(';')[0] !== 'application/json') return send(415, { error: 'invalid_format' })
-          const chunks = []
-          let bytes = 0
-          for await (const chunk of req) {
-            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-            bytes += buffer.length
-            if (bytes > 16_384) return send(413, { error: 'message_too_large' })
-            chunks.push(buffer)
-          }
-          let payload
-          try { payload = JSON.parse(Buffer.concat(chunks, bytes).toString('utf8')) }
-          catch { return send(400, { error: 'invalid_message' }) }
+          const { body: payload, status, error } = await readJson(req)
+          if (status) return send(status, { error })
           if (path === `${prefix}/chat/prepare`) {
             const result = await chat.prepare(payload)
             if (result.status !== 200) return send(result.status, { error: result.error })
@@ -253,8 +312,18 @@ export function apply(ctx, config = {}) {
       return send(message)
     },
   })
+  const room = createCompanionRoom({ reply: createRoomReply({ key: process.env.QQBOT_LLM_API_KEY, model: config.roomModel }) })
+  const homeFile = resolve(process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao'), 'HOME-PUBLIC.json')
+  const companion = {
+    room,
+    async home() {
+      const { homePlaces, homeActivities, readPublishedHomeStatus } =
+        await import(pathToFileURL(join(root, 'dsh-plugins', 'dsh-linmengyao-memory', 'home-status.js')).href)
+      return { places: homePlaces, activities: homeActivities, status: readPublishedHomeStatus(homeFile) }
+    },
+  }
   const unregister = ctx.webServer.register({
-    kind: 'prefix', path: prefix, handler: createHandler(controller, events, chat, ctx.connection, Date.now, details),
+    kind: 'prefix', path: prefix, handler: createHandler(controller, events, chat, ctx.connection, Date.now, details, companion),
   })
-  ctx.on('dispose', () => { controller.dispose(); unregister() })
+  ctx.on('dispose', () => { room.close(); controller.dispose(); unregister() })
 }
