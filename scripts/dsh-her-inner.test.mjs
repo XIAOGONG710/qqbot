@@ -12,8 +12,10 @@ import { createHerInner, herDayKey, herInnerEnabled } from '../dsh-plugins/dsh-q
 const MARK = 'ZQX-CAUSE-MARK'
 const HOUR = 3_600_000
 const DAY = 24 * HOUR
-// 本机时区的 2026-11-26 15:00（她的今天）
+// 本机时区的 2026-11-26 15:00（她的今天）。下面的用例把插件配置的时区设成本机时区，用本机时间造数据；
+// 配置的时区和本机不一样的情况单独测（她的一天跟配置走，不跟面板进程走）
 const NOW = new Date(2026, 10, 26, 15, 0).getTime()
+const LOCAL = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 let root
 let link
@@ -41,7 +43,7 @@ const writeLedger = rows => writeFileSync(join(root, soul, 'feeling-ledger.jsonl
   source: 'chat', aboutHim: false, withhold: '', ...row, cause: `${row.cause} ${MARK}`,
 })).join('\n') + '\n')
 
-const inner = () => createHerInner({ soulDir: soul, root, now: () => NOW })
+const inner = (options = {}) => createHerInner({ soulDir: soul, root, now: () => NOW, timeZone: LOCAL, ...options })
 
 function assertClean(value) {
   const text = JSON.stringify(value)
@@ -58,8 +60,11 @@ test('只有 herInnerPanel 严格等于 true 才算开', () => {
 })
 
 test('她的一天凌晨 2 点换天', () => {
-  assert.equal(herDayKey(new Date(2026, 10, 27, 1, 59).getTime()), '2026-11-26')
-  assert.equal(herDayKey(new Date(2026, 10, 27, 2, 0).getTime()), '2026-11-27')
+  assert.equal(herDayKey(new Date(2026, 10, 27, 1, 59).getTime(), LOCAL), '2026-11-26')
+  assert.equal(herDayKey(new Date(2026, 10, 27, 2, 0).getTime(), LOCAL), '2026-11-27')
+  // 默认按 bot 的默认时区 Asia/Shanghai，不按本机：上海 11-27 01:59 / 02:00
+  assert.equal(herDayKey(Date.parse('2026-11-26T17:59:00Z')), '2026-11-26')
+  assert.equal(herDayKey(Date.parse('2026-11-26T18:00:00Z')), '2026-11-27')
 })
 
 test('today：疼和她妈那块只说换过的话，因为他的难过封顶「有点」，没有来由', async () => {
@@ -140,9 +145,10 @@ test('ledger：按她的一天分组、新的在前，换过说法的和老的�
   const wide = await inner().ledger({ days: 120 })
   assertClean(wide)
   const old = wide.days.at(-1)
-  assert.equal(old.day, herDayKey(NOW - 100 * DAY))
+  assert.equal(old.day, herDayKey(NOW - 100 * DAY, LOCAL))
+  // 粗的连种类也不给（label 为 null）：只剩「只记得个大概」
   assert.deepEqual(old.rows.map(row => [row.label, row.said, row.time === null]), [
-    ['难过', '只记得个大概', true],
+    [null, '只记得个大概', true],
     ['开心', '有点开心', false],
   ])
 
@@ -168,4 +174,63 @@ test('只读：FEELINGS.json 坏了不改名隔离、不动文件，当作没有
     assert.deepEqual(today.feelings, [])
     assert.deepEqual(readdirSync(soul), ['FEELINGS.json'], '没有被改名成 .corrupt-…')
   } finally { rmSync(soul, { recursive: true, force: true }) }
+})
+
+test('她的一天跟插件配置的时区走，不跟面板进程的：配置成檀香山时，本机的 11-26 15:00 在那边是 11-25 20:00', async () => {
+  const zone = 'Pacific/Honolulu'
+  const at = Date.parse('2026-11-26T06:00:00Z') // 檀香山 11-25 20:00
+  writeLedger([{ at, kind: 'joy', level: 'clear', cause: '合成' }])
+  writeFeelings(at, [{ kind: 'joy', level: 'clear', cause: '合成' }])
+  const view = createHerInner({ soulDir: soul, root, now: () => at + 60_000, timeZone: () => zone })
+  const today = await view.today()
+  assert.equal(today.day, '2026-11-25')
+  assert.deepEqual(today.feelings, [{ label: '开心', said: '有点开心' }])
+  const ledger = await view.ledger({ days: 1 })
+  assert.deepEqual(ledger.days, [{ day: '2026-11-25', rows: [{ time: '20:00', label: '开心', said: '有点开心', coarse: false }] }])
+  // 时区写错了：退回 Asia/Shanghai（14:00），不抛
+  const fallback = await createHerInner({ soulDir: soul, root, now: () => at + 60_000, timeZone: 'Not/AZone' }).ledger({ days: 1 })
+  assert.equal(fallback.days[0].rows[0].time, '14:00')
+})
+
+test('旧行没写 withhold：按来由再判一次，疼和她妈那块照样只说换过的话、不带种类和时刻', async () => {
+  const lines = [
+    { at: NOW - 2 * HOUR, kind: 'tired', level: 'strong', cause: `痛经 ${MARK}`, source: 'body', aboutHim: false },
+    { at: NOW - HOUR, kind: 'worry', level: 'strong', cause: `她妈来电话 ${MARK}`, source: 'life', aboutHim: false },
+  ]
+  writeFileSync(join(root, soul, 'feeling-ledger.jsonl'), lines.map(row => JSON.stringify(row)).join('\n') + '\n')
+  const view = await inner().ledger({ days: 1 })
+  assertClean(view)
+  assert.deepEqual(view.days, [{ day: '2026-11-26', rows: [
+    { time: null, label: null, said: '只记得个大概：身上不太舒服', coarse: true },
+    { time: null, label: null, said: '只记得个大概：心里一直悬着', coarse: true },
+  ] }])
+})
+
+test('链接和太大的文件当没有：不跟着链接读别处的文件', async () => {
+  const outside = mkdtempSync(join(tmpdir(), 'her-inner-outside-'))
+  try {
+    writeFileSync(join(outside, 'FEELINGS.json'), JSON.stringify({ kind: 'qq-feelings', generatedAt: new Date(NOW - HOUR).toISOString(),
+      felt: [{ kind: 'joy', level: 'strong', cause: MARK, source: 'chat', aboutHim: false }] }))
+    writeFileSync(join(outside, 'feeling-ledger.jsonl'), JSON.stringify({ at: NOW - HOUR, kind: 'joy', level: 'strong', cause: MARK, source: 'chat', aboutHim: false, withhold: '' }) + '\n')
+    // Windows 上建文件链接要开发者模式或管理员：建不了就只测下面的大小上限
+    let linked = true
+    for (const name of ['FEELINGS.json', 'feeling-ledger.jsonl']) {
+      rmSync(join(root, soul, name), { force: true })
+      try { symlinkSync(join(outside, name), join(root, soul, name), 'file') } catch (error) { if (error.code !== 'EPERM') throw error; linked = false }
+    }
+    if (linked) {
+      assert.deepEqual((await inner().today()).feelings, [])
+      assert.deepEqual(await inner().ledger(), { days: [] })
+    }
+    for (const name of ['FEELINGS.json', 'feeling-ledger.jsonl']) rmSync(join(root, soul, name), { force: true })
+    // 太大：16 MB 以上的账、2 MB 以上的 FEELINGS.json
+    writeFileSync(join(root, soul, 'feeling-ledger.jsonl'), JSON.stringify({ at: NOW - HOUR, kind: 'joy', level: 'strong', cause: 'x', source: 'chat', aboutHim: false, withhold: '' }) + '\n' + ' '.repeat(16_000_001))
+    assert.deepEqual(await inner().ledger(), { days: [] })
+    writeFileSync(join(root, soul, 'FEELINGS.json'), JSON.stringify({ kind: 'qq-feelings', generatedAt: new Date(NOW - HOUR).toISOString(),
+      felt: [{ kind: 'joy', level: 'strong', cause: 'x', source: 'chat', aboutHim: false }], pad: ' '.repeat(2_000_001) }))
+    assert.deepEqual((await inner().today()).feelings, [])
+  } finally {
+    for (const name of ['FEELINGS.json', 'feeling-ledger.jsonl']) rmSync(join(root, soul, name), { force: true })
+    rmSync(outside, { recursive: true, force: true })
+  }
 })
