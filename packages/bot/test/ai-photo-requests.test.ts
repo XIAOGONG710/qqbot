@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -152,4 +152,37 @@ test('已批准但已过期的精确照片也不能作为当前照片发送', ()
     assert.deepEqual(requestCurrentAiPhoto(service, 'view', world, at), {
         state: 'unavailable', eventKey: current.eventKey,
     });
+});
+
+test('冷却状态写不进时 request 也不抛出去，后台那条 void 调用不会变成未处理的 rejection（2026-11-26 AI 照片审查 P2）', async () => {
+    const now = new Date('2026-11-04T10:00:00+08:00');
+    const root = mkdtempSync(join(tmpdir(), 'qqbot-ai-photo-'));
+    const blocker = join(root, 'not-a-dir');
+    writeFileSync(blocker, 'x');
+    const logs: string[] = [];
+    const service = aiPhotoRequestService({
+        store: fakeStore([], true), generator: async () => { throw new Error('unused'); },
+        stateFile: join(blocker, 'state.json'), now: () => now, log: line => logs.push(line),
+    });
+    assert.equal(await service.request(context('qq-current:broken-disk', now)), 'failed');
+    assert.equal(await service.request(context('qq-current:broken-disk-2', now)), 'cooldown');
+    assert.equal(logs.some(line => line.includes(root)), false);
+});
+
+test('同时到的几条请求合起来也不超过每日生成数（2026-11-26 AI 照片审查 P3）', async () => {
+    const now = new Date('2026-11-04T10:00:00+08:00');
+    const entries: AiPhotoDraft[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const store = fakeStore(entries);
+    const slow: AiPhotoDraftStore = { ...store, async generate(ctx, generator) { await gate; return store.generate(ctx, generator); } };
+    const service = aiPhotoRequestService({
+        store: slow, generator: async () => { throw new Error('unused'); },
+        stateFile: join(mkdtempSync(join(tmpdir(), 'qqbot-ai-photo-')), 'state.json'), now: () => now, dailyMax: 1,
+    });
+    const first = service.request(context('world:cat', now));
+    const second = service.request(context('qq-current:view', now));
+    release();
+    assert.deepEqual(await Promise.all([first, second]), ['generated', 'daily_limit']);
+    assert.equal(entries.length, 1);
 });

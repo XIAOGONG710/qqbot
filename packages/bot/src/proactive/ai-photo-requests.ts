@@ -119,9 +119,13 @@ export function aiPhotoRequestService(options: AiPhotoRequestServiceOptions): Ai
     const cooldownMs = Math.max(0, options.failureCooldownMs ?? AI_PHOTO_FAILURE_COOLDOWN_MS);
     let state = readJsonOr<RequestState>(options.stateFile, { version: 1 }, options.log, { validate: validState, label: 'AI 照片自动请求状态' });
     const inFlight = new Set<string>();
+    // QQ 那条路是 `void service.request(...)` 扔到后台的：冷却状态写不进时不能让 request 抛出去变成未处理的 rejection
+    // （独立运行会崩进程，Koishi 下会把带磁盘路径的错误原文打进日志）。写不进就只记一行，内存里的冷却照样生效（审查 P2）。
     const persist = () => {
-        mkdirSync(dirname(options.stateFile), { recursive: true });
-        writeJsonAtomic(options.stateFile, state);
+        try {
+            mkdirSync(dirname(options.stateFile), { recursive: true });
+            writeJsonAtomic(options.stateFile, state);
+        } catch { options.log?.('AI 照片草稿：冷却状态写不进，这次只在内存里记着；错误正文不写日志'); }
     };
     const find = (eventKey: string) => options.store.list().find(entry => entry.eventKey === eventKey);
     const service: AiPhotoRequestService = {
@@ -134,7 +138,8 @@ export function aiPhotoRequestService(options: AiPhotoRequestServiceOptions): Ai
             if (inFlight.has(context.eventKey)) return 'in_flight';
             if (state.lastFailureAt && at.getTime() - Date.parse(state.lastFailureAt) < cooldownMs) return 'cooldown';
             const createdToday = options.store.list().filter(entry => /^(?:world|qq-current):/.test(entry.eventKey) && sameLocalDay(new Date(entry.createdAt), at)).length;
-            if (createdToday >= dailyMax) return 'daily_limit';
+            // 还在生成的也算进去：世界事件和 QQ 请求同时到时，不能都在“今天还没满”的那一刻放行（审查 P3）
+            if (createdToday + inFlight.size >= dailyMax) return 'daily_limit';
             inFlight.add(context.eventKey);
             try {
                 await options.store.generate(context, prompt => options.generator(prompt, context));
@@ -172,7 +177,7 @@ export function requestCurrentAiPhoto(service: AiPhotoRequestService, kind: Phot
         return { state: 'approved', eventKey: context.eventKey, shelfId: existing.shelfId };
     }
     if (existing) return { state: existing.status === 'pending_review' ? 'pending' : 'unavailable', eventKey: context.eventKey };
-    void service.request(context);
+    void service.request(context).catch(() => undefined);
     return { state: 'requested', eventKey: context.eventKey };
 }
 
