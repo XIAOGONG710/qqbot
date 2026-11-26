@@ -51,5 +51,7 @@
 
 ## 回退
 
+- **主动留话（51e10053 起）**：待发的留话改存在 `outbox-state.json` 的 `pending` 里，旧代码只读 `OUTBOX.jsonl` 文件队列。回退代码前先看 `outbox-state.json` 里 `pending` 是不是空的；不空就等它发完，或者把这些行原样追加回 `OUTBOX.jsonl` 再回退（不然旧代码看不见，这些留话就丢了）。
+
 - 代码：线上目录 `git checkout <上线前的提交>`，重启。
 - 配置：用第 1 步的备份覆盖 koishi.yml（迁移后的新键旧代码不认，所以**回退代码时必须一起回退 koishi.yml**），重启。
