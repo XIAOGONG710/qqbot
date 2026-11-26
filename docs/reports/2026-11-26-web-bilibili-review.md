@@ -120,6 +120,8 @@ B 站：
 
 ### W8. 其余小问题（低）
 
+> 2026-11-26 后续：前两条已修——搜索商返回套上 `READ_MAX_BYTES`（`json()` 走 `readCapped`）；成人站点改走 `publicOnlyFetch`，`firstStoryLink` 改用 `dropComments` / `dropTagBlocks` 的线性写法。第三条（`look()` 没有总期限）照旧记录。
+
 - 搜索商的返回（`web.ts` 的 `json()`）没有限体积，只有 10 秒超时；对方是付费 API，风险小。
 - 成人站点（`proactive/planner-host.ts:106`）还是直接传全局 `fetch`，没有 W2 的连接时检查；它的 `firstStoryLink`（`adult-sites.ts:13`）也是 W3 那种正则。
   只读用户自己填的几个 HTTPS 站点，风险小；要的话把那一处换成 `publicOnlyFetch(fetch)`，正则照 W3 改。

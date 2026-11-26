@@ -64,3 +64,34 @@ test('只在满意度足够低且距离上次尝试满一天时触发', () => {
     assert.equal(adultSiteVisitDue(44, '2026-11-17T16:01:00Z', now), false);
     assert.equal(adultSiteVisitDue(44, '2026-11-17T16:00:00Z', now), true);
 });
+
+test('目录页是一大串没收尾的 <a / <!-- / <script 时很快放弃，不卡住进程（2026-11-26 审查 W8）', async () => {
+    const pages = ['<a '.repeat(150_000), '<!--'.repeat(150_000), '<script'.repeat(80_000)];
+    for (const junk of pages) {
+        const started = Date.now();
+        const done = await readAdultSite(new URL('https://storiesonline.net/'), {
+            resolve,
+            fetch: async () => html(`<p>这里是一段用来验证目录解析的合成页面正文</p>${junk}`),
+        });
+        assert.equal(done, false);
+        assert.ok(Date.now() - started < 3000, `用了 ${Date.now() - started} ms`);
+    }
+});
+
+test('线性写法挑出的作品链接和原来的正则一样：注释、script / style / template 里的链接不算', async () => {
+    const requests: string[] = [];
+    const done = await readAdultSite(new URL('https://storiesonline.net/'), {
+        resolve,
+        fetch: async input => {
+            const url = new URL(String(input));
+            requests.push(url.pathname);
+            return url.pathname === '/'
+                ? html(`<p>这里是一段用来验证目录解析的合成页面正文</p><!-- <a href="/s/1/in-comment"> -->
+                        <SCRIPT type="x"><a href="/s/2/in-script"></SCRIPT><style><a href="/s/3/in-style"></style>
+                        <a class="x" href='/s/4/real'>作品</a>`)
+                : html('<p>这里是一段用于验证已读到作品正文的合成文字。</p>');
+        },
+    });
+    assert.equal(done, true);
+    assert.deepEqual(requests, ['/', '/s/4/real']);
+});

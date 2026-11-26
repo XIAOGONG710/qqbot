@@ -89,7 +89,7 @@ const DROPPED_TAGS = ['script', 'style', 'noscript', 'svg', 'head', 'template'] 
  * 原来的正则遇到一大串没有收尾的 `<style` 会对每一个都扫到结尾，1.5 MB 的页面能把整个进程卡住好几分钟（2026-11-26 审查）。
  * 某个标签往后已经找不到收尾，之后的同名开头也不会再有，记下来不再找。
  */
-function dropTagBlocks(html: string): string {
+export function dropTagBlocks(html: string, tags: readonly string[] = DROPPED_TAGS): string {
     const lower = asciiLower(html);
     const exhausted = new Set<string>();
     let out = '';
@@ -97,7 +97,7 @@ function dropTagBlocks(html: string): string {
     let at = lower.indexOf('<');
     while (at >= 0) {
         let end = -1;
-        for (const tag of DROPPED_TAGS) {
+        for (const tag of tags) {
             if (exhausted.has(tag) || !lower.startsWith(tag, at + 1)) continue;
             const close = lower.indexOf(`</${tag}>`, at + 1 + tag.length);
             if (close < 0) { exhausted.add(tag); continue; }
@@ -113,7 +113,7 @@ function dropTagBlocks(html: string): string {
 }
 
 /** 和 `replace(/<!--[\s\S]*?-->/g, ' ')` 一样，线性 */
-function dropComments(html: string): string {
+export function dropComments(html: string): string {
     let out = '';
     let copied = 0;
     for (let at = html.indexOf('<!--'); at >= 0; at = html.indexOf('<!--', copied)) {
@@ -240,7 +240,10 @@ const text = (v: unknown, max = 300): string => (typeof v === 'string' ? clip(v,
 
 async function json(response: Response): Promise<any> {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return JSON.parse(await response.text());
+    // 和读网页同一个体积上限：搜索商返回再大也不整份读进内存（2026-11-26 审查 W8）
+    const bytes = await readCapped(response);
+    if (!bytes) throw new Error('返回太大');
+    return JSON.parse(new TextDecoder().decode(bytes));
 }
 
 /** 中文维基百科：公开接口、不要密钥，只管百科类的事实 */

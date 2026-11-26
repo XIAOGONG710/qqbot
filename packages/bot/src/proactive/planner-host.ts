@@ -20,7 +20,7 @@ import type { CrisisState } from '../emotion/crisis-state.ts';
 import type { AppConfig, Contact } from '../platform/config.ts';
 import { replySkip, type ContactPipelineOptions, type TierCard } from '../platform/contact.ts';
 import type { Log } from '../platform/log.ts';
-import type { WebLookup } from '../platform/web.ts';
+import { publicOnlyFetch, type WebLookup } from '../platform/web.ts';
 import type { Responder } from '../social/responder.ts';
 import type { readAgencyShadow } from '../world/agency-shadow.ts';
 import type { settlingWorld } from '../world/action-queue.ts';
@@ -103,7 +103,7 @@ export function plannerHost(deps: PlannerHostDeps): PlannerHost {
                         visit: async signal => {
                             const urls = config.adultSiteUrls!;
                             const url = new URL(urls[Math.floor(Math.random() * urls.length)]!);
-                            return readAdultSite(url, { fetch, signal });
+                            return readAdultSite(url, { fetch: publicOnlyFetch(fetch), signal });
                         },
                     },
                 } : {}),

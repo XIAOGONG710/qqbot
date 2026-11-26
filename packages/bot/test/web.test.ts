@@ -344,3 +344,11 @@ describe('WebLookup：串起来', () => {
         assert.equal(short.asked.length, 0, '太短的不问分类器');
     });
 });
+
+test('搜索商的返回超过读网页的体积上限就不读（2026-11-26 审查 W8）', async () => {
+    const big = JSON.stringify({ query: { pages: {} }, pad: 'x'.repeat(2_000_000) });
+    const provider = wikipediaProvider(async () => new Response(big, { headers: { 'content-type': 'application/json' } }));
+    await assert.rejects(provider.search('合成的查询', undefined), /返回太大/);
+    const small = wikipediaProvider(async () => new Response(JSON.stringify({ query: { pages: { 1: { pageid: 1, title: '合成', extract: '一段合成的百科摘要。', index: 1 } } } })));
+    assert.equal((await small.search('合成的查询', undefined)).length, 1);
+});

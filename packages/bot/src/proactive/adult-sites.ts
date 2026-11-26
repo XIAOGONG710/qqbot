@@ -1,5 +1,5 @@
 // 成人网站访问从用户填入的 HTTPS 页面开始，站内作品链接只认已知的格式。
-import { readPage, type PageDeps } from '../platform/web.ts';
+import { dropComments, dropTagBlocks, readPage, type PageDeps } from '../platform/web.ts';
 
 export const ADULT_SITE_SATISFACTION_THRESHOLD = 45;
 const ATTEMPT_INTERVAL_MS = 24 * 60 * 60_000;
@@ -10,7 +10,9 @@ const STORY_PATHS = new Map([
 ]);
 
 function firstStoryLink(html: string, page: URL, storyPath: RegExp): string | undefined {
-    const body = html.replace(/<!--[\s\S]*?-->|<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
+    // 线性写法（2026-11-26 审查 W8，同 web.ts 的 W3）：原来的正则遇到一串没收尾的 <!-- / <script / <a 会平方级地扫
+    const cleaned = dropTagBlocks(dropComments(html), ['script', 'style', 'template']);
+    const body = cleaned.slice(0, cleaned.lastIndexOf('>') + 1);
     for (const anchor of body.matchAll(/<a\s+[^>]*>/gi)) {
         const href = /\s+href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\x60]+))/i.exec(anchor[0]);
         const address = href?.[1] ?? href?.[2] ?? href?.[3];
