@@ -249,9 +249,7 @@ describe('事实检查模块的最后一查（factsFinal）', () => {
     });
 });
 
-const WIRED = true;
-
-describe('联系人流水线里的事实检查', { skip: !WIRED && '等接线（ADR 0336 第 7 步）' }, () => {
+describe('联系人流水线里的事实检查', () => {
     const NOW = Date.parse('2026-11-05T12:00:00+08:00');
     const llm = { baseUrl: 'https://unused.invalid', model: 'fake', apiKey: 'fake', temperature: 0, maxTokens: 300, timeoutMs: 100, extraBody: {}, promptPostProcessing: '' as const };
 
