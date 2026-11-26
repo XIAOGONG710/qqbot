@@ -100,6 +100,14 @@ export class MemoryCompanionMediaStore implements CompanionMediaStore {
         return { ...record, data: Buffer.from(record.data) };
     }
 
+    /** 宿主收回自己签发、已经用不上的一条（如上一次照片审核列表的缩略图）；只认同一台设备的。 */
+    discard(clientId: string, mediaId: string): boolean {
+        const record = this.records.get(mediaId);
+        if (!record || record.clientId !== clientId) return false;
+        this.remove(mediaId);
+        return true;
+    }
+
     clear(clientId?: string, now = this.now()): number {
         this.purge(now);
         let removed = 0;

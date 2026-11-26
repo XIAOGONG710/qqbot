@@ -1,6 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import type { CompanionMediaStore } from './media.ts';
 import type { CompanionRuntime } from './runtime.ts';
+import { sessionFor } from './http.ts';
 import { isAllowedMediaMime } from './protocol.ts';
 
 const MEDIA_ID = /^[a-f0-9]{16,128}$/i;
@@ -34,8 +35,7 @@ export function createCompanionKoaEnvelopeHandler(runtime: CompanionRuntime, opt
         try { serialized = JSON.stringify(ctx.request.body); } catch { return fail(ctx, 400, 'invalid_json'); }
         if (typeof serialized !== 'string') return fail(ctx, 400, 'invalid_json');
         if (Buffer.byteLength(serialized, 'utf8') > maxBodyBytes) return fail(ctx, 413, 'body_too_large');
-        const session = header(ctx.request.headers, 'x-companion-session');
-        const sessionId = session || runtime.createSession();
+        const sessionId = sessionFor(runtime, ctx.request.body, header(ctx.request.headers, 'x-companion-session') || undefined);
         const result = await runtime.handle(ctx.request.body, sessionId);
         if (!result.accepted) return fail(ctx, 400, result.error);
         ctx.set('x-companion-session', sessionId);

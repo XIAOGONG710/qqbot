@@ -103,7 +103,7 @@ async function appSocket(t: TestContext, port: number) {
     };
 }
 
-async function startAll(t: TestContext, options: { upstream?: boolean; delivery?: DeliveryRule; token?: string | null; now?: () => number } = {}) {
+async function startAll(t: TestContext, options: { upstream?: boolean; delivery?: DeliveryRule; token?: string | null; now?: () => number; helloTimeoutMs?: number } = {}) {
     const dir = tempDir(t);
     const staticDir = join(dir, 'static');
     mkdirSync(join(staticDir, 'assets'), { recursive: true });
@@ -124,6 +124,7 @@ async function startAll(t: TestContext, options: { upstream?: boolean; delivery?
         config, log: line => { logs.push(line); }, upstreamBackoffMs: [30], upstreamTimeoutMs: 1000, revokeSweepMs: 20,
         ...(token ? { token } : {}),
         ...(options.now ? { now: options.now } : {}),
+        ...(options.helloTimeoutMs !== undefined ? { helloTimeoutMs: options.helloTimeoutMs } : {}),
     });
     t.after(() => relay.stop());
     if (napcat) await until(() => relay.core.upstreamState() === 'up', '上游连上');
@@ -596,6 +597,51 @@ test('WebSocket：ping/pong、64 KiB 上限、坏帧、限流', async t => {
     assert.equal(relay.ledger.seq, acks);
     app.send({ type: 'ping' });
     await app.wait('pong', 2);
+});
+
+/** 连一下 /ws，看握手是成了还是被拒（503） */
+async function tryConnect(t: TestContext, port: number): Promise<WebSocket | undefined> {
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    t.after(() => socket.terminate());
+    return await new Promise(resolve => { socket.once('open', () => resolve(socket)); socket.once('error', () => resolve(undefined)); });
+}
+
+test('没 hello 的连接单独限 4 条、超时就断、hello 前发坏帧直接断；占不了已认证设备的位置', async t => {
+    const { relay, pair } = await startAll(t, { upstream: false, helloTimeoutMs: 300 });
+    const device = await pair();
+    const app = await appSocket(t, relay.appPort);
+    app.send({ type: 'hello', deviceId: device.deviceId, token: device.token, since: 0 });
+    await app.wait('ready');
+
+    // 已认证的那条不占「没 hello」的名额：还能再开 4 条不认证的，第 5 条被拒
+    const idle: WebSocket[] = [];
+    for (let index = 0; index < 4; index++) {
+        const socket = await tryConnect(t, relay.appPort);
+        assert.ok(socket, `第 ${index + 1} 条没 hello 的连接应能连上`);
+        idle.push(socket);
+    }
+    assert.equal(await tryConnect(t, relay.appPort), undefined, '第 5 条没 hello 的连接被拒');
+    // 已经连着的设备照常
+    app.send({ type: 'ping' });
+    await app.wait('pong');
+
+    // hello 超时：几条空连接都被断开，名额回来
+    await until(() => idle.every(socket => socket.readyState === WebSocket.CLOSED), '没 hello 的连接超时断开');
+    assert.equal(app.closed(), false);
+
+    // hello 之前发坏帧（不是 JSON / 二进制 / 超大）：回 bad_request 或 too_large 然后断，不回 unauthorized
+    for (const bad of ['not json', Buffer.from([1, 2, 3]), JSON.stringify({ type: 'hello', pad: 'x'.repeat(64 * 1024) })]) {
+        const probe = await appSocket(t, relay.appPort);
+        probe.socket.send(bad);
+        await until(() => probe.closed(), 'hello 前的坏帧让连接断开', 1000);
+        assert.equal(probe.frames.some(frame => frame.type === 'error' && frame.code === 'unauthorized'), false);
+        assert.equal(probe.frames.some(frame => frame.type === 'error' && (frame.code === 'bad_request' || frame.code === 'too_large')), true);
+    }
+
+    // 名额回来了，正常设备还能连
+    const again = await appSocket(t, relay.appPort);
+    again.send({ type: 'hello', deviceId: device.deviceId, token: device.token, since: 0 });
+    await again.wait('ready');
 });
 
 test('撤销设备：凭据马上失效，已经连着的那条几秒内被断开', async t => {

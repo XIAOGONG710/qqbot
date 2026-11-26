@@ -11,6 +11,7 @@ import { createMobileCompanion, createMobileDshHandlers } from '../src/mobile-co
 import { helloEnvelope } from '@qqbot/mobile-companion/gateway';
 import type { LlmOptions } from '../src/language/llm.ts';
 import { fileOps } from '../src/memory/json-file.ts';
+import type { AiPhotoDraft } from '../src/vision/ai-photo-drafts.ts';
 
 // 猫名、城市名用合成角色的（ADR 0335）
 useSyntheticTerms();
@@ -349,5 +350,40 @@ describe('DSH 连接层', () => {
         const receipt = await integration.runtime.handle({ v: 1, requestId: 'req-receipt-1', kind: 'action.result', sentAt: new Date(now).toISOString(), nonce: 'nonce-receipt-1', body: { requestId: 'push-receipt-1', ok: true, decision: 'auto' } });
         assert.deepEqual(receipt, { accepted: true });
         assert.deepEqual(audited, ['android-receipt:push-receipt-1:true:auto']);
+    });
+
+    test('照片审核列表只给最新 8 条做缩略图，反复刷新也不挤掉手机刚传的媒体', async () => {
+        let now = Date.parse('2026-11-05T12:00:00.000Z');
+        const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+        // 20 条合成草稿，按生成先后排（列表返回最新在前）
+        const drafts = Array.from({ length: 20 }, (_, index) => ({
+            id: index.toString(16).padStart(12, '0'), kind: 'cat', status: 'pending_review', caption: `合成草稿 ${index}`,
+            at: new Date(now - (20 - index) * 60_000).toISOString(), createdAt: new Date(now - (20 - index) * 60_000).toISOString(),
+        })) as unknown as AiPhotoDraft[];
+        const integration = createMobileCompanion({
+            dsh: { advise: async () => '好' },
+            now: () => now,
+            photoDrafts: { list: () => drafts, preview: () => ({ bytes: jpeg, type: 'image/jpeg' }) },
+        });
+        const ticket = integration.issuePairing('android-photos', now);
+        assert.equal((await integration.runtime.handle(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text'] }, 'req-photos-hello', 'nonce-photos-hello', new Date(now).toISOString()))).accepted, true);
+        const uploads = [1, 2].map(() => integration.media.put({ clientId: ticket.clientId, mime: 'image/jpeg', data: jpeg, bytes: jpeg.length }).mediaId);
+        let previous: string[] = [];
+        for (let round = 0; round < 3; round += 1) {
+            now += 1;
+            const listed = await integration.runtime.handle({ v: 1, requestId: `req-photos-list-${round}`, kind: 'photo.review.list', sentAt: new Date(now).toISOString(), nonce: `nonce-photos-list-${round}`, body: { status: 'pending_review', limit: 20 } });
+            assert.equal(listed.accepted, true);
+            const body = (listed.accepted ? listed.response?.body : undefined) as { items: { id: string; thumbnail?: { mediaId: string } }[]; total: number };
+            assert.equal(body.total, 20);
+            assert.equal(body.items.length, 20);
+            assert.equal(body.items[0]?.id, drafts[19]!.id, '最新在前');
+            const thumbs = body.items.map(item => item.thumbnail?.mediaId);
+            assert.equal(thumbs.slice(0, 8).every(Boolean), true, '最新 8 条都有缩略图');
+            assert.equal(thumbs.slice(8).some(Boolean), false, '其余照样列出、不带缩略图');
+            for (const mediaId of thumbs.slice(0, 8)) assert.ok(integration.media.get(ticket.clientId, mediaId!), '返回的缩略图在返回时还取得到');
+            for (const mediaId of uploads) assert.ok(integration.media.get(ticket.clientId, mediaId), '手机刚传的媒体不被挤掉');
+            for (const mediaId of previous) assert.equal(integration.media.get(ticket.clientId, mediaId), undefined, '上一次列表的缩略图已收回');
+            previous = thumbs.slice(0, 8) as string[];
+        }
     });
 });

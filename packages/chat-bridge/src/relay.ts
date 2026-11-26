@@ -27,6 +27,7 @@ export interface RelayOptions {
     upstreamTimeoutMs?: number;
     upstreamBackoffMs?: readonly number[];
     revokeSweepMs?: number;
+    helloTimeoutMs?: number;
 }
 
 export interface Relay {
@@ -69,6 +70,7 @@ export async function startRelay(options: RelayOptions): Promise<Relay> {
             port: config.appPort, host: config.host, staticDir: config.staticDir, selfName: config.selfName,
             devices, ledger, media, core, log, now,
             ...(options.revokeSweepMs !== undefined ? { revokeSweepMs: options.revokeSweepMs } : {}),
+            ...(options.helloTimeoutMs !== undefined ? { helloTimeoutMs: options.helloTimeoutMs } : {}),
         });
     } catch (error) {
         await onebot.stop();

@@ -132,7 +132,7 @@ import { stripDeviceTokens } from './device-actions.ts';
 import type { startDeviceService } from './device-service.ts';
 import { deviceHost } from './device-host.ts';
 import { configuredImageDescriber } from '.././vision/vision.ts';
-import { aiPhotoDraftFreshness, aiPhotoDraftStore, generateAiPhoto } from '.././vision/ai-photo-drafts.ts';
+import { aiPhotoDraftStore, generateAiPhoto } from '.././vision/ai-photo-drafts.ts';
 import { aiPhotoProvidersFromEnv, createAiPhotoProviderPool } from '.././vision/ai-photo-provider.ts';
 import { aiPhotoReferenceStore } from '.././vision/ai-photo-references.ts';
 import { aiPhotoReviewModelFromImageDescriber, createAiPhotoVisualReviewer, qualityCheckedAiPhotoGenerator } from '.././vision/ai-photo-quality-adapter.ts';
@@ -196,7 +196,6 @@ import { createMobileCompanion, type MobileCompanionIntegration } from '.././mob
 import { dshStateSource } from '.././dsh-state.ts';
 import { humanStateAt } from '.././human-projection.ts';
 import type { CompanionMessage } from '@qqbot/mobile-companion/protocol';
-import { PHOTO_REVIEW_MAX_THUMBNAIL_BYTES } from '@qqbot/mobile-companion/photo-review';
 import { MAX_QUEUED_PER_CLIENT } from '@qqbot/mobile-companion/runtime';
 import { wakeBackfill } from '../memory/wake-backfill.ts';
 import { journalOn, journalOnDiaries, selfThread, selfThreadFromDiaries, selfThreadLine } from '.././language/self-thread.ts';
@@ -2435,28 +2434,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             onActionResult: async (result, clientId) => {
                 log(`手机动作回执：设备 ${clientId}，请求 ${result.requestId}，${result.ok ? '成功' : '失败'}，决策 ${result.decision}${result.error ? `（${sanitizeDshError(result.error)}）` : ''}`);
             },
-            onPhotoReviewList: async (request, clientId) => {
-                const matching = aiPhotoDrafts.list(request.status);
-                const items = matching.slice(-Math.min(request.limit ?? 20, 50)).reverse().map(entry => {
-                    let thumbnail: { mediaId: string; mime: 'image/jpeg' | 'image/png' | 'image/webp'; bytes: number } | undefined;
-                    try {
-                        const preview = aiPhotoDrafts.preview(entry.id);
-                        if (preview.bytes.length <= PHOTO_REVIEW_MAX_THUMBNAIL_BYTES && mobileCompanion) {
-                            const record = mobileCompanion.media.put({
-                                clientId, mime: preview.type, data: Buffer.from(preview.bytes), bytes: preview.bytes.length,
-                            });
-                            thumbnail = { mediaId: record.mediaId, mime: preview.type, bytes: record.bytes };
-                        }
-                    } catch { /* 文件异常时只不给预览；审核动作仍会再次失败关闭。 */ }
-                    return {
-                        id: entry.id, kind: entry.kind, status: entry.status, caption: entry.caption,
-                        createdAt: entry.createdAt, expiresAt: aiPhotoDraftFreshness(entry, new Date(worldNow())).expiresAt,
-                        ...(entry.reviewedAt ? { reviewedAt: entry.reviewedAt } : {}),
-                        ...(thumbnail ? { thumbnail } : {}),
-                    };
-                });
-                return { items, total: matching.length };
-            },
+            photoDrafts: aiPhotoDrafts, // 缩略图只给最新 8 条（mobile-companion-dsh.ts photoReviewLister）
             onPhotoReviewDecision: async (request, clientId, requestId) => {
                 const shelf = photos ?? photoShelf({ dir: join(config.dataDir, 'photos'), log });
                 const entry = request.decision === 'approve'

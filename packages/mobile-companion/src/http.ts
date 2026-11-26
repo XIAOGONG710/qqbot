@@ -25,7 +25,6 @@ export function createCompanionHttpHandler(runtime: CompanionRuntime, options: C
             return writeJson(response, 405, { error: 'method_not_allowed' });
         }
         if (Array.isArray(requestedSession)) return writeJson(response, 400, { error: 'duplicate_session_header' });
-        const sessionId = requestedSession ? requestedSession : runtime.createSession();
         const [contentTypeHeader = ''] = String(request.headers['content-type'] ?? '').split(';', 1);
         const contentType = contentTypeHeader.trim().toLowerCase();
         if (contentType !== 'application/json') return writeJson(response, 415, { error: 'content_type_must_be_json' });
@@ -56,6 +55,7 @@ export function createCompanionHttpHandler(runtime: CompanionRuntime, options: C
             let body: unknown;
             try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
             catch { writeJson(response, 400, { error: 'invalid_json' }); return; }
+            const sessionId = sessionFor(runtime, body, requestedSession);
             void runtime.handle(body, sessionId).then(result => {
                 if (!result.accepted) return writeJson(response, 400, { error: result.error });
                 response.setHeader('x-companion-session', sessionId);
@@ -64,6 +64,15 @@ export function createCompanionHttpHandler(runtime: CompanionRuntime, options: C
             }).catch(() => writeJson(response, 500, { error: 'runtime_error' }));
         });
     };
+}
+
+/**
+ * hello 一律由服务端签发新会话，不用请求里带的 `x-companion-session`（客户端不能自己挑一个好猜的值当会话凭据）；
+ * 之后的请求原样带回 hello 响应头里的那个。
+ */
+export function sessionFor(runtime: Pick<CompanionRuntime, 'createSession'>, body: unknown, requested: string | undefined): string {
+    const hello = Boolean(body) && typeof body === 'object' && (body as { kind?: unknown }).kind === 'hello';
+    return hello || !requested ? runtime.createSession() : requested;
 }
 
 function writeJson(response: ServerResponse, status: number, value: unknown): void {

@@ -279,10 +279,13 @@ describe('手机伴侣协议', () => {
             });
             assert.equal(duplicateSession, 400);
             const hello = helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text'] }, 'req-http1', 'nonce-http1', new Date(now).toISOString());
-            const ok = await fetch(`${base}/companion/test`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(hello) });
+            // hello 带了自己挑的会话（好猜的值）也不用，一律由服务端签发
+            const ok = await fetch(`${base}/companion/test`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-companion-session': 'aaaaaa' }, body: JSON.stringify(hello) });
             assert.equal(ok.status, 204);
             const session = ok.headers.get('x-companion-session');
             assert.match(session ?? '', /^session-[a-f0-9]{36}$/);
+            const chosen = await fetch(`${base}/companion/test`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-companion-session': 'aaaaaa' }, body: JSON.stringify({ v: 1, requestId: 'req-http-chosen', kind: 'message.send', sentAt: new Date(now).toISOString(), nonce: 'nonce-http-chosen', body: { kind: 'text', text: 'hi' } }) });
+            assert.equal(chosen.status, 400, '客户端自己挑的会话不是凭据');
             now += 1;
             const message = await fetch(`${base}/companion/test`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-companion-session': session! }, body: JSON.stringify({ v: 1, requestId: 'req-http2', kind: 'message.send', sentAt: new Date(now).toISOString(), nonce: 'nonce-http2', body: { kind: 'text', text: 'hi' } }) });
             assert.equal(message.status, 200);

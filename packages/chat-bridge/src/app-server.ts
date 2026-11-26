@@ -21,8 +21,15 @@ import type { Clock, ErrorCode, Log, ServerFrame } from './types.ts';
 export const MAX_FRAME_BYTES = 64 * 1024;
 /** hello 之后一次最多补发这么多条（更早的用 /api/history 往前翻） */
 export const REPLAY_MAX = 1000;
-const HELLO_TIMEOUT_MS = 10_000;
-const MAX_CONNECTIONS = 16;
+/** 连上之后多久内必须发来 hello（App 一连上就发，正常不到一秒） */
+const HELLO_TIMEOUT_MS = 5_000;
+/** 已经 hello 过的连接上限 */
+export const MAX_CONNECTIONS = 16;
+/**
+ * 还没 hello 的连接单独限数：能连到端口的人一直开着不认证的连接，最多占这几个，
+ * 占不到已认证的 16 个；又有 hello 超时兜着，每个最多占 HELLO_TIMEOUT_MS。
+ */
+export const MAX_PENDING_CONNECTIONS = 4;
 const PAIR_BODY_MAX = 4 * 1024;
 
 export interface AppServerOptions {
@@ -38,6 +45,8 @@ export interface AppServerOptions {
     now?: Clock;
     /** 多久核对一次已连接设备有没有被撤销 */
     revokeSweepMs?: number;
+    /** 连上之后多久内必须 hello（测试用，默认 5 秒） */
+    helloTimeoutMs?: number;
 }
 
 export interface AppServer {
@@ -142,6 +151,8 @@ export async function startAppServer(options: AppServerOptions): Promise<AppServ
     /** 已经 hello 过的连接 */
     const clients = new Map<WebSocket, string>();
     const all = new Set<WebSocket>();
+    /** 正在握手、还没进 all 的连接数 */
+    let upgrading = 0;
     const httpBuckets = new Map<string, { read: () => boolean; write: () => boolean }>();
     const pairBucket = tokenBucket(10, 10 / 60, now);
 
@@ -258,11 +269,17 @@ export async function startAppServer(options: AppServerOptions): Promise<AppServ
     server.on('upgrade', (req, socket, head) => {
         socket.on('error', () => {});
         const path = new URL(req.url ?? '/', 'http://relay.invalid').pathname;
-        if (path !== '/ws' || all.size >= MAX_CONNECTIONS) {
+        // 还在握手的也算没 hello 的（一批同时连进来时，握手完成之前 all 里还没有它们）
+        const pending = all.size - clients.size + upgrading;
+        if (path !== '/ws' || pending >= MAX_PENDING_CONNECTIONS || clients.size >= MAX_CONNECTIONS) {
             socket.end(`HTTP/1.1 ${path === '/ws' ? '503 Service Unavailable' : '404 Not Found'}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
             return;
         }
-        wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
+        upgrading += 1;
+        let settled = false;
+        const settle = () => { if (!settled) { settled = true; upgrading -= 1; } };
+        socket.once('close', settle);
+        wss.handleUpgrade(req, socket, head, ws => { settle(); wss.emit('connection', ws, req); });
     });
 
     const send = (socket: WebSocket, frame: ServerFrame) => {
@@ -273,7 +290,7 @@ export async function startAppServer(options: AppServerOptions): Promise<AppServ
         all.add(socket);
         let alive = true;
         const bucket = tokenBucket(20, 2, now);
-        const helloTimer = setTimeout(() => { if (!clients.has(socket)) socket.close(1008, 'hello timeout'); }, HELLO_TIMEOUT_MS);
+        const helloTimer = setTimeout(() => { if (!clients.has(socket)) socket.close(1008, 'hello timeout'); }, options.helloTimeoutMs ?? HELLO_TIMEOUT_MS);
         const heartbeat = setInterval(() => {
             if (!alive) { socket.terminate(); return; }
             alive = false;
@@ -287,14 +304,19 @@ export async function startAppServer(options: AppServerOptions): Promise<AppServ
             all.delete(socket);
             if (clients.delete(socket)) log(`一台设备断开（剩 ${clients.size}）`);
         });
+        /** 回一条错误；还没 hello 的连接回完就断（不回 unauthorized，App 收到它会删掉本机凭据） */
+        const reject = (code: 'bad_request' | 'too_large', message: string) => {
+            send(socket, { type: 'error', code, message });
+            if (!clients.has(socket)) socket.close(1008, 'bad frame before hello');
+        };
         socket.on('message', (data, isBinary) => {
             alive = true;
             const raw = isBinary ? undefined : data.toString();
-            if (raw === undefined) { send(socket, { type: 'error', code: 'bad_request', message: '只收 JSON 文本帧' }); return; }
-            if (Buffer.byteLength(raw) > MAX_FRAME_BYTES) { send(socket, { type: 'error', code: 'too_large', message: '单帧不能超过 64 KiB' }); return; }
+            if (raw === undefined) { reject('bad_request', '只收 JSON 文本帧'); return; }
+            if (Buffer.byteLength(raw) > MAX_FRAME_BYTES) { reject('too_large', '单帧不能超过 64 KiB'); return; }
             let frame: unknown;
             try { frame = JSON.parse(raw); } catch { frame = undefined; }
-            if (!isRecord(frame) || typeof frame.type !== 'string') { send(socket, { type: 'error', code: 'bad_request', message: '看不懂这一帧' }); return; }
+            if (!isRecord(frame) || typeof frame.type !== 'string') { reject('bad_request', '看不懂这一帧'); return; }
 
             if (!clients.has(socket)) {
                 // 第一帧必须是 hello；凭据不对就断
@@ -311,6 +333,11 @@ export async function startAppServer(options: AppServerOptions): Promise<AppServ
                 if (!verified) {
                     send(socket, { type: 'error', code: 'unauthorized', message: '凭据不对，重新配对' });
                     socket.close(1008, 'unauthorized');
+                    return;
+                }
+                if (clients.size >= MAX_CONNECTIONS) {
+                    // 连上时还有空位、hello 时被别的设备占满了：先断开，App 会退避重连
+                    socket.close(1013, 'too many connections');
                     return;
                 }
                 const since = typeof frame.since === 'number' && Number.isSafeInteger(frame.since) && frame.since >= 0 ? frame.since : 0;

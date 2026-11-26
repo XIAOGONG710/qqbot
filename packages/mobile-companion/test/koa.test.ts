@@ -27,11 +27,13 @@ test('Koishi Koa 适配器复用 envelope session，并能上传媒体', async (
     const envelope = createCompanionKoaEnvelopeHandler(runtime);
     const media = new MemoryCompanionMediaStore({ now: () => now, id: () => '0123456789abcdef' });
     const upload = createCompanionKoaMediaHandler(runtime, media);
-    const helloCtx = context(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text', 'image'] }, 'req-koa-hello', 'nonce-koa-hello', new Date(now).toISOString()), {});
+    const helloCtx = context(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text', 'image'] }, 'req-koa-hello', 'nonce-koa-hello', new Date(now).toISOString()), { 'x-companion-session': 'aaaaaa' });
     await envelope(helloCtx);
     const helloHeaders = (helloCtx as CompanionKoaContextLike & { responseHeaders: Record<string, string> }).responseHeaders;
     assert.equal(helloCtx.status, 204);
-    assert.match(helloHeaders['x-companion-session'] ?? '', /^session-/);
+    // hello 带来的会话不用，一律由服务端签发
+    assert.match(helloHeaders['x-companion-session'] ?? '', /^session-[a-f0-9]{36}$/);
+    assert.equal(runtime.clientForSession('aaaaaa'), undefined);
     const messageCtx = context({ v: 1, requestId: 'req-koa-message', kind: 'message.send', sentAt: new Date(now).toISOString(), nonce: 'nonce-koa-message', body: { kind: 'text', text: '你好' } }, { 'x-companion-session': helloHeaders['x-companion-session']! });
     await envelope(messageCtx);
     assert.equal(messageCtx.status, 200);
