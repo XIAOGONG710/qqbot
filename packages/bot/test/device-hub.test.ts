@@ -114,6 +114,12 @@ describe('设备取件中心（ADR 0148）', () => {
         assert.equal((await call('/poll', { method: 'POST', body: '{}' })).status, 405);
     });
 
+    test('令牌是空的或太短：不起（空令牌时不带 Authorization 头的请求也能对上；2026-11-26 审查）', () => {
+        for (const token of ['', 'short', 'x'.repeat(31)]) {
+            assert.throws(() => createDeviceHub({ host: '127.0.0.1', port: 0, token, log: () => undefined }), /至少 32 位/);
+        }
+    });
+
     test('交结果：不是 JSON → 400；不存在的任务 → 404；交了就不能再交', async () => {
         const { hub, call } = await start();
         assert.equal((await call('/result', { method: 'POST', body: 'not json' })).status, 400);

@@ -73,6 +73,16 @@ describe('设备控制的密钥和装配（ADR 0148）', () => {
         assert.notEqual(newDeviceSecrets('x', false).token, fresh.token);
     });
 
+    test('hub.host 换个写法的「绑全部网卡」也不行：::、[::]、::0、::ffff:0.0.0.0、纯数字的「主机名」（2026-11-26 审查）', () => {
+        const withHost = (host: string): DeviceSecrets => ({ ...secrets, hub: { host, port: 7789 } });
+        for (const host of ['::', '[::]', '::0', '0:0:0:0:0:0:0:0', '::ffff:0.0.0.0', '0', '0.0', '000', '', ' 0.0.0.0']) {
+            assert.equal(validSecrets(withHost(host)), false, `不该认 ${JSON.stringify(host)}`);
+        }
+        for (const host of ['192.168.139.138', '127.0.0.1', '::1', '[fe80::1]', 'fd00::5', 'vm-host.local', 'localhost']) {
+            assert.equal(validSecrets(withHost(host)), true, `该认 ${host}`);
+        }
+    });
+
     test('密钥文件：写出来能读回；没有返回 undefined；格式不对抛错', () => {
         const dir = tmp();
         const path = devicesSecretsPath(dir);

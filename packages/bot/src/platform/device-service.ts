@@ -6,6 +6,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createDeviceControl, jsonlAudit, type AuditEntry, type DeviceControl, type DeviceMode, type DeviceTarget, type DispatchJob, type DispatchResult, type PolicyContext } from './device-actions.ts';
@@ -22,10 +23,22 @@ export interface DeviceSecrets {
 
 export const devicesSecretsPath = (dataDir: string) => join(dataDir, 'secrets', 'devices.json');
 
+/**
+ * 取件中心只绑一个具体地址：0.0.0.0 之外，「::」「[::]」「::0」「::ffff:0.0.0.0」也是绑全部网卡（IPv6 双栈连 IPv4 一起收），
+ * 「0」「0.0」这种纯数字的「主机名」会被解析成 0.0.0.0。所以：IP 字面量不能是全零；不是 IP 的必须像主机名（带字母）。
+ */
+export function specificHubHost(host: string): boolean {
+    const bare = /^\[.*\]$/.test(host) ? host.slice(1, -1) : host;
+    const kind = isIP(bare);
+    if (kind === 4) return bare !== '0.0.0.0';
+    if (kind === 6) { const normal = new URL(`http://[${bare}]`).hostname; return normal !== '[::]' && normal !== '[::ffff:0:0]'; }
+    return /[a-z]/i.test(bare) && /^[a-z0-9.-]+$/i.test(bare);
+}
+
 export function validSecrets(value: unknown): value is DeviceSecrets {
     const v = value as Partial<DeviceSecrets> | null;
     return Boolean(v && typeof v === 'object'
-        && v.hub && typeof v.hub.host === 'string' && v.hub.host !== '' && v.hub.host !== '0.0.0.0' && Number.isInteger(v.hub.port) && v.hub.port > 1024 && v.hub.port < 65536
+        && v.hub && typeof v.hub.host === 'string' && specificHubHost(v.hub.host) && Number.isInteger(v.hub.port) && v.hub.port > 1024 && v.hub.port < 65536
         && typeof v.token === 'string' && v.token.length >= 32
         && (v.phone === undefined || (typeof v.phone.baseUrl === 'string' && /^https:\/\//.test(v.phone.baseUrl) && typeof v.phone.topic === 'string' && v.phone.topic.length >= 16)));
 }

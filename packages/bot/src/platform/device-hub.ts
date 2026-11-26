@@ -62,6 +62,8 @@ const startsWith = (bytes: Uint8Array, magic: readonly number[]) => magic.every(
 export function createDeviceHub(options: HubOptions): DeviceHub {
     const now = options.now ?? Date.now;
     const maxImage = options.maxImageBytes ?? 6 * 1024 * 1024;
+    // 令牌是这里唯一的门：空的或太短的令牌（没带 Authorization 头时 given 也是空串）不许起，不只靠调用方先校验过 devices.json
+    if (typeof options.token !== 'string' || options.token.length < 32) throw new Error('取件中心的令牌至少 32 位');
     const expected = Buffer.from(options.token);
     const pollMax = options.pollWaitMaxMs ?? 25_000;
     const queue: Waiting[] = [];
