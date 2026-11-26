@@ -176,4 +176,28 @@ describe('AI 生活照草稿（ADR 0239）', () => {
         writeFileSync(join(dir, 'index.json'), JSON.stringify({ version: 1, entries: [entry] }));
         assert.throws(() => aiPhotoDraftStore({ dir }), /拒绝启动/);
     });
+
+    test('运行中的 app 和控制台各开一个实例：一边审核后另一边马上看到，旧内存不会把审核结果写没（2026-11-26 控制台审查 F）', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-two-'));
+        const clock = () => new Date('2026-11-04T03:00:00.000Z');
+        const app = aiPhotoDraftStore({ dir, now: clock });
+        const first = await app.generate(context({ eventKey: 'two-a' }), async () => ({ bytes: jpeg(31), model: 'm' }));
+        const second = await app.generate(context({ eventKey: 'two-b' }), async () => ({ bytes: jpeg(32), model: 'm' }));
+        const consoleSide = aiPhotoDraftStore({ dir, now: clock });
+        consoleSide.reject(first.id);
+        // app 这边（手机伴侣审核、状态页）马上看到；已拒绝的不能从另一条路再通过
+        assert.equal(app.status().rejected, 1);
+        assert.equal(app.list('rejected')[0]?.id, first.id);
+        const shelf = { add() { return { id: 'abcabcabcabc' } as never; } };
+        assert.throws(() => app.approve(first.id, shelf), /已拒绝/);
+        // app 再写（生成新草稿时控制台正好审核了另一张）：控制台的结果都还在
+        await app.generate(context({ eventKey: 'two-c' }), async () => {
+            consoleSide.approve(second.id, shelf);
+            return { bytes: jpeg(33), model: 'm' };
+        });
+        const reread = aiPhotoDraftStore({ dir, now: clock });
+        assert.equal(reread.list().find(entry => entry.id === first.id)?.status, 'rejected');
+        assert.equal(reread.list().find(entry => entry.id === second.id)?.status, 'approved');
+        assert.equal(reread.status().total, 3);
+    });
 });

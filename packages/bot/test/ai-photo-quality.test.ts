@@ -226,4 +226,16 @@ describe('非人物视觉参考资料（ADR 0242）', () => {
         const store = aiPhotoReferenceStore({ file: join(dir, 'index.json') });
         assert.throws(() => store.add({ kind: 'cat', bytes: png(), referenceId: 'potato-v1', nonHumanSubject: true }), /目录不安全/);
     });
+
+    test('运行中的 app 和控制台各开一个实例：控制台登记、删除参考后 app 马上用新的一份，不会读到已删的文件出错（2026-11-26 控制台审查 F）', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-references-two-'));
+        const file = join(dir, 'index.json');
+        const app = aiPhotoReferenceStore({ file });
+        const consoleSide = aiPhotoReferenceStore({ file });
+        const added = consoleSide.add({ kind: 'cat', bytes: png(1024, 1024), referenceId: 'cat-front', nonHumanSubject: true });
+        assert.deepEqual(app.imagesFor('cat').map(image => image.id), [added.id]);
+        assert.equal(aiPhotoReferenceStore({ file }).remove(added.id), true);
+        assert.deepEqual(app.imagesFor('cat'), []);
+        assert.deepEqual(app.list(), []);
+    });
 });

@@ -212,8 +212,16 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
     const now = options.now ?? (() => new Date());
     const indexFile = join(options.dir, 'index.json');
     const filesDir = join(options.dir, 'files');
-    if (existsSync(indexFile) && lstatSync(indexFile).isSymbolicLink()) throw new Error('AI 照片草稿索引不能是符号链接');
-    let index = readJsonOr<AiPhotoIndex>(indexFile, { version: 1, entries: [] }, options.log, { validate: validIndex, invalid: 'throw', label: 'AI 照片草稿' });
+    const read = (quiet = false) => {
+        if (existsSync(indexFile) && lstatSync(indexFile).isSymbolicLink()) throw new Error('AI 照片草稿索引不能是符号链接');
+        return readJsonOr<AiPhotoIndex>(indexFile, { version: 1, entries: [] }, quiet ? undefined : options.log, { validate: validIndex, invalid: 'throw', label: 'AI 照片草稿' });
+    };
+    let index = read();
+    // 同一个目录可能同时有几个实例（运行中的 app、控制台每次请求、手机伴侣、命令行）：每次用之前从盘上重读，
+    // 免得旧内存把别处的审核结果写没、或者已拒绝的草稿从另一条路又被通过（2026-11-26 控制台审查 F）。
+    // 写的操作读不了就报错；只读的（列表、计数）读不了时先用上一份，不刷日志。
+    const refresh = () => { index = read(); };
+    const refreshForReading = () => { try { index = read(true); } catch { /* 用上一份 */ } };
     const ensureFilesDir = () => {
         mkdirSync(filesDir, { recursive: true });
         const info = lstatSync(filesDir);
@@ -245,6 +253,7 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
         async generate(context, generator) {
             const eventKey = clean(context.eventKey);
             if (!eventKey) throw new Error('事件键不能为空');
+            refresh();
             const existing = index.entries.find(entry => entry.eventKey === eventKey);
             if (existing) return existing;
             // 先检查落盘目录，再调用可能计费的生图服务；目录异常时不浪费一次额度。
@@ -252,6 +261,10 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             const prompt = buildAiPhotoPrompt(context);
             const generated = await generator(prompt);
             if (generated.bytes.length > PHOTO_MAX_BYTES) throw new Error('生成图片超过大小上限');
+            // 生图要等几十秒，这期间控制台可能审核过别的草稿：写之前再读一遍
+            refresh();
+            const raced = index.entries.find(entry => entry.eventKey === eventKey);
+            if (raced) return raced;
             const id = createHash('sha256').update(generated.bytes).digest('hex').slice(0, 12);
             const sameImage = find(id);
             // 不把另一件事件的旧图复用成“刚拍的”。否则新 eventKey 永远找不到，
@@ -273,8 +286,9 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             options.log?.(`AI 照片草稿：生成 ${entry.kind}（${entry.id}），等待审核`);
             return entry;
         },
-        list: status => index.entries.filter(entry => !status || entry.status === status).map(entry => ({ ...entry })),
+        list: status => (refreshForReading(), index.entries.filter(entry => !status || entry.status === status).map(entry => ({ ...entry }))),
         preview(id) {
+            refresh();
             const entry = find(id);
             if (!entry) throw new Error('找不到这张草稿');
             const bytes = new Uint8Array(readFileSync(checkedSource(entry)));
@@ -283,6 +297,7 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             return { bytes, type };
         },
         approve(id, shelf) {
+            refresh();
             const entry = find(id);
             if (!entry) throw new Error('找不到这张草稿');
             if (entry.status === 'rejected') throw new Error('已拒绝的草稿不能直接通过');
@@ -296,6 +311,7 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             return { ...update(approved) };
         },
         reject(id) {
+            refresh();
             const entry = find(id);
             if (!entry) throw new Error('找不到这张草稿');
             if (entry.status === 'approved') throw new Error('已通过的草稿不能改为拒绝');
@@ -305,6 +321,7 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             return { ...update(rejected) };
         },
         status() {
+            refreshForReading();
             return {
                 total: index.entries.length,
                 pending: index.entries.filter(entry => entry.status === 'pending_review').length,

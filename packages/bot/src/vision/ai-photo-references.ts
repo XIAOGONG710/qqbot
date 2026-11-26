@@ -71,13 +71,21 @@ export function aiPhotoReferenceStore(options: { file: string; now?: () => Date;
         const info = lstatSync(directory);
         if (info.isSymbolicLink() || !info.isDirectory()) throw new Error('AI 照片参考资料目录不安全');
     }
-    if (existsSync(options.file)) {
-        const info = lstatSync(options.file);
-        if (info.isSymbolicLink() || !info.isFile()) throw new Error('AI 照片参考资料索引不安全');
-    }
-    let state = readJsonOr<ReferenceFile>(options.file, { version: 1, entries: [] }, options.log, {
-        validate: validFile, invalid: 'throw', label: 'AI 照片参考资料',
-    });
+    const read = (quiet = false) => {
+        if (existsSync(options.file)) {
+            const info = lstatSync(options.file);
+            if (info.isSymbolicLink() || !info.isFile()) throw new Error('AI 照片参考资料索引不安全');
+        }
+        return readJsonOr<ReferenceFile>(options.file, { version: 1, entries: [] }, quiet ? undefined : options.log, {
+            validate: validFile, invalid: 'throw', label: 'AI 照片参考资料',
+        });
+    };
+    let state = read();
+    // 控制台每次请求新开一个实例登记 / 删除参考，运行中的 app 一直拿着自己的：每次用之前从盘上重读，
+    // 免得 app 还在用已删的参考（文件没了就整次质量审查出错）、看不到新登记的（2026-11-26 控制台审查 F）。
+    // 写的操作和要读图的读不了就报错；只列编号的先用上一份。
+    const refresh = () => { state = read(); };
+    const refreshForReading = () => { try { state = read(true); } catch { /* 用上一份 */ } };
     const ensureDirectories = () => {
         mkdirSync(filesDir, { recursive: true });
         for (const path of [directory, filesDir]) {
@@ -108,6 +116,7 @@ export function aiPhotoReferenceStore(options: { file: string; now?: () => Date;
     const persist = () => { mkdirSync(directory, { recursive: true }); writeJsonAtomic(options.file, state); };
     return {
         add(input) {
+            refresh();
             if (!AI_PHOTO_REFERENCE_KINDS.includes(input.kind)) throw new Error(`参考资料种类只能是 ${AI_PHOTO_REFERENCE_KINDS.join(' / ')}`);
             if (input.nonHumanSubject !== true) throw new Error('只允许登记不含人物的参考资料');
             if (!input.bytes.length || input.bytes.length > AI_PHOTO_REFERENCE_MAX_BYTES) throw new Error('参考资料为空或超过大小上限');
@@ -143,6 +152,7 @@ export function aiPhotoReferenceStore(options: { file: string; now?: () => Date;
             return { ...entry };
         },
         remove(id) {
+            refresh();
             const removed = state.entries.find(entry => entry.id === id.toLowerCase());
             const entries = state.entries.filter(entry => entry.id !== id.toLowerCase());
             if (entries.length === state.entries.length) return false;
@@ -152,14 +162,16 @@ export function aiPhotoReferenceStore(options: { file: string; now?: () => Date;
             if (removed?.file) rmSync(join(filesDir, removed.file));
             return true;
         },
-        list(kind) { return state.entries.filter(entry => !kind || entry.kind === kind).map(entry => ({ ...entry })); },
+        list(kind) { refreshForReading(); return state.entries.filter(entry => !kind || entry.kind === kind).map(entry => ({ ...entry })); },
         idsFor(kind, limit = 4) {
             if (!AI_PHOTO_REFERENCE_KINDS.includes(kind)) return [];
+            refreshForReading();
             const count = Number.isInteger(limit) ? Math.max(0, Math.min(8, limit)) : 4;
             return state.entries.filter(entry => entry.kind === kind).slice(-count).map(entry => entry.referenceId);
         },
         imagesFor(kind, limit = AI_PHOTO_REFERENCE_MAX_PER_KIND) {
             if (!AI_PHOTO_REFERENCE_KINDS.includes(kind)) return [];
+            refresh();
             const count = Number.isInteger(limit) ? Math.max(0, Math.min(AI_PHOTO_REFERENCE_MAX_PER_KIND, limit)) : AI_PHOTO_REFERENCE_MAX_PER_KIND;
             const images: AiPhotoReferenceImage[] = [];
             let bytes = 0;

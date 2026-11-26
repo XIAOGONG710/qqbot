@@ -215,4 +215,19 @@ describe('外部平台草稿队列（ADR 0224）', () => {
         assert.equal(store.summary().total, MAX_EXTERNAL_DRAFTS);
         assert.equal(store.summary().pending, MAX_EXTERNAL_DRAFTS);
     });
+
+    test('运行中的 app 和控制台各开一个实例：控制台批准后 app 马上看到，app 再写也不会把批准写没（2026-11-26 控制台审查 F）', () => {
+        const root = mkdtempSync(join(tmpdir(), 'external-drafts-two-'));
+        roots.push(root);
+        const app = createExternalDraftStore({ dir: root });
+        const draft = app.create({ platform: 'tieba', title: '标题', body: '正文', at: new Date('2026-11-01T00:00:00.000Z') });
+        const consoleSide = createExternalDraftStore({ dir: root });
+        assert.equal(consoleSide.updateStatus(draft.id, 'approved', '控制台人工批准', new Date('2026-11-01T00:01:00.000Z'))?.status, 'approved');
+        assert.equal(app.summary().approved, 1);
+        assert.equal(app.list({ status: 'approved' })[0]?.id, draft.id);
+        app.create({ platform: 'douyin', title: '另一条', body: '正文二', at: new Date('2026-11-01T00:02:00.000Z') });
+        const reread = createExternalDraftStore({ dir: root });
+        assert.equal(reread.list().find(item => item.id === draft.id)?.status, 'approved');
+        assert.equal(reread.summary().total, 2);
+    });
 });

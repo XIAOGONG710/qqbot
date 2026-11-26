@@ -141,7 +141,12 @@ export function createExternalDraftStore(options: {
 }): ExternalDraftStore {
     mkdirSync(options.dir, { recursive: true });
     const path = join(options.dir, 'drafts.json');
-    let file = readJsonOr<DraftFile>(path, { version: 1, drafts: [] }, options.log, { validate: validFile, label: '外部平台草稿' });
+    const read = () => readJsonOr<DraftFile>(path, { version: 1, drafts: [] }, options.log, { validate: validFile, label: '外部平台草稿' });
+    let file = read();
+    // 运行中的 app 和控制台（每次请求新开一个实例）共用这个文件：每次用之前从盘上重读，
+    // 免得 app 的旧内存把控制台的批准 / 拒绝写没（2026-11-26 控制台审查 F）。写的操作读不了就报错，只读的先用上一份。
+    const refresh = () => { file = read(); };
+    const refreshForReading = () => { try { file = read(); } catch { /* 用上一份 */ } };
     const save = (next: DraftFile) => {
         // 先落盘、成功后再替换内存；写盘失败时当前进程不能假装状态已经推进。
         writeJsonAtomic(path, next);
@@ -149,6 +154,7 @@ export function createExternalDraftStore(options: {
     };
     return {
         create(input) {
+            refresh();
             if (!isPlatform(input.platform)) throw new Error('不支持的外部平台');
             if (options.canDraft && !options.canDraft(input.platform)) throw new Error('该外部平台当前已关闭，不能创建草稿');
             const title = text(input.title, MAX_TITLE, '标题');
@@ -173,6 +179,7 @@ export function createExternalDraftStore(options: {
             return cloneDraft(draft);
         },
         list(filter = {}) {
+            refreshForReading();
             const requestedLimit = filter.limit ?? 50;
             // 控制台参数可能来自解析失败的输入；NaN 会让 slice(-NaN) 退化成 slice(0)，
             // 绕过默认的分页上限。无效数字按默认页大小处理，避免一次返回整个队列。
@@ -186,6 +193,7 @@ export function createExternalDraftStore(options: {
                 .map(cloneDraft);
         },
         beginPublish(id, platform, at = new Date()) {
+            refresh();
             if (!isPlatform(platform)) throw new Error('不支持的外部平台');
             const draft = file.drafts.find(item => item.id === id);
             if (!draft) return undefined;
@@ -208,6 +216,7 @@ export function createExternalDraftStore(options: {
             return { draft: cloneDraft(updated), started: true };
         },
         updateStatus(id, status, note, at = new Date()) {
+            refresh();
             if (!isStatus(status)) throw new Error('不支持的外部平台草稿状态');
             const draft = file.drafts.find(item => item.id === id);
             if (!draft) return undefined;
@@ -236,6 +245,7 @@ export function createExternalDraftStore(options: {
             return cloneDraft(updated);
         },
         summary() {
+            refreshForReading();
             const byPlatform = { tieba: 0, douyin: 0, xiaohongshu: 0 } satisfies Record<ExternalPlatform, number>;
             for (const draft of file.drafts) byPlatform[draft.platform]++;
             const lastAt = file.drafts.map(item => item.updatedAt).sort().at(-1);
