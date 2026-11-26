@@ -124,7 +124,7 @@ export function createHerInner({ soulDir, root = repoRoot, now = () => Date.now(
         rows.push({ time: coarse ? null : zoned(new Date(entry.at), timeZone).time, label, said, coarse })
         byDay.set(day, rows)
       }
-      return { days: [...byDay].sort(([a], [b]) => b.localeCompare(a)).map(([day, rows]) => ({ day, rows })) }
+      return { days: [...byDay].sort(([a], [b]) => b.localeCompare(a, 'zh-CN')).map(([day, rows]) => ({ day, rows })) }
     },
   }
 }

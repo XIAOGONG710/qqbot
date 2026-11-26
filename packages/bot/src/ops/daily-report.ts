@@ -126,7 +126,7 @@ export function buildReport(data: ReportData, date: string): string {
     for (const event of events) byKind.set(event.kind, (byKind.get(event.kind) ?? 0) + 1);
     let mentioned = 0;
     const rows: string[] = [];
-    for (const [kind, count] of [...byKind].sort(([a], [b]) => a.localeCompare(b))) {
+    for (const [kind, count] of [...byKind].sort(([a], [b]) => a.localeCompare(b, 'zh-CN'))) {
         const words = EVENT_KEYWORDS[kind] ?? [];
         const hit = words.some(word => herText.includes(word));
         if (hit) mentioned += count;

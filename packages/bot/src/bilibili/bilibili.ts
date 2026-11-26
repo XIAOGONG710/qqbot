@@ -101,7 +101,7 @@ export function suitable(video: BiliVideo): boolean {
 
 /** 从合适的、没发过的里按日期哈希挑一个；没有返回 undefined */
 export function pickVideo(videos: readonly BiliVideo[], day: string, seen: readonly string[]): BiliVideo | undefined {
-    const pool = videos.filter(video => suitable(video) && !seen.includes(video.bvid)).sort((a, b) => a.bvid.localeCompare(b.bvid));
+    const pool = videos.filter(video => suitable(video) && !seen.includes(video.bvid)).sort((a, b) => a.bvid.localeCompare(b.bvid, 'zh-CN'));
     return pool.length ? pool[pick(day, 'bili-video', [0, pool.length - 1])] : undefined;
 }
 
@@ -110,7 +110,7 @@ export function pickVideo(videos: readonly BiliVideo[], day: string, seen: reado
  * 账号层读字幕时依次试前几个，挑第一个有字幕的
  */
 export function rankVideos(videos: readonly BiliVideo[], day: string, seen: readonly string[]): BiliVideo[] {
-    const pool = videos.filter(video => suitable(video) && !seen.includes(video.bvid)).sort((a, b) => a.bvid.localeCompare(b.bvid));
+    const pool = videos.filter(video => suitable(video) && !seen.includes(video.bvid)).sort((a, b) => a.bvid.localeCompare(b.bvid, 'zh-CN'));
     if (!pool.length) return [];
     const first = pick(day, 'bili-video', [0, pool.length - 1]);
     return [pool[first]!, ...pool.filter((_, index) => index !== first)];

@@ -413,7 +413,7 @@ function canonicalRequest(kind: CompanionEnvelope['kind'], body: unknown): strin
     const sort = (value: unknown): unknown => {
         if (Array.isArray(value)) return value.map(sort);
         if (!value || typeof value !== 'object') return value;
-        return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, sort(item)]));
+        return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right, 'zh-CN')).map(([key, item]) => [key, sort(item)]));
     };
     return JSON.stringify([kind, sort(body)]) ?? '';
 }

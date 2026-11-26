@@ -31,7 +31,7 @@ type Delta = { bankId: string; generation: string; qq: number; tier: string; doc
 export interface DerivedMark { bankId: string; qq: number; tier: string; documents?: readonly string[]; eventKey?: string }
 export interface BeginRepair { expectedGeneration: string; eventSetHash: string; sourceManifestHash: string; sourceManifest: readonly RepairSourceDocument[]; owner: RepairOwner; progressHash: string }
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const active = (bank: Bank) => Object.entries(bank.events).filter(([, event]) => event.status === 'active').sort(([a], [b]) => a.localeCompare(b));
+const active = (bank: Bank) => Object.entries(bank.events).filter(([, event]) => event.status === 'active').sort(([a], [b]) => a.localeCompare(b, 'zh-CN'));
 const eventHash = (bank: Bank) => hash(active(bank).map(([id, event]) => [id, event.owner, event.documents]));
 const unresolvedRepairs = (bank: Bank): string[] => Object.entries(bank.journals ?? {}).filter(([, journal]) =>
     !journal.settlement && ['pause-dispatched', 'clear-dispatched', 'refresh-dispatched', 'refresh-pending', 'restore-dispatched', 'blocked'].includes(journal.phase)).map(([id]) => id).sort();
@@ -63,7 +63,7 @@ const validRepairBank = (bank: Record<string, unknown>, bankId: string): boolean
         const { sourceManifestHash, progressHash, eventSetHash, ...proof } = receipt.evidence;
         if (sourceManifestHash !== receipt.lease.sourceManifestHash || progressHash !== receipt.lease.progressHash || eventSetHash !== receipt.lease.eventSetHash
             || !isDeepStrictEqual(journal.evidence, proof)) return false;
-        const repaired = Object.entries(bank.events).filter(([, event]) => object(event) && event.receipt === id).sort(([a], [b]) => a.localeCompare(b));
+        const repaired = Object.entries(bank.events).filter(([, event]) => object(event) && event.receipt === id).sort(([a], [b]) => a.localeCompare(b, 'zh-CN'));
         if (hash(repaired.map(([key, event]) => [key, (event as Event).owner, (event as Event).documents])) !== eventSetHash) return false;
     }
     return true;

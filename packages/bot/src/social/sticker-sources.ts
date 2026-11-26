@@ -110,7 +110,7 @@ export function bqbPool(items: readonly BqbItem[], day: string, pool: number): s
     const rand = seeded(`bqb:${day}`);
     const groups = new Map<string, BqbItem[]>();
     for (const item of items) groups.set(item.category, [...(groups.get(item.category) ?? []), item]);
-    const lists = shuffled([...groups.entries()].sort(([a], [b]) => a.localeCompare(b)), rand).map(([, list]) => shuffled(list, rand));
+    const lists = shuffled([...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'zh-CN')), rand).map(([, list]) => shuffled(list, rand));
     const urls: string[] = [];
     for (let round = 0; urls.length < pool && lists.some(list => round < list.length); round++) {
         for (const list of lists) if (round < list.length && urls.length < pool) urls.push(BQB_BASE + list[round]!.src);

@@ -222,7 +222,7 @@ function asked(history: readonly Said[], now: Date, schedule: Schedule | undefin
         const parse = (date: string) => { const [y, mo, d] = date.split('-').map(Number); return localDate(y!, mo! - 1, d); };
         const named = holidays.find(h => holidayWords({ ...schedule!, holidays: [h] }).some(name => line.includes(name)));
         const latest = ANY_HOLIDAY.test(line)
-            ? holidays.filter(h => parse(h.start) <= today).sort((a, b) => b.start.localeCompare(a.start))[0]
+            ? holidays.filter(h => parse(h.start) <= today).sort((a, b) => b.start.localeCompare(a.start, 'zh-CN'))[0]
             : undefined;
         const holiday = named ?? latest;
         if (holiday) return span(parse(holiday.start), parse(holiday.end), 'holiday');

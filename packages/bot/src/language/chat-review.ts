@@ -235,7 +235,7 @@ export function reviewMessages(input: ReviewInput): OpenAIMessage[] {
             : `${i + 1}.【${FLAG_NAME[flag.kind]}】\n  ${input.user}：${flag.his || '（他前面没说话）'}\n  你：${flag.hers}${flag.next ? `\n  ${input.user}接着说：${flag.next}` : ''}`).join('\n')
         : '（今天没有数得出来的）';
     const counts = `今天你回了 ${input.replies} 次；${FLAG_KINDS.map(kind => `${FLAG_NAME[kind]} ${input.counts[kind]} 处`).join('，')}`;
-    const history = Object.entries(input.days).sort(([a], [b]) => a.localeCompare(b)).slice(-4)
+    const history = Object.entries(input.days).sort(([a], [b]) => a.localeCompare(b, 'zh-CN')).slice(-4)
         .map(([day, n]) => `${day.slice(5)}：${FLAG_KINDS.map(kind => `${FLAG_NAME[kind].slice(0, 6)} ${n[kind] ?? 0}`).join('，')}`).join('\n');
     const notes = input.notes.length ? input.notes.map(note => `- ${note.id}：${note.text}`).join('\n') : '（还没有）';
     return [

@@ -111,7 +111,7 @@ export function timeZoneChoices(now = new Date()): TimeZoneChoice[] {
     const seen = new Set<string>();
     const common = COMMON_TIME_ZONES.filter(zone => { const key = canonical(zone); if (seen.has(key)) return false; seen.add(key); return true; }).map(make);
     const rest = [...new Set(Intl.supportedValuesOf('timeZone'))].filter(zone => { const key = canonical(zone); if (seen.has(key)) return false; seen.add(key); return true; }).map(make)
-        .sort((x, y) => x.offsetMinutes - y.offsetMinutes || x.zone.localeCompare(y.zone));
+        .sort((x, y) => x.offsetMinutes - y.offsetMinutes || x.zone.localeCompare(y.zone, 'zh-CN'));
     return [...common, ...rest];
 }
 

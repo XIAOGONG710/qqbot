@@ -119,7 +119,7 @@ export function createAiPhotoProviderPool(options: {
     };
     const save = (next: UsageDay) => {
         mkdirSync(options.dir, { recursive: true });
-        file = { version: 1, days: [...file.days.filter(item => item.day !== next.day), next].sort((a, b) => a.day.localeCompare(b.day)).slice(-DAY_KEPT) };
+        file = { version: 1, days: [...file.days.filter(item => item.day !== next.day), next].sort((a, b) => a.day.localeCompare(b.day, 'zh-CN')).slice(-DAY_KEPT) };
         writeJsonAtomic(path, file);
     };
     const bump = (provider: AiPhotoProvider, outcome: 'attempt' | 'generated' | 'failed') => {

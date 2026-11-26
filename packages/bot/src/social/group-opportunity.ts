@@ -53,7 +53,7 @@ export function groupOpportunity(at: Date, shadow: AgencyShadow | undefined): Gr
             // 只看此刻还在时间窗里的（groupAgency A）：过了窗口的、找不到裁决的都不算
             .filter(opportunity => opportunity.eligible && opportunityOpen(decided.get(opportunity.driveId)?.decidedAt, expires.get(opportunity.driveId), now))
             .map(opportunity => ({ opportunity, score: scores.get(opportunity.driveId) }))
-            .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.opportunity.driveId.localeCompare(b.opportunity.driveId));
+            .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.opportunity.driveId.localeCompare(b.opportunity.driveId, 'zh-CN'));
         const best = candidates[0];
         if (!best) return none('影子账里没有可交给群表达的机会');
         return {

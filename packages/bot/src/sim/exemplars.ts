@@ -48,7 +48,7 @@ export function pickExemplars(target: ExemplarCase, pool: readonly ExemplarCase[
     return pool
         .filter(item => item.id !== target.id && item.human?.length && !sameConversation(target, item))
         .map(item => ({ item, score: stimulusSimilarity(target.stimulus, item.stimulus) }))
-        .sort((x, y) => y.score - x.score || x.item.id.localeCompare(y.item.id))
+        .sort((x, y) => y.score - x.score || x.item.id.localeCompare(y.item.id, 'zh-CN'))
         .slice(0, k)
         .map(entry => entry.item);
 }

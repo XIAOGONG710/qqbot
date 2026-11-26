@@ -46,7 +46,7 @@ export function scheduleForTier(schedule: ScheduleSource, tier: string): CardSch
         return [slot, { start, end }];
     }));
     // 有早课的日子早起：第一节课
-    const firstSlot = Object.entries(periods).sort(([, a], [, b]) => a.start.localeCompare(b.start))[0]?.[0];
+    const firstSlot = Object.entries(periods).sort(([, a], [, b]) => a.start.localeCompare(b.start, 'zh-CN'))[0]?.[0];
     if (!firstSlot) throw new Error('schedule.yml 的 periods 是空的');
 
     const partnerTiers = new Set(schedule.partner?.tiers ?? []);

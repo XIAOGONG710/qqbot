@@ -49,7 +49,7 @@ export function trimFeed(file: FeedFile, now: Date): FeedFile {
     return {
         version: 1,
         seen: file.seen.slice(-FEED_SEEN_MAX),
-        days: file.days.filter(record => today - dayNumber(record.day) <= FEED_KEEP_DAYS).sort((a, b) => a.day.localeCompare(b.day)).slice(-FEED_KEEP_DAYS),
+        days: file.days.filter(record => today - dayNumber(record.day) <= FEED_KEEP_DAYS).sort((a, b) => a.day.localeCompare(b.day, 'zh-CN')).slice(-FEED_KEEP_DAYS),
     };
 }
 

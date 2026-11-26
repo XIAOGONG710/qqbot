@@ -333,7 +333,7 @@ export function createGitHubSource(options = {}) {
   function pruneIssues(entry) {
     const keys = Object.keys(entry.issues)
     if (keys.length <= MAX_SEEN_ISSUES) return
-    keys.sort((a, b) => String(entry.issues[a]).localeCompare(String(entry.issues[b])))
+    keys.sort((a, b) => String(entry.issues[a]).localeCompare(String(entry.issues[b]), 'zh-CN'))
     for (const key of keys.slice(0, keys.length - MAX_SEEN_ISSUES)) delete entry.issues[key]
     dirty = true
   }

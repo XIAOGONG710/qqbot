@@ -38,7 +38,7 @@ const scoreOf = (drive: Drive) => round(drive.strength * 0.55 + drive.urgency * 
 export function resolveShadowDrives(drives: readonly Drive[], regulation: RegulationSnapshot, at: Date): ShadowDriveDecision[] {
     if (!Number.isFinite(at.getTime())) return [];
     const active = drives.filter(drive => drive.status === 'active');
-    const ranked = active.map(drive => ({ drive, score: scoreOf(drive) })).sort((a, b) => b.score - a.score || a.drive.id.localeCompare(b.drive.id));
+    const ranked = active.map(drive => ({ drive, score: scoreOf(drive) })).sort((a, b) => b.score - a.score || a.drive.id.localeCompare(b.drive.id, 'zh-CN'));
     let maintenanceFocused = false;
     let contextualFocused = false;
     return ranked.map(({ drive, score }) => {

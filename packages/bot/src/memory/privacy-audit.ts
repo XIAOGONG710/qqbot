@@ -359,10 +359,10 @@ export function auditContactPrivacy(dataDir: string, qq: number): PrivacyAudit {
     return {
         qq,
         dataDir: root,
-        artifacts: artifacts.sort((a, b) => a.path.localeCompare(b.path)),
+        artifacts: artifacts.sort((a, b) => a.path.localeCompare(b.path, 'zh-CN')),
         hindsight: {
             banks: [...banks].sort(), commonDocuments: [...commonDocuments].sort(), commonMentalModels: [...commonMentalModels].sort(),
-            commonTargets: [...commonTargets.values()].map(target => ({ ...target, documents: [...new Set(target.documents)].sort(), mentalModels: [...new Set(target.mentalModels)].sort() })).sort((a, b) => a.bankId.localeCompare(b.bankId)),
+            commonTargets: [...commonTargets.values()].map(target => ({ ...target, documents: [...new Set(target.documents)].sort(), mentalModels: [...new Set(target.mentalModels)].sort() })).sort((a, b) => a.bankId.localeCompare(b.bankId, 'zh-CN')),
         },
         limitations: [
             '本报告不执行删除；清理时必须先停 bot，并对照 Hindsight API 逐项删除后复查。',

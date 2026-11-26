@@ -164,7 +164,7 @@ export function cameraProgress(events: readonly LifeEvent[], boughtAt: Date, now
     const sessions = events
         .filter(event => event.kind === 'work_on_project' && event.target === PHOTOGRAPHY_PROJECT_ID && event.result !== 'failed'
             && Date.parse(event.endedAt) >= boughtAt.getTime() && Date.parse(event.endedAt) <= now.getTime())
-        .sort((a, b) => a.endedAt.localeCompare(b.endedAt));
+        .sort((a, b) => a.endedAt.localeCompare(b.endedAt, 'zh-CN'));
     const step = CAMERA_THRESHOLDS.filter(threshold => sessions.length >= threshold).length;
     return { sessions, step, ...(sessions.length ? { last: new Date(sessions.at(-1)!.endedAt) } : {}) };
 }

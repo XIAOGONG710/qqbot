@@ -296,5 +296,5 @@ function validQueuedAction(value: unknown): value is QueuedAction {
 }
 
 function byEnd(a: QueuedAction, b: QueuedAction): number {
-    return Date.parse(a.event.at) - Date.parse(b.event.at) || a.id.localeCompare(b.id);
+    return Date.parse(a.event.at) - Date.parse(b.event.at) || a.id.localeCompare(b.id, 'zh-CN');
 }

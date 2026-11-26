@@ -584,7 +584,7 @@ export function promiseKeeper(options: PromiseKeeperOptions): PromiseKeeper {
             return [{ contact, promise, ...window }];
         }))
         .sort((a, b) => a.start.getTime() - b.start.getTime()
-            || a.contact.qq - b.contact.qq || a.promise.id.localeCompare(b.promise.id));
+            || a.contact.qq - b.contact.qq || a.promise.id.localeCompare(b.promise.id, 'zh-CN'));
     const appointmentsBetween = (from: Date, to: Date): Appointment[] => {
         const sources = views();
         if (sources.some(source => source.state === undefined)) throw new PromiseStateUnavailable('约定来源不可用，不能将未知约定当成空日历继续安排');

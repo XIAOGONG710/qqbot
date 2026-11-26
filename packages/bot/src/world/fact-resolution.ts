@@ -33,7 +33,7 @@ export function resolveWorldFact<T>(key: string, candidates: readonly SourcedFac
         && Number.isFinite(time(item.observedAt)) && Number.isFinite(time(item.validUntil))
         && time(item.observedAt) <= now + futureTolerance && time(item.validUntil) >= time(item.observedAt));
     const fresh = valid.filter(item => time(item.validUntil) >= now)
-        .sort((left, right) => right.priority - left.priority || time(right.observedAt) - time(left.observedAt) || left.source.localeCompare(right.source));
+        .sort((left, right) => right.priority - left.priority || time(right.observedAt) - time(left.observedAt) || left.source.localeCompare(right.source, 'zh-CN'));
     if (!fresh.length) return { status: valid.length ? 'stale' : 'unavailable', candidates: matching.length };
     const best = fresh[0]!;
     const peer = fresh.find(item => item !== best && item.priority === best.priority

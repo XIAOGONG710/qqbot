@@ -58,7 +58,7 @@ export function dreamDayEvents(events: readonly LifeEvent[], world: WorldNow | u
         .map(event => ({ at: Date.parse(event.endedAt), text: event.subject!.trim() }))
         .filter(item => Number.isFinite(item.at) && item.at <= now && now - item.at <= DAY_EVENTS_WINDOW_MS);
     const seen = worldHighlights(world, at, limit).map(item => ({ at: Date.parse(item.at), text: item.text }));
-    const merged = [...own, ...seen].sort((a, b) => a.at - b.at || a.text.localeCompare(b.text));
+    const merged = [...own, ...seen].sort((a, b) => a.at - b.at || a.text.localeCompare(b.text, 'zh-CN'));
     const out: string[] = [];
     for (const item of merged) if (!out.includes(item.text)) out.push(item.text);
     return out.slice(-limit);

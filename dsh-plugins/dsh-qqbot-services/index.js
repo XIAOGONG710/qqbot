@@ -589,7 +589,7 @@ export function apply(ctx, config = {}) {
     if (kind !== 'backups') return local.details(kind, query)
     const { backupEntries } = await import(pathToFileURL(join(root, 'scripts', 'backup-state.mjs')).href)
     return backupEntries(join(root, 'runtime', 'backups'))
-      .sort((a, b) => b.name.localeCompare(a.name)).slice(0, 14)
+      .sort((a, b) => b.name.localeCompare(a.name, 'zh-CN')).slice(0, 14)
   }
   const token = process.env.QQBOT_ONEBOT_TOKEN
   const ownerId = manualOwner()

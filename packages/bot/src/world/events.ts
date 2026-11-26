@@ -67,6 +67,6 @@ export function appendWorldEvents(existing: readonly WorldEvent[], incoming: rea
         if (!byId.has(event.id)) byId.set(event.id, event);
     }
     return [...byId.values()].sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt)
-        || Date.parse(a.observedAt) - Date.parse(b.observedAt) || a.id.localeCompare(b.id));
+        || Date.parse(a.observedAt) - Date.parse(b.observedAt) || a.id.localeCompare(b.id, 'zh-CN'));
 }
 

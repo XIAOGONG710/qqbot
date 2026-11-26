@@ -86,7 +86,7 @@ export function needsAt(anchor: NeedsSnapshot, events: readonly LifeEvent[], at:
         .filter(event => event.result !== 'failed')
         .map(event => ({ event, start: Date.parse(event.startedAt), end: Date.parse(event.endedAt) }))
         .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end >= item.start)
-        .sort((a, b) => a.start - b.start || a.end - b.end || a.event.id.localeCompare(b.event.id));
+        .sort((a, b) => a.start - b.start || a.end - b.end || a.event.id.localeCompare(b.event.id, 'zh-CN'));
     // 部分重叠的低优先级饭不算完整吃完一顿（needs-v1：重叠坏账只取稳定优先级的一件）。在完整事件序列上判定，
     // 不能因为重启锚点已经越过阻挡事件的末尾，就忘了后面那顿曾经只执行了一部分
     const fullyActive = new Set<string>();
@@ -99,7 +99,7 @@ export function needsAt(anchor: NeedsSnapshot, events: readonly LifeEvent[], at:
         .filter(item => (item.end === item.start
                 ? item.end > anchorAt && item.end <= target
                 : item.end > anchorAt && item.start < target))
-        .sort((a, b) => a.start - b.start || a.end - b.end || a.event.id.localeCompare(b.event.id));
+        .sort((a, b) => a.start - b.start || a.end - b.end || a.event.id.localeCompare(b.event.id, 'zh-CN'));
     const boundaries = [...new Set([
         anchorAt,
         target,
@@ -157,7 +157,7 @@ export function effectiveLifeEvents(events: readonly LifeEvent[]): LifeEvent[] {
         .map(item => item.event.id));
     const candidates = parsed
         .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end > item.start)
-        .sort((a, b) => a.start - b.start || a.end - b.end || a.event.id.localeCompare(b.event.id));
+        .sort((a, b) => a.start - b.start || a.end - b.end || a.event.id.localeCompare(b.event.id, 'zh-CN'));
     const boundaries = [...new Set(candidates.flatMap(item => [item.start, item.end]))].sort((a, b) => a - b);
     const active = new Set<string>();
     for (let index = 0; index < boundaries.length - 1; index++) {

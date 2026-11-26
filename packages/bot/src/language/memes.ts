@@ -105,7 +105,7 @@ export function trimMemes(entries: readonly MemeEntry[], now: Date): MemeEntry[]
     const today = dayNumber(dayText(now));
     return entries
         .filter(e => today - dayNumber(e.lastSeen) <= MEME_KEEP_DAYS)
-        .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen) || b.seen - a.seen)
+        .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen, 'zh-CN') || b.seen - a.seen)
         .slice(0, MEME_MAX);
 }
 
@@ -395,7 +395,7 @@ export function memeLine(entries: readonly MemeEntry[], history: readonly Said[]
     if (!lastUser || unit(`${lastUser.time ?? ''} ${lastUser.content} meme`) >= MEME_TURN_SHARE) return undefined;
     const today = dayNumber(dayText(new Date(now)));
     const fresh = entries.filter(e => isUsableMeme(e.term) && e.why && e.avoid && today - dayNumber(e.lastSeen) <= MEME_FRESH_DAYS && !usedByHer(e, history, now))
-        .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen) || b.seen - a.seen);
+        .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen, 'zh-CN') || b.seen - a.seen);
     if (!fresh.length) return undefined;
     // 前 6 个里按这一句取 3 个，每次不都是同样的三个
     const pool = fresh.slice(0, 6);

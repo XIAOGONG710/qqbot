@@ -108,7 +108,7 @@ function appointmentActions(sources: LifeSources, from: Date, to: Date): (Action
             // 只有真正走到约定结束的最后一段才算把这顿饭吃完；被课或睡觉截断的前段不结算饱腹。
             meal: meal && segment.end.getTime() === appointment.end.getTime(),
         }));
-    }).sort((a, b) => a.start.getTime() - b.start.getTime() || a.id.localeCompare(b.id));
+    }).sort((a, b) => a.start.getTime() - b.start.getTime() || a.id.localeCompare(b.id, 'zh-CN'));
 }
 
 /** 那一天快结束时的确定性世界；和 dayBusy 共用，才能看见稍后会发生、需要预留时间的事。 */

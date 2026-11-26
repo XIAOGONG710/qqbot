@@ -84,7 +84,7 @@ export function saveWatched(path: string, file: WatchedFile): void {
 /** 过期的去掉、最多留 WATCHED_MAX 条（新的优先） */
 export function trimWatched(entries: readonly Watched[], now: Date): Watched[] {
     const today = dayNumber(dayText(now));
-    return entries.filter(e => today - dayNumber(e.day) <= WATCHED_KEEP_DAYS).sort((a, b) => b.day.localeCompare(a.day)).slice(0, WATCHED_MAX);
+    return entries.filter(e => today - dayNumber(e.day) <= WATCHED_KEEP_DAYS).sort((a, b) => b.day.localeCompare(a.day, 'zh-CN')).slice(0, WATCHED_MAX);
 }
 
 /** 今天该不该去“看”一个：到了钟点、今天还没看过 */
@@ -205,7 +205,7 @@ export async function watchOne(deps: WatchDeps): Promise<'watched' | 'none' | 'd
 
 const fresh = (entries: readonly Watched[], now: Date) => {
     const today = dayNumber(dayText(now));
-    return [...entries].filter(e => today - dayNumber(e.day) <= WATCHED_FRESH_DAYS).sort((a, b) => b.day.localeCompare(a.day));
+    return [...entries].filter(e => today - dayNumber(e.day) <= WATCHED_FRESH_DAYS).sort((a, b) => b.day.localeCompare(a.day, 'zh-CN'));
 };
 
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;

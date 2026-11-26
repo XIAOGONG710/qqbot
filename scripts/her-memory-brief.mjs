@@ -67,7 +67,7 @@ for (const m of out.items) {
     seen.add(key)
     rows.push(m)
 }
-rows.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')))
+rows.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? ''), 'zh-CN'))
 
 if (asJson) {
     console.log(JSON.stringify({ ...out, items: rows }, null, 2))

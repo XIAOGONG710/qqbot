@@ -37,7 +37,7 @@ export function appendWorldAssociations(events: readonly WorldEvent[], existing:
         if (!eventIds.has(association.eventId)) throw new Error(`世界联想引用了不存在的事件：${association.eventId}`);
         if (!byId.has(association.id)) byId.set(association.id, association);
     }
-    return [...byId.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id));
+    return [...byId.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id, 'zh-CN'));
 }
 
 function association(event: WorldEvent, lane: AssociationLane, focus: string): WorldAssociation {

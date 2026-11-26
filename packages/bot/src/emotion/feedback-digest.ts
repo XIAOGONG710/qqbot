@@ -65,7 +65,7 @@ export function feedbackDigest(rows: readonly FeedbackRow[], now: Date, days: nu
         perDay.set(dayOf(row.at), day);
     }
     lines.push('', '| 日期 | 假 | 像 |', '| --- | --- | --- |');
-    for (const [day, count] of [...perDay].sort(([a], [b]) => a.localeCompare(b))) lines.push(`| ${day} | ${count.fake} | ${count.real} |`);
+    for (const [day, count] of [...perDay].sort(([a], [b]) => a.localeCompare(b, 'zh-CN'))) lines.push(`| ${day} | ${count.fake} | ${count.real} |`);
 
     if (fake.length) {
         lines.push('', '## 被说「假」的几轮（按时间）');

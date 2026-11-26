@@ -82,7 +82,7 @@ export function photographyProgress(events: readonly LifeEvent[], until?: Date):
     const work = events
         .filter(event => event.kind === 'work_on_project' && event.target === PHOTOGRAPHY_PROJECT_ID && event.result !== 'failed'
             && Number.isFinite(Date.parse(event.endedAt)) && Date.parse(event.endedAt) <= (until?.getTime() ?? Infinity))
-        .sort((a, b) => a.endedAt.localeCompare(b.endedAt));
+        .sort((a, b) => a.endedAt.localeCompare(b.endedAt, 'zh-CN'));
     const minutes = work.reduce((sum, event) => sum + Math.max(0, Math.round((Date.parse(event.endedAt) - Date.parse(event.startedAt)) / 60_000)), 0);
     const recentSteps = [...new Set(work.map(event => event.subject).filter((step): step is string => Boolean(step)))].slice(-3);
     return {
@@ -188,7 +188,7 @@ function deadlinePriority(hours: number): number {
 function compareProjects(a: LongTermProject, b: LongTermProject): number {
     return b.priority - a.priority
         || (a.deadline?.getTime() ?? Infinity) - (b.deadline?.getTime() ?? Infinity)
-        || a.id.localeCompare(b.id);
+        || a.id.localeCompare(b.id, 'zh-CN');
 }
 
 /** 她的哪一天：给了作息按作息日（02:00 前算前一天），没给按日历日 */
@@ -209,7 +209,7 @@ export function recentPhotography(events: readonly LifeEvent[], now: Date, days 
     const work = events
         .filter(event => event.kind === 'work_on_project' && event.target === PHOTOGRAPHY_PROJECT_ID && event.result !== 'failed')
         .filter(event => Date.parse(event.endedAt) <= now.getTime() && Date.parse(event.endedAt) > from)
-        .sort((a, b) => a.endedAt.localeCompare(b.endedAt));
+        .sort((a, b) => a.endedAt.localeCompare(b.endedAt, 'zh-CN'));
     if (!work.length) return undefined;
     const minutes = work.reduce((sum, event) => sum + Math.max(0, Math.round((Date.parse(event.endedAt) - Date.parse(event.startedAt)) / 60_000)), 0);
     const steps = [...new Set(work.map(event => event.subject).filter((step): step is string => Boolean(step)))].slice(-3);

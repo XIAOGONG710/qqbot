@@ -148,7 +148,7 @@ export function commitMemeRefresh(path: string, base: MemeFile, delta: MemeRefre
         }
         const day = Math.floor(Date.parse(`${delta.today}T00:00:00Z`) / 86400000);
         const trimmed = entries.filter(entry => day - Math.floor(Date.parse(`${entry.lastSeen}T00:00:00Z`) / 86400000) <= delta.keepDays)
-            .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen) || b.seen - a.seen).slice(0, delta.max);
+            .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen, 'zh-CN') || b.seen - a.seen).slice(0, delta.max);
         const refreshedAt = current.refreshedAt && Date.parse(current.refreshedAt) > Date.parse(delta.refreshedAt) ? current.refreshedAt : delta.refreshedAt;
         const next: MemeFile = { ...current, entries: trimmed, refreshedAt, revision };
         delta.signal?.throwIfAborted();

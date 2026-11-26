@@ -109,7 +109,7 @@ export function backupDirectoriesToPrune(names, completeNames, todayName, keepDa
     const dated = names
         .map(name => ({ name, day: parseDay(name) }))
         .filter(entry => entry.day !== undefined)
-        .sort((left, right) => left.name.localeCompare(right.name));
+        .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'));
     const complete = new Set(completeNames.filter(name => parseDay(name) !== undefined));
     const protectedComplete = new Set(
         dated.filter(entry => complete.has(entry.name)).slice(-keepDays).map(entry => entry.name),
@@ -177,7 +177,7 @@ export const MIN_STATE_BYTES = 10_000;
 export function backupHealth(entries, todayName, maxAgeDays = 2) {
     const today = parseDay(todayName);
     if (today === undefined) return undefined;
-    const complete = entries.filter(entry => entry.complete && parseDay(entry.name) !== undefined).sort((a, b) => a.name.localeCompare(b.name));
+    const complete = entries.filter(entry => entry.complete && parseDay(entry.name) !== undefined).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
     const last = complete.at(-1);
     if (!last) return { reason: 'none' };
     const days = Math.round((today - parseDay(last.name)) / 86_400_000);

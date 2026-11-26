@@ -757,7 +757,7 @@ function simulateWorldUncached(world: World, schedule: Schedule, until: Date, ac
             fundGifts = [];
             deposits.push({ at: end, saved, amount: 0 });
         };
-        const gifts = todayActions.filter(a => a.kind === 'receive_money' && a.amount).sort((a, b) => a.at.localeCompare(b.at));
+        const gifts = todayActions.filter(a => a.kind === 'receive_money' && a.amount).sort((a, b) => a.at.localeCompare(b.at, 'zh-CN'));
         for (const action of gifts) {
             const time = new Date(action.at);
             if (tripStart && time > tripStart) buyCamera();
@@ -1612,11 +1612,11 @@ function projectWorldActions(events: readonly LifeEvent[]): WorldAction[] {
     return events.flatMap(event => {
         const action = lifeEventToAction(event);
         return action ? [action] : [];
-    }).sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
+    }).sort((a, b) => a.at.localeCompare(b.at, 'zh-CN') || a.id.localeCompare(b.id, 'zh-CN'));
 }
 
 function compareLifeEvents(a: LifeEvent, b: LifeEvent): number {
-    return a.endedAt.localeCompare(b.endedAt) || a.id.localeCompare(b.id);
+    return a.endedAt.localeCompare(b.endedAt, 'zh-CN') || a.id.localeCompare(b.id, 'zh-CN');
 }
 
 function validAction(value: unknown): value is WorldAction {

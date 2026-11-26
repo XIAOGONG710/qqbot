@@ -24,7 +24,7 @@ export function readMotivationDecisionLedger(path: string, driveIds: () => reado
                 if (!driveIds().includes(decision.driveId)) throw new Error('影子动机裁决引用了不存在的动机');
                 if (!known.has(decision.id)) known.set(decision.id, decision);
             }
-            const next = [...known.values()].sort((a, b) => Date.parse(a.decidedAt) - Date.parse(b.decidedAt) || a.id.localeCompare(b.id));
+            const next = [...known.values()].sort((a, b) => Date.parse(a.decidedAt) - Date.parse(b.decidedAt) || a.id.localeCompare(b.id, 'zh-CN'));
             const added = next.length - decisions.length;
             if (added) { writeJsonAtomic(path, { version: 1, decisions: next } satisfies DecisionFile); decisions = next; }
             return added;

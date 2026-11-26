@@ -52,7 +52,7 @@ function dayNumber(date: string): number {
 
 /** 这一块（一个循环）的菜序：按“块号 + 这顿 + 菜名”取哈希排序，是一次洗牌 */
 function blockOrder(block: number, kind: MealKind, dishes: readonly string[]): string[] {
-    return [...dishes].sort((a, b) => unit(`${block} ${kind} ${a}`) - unit(`${block} ${kind} ${b}`) || a.localeCompare(b));
+    return [...dishes].sort((a, b) => unit(`${block} ${kind} ${a}`) - unit(`${block} ${kind} ${b}`) || a.localeCompare(b, 'zh-CN'));
 }
 
 /**

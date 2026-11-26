@@ -37,7 +37,7 @@ export function createUpdateCheck({ root, runGit, now = () => Date.now() }) {
                 days.push({ name, complete: isCompleteBackup(join(backups, name)) });
             }
         }
-        days.sort((left, right) => left.name.localeCompare(right.name));
+        days.sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'));
         const latest = days.at(-1);
         if (!latest || !latest.complete) return { state: 'missing', latest: latest?.name ?? null };
         const today = new Date(now()).toISOString().slice(0, 10);

@@ -388,7 +388,7 @@ export function inviteDeclined(record: ProactiveRecord, history: readonly Stored
 /** 这一天她会不会约他、约几点、约什么：看之前的记录（隔了几天、这周几次、上次他怎么回），再按“联系人 + 日子”取哈希；没有就 undefined */
 function inviteOn(day: Date, input: ProactiveInput, seed: (purpose: string) => string): { at: number; activity: (typeof INVITE_ACTIVITIES)[number] } | undefined {
     const dayText = formatDate(day);
-    const past = input.records.filter(r => r.occasion === 'invite' && counts(r) && inviteDay(r) < dayText).sort((a, b) => inviteDay(a).localeCompare(inviteDay(b)));
+    const past = input.records.filter(r => r.occasion === 'invite' && counts(r) && inviteDay(r) < dayText).sort((a, b) => inviteDay(a).localeCompare(inviteDay(b), 'zh-CN'));
     // 双方都按日号算日序，不能把本地午夜和ISO日号的UTC午夜混减。
     const daysSince = (r: ProactiveRecord) => (Date.parse(dayText) - Date.parse(inviteDay(r))) / (24 * HOUR);
     if (past.filter(r => daysSince(r) <= 7).length >= INVITE_MAX_PER_WEEK) return undefined;

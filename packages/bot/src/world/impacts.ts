@@ -47,6 +47,6 @@ export function appendWorldImpacts(events: readonly WorldEvent[], existing: read
         if (!eventIds.has(impact.eventId)) throw new Error(`世界影响引用了不存在的事件：${impact.eventId}`);
         if (!byId.has(impact.id)) byId.set(impact.id, impact);
     }
-    return [...byId.values()].sort((a, b) => Date.parse(a.assessedAt) - Date.parse(b.assessedAt) || a.id.localeCompare(b.id));
+    return [...byId.values()].sort((a, b) => Date.parse(a.assessedAt) - Date.parse(b.assessedAt) || a.id.localeCompare(b.id, 'zh-CN'));
 }
 

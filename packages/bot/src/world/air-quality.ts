@@ -127,7 +127,7 @@ function dayFrom(hours: Readonly<Record<string, HourAirQuality>>, date: string, 
     const known = Object.entries(hours).filter(([key, row]) => key.startsWith(`${date}T`) && row);
     if (known.length < MIN_HOURS) return undefined;
     const untilKey = hourKey(until);
-    const observed = known.filter(([key, row]) => row.o === 1 && key <= untilKey).sort(([a], [b]) => a.localeCompare(b)).at(-1);
+    const observed = known.filter(([key, row]) => row.o === 1 && key <= untilKey).sort(([a], [b]) => a.localeCompare(b, 'zh-CN')).at(-1);
     if (!observed) return undefined;
     const [key, row] = observed;
     return { pm25: Math.round(row.pm25), pm10: Math.round(row.pm10), aqi: Math.round(row.aqi), category: airQualityCategory(row.aqi), observedAt: `${key}:00`, real: true };

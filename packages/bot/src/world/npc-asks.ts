@@ -119,7 +119,7 @@ export function coordinateNpcDates<T extends NpcDateReservation>(dates: readonly
         if (date.declinedAt && date.declinedAt.getTime() !== date.knownAt?.getTime() && date.declinedAt > date.askedAt) add(date.declinedAt, 'changes', date);
     }
     const reserved = new Map<string, { start: number; end: number }>();
-    const priority = (a: T, b: T) => a.askedAt.getTime() - b.askedAt.getTime() || a.id.localeCompare(b.id);
+    const priority = (a: T, b: T) => a.askedAt.getTime() - b.askedAt.getTime() || a.id.localeCompare(b.id, 'zh-CN');
     const declinedBy = (date: T, at: number) => Boolean(date.declined && (!date.declinedAt || date.declinedAt.getTime() <= at));
     const reserve = (date: T, start: Date, at: number, changed: boolean) => {
         const from = start.getTime(); const to = from + date.minutes * 60_000;
@@ -144,7 +144,7 @@ export function coordinateNpcDates<T extends NpcDateReservation>(dates: readonly
             reserve(date, known && date.actualStart ? date.actualStart : date.start, at, false);
         }
     }
-    return copies.sort((a, b) => a.start.getTime() - b.start.getTime() || a.id.localeCompare(b.id));
+    return copies.sort((a, b) => a.start.getTime() - b.start.getTime() || a.id.localeCompare(b.id, 'zh-CN'));
 }
 
 /** 约在哪一段：开始时刻可以落在 [from, to] 里（十分钟一档，且和课前后各留一点） */

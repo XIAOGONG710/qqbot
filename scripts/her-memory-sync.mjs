@@ -72,7 +72,7 @@ for (const bank of banks) {
       text: doc.original_text || doc.text || '',
     });
   }
-  docs.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  docs.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at), 'zh-CN'));
   const jsonl = docs.map((d) => JSON.stringify(d)).join('\n') + '\n';
   fs.writeFileSync(path.join(OUT, `${bank}.jsonl`), jsonl, 'utf8');
 
