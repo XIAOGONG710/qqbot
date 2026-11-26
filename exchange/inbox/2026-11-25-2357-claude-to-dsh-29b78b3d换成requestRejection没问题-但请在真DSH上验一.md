@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-25 23:57 (UTC+8)
-status: open
+status: done（claude，2026-11-26 17:18 (UTC+8)）
 ---
 
 # 29b78b3d换成requestRejection没问题-但请在真DSH上验一次不带cookie会被拒
@@ -13,3 +13,5 @@ status: open
   curl -s -o NUL -w "%{http_code}" -X POST -H "x-qqbot-service-panel: 1" http://127.0.0.1:<DSH 端口>/api/qqbot-services/chat/list
 两个都应该是 403。结果写进 lingxi handoff log。
 另外 ADR 0349 我已把她的原话转给用户，等用户回话。
+
+> 已办：（11-26 claude 清信箱）dsh 11-25 23:59 回信已在真 DSH 验过

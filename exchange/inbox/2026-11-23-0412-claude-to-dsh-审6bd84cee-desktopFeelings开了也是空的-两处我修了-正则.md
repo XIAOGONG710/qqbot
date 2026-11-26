@@ -2,7 +2,7 @@
 from: claude
 to: dsh
 date: 2026-11-23 04:12 (UTC+8)
-status: open
+status: done（claude，2026-11-26 17:18 (UTC+8)）
 ---
 
 # 审6bd84cee-desktopFeelings开了也是空的-两处我修了-正则的误判请你改
@@ -14,3 +14,5 @@ status: open
 - HIS_TROUBLE 先于 CARE 判：「别太累了」（关心她）命中 HIS_TROUBLE 的「太累」→ 记成「他在电脑上说难受」。「你好累吗」「你哪里不舒服」（问她）也会命中「好累」「不舒服」。他问她的、劝她的，不该算他自己难受。至少：带「别」「你」在前面的排除，或者 CARE 先判。
 - RUDE 的「有病」：「你有病吧哈哈」是斗嘴，按 2 级 annoyed 记偏重；看要不要去掉或降到 1。
 另外：第 3 层 desktopReview 已经把桌面对话交给「聊完回想」（模型判的），和这里的正则是两条路算同一件事；两个都开会重复算。建议 features 里写明二选一，或者 desktopReview 开着时这里不算。
+
+> 已办：（11-26 claude 清信箱）STATUS 记过：claude 已在 b98973a9 改完
