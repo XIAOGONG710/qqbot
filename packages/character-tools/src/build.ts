@@ -126,8 +126,21 @@ export function checkPrivacy(built: Built, source: CharacterSource): Problem[] {
     return problems;
 }
 
-/** 把生成结果写进 st/：内容没变的不写（插件监听 st/，没变就不该触发重启） */
+/**
+ * st/ 下生成文件的名字（档位名会拼进 `<前缀>-<档位>.json`）：只许一层文件名，没有路径分隔符、..、Windows 保留字符，
+ * 以 .json 结尾。不合格就整批不写，免得档位名把卡写到 st/ 外面或写进 NTFS 备用数据流（2026-11-26 控制台审查 E）。
+ * 报错不带文件名本身：编辑页只给位置和类别，不回显输入值。
+ */
+export function assertSafeOutputName(file: string): void {
+    const stem = file.endsWith('.json') ? file.slice(0, -'.json'.length) : '';
+    if (!stem || /[<>:"/\\|?*\u0000-\u001f]/.test(stem) || stem.startsWith('.') || /[. ]$/.test(stem)) {
+        throw new Error('tiers.yml 档位名不能用在文件名里：生成的文件名不安全');
+    }
+}
+
+/** 把生成结果写进 st/：内容没变的不写（插件监听 st/，没变就不该触发重启）；文件名先全部查过再写 */
 export function writeOutputs(outDir: string, built: Built): { written: string[]; unchanged: string[] } {
+    for (const file of built.files.keys()) assertSafeOutputName(file);
     mkdirSync(outDir, { recursive: true });
     const written: string[] = [];
     const unchanged: string[] = [];

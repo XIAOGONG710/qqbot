@@ -2,10 +2,11 @@
 // 全部在临时目录里的合成角色上跑，不碰真实资料。
 
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, test } from 'node:test';
+import { assertSafeOutputName, writeOutputs, type Built } from '../src/build.ts';
 import { createCharacterEditor, type CharacterPaths } from '../src/character-editing.ts';
 
 const fixture = resolve(import.meta.dirname, '../../bot/test/fixtures/synthetic-character');
@@ -146,4 +147,18 @@ test('没带快照 token 的旧用法（Koishi 页面第一次保存）照样能
     persona.name = '测试角色六号';
     const outcome = editor.save('persona', persona);
     assert.equal(outcome.ok, true);
+});
+
+test('生成的文件名不安全（档位名带路径分隔符、..、Windows 保留字符）时什么都不写，也不写到 st/ 外面（2026-11-26 审查 E）', () => {
+    const root = mkdtempSync(join(tmpdir(), 'character-output-names-'));
+    roots.push(root);
+    const outDir = join(root, 'st');
+    // 档位名会拼进 `<前缀>-<档位>.json`；这里直接给 writeOutputs 一份带坏名字的生成结果
+    for (const name of ['synthetic-../../escaped.json', 'synthetic-x/../../escaped.json', 'synthetic-a\\..\\..\\escaped.json', 'synthetic-ads:stream.json', 'synthetic-bad?.json', '.json', 'synthetic-ok.txt']) {
+        const built = { files: new Map([['synthetic-ok.json', '{}'], [name, '{}']]), tiers: [] } as unknown as Built;
+        assert.throws(() => writeOutputs(outDir, built), /文件名不安全/, name);
+        assert.ok(!existsSync(join(outDir, 'synthetic-ok.json')), `${name}：先查完再写，好的那个也没写`);
+        assert.ok(!existsSync(join(root, 'escaped.json')) && !existsSync(resolve(root, '..', 'escaped.json')), name);
+    }
+    for (const name of ['synthetic-boyfriend.json', 'synthetic-scenes-boyfriend-open.json', 'synthetic-同学.json']) assert.doesNotThrow(() => assertSafeOutputName(name), name);
 });

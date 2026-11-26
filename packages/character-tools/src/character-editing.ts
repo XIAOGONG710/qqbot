@@ -7,7 +7,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildCharacter, checkPrivacy } from './build.ts';
+import { assertSafeOutputName, buildCharacter, checkPrivacy } from './build.ts';
 import { SOURCE_FILES, SOURCE_HEADERS, checkSource, fromYaml, readSource, toYaml, type CharacterSource } from './source.ts';
 
 export interface CharacterPaths {
@@ -152,6 +152,7 @@ function planWrites(paths: CharacterPaths, source: CharacterSource) {
         writes.push({ path, text, before, label: file });
     }
     const built = buildCharacter(source, paths.prefix);
+    for (const file of built.files.keys()) assertSafeOutputName(file);
     for (const [file, text] of built.files) {
         const path = join(paths.stDir, file);
         const before = existsSync(path) ? readFileSync(path, 'utf8') : null;
