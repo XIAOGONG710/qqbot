@@ -4,6 +4,10 @@
 
 ## 一、要你定的（按急迫）
 
+0. **最急：GitHub 仓库现在是公开的（11-27 05:4x 核：visibility=PUBLIC）**，CLAUDE.md 规定必须私有（角色资料含真实隐私）。`characters/` 下 46 个文件任何人都能看。能查到的事件从 11-19 起没有「设为公开」，所以至少从那时起就公开；没有 fork、star、关注者。
+   claude 想改私有，被权限拦下了。**请你自己改**：GitHub 网页 Settings → Danger Zone → Change visibility → Private，或终端 `gh repo edit XIAOGONG710/qqbot --visibility private --accept-visibility-change-consequences`。
+   改私有后要知道：私有仓库的 Actions 有免费分钟数上限（CI 一次约 10 分钟，推得多会用完，用完 CI 就不跑）。
+
 1. **DSH 的 ee4b75aa（+ b3ec5f0e 快照、abcc0606 ADR）：她和一个人聊天时不再想起和别人聊过的事。**
    「今天和别人聊过的」「你和名单里别的人聊天时说过、听过的事」（连「可明说」的也没了）「对某人的印象」都不进了——等于收掉 ADR 0020「她认识的人」的跨联系人部分。
    没有她的原话和你点头的记录；和决定单第 31 条的推荐（不改）相反。**是你交代的吗？要不要？** 不要的话撤回步骤在部署手册里（已模拟过无冲突）。

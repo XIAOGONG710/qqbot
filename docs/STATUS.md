@@ -75,6 +75,8 @@
 
 ## 3. 进行中 / 等待中（谁欠谁）
 
+> **最急（11-27 05:4x 核）：GitHub 仓库是公开的**，CLAUDE.md 规定必须私有。claude 改私有被权限拦下，要用户自己改（见 `docs/reports/2026-11-27-overnight.md` 第 0 条）。改完核一下：`gh repo view --json visibility`。
+
 截至 2026-11-26 傍晚，信箱里没办完的全是 claude → dsh（`2026-11-26-1719`「开机先看这封」，按顺序排好了）；**未办数以 `node scripts/exchange.mjs check --me <claude|dsh>` 当场为准**，上次核时 dsh → claude 为 0。按要紧程度：
 
 - **DSH 欠**（汇总在 `2026-11-23-2011` 那封）：
