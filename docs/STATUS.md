@@ -89,6 +89,7 @@
   - 部署：今天 main 上的修复（热重载等旧实例收尾 5ca1d681/3de153aa、simulateWorld 缓存 11c26031、0336 收尾、指纹清单 v2）要上线得用户点头，上线前跑 golive-check。 步骤和回退见 `docs/plans/2026-11-25-deploy-runbook.md`（先备份 koishi.yml；回退代码必须连 koishi.yml 一起回退）。
   - 手机伴侣审查（`docs/reports/2026-11-26-mobile-companion-review.md`）三条要定：B 手机上传的媒体只增不减，要定保留策略（会删数据）；C 没设 `QQBOT_ONEBOT_TOKEN` 时本机任何进程能冒充 Koishi 连中继，建议缺令牌拒绝启动（线上没设就起不来，要先核对）；F 已配对再 `/dsh pair` 时她的回复没说要先解绑（改她的话，先 ask-her）。
   - Koishi 控制台审查（`docs/reports/2026-11-26-koishi-console-review.md`，A–F 已修，重启 Koishi 后生效）三条要定：H 任何一页 YAML 写坏整个编辑页打不开（改成坏的那页给空，会改编辑页行为）；I 失败的外部草稿能经接口重新批准（接真实发布前要定）；K 一张参考图坏了整页列不出也删不掉（要不要允许控制台删坏条目）。
+  - 设备控制审查（`docs/reports/2026-11-26-device-control-review.md`，A–F 已修；电脑端 `scripts/device-agent.ps1` 要用户自己复制到宿主机）要定的：**G 她同意看屏幕后描述被丢掉**（10-30 起每次 /屏幕 白截一张，推荐恢复 ADR 写的设计）；**H 过期很久的待批准吞掉他的「取消」「拒绝」**（推荐过期后再宽限一个有效期就清掉）；I 补回时漏滤几个命令、J 写错格式的设备指令原样发给他（推荐一起修）；K 熔断后菜单照给她（改她提示词，先问她）。
   - **开关总数（FEATURES）：11-24 早上 136 → 11-25 凌晨 74**：删 7 个没上过线的 + ownerPeek（473dc7db）、fewerRules 转正删 11 个（94b5c5e7）、合并 16 组并掉 48 个旧键（4f8cfaed..268279bb），app 已只读新键（af089eb5..756427cf），表达不了的旧键组合 parseAppConfig 拒绝启动（a2eb17c6），golive-check 会预检（be8275fe）。还卡着 5 组（夜间自省、QQ 表层整组、追求、回忆的感觉、日常小事整组），要她或用户定。
   - 开关合并（11-25，`docs/plans/2026-11-24-switch-merge-design.md`「进度」）：能直接做的 16 组已合并，FEATURES 116 → 74。**下次部署时 Koishi 插件会把线上 koishi.yml 里这些旧键改写成新键**（`migrateSwitches`，值等价、行为不变；写回线上配置文件要用户点头，上线前备份 koishi.yml、用 `read-switches.mjs` 出新快照重核，尤其「一个生活」四项）。
 - **等她本人**：见上面第 2 条。
