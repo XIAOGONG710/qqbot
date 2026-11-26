@@ -94,6 +94,8 @@ export interface AiPhotoDraftStore {
 
 const MAX_TEXT = 160;
 const clean = (value: string | undefined) => value?.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_TEXT);
+/** 草稿库里存的事件键（清洗过的）：按事件键找草稿的地方都用它比，原样的键带连续空格时会永远对不上（2026-11-26 AI 照片审查 U4） */
+export const aiPhotoEventKey = (value: string): string => clean(value) ?? '';
 const validDate = (value: string) => Number.isFinite(Date.parse(value));
 const validEntry = (value: unknown): value is AiPhotoDraft => {
     if (!value || typeof value !== 'object') return false;

@@ -54,6 +54,18 @@ test('自动请求按事件去重并限制每日生成数', async () => {
     assert.equal(entries.length, 1);
 });
 
+test('事件键带连续空格时也认得出草稿库里清洗过的那条，不重复生成（AI 照片审查 U4）', async () => {
+    const now = new Date('2026-11-04T10:00:00+08:00');
+    // 草稿库存的是清洗过的键（压空白）；请求这边是原样的键
+    const entries: AiPhotoDraft[] = [draft(context('qq-current:food:10:番茄 炒蛋', now))];
+    const service = aiPhotoRequestService({
+        store: fakeStore(entries), generator: async () => { throw new Error('store fake does not call it'); },
+        stateFile: join(mkdtempSync(join(tmpdir(), 'qqbot-ai-photo-')), 'state.json'), now: () => now, dailyMax: 3,
+    });
+    assert.equal(await service.request(context('qq-current:food:10:番茄  炒蛋', now)), 'existing');
+    assert.equal(entries.length, 1, '没有再生成一张');
+});
+
 test('失败后进入持久冷却且日志不包含供应商错误正文', async () => {
     let now = new Date('2026-11-04T10:00:00+08:00');
     const logs: string[] = [];

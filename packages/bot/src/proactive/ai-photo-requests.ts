@@ -6,7 +6,7 @@ import { mkdirSync } from 'node:fs';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { lastMealDish, worldNews, type WorldNow } from '../world/world.ts';
 import type { PhotoKind } from '../vision/photos.ts';
-import { aiPhotoDraftFreshness, type AiPhotoContext, type AiPhotoDraft, type AiPhotoDraftStore, type AiPhotoGenerator, type AiPhotoKind } from '../vision/ai-photo-drafts.ts';
+import { aiPhotoDraftFreshness, aiPhotoEventKey, type AiPhotoContext, type AiPhotoDraft, type AiPhotoDraftStore, type AiPhotoGenerator, type AiPhotoKind } from '../vision/ai-photo-drafts.ts';
 
 export const AI_PHOTO_DAILY_MAX = 3;
 export const AI_PHOTO_FAILURE_COOLDOWN_MS = 30 * 60_000;
@@ -127,7 +127,8 @@ export function aiPhotoRequestService(options: AiPhotoRequestServiceOptions): Ai
             writeJsonAtomic(options.stateFile, state);
         } catch { options.log?.('AI 照片草稿：冷却状态写不进，这次只在内存里记着；错误正文不写日志'); }
     };
-    const find = (eventKey: string) => options.store.list().find(entry => entry.eventKey === eventKey);
+    // 草稿库存的是清洗过的键：按同一个清洗比，不然带连续空格的菜名审核过的图永远对不上（AI 照片审查 U4）
+    const find = (eventKey: string) => { const key = aiPhotoEventKey(eventKey); return options.store.list().find(entry => entry.eventKey === key); };
     const service: AiPhotoRequestService = {
         find,
         async request(context) {
