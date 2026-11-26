@@ -170,6 +170,17 @@ describe('手机伴侣协议', () => {
         assert.equal(store.consume(latest.clientId, latest.pairingCode, 10_100), true);
     });
 
+    test('同一张配对码连错 5 次作废，第 6 次给对的也不行；错 4 次以内对的还能用', () => {
+        const store = new MemoryPairingStore(60_000);
+        const ticket = store.issue('android-guess', 20_000);
+        for (let attempt = 0; attempt < 5; attempt += 1) assert.equal(store.consume(ticket.clientId, `WRONG-${attempt}AAA-AAAA`, 20_001), false);
+        assert.equal(store.consume(ticket.clientId, ticket.pairingCode, 20_002), false);
+
+        const retry = store.issue('android-guess', 20_003);
+        for (let attempt = 0; attempt < 4; attempt += 1) assert.equal(store.consume(retry.clientId, `WRONG-${attempt}AAA-AAAA`, 20_004), false);
+        assert.equal(store.consume(retry.clientId, retry.pairingCode, 20_005), true);
+    });
+
     test('运行时把消息和动作交给宿主，并返回统一 envelope', async () => {
         let now = 10_000;
         const pairing = new MemoryPairingStore(60_000);

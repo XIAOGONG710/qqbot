@@ -1,6 +1,8 @@
 export const MAX_VOICE_CHUNK_BYTES = 256 * 1024;
 export const MAX_VOICE_SESSION_BYTES = 8 * 1024 * 1024;
 export const MAX_VOICE_SESSION_MS = 2 * 60_000;
+/** 同一设备同时打开的实时语音会话上限：开了不收尾的会话不能无限占内存。 */
+export const MAX_VOICE_SESSIONS_PER_CLIENT = 2;
 
 export interface VoiceSessionStart {
     sessionId: string;
@@ -59,7 +61,26 @@ export class VoiceSessionGate {
         validateVoiceSessionStart(body);
         const key = `${clientId}\0${body.sessionId}`;
         if (this.#active.has(key)) throw new Error('语音会话已经开始');
+        const prefix = `${clientId}\0`;
+        let open = 0;
+        for (const item of this.#active.keys()) if (item.startsWith(prefix)) open++;
+        if (open >= MAX_VOICE_SESSIONS_PER_CLIENT) throw new Error('同时进行的实时语音过多，请先结束上一段');
         this.#active.set(key, { next: 0, bytes: 0, startedAt: now });
+    }
+    has(clientId: string, sessionId: string): boolean {
+        return this.#active.has(`${clientId}\0${sessionId}`);
+    }
+    /** 清掉超过时长还没收尾的会话（含时钟明显回拨的），返回它们，让宿主一并丢掉音频缓冲。 */
+    expire(now = Date.now()): { clientId: string; sessionId: string }[] {
+        const expired: { clientId: string; sessionId: string }[] = [];
+        for (const [key, state] of this.#active) {
+            const age = now - state.startedAt;
+            if (age <= MAX_VOICE_SESSION_MS && age >= -MAX_VOICE_SESSION_MS) continue;
+            this.#active.delete(key);
+            const split = key.indexOf('\0');
+            expired.push({ clientId: key.slice(0, split), sessionId: key.slice(split + 1) });
+        }
+        return expired;
     }
     chunk(clientId: string, body: VoiceSessionChunk, now = Date.now()): number {
         validateVoiceSessionChunk(body);

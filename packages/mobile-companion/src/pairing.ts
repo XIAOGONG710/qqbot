@@ -1,8 +1,10 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { PairingVerifier } from './gateway.ts';
 import { MAX_CLOCK_SKEW_MS } from './protocol.ts';
 
 const MAX_PENDING_PAIRINGS = 64;
+/** 同一张配对码连错这么多次就作废，要回 QQ 重新生成（与 chat-bridge 一致）。 */
+export const PAIRING_MAX_WRONG = 5;
 
 export interface PairingTicket {
     clientId: string;
@@ -12,7 +14,7 @@ export interface PairingTicket {
 
 /** 进程内一次性配对码存储：不落盘，过期或成功消费后立即删除。 */
 export class MemoryPairingStore implements PairingVerifier {
-    private readonly entries = new Map<string, { pairingCode: string; issuedAt: number; expiresAt: number }>();
+    private readonly entries = new Map<string, { pairingCode: string; issuedAt: number; expiresAt: number; wrong: number }>();
     private readonly ttlMs: number;
     private stopped = false;
 
@@ -34,15 +36,21 @@ export class MemoryPairingStore implements PairingVerifier {
         }
         const pairingCode = formatCode(randomBytes(6).toString('hex').toUpperCase());
         const expiresAt = now + this.ttlMs;
-        this.entries.set(clientId, { pairingCode, issuedAt: now, expiresAt });
+        this.entries.set(clientId, { pairingCode, issuedAt: now, expiresAt, wrong: 0 });
         return { clientId, pairingCode, expiresAt };
     }
 
     consume(clientId: string, pairingCode: string, now: number): boolean {
         if (this.stopped) return false;
         const entry = this.entries.get(clientId);
-        if (!entry || entryExpired(entry, now) || entry.pairingCode !== pairingCode) {
-            if (entry && entryExpired(entry, now)) this.entries.delete(clientId);
+        if (!entry) return false;
+        if (entryExpired(entry, now)) {
+            this.entries.delete(clientId);
+            return false;
+        }
+        if (!sameCode(entry.pairingCode, pairingCode)) {
+            entry.wrong += 1;
+            if (entry.wrong >= PAIRING_MAX_WRONG) this.entries.delete(clientId);
             return false;
         }
         this.entries.delete(clientId);
@@ -75,6 +83,12 @@ export class MemoryPairingStore implements PairingVerifier {
 
 function entryExpired(entry: { issuedAt: number; expiresAt: number }, now: number): boolean {
     return now >= entry.expiresAt || now - entry.issuedAt < -MAX_CLOCK_SKEW_MS;
+}
+
+/** 恒定时间比较：先各自做摘要，长度不同也不提前退出。 */
+function sameCode(expected: string, offered: string): boolean {
+    const digest = (text: string) => createHash('sha256').update(text, 'utf8').digest();
+    return timingSafeEqual(digest(expected), digest(offered));
 }
 
 function formatCode(value: string): string {

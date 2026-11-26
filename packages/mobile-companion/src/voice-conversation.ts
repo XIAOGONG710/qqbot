@@ -35,7 +35,8 @@ export function withBufferedVoiceConversation(base: CompanionRuntimeHandlers, op
             session.chunks.push(copy);
             session.bytes += copy.byteLength;
         },
-        async onVoiceSessionStop(request: VoiceSessionStop, totalBytes: number, clientId: string): Promise<CompanionMessage> {
+        async onVoiceSessionStop(request: VoiceSessionStop, totalBytes: number, clientId: string, signal?: AbortSignal): Promise<CompanionMessage> {
+            signal?.throwIfAborted();
             const key = keyOf(clientId, request.sessionId);
             const session = sessions.get(key);
             sessions.delete(key);
@@ -45,7 +46,9 @@ export function withBufferedVoiceConversation(base: CompanionRuntimeHandlers, op
             for (const chunk of session.chunks) { joined.set(chunk, offset); offset += chunk.byteLength; }
             const transcript = (await options.transcribe(joined, session.mime, clientId)).trim();
             if (!transcript) throw new Error('没有听清这段语音');
-            return base.onMessage({ kind: 'text', text: transcript.slice(0, 4_000) }, clientId);
+            // 转写期间伴侣停止：不能再把这段话交给模型、写进共享上下文
+            signal?.throwIfAborted();
+            return base.onMessage({ kind: 'text', text: transcript.slice(0, 4_000) }, clientId, signal);
         },
         async onVoiceSessionCancel(request: VoiceSessionCancel, clientId: string): Promise<void> {
             sessions.delete(keyOf(clientId, request.sessionId));

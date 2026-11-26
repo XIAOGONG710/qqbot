@@ -8,6 +8,8 @@ export interface CompanionWebSocketLike {
 export interface CompanionWebSocketOptions {
     /** 单帧上限；默认与 HTTP body 上限一致。 */
     maxMessageBytes?: number;
+    /** 连上之后多久还没完成配对就断开；未配对的连接不能一直占着下行监听。默认 30 秒。 */
+    helloTimeoutMs?: number;
 }
 
 /**
@@ -17,7 +19,10 @@ export interface CompanionWebSocketOptions {
 export function attachCompanionWebSocket(socket: CompanionWebSocketLike, runtime: CompanionRuntime, options: CompanionWebSocketOptions = {}): void {
     const maxMessageBytes = options.maxMessageBytes ?? 1_000_000;
     if (!Number.isInteger(maxMessageBytes) || maxMessageBytes < 1024 || maxMessageBytes > 8 * 1024 * 1024) throw new Error('WebSocket 单帧上限不合法');
+    const helloTimeoutMs = options.helloTimeoutMs ?? 30_000;
+    if (!Number.isInteger(helloTimeoutMs) || helloTimeoutMs < 1_000 || helloTimeoutMs > 10 * 60_000) throw new Error('WebSocket 配对等待时间不合法');
     let closed = false;
+    let paired = false;
     const sessionId = runtime.createSession();
     const sendDownlinks = (clientId: string): void => {
         if (closed || runtime.clientForSession(sessionId) !== clientId) return;
@@ -26,8 +31,11 @@ export function attachCompanionWebSocket(socket: CompanionWebSocketLike, runtime
         }
     };
     const unsubscribeDownlinks = runtime.subscribeDownlinks((clientId) => sendDownlinks(clientId));
+    const helloTimer = setTimeout(() => { if (!paired) reject(1008, 'hello_timeout'); }, helloTimeoutMs);
+    helloTimer.unref?.();
     const reject = (code: number, reason: string): void => {
         if (closed) return;
+        clearTimeout(helloTimer);
         runtime.releaseSession(sessionId);
         unsubscribeDownlinks();
         closed = true;
@@ -36,6 +44,7 @@ export function attachCompanionWebSocket(socket: CompanionWebSocketLike, runtime
     };
     const release = (): void => {
         if (closed) return;
+        clearTimeout(helloTimer);
         closed = true;
         runtime.releaseSession(sessionId);
         unsubscribeDownlinks();
@@ -54,6 +63,8 @@ export function attachCompanionWebSocket(socket: CompanionWebSocketLike, runtime
         void runtime.handle(value, sessionId).then(result => {
             if (closed) return;
             if (!result.accepted) return reject(1008, result.error);
+            // 网关只在配对成功后才会接受包：第一次 accepted 就说明这条连接已经配对
+            if (!paired) { paired = true; clearTimeout(helloTimer); }
             if (result.response) socket.send(JSON.stringify(result.response));
             sendDownlinks(runtime.clientForSession(sessionId) ?? '');
         }).catch(() => reject(1011, 'runtime_error'));

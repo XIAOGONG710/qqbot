@@ -23,7 +23,7 @@ export interface CompanionRuntimeHandlers {
     onVoiceSessionStart?: (request: VoiceSessionStart, clientId: string) => Promise<void>;
     onVoiceSessionChunk?: (request: VoiceSessionChunk, bytes: Uint8Array, clientId: string) => Promise<void>;
     /** 停止录音后宿主可返回转写并生成的回复；没有回复时只确认收完。 */
-    onVoiceSessionStop?: (request: VoiceSessionStop, totalBytes: number, clientId: string) => Promise<CompanionMessage | void>;
+    onVoiceSessionStop?: (request: VoiceSessionStop, totalBytes: number, clientId: string, signal?: AbortSignal) => Promise<CompanionMessage | void>;
     onVoiceSessionCancel?: (request: VoiceSessionCancel, clientId: string) => Promise<void>;
     /** 配对撤销时清理宿主侧按设备保存的短期上下文。 */
     onReset?: (clientId?: string) => void;
@@ -321,6 +321,7 @@ export class CompanionRuntime {
             } else if (envelope.kind === 'voice.session.start') {
                 if (!this.handlers.onVoiceSessionStart) throw new Error('宿主未接入实时语音');
                 const request = validateVoiceSessionStart(envelope.body);
+                await this.dropExpiredVoiceSessions();
                 this.voiceSessions.start(clientId, request, this.now());
                 try { await this.handlers.onVoiceSessionStart(request, clientId); }
                 catch (error) { this.voiceSessions.cancel(clientId, { sessionId: request.sessionId, reason: 'network' }); throw error; }
@@ -328,7 +329,13 @@ export class CompanionRuntime {
             } else if (envelope.kind === 'voice.session.chunk') {
                 if (!this.handlers.onVoiceSessionChunk) throw new Error('宿主未接入实时语音');
                 const request = validateVoiceSessionChunk(envelope.body);
-                this.voiceSessions.chunk(clientId, request, this.now());
+                await this.dropExpiredVoiceSessions();
+                try { this.voiceSessions.chunk(clientId, request, this.now()); }
+                catch (error) {
+                    // 超时 / 超量时闸门已经丢掉这段会话；宿主手里的音频缓冲也要一起丢，不能留到 reset。
+                    if (!this.voiceSessions.has(clientId, request.sessionId)) await this.cancelVoiceBuffer(clientId, request.sessionId);
+                    throw error;
+                }
                 try { await this.handlers.onVoiceSessionChunk(request, new Uint8Array(Buffer.from(request.data, 'base64')), clientId); }
                 catch (error) { this.voiceSessions.cancel(clientId, { sessionId: request.sessionId, reason: 'network' }); throw error; }
                 return { accepted: true };
@@ -336,7 +343,7 @@ export class CompanionRuntime {
                 if (!this.handlers.onVoiceSessionStop) throw new Error('宿主未接入实时语音');
                 const request = validateVoiceSessionStop(envelope.body);
                 const total = this.voiceSessions.stop(clientId, request);
-                const reply = await this.handlers.onVoiceSessionStop(request, total, clientId);
+                const reply = await this.handlers.onVoiceSessionStop(request, total, clientId, this.lifetime.signal);
                 return reply ? { accepted: true, response: responseEnvelope('message.receive', validateMessage(reply), envelope.requestId, this.now()) } : { accepted: true };
             } else if (envelope.kind === 'voice.session.cancel') {
                 const request = validateVoiceSessionCancel(envelope.body);
@@ -353,6 +360,16 @@ export class CompanionRuntime {
             if (fingerprint && rememberError) this.rememberCompletedUplink(clientId, requestId, fingerprint, result);
             return result;
         }
+    }
+
+    /** 开了不收尾的实时语音：闸门按时长清掉，宿主的音频缓冲一起丢。 */
+    private async dropExpiredVoiceSessions(): Promise<void> {
+        for (const { clientId, sessionId } of this.voiceSessions.expire(this.now())) await this.cancelVoiceBuffer(clientId, sessionId);
+    }
+
+    private async cancelVoiceBuffer(clientId: string, sessionId: string): Promise<void> {
+        try { await this.handlers.onVoiceSessionCancel?.({ sessionId, reason: 'interrupted' }, clientId); }
+        catch { /* 清理失败不影响当前请求的结论 */ }
     }
 
     private findCompletedUplink(clientId: string, requestId: string): CompletedUplinkRequest | undefined {
