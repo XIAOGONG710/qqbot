@@ -1237,8 +1237,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 if (count) log(`DSH：收进世界事件 ${count} 条`);
             }
             // 桌面记录（ADR 0347 第 3 层，desktopDay）：收进 QQ 自己的 desktop-log.jsonl、刷新缓存、会话进时间线、空闲时间进世界（life/desktop-host.ts）
-            desktop.syncInbox(now);
-            refreshDesktopPresence();
+            desktop.syncInbox(now); refreshDesktopPresence(); // 收完桌面记录就按新的在场刷新 NOW（daac5306）
             // 桌面回执（ADR 0347 第 2 层，selfReceipts）：收进计划器，收到了就刷新一次 SELF（life/self-export-host.ts）
             selfHost.syncReceipts(now);
         } catch (error) {
@@ -1554,8 +1553,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         config, soulDir: soulDir(), worldCard, sharedWorld, worldNow, owner: deviceOwner, history: qq => history.load(qq), desktopSource,
         diaryByQq: Boolean(config.oneDiary && diaries), log,
     });
-    const exportNow = nowExporter.exportNow;
-    refreshDesktopPresence = nowExporter.refreshDesktopPresence;
+    const { exportNow, refreshDesktopPresence: refreshPresence } = nowExporter; refreshDesktopPresence = refreshPresence;
     exportNow();
     // 之后每 NOW_REFRESH_MS 再写一次：由 now-export 模块声明（ADR 0336 第 6 步，App 搭好时开）
 
