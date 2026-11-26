@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { inspectReply } from '../src/language/exit-check.ts';
+import { outboxDesktopBlock } from '../src/life/desktop-now.ts';
 import { drainOutbox, OUTBOX_DAILY_MAX, OUTBOX_MAX_AGE_MS, OUTBOX_MIN_GAP_MS, OUTBOX_MAX_TRIES, type OutboxDeps } from '../src/social/outbox.ts';
 
 const dirs: string[] = [];
@@ -32,10 +33,40 @@ function harness(options: { now?: number; blocked?: string; failSends?: number; 
         record: (text, id, at) => { recorded.push({ text, id, at }); },
         log: message => { logs.push(message); },
     };
-    return { dir, deps, sent, recorded, logs, clock, file: deps.file, left: () => (existsSync(deps.file) ? readFileSync(deps.file, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as { text: string; at: number; tries?: number }) : []) };
+    type Pending = { text: string; at: number; tries?: number };
+    const left = (): Pending[] => {
+        const saved = existsSync(deps.stateFile) ? (JSON.parse(readFileSync(deps.stateFile, 'utf8')) as { pending?: Pending[] }).pending ?? [] : [];
+        const newLines = existsSync(deps.file) ? readFileSync(deps.file, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as Pending) : [];
+        return [...saved, ...newLines];
+    };
+    return { dir, deps, sent, recorded, logs, clock, file: deps.file, left };
 }
 
 describe('主动留话（ADR 0174）：outbox 不再是直通的', () => {
+    test('在场和刚离开时保留旧批次及新留话，恢复后历史写入失败也不重发', async () => {
+        const h = harness();
+        const lease = { kind: 'dsh-presence', version: 1, session: 'mock', ttlMs: min(15),
+            startedAt: new Date(T0 - min(1)).toISOString(), renewedAt: new Date(T0).toISOString() };
+        const leftAt = T0 + min(1);
+        const deps = {
+            ...h.deps,
+            blocked: (now: number) => outboxDesktopBlock({ turns: () => [], lease: () => now < leftAt ? lease : { ...lease, ended: new Date(leftAt).toISOString() } }, now),
+            record: () => { throw new Error('合成记录失败'); },
+        };
+        writeFileSync(`${h.file}.next`, row('已暂存', T0 - min(2)));
+        writeFileSync(h.file, row('新留话', T0));
+        assert.ok((await drainOutbox(deps)).blockedBy);
+        h.clock.now = leftAt + min(10);
+        assert.ok((await drainOutbox(deps)).blockedBy);
+        h.clock.now++;
+        await drainOutbox(deps);
+        await drainOutbox(deps);
+        assert.deepEqual(h.sent, ['已暂存']);
+        h.clock.now += OUTBOX_MIN_GAP_MS;
+        await drainOutbox(h.deps);
+        await drainOutbox(h.deps);
+        assert.deepEqual(h.sent, ['已暂存', '新留话']);
+    });
     test('正常一条：发出去、记进聊天记录、文件清空', async () => {
         const h = harness();
         writeFileSync(h.file, row('刚看了个视频，想起你', T0 - min(1)));
@@ -161,5 +192,16 @@ describe('主动留话（ADR 0174）：outbox 不再是直通的', () => {
     test('没有文件：什么都不做', async () => {
         const h = harness();
         assert.deepEqual(await drainOutbox(h.deps), { sent: 0, held: 0, dropped: 0 });
+    });
+
+    test('导入提交后、删除暂存前中断，下一拍不会重复导入', async () => {
+        const h = harness();
+        const next = `${h.file}.next`;
+        writeFileSync(next, row('同一条', T0));
+        writeFileSync(h.deps.stateFile, JSON.stringify({ pending: [{ text: '同一条', at: T0 }], imported: ['next'] }));
+        await drainOutbox(h.deps);
+        h.clock.now += OUTBOX_MIN_GAP_MS;
+        await drainOutbox(h.deps);
+        assert.deepEqual(h.sent, ['同一条']);
     });
 });

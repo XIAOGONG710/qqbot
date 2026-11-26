@@ -8,9 +8,9 @@
 //   · 出口检查里「硬」的那几类（做不到的承诺、禁用词、照抄的语音图片写法、编的对话）命中就不发、记日志；
 //   · 超过 MAX_AGE_MS 的不发（「刚看了个视频」隔一天就不是刚看了）；发不出去重试，MAX_TRIES 次后丢；
 //   · 发出去的话记进聊天记录（role=assistant），她下一轮知道自己说过。
-// 读文件的办法：先改名成 .work 再处理，常驻进程这时再写会新建一个 OUTBOX.jsonl，两边不会互相覆盖。
+// 先用 .next 接管生产者的文件，再把待发队列和导入进度一并原子写入状态。
 
-import { appendFileSync, existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 
 export const OUTBOX_DAILY_MAX = 3;
@@ -19,7 +19,8 @@ export const OUTBOX_MAX_AGE_MS = 12 * 3_600_000;
 export const OUTBOX_MAX_TRIES = 3;
 
 interface Line { text: string; at: number; tries?: number }
-interface State { day: string; sent: number; lastSentAt: number }
+type Stage = 'work' | 'next';
+interface State { day: string; sent: number; lastSentAt: number; pending: Line[]; imported?: Stage[] }
 
 export interface OutboxDeps {
     file: string;
@@ -67,36 +68,45 @@ function parse(raw: string): { lines: Line[]; bad: number } {
     return { lines, bad };
 }
 
-const serialize = (lines: readonly Line[]): string => lines.map(line => `${JSON.stringify(line)}\n`).join('');
-
 export async function drainOutbox(deps: OutboxDeps): Promise<OutboxResult> {
     const now = deps.now();
-    const work = `${deps.file}.work`;
+    const stagePath = (stage: Stage) => `${deps.file}.${stage}`;
     const dailyMax = deps.dailyMax ?? OUTBOX_DAILY_MAX;
     const minGap = deps.minGapMs ?? OUTBOX_MIN_GAP_MS;
     const maxAge = deps.maxAgeMs ?? OUTBOX_MAX_AGE_MS;
     const maxTries = deps.maxTries ?? OUTBOX_MAX_TRIES;
 
-    const hasWork = existsSync(work);
-    if (!existsSync(deps.file) && !hasWork) return { sent: 0, held: 0, dropped: 0 };
+    const state = readJsonOr<Partial<State>>(deps.stateFile, {}, deps.log, { invalid: 'throw' });
+    const stages = (['work', 'next'] as const).filter(stage => existsSync(stagePath(stage)));
+    if (!existsSync(deps.file) && !stages.length && !state.pending?.length) return { sent: 0, held: 0, dropped: 0 };
     const blockedBy = deps.blocked(now);
     if (blockedBy) return { sent: 0, held: 0, dropped: 0, blockedBy };
 
-    // 上次中途崩了留下的 .work 和新写的合在一起
-    let raw = hasWork ? readFileSync(work, 'utf8') : '';
-    if (existsSync(deps.file)) {
-        renameSync(deps.file, `${deps.file}.next`);
-        raw += readFileSync(`${deps.file}.next`, 'utf8');
-        rmSync(`${deps.file}.next`, { force: true });
-    }
-    const { lines, bad } = parse(raw);
-    let dropped = bad;
-    if (bad) deps.log(`主动留话：${bad} 行读不懂，丢掉`);
-
-    const state = readJsonOr<Partial<State>>(deps.stateFile, {});
     const today = localDay(now);
-    const day: State = state.day === today ? { day: today, sent: state.sent ?? 0, lastSentAt: state.lastSentAt ?? 0 } : { day: today, sent: 0, lastSentAt: state.lastSentAt ?? 0 };
+    const day: State = { day: today, sent: state.day === today ? state.sent ?? 0 : 0,
+        lastSentAt: state.lastSentAt ?? 0, pending: state.pending ?? [] };
+    let dropped = 0;
+    const importStages = (batch: readonly Stage[], imported: readonly Stage[] = []) => {
+        for (const stage of batch) {
+            if (imported.includes(stage)) continue;
+            const { lines, bad } = parse(readFileSync(stagePath(stage), 'utf8'));
+            day.pending.push(...lines);
+            dropped += bad;
+        }
+        writeJsonAtomic(deps.stateFile, { ...day, imported: batch });
+        for (const stage of batch) rmSync(stagePath(stage), { force: true });
+        // 清掉提交标记后才能重新使用 .next。
+        writeJsonAtomic(deps.stateFile, day);
+    };
+    if (stages.length) importStages(stages, state.imported);
+    else if (state.imported?.length) writeJsonAtomic(deps.stateFile, day);
+    if (existsSync(deps.file)) {
+        renameSync(deps.file, stagePath('next'));
+        importStages(['next']);
+    }
+    if (dropped) deps.log(`主动留话：${dropped} 行读不懂，丢掉`);
 
+    const lines = day.pending;
     const rest: Line[] = [];
     let sent = 0;
     for (const [index, line] of lines.entries()) {
@@ -104,12 +114,9 @@ export async function drainOutbox(deps: OutboxDeps): Promise<OutboxResult> {
         const problem = deps.inspect(line.text);
         if (problem) { dropped++; deps.log(`主动留话：「${line.text.slice(0, 20)}」没过出口检查（${problem}），不发`); continue; }
         if (sent > 0 || day.sent >= dailyMax || now - day.lastSentAt < minGap) { rest.push(line); continue; }
+        let messageId: number;
         try {
-            const messageId = await deps.send(line.text);
-            deps.record(line.text, messageId, now);
-            day.sent++;
-            day.lastSentAt = now;
-            sent++;
+            messageId = await deps.send(line.text);
         } catch (error) {
             const tries = (line.tries ?? 0) + 1;
             deps.log(`主动留话发不出去（第 ${tries} 次）：${error instanceof Error ? error.message : String(error)}`);
@@ -118,10 +125,19 @@ export async function drainOutbox(deps: OutboxDeps): Promise<OutboxResult> {
             rest.push(...lines.slice(index + 1));
             break;
         }
+        day.sent++;
+        day.lastSentAt = now;
+        sent++;
+        // 先提交队列和额度，再写聊天历史。历史出错不能把已投递的消息当成待重试。
+        day.pending = [...rest, ...lines.slice(index + 1)];
+        writeJsonAtomic(deps.stateFile, day);
+        try { deps.record(line.text, messageId, now); }
+        catch { deps.log('主动留话已发送，聊天记录写入失败'); }
     }
 
-    if (rest.length) appendFileSync(deps.file, serialize(rest));
-    rmSync(work, { force: true });
-    if (sent) writeJsonAtomic(deps.stateFile, day);
+    if (rest.length !== day.pending.length || rest.some((line, index) => line !== day.pending[index])) {
+        day.pending = rest;
+        writeJsonAtomic(deps.stateFile, day);
+    }
     return { sent, held: rest.length, dropped };
 }

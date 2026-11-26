@@ -7,7 +7,7 @@ import type { StoredMessage } from '../src/memory/history.ts';
 import { DEFAULTS, type AppConfig, type Contact } from '../src/platform/config.ts';
 import type { TierCard } from '../src/platform/contact.ts';
 import { plannerHost } from '../src/proactive/planner-host.ts';
-import { blockReason, DESKTOP_WITH_REASON, type Candidate, type DesktopTurnText, type ProactiveInput, type ProactiveRecord } from '../src/proactive/proactive.ts';
+import { blockReason, DESKTOP_WITH_REASON, OCCASIONS, type Candidate, type DesktopTurnText, type ProactiveInput, type ProactiveRecord } from '../src/proactive/proactive.ts';
 import { createProactivePlanner, type Planner } from '../src/proactive/proactive-planner.ts';
 import type { Responder } from '../src/social/responder.ts';
 import type { InitiateRequest } from '../src/social/responder.ts';
@@ -41,15 +41,17 @@ const desk = (turns: DesktopTurnText[], withNow = false): Partial<ProactiveInput
 const yesterday = [user(t(10, 11, 22)), her(t(10, 11, 22, 1))];
 
 describe('主动消息：桌面上的时间（desktopDay）', () => {
-    test('他在电脑前：除了睡前那句、日子，别的时机都不插（正在电脑上陪他）；不在就照旧', () => {
+    test('他在电脑前：普通主动时机不插，睡前、重要日子和约好回来沿用专用规则', () => {
         const when = t(10, 12, 18);
-        for (const occasion of ['quiet', 'share', 'news', 'weather', 'follow_up', 'invite', 'ask', 'reach', 'inner']) {
+        for (const occasion of OCCASIONS.filter(occasion => occasion !== 'dates' && occasion !== 'back' && occasion !== 'bedtime')) {
             assert.equal(blockReason(at(occasion, when), when, input({ history: yesterday, desktopWith: () => true })), DESKTOP_WITH_REASON, occasion);
             assert.notEqual(blockReason(at(occasion, when), when, input({ history: yesterday, desktopWith: () => false })), DESKTOP_WITH_REASON, occasion);
             assert.notEqual(blockReason(at(occasion, when), when, input({ history: yesterday })), DESKTOP_WITH_REASON, occasion);
         }
         assert.notEqual(blockReason(at('bedtime', t(10, 12, 23, 30)), t(10, 12, 23, 30), input({ history: yesterday, desktopWith: () => true })), DESKTOP_WITH_REASON);
         assert.equal(blockReason(at('dates', when), when, input({ history: yesterday, desktopWith: () => true })), undefined);
+        assert.equal(blockReason(at('back', when, { id: `2026-10-12:back:${when - 60_000}` }), when,
+            input({ history: yesterday, desktopWith: () => true })), undefined);
     });
 
     test('一小时内 / 正聊着 / 刚聊过：桌面最后一轮和 QQ 最后一句取较晚的', () => {
@@ -124,7 +126,7 @@ describe('计划器把桌面三项原样交给 blockReason', () => {
 
     const camera = { id: 'camera', kind: 'camera' as const, day: '2026-10-11', at: t(10, 11, 16, 30), what: '在城南的二手相机店买到了一台胶片机' };
 
-    function setup(extra: { desktopWith?: () => boolean } = {}) {
+    function setup(extra: { desktopWith?: () => boolean } = {}, news = [camera]) {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-desk-'));
         dirs.push(dir);
         const clock = new VirtualClock(new Date(t(10, 11, 16)));
@@ -143,7 +145,7 @@ describe('计划器把桌面三项原样交给 blockReason', () => {
             },
             dir, log: () => {}, now: clock.now, waitUntil: clock.waitUntil,
             names: { user: '阿明', char: SYNTHETIC_CHAR_NAME },
-            news: () => [camera],
+            news: () => news,
             ...extra,
         });
         planners.push(planner);
@@ -167,6 +169,18 @@ describe('计划器把桌面三项原样交给 blockReason', () => {
             assert.equal(tried.length, 1);
             assert.equal(records().find(r => r.occasion === 'news')?.result, 'dryRun');
         }
+    });
+
+    test('同一个计划器离开后恢复后续时机，先前因在场跳过的时机不重发', async () => {
+        let present = true;
+        const later = { ...camera, id: 'later', at: t(10, 11, 18, 30), what: '合成的第二件事' };
+        const { clock, tried, records } = setup({ desktopWith: () => present }, [camera, later]);
+        await runUntil(clock, t(10, 11, 18));
+        assert.equal(tried.length, 0);
+        present = false;
+        await runUntil(clock, t(10, 11, 22));
+        assert.equal(tried.length, 1);
+        assert.deepEqual(records().filter(row => row.occasion === 'news').map(row => row.result), ['skipped', 'dryRun']);
     });
 });
 

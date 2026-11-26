@@ -27,7 +27,7 @@ import { createTransientGate, describeError, isTransientIoError, TransientStateE
 import { ModelUnreachable } from '../language/llm.ts';
 import { EPISODE_GAP_MS, episodeTranscript, splitEpisodes, type Episode } from '.././memory/episodes.ts';
 import { dueLoops, isFeeling, loopForgotten, type DueLoops, type LoopKind, type OpenLoop } from './open-loops.ts';
-import { DESKTOP_PREFIX } from '../memory/owner-day-view.ts';
+import { DESKTOP_PREFIX, desktopPromiseChoices } from '../memory/owner-day-view.ts';
 import type { OpenAIMessage } from '../language/prompt.ts';
 import { formatDate, herDay, type Schedule } from './schedule.ts';
 import type { MacroNames } from '.././st/macros.ts';
@@ -181,9 +181,9 @@ export function parsePromises(text: string, evidence?: readonly StoredMessage[])
         if (!evidence) return typeof item === 'string' ? [item] : [];
         if (!item || typeof item !== 'object' || typeof item.id !== 'string') return [];
         const message = source(item);
-        if (!message) return [];
+        if (!message || message.recalled) return [];
         if (message.content.startsWith(DESKTOP_PREFIX)
-            && (message.role !== 'assistant' || !message.content.includes('【我改主意了'))) return [];
+            && (message.role !== 'assistant' || !desktopPromiseChoices(message.content).some(match => match[1] === '我改主意了'))) return [];
         return [item.id as string];
     });
     const kinds = new Set<WorldActionKind>(['feed_cat', 'pick_parcel', 'finish_homework', 'family_call', 'receive_money']);
@@ -208,8 +208,8 @@ export function parsePromises(text: string, evidence?: readonly StoredMessage[])
     const add = (Array.isArray(data.add) ? data.add : []).flatMap(item => {
         if (evidence) {
             const message = item && typeof item === 'object' ? source(item) : undefined;
-            if (message?.role !== 'assistant' || message.content.startsWith(DESKTOP_PREFIX)
-                && !message.content.includes('【我答应并记下')) return [];
+            if (message?.role !== 'assistant' || message.recalled || message.content.startsWith(DESKTOP_PREFIX)
+                && !desktopPromiseChoices(message.content).some(match => match[1] === '我答应并记下')) return [];
         }
         const [base] = items([item]);
         if (!base) return [];
@@ -275,7 +275,7 @@ const messagesDigest = (messages: readonly StoredMessage[]) => createHash('sha25
     message.role, message.time, message.content, message.messageId ?? null, message.sourceTime ?? null, message.messageSeq ?? null, message.recalled === true,
 ]))).digest('hex');
 const desktopPromiseEvidence = (episode: Episode) => episode.messages.some(
-    message => message.role === 'assistant' && /^（电脑上）【(?:我答应并记下|我改主意了)[：:]/.test(message.content),
+    message => message.role === 'assistant' && message.content.startsWith(DESKTOP_PREFIX) && desktopPromiseChoices(message.content).length > 0,
 ) ? episode.messages : undefined;
 
 function promiseTranscript(episode: Episode, names: MacroNames, evidence?: readonly StoredMessage[]): string {

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import type { Contact } from '../src/platform/config.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
+import { desktopPromiseTurns, ownerDayHistory, type OwnerDayTurn } from '../src/memory/owner-day-view.ts';
 import { ModelUnreachable } from '../src/language/llm.ts';
 import type { OpenAIMessage } from '../src/language/prompt.ts';
 import {
@@ -28,13 +29,16 @@ describe('她答应的事：抽取（ADR 0018 决策 2）', () => {
             msg('2026-10-05T20:01:00', 'user', '（电脑上）你不是答应了吗'),
             msg('2026-10-05T20:02:00', 'assistant', '（电脑上）【我答应并记下：下次给你讲结局】'),
             msg('2026-10-05T20:03:00', 'assistant', '（电脑上）【我改主意了：原来答应讲另一篇，还是不讲了】'),
+            msg('2026-10-05T20:04:00', 'assistant', '（电脑上）【我答应并记下：没写完'),
+            msg('2026-10-05T20:05:00', 'assistant', '（电脑上）【我改主意了： 】'),
         ];
         const result = parsePromises(JSON.stringify({
             add: [
                 { what: '猜的', evidence: 1 }, { what: '没证据' },
                 { what: '给他讲结局', evidence: 2 }, { what: '把改口当新约定', evidence: 3 },
+                { what: '截断的记账', evidence: 4 },
             ],
-            resolved: ['p-1', { id: 'p-2', evidence: 1 }, { id: 'p-3', evidence: 2 }, { id: 'p-4', evidence: 3 }],
+            resolved: ['p-1', { id: 'p-2', evidence: 1 }, { id: 'p-3', evidence: 2 }, { id: 'p-4', evidence: 3 }, { id: 'p-5', evidence: 5 }],
         }), evidence);
         assert.deepEqual(result.add, [{ what: '给他讲结局' }]);
         assert.deepEqual(result.resolved, ['p-4']);
@@ -160,6 +164,54 @@ describe('她答应的事：什么时候提醒、什么时候忘（ADR 0018 决�
 describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假模型）', () => {
     const amin: Contact = { qq: 1, name: '阿明', tier: 'boyfriend' };
     const schedule = { sleep: '02:00' } as Schedule;
+
+    test('桌面随口应声不入账，亲手记的只入一次，改口按原承诺 ID 结算', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'qqbot-desktop-promises-'));
+        const desktop: OwnerDayTurn[] = [];
+        const addTurn = (hour: string, assistant: string, user = '那件事呢') => {
+            const end = at(`2026-10-08T${hour}:01:00`).getTime();
+            desktop.push({ at: end, userAt: end - 60_000, user, assistant });
+        };
+        const ledger = (): HerPromise[] => (JSON.parse(readFileSync(join(dir, '1-boyfriend.json'), 'utf8')) as { promises: HerPromise[] }).promises;
+        let originalId: string | undefined;
+        let clock = at('2026-10-08T11:00:00').getTime();
+        let calls = 0;
+        const keeper = promiseKeeper({
+            contacts: [amin], dir, now: () => clock, names: () => names, log: () => undefined,
+            history: ownerDayHistory({ load: () => [] }, { ownerQq: amin.qq, desktop: () => desktopPromiseTurns(desktop) }),
+            extract: async messages => {
+                calls++;
+                if (calls === 1) return JSON.stringify({ add: [{ what: '挑两首歌', evidence: 2 }] });
+                if (calls === 2) return JSON.stringify({ add: [{ what: '看表格', evidence: 2 }] });
+                assert.match(messages[1]!.content, new RegExp(`${originalId}：下次 挑两首歌`));
+                assert.match(messages[1]!.content, /证据 2.*我改主意了/);
+                return JSON.stringify({ resolved: [{ id: originalId, evidence: 2 }] });
+            },
+        });
+        try {
+            addTurn('08', '嗯嗯，到时候看看', '【我答应并记下：你帮我挑歌】');
+            addTurn('09', '【我答应并记下：');
+            await keeper.sync();
+            assert.equal(calls, 0);
+            addTurn('10', '好。\n【我答应并记下：下次帮你挑两首歌】');
+            await keeper.sync();
+            await keeper.sync();
+            assert.equal(calls, 1);
+            assert.deepEqual(ledger().map(row => row.what), ['挑两首歌']);
+            originalId = ledger()[0]!.id;
+
+            addTurn('12', '【我答应并记下：下次帮你看表格】');
+            addTurn('14', '【我改主意了：之前答应挑两首歌，那件事我不做了】');
+            clock = at('2026-10-08T16:00:00').getTime();
+            await keeper.sync();
+            await keeper.sync();
+            assert.equal(calls, 3);
+            assert.deepEqual(ledger().map(row => row.what), ['看表格']);
+        } finally {
+            await keeper.stop();
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
 
     function setup(history: StoredMessage[], replies: (string | Error)[], now: Date) {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-promises-'));
