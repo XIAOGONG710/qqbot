@@ -129,8 +129,12 @@ interface PhotoIndex {
 export type PublicPhoto = Omit<PhotoEntry, 'file'> & { file: string };
 
 export interface PhotoShelf {
-    /** 作者加一张（CLI 用）：复制进货架、按内容哈希定编号；同一张重复加返回已有的 */
-    add(source: string, kind: PhotoKind, caption: string, dish?: string): PhotoEntry;
+    /**
+     * 加一张：复制进货架、按内容哈希定编号；同一张重复加返回已有的。
+     * 给路径（CLI、模拟器）就读那个文件；给已经核对过的字节（AI 照片草稿审核通过，ADR 0239）就用这份字节、不再按路径重读——
+     * 两次读之间文件被换，货架收进的就是另一张图（2026-11-26 AI 照片审查 U2）
+     */
+    add(source: string | PhotoBytes, kind: PhotoKind, caption: string, dish?: string): PhotoEntry;
     remove(id: string): boolean;
     list(kind?: PhotoKind, dish?: string): PhotoEntry[];
     /** 这一类有没有可发的；food 要给菜名（只算这道菜的，没给就是没有） */
@@ -148,6 +152,9 @@ export interface PhotoShelf {
     /** 从网络来源找新的（没配来源就什么都不做）；同一时刻只跑一个。返回 retry = 这一轮被限流 / 断网打断了，调用方过一会儿再来 */
     discover(): Promise<'done' | 'retry'>;
 }
+
+/** 已经核对过的一张图：字节、扩展名（带点，如 .jpg）、日志里用的名字 */
+export interface PhotoBytes { bytes: Uint8Array; extension: string; label: string }
 
 export interface PhotoShelfOptions {
     dir: string;
@@ -374,13 +381,16 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
             if (!PHOTO_KINDS.includes(kind)) throw new Error(`种类只能是 ${PHOTO_KINDS.join(' / ')}`);
             const text = caption.trim();
             if (!text) throw new Error('要写一句照片里是什么');
-            const extension = extname(source).toLowerCase();
+            const extension = (typeof source === 'string' ? extname(source) : source.extension).toLowerCase();
             if (!ALLOWED_EXT.has(extension)) throw new Error(`只收 ${[...ALLOWED_EXT].join(' / ')}`);
-            const stat = statSync(source);
-            if (!stat.isFile() || stat.size === 0) throw new Error('照片应为非空普通文件');
-            const size = stat.size;
-            if (size > PHOTO_MAX_BYTES) throw new Error(`文件太大（${Math.round(size / 1024 / 1024)} MB，上限 ${PHOTO_MAX_BYTES / 1024 / 1024} MB）`);
-            const bytes = readFileSync(source);
+            let bytes: Uint8Array;
+            if (typeof source === 'string') {
+                const stat = statSync(source);
+                if (!stat.isFile() || stat.size === 0) throw new Error('照片应为非空普通文件');
+                const size = stat.size;
+                if (size > PHOTO_MAX_BYTES) throw new Error(`文件太大（${Math.round(size / 1024 / 1024)} MB，上限 ${PHOTO_MAX_BYTES / 1024 / 1024} MB）`);
+                bytes = readFileSync(source);
+            } else bytes = source.bytes;
             if (!bytes.length || bytes.length > PHOTO_MAX_BYTES) throw new Error('照片文件大小超出范围');
             const id = createHash('sha256').update(bytes).digest('hex').slice(0, 12);
             const file = `${id}${extension === '.jpeg' ? '.jpg' : extension}`;
@@ -394,7 +404,7 @@ export function photoShelf(options: PhotoShelfOptions): PhotoShelf {
                 storeImage(file, bytes);
                 return { next: { ...fresh, entries: [...fresh.entries, entry] }, value: { entry: structuredClone(entry), added: true } };
             });
-            if (result.added) options.log(`照片货架：加了一张 ${kind}（${id}；来自 ${basename(source)}）`);
+            if (result.added) options.log(`照片货架：加了一张 ${kind}（${id}；来自 ${typeof source === 'string' ? basename(source) : source.label}）`);
             return result.entry;
         },
         remove(id) {

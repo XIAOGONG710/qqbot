@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { aiPhotoDraftFreshness, aiPhotoDraftStore, buildAiPhotoPrompt, generateAiPhoto, type AiPhotoContext } from '../src/vision/ai-photo-drafts.ts';
+import { photoShelf } from '../src/vision/photos.ts';
 
 const context = (patch: Partial<AiPhotoContext> = {}): AiPhotoContext => ({
     kind: 'cat', eventKey: 'cat:2026-11-04:evening', subject: '团子饼蹲在自行车棚旁边',
@@ -69,7 +70,7 @@ describe('AI 生活照草稿（ADR 0239）', () => {
         assert.equal(store.status().pending, 1);
         assert.deepEqual(store.preview(first.id), { bytes: jpeg(7), type: 'image/jpeg' });
 
-        let imported: { source: string; kind: string; caption: string; dish?: string } | undefined;
+        let imported: { source: unknown; kind: string; caption: string; dish?: string } | undefined;
         const approved = store.approve(first.id, {
             add(source, kind, caption, dish) { imported = { source, kind, caption, ...(dish ? { dish } : {}) }; return { id: 'abc123abc123' } as never; },
         });
@@ -77,7 +78,11 @@ describe('AI 生活照草稿（ADR 0239）', () => {
         assert.equal(approved.shelfId, 'abc123abc123');
         assert.equal(imported?.kind, 'cat');
         assert.equal(imported?.caption, context().caption);
-        assert.deepEqual(new Uint8Array(readFileSync(imported!.source)), jpeg(7));
+        // 交给货架的是核对过的那份字节，不是路径（U2：两次读之间文件被换）
+        const given = imported!.source as { bytes: Uint8Array; extension: string; label: string };
+        assert.deepEqual(given.bytes, jpeg(7));
+        assert.equal(given.extension, '.jpg');
+        assert.equal(given.label, `${first.id}.jpg`);
         assert.throws(() => store.reject(first.id), /已通过/);
 
         const reopened = aiPhotoDraftStore({ dir, now: clock });
@@ -130,6 +135,25 @@ describe('AI 生活照草稿（ADR 0239）', () => {
         assert.deepEqual(aiPhotoDraftFreshness({ kind: 'view', at: 'bad', expiresAt: 'also-bad' }, new Date('bad')), {
             fresh: false, expiresAt: '', reason: '这张照片的时效信息无效，不能作为当前照片使用',
         });
+    });
+
+    test('核对之后、货架收进之前草稿文件被换：货架收的仍是核对过的那张（2026-11-26 AI 照片审查 U2）', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-swap-'));
+        try {
+            const store = aiPhotoDraftStore({ dir, now: () => new Date('2026-11-04T18:30:00+08:00') });
+            const draft = await store.generate(context({ eventKey: 'swap' }), async () => ({ bytes: jpeg(20), model: 'm' }));
+            const real = photoShelf({ dir: join(dir, 'shelf'), log: () => {} });
+            // 货架被调用的那一刻（草稿已核对完）把草稿文件换成另一张图：原来货架按路径重读，收进的就是换上去的
+            const approved = store.approve(draft.id, {
+                add(source, kind, caption, dish) {
+                    writeFileSync(join(dir, 'files', draft.file), jpeg(21));
+                    return real.add(source, kind, caption, dish);
+                },
+            });
+            assert.equal(approved.shelfId, draft.id, '货架编号按内容哈希：和草稿编号一致，说明收的是核对过的那张');
+            const stored = real.list()[0]!;
+            assert.deepEqual(new Uint8Array(readFileSync(join(dir, 'shelf', 'files', stored.file))), jpeg(20));
+        } finally { rmSync(dir, { recursive: true, force: true }); }
     });
 
     test('审核前复核文件编号、内容和普通文件类型，拒绝替换图与目录', async () => {

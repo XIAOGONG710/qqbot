@@ -272,7 +272,8 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
         if (createHash('sha256').update(bytes).digest('hex').slice(0, 12) !== entry.id) throw new Error('草稿图片内容与编号不一致');
         const expected = extension(bytes);
         if (!entry.file.endsWith(`.${expected}`)) throw new Error('草稿图片格式与文件名不一致');
-        return source;
+        // 交出去的是核对过的这一份字节，调用方别再按路径重读（两次读之间文件可能被换，2026-11-26 AI 照片审查 U2）
+        return { bytes: new Uint8Array(bytes), extension: `.${expected}` };
     };
     const persist = () => { mkdirSync(options.dir, { recursive: true }); writeJsonAtomic(indexFile, index); };
     const find = (id: string) => index.entries.find(entry => entry.id === id.toLowerCase());
@@ -325,7 +326,7 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             refresh();
             const entry = find(id);
             if (!entry) throw new Error('找不到这张草稿');
-            const bytes = new Uint8Array(readFileSync(checkedSource(entry)));
+            const { bytes } = checkedSource(entry);
             const type = detectImageType(bytes);
             if (!type || type === 'image/gif') throw new Error('草稿图片格式不受支持');
             return { bytes, type };
@@ -338,8 +339,8 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             if (entry.status === 'approved') return { ...entry };
             const freshness = aiPhotoDraftFreshness(entry, now());
             if (!freshness.fresh) throw new Error(freshness.reason);
-            const source = checkedSource(entry);
-            const added = shelf.add(source, shelfKind[entry.kind], entry.caption, entry.dish);
+            const checked = checkedSource(entry);
+            const added = shelf.add({ ...checked, label: entry.file }, shelfKind[entry.kind], entry.caption, entry.dish);
             const approved = { ...entry, status: 'approved' as const, reviewedAt: now().toISOString(), shelfId: added.id };
             options.log?.(`AI 照片草稿：审核通过 ${entry.id}，进入照片货架 ${added.id}`);
             return { ...update(approved) };
