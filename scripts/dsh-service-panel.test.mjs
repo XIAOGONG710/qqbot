@@ -205,9 +205,10 @@ test('the DSH chat form commits only after the operator accepts the server previ
     const text = '【本人手动代发】' + draft;
     const source = readFileSync(new URL('../dsh-plugins/dsh-qqbot-services/client.js', import.meta.url), 'utf8');
     let states;
+    const stateUpdates = [];
     const React = {
         createElement: (type, props, ...children) => ({ type, props, children }),
-        useState: () => [states.shift(), () => {}],
+        useState: () => [states.shift(), value => stateUpdates.push(value)],
         useRef: current => ({ current }),
         useEffect() {},
         useId: () => 'test',
@@ -243,6 +244,7 @@ test('the DSH chat form commits only after the operator accepts the server previ
     assert.equal(form.className, 'qqb-composer');
     await form.onSubmit({ preventDefault() {} });
     assert.deepEqual(requests.map(([operation]) => operation), ['prepare']);
+    assert.deepEqual(stateUpdates, [true, '', '已取消发送，草稿已保留。', false]);
     accepted = true;
     await form.onSubmit({ preventDefault() {} });
     assert.match(previews.at(-1), /测试账号（100）.*测试收件人（200）/);

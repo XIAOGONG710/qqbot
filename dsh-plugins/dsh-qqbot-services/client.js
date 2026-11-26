@@ -298,7 +298,10 @@ window.__ModuleLoader__.load({
             headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
           })
           const { preview, confirmation } = await post('prepare', payload)
-          if (!window.confirm(`从 ${preview.account.name}（${preview.account.id}）发送给 ${preview.recipient.name}（${preview.recipient.target}）？\n\n${preview.text}`)) return
+          if (!window.confirm(`从 ${preview.account.name}（${preview.account.id}）发送给 ${preview.recipient.name}（${preview.recipient.target}）？\n\n${preview.text}`)) {
+            setNotice('已取消发送，草稿已保留。')
+            return
+          }
           attempted = true
           await post('send', { ...payload, confirmation })
           setDraft('')
