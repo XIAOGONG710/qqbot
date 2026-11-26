@@ -505,12 +505,10 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
 
             const ownerRecall = await memory.recallPull(owner, '小林周末去哪', new Date(now), people);
             assert.match(ownerRecall ?? '', /和甲同学的私聊.*甲同学.*我和小林周末去图书馆/);
-            assert.match(ownerRecall ?? '', /和乙同学聊的.*乙同学.*我和小林周末去图书馆/);
-            assert.match(ownerRecall ?? '', /和丙同学聊的.*丙同学.*小林说周末要去博物馆/);
+            assert.doesNotMatch(ownerRecall ?? '', /乙同学|丙同学/);
             const thirdRecall = await memory.recallPull(third, '小林周末去哪', new Date(now), people);
             assert.match(thirdRecall ?? '', /和丙同学的私聊.*丙同学.*小林说周末要去博物馆/);
-            assert.match(thirdRecall ?? '', /和乙同学聊的.*乙同学.*我和小林周末去图书馆/);
-            assert.doesNotMatch(thirdRecall ?? '', /甲同学/);
+            assert.doesNotMatch(thirdRecall ?? '', /甲同学|乙同学/);
         } finally { cleanup(); }
     });
 
@@ -611,7 +609,10 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
         const own = `${hashOf(probe.memory, A)}:ep-1`;
         const other = (i: number): RecallResult => ({ id: `b${i}`, text: `鸽鸽说的第${i}件事`, document_id: `${hashOf(probe.memory, B)}:ep-${i}` });
         probe.cleanup();
-        const { memory, calls, cleanup } = setupCommon({ recall: [{ id: 'a', text: '阿明自己说的', document_id: own }, ...Array.from({ length: SHARED_RECALLED + 2 }, (_, i) => other(i))] });
+        const diaries = Array.from({ length: SHARED_RECALLED + 2 }, (_, i) => ({
+            id: `d${i}`, text: `第${i}件日记事实`, tags: ['qq-public'], document_id: `diary:2026-10-${String(i + 1).padStart(2, '0')}`,
+        }));
+        const { memory, calls, cleanup } = setupCommon({ recall: [{ id: 'a', text: '阿明自己说的', document_id: own }, other(0), ...diaries] });
         try {
             const chat = [{ role: 'user' as const, content: '鸽鸽最近忙啥', time: new Date(now).toISOString() }];
             assert.equal(await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [{ ...A, name: '阿明' }, { ...B, name: '鸽鸽' }]), undefined);
@@ -621,7 +622,8 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             const text = await memory.recallCommon({ ...A, name: '阿明' }, chat, new Date(now), [{ ...A, name: '阿明' }, { ...B, name: '鸽鸽' }]);
             assert.match(text!, /^\[你和名单里别的人聊天时说过、听过的事（[^\]]*不是和阿明聊的/);
             assert.doesNotMatch(text!, /阿明自己说的/);
-            assert.match(text!, /\n- （可明说·和鸽鸽聊的）：鸽鸽说的第0件事\n/, '标出出处和披露上限（ADR 0020）');
+            assert.doesNotMatch(text!, /鸽鸽说的/);
+            assert.match(text!, /\n- （可明说·你的日记）：第0件日记事实\n/);
             assert.equal(text!.split('\n').length - 1, SHARED_RECALLED);
             assert.deepEqual(calls.recall[0]!.types, ['world', 'experience']);
             assert.equal(calls.recall[0]!.prefer_observations, false);
@@ -644,7 +646,7 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
         const privateFact: RecallResult = { id: 'private-owner', text: '主人私聊里的合成隐私', document_id: `${privateHash}:ep-${T0}` };
         const historicalPrivateFact: RecallResult = { id: 'private-owner-old-tier', text: '主人旧档位里的合成隐私', document_id: `${createHashForTest(A.qq, 'classmate')}:ep-${T0 - 1}` };
         const otherFact: RecallResult = { id: 'other-contact', text: '同学说过的合成事实', document_id: `${createHashForTest(5, 'classmate')}:ep-${T0}` };
-        const diary: RecallResult = { id: 'diary', text: '她自己的合成日记事实', document_id: 'diary:2026-10-02' };
+        const diary: RecallResult = { id: 'diary', text: '她自己的合成日记事实', tags: ['qq-public'], document_id: 'diary:2026-10-02' };
         const unknownFact: RecallResult = { id: 'unknown-source', text: '来源不明的合成内容', document_id: 'legacy:ep-unknown' };
         const { memory, calls, cleanup } = setupCommon({
             recall: bank => bank === 'linmengyao-common' ? [privateFact, historicalPrivateFact, otherFact, diary, unknownFact]
@@ -657,7 +659,7 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             const chat = [{ role: 'user' as const, content: '最近有什么事', time: new Date(now).toISOString() }];
             const common = await memory.recallCommon(C, chat, new Date(now), [ownerNamed, { qq: 5, tier: 'classmate', name: '小李' }, C]);
             assert.doesNotMatch(common ?? '', /主人私聊里的合成隐私|主人旧档位里的合成隐私|来源不明的合成内容/);
-            assert.match(common ?? '', /同学说过的合成事实/);
+            assert.doesNotMatch(common ?? '', /同学说过的合成事实/);
             assert.match(common ?? '', /她自己的合成日记事实/);
 
             const beforePrivateRecall = calls.banks.length;
@@ -680,7 +682,7 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
         }
     });
 
-    test('主动查记忆显示来源和日期；主人能看到来源不明，其他联系人仍被私聊隔离', async () => {
+    test('主动查记忆显示来源和日期，来源不明和别人的私聊均不进提示词', async () => {
         const ownerNamed = { ...A, name: '阿明' };
         const listener = { ...B, name: '小李' };
         const other = { qq: 6, tier: 'classmate', name: '小赵' };
@@ -691,7 +693,7 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             if (bank === 'linmengyao-common') return [
                 { id: 'owner-common', text: '主人私聊中的记录', document_id: `${ownerHash}:ep-${T0}`, occurred_start: '2026-10-02T00:00:00.000Z' },
                 { id: 'other-common', text: '小赵曾说的记录', document_id: `${otherHash}:ep-${T0 + 1}`, occurred_start: '2026-10-03T00:00:00.000Z' },
-                { id: 'diary-common', text: '她日记中的记录', document_id: 'diary:2026-10-04', occurred_start: '2026-10-04T00:00:00.000Z' },
+                { id: 'diary-common', text: '她日记中的记录', tags: ['qq-public'], document_id: 'diary:2026-10-04', occurred_start: '2026-10-04T00:00:00.000Z' },
                 { id: 'unknown-common', text: '来源不明的旧记录', document_id: 'legacy:old-entry' },
             ];
             if (bank === `linmengyao-${ownerHash}`) return [{ id: 'owner-own', text: '阿明私聊里的记录', document_id: `ep-${T0}`, occurred_start: '2026-10-02T00:00:00.000Z' }];
@@ -704,7 +706,7 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             const people = [ownerNamed, listener, other];
             const forListener = await memory.recallPull(listener, '最近的记录', new Date(now), people);
             assert.match(forListener ?? '', /和小李的私聊/);
-            assert.match(forListener ?? '', /只能含糊·和小赵聊的/);
+            assert.doesNotMatch(forListener ?? '', /小赵曾说的记录/);
             assert.match(forListener ?? '', /只能含糊·你的日记/);
             assert.match(forListener ?? '', /10月3日|10月4日|10月5日/);
             assert.doesNotMatch(forListener ?? '', /<<记忆引用:/, '其他联系人看不到主人私有的待核对引用');
@@ -713,9 +715,8 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             const forOwner = await memory.recallPull(ownerNamed, '最近的记录', new Date(now), people);
             assert.match(forOwner ?? '', /可明说·和阿明聊的/);
             assert.match(forOwner ?? '', /DSH 工作记忆/);
-            assert.match(forOwner ?? '', /\n- （来源不明）：来源不明的旧记录/);
+            assert.doesNotMatch(forOwner ?? '', /来源不明的旧记录|小赵曾说的记录/);
             assert.match(forOwner ?? '', /<<记忆引用:[a-f0-9]{24}>>/);
-            assert.match(forOwner ?? '', /\n- （来源不明）：来源不明的旧记录/);
             assert.match(forOwner ?? '', /来源不明.*不代表内容是假的/);
         } finally {
             cleanup();
@@ -723,12 +724,10 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
     });
 
     test('公共记忆的线索是人和事时：带着它的排在前面（ADR 0018 第一批，说起杭州）', async () => {
-        const probe = setupCommon();
-        const gegeDoc = `${hashOf(probe.memory, B)}:ep-9`;
-        probe.cleanup();
-        const diaries = Array.from({ length: SHARED_RECALLED }, (_, i): RecallResult => ({ id: `d${i}`, text: `第${i}篇日记里的事`, document_id: `diary:2026-10-0${i + 1}` }));
+        const gegeDoc = 'diary:2026-10-13';
+        const diaries = Array.from({ length: SHARED_RECALLED }, (_, i): RecallResult => ({ id: `d${i}`, text: `第${i}篇日记里的事`, tags: ['qq-public'], document_id: `diary:2026-10-0${i + 1}` }));
         const { memory, cleanup } = setupCommon({
-            recall: [...diaries, { id: 'h', text: '鸽鸽 10月13日去出差装设备', document_id: gegeDoc, entities: ['鸽鸽', '杭州'] }],
+            recall: [...diaries, { id: 'h', text: '鸽鸽 10月13日去出差装设备', tags: ['qq-public'], document_id: gegeDoc, entities: ['鸽鸽', '杭州'] }],
         });
         try {
             await memory.sync(B, gege, history);
@@ -760,10 +759,7 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             const text = await memory.recallCommon(listener, [{ role: 'user', content: '你听说什么了' }], new Date(now), [
                 { ...A, name: '宝宝' }, listener, known,
             ]);
-            assert.match(text!, /（不能说·私下聊的）：亲密来源的事/);
-            assert.doesNotMatch(text!, /宝宝聊的/);
-            assert.match(text!, /（只能含糊·和小李聊的）：普通来源的事/);
-            assert.match(text!, /（不能说·来源不明）：来源对不上的事/);
+            assert.equal(text, undefined);
         } finally {
             cleanup();
         }
@@ -791,23 +787,17 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             const toHim = await memory.recallCommon({ ...A, name: '宝宝' }, [{ role: 'user', content: '最近怎么样' }], new Date(now), people);
             assert.match(toHim!, /（可明说·你自己记下的）：宝宝那天陪我修片/);
             assert.match(toHim!, /（可明说·你自己记下的）：宝宝怕黑/);
-            assert.match(toHim!, /（可明说·和同学聊的）：同学借了我的笔记/);
-            assert.match(toHim!, /（可明说·和小李聊的）：小李想换工作/);
-            assert.match(toHim!, /（不能说·来源不明）：名单里没有的人写的/);
-            assert.match(toHim!, /（不能说·来源不明）：长得像但不是的/);
+            assert.doesNotMatch(toHim!, /同学借了我的笔记|小李想换工作|名单里没有的人写的|长得像但不是的/);
             // 同学档听：男朋友聊天里写的封口且不暴露是谁；普通来源的含糊；写它的人自己（同学）的聊天里可明说
             const toMate = await memory.recallCommon({ ...B, name: '同学' }, [{ role: 'user', content: '最近怎么样' }], new Date(now), people);
-            assert.match(toMate!, /（不能说·私下聊的）：宝宝那天陪我修片/);
-            assert.match(toMate!, /（不能说·私下聊的）：宝宝怕黑/);
-            assert.doesNotMatch(toMate!, /宝宝聊的/);
+            assert.doesNotMatch(toMate!, /宝宝那天陪我修片|宝宝怕黑|小李想换工作/);
             assert.match(toMate!, /（可明说·你自己记下的）：同学借了我的笔记/);
-            assert.match(toMate!, /（只能含糊·和小李聊的）：小李想换工作/);
         } finally {
             cleanup();
         }
     });
 
-    test('今天和别人聊过的：只取今天产生的其他联系人片段、最多三条，并带披露标签', async () => {
+    test('今天和别人聊过的：没有跨联系人授权时不再查询私聊副本', async () => {
         const probe = setupCommon();
         const self = hashOf(probe.memory, A);
         const other = hashOf(probe.memory, B);
@@ -820,7 +810,7 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             ...Array.from({ length: TODAY_OTHERS + 1 }, (_, i): RecallResult => ({
                 id: `today-${i}`, text: `鸽鸽今天说的第${i}件`, document_id: `${other}:ep-${4 + i}`, mentioned_at: at(`2026-10-02T1${i}:00:00`),
             })),
-            { id: 'diary', text: '日记里的事', document_id: 'diary:2026-10-02', mentioned_at: at('2026-10-02T12:00:00') },
+            { id: 'diary', text: '日记里的事', tags: ['qq-public'], document_id: 'diary:2026-10-02', mentioned_at: at('2026-10-02T12:00:00') },
         ];
         const { memory, calls, cleanup } = setupCommon({ recall: results });
         try {
@@ -828,14 +818,8 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
             const listener = { ...A, name: '阿明' };
             const people = [listener, { ...B, name: '鸽鸽' }];
             const text = await memory.othersToday(listener, new Date(at('2026-10-02T20:00:00')), people, new Date('2026-10-02T02:00:00+08:00'));
-            assert.match(text!, /^\[你今天和别人聊过的事/);
-            assert.doesNotMatch(text!, /阿明自己|昨天|日记/);
-            assert.match(text!, /鸽鸽今天说下周要去杭州/, '按说起时间算今天，未来计划也能想起');
-            assert.match(text!, /（可明说·和鸽鸽聊的，打算 10月12日）/);
-            assert.equal(text!.split('\n').length - 1, TODAY_OTHERS);
-            assert.deepEqual(calls.recall.at(-1)!.types, ['world', 'experience']);
-            assert.equal(calls.recall.at(-1)!.prefer_observations, false);
-            assert.deepEqual(calls.recall.at(-1)!.temporal_window, { start: '2026-10-02T02:00:00+08:00', end: '2026-10-02T20:01:00+08:00' });
+            assert.equal(text, undefined);
+            assert.equal(calls.recall.length, 0);
         } finally {
             cleanup();
         }
@@ -845,10 +829,10 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
         const at = (iso: string) => new Date(`${iso}+08:00`).toISOString();
         const { memory, calls, cleanup } = setupCommon({
             recall: [
-                { id: '1', text: '10-04 的日记', document_id: 'diary:2026-10-04', occurred_start: at('2026-10-04T22:00:00') },
-                { id: '2', text: '10-05 中午吃了麻辣烫', document_id: 'diary:2026-10-05', occurred_start: at('2026-10-05T12:00:00') },
-                { id: '3', text: '10-05 晚上说的', document_id: 'x:ep-1', mentioned_at: at('2026-10-05T23:59:00') },
-                { id: '4', text: '没有时间的', document_id: 'x:ep-2' },
+                { id: '1', text: '10-04 的日记', tags: ['qq-public'], document_id: 'diary:2026-10-04', occurred_start: at('2026-10-04T22:00:00') },
+                { id: '2', text: '10-05 中午吃了麻辣烫', tags: ['qq-public'], document_id: 'diary:2026-10-05', occurred_start: at('2026-10-05T12:00:00') },
+                { id: '3', text: '10-05 晚上说的', tags: ['qq-public'], document_id: 'diary:2026-10-06', mentioned_at: at('2026-10-05T23:59:00') },
+                { id: '4', text: '没有时间的', tags: ['qq-public'], document_id: 'diary:2026-10-06' },
             ],
         });
         try {
@@ -869,12 +853,12 @@ describe('长期记忆：公共记忆库、提起别人时查他的 bank（ADR 0
 
     test('问某一天、那天正好是假期最后一天：那天的日记排前面，总结只留那天发生的（ADR 0018 第二批）', async () => {
         const at = (iso: string) => new Date(`${iso}+08:00`).toISOString();
-        const summary = (i: number, day: string): RecallResult => ({ id: `s${i}`, text: `总结里的第${i}件`, document_id: 'phase:国庆节:2026-10-07', occurred_start: at(`${day}T12:00:00`) });
+        const summary = (i: number, day: string): RecallResult => ({ id: `s${i}`, text: `总结里的第${i}件`, tags: ['qq-public'], document_id: 'phase:国庆节:2026-10-07', occurred_start: at(`${day}T12:00:00`) });
         const { memory, cleanup } = setupCommon({
             recall: [
                 ...Array.from({ length: SHARED_RECALLED }, (_, i) => summary(i, '2026-10-01')),
                 summary(9, '2026-10-07'),
-                { id: 'd', text: '和室友去后街吃了麻辣烫', document_id: 'diary:2026-10-07', occurred_start: at('2026-10-07T12:00:00') },
+                { id: 'd', text: '和室友去后街吃了麻辣烫', tags: ['qq-public'], document_id: 'diary:2026-10-07', occurred_start: at('2026-10-07T12:00:00') },
             ],
         });
         try {
@@ -910,7 +894,7 @@ describe('长期记忆：召回的写法（ADR 0017）', () => {
         const text = formatRecalled([
             { id: '1', text: '鸽鸽下周要去杭州出差装设备', type: 'world', occurred_start: '2026-10-12T09:00:00+08:00', mentioned_at: '2026-10-05T22:05:00+08:00', document_id: 'h:ep-1' },
             { id: '2', text: '鸽鸽在机房值夜班', type: 'world', occurred_start: '2026-10-05T22:00:00+08:00', document_id: 'h:ep-1' },
-            { id: '3', text: '没说起日期的计划', type: 'world', occurred_start: '2026-10-20T09:00:00+08:00', document_id: 'diary:2026-10-05' },
+            { id: '3', text: '没说起日期的计划', type: 'world', occurred_start: '2026-10-20T09:00:00+08:00', tags: ['qq-public'], document_id: 'diary:2026-10-05' },
         ], { now, source: r => (r.document_id?.startsWith('diary:') ? '你的日记' : '和鸽鸽聊的') });
         assert.equal(text!.split('\n').slice(1).join('\n'), [
             '- 10月5日（和鸽鸽聊的，打算 10月12日）：鸽鸽下周要去杭州出差装设备',
@@ -1145,10 +1129,10 @@ describe('长期记忆：问到某段时间（ADR 0018 决策 3）', () => {
         const now = Date.parse('2026-10-14T21:00:00+08:00');
         const { api, calls } = fakeApi({
             recall: [
-                { id: '1', text: '林梦瑶 10月3日去拍了银杏', document_id: 'diary:2026-10-03', occurred_start: at('2026-10-03T15:00:00') },
-                { id: '2', text: '林梦瑶国庆一个人在学校，挺自在', document_id: 'phase:国庆节:2026-10-07', occurred_start: at('2026-09-30T12:00:00') },
-                { id: '3', text: '林梦瑶这周追完了一部剧', document_id: 'week:2026-09-28', occurred_start: at('2026-10-04T22:00:00') },
-                { id: '4', text: '林梦瑶 10月9日上了机房课', document_id: 'diary:2026-10-09', occurred_start: at('2026-10-09T09:00:00') },
+                { id: '1', text: '林梦瑶 10月3日去拍了银杏', tags: ['qq-public'], document_id: 'diary:2026-10-03', occurred_start: at('2026-10-03T15:00:00') },
+                { id: '2', text: '林梦瑶国庆一个人在学校，挺自在', tags: ['qq-public'], document_id: 'phase:国庆节:2026-10-07', occurred_start: at('2026-09-30T12:00:00') },
+                { id: '3', text: '林梦瑶这周追完了一部剧', tags: ['qq-public'], document_id: 'week:2026-09-28', occurred_start: at('2026-10-04T22:00:00') },
+                { id: '4', text: '林梦瑶 10月9日上了机房课', tags: ['qq-public'], document_id: 'diary:2026-10-09', occurred_start: at('2026-10-09T09:00:00') },
             ],
         });
         const memory = new LongTermMemory({ api, dir, bankPrefix: 'linmengyao', recallTimeoutMs: 3000, log: () => {}, now: () => now, common: true });

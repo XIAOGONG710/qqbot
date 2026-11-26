@@ -96,7 +96,7 @@ test('source blocker无QQ归属仍持久生效，dirty时query-only可结旧ACK�
     assert.equal(f.create().derivedAvailable(), false);
     assert.equal(await f.create().readDiary(date), undefined);
     const recalled = await memory.recallCommon({ qq: 10001, tier: 'boyfriend', name: 'Synthetic User' }, [{ role: 'user', content: '合成查询' }], day, []);
-    assert.ok(recalled?.includes('SAFE_RAW_COMMON')); assert.doesNotMatch(recalled!, /BAD_DIARY|BAD_OBSERVATION/);
+    assert.equal(recalled, undefined);
     assert.equal(f.logs.some(line => line.includes(secret)), false);
 }));
 

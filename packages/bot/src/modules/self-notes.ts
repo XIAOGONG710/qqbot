@@ -57,7 +57,7 @@ export interface SelfNotesModuleOptions {
     /** 私密的话写进她自己的地方 */
     keepPrivate: (text: string) => void;
     /** 她在男朋友档聊天里写的日记在本地留一份（配置 diaryInsights 开着才给）；抛错只记日志 */
-    keepDiary?: (text: string) => void;
+    keepDiary?: (text: string, contact: Contact) => void;
     /** 写进长期记忆；没开长期记忆时返回 undefined */
     remember: (contact: Contact, text: string, kind: '记住' | '日记') => Promise<void> | undefined;
     /** 记录她主动查记忆时提出的核对依据；由 App 限定为设备所有者 */
@@ -82,7 +82,7 @@ export function selfNotesModule(options: SelfNotesModuleOptions): Module {
                         continue;
                     }
                     if (note.kind === '日记' && options.keepDiary && contact.tier === 'boyfriend') {
-                        try { options.keepDiary(note.text); } catch (error) { options.log(`[${contact.qq}] 她写的日记没能在本地留一份：${error instanceof Error ? error.message : String(error)}`); }
+                        try { options.keepDiary(note.text, contact); } catch (error) { options.log(`[${contact.qq}] 她写的日记没能在本地留一份：${error instanceof Error ? error.message : String(error)}`); }
                     }
                     void options.remember(contact, note.text, note.kind)
                         ?.catch(error => options.log(`[${contact.qq}] 她自己记的事没写进记忆：${error instanceof Error ? error.message : String(error)}`));

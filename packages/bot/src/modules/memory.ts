@@ -6,14 +6,11 @@
 // - desktop（ADR 0177，配置 crossRecent）：他刚才在 DSH 桌面上和她的对话。
 // - common（ADR 0016 / 0017）：公共记忆——有线索时想起、刚想起的接下来两轮沿用。
 // - recap（ADR 0032）：他问到过去的某一天时，那天她那边的流水账（带那天的日记、那天的感觉）。
-// - today（ADR 0020）：她今天和别人聊过的（亲密联系人开启新一段、或她主动找他，且没有公共记忆时）。
-// - people（ADR 0016 / 0017）：他提到的名单里的人，一人一段（介绍 + 她对那人的印象 + 那人库里的旧事），按提到的先后。
+// - today（ADR 0020）：保留段落槽位，跨联系人私聊召回已停用。
+// - people（ADR 0016 / 0017）：他提到的名单里的人，仍可带配置里的公开介绍。
 // - disclosure（ADR 0020）：上面有 common / today / people 任何一段时，接一段「说别人的事的分寸」（disclosureRules，纯函数，只看听的人的称呼和档位）。
 //
-// 这一模块只放段落，不取：召回都在联系人流水线原来的位置（buildPrompt 开头那一串 await：公共库的实体名、他的 / 公共的 / 提到的人的召回一起等、
-// 工作房、沿用时再想一次、今天和别人聊过的），走和连续性、真人数值、心境同一个退路——
-// - 那几次 await 要等真实的 Hindsight（每次都记「最近一次召回」、可能读状态文件、失败记日志、停下时返回空），夹在真人数值 / 成长层（读带结算的世界账）
-//   和 onHerDay、perceive 之间；挪到 contribute 时，等待的位置、外部调用和日志的先后、停下时哪些已经发生都会变。
+// 召回仍在联系人流水线原位。各分支共用一个等待预算，私人和工作房查询不用等公共实体读取。
 // - 关系概况和印象是「返回缓存、过期了在后台重读」：什么时候调决定了后台那次读在哪一轮之前落地（行为基线的 memory 场景第二轮起才有关系概况，就是这个先后）。
 // - 召回的结果旧逻辑还要用：变淡统计和召回日志、线索（cue）定时间窗和要不要查「今天和别人聊过的」、common 有了就不查 today、要点决定原文放多少（note 那一句）。
 // - 要点（summary）那一下会在后台起一次整理（contextWindow.summarize），也留在原位。
@@ -62,7 +59,18 @@ export function youFor(character: Character, contacts: readonly Contact[]) {
     return (text: string | undefined) => text && secondPerson(text, character.name, women);
 }
 
-/** 召回（decideAt.recall）：照搬迁移前联系人流水线里那一串，await 的位置和日志的先后不变 */
+/** 同一轮的 Hindsight 查询共用一个截止点，已经完成的分支保留。 */
+function withinRecall<T>(signal: AbortSignal | undefined, read: () => Promise<T>): Promise<T | undefined> {
+    if (signal?.aborted) return Promise.resolve(undefined);
+    if (!signal) return read();
+    return new Promise(resolve => {
+        const expired = () => resolve(undefined);
+        signal.addEventListener('abort', expired, { once: true });
+        void Promise.resolve().then(read).then(resolve, expired).finally(() => signal.removeEventListener('abort', expired));
+    });
+}
+
+/** 召回（decideAt.recall）：先并行发起不依赖线索的查询。 */
 async function recall(turn: Turn, ctx: DecideCtx): Promise<void> {
     const options = ctx.recall;
     const character = turn.card;
@@ -74,26 +82,25 @@ async function recall(turn: Turn, ctx: DecideCtx): Promise<void> {
     // 长期记忆只给名单里的人（流水线只在名单里的人才给 memory）；主动找他时没有「他这次说的」：查想知道的事 + 最后两句，带前 3 天到后 2 天的时间窗（ADR 0012 决策 1 第 7 条）
     const memory = options.memory;
     const remembers = memory;
+    const timeout = memory?.recallBudgetMs ?? 3000;
+    const deadline = memory ? AbortSignal.timeout(Number.isSafeInteger(timeout) && timeout > 0 && timeout <= 2_147_483_647 ? timeout : 0) : undefined;
     const recallOptions = initiate
         ? { query: initiateQuery(chat, initiate.topic), window: { start: new Date(time.getTime() - 3 * DAY_MS), end: new Date(time.getTime() + 2 * DAY_MS) } }
         : {};
-    // 她认识的人（ADR 0016）：提到的人查他自己的 bank。公共记忆有线索才查（ADR 0017）：提到了写了介绍的人、公共库里的人和事，
+    // 她认识的人从配置介绍识别。公共记忆有线索才查（ADR 0017）：提到了写了介绍的人、公共库里的人和事，
     // 或者问她过去的事；主动找他时不查（没有「他这次说的」）
     const people = mentionedPeople(chat, contact, contacts);
     const holidays = holidayWords(character.schedule);
-    const entities = remembers && !initiate ? await memory.commonEntities() : [];
-    const cueIn = (said: Readonly<typeof chat>) => {
+    const cueIn = (said: Readonly<typeof chat>, entities: readonly string[]) => {
         const named = mentionedPeople(said, contact, contacts);
         return named.length ? named.map(person => person.name).join('、') : commonCue(said, contact, entities, character.name, holidays);
     };
-    const cue = !remembers || initiate ? undefined : cueIn(chat);
     // 问「今天」「昨天」按她的一天算（ADR 0018 决策 4）；问「上周」「国庆」时是那一周、那个假期（决策 3）。
     // 线索正好是假期的名字（「国庆」也是公共库里的实体）时同样带那个假期的时间窗（第三批：「那国庆呢」想起的是周记）
     // 线索是公共库里的人和事、同时又在问她过去的某天（「周一你那快递拿了没」）时也带那天的时间窗（ADR 0032）
     const windowOf = (said: Readonly<typeof chat>, cue: string | undefined, at: Date) =>
         (cue === ASKS_PAST || (cue !== undefined && (holidays.includes(cue) || asksPast(said, holidays)))
             ? askedWindow(said, at, options.schedule) : undefined);
-    const day = windowOf(chat, cue, time);
     const you = youFor(character, contacts);
     // 记忆会变淡（ADR 0018）：她和名单里的称呼不算「一提就想起」的线索；各几条记下来写日志（0 是他的，1 是公共的，之后是提起的人）
     const ignore = [character.name, contact.name, ...contacts.map(c => c.name)];
@@ -113,31 +120,39 @@ async function recall(turn: Turn, ctx: DecideCtx): Promise<void> {
             return best ? ledgerNote(best) : undefined;
         }
         : undefined;
+    const privateRecall = remembers ? withinRecall(deadline, () => memory.recall(contact, chat, time,
+        { ...recallOptions, ...fade(0), ...(feltForRecall ? { felt: feltForRecall } : {}) })) : undefined;
+    const workRecall = remembers && contact.tier === 'boyfriend'
+        ? withinRecall(deadline, () => memory.recallWork(contact, chat, time)) : undefined;
+    const entitiesTask = remembers && !initiate ? withinRecall(deadline, () => memory.commonEntities()) : undefined;
+    const entities = await entitiesTask ?? [];
+    const cue = !remembers || initiate ? undefined : cueIn(chat, entities);
+    const day = windowOf(chat, cue, time);
     // 她今天跟别人聊过的也是她的生活（ADR 0020）：只在亲密联系人开启新一段对话、或她主动找他时想起。
     // 本轮已有明确公共记忆线索时不另查，避免把同一件事放两遍。
     const todayOthers = remembers && !cue && isClose(contact.tier) && (Boolean(initiate) || startsConversation(chat))
-        ? memory.othersToday(contact, time, contacts, todayStart(options.schedule, time))
+        ? withinRecall(deadline, () => memory.othersToday(contact, time, contacts, todayStart(options.schedule, time)))
         : undefined;
     // 按那一轮他说的话想公共记忆：线索是问她过去的事时不限人和事，提到名单里的人时是这几个人，否则是那个人和事
     const recallCommon = (said: Readonly<typeof chat>, cue: string, at: Date) => {
         const named = mentionedPeople(said, contact, contacts);
-        return memory!.recallCommon(contact, said, at, options.contacts ?? [contact], windowOf(said, cue, at), fade(1),
-            cue === ASKS_PAST ? [] : named.length ? named.map(p => p.name) : [cue]);
+        return withinRecall(deadline, () => memory!.recallCommon(contact, said, at, options.contacts ?? [contact], windowOf(said, cue, at), fade(1),
+            cue === ASKS_PAST ? [] : named.length ? named.map(p => p.name) : [cue]));
     };
     const [recalled, freshCommon, ...aboutPeople] = (await Promise.all([
-        remembers ? memory.recall(contact, chat, time, { ...recallOptions, ...fade(0), ...(feltForRecall ? { felt: feltForRecall } : {}) }) : undefined,
+        privateRecall,
         remembers && cue ? recallCommon(chat, cue, time) : undefined,
         ...people.map((person, i) => (remembers && memory.canRecallContactMemory(person, contact)
-            ? memory.recall(person, chat, time, {
+            ? withinRecall(deadline, () => memory.recall(person, chat, time, {
                 ...recallOptions, ...fade(i + 2), limit: PERSON_RECALLED,
                 header: `[关于${person.name}的旧事（${sourceLabel(person, contact)}；从记忆里想起来的，只作参考）]`,
-            }, contact)
+            }, contact))
             : undefined)),
     ])).map(you);
     const relationship = remembers ? you(memory.relationship(contact)) : undefined;
     if (recalled || faded[0]?.forgotten) log(`召回长期记忆 ${recalled ? countLines(recalled) : 0} 条${fadeNote(faded[0])}`);
     // 工作房每轮都查：他问“今天帮我干了什么”时不一定有公共记忆线索
-    const work = remembers && contact.tier === 'boyfriend' ? you(await memory.recallWork(contact, chat, time)) : undefined;
+    const work = you(await workRecall);
     if (work) log(`召回工作记忆 ${countLines(work)} 条`);
     // 同一个她（ADR 0177）：他刚才在电脑上（DSH）和她说的，QQ 这边接着知道
     const groupQuestion = !initiate && chat.at(-1)?.role === 'user' ? chat.at(-1)?.content : undefined;
@@ -152,7 +167,7 @@ async function recall(turn: Turn, ctx: DecideCtx): Promise<void> {
         log(`公共记忆没想起什么（${commonNote}）`);
     } else if (remembers && !initiate) {
         // 刚才那一轮想起过、还在脑子里：照那一轮的话、那一轮的时刻再想一次，和当时想起的一样
-        const earlier = lingering(chat, time.getTime(), cueIn);
+        const earlier = lingering(chat, time.getTime(), said => cueIn(said, entities));
         common = earlier ? you(await recallCommon(earlier.upTo, earlier.found, new Date(earlier.at))) : undefined;
         if (common) log(`公共记忆沿用刚才想起的 ${countLines(common)} 条`);
     }

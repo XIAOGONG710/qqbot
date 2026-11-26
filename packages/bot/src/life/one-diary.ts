@@ -35,6 +35,11 @@ export function oneDiaryEntries(dirs: DiaryDirs, now: number, windowDays = WINDO
         .map(item => item.entry);
 }
 
+/** 聊天提示词只读桌面手写段落，跳过合并了不同联系人材料的当天成稿。 */
+export function handwrittenDiaryEntries(dirs: DiaryDirs, now: number, windowDays = WINDOW_DAYS): DiaryEntry[] {
+    return oneDiaryEntries(dirs, now, windowDays).filter(entry => entry.source === 'journal');
+}
+
 /** 最近的那一天、排第一的那篇（给 selfThread、首轮铺底）；没有返回 undefined */
 export function latestDiary(entries: readonly DiaryEntry[]): { date: string; text: string } | undefined {
     const last = entries.at(-1);

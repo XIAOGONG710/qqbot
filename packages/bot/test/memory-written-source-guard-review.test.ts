@@ -38,7 +38,7 @@ test('公共读取前同步核验written来源；禁止模型/日记仍保其他
         const owner = f.memory.bankId(B).split('-').at(-1)!;
         f.results([{ id: 'diary', text: marker, type: 'world', document_id: 'diary:2026-11-08' },
             { id: 'safe', text: 'SYNTHETIC_SAFE_QQ_FACT', type: 'experience', document_id: `${owner}:ep-1` }]);
-        const value = await f.memory.recallCommon(A, query, now, [A, B]); assert.match(value!, /SAFE_QQ_FACT/); assert.doesNotMatch(value!, /WRITTEN_SOURCE_PRIVATE/);
+        const value = await f.memory.recallCommon(A, query, now, [A, B]); assert.equal(value, undefined);
     } finally { await f.clean(); }
 });
 
@@ -74,7 +74,7 @@ test('实体请求await后来源变无效，旧结果不能提交或返回', asy
 test('格式化回调才改变来源时，最终出口重核不返回先前日记正文', async () => {
     const f = fixture(); let valid = true, formatted = false; f.register(() => valid);
     try { await f.memory.sync(B, { user: B.name, char: '合成角色' }, [{ role: 'user', content: 'SYNTHETIC_SAFE', time: '2026-11-08T12:00:00+08:00' }]);
-        f.results([{ id: 'diary', text: marker, type: 'world', document_id: 'diary:2026-11-08', mentioned_at: '2026-11-08T12:00:00+08:00' }]);
+        f.results([{ id: 'diary', text: marker, type: 'world', document_id: 'diary:2026-11-08', tags: ['qq-private', 'qq-public'], mentioned_at: '2026-11-08T12:00:00+08:00' }]);
         const value = await f.memory.recallCommon(A, query, now, [A, B], undefined, { onFade: () => { formatted = true; valid = false; } });
         assert.equal(formatted, true); assert.equal(value, undefined);
     } finally { await f.clean(); }
@@ -85,7 +85,7 @@ test('公共召回复用同栈已核验结果，保留await和格式化后的检
     try {
         await f.memory.sync(B, { user: B.name, char: '合成角色' }, [{ role: 'user', content: 'SYNTHETIC_SAFE', time: '2026-11-08T12:00:00+08:00' }]);
         f.register(() => { checks++; return true; });
-        f.results([{ id: 'diary', text: marker, type: 'world', document_id: 'diary:2026-11-08', mentioned_at: '2026-11-08T12:00:00+08:00' }]);
+        f.results([{ id: 'diary', text: marker, type: 'world', document_id: 'diary:2026-11-08', tags: ['qq-private', 'qq-public'], mentioned_at: '2026-11-08T12:00:00+08:00' }]);
         assert.match((await f.memory.recallCommon(A, query, now, [A, B]))!, /WRITTEN_SOURCE_PRIVATE/);
         assert.ok(checks >= 2 && checks <= 4, `公共实际读链来源核验次数为${checks}，不能重复执行未跨await/回调的同一过滤检查`);
     } finally { await f.clean(); }

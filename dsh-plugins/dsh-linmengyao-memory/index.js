@@ -760,10 +760,10 @@ export const writeBank = (cfg) => ownerBanks(cfg)?.owner ?? cfg.prefix
  * 召回哪些 bank：他的 bank + 公共库 + 老的 linmengyao（接缝之前的历史）。
  * 原来是「所有叫 linmengyao-* 的」——包括名单里其他人各自的私聊 bank，等于把别人的私聊讲给他听。
  */
-async function allBanks(cfg) {
+async function allBanks(cfg, signal) {
   let existing = bankCache.ids
   if (!existing.length || bankCache.baseUrl !== cfg.baseUrl || Date.now() - bankCache.at >= 60_000) {
-    const res = await fetch(`${cfg.baseUrl}/v1/default/banks`, { signal: AbortSignal.timeout(2500) })
+    const res = await fetch(`${cfg.baseUrl}/v1/default/banks`, { signal: AbortSignal.any([signal, AbortSignal.timeout(2500)]) })
     if (!res.ok) throw new Error(`banks ${res.status}`)
     const data = await res.json()
     existing = (Array.isArray(data.banks) ? data.banks : []).map((bank) => String(bank.bank_id || ''))
@@ -774,7 +774,7 @@ async function allBanks(cfg) {
   return wanted.filter((id, i) => existing.includes(id) && wanted.indexOf(id) === i)
 }
 
-async function recallBank(cfg, bank, query, ownImportant = false) {
+async function recallBank(cfg, bank, query, signal, ownImportant = false) {
   const res = await fetch(`${cfg.baseUrl}/v1/default/banks/${encodeURIComponent(bank)}/memories/recall`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -789,13 +789,13 @@ async function recallBank(cfg, bank, query, ownImportant = false) {
       query_timestamp: new Date().toISOString(),
       include: { entities: { max_tokens: 128 }, source_facts: { max_tokens: 400 } },
     }),
-    signal: AbortSignal.timeout(3000),
+    signal,
   })
   if (!res.ok) throw new Error(`recall ${bank} ${res.status}`)
   const data = await res.json()
   const facts = data.source_facts || {}
   return (Array.isArray(data.results) ? data.results : [])
-    .filter(item => !['recalled', 'retracted', 'withdrawn', 'forgotten'].some(mark =>
+    .filter(item => item.state !== 'invalidated' && !['recalled', 'retracted', 'withdrawn', 'forgotten'].some(mark =>
       (Array.isArray(item.tags) && item.tags.includes(mark)) || [true, 'true'].includes(item.metadata?.[mark])))
     .map((item) => ({
       id: String(item.id || item.text),
@@ -825,13 +825,13 @@ export function ownerHash(cfg) {
 
 /**
  * 公共库里除了她自己的日记 / 周记 / 阶段总结（document_id 以 diary: / week: / phase: 开头），还有名单里每个人的聊天片段副本。
- * QQ 那边靠 disclosureRules 约束她能对谁说什么；DSH 这边没有这层，所以只取她自己的，别人的片段和没有 document_id 的整合观察（可能混着别人的话）一律不取。
+ * 日记和总结可能由多人的私聊生成，只有明确标为可公开的才带入，其他联系人的片段和来源不明的观察不带。
  * 还有一类是她在 QQ 上回复里自己写的 `<<日记：…>>` / `<<记住：…>>`（ADR 0171），document_id 是 diary-self:<哈希>:<时间> / self:<哈希>:<时间>，
  * 哈希是写它的那个联系人的：只取他的（桌面上的人就是他），名单里别人的不取。原来这类一律被挡在外面，她在 QQ 上写的日记桌面上读不到。
  */
-export const herOwnCommonDoc = (documentId, ownerHashValue) => {
+export const herOwnCommonDoc = (documentId, ownerHashValue, tags = []) => {
   const id = String(documentId || '')
-  if (/^(diary|week|phase):/.test(id)) return true
+  if (/^(diary|week|phase):/.test(id)) return tags.includes('qq-public')
   const mine = /^(?:diary-self|self):([0-9a-f]{16}):/.exec(id)
   return Boolean(mine && ownerHashValue && mine[1] === ownerHashValue)
 }
@@ -843,7 +843,9 @@ const IMPORTANT_TOPICS = [
 
 /** 所有库做语义召回，合并去重后取前 pick 条。命中明确话题时给亲手记的相关项留一个位置。 */
 async function recallAll(cfg, query, currentUserText, checkImportant) {
-  const banks = await allBanks(cfg)
+  const deadline = AbortSignal.timeout(3000)
+  const banks = await allBanks(cfg, deadline)
+  deadline.throwIfAborted()
   const owner = ownerBanks(cfg)
   const common = owner?.common ?? `${cfg.prefix}-common`
   const mineHash = ownerHash(cfg)
@@ -851,9 +853,9 @@ async function recallAll(cfg, query, currentUserText, checkImportant) {
   const isRelated = item => topics.some(topic => topic.test(item.text))
   const isOwnImportant = item => Boolean(owner?.owner && item.documentId.startsWith(`dsh-${owner.owner}-`)
     && item.tags.includes('dsh') && item.tags.includes('important'))
-  const jobs = banks.map(bank => recallBank(cfg, bank, query))
+  const jobs = banks.map(bank => recallBank(cfg, bank, query, deadline))
   const supplement = checkImportant && topics.length && banks.includes(owner?.owner)
-  if (supplement) jobs.push(recallBank(cfg, owner.owner, currentUserText, true))
+  if (supplement) jobs.push(recallBank(cfg, owner.owner, currentUserText, deadline, true))
   const settled = await Promise.allSettled(jobs)
   const extra = supplement ? settled.pop() : undefined
   const seen = new Set()
@@ -872,7 +874,7 @@ async function recallAll(cfg, query, currentUserText, checkImportant) {
   for (const [index, result] of settled.entries()) {
     if (result.status !== 'fulfilled') continue
     for (const item of result.value) {
-      if (banks[index] === common && !herOwnCommonDoc(item.documentId, mineHash)) continue
+      if (banks[index] === common && (item.type === 'observation' || !herOwnCommonDoc(item.documentId, mineHash, item.tags))) continue
       if (isOwnImportant(item) && IMPORTANT_TOPICS.some(topic => topic.test(item.text)) && !isRelated(item)) continue
       if (seen.has(item.id)) continue
       if (supplement && isOwnImportant(item) && isRelated(item)) {

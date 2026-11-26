@@ -54,7 +54,7 @@ test('脏bank只保留明确未污染的原始world/experience，屏观察未知
   const privateText = await f.memory.recall(A, query, now); assert.match(privateText!, /SAFE_PRIVATE_FACT/); assert.doesNotMatch(privateText!, /SYNTHETIC_WITHDRAWN/);
   f.setResult([{ id: 'bad', text: marker, type: 'world', document_id: `${owner}:${own}` }, { id: 'diary', text: marker, type: 'world', document_id: 'diary:2026-11-04' },
    { id: 'safe', text: 'SAFE_OTHER_FACT', type: 'experience', document_id: `${other}:ep-1` }]);
-  const shared = await f.memory.recallCommon(A, query, now, [A, B]); assert.match(shared!, /SAFE_OTHER_FACT/); assert.doesNotMatch(shared!, /SYNTHETIC_WITHDRAWN/);
+  const shared = await f.memory.recallCommon(A, query, now, [A, B]); assert.equal(shared, undefined);
  } finally { await f.memory.stop(); rmSync(f.dir, { recursive: true, force: true }); }
 });
 
@@ -64,7 +64,7 @@ test('snapshot未知只屏本owner原始文档，不封其他owner；已给无re
   await prime(f); note(f.memory, A, [message()]); f.memory.relationship(A); await tick(); assert.ok(f.memory.relationship(A));
   note(f.memory); const a = f.memory.bankId(A).split('-').at(-1)!, b = f.memory.bankId(B).split('-').at(-1)!;
   f.setResult([{ id: 'a', text: marker, type: 'world', document_id: `${a}:ep-1` }, { id: 'b', text: 'OTHER_OWNER_OK', type: 'world', document_id: `${b}:ep-1` }]);
-  const output = await f.memory.recallCommon(A, query, now, [A, B]); assert.match(output!, /OTHER_OWNER_OK/); assert.doesNotMatch(output!, /SYNTHETIC_WITHDRAWN/);
+  const output = await f.memory.recallCommon(A, query, now, [A, B]); assert.equal(output, undefined);
  } finally { await f.memory.stop(); rmSync(f.dir, { recursive: true, force: true }); }
 });
 
@@ -87,7 +87,7 @@ test('在途模型实体召回返回前新dirty也不能提交旧正文', async 
  } finally { held.release([]); entities.release([]); models.release({ id: 'x', content: '' }); await f.memory.stop(); rmSync(f.dir, { recursive: true, force: true }); }
 });
 
-test('week二次召回等待期间新撤回会重新过滤先前结果，othersToday保留其他来源干净事实', async () => {
+test('week二次召回等待期间新撤回会重新过滤先前结果，othersToday不再带其他联系人私聊', async () => {
  const f = fixture(); const held = gate<RecallResult[]>(); let reads = 0;
  try {
   await prime(f); f.api.recall = async () => { reads++; return reads === 1 ? [{ id: 'old', text: marker, type: 'world', document_id: 'diary:2026-10-28', mentioned_at: '2026-10-28T12:00:00Z' }] : held.promise; };
@@ -98,7 +98,7 @@ test('week二次召回等待期间新撤回会重新过滤先前结果，othersT
   const sourceId = Object.keys(JSON.parse(readFileSync(join(f.dir, '10001-boyfriend.json'), 'utf8')).retained)[0]!;
   f.api.recall = async () => [{ id: 'old-a', text: marker, type: 'world', document_id: `${a}:${sourceId}`, mentioned_at: now.toISOString() },
    { id: 'clean-c', text: 'SAFE_TODAY_C', type: 'experience', document_id: `${c}:ep-1`, mentioned_at: now.toISOString() }];
-  const today = await f.memory.othersToday(B, now, [A, B, C], new Date('2026-11-05T00:00:00Z')); assert.match(today!, /SAFE_TODAY_C/); assert.doesNotMatch(today!, /SYNTHETIC_WITHDRAWN/);
+  const today = await f.memory.othersToday(B, now, [A, B, C], new Date('2026-11-05T00:00:00Z')); assert.equal(today, undefined);
  } finally { held.release([]); await f.memory.stop(); rmSync(f.dir, { recursive: true, force: true }); }
 });
 

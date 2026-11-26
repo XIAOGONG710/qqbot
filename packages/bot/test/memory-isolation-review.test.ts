@@ -42,9 +42,9 @@ test('陌生人档主动查记忆（<<查>>）不读公共库；没开公共库�
         assert.equal(pulled, undefined);
         assert.ok(!recalled.includes('synth-common'), '陌生人档不应查公共库');
         assert.ok(recalled.includes(memory.bankId(stranger)), '他自己的 bank 照查');
-        // 对照：同学档照常能查到（不改正常行为）
+        // 同学档仍能查询公共库，但别的联系人的私聊副本不能进模型。
         const forClassmate = await memory.recallPull({ qq: 4, tier: 'classmate', name: '合成丁' }, '周末安排', new Date(T0), [owner, classmate]);
-        assert.match(forClassmate ?? '', /合成乙说的周末安排/);
+        assert.equal(forClassmate, undefined);
     } finally { cleanup(); }
 
     const off = setup(facts, { common: false });
@@ -97,7 +97,9 @@ test('降档之后，公共库里他自己高档位时的片段不再进他的�
     const higherNote = commonFact('note', `self:${hashOf(downgraded.qq, 'bestie')}:${T0 - 2}`, '闺蜜档时她自己记下的合成私事');
     const lower = commonFact('low', `${hashOf(downgraded.qq, 'stranger')}:ep-${T0 - 3}`, '合成己在更低档时的合成事');
     const other = commonFact('other', `${hashOf(classmate.qq, classmate.tier)}:ep-${T0}`, '合成乙说的合成事');
-    const { memory, cleanup } = setup(bank => bank === 'synth-common' ? [higher, higherNote, lower, other] : [], { privateContact: owner });
+    const publicDiary = { ...commonFact('public', 'diary:2026-09-30', '合成的公共日记'), tags: ['qq-public'] };
+    const unpublished = commonFact('private-diary', 'diary:2026-09-29', '未授权的合成日记');
+    const { memory, cleanup } = setup(bank => bank === 'synth-common' ? [higher, higherNote, lower, other, publicDiary, unpublished] : [], { privateContact: owner });
     try {
         await memory.sync(classmate, { user: classmate.name, char: '合成角色' }, [
             { time: new Date(T0 - 3_600_000).toISOString(), role: 'user', content: '合成的开头', messageId: 1 },
@@ -106,14 +108,18 @@ test('降档之后，公共库里他自己高档位时的片段不再进他的�
         const chat = [{ role: 'user' as const, content: '最近有什么合成事', time: new Date(T0).toISOString() }];
         const common = await memory.recallCommon(downgraded, chat, new Date(T0), people);
         assert.doesNotMatch(common ?? '', /闺蜜档时/);
-        assert.match(common ?? '', /合成乙说的合成事/);
+        assert.doesNotMatch(common ?? '', /合成乙说的合成事|未授权的合成日记/);
+        assert.match(common ?? '', /合成的公共日记/);
         assert.match(common ?? '', /更低档时/, '只排除比现在高的档位');
         const pulled = await memory.recallPull(downgraded, '合成事', new Date(T0), people);
         assert.doesNotMatch(pulled ?? '', /闺蜜档时/);
-        assert.match(pulled ?? '', /合成乙说的合成事/);
-        // 别人（同学档）那里不受这一条影响：原样按来源不明 / 不能说处理
+        assert.doesNotMatch(pulled ?? '', /合成乙说的合成事|未授权的合成日记/);
+        assert.match(pulled ?? '', /合成的公共日记/);
         const forOther = await memory.recallCommon({ qq: 6, tier: 'classmate', name: '合成庚' }, chat, new Date(T0), people);
-        assert.match(forOther ?? '', /合成己在闺蜜档时说的私事/);
+        assert.doesNotMatch(forOther ?? '', /闺蜜档时|合成乙说的合成事/);
+        assert.match(forOther ?? '', /合成的公共日记/);
+        assert.equal(await memory.recall(classmate, chat, new Date(T0), {}, owner), undefined);
+        assert.equal(await memory.othersToday(owner, new Date(T0), people, new Date(T0 - 86_400_000)), undefined);
     } finally { cleanup(); }
 });
 

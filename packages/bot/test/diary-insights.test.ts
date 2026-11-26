@@ -98,6 +98,16 @@ describe('她的日记从哪来', () => {
         assert.deepEqual(loadSelfDiary(dataDir), []);
     });
 
+    test('按联系人读取本地日记只带自己的，旧的未知来源仍原样保留', () => {
+        const dataDir = tmp();
+        recordSelfDiary(dataDir, '合成旧条目', NIGHT);
+        recordSelfDiary(dataDir, '合成甲条目', NIGHT, 1);
+        recordSelfDiary(dataDir, '合成乙条目', NIGHT, 2);
+        assert.deepEqual(loadSelfDiary(dataDir, 1).map(row => row.text), ['合成甲条目']);
+        assert.deepEqual(loadSelfDiary(dataDir, 2).map(row => row.text), ['合成乙条目']);
+        assert.equal(loadSelfDiary(dataDir).length, 3);
+    });
+
     test('fitEntries：每篇截 600 字；总共超 6000 字就丢最老的，至少留一篇', () => {
         const long = entry('2026-10-29', '长'.repeat(ENTRY_CHARS + 300));
         assert.equal([...fitEntries([long])[0]!.text].length, ENTRY_CHARS);

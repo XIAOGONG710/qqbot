@@ -106,7 +106,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         ...extra,
     });
 
-    test('事先的聊天写进鸽鸽的 bank 和公共库；提起鸽鸽时有介绍和他的记忆，没提时没有；跑完删掉三个 bank', async () => {
+    test('事先的聊天写进两库；提起鸽鸽只给配置介绍，不读他的私聊库；跑完删掉三个 bank', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
         const retained: { bank: string; item: MemoryItem }[] = [];
         const recalled: string[] = [];
@@ -114,7 +114,12 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         const hindsight: SimHindsight = {
             putBank: async () => {},
             retain: async (bank, item) => { retained.push({ bank, item }); },
-            recall: async bank => { recalled.push(bank); return [{ id: '1', text: '鸽鸽说他 10 月 5 日晚上在机房值班', document_id: 'other:ep-1' }]; },
+            recall: async bank => {
+                recalled.push(bank);
+                return bank === retained[0]?.bank || bank === 'sim-t-common'
+                    ? [{ id: '1', text: '鸽鸽说他 10 月 5 日晚上在机房值班', document_id: 'other:ep-1' }]
+                    : [];
+            },
             getMentalModel: async () => undefined,
             createMentalModel: async () => {},
             updateMentalModel: async () => {},
@@ -135,14 +140,15 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
 
             const text = (messages: OpenAIMessage[]) => messages.map(m => m.content).join('\n');
             assert.doesNotMatch(text(prompts[0]!), /你认识的人/);
-            assert.match(text(prompts[1]!), /\[你认识的人：鸽鸽\]\n鸽鸽：网上认识的朋友，网络运维的大神，比较熟\n\[关于鸽鸽的旧事（可明说·和鸽鸽聊的；[^\]]*\]\n- 鸽鸽说他 10 月 5 日晚上在机房值班/);
-            assert.ok(recalled.includes(gegeBank), '查了鸽鸽的 bank');
+            assert.match(text(prompts[1]!), /你认识的人：鸽鸽/);
+            assert.doesNotMatch(text(prompts[1]!), /机房值班/);
+            assert.ok(!recalled.includes(gegeBank), '不查另一个人的 bank');
             const say = result.steps.filter(step => step.kind === 'say')[1]!;
-            assert.ok(say.logs.some(line => line === '提起了 鸽鸽：介绍 + 召回 1 条'));
-            assert.ok(say.logs.some(line => line === '召回公共记忆 1 条（线索：鸽鸽）'));
+            assert.ok(say.logs.some(line => line === '提起了 鸽鸽：介绍'));
+            assert.ok(say.logs.some(line => line === '公共记忆没想起什么（线索：鸽鸽）'));
             const first = result.steps.filter(step => step.kind === 'say')[0]!;
             assert.ok(!first.logs.some(line => line.startsWith('召回公共记忆')), '「在干嘛」没有线索，不查公共记忆（ADR 0017）');
-            assert.deepEqual([first, say].map(step => runChecks({ noCommon: true }, step)[0]!.ok), [true, false], '检查项 noCommon');
+            assert.deepEqual([first, say].map(step => runChecks({ noCommon: true }, step)[0]!.ok), [true, true], '检查项 noCommon');
             assert.deepEqual(deleted.sort(), [result.bankId!, gegeBank, 'sim-t-common'].sort());
         } finally {
             rmSync(dir, { recursive: true, force: true });
@@ -154,7 +160,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         const hindsight: SimHindsight = {
             putBank: async () => {},
             retain: async () => {},
-            recall: async () => [{ id: '1', text: '鸽鸽 10 月 13 日去杭州出差', document_id: 'other:ep-1' }],
+            recall: async () => [{ id: '1', text: '鸽鸽 10 月 13 日去杭州出差', document_id: 'diary:2026-10-13', tags: ['qq-public'] }],
             getMentalModel: async () => undefined,
             createMentalModel: async () => {},
             updateMentalModel: async () => {},
@@ -176,7 +182,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         }
     });
 
-    test('亲密联系人开启新一段时会想起今天和别人聊过的；同一段后续不重复塞（ADR 0020）', async () => {
+    test('开启新一段或继续闲聊均不带其他人当天的私聊（ADR 0020）', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'people-sim-'));
         let otherDocument = '';
         const hindsight: SimHindsight = {
@@ -212,14 +218,12 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
             });
             const first = prompts[0]!.map(message => message.content).join('\n');
             const second = prompts[1]!.map(message => message.content).join('\n');
-            assert.match(first, /\[你今天和别人聊过的事/);
-            assert.match(first, /可明说·和鸽鸽聊的/);
-            assert.match(first, /主动向宝宝提别人时比标签再保守一级/);
+            assert.doesNotMatch(first, /你今天和别人聊过的事|鸽鸽今晚在机房值班/);
             assert.doesNotMatch(second, /\[你今天和别人聊过的事/);
             const says = result.steps.filter(step => step.kind === 'say');
-            assert.match(says[0]!.generations[0]!.todayOthers!, /鸽鸽今晚在机房值班/);
+            assert.equal(says[0]!.generations[0]!.todayOthers, undefined);
             assert.equal(says[1]!.generations[0]!.todayOthers, undefined);
-            assert.ok(says[0]!.logs.some(line => line.startsWith('今天和别人聊过的 1 条')));
+            assert.ok(!says[0]!.logs.some(line => line.startsWith('今天和别人聊过的')));
             assert.ok(!says[1]!.logs.some(line => line.startsWith('今天和别人聊过的')));
         } finally {
             rmSync(dir, { recursive: true, force: true });
@@ -231,7 +235,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         const hindsight: SimHindsight = {
             putBank: async () => {},
             retain: async () => {},
-            recall: async () => [{ id: '1', text: `${card.character.name}说她也想去杭州`, document_id: 'other:ep-1' }],
+            recall: async () => [{ id: '1', text: `${card.character.name}说她也想去杭州`, document_id: 'diary:2026-10-13', tags: ['qq-public'] }],
             getMentalModel: async () => undefined,
             createMentalModel: async () => {},
             updateMentalModel: async () => {},
@@ -251,7 +255,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
             // 三段都换了：公共记忆、鸽鸽的记忆，和「你在电脑那边（DSH）干过的活」（recallWork，只有男朋友档才有，ADR 0176；这个场景的他是男朋友档，
             // 假的 Hindsight 对任何 bank 都回同一条）。他自己的 bank 还没写过，场景里没有他以前的聊天
             // 带她名字的那一行里的「她」也是她（ADR 0018 调整 16）
-            assert.equal(text.match(/- (?:（[^）]+）：)?你说你也想去杭州/g)?.length, 3);
+            assert.equal(text.match(/- (?:（[^）]+）：)?你说你也想去杭州/g)?.length, 2);
             assert.match(text, /你在电脑那边（DSH）干过的活[^\n]*\n- (?:（[^）]+）：)?你说你也想去杭州/, 'DSH 那一段也换了');
             assert.doesNotMatch(text, new RegExp(`${card.character.name}说她也想去杭州`));
         } finally {
@@ -303,9 +307,9 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
             putBank: async () => {},
             retain: async () => {},
             recall: async () => [
-                { id: '1', text: '鸽鸽去杭州出差', document_id: 'other:ep-1', occurred_start: '2026-08-27T12:00:00+08:00', entities: ['鸽鸽', '杭州'] },
-                { id: '2', text: '鸽鸽换了工作', document_id: 'other:ep-2', occurred_start: '2026-08-20T12:00:00+08:00', entities: ['鸽鸽'] },
-                { id: '3', text: '鸽鸽去看了演唱会', document_id: 'other:ep-3', occurred_start: '2026-09-25T12:00:00+08:00' },
+                { id: '1', text: '鸽鸽去杭州出差', document_id: 'diary:2026-08-27', tags: ['qq-public'], occurred_start: '2026-08-27T12:00:00+08:00', entities: ['鸽鸽', '杭州'] },
+                { id: '2', text: '鸽鸽换了工作', document_id: 'diary:2026-08-20', tags: ['qq-public'], occurred_start: '2026-08-20T12:00:00+08:00', entities: ['鸽鸽'] },
+                { id: '3', text: '鸽鸽去看了演唱会', document_id: 'diary:2026-09-25', tags: ['qq-public'], occurred_start: '2026-09-25T12:00:00+08:00' },
             ],
             getMentalModel: async () => undefined,
             createMentalModel: async () => {},
@@ -325,8 +329,8 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
             const say = result.steps.find(step => step.kind === 'say')!;
             assert.ok(say.logs.includes('召回公共记忆 2 条（线索：杭州；记个大概 1，一提想起 1，想不起来 1）'), say.logs.join('\n'));
             const text = prompts[0]!.map(m => m.content).join('\n');
-            assert.match(text, /- 8月27日（不能说·来源不明，他一提才想起来，记不太清了）：鸽鸽去杭州出差/);
-            assert.match(text, /- 9月25日（不能说·来源不明，记不太清了）：鸽鸽去看了演唱会/);
+            assert.match(text, /- 8月27日（可明说·你的日记，他一提才想起来，记不太清了）：鸽鸽去杭州出差/);
+            assert.match(text, /- 9月25日（可明说·你的日记，记不太清了）：鸽鸽去看了演唱会/);
             assert.doesNotMatch(text, /换了工作/);
         } finally {
             rmSync(dir, { recursive: true, force: true });
@@ -368,7 +372,7 @@ describe('模拟器里名单的其他人（ADR 0016，假模型、假 Hindsight�
         const hindsight: SimHindsight = {
             putBank: async () => {},
             retain: async () => {},
-            recall: async () => [{ id: '1', text: '鸽鸽 10 月 13 日去杭州出差', document_id: 'other:ep-1' }],
+            recall: async () => [{ id: '1', text: '鸽鸽 10 月 13 日去杭州出差', document_id: 'diary:2026-10-13', tags: ['qq-public'] }],
             getMentalModel: async () => undefined,
             createMentalModel: async () => {},
             updateMentalModel: async () => {},

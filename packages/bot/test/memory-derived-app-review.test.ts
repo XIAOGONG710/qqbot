@@ -80,7 +80,7 @@ function ask(app: App, id: number) { app.receive({ post_type: 'message', message
 
 test('真实App撤回先建立派生屏障，修订HTTP仍held时下一联系人提示不含旧观测', async () => {
     const f = await fixture(), run = start(f); ask(run.app, 70); await until(() => f.history.load(B.qq).some(message => message.role === 'assistant')); await tick();
-    assert.ok(run.prompts.some(prompt => prompt.includes(POISON)), '修订前确实能召回合成旧观测');
+    assert.ok(run.prompts.every(prompt => !prompt.includes(POISON)), '跨联系人观测在撤回前也不进入提示词');
     const before = run.prompts.length; recall(run.app); ask(run.app, 81); await until(() => run.prompts.length > before);
     assert.ok(run.prompts.slice(before).every(prompt => !prompt.includes(POISON)));
     await until(() => heldSubmissions > 0);
@@ -89,7 +89,7 @@ test('真实App撤回先建立派生屏障，修订HTTP仍held时下一联系人
 
 test('撤回发布EIO但RAM已接受时立即屏蔽公共派生，其他联系人仍可生成', async () => {
     const f = await fixture(), run = start(f); ask(run.app, 70); await until(() => f.history.load(B.qq).some(message => message.role === 'assistant')); await tick();
-    assert.ok(run.prompts.some(prompt => prompt.includes(POISON)));
+    assert.ok(run.prompts.every(prompt => !prompt.includes(POISON)));
     const rename = fileOps.renameSync, delays = fileOps.writeDelaysMs, before = run.prompts.length;
     let publicationFailed = false;
     try {
@@ -124,7 +124,7 @@ test('字面占位与危机keep不伪造撤回屏障，无真实撤回仍可读�
         if (content !== RECALLED_TEXT) recall(run.app);
         await tick(); assert.equal(new DerivedState(f.memoryDir).snapshot(f.common).dirty, false);
         ask(run.app, content === RECALLED_TEXT ? 84 : 85); await until(() => run.prompts.length > 0);
-        assert.ok(run.prompts.some(prompt => prompt.includes(POISON)), '未撤回的公共观测仍可用，不能靠关闭所有记忆通过');
+        assert.ok(run.prompts.every(prompt => !prompt.includes(POISON)), '未撤回的跨联系人观测也不应注入');
         await run.app.stop();
     }
 });

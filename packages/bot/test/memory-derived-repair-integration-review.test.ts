@@ -234,7 +234,7 @@ test('供应商复用旧刷新UUID不能以旧completed冒充新重建，保未�
 test('供应商不实日历不滚入另一查询窗口，合法mentioned日期仍可回退展示', async () => {
     const f = fixture();
     try {
-        await f.sync(); f.api.recall = async () => [{ id: 'bad-calendar', type: 'world', text: '【重要】SYNTHETIC_BAD_CALENDAR', document_id: 'diary:2026-02-01', occurred_start: '2026-02-30T12:00:00Z', mentioned_at: '2026-02-01T12:00:00Z' }];
+        await f.sync(); f.api.recall = async () => [{ id: 'bad-calendar', type: 'world', text: '【重要】SYNTHETIC_BAD_CALENDAR', document_id: 'diary:2026-02-01', tags: ['qq-private', 'qq-public'], occurred_start: '2026-02-30T12:00:00Z', mentioned_at: '2026-02-01T12:00:00Z' }];
         const person = { ...contact, name: '合成甲' }, query = [{ role: 'user' as const, content: '合成日期查询' }];
         const wrong = await f.memory.recallCommon(person, query, new Date('2026-03-02T13:00:00Z'), [person], { start: new Date('2026-03-02T00:00:00Z'), end: new Date('2026-03-03T00:00:00Z') });
         assert.ok(!wrong?.includes('SYNTHETIC_BAD_CALENDAR'));
@@ -246,7 +246,7 @@ test('供应商不实日历不滚入另一查询窗口，合法mentioned日期�
 test('真实日记窗口按Apia缺日的civil身份，不滚到exclusive end的31日', async () => {
     const previous = process.env.TZ; process.env.TZ = 'Pacific/Apia'; const f = fixture();
     try {
-        await f.sync(); f.api.recall = async () => [{ id: 'missing-civil', type: 'world', text: '【重要】SYNTHETIC_APIA_DIARY', document_id: 'diary:2011-12-30' }];
+        await f.sync(); f.api.recall = async () => [{ id: 'missing-civil', type: 'world', text: '【重要】SYNTHETIC_APIA_DIARY', document_id: 'diary:2011-12-30', tags: ['qq-private', 'qq-public'] }];
         const person = { ...contact, name: '合成甲' };
         const result = await f.memory.recallCommon(person, [{ role: 'user', content: '那几天呢' }], localDate(2011, 11, 31, 12), [person], { start: localDate(2011, 11, 29), end: localDate(2011, 11, 31) });
         assert.ok(result?.includes('SYNTHETIC_APIA_DIARY'));

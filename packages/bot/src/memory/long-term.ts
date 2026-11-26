@@ -774,8 +774,10 @@ export class LongTermMemory {
     }
 
     canRecallContactMemory(owner: MemoryContact, listener: MemoryContact): boolean {
-        return !this.#isPrivateOwner(owner) || this.#isPrivateOwner(listener);
+        return owner.qq === listener.qq && owner.tier === listener.tier;
     }
+
+    get recallBudgetMs(): number { return this.#options.recallTimeoutMs; }
 
     /** 公共记忆库的 bank（ADR 0016）；没开也照样算出来（模拟器跑完要删） */
     commonBankId(): string {
@@ -1254,7 +1256,7 @@ export class LongTermMemory {
     /**
      * 召回和这次对话相关的旧事，整理成一段提示；没有就返回 undefined。出错只记日志。
      * query 不传就用 recallQuery；window：时间检索用的时间窗（只加权、不过滤），主动找他时用（ADR 0012 决策 1 第 7 条）。
-     * 别人提起这个人时（ADR 0016）也用这个查他的 bank，chat 是提起他的那段聊天，header、limit 换成那一段的。
+     * 每个联系人只读当前档位下自己的 bank。
      * 记忆会变淡（ADR 0018）：ignore 是不算「一提就想起」的名字（她的、名单里的称呼），onFade 拿到各几条
      */
     async recall(
@@ -1298,14 +1300,15 @@ export class LongTermMemory {
         const request: RecallRequest = {
             ...recallRequest(query, now, window), types: ['world', 'experience'], prefer_observations: false, ...(window ? { max_tokens: DAY_RECALL_TOKENS } : {}),
         };
-        const found = await this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`);
-        if (this.#stopped || !found) return undefined;
         // 问上周、问假期时，周记、阶段总结单独按标签再召回一次（ADR 0026：日记里的事多了以后，周记的条目有时排不进上面那次的名额，3/9 次问上周没想起周记）
         const summaryTag = window?.period === 'week' ? 'week' : window?.period === 'holiday' ? 'phase' : undefined;
-        const summaries = summaryTag
-            ? await this.#recall(stored.bankId, { ...request, tags: [...request.tags, summaryTag] }, `[${contact.qq}] ${summaryTag === 'week' ? '周记' : '阶段总结'}召回失败，这次只用上面的`)
-            : undefined;
-        if (this.#stopped) return undefined;
+        const [found, summaries] = await Promise.all([
+            this.#recall(stored.bankId, request, `[${contact.qq}] 公共记忆召回失败，这次不带`),
+            summaryTag
+                ? this.#recall(stored.bankId, { ...request, tags: [...request.tags, summaryTag] }, `[${contact.qq}] ${summaryTag === 'week' ? '周记' : '阶段总结'}召回失败，这次只用上面的`)
+                : undefined,
+        ]);
+        if (this.#stopped || !found) return undefined;
         const all = summaries?.length ? [...summaries, ...found.filter(r => !summaries.some(s => s.id === r.id))] : found;
         // 问到某段时间时，那段的周记、阶段总结排在前面（ADR 0018：「上周忙啥」「国庆过得怎样」整体答）
         // 问的是某一天：只留那天的，那天的日记排前面（ADR 0018 第二批：「昨天」那天正好是国庆最后一天，总结里的几条占满名额，把那天的日记挤掉了）
@@ -1317,9 +1320,7 @@ export class LongTermMemory {
         const about = (r: RecallResult) => focus.some(name => r.entities?.includes(name) || r.text.includes(name));
         const results = focus.length ? [...inWindow].sort((a, b) => Number(about(b)) - Number(about(a))) : inWindow;
         const own = `${this.#hash(contact)}:`;
-        return this.#formatDerived(stored.bankId, results.filter(r => !r.document_id?.startsWith(own) && !this.#isOwnHigherTierDocument(contact, r.document_id)
-            && (this.#isPrivateOwner(contact) || !this.#options.privateContact
-                || this.#isKnownCommonDocument(r.document_id) && !this.#isPrivateOwnerDocument(r.document_id))), {
+        return this.#formatDerived(stored.bankId, results.filter(r => !r.document_id?.startsWith(own) && this.#commonVisible(contact, r)), {
             header: `[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和${contact.name}聊的，用不上就别提）]`,
             limit: SHARED_RECALLED,
             now,
@@ -1374,7 +1375,7 @@ export class LongTermMemory {
         const banks = [this.bankId(contact), this.commonBankId(), this.#options.bankPrefix];
         // 公共库和 recallCommon 同一道门：没开公共库、陌生人档都不查（ADR 0016「陌生人档不写不查」；2026-11-26 记忆审查）
         const commonAllowed = Boolean(this.#options.common) && knowsPeople(contact.tier);
-        const settled = await Promise.allSettled(banks.map((bank, index) => index === 1 && !commonAllowed ? Promise.resolve(undefined)
+        const settled = await Promise.allSettled(banks.map((bank, index) => (index === 1 && !commonAllowed) || (index === 2 && !this.#isPrivateOwner(contact)) ? Promise.resolve(undefined)
             : this.#recall(bank, request, `[${contact.qq}] 主动查记忆失败：${bank}`)));
         const seen = new Set<string>();
         const results: RecallResult[] = [];
@@ -1384,9 +1385,7 @@ export class LongTermMemory {
         for (const [index, item] of settled.entries()) {
             if (item.status !== 'fulfilled' || !item.value) continue;
             for (const result of item.value) {
-                if (!this.#isPrivateOwner(contact) && (index === 2 || index === 1
-                    && (result.type === 'observation' || !this.#isKnownCommonDocument(result.document_id) || this.#isPrivateOwnerDocument(result.document_id)))) continue;
-                if (index === 1 && this.#isOwnHigherTierDocument(contact, result.document_id)) continue;
+                if (index === 1 && !this.#commonVisible(contact, result)) continue;
                 if (seen.has(result.id)) continue;
                 seen.add(result.id);
                 results.push(result);
@@ -1430,37 +1429,10 @@ export class LongTermMemory {
         });
     }
 
-    /**
-     * 今天和名单里别人聊过的（ADR 0020）。只取今天产生的其他联系人片段，不取日记/周记/总结，也不取眼前这个人的。
-     * contact.ts 只会在亲密联系人开启一段新对话或她主动找他时调用；这里仍保留通用的权限检查。
-     */
-    async othersToday(contact: NamedContact, now: Date, people: readonly NamedContact[], start: Date): Promise<string | undefined> {
-        if (this.#stopped || !this.#options.common || !knowsPeople(contact.tier)) return undefined;
-        const stored = this.#readable('她今天跟别人聊过的', () => readCommonMemoryState(join(this.#options.dir, 'common.json'), message => this.#options.log(message)));
-        if (stored?.bankId !== this.commonBankId() || !stored.bankConfigured) return undefined;
-        const own = this.#hash(contact);
-        const privateHashes = new Set(this.#privateOwnerHashes());
-        const owners = new Set(people.map(person => this.#hash(person)).filter(hash => hash !== own
-            && !(privateHashes.has(hash) && !this.#isPrivateOwner(contact))));
-        if (owners.size === 0) return undefined;
-        const end = new Date(now.getTime() + 60_000);
-        const otherNames = people.filter(person => owners.has(this.#hash(person))).map(person => person.name).join('、');
-        const all = await this.#recall(stored.bankId, {
-            ...recallRequest(`今天和${otherNames}聊了什么`, now, { start, end }),
-            types: ['world', 'experience'],
-            prefer_observations: false,
-        }, `[${contact.qq}] 今天和别人聊过的召回失败，这次不带`);
-        if (this.#stopped || !all) return undefined;
-        const today = all.filter(result => {
-            const owner = (result.document_id ?? '').split(':')[0]!;
-            return owners.has(owner) && mentionedOnDay(result, start, end);
-        });
-        return this.#formatDerived(stored.bankId, today, {
-            header: `[你今天和别人聊过的事（是你今天的一部分，不是和${contact.name}聊的；只挑大面上的一件，有自然由头时含糊地随口提，不要一上来汇报）]`,
-            limit: TODAY_OTHERS,
-            now,
-            source: this.#commonSource(contact, people),
-        });
+    /** 兼容旧的同日回顾调用，停用跨联系人私聊召回。 */
+    async othersToday(_contact: NamedContact, _now: Date, _people: readonly NamedContact[], _start: Date): Promise<string | undefined> {
+        // 原入口只读其他联系人的私聊副本，没有能够授权跨会话注入的来源。
+        return undefined;
     }
 
     /** 公共库每条事实的出处和披露上限（ADR 0020）。 */
@@ -1493,7 +1465,8 @@ export class LongTermMemory {
             const results = await this.#read(() => this.#options.api.recall(bankId, guarded, this.#options.recallTimeoutMs));
             if (this.#stopped) return undefined;
             this.#lastRecall = { at: this.#now(), ok: true, operation: 'recall', source: 'hindsight-recall', items: results.length, fingerprint: evidenceFingerprint(request.query ?? '') };
-            return this.#filterDerived(bankId, results);
+            return this.#filterDerived(bankId, results.filter(result =>
+                !result.tags?.some(tag => ['recalled', 'retracted', 'withdrawn', 'forgotten'].includes(tag))));
         } catch (error) {
             if (error === MEMORY_STOPPED) return undefined;
             const message = error instanceof Error ? error.message : String(error);
@@ -1541,7 +1514,7 @@ export class LongTermMemory {
      */
     impression(person: NamedContact, listener?: MemoryContact): string | undefined {
         if (this.#stopped || !this.#options.common || !knowsPeople(person.tier)
-            || (listener !== undefined && this.#options.privateContact !== undefined && !this.#isPrivateOwner(listener))) return undefined;
+            || (listener !== undefined && !this.canRecallContactMemory(person, listener))) return undefined;
         const snapshot = this.#derivedSnapshot(this.commonBankId());
         if (!snapshot || snapshot.dirty || this.#writtenBlocked(this.commonBankId()) || !this.#readable(`[${person.qq}] 对人的印象`, () => this.#load(person))?.personModel) return undefined;
         const generation = snapshot.generation;
@@ -1603,17 +1576,6 @@ export class LongTermMemory {
         return Boolean(owner && owner.qq === contact.qq);
     }
 
-    #privateOwnerHashes(): string[] {
-        const owner = this.#options.privateContact;
-        if (!owner) return [];
-        return [...new Set(['boyfriend', 'bestie', 'girl_friend', 'known', 'classmate', 'stranger', 'unlisted', owner.tier]
-            .map(tier => this.#hash({ qq: owner.qq, tier })))];
-    }
-
-    #isPrivateOwnerDocument(id: string | null | undefined): boolean {
-        return Boolean(id && this.#privateOwnerHashes().some(hash => id.startsWith(`${hash}:`) || id.startsWith(`self:${hash}:`) || id.startsWith(`diary-self:${hash}:`)));
-    }
-
     /**
      * 公共库里他自己在更高档位时的片段（ADR 0003「实现时的调整」第 3 条：降档后不再读高档位时的记忆）。
      * 私人库按档位分开；公共库的 document_id 也带档位哈希，但原来只排除当前档位的，降档后旧的那些按「来源不明」又进了他的提示词。
@@ -1628,8 +1590,14 @@ export class LongTermMemory {
         });
     }
 
-    #isKnownCommonDocument(id: string | null | undefined): boolean {
-        return Boolean(id && (/^(?:diary|week|phase):/.test(id) || SELF_NOTE_ID.test(id) || /^[0-9a-f]{16}:ep--?\d+$/.test(id)));
+    #commonVisible(contact: MemoryContact, result: RecallResult): boolean {
+        const id = result.document_id;
+        if (!id || (result.type != null && result.type !== 'world' && result.type !== 'experience')) return false;
+        // 日记和总结的生成材料可能同时含多人的私聊；库名或文档前缀不是公开授权。
+        if (/^(?:diary|week|phase):/.test(id)) return result.tags?.includes('qq-public') === true;
+        if (this.#isOwnHigherTierDocument(contact, id)) return false;
+        const hash = SELF_NOTE_ID.exec(id)?.[1] ?? /^([0-9a-f]{16}):ep--?\d+$/.exec(id)?.[1];
+        return Boolean(hash && [...CONTACT_TIERS, UNLISTED_TIER, contact.tier].some(tier => hash === this.#hash({ qq: contact.qq, tier })));
     }
 
     #path(contact: MemoryContact): string {
@@ -1695,12 +1663,6 @@ function diaryIn(result: RecallResult, window: { start: Date; end: Date }): bool
 /** 召回结果是不是那天的事：发生的时间，没有就用说起的时间 */
 function onDay(result: RecallResult, start: Date, end: Date): boolean {
     const time = providerTime(result.occurred_start) ?? providerTime(result.mentioned_at);
-    return time !== undefined && time >= start.getTime() && time < end.getTime();
-}
-
-/** 「今天聊过」看说起这件事的时间；没有 mentioned_at 才退回事情发生的时间。 */
-function mentionedOnDay(result: RecallResult, start: Date, end: Date): boolean {
-    const time = providerTime(result.mentioned_at) ?? providerTime(result.occurred_start);
     return time !== undefined && time >= start.getTime() && time < end.getTime();
 }
 

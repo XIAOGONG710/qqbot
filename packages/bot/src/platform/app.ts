@@ -158,7 +158,7 @@ import { desktopHost } from '.././life/desktop-host.ts';
 import { selfExportHost } from '.././life/self-export-host.ts';
 import { nowHost } from '.././life/now-host.ts';
 import { desktopPromiseTurns, ownerDayHistory, ownerDayKeeper, type OwnerDayHistoryOptions } from '.././memory/owner-day-view.ts';
-import { appendDayDiary, oneDiaryEntries, windowFor } from '.././life/one-diary.ts';
+import { appendDayDiary, handwrittenDiaryEntries, windowFor } from '.././life/one-diary.ts';
 import { actionQueue, settlingWorld } from '.././world/action-queue.ts';
 import { lifeExecutor } from '.././world/life-selector.ts';
 import { DIARY_BACKFILL_DAYS, DIARY_TEMPERATURE, diaryWriter } from '.././life/diary.ts';
@@ -1005,7 +1005,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 她自己记的（<<记住>> / <<日记>> / <<私密>>）：发出去之前摘掉、该记的记下；摘标记和开关无关，总是挂。memory 在后面才建，记的时候现取
         selfNotes: {
             keepPrivate: text => { appendPrivate(text); },
-            ...(config.diaryInsights ? { keepDiary: (text: string) => { recordSelfDiary(config.dataDir, text, clockNow().getTime()); } } : {}),
+            ...(config.diaryInsights ? { keepDiary: (text: string, contact: Contact) => { recordSelfDiary(config.dataDir, text, clockNow().getTime(), contact.qq); } } : {}),
             remember: (contact, text, kind) => memory?.rememberSelfNote(contact, text, kind),
             ...(config.selfDirectedMemory ? { reviewMemory: (contact, cue) => {
                 if (deviceOwner && contact.qq === deviceOwner.qq && config.memory) recordMemoryReview(config.dataDir, cue, clockNow().getTime());
@@ -1014,15 +1014,15 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         },
         // 她在本机的那一份（DSH 的灵魂目录）：心里的线头、拒绝过的、评价、「你现在的生活」、首轮铺底；只给男朋友档，每一轮现读
         soul: {
+            owner: contact => contact.qq === deviceOwner?.qq,
             // 一个生活（ADR 0347 第 1 层）：原来这里还读 LIFE.json 最近两条，作为「你这两天自己在做的」——那是 her-life.mjs 随机挑的活动和虚构 NPC，
             // 不是她的作息和世界。拆掉了；她这两天真实的日子由第 2 层从 QQ 自己的世界 / 作息补上。
             selfThread: (): string | undefined => {
                 try {
                     let journal: string | undefined;
-                    // 一本日记（ADR 0347 第 3 层 oneDiary）：从同一本取最近一天排第一的那篇（当天日记 > 手写）；关着照旧读 JOURNAL.md 最后一段
                     try {
                         journal = selfThreadLine(config.oneDiary
-                            ? selfThreadFromDiaries(oneDiaryEntries({ soulDir: soulDir(), dataDir: config.dataDir }, clockNow().getTime()))
+                            ? selfThreadFromDiaries(handwrittenDiaryEntries({ soulDir: soulDir(), dataDir: config.dataDir }, clockNow().getTime()))
                             : selfThread(exec.files.read(join(soulDir(), 'JOURNAL.md'))));
                     } catch { /* 没有 JOURNAL.md */ }
                     // 「你这两天自己在做的」（ADR 0347 第 2 层，ownDays，默认关）：来源换成共享世界账里昨天真发生的事（第 1 层拆掉的那行念的是 her-life 编的）
@@ -1052,7 +1052,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                         // 一本日记（oneDiary）：从同一本取，不看 JOURNAL.md 最后一段
                         if (config.oneDiary) {
                             const now = worldNow();
-                            return wakeBackfill({ lastAt: older.at(-1)?.time, now, journal: '', diaries: oneDiaryEntries({ soulDir: soulDir(), dataDir: config.dataDir }, now), log });
+                            return wakeBackfill({ lastAt: older.at(-1)?.time, now, journal: '', diaries: handwrittenDiaryEntries({ soulDir: soulDir(), dataDir: config.dataDir }, now), log });
                         }
                         const journal = exec.files.read(join(soulDir(), 'JOURNAL.md'));
                         return wakeBackfill({ lastAt: older.at(-1)?.time, now: worldNow(), journal, log });
@@ -1762,16 +1762,15 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 // 她有「自己的下文」吗（2026-10-30 她自己的诊断）：日记最后一段 + 她自己在做的事，用不用她定
                 dreams: () => ({ appraisals: dreamAppraisals(config.dataDir, clockNow().getTime()), line: dreamNoteLine(latestDream(config.dataDir, clockNow().getTime())) }),
                 // 他问到过去的某一天时，她那天自己写的日记（ADR 0217，配置 diaryLookback）：JOURNAL.md 那天的段落 + 她在聊天里写的 <<日记>>
-                ...(config.diaryLookback && contact.tier === 'boyfriend' ? {
+                ...(config.diaryLookback && contact.qq === deviceOwner?.qq ? {
                     diaryOn: (date: string): string | undefined => {
-                        // 一本日记（oneDiary）：那天的当天日记在前，再是手写的、<<日记>>；窗口按那一天往回算
                         if (config.oneDiary) {
                             const now = clockNow().getTime();
-                            return journalOnDiaries(oneDiaryEntries({ soulDir: soulDir(), dataDir: config.dataDir }, now, windowFor(date, now)), date);
+                            return journalOnDiaries(handwrittenDiaryEntries({ soulDir: soulDir(), dataDir: config.dataDir }, now, windowFor(date, now)), date);
                         }
                         let journal = '';
                         try { journal = exec.files.read(join(soulDir(), 'JOURNAL.md')); } catch { /* 还没有日记 */ }
-                        return journalOn(journal, loadSelfDiary(config.dataDir), date);
+                        return journalOn(journal, loadSelfDiary(config.dataDir, contact.qq), date);
                     },
                 } : {}),
             } : {}),

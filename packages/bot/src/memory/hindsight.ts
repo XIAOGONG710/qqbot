@@ -84,6 +84,7 @@ export interface RecallResult {
     occurred_end?: string | null;
     mentioned_at?: string | null;
     document_id?: string | null;
+    tags?: string[] | null;
     /** 实体名（请求开了 include.entities 才有） */
     entities?: string[] | null;
     /** 观察背后的事实 id（请求开了 include.source_facts 才有） */
@@ -502,7 +503,7 @@ export class HindsightClient implements HindsightApi {
         if (!Array.isArray(data.results ?? []) || !stateObject(facts)
             || !(data.results ?? []).every(result => stateObject(result) && typeof result.id === 'string' && typeof result.text === 'string'
                 && ['type', 'occurred_start', 'occurred_end', 'mentioned_at', 'document_id'].every(key => result[key] == null || typeof result[key] === 'string')
-                && ['entities', 'source_fact_ids'].every(key => result[key] == null || Array.isArray(result[key]) && result[key].every((item: unknown) => typeof item === 'string')))) {
+                && ['entities', 'source_fact_ids', 'tags'].every(key => result[key] == null || Array.isArray(result[key]) && result[key].every((item: unknown) => typeof item === 'string')))) {
             throw new HindsightError('记忆服务召回响应格式无效');
         }
         return (data.results ?? []).map(({ sources: _untrusted, ...result }) => ({

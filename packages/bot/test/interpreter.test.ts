@@ -706,6 +706,11 @@ describe('她在本机的那一份模块（DSH 灵魂目录，ADR 0336）', () =
     const all = { selfThread: () => '[线头]', refusals: () => '你最近拒绝过：x。', rating: () => '他最近挺买你的账。', life: () => '在宿舍看书', wake: () => '（他走了 8 小时。）' };
     const slots = (module: ReturnType<typeof soulModule>, t: Turn) => (module.contribute!(t) as Piece[]).map(piece => piece.slot);
 
+    test('第二个男朋友档既不读也不接收桌面私有状态', () => {
+        const module = soulModule({ ...all, owner: contact => contact.qq === 1, selfThread: () => { throw Error('越权读取'); } });
+        assert.deepEqual(module.contribute!({ ...boyfriend, contact: { ...boyfriend.contact, qq: 2 } }), []);
+    });
+
     test('五行各放一个槽；「你现在的生活」前面加标题；只给男朋友档', () => {
         const module = soulModule(all);
         assert.deepEqual(module.contribute!(boyfriend), [

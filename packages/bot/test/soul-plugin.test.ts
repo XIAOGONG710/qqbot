@@ -329,13 +329,16 @@ describe('不再写死某个用户的路径', () => {
 // ───────── 同一个她（ADR 0176）：DSH 桌面上的她读写哪些 bank ─────────
 
 interface Call { method: string; url: string; body?: Record<string, any> }
-function fakeHindsight(options: { banks: string[]; items?: Array<Record<string, unknown>>; recall?: Record<string, Array<Record<string, unknown>>>; importantRecall?: Array<Record<string, unknown>> | Error }) {
+function fakeHindsight(options: { banks: string[]; items?: Array<Record<string, unknown>>; recall?: Record<string, Array<Record<string, unknown>>>; importantRecall?: Array<Record<string, unknown>> | Error; stalledBank?: string }) {
     const calls: Call[] = [];
     const original = globalThis.fetch;
-    globalThis.fetch = (async (url: string, init?: { method?: string; body?: string }) => {
+    globalThis.fetch = (async (url: string, init?: { method?: string; body?: string; signal?: AbortSignal }) => {
         const method = init?.method ?? 'GET';
         calls.push({ method, url: String(url), ...(init?.body ? { body: JSON.parse(init.body) } : {}) });
         const path = new URL(String(url)).pathname;
+        if (path.endsWith('/memories/recall') && decodeURIComponent(path.split('/')[4]!) === options.stalledBank) {
+            await new Promise<never>((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true }));
+        }
         const important = path.endsWith('/memories/recall') && calls.at(-1)?.body?.tags?.includes('important');
         if (important && options.importantRecall instanceof Error) throw options.importantRecall;
         const json = path.endsWith('/banks') ? { banks: options.banks.map(id => ({ bank_id: id })) }
@@ -416,6 +419,23 @@ test('16:04 圆珠笔不补查，16:05 作息早餐只补进本人亲手记下�
     } finally { fake.restore(); }
 });
 
+test('DSH 公共库超时不抹掉已返回的同一主人私有召回', async () => {
+    const common = 'linmengyao-common';
+    const note = { id: 'synthetic-timeout', document_id: `dsh-${OWNER}-456`, type: 'world', tags: ['dsh'], text: '合成的同一主人私有笔记。' };
+    const fake = fakeHindsight({ banks: [OWNER, common], recall: { [OWNER]: [note] }, stalledBank: common });
+    let guard: ReturnType<typeof setTimeout> | undefined;
+    try {
+        const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: common }) });
+        await Promise.race([
+            h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '这是什么笔记' }] }, async () => undefined),
+            new Promise<never>((_, reject) => { guard = setTimeout(() => reject(Error('超过 DSH 召回预算')), 3900); }),
+        ]);
+        assert.deepEqual(recalledBanks(fake.calls), [OWNER, common].sort());
+        assert.ok(h.contexts.some(entry => entry.text().includes(note.text)));
+        assert.match(h.text('plugin.log'), /failedBanks=1/);
+    } finally { clearTimeout(guard); fake.restore(); }
+});
+
 describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，且读不到别人的私聊（ADR 0176）', () => {
     test('DSH 与 QQ 对同一条记忆给出相同清晰度，明确记住和重复事实不会被普通遗忘', () => {
         const now = new Date(2026, 10, 4, 12);
@@ -493,9 +513,10 @@ describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，�
             recall: {
                 [OWNER]: [result('o1', '他说想吃火锅', 'ep-1')],
                 'linmengyao-common': [
-                    result('c1', '我今天去了图书馆', 'diary:2026-10-28'),
-                    result('c2', '这周的周记内容', 'week:2026-10-26'),
-                    result('c3', '寒假的总结', 'phase:寒假:2027-02-28'),
+                    { ...result('c1', '我今天去了图书馆', 'diary:2026-10-28'), tags: ['qq-public'] },
+                    { ...result('c2', '这周的周记内容', 'week:2026-10-26'), tags: ['qq-public'] },
+                    { ...result('c3', '寒假的总结', 'phase:寒假:2027-02-28'), tags: ['qq-public'] },
+                    result('c6', '未公开的合成混合来源日记', 'diary:2026-10-27'),
                     result('c4', '鸽鸽私下说他其实很怕挂科', 'bbbb444455556666:ep-9'),
                     result('c5', '大家好像都在说挂科的事（整合观察，没有来源）'),
                 ],
@@ -506,7 +527,7 @@ describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，�
             await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '最近怎么样' }] }, async () => undefined);
             const injected = h.contexts.map(entry => entry.text()).join('\n');
             for (const kept of ['他说想吃火锅', '我今天去了图书馆', '这周的周记内容', '寒假的总结']) assert.ok(injected.includes(kept), kept);
-            for (const dropped of ['鸽鸽私下说', '整合观察']) assert.ok(!injected.includes(dropped), dropped);
+            for (const dropped of ['鸽鸽私下说', '整合观察', '未公开的合成混合来源日记']) assert.ok(!injected.includes(dropped), dropped);
         } finally { fake.restore(); }
     });
 
@@ -540,11 +561,12 @@ describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，�
     });
 
     test('herOwnCommonDoc / ownerHash 单独看', () => {
-        const mod = plugin as unknown as { herOwnCommonDoc: (id: unknown, hash?: string) => boolean; ownerHash: (cfg: unknown) => string | undefined };
+        const mod = plugin as unknown as { herOwnCommonDoc: (id: unknown, hash?: string, tags?: string[]) => boolean; ownerHash: (cfg: unknown) => string | undefined };
         const hash = 'aaaa111122223333';
-        assert.equal(mod.herOwnCommonDoc('diary:2026-10-28'), true, '以前的三种不需要哈希');
-        assert.equal(mod.herOwnCommonDoc('week:2026-10-26'), true);
-        assert.equal(mod.herOwnCommonDoc('phase:寒假:2027-02-28'), true);
+        assert.equal(mod.herOwnCommonDoc('diary:2026-10-28'), false);
+        assert.equal(mod.herOwnCommonDoc('diary:2026-10-28', undefined, ['qq-public']), true);
+        assert.equal(mod.herOwnCommonDoc('week:2026-10-26', undefined, ['qq-public']), true);
+        assert.equal(mod.herOwnCommonDoc('phase:寒假:2027-02-28', undefined, ['qq-public']), true);
         assert.equal(mod.herOwnCommonDoc(`diary-self:${hash}:1`, hash), true);
         assert.equal(mod.herOwnCommonDoc(`self:${hash}:1`, hash), true);
         assert.equal(mod.herOwnCommonDoc(`diary-self:${hash}:1`), false, '不知道他是谁就不取');

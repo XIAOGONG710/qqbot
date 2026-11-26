@@ -186,10 +186,39 @@ describe('召回（memoryModule 的 decideAt.recall，联系人流水线原位�
             recallCommon: async () => { calls.push('common'); return undefined; },
         } as unknown as NonNullable<NonNullable<Parameters<typeof decideStage>[3]['recall']>['memory']>;
         const { facts, lines } = await run('在干嘛', { memory, contacts: [boyfriend] });
-        assert.deepEqual(calls.slice(0, 4), ['entities', 'today', 'recall', 'relationship']);
+        assert.deepEqual(calls.slice(0, 3), ['recall', 'work', 'entities']);
         assert.ok(calls.includes('work'));
         assert.equal(facts.recall?.recalled, '[旧事]\n- 你说过考试');
         assert.equal(facts.recall?.relationship, '[关系]\n在一起一年多');
         assert.equal(lines[0], '召回长期记忆 1 条');
+    });
+
+    test('慢公共实体用尽共享预算时保留已返回的私人记忆，不再发起后续公共请求', async () => {
+        let finish!: (names: string[]) => void;
+        const late = new Promise<string[]>(resolve => { finish = resolve; });
+        let commonCalls = 0;
+        const memory = {
+            recallBudgetMs: 30,
+            commonEntities: () => late,
+            recall: async () => '[旧事]\n- 合成私人记忆',
+            recallWork: async () => undefined,
+            recallCommon: async () => { commonCalls++; return '合成公共记忆'; },
+            relationship: () => undefined,
+            impression: () => undefined,
+            othersToday: async () => undefined,
+            canRecallContactMemory: () => false,
+        } as unknown as NonNullable<NonNullable<Parameters<typeof decideStage>[3]['recall']>['memory']>;
+        let guard: ReturnType<typeof setTimeout> | undefined;
+        try {
+            const result = await Promise.race([
+                run('昨天的事还记得吗', { memory, contacts: [boyfriend] }),
+                new Promise<never>((_, reject) => { guard = setTimeout(() => reject(Error('等待超过整轮预算')), 500); }),
+            ]);
+            assert.match(result.facts.recall?.recalled ?? '', /合成私人记忆/);
+            assert.equal(result.facts.recall?.common, undefined);
+            finish(['合成公共线索']);
+            await new Promise(resolve => setImmediate(resolve));
+            assert.equal(commonCalls, 0);
+        } finally { clearTimeout(guard); finish([]); }
     });
 });

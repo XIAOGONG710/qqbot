@@ -108,19 +108,23 @@ export function parseJournal(text: string): DiaryEntry[] {
     return out;
 }
 
-export interface SelfDiaryItem { at: number; text: string }
+export interface SelfDiaryItem { at: number; text: string; owner?: number }
 
-export function loadSelfDiary(dataDir: string): SelfDiaryItem[] {
+export function loadSelfDiary(dataDir: string, owner?: number): SelfDiaryItem[] {
     const raw = readJsonOr<unknown>(selfDiaryPath(dataDir), {});
     if (!isObject(raw) || !Array.isArray(raw.entries)) return [];
-    return raw.entries.filter((item): item is Record<string, unknown> => isObject(item) && typeof item.text === 'string' && item.text.trim().length > 0).map(item => ({ at: num(item.at), text: clip(item.text, 2000) })).slice(-SELF_DIARY_KEEP);
+    return raw.entries.filter((item): item is Record<string, unknown> => isObject(item) && typeof item.text === 'string' && item.text.trim().length > 0
+        && (owner === undefined || item.owner === owner)).map(item => ({
+        at: num(item.at), text: clip(item.text, 2000),
+        ...(typeof item.owner === 'number' && Number.isSafeInteger(item.owner) && item.owner > 0 ? { owner: item.owner } : {}),
+    })).slice(-SELF_DIARY_KEEP);
 }
 
 /** 她在聊天里写了 <<日记：…>>：本地留一份（只留最近 60 篇） */
-export function recordSelfDiary(dataDir: string, text: string, now: number): void {
+export function recordSelfDiary(dataDir: string, text: string, now: number, owner?: number): void {
     const flat = clip(text, 2000);
     if (!flat) return;
-    writeJsonAtomic(selfDiaryPath(dataDir), { entries: [...loadSelfDiary(dataDir), { at: now, text: flat }].slice(-SELF_DIARY_KEEP) });
+    writeJsonAtomic(selfDiaryPath(dataDir), { entries: [...loadSelfDiary(dataDir), { at: now, text: flat, ...(owner !== undefined ? { owner } : {}) }].slice(-SELF_DIARY_KEEP) });
 }
 
 export interface DiaryDirs {

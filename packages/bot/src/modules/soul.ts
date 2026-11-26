@@ -13,6 +13,7 @@ import type { Piece } from '../interpreter/slots.ts';
 import type { Contact } from '../platform/config.ts';
 
 export interface SoulOptions {
+    owner?: (contact: Contact) => boolean;
     selfThread: () => string | undefined;
     refusals: () => string | undefined;
     rating: () => string | undefined;
@@ -25,7 +26,7 @@ export function soulModule(options: SoulOptions): Module {
     return {
         id: 'soul',
         contribute(turn) {
-            if (turn.contact.tier !== 'boyfriend') return [];
+            if (turn.contact.tier !== 'boyfriend' || options.owner && !options.owner(turn.contact)) return [];
             const pieces: Piece[] = [];
             const thread = !turn.initiate && !turn.thinking && !turn.facts.crisis ? options.selfThread() : undefined;
             if (thread) pieces.push({ slot: 'selfThread', text: thread });

@@ -109,7 +109,10 @@ test('无writer且没有authored intent的正常App仍可读取公共QQ原始事
             schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off', media: false }, root, { QQBOT_LLM_API_KEY: 'synthetic-key' });
         globalThis.fetch = async input => {
             const url = new URL(String(input)); assert.equal(url.origin, 'http://synthetic.invalid');
-            if (url.pathname.endsWith('/memories/recall')) return Response.json({ results: [{ id: 'safe', type: 'experience', text: 'SYNTHETIC_SAFE_OTHER_QQ_FACT', document_id: '2222222222222222:ep-1', mentioned_at: now.toISOString() }] });
+            if (url.pathname.endsWith('/memories/recall')) return Response.json({ results: [
+                { id: 'other', type: 'experience', text: 'SYNTHETIC_OTHER_PRIVATE', document_id: '2222222222222222:ep-1', mentioned_at: now.toISOString() },
+                { id: 'safe', type: 'experience', text: 'SYNTHETIC_APPROVED_PUBLIC', document_id: 'diary:2026-11-08', tags: ['qq-public'], mentioned_at: now.toISOString() },
+            ] });
             if (url.pathname.endsWith('/mental-models/relationship')) return Response.json({ id: 'relationship', content: 'SYNTHETIC_PRIVATE_SAFE_RELATIONSHIP' });
             throw new Error('Unexpected synthetic baseline route');
         };
@@ -117,7 +120,8 @@ test('无writer且没有authored intent的正常App仍可读取公共QQ原始事
         app = startApp({ config, transport: { friendHistory: async () => [], sendPrivateText: async () => 99 }, log() {}, pipeline: { now: () => now.getTime() } });
         LongTermMemory.prototype.commonBankId = originalBankId; assert.ok(appMemory);
         assert.equal(appMemory.derivedAvailable(), true);
-        const recalled = await appMemory.recallCommon(A, [{ role: 'user', content: '合成查询' }], now, [A]); assert.match(recalled!, /SAFE_OTHER_QQ_FACT/);
+        const recalled = await appMemory.recallCommon(A, [{ role: 'user', content: '合成查询' }], now, [A]);
+        assert.match(recalled!, /SYNTHETIC_APPROVED_PUBLIC/); assert.doesNotMatch(recalled!, /SYNTHETIC_OTHER_PRIVATE/);
         appMemory.relationship(A); await new Promise<void>(done => setImmediate(done)); assert.match(appMemory.relationship(A)!, /PRIVATE_SAFE_RELATIONSHIP/);
     } finally { LongTermMemory.prototype.commonBankId = originalBankId; await app?.stop(); await seed.stop(); globalThis.fetch = originalFetch; clean(root); }
 });
