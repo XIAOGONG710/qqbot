@@ -5,7 +5,7 @@ import type { Log } from '../platform/log.ts';
 import type { Character } from '../st/card.ts';
 import { ownDaysLine, recentDayHighlights, worldHighlights } from '../world/highlights.ts';
 import type { WorldState } from '../world/world.ts';
-import { desktopPresence, lastDesktopTurnAt, type DesktopNowSource } from './desktop-now.ts';
+import { desktopPresence, type DesktopNowSource } from './desktop-now.ts';
 import { readingActivities } from './her-days.ts';
 import { herPlanActivities } from './her-plans.ts';
 import { activityWithChat, nowDoing, renderNow, writeNow } from './now-export.ts';
@@ -38,12 +38,14 @@ export interface NowHostDeps {
 export interface NowHost {
     /** 渲染一次 NOW.md；写不出去只记一行日志 */
     exportNow(): void;
+    refreshDesktopPresence(): void;
     /** 「你这两天自己在做的」那一行；没有世界账时 undefined */
     ownDays(): string | undefined;
 }
 
 export function nowHost({ config, soulDir, worldCard, sharedWorld, worldNow, owner: deviceOwner, history, desktopSource, diaryByQq, log }: NowHostDeps): NowHost {
     const nowFile = join(soulDir, 'NOW.md');
+    let publishedDesktopWith: boolean | undefined;
     const exportNow = (): void => {
         const schedule = worldCard?.schedule;
         if (!schedule) return;
@@ -58,12 +60,12 @@ export function nowHost({ config, soulDir, worldCard, sharedWorld, worldNow, own
             // 中断层：他刚说过话就写「和你聊天中」，聊完下一次渲染自己回到原来的轨迹
             const lastAt = owner ? Date.parse(history(owner.qq).at(-1)?.time ?? '') : NaN;
             const qqLastAt = Number.isFinite(lastAt) ? lastAt : undefined;
-            // desktopDay（ADR 0347 第 3 层）：桌面上最后一轮也算刚说过话、他在电脑前也算聊着，本来在上课 / 该睡了带括号；
+            // desktopDay：只取统一的桌面在场判定，QQ 上聊着仍独立计算。
             // asleep 只因 QQ 上聊着才改 no（桌面上是被叫起来的，不是醒了）。关着照旧
-            const desktopLastAt = desktopSource ? lastDesktopTurnAt(desktopSource.turns(at), at) : undefined;
-            const withDesktop = desktopSource ? nowDoing({
-                base, kind: state.activity.kind, now: at, desktopWith: desktopPresence(desktopSource, at).with,
-                ...(qqLastAt !== undefined ? { qqLastAt } : {}), ...(desktopLastAt !== undefined ? { desktopLastAt } : {}),
+            const desktopWith = desktopSource && desktopPresence(desktopSource, at).with;
+            const withDesktop = desktopWith !== undefined ? nowDoing({
+                base, kind: state.activity.kind, now: at, desktopWith,
+                ...(qqLastAt !== undefined ? { qqLastAt } : {}),
             }) : undefined;
             const doing = withDesktop ? withDesktop.doing : activityWithChat(base, qqLastAt, at);
             // 私有生活片段（ADR 0236）：和控制台使用同一确定性投影，只写已经发生的世界事实。
@@ -75,6 +77,7 @@ export function nowHost({ config, soulDir, worldCard, sharedWorld, worldNow, own
             const asleep = withDesktop ? withDesktop.asleep : state.activity.kind === 'sleep' && doing === base;
             // 一本日记（oneDiary）：当天日记由 QQ 写，告诉常驻进程睡眠整合别再 journal_write
             writeNow(nowFile, renderNow({ doing, at, asleep, ...(diaryByQq ? { diaryBy: 'qq' as const } : {}), ...(recent.length ? { recent } : {}) }));
+            publishedDesktopWith = desktopWith;
         } catch (error) {
             log(`「她现在在干嘛」没写出去（${error instanceof Error ? error.message : String(error)}）`);
         }
@@ -87,5 +90,11 @@ export function nowHost({ config, soulDir, worldCard, sharedWorld, worldNow, own
         const world = sharedWorld;
         return ownDaysLine(recentDayHighlights(at => world.at(herWorld, schedule, at), schedule, new Date(worldNow())));
     }
-    return { exportNow, ownDays: ownDaysNow };
+    return {
+        exportNow,
+        refreshDesktopPresence() {
+            if (desktopSource && desktopPresence(desktopSource, worldNow()).with !== publishedDesktopWith) exportNow();
+        },
+        ownDays: ownDaysNow,
+    };
 }

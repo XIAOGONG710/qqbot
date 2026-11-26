@@ -111,7 +111,7 @@ export interface NowDoingInput {
     kind: Activity['kind'];
     /** QQ 上最后一句 */
     qqLastAt?: number;
-    /** 桌面上最后一轮（desktop-log 的 at） */
+    /** 未提供 desktopWith 时可用的桌面活动时间 */
     desktopLastAt?: number;
     /** 桌面在场（presenceAt(...).with，租约优先、回合兜底） */
     desktopWith?: boolean;
@@ -120,13 +120,13 @@ export interface NowDoingInput {
 
 /**
  * NOW.md 的「在干嘛」和 asleep 行，desktopDay 开着时 App 用这个（关着时照旧调三个参数的 activityWithChat）。
- * - doing：QQ 和桌面谁晚算谁；桌面在场也算聊着；本来在上课 / 睡觉带括号（QQ 上聊着也一样带）。
+ * - doing：QQ 仍用聊天时间窗；桌面用在场判定。作息是上课 / 睡觉时附带提示。
  * - asleep：照旧按作息写，只有 QQ 上聊着才算醒着；**桌面上聊着不改成 no**——她是被叫起来的，不是醒了（方案 §2.2-1）。
  */
 export function nowDoing(input: NowDoingInput): { doing: string; asleep: boolean } {
     const { base, kind, now } = input;
     const doing = activityWithChat(base, input.qqLastAt, now, CHATTING_WINDOW_MS, {
-        ...(input.desktopLastAt !== undefined ? { desktopAt: input.desktopLastAt } : {}),
+        ...(input.desktopWith === undefined && input.desktopLastAt !== undefined ? { desktopAt: input.desktopLastAt } : {}),
         ...(input.desktopWith ? { desktopWith: true } : {}),
         was: kind,
     });

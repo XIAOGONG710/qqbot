@@ -1215,6 +1215,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         planner: qq => plannerOf(qq), plannerForExport: qq => planners.get(qq), refreshSoon: () => selfExport.refreshSoon(), log,
     });
     // DSH 只追加脱敏收件箱；QQ 开着 DSH 时用同一条时间线 / 世界账落地，关掉时不启动同步定时器。
+    let refreshDesktopPresence = (): void => {};
     const syncDshInboxes = (): void => {
         if (!dshEnabled) return;
         const now = new Date(worldNow());
@@ -1237,6 +1238,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             }
             // 桌面记录（ADR 0347 第 3 层，desktopDay）：收进 QQ 自己的 desktop-log.jsonl、刷新缓存、会话进时间线、空闲时间进世界（life/desktop-host.ts）
             desktop.syncInbox(now);
+            refreshDesktopPresence();
             // 桌面回执（ADR 0347 第 2 层，selfReceipts）：收进计划器，收到了就刷新一次 SELF（life/self-export-host.ts）
             selfHost.syncReceipts(now);
         } catch (error) {
@@ -1246,7 +1248,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 作息冲突的世界事件（desktopConflict）只记打开开关以后开始的会话：打开的那一刻在这里读 / 记下（life/desktop-host.ts），先后同原来
     desktop.attachWorld({ sharedWorld, timeline, lifeQueue, worldCard, bedtimesSince });
     // 之后每 30 秒再收一次：由 dsh-inbox 模块声明（ADR 0336 第 6 步，App 搭好时开）
-    if (dshEnabled && (timeline || sharedWorld)) syncDshInboxes();
+    if (dshEnabled && (timeline || sharedWorld || desktopSource)) syncDshInboxes();
     const identity = config.ledgers ? new Identity({ repoRoot, dataDir: config.dataDir, now: clockNow, log }) : undefined;
     if (identity) {
         try {
@@ -1553,6 +1555,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         diaryByQq: Boolean(config.oneDiary && diaries), log,
     });
     const exportNow = nowExporter.exportNow;
+    refreshDesktopPresence = nowExporter.refreshDesktopPresence;
     exportNow();
     // 之后每 NOW_REFRESH_MS 再写一次：由 now-export 模块声明（ADR 0336 第 6 步，App 搭好时开）
 

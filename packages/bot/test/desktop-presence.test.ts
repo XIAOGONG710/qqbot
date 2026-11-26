@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+
 import { describe, test } from 'node:test';
 import {
     DESKTOP_GAP_MS, DESKTOP_PRESENCE_FILE, DESKTOP_WITH_MS, isPresenceLease, justLeft, leaseActive, presenceAt, PRESENCE_FUTURE_SLACK_MS,
@@ -16,6 +17,15 @@ const lease = (over: Partial<PresenceLease> = {}): PresenceLease => ({
     kind: 'dsh-presence', version: 1, session: 's-1', startedAt: iso(t(14)), renewedAt: iso(t(15)), ttlMs: 5 * MIN, ...over,
 });
 const turn = (at: number, userAt?: number): PresenceTurn => (userAt === undefined ? { at } : { at, userAt });
+
+test('迟到的回复不能续租或盖过离开，只有新的用户输入才算回来', () => {
+    const ended = lease({ ended: iso(t(15, 2)) });
+    const late = turn(t(15, 18), t(15));
+    assert.equal(presenceAt({ lease: ended, turns: [late], now: t(15, 18) }).with, false);
+    assert.equal(presenceAt({ turns: [late], now: t(15, 18) }).with, false);
+    assert.equal(justLeft({ lease: ended, turns: [late], now: t(15, 18), windowMs: 10 * MIN }), undefined);
+    assert.equal(presenceAt({ lease: ended, turns: [late, turn(t(15, 17), t(15, 16))], now: t(15, 18) }).with, true);
+});
 
 describe('租约格式', () => {
     test('合格的租约；文件名放在灵魂目录下', () => {
@@ -54,7 +64,9 @@ describe('此刻在不在：租约优先', () => {
         for (const [name, l] of Object.entries(cases)) {
             assert.equal(leaseActive(l, now), false, name);
             assert.deepEqual(presenceAt({ lease: l, turns: [], now }), { with: false, source: 'none' }, name);
-            assert.deepEqual(presenceAt({ lease: l, turns: [turn(now - MIN, now - 3 * MIN)], now }), { with: true, since: now - 3 * MIN, until: now - MIN + DESKTOP_WITH_MS, source: 'turns' }, name);
+            assert.deepEqual(presenceAt({ lease: l, turns: [turn(now - MIN, now - 3 * MIN)], now }),
+                name === '已结束' ? { with: false, source: 'none' }
+                    : { with: true, since: now - 3 * MIN, until: now - 3 * MIN + DESKTOP_WITH_MS, source: 'turns' }, name);
         }
         const future = lease({ startedAt: iso(t(14)), renewedAt: iso(t(15, 2)) });
         assert.equal(leaseActive(future, t(15, 2) - PRESENCE_FUTURE_SLACK_MS), true, '晚 1 分钟以内照收');

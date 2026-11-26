@@ -86,6 +86,7 @@ test('laterOf：取较晚的；没有 / 不是有限数的当没有', () => {
 test('nowDoing：桌面上聊着改「在干嘛」，但 asleep 行只有 QQ 上聊着才改成 no（她是被叫起来的，不是醒了）', () => {
     const sleeping = { base: '在宿舍睡觉，7:20 起', kind: 'sleep' as const, now };
     assert.deepEqual(nowDoing({ ...sleeping, desktopLastAt: now - 60_000 }), { doing: '和你聊天中（本来该睡了）', asleep: true });
+    assert.deepEqual(nowDoing({ ...sleeping, desktopLastAt: now - 60_000, desktopWith: false }), nowDoing(sleeping));
     assert.deepEqual(nowDoing({ ...sleeping, desktopWith: true }), { doing: '和你聊天中（本来该睡了）', asleep: true });
     assert.deepEqual(nowDoing({ ...sleeping, qqLastAt: now - 60_000 }), { doing: '和你聊天中（本来该睡了）', asleep: false });
     assert.deepEqual(nowDoing(sleeping), { doing: '在宿舍睡觉，7:20 起', asleep: true });

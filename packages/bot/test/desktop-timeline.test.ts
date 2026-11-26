@@ -137,23 +137,23 @@ describe('记进时间线', () => {
 });
 
 describe('此刻他在不在电脑前 / 留话的闸', () => {
-    test('租约优先、回合兜底；最后一轮的时刻不信未来的', () => {
+    test('租约优先，回合按开口时间兜底，未来回合不取', () => {
         assert.equal(desktopPresence(source([turn(t(16))]), t(16, 5)).with, true);
         assert.equal(desktopPresence(source([turn(t(16))]), t(16, 11)).with, false);
         assert.equal(desktopPresence(source([turn(t(14))], lease(t(15), t(16, 8))), t(16, 10)).source, 'lease');
-        assert.equal(lastDesktopTurnAt([turn(t(15)), turn(t(16)), turn(t(18))], t(17)), t(16));
+        assert.equal(lastDesktopTurnAt([turn(t(15)), turn(t(16)), turn(t(18))], t(17)), t(16) - MIN);
         assert.equal(lastDesktopTurnAt([], t(17)), undefined);
         const hooks = desktopProactiveHooks(source([turn(t(16))]));
         assert.equal(hooks.desktopWith(t(16, 5)), true);
-        assert.equal(hooks.lastDesktopAt(t(16, 5)), t(16));
+        assert.equal(hooks.lastDesktopAt(t(16, 5)), t(16) - MIN);
         assert.equal(hooks.desktopTurns(t(16, 5)).length, 1);
     });
 
     test('留话：他在电脑前、离开不到 10 分钟都先留着（他就在电脑前），走了 10 分钟以上照常', () => {
-        // 回合兜底：最后一轮 16:00，「在」到 16:10，之后就不挡
+        // 回合兜底：15:59 开口、16:00 回完，「在」到 16:09
         assert.equal(outboxDesktopBlock(source([turn(t(16))]), t(16, 5)), OUTBOX_DESKTOP_REASON);
-        assert.equal(outboxDesktopBlock(source([turn(t(16))]), t(16, 10)), OUTBOX_DESKTOP_REASON);
-        assert.equal(outboxDesktopBlock(source([turn(t(16))]), t(16, 11)), undefined);
+        assert.equal(outboxDesktopBlock(source([turn(t(16))]), t(16, 9)), OUTBOX_DESKTOP_REASON);
+        assert.equal(outboxDesktopBlock(source([turn(t(16))]), t(16, 10)), undefined);
         // 租约：结束在 16:30，16:39 还挡，16:41 不挡
         const ended = lease(t(15), t(16, 28), { ended: new Date(t(16, 30)).toISOString() });
         assert.equal(outboxDesktopBlock(source([], lease(t(15), t(16, 28))), t(16, 30)), OUTBOX_DESKTOP_REASON);

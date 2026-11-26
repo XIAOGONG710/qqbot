@@ -1298,11 +1298,11 @@ export function apply(ctx, config = {}) {
             const originalUser = [...messages].reverse().find((message) => message?.role === 'user')
             cache.user = textOf(originalUser).trim()
             // userAt（ADR 0347 第 3 层）：本轮第一次记下他原话的这一刻，turn-stopping 写进 desktop-recent.jsonl
-            if (cache.user) cache.userAt = Date.now()
-          }
-          // 在场租约：他这一轮在桌面上说了话才写 / 续（touchPresence 自己挡掉非 desktop 渠道、60 秒内的重复）
-          if (cache.user) {
-            try { if (touchPresence(cfg)) log(cfg, '在场：续了桌面租约') } catch (e) { log(cfg, `presence error ${e}`) }
+            if (cache.user) {
+              cache.userAt = Date.now()
+              // 只有他开口才续；工具步骤和回复完成都不是新的在场证据。
+              try { if (touchPresence(cfg, cache.userAt)) log(cfg, '在场：续了桌面租约') } catch (e) { log(cfg, `presence error ${e}`) }
+            }
           }
           if (query) {
             const { items: all, important, failedBanks } = await recallAll(cfg, query, cache.user, messages.at(-1)?.role === 'user')
@@ -1396,10 +1396,6 @@ export function apply(ctx, config = {}) {
           const tail = channel() === 'desktop' && user ? closeTurn(user, assistant) : ''
           if (tail && appendTail(cfg.sessionTailsFile, agent.id, tail)) log(cfg, `收尾：留了一句（${tail.length}字）`)
         } catch (e) { log(cfg, `tail error ${e}`) }
-        // 一轮结束也续一次租约（工具调用多的一轮可能跑了好几分钟）
-        if (user) {
-          try { if (touchPresence(cfg)) log(cfg, '在场：续了桌面租约') } catch (e) { log(cfg, `presence error ${e}`) }
-        }
         // 回执：桌面上他自己说了话、这一轮放过攒着的事，才追加一行；QQ 那边认没认成「说过了」由它自己判断
         if (channel() === 'desktop') {
           try {

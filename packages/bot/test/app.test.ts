@@ -3390,7 +3390,46 @@ describe('此刻的她（SELF.json，ADR 0347 第 2 层）', () => {
         };
         assert.equal(await run(false), undefined, '关着不收');
         const log = await run(true);
-        assert.ok(log?.includes('"user":"帮我看看这个表"'), '开着收进来了');
+        assert.ok(log, '开着收进来了');
+        assert.match(log, /"user":"帮我看看这个表"/);
+        assert.equal(log.trim().split('\n').length, 1, '反复同步只入账一次');
+    });
+
+    test('桌面在场和离开由同一份租约刷新 NOW，迟来的回合仍入账', async () => {
+        const clock = new VirtualClock(start);
+        const cfg = config({ ...life, contacts: bf, dsh: { enabled: true }, oneLife: 'desktop', oneDiary: false });
+        const leaseFile = join(isolatedSoul, 'desktop-presence.json');
+        const nowFile = join(isolatedSoul, 'NOW.md');
+        const memory = join(cfg.dataDir, 'memory');
+        mkdirSync(memory, { recursive: true });
+        const at = clock.now();
+        const lease = { kind: 'dsh-presence', version: 1, session: 'synthetic',
+            startedAt: new Date(at).toISOString(), renewedAt: new Date(at).toISOString(), ttlMs: 900_000 };
+        mock.timers.enable({ apis: ['setInterval'] });
+        try {
+            const { app } = setup(cfg, { 10001: [] }, { clock });
+            await app.connected(SELF);
+            const sync = async () => {
+                mock.timers.tick(30_000);
+                await new Promise(resolve => setTimeout(resolve, 20));
+            };
+            assert.doesNotMatch(readFileSync(nowFile, 'utf8'), /和你聊天中/);
+            writeFileSync(leaseFile, JSON.stringify(lease));
+            await sync();
+            assert.match(readFileSync(nowFile, 'utf8'), /和你聊天中/);
+            clock.advance(2 * 60_000);
+            writeFileSync(leaseFile, JSON.stringify({ ...lease, ended: new Date(at + 60_000).toISOString() }));
+            writeFileSync(join(memory, 'desktop-recent.jsonl'), JSON.stringify({
+                at: clock.now(), userAt: at, user: '合成桌面问题', assistant: '合成迟到回复',
+            }) + '\n');
+            await sync();
+            assert.doesNotMatch(readFileSync(nowFile, 'utf8'), /和你聊天中|diary-by: qq/);
+            await sync();
+            assert.equal(readFileSync(join(memory, 'desktop-log.jsonl'), 'utf8').trim().split('\n').length, 1);
+        } finally {
+            mock.timers.reset();
+            rmSync(leaseFile, { force: true });
+        }
     });
 
     // 桌面上的事也进心境（ADR 0347 第 5 层 desktopFeelings）：不开 desktopConflict 也得起作用（原来桌面缓存只在 desktopConflict 开着时刷新，单开它是空的）

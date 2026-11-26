@@ -4,7 +4,7 @@
 // - 读两样：灵魂目录的 desktop-presence.json（插件写的在场租约）、数据目录的 memory/desktop-log.jsonl（QQ 自己收的桌面回合）。
 //   在不在按 desktop-presence.ts 的 presenceAt：租约作数就听租约，否则看最后一轮在不在 10 分钟以内。
 // - 给主动消息（desktopProactiveHooks → planner-host 的 desktop 依赖 → ProactiveInput 的 desktopWith / lastDesktopAt / desktopTurns）、
-//   留话（outboxDesktopBlock：他在电脑前就先留着，走了 10 分钟以上再发）、NOW.md（desktopPresence + lastDesktopTurnAt 交给 now-export 的 nowDoing）用。
+//   留话（outboxDesktopBlock：他在电脑前就先留着，走了 10 分钟以上再发）和 NOW.md（desktopPresence）用。
 // - 原文只在内存里给 blockReason 认「晚安」，不进日志、不落盘、不进提示词（方案 §2.8）。
 // - 读不到（不是「没有」）就当他不在电脑前、照原来的规矩走，只记一次日志，不记内容。
 // 只有 App 在 desktopDay 和 crossRecent 都开着时才建它；不建就什么都不变。
@@ -12,7 +12,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { desktopLogPath, desktopTurns, type DesktopLogOps, type DesktopLogTurn } from '../memory/desktop-log.ts';
 import type { DesktopTurnText } from '../proactive/proactive.ts';
-import { desktopPresencePath, justLeft, PRESENCE_FUTURE_SLACK_MS, presenceAt, type Presence } from './desktop-presence.ts';
+import { desktopPresencePath, desktopUserActivityAt, justLeft, PRESENCE_FUTURE_SLACK_MS, presenceAt, type Presence, type PresenceTurn } from './desktop-presence.ts';
 
 /** 留话：他在电脑前时先留着不发的原因（和 app.ts 的「主动留话：先留着不发（…）」日志拼在一起） */
 export const OUTBOX_DESKTOP_REASON = '他就在电脑前';
@@ -104,12 +104,13 @@ export function desktopPresence(source: DesktopNowSource, now: number): Presence
     return presenceAt({ lease: source.lease(), turns: source.turns(now), now });
 }
 
-/** 桌面上最后一轮的时刻；晚于现在 1 分钟以上的不信（同 presenceAt） */
-export function lastDesktopTurnAt(turns: readonly { at: number }[], now: number): number | undefined {
+/** 桌面上用户最近开口的时刻；晚于现在 1 分钟以上的回合不信（同 presenceAt） */
+export function lastDesktopTurnAt(turns: readonly PresenceTurn[], now: number): number | undefined {
     let last: number | undefined;
     for (const turn of turns) {
         if (!Number.isFinite(turn.at) || turn.at > now + PRESENCE_FUTURE_SLACK_MS) continue;
-        if (last === undefined || turn.at > last) last = turn.at;
+        const at = desktopUserActivityAt(turn);
+        if (last === undefined || at > last) last = at;
     }
     return last;
 }
@@ -126,7 +127,7 @@ export function desktopProactiveHooks(source: DesktopNowSource): DesktopProactiv
 /**
  * 留话的闸（方案 §2.2-3，加在 app.ts drainOutbox 的 blocked 里）：他在电脑前，或者离开还不到 OUTBOX_AWAY_MS，就返回「他就在电脑前」，留话原样留着；
  * 走了 10 分钟以上返回 undefined，照原来的规矩发（留话超过 OUTBOX_MAX_AGE_MS 的照旧不发）。
- * 回合兜底时「在」本身就延续到最后一轮之后 10 分钟，所以「离开」从最后一轮算；租约结束 / 过期的从最后确知他在的时刻算。
+ * 回合兜底从最近一次开口算；租约结束 / 过期的从最后确知他在的时刻算。
  */
 export function outboxDesktopBlock(source: DesktopNowSource, now: number, awayMs = OUTBOX_AWAY_MS): string | undefined {
     const lease = source.lease();

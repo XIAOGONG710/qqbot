@@ -7,6 +7,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFil
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { checkRequest, ensureToken, permissionMode, residentDir } from '../packages/bot/src/platform/resident-guard.ts'
+import { desktopPresencePath, leaseActive } from '../packages/bot/src/life/desktop-presence.ts'
 import { herAsleep, localDay, nowFreshText, sleepDue, wakeDue } from './her-schedule.mjs'
 import { IDLE_DATA_NOT_COMMANDS, workPrompt } from '../packages/bot/src/platform/instruction-source.ts'
 
@@ -19,6 +20,7 @@ const DIR = residentDir()
 const SOUL_DIR = process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao')
 // 她现在在干嘛、睡没睡：只有 QQ 那边算（ADR 0347 第 1 层），写成 NOW.md，这里只读
 const NOW_FILE = join(SOUL_DIR, 'NOW.md')
+const PRESENCE_FILE = desktopPresencePath(SOUL_DIR)
 const LOG = join(DIR, 'resident.log')
 const MAX_BODY = 64 * 1024
 const TIMEOUT_MS = 180_000
@@ -197,6 +199,10 @@ function saveState(state) { try { writeFileSync(STATE, JSON.stringify(state, nul
 
 async function idleRun(prompt, label, timeoutMs = 480_000) {
     if (running || queue.length) return
+    // 桌面正在聊天时推迟新一轮后台工作，只读桌面写出的租约。
+    let lease
+    try { lease = JSON.parse(readFileSync(PRESENCE_FILE, 'utf8')) } catch { /* 没有有效租约 */ }
+    if (leaseActive(lease, Date.now())) return
     running = true
     const started = Date.now()
     log(`${label} start`)

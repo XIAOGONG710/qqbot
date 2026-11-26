@@ -1518,7 +1518,7 @@ describe('一个生活·第 3 层：桌面在场租约（desktop-presence.json�
         assert.equal(existsSync(cfg.presenceFile), false);
     });
 
-    test('整条路径：他在桌面上说话的一轮写租约、一轮结束不重写（60 秒内）；idle 的一轮、没有他原话的一步都不写', async () => {
+    test('整条路径：只有用户开口续租，工具步骤和迟到的回复不续；idle 不写', async ({ mock }) => {
         const fake = fakeHindsight({ banks: ALL_BANKS });
         try {
             const turn = async (h: ReturnType<typeof boot>, messages: unknown[]) => {
@@ -1545,6 +1545,18 @@ describe('一个生活·第 3 层：桌面在场租约（desktop-presence.json�
                 await turn(h, [{ role: 'user', content: '再说一句' }]);
                 assert.deepEqual(readLease(h.f('desktop-presence.json')), lease, '60 秒内不重写');
                 assert.equal(readLease(h.f('desktop-presence.json')).session, session);
+
+                const renewedAt = Date.parse(lease.renewedAt);
+                const now = mock.method(Date, 'now', () => renewedAt + mins(2));
+                await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '帮我看看文件' }] }, async () => undefined);
+                const foreground = readLease(h.f('desktop-presence.json'));
+                assert.equal(Date.parse(foreground.renewedAt), renewedAt + mins(2));
+                now.mock.mockImplementation(() => renewedAt + mins(18));
+                await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '帮我看看文件' }, { role: 'tool', content: '文件已读' }] }, async () => undefined);
+                await h.handlers['agent/assistant-stream']!({ frame: { type: 'chunk', chunk: { type: 'text-delta', text: '看完了' } } });
+                await h.handlers['agent/turn-stopping']!();
+                assert.deepEqual(readLease(h.f('desktop-presence.json')), foreground);
+                assert.equal(leaseActive(foreground, Date.now()), false);
             });
         } finally { fake.restore(); }
     });

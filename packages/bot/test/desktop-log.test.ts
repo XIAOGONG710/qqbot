@@ -193,8 +193,8 @@ describe('desktop-log：读出来的回合能直接交给 desktop-presence 切�
         assert.equal(sessions.length, 2, '隔了 45 分钟以上切开');
         assert.equal(sessions[0]!.start, T - mins(100) - TURN_LEAD_MS, '没有 userAt 的往前推 2 分钟');
         assert.deepEqual({ start: sessions[1]!.start, end: sessions[1]!.end }, { start: T - mins(17), end: T - mins(3) });
-        assert.deepEqual(presenceAt({ turns, now: T }), { with: true, since: T - mins(17), until: T - mins(3) + mins(10), source: 'turns' });
-        assert.equal(presenceAt({ turns, now: T + mins(8) }).with, false, '最后一轮过了 10 分钟就不算在');
+        assert.deepEqual(presenceAt({ turns, now: T }), { with: true, since: T - mins(17), until: T - mins(4) + mins(10), source: 'turns' });
+        assert.equal(presenceAt({ turns, now: T + mins(7) }).with, false, '从最后一次开口算 10 分钟');
         // 14 天以后读：都不给
         assert.deepEqual(desktopTurns(h.dataDir, T + DESKTOP_LOG_KEEP_MS + mins(200)), []);
     });

@@ -2,11 +2,11 @@
 // 研究 docs/research/2026-11-22-private-companion-v2.md 建议 2「桌面在场租约」、建议 4「对账口径」）。只是纯函数，还没接线，不改她的言行。
 //
 // 两路证据，租约优先：
-// 1. 租约：DSH 插件在会话开始、每隔几分钟、结束时往灵魂目录写一份 desktop-presence.json（格式见 PresenceLease）。
+// 1. 租约：DSH 插件在用户开口时往灵魂目录写 desktop-presence.json（格式见 PresenceLease）。
 //    还在有效期（renewedAt + ttlMs ≥ 现在）、没写 ended、时间不比现在晚 1 分钟以上，就算他在。插件崩了不用管，过期自然失效。
 // 2. 兜底：租约缺失 / 过期 / 已结束 / 时间不对时，从桌面回合（desktop-recent.jsonl / 方案里的 desktop-log 的 { at, userAt? }）反推：
 //    相邻两轮之间安静不到 EPISODE_GAP_MS（45 分钟，和长期记忆切片段同一个间隔，方案 :39、:77）算同一段；
-//    最后一轮在 CHATTING_WINDOW_MS（10 分钟，和 NOW.md「和你聊天中」同一个窗口）以内就算他在。
+//    最近一次开口在 CHATTING_WINDOW_MS（10 分钟）以内就算他在；已结束租约之前的回合不算新活动。
 // 和作息重叠只给标签（本来在睡 / 上课 / 课间 / 空闲），不决定怎么说——措辞是她的事，以后单独问她（研究建议 4、方案 §2.6）。
 // 不读文件、不落盘、不记日志；读 JSON、接进闸门由调用方做。
 
@@ -95,8 +95,11 @@ export function leaseActive(lease: unknown, now: number): lease is PresenceLease
         && Date.parse(lease.renewedAt) + lease.ttlMs >= now;
 }
 
+export const desktopUserActivityAt = (turn: PresenceTurn): number =>
+    turn.userAt !== undefined && Number.isFinite(turn.userAt) ? Math.min(turn.userAt, turn.at) : turn.at;
+
 const turnStart = (turn: PresenceTurn) =>
-    turn.userAt !== undefined && Number.isFinite(turn.userAt) ? Math.min(turn.userAt, turn.at) : turn.at - TURN_LEAD_MS;
+    turn.userAt !== undefined && Number.isFinite(turn.userAt) ? desktopUserActivityAt(turn) : turn.at - TURN_LEAD_MS;
 
 /**
  * 按时间切成一段一段：上一轮结束到下一轮他开口，安静不到 gapMs 算同一段（和 splitEpisodes 一样是「小于」）。
@@ -129,9 +132,27 @@ export interface PresenceInput<T extends PresenceTurn = PresenceTurn> {
     gapMs?: number;
 }
 
-/** 晚于现在 1 分钟以上的回合不信（方案 §2.1），切段前先去掉 */
-const pastSessions = <T extends PresenceTurn>(input: PresenceInput<T>) =>
-    sessionsFromTurns(input.turns.filter(turn => turn.at <= input.now + PRESENCE_FUTURE_SLACK_MS), input.gapMs);
+function lastTurnActivity<T extends PresenceTurn>(input: PresenceInput<T>): { at: number; since: number } | undefined {
+    const { lease, now } = input;
+    const ended = leaseEndedAt(lease, now);
+    const sessions = sessionsFromTurns(input.turns.filter(turn =>
+        turn.at <= now + PRESENCE_FUTURE_SLACK_MS
+        && (ended === undefined || desktopUserActivityAt(turn) > ended)), input.gapMs);
+    let latest: { at: number; since: number } | undefined;
+    for (const session of sessions) {
+        for (const turn of session.turns) {
+            const at = desktopUserActivityAt(turn);
+            if (!latest || at > latest.at) latest = { at, since: session.start };
+        }
+    }
+    return latest;
+}
+
+function leaseEndedAt(lease: unknown, now: number): number | undefined {
+    if (!isPresenceLease(lease) || lease.ended === undefined || !notFuture(lease, now)) return undefined;
+    const ended = Date.parse(lease.ended);
+    return ended >= Date.parse(lease.renewedAt) && ended <= now ? ended : undefined;
+}
 
 /** 此刻他在不在电脑前：租约作数就听租约，否则看最后一段回合 */
 export function presenceAt<T extends PresenceTurn>(input: PresenceInput<T>): Presence {
@@ -140,13 +161,13 @@ export function presenceAt<T extends PresenceTurn>(input: PresenceInput<T>): Pre
         return { with: true, since: Date.parse(lease.startedAt), until: Date.parse(lease.renewedAt) + lease.ttlMs, source: 'lease' };
     }
     const withinMs = input.withinMs ?? DESKTOP_WITH_MS;
-    const last = pastSessions(input).at(-1);
-    if (last && now - last.end <= withinMs) return { with: true, since: last.start, until: last.end + withinMs, source: 'turns' };
+    const last = lastTurnActivity(input);
+    if (last && now - last.at <= withinMs) return { with: true, since: last.since, until: last.at + withinMs, source: 'turns' };
     return { with: false, source: 'none' };
 }
 
 export interface JustLeft {
-    /** 最后一次确知他在的时刻：结束的租约取 ended，过期的取最后一次心跳，回合取最后一轮结束 */
+    /** 最后一次确知他在的时刻：结束的租约取 ended，过期的取最后一次续租，回合取最后一次开口 */
     at: number;
     /** 那一段从几点开始 */
     since: number;
@@ -163,11 +184,11 @@ export function justLeft<T extends PresenceTurn>(input: PresenceInput<T> & { win
     let best: JustLeft | undefined;
     if (isPresenceLease(lease) && notFuture(lease, now)) {
         const since = Date.parse(lease.startedAt);
-        const at = lease.ended !== undefined ? Math.max(since, Date.parse(lease.ended)) : Date.parse(lease.renewedAt);
+        const at = leaseEndedAt(lease, now) ?? Date.parse(lease.renewedAt);
         best = { at, since, source: 'lease' };
     }
-    const last = pastSessions(input).at(-1);
-    if (last && (!best || last.end > best.at)) best = { at: last.end, since: last.start, source: 'turns' };
+    const last = lastTurnActivity(input);
+    if (last && (!best || last.at > best.at)) best = { ...last, source: 'turns' };
     if (!best || best.at > now || now - best.at > input.windowMs) return undefined;
     return best;
 }
