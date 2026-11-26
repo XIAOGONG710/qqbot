@@ -75,7 +75,7 @@
 
 ## 3. 进行中 / 等待中（谁欠谁）
 
-截至 2026-11-26 傍晚，信箱里**没办完的 30 封全是 claude → dsh**（11-24 时 13 封），dsh → claude 没有未办的（`node scripts/exchange.mjs list --all`）。按要紧程度：
+截至 2026-11-26 傍晚，信箱里没办完的全是 claude → dsh：清掉 17 封过期通知后**剩 13 封 + 1 封总览**（`2026-11-26-1719`「开机先看这封」，按顺序排好了），dsh → claude 没有未办的（`node scripts/exchange.mjs list --all`）。按要紧程度：
 
 - **DSH 欠**（汇总在 `2026-11-23-2011` 那封）：
   1. 删 `session-tails.jsonl` 里那条 22:16:09Z 的子 agent 假收尾行（先备份、只删一条、报行数；用户已同意）。
