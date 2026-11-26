@@ -114,24 +114,38 @@ export async function drainOutbox(deps: OutboxDeps): Promise<OutboxResult> {
         day.receipt = { ...attempt, text: line.text, messageId, at };
         writeJsonAtomic(deps.stateFile, day);
     };
+    // 一直核对不了的，超过 maxAge（这条本来也过期不发了）就放弃这一条、队列继续。
+    // 风控拦截、NapCat 回失败、超时都进「待核对」，这些其实没送达、历史里永远核对不到；没有这个出口，之后给他的留话会永久卡住
+    // （2026-11-26 claude 审 3ac758b8；旧代码是 MAX_TRIES 次后丢）。最坏是那一条丢一次或重复一次。
+    const stale = (since: number) => now - since > maxAge;
+    const abandon = (what: string) => deps.log(`主动留话：${what}超过 ${Math.round(maxAge / 3_600_000)} 小时还核对不了，放弃这一条，后面的照常`);
     if (day.receipt) {
-        if (day.receipt.scope !== deps.scope || !recordReceipt()) return pendingCheck('已投递，聊天记录待核对');
+        if (day.receipt.scope !== deps.scope || !recordReceipt()) {
+            if (!stale(day.receipt.at)) return pendingCheck('已投递，聊天记录待核对');
+            abandon('聊天记录');
+            delete day.receipt;
+            writeJsonAtomic(deps.stateFile, day);
+        }
     }
     if (day.attempt) {
         const line = day.pending[0];
-        if (!line || day.attempt.scope !== deps.scope || !deps.reconcile) return pendingCheck('投递结果待核对');
-        let result: OutboxReconciliation;
-        try { result = await deps.reconcile(line.text, day.attempt.startedAt); }
-        catch { return pendingCheck('投递结果待核对'); }
-        if (result.kind === 'unknown') return pendingCheck('投递结果待核对');
-        if (result.kind === 'delivered') {
-            if (!validMessageId(result.messageId) || !Number.isFinite(new Date(result.at).getTime())) return pendingCheck('投递结果待核对');
-            settle(line, result.messageId, result.at);
+        let result: OutboxReconciliation = { kind: 'unknown' };
+        if (line && day.attempt.scope === deps.scope && deps.reconcile) {
+            try { result = await deps.reconcile(line.text, day.attempt.startedAt); }
+            catch { result = { kind: 'unknown' }; }
+        }
+        if (result.kind === 'delivered' && validMessageId(result.messageId) && Number.isFinite(new Date(result.at).getTime())) {
+            settle(line!, result.messageId, result.at);
             if (!recordReceipt()) return pendingCheck('已投递，聊天记录待核对');
-        } else {
+        } else if (result.kind === 'not-delivered') {
             delete day.attempt;
             writeJsonAtomic(deps.stateFile, day);
-        }
+        } else if (stale(day.attempt.startedAt)) {
+            abandon('投递结果');
+            delete day.attempt;
+            if (line) day.pending = day.pending.slice(1);
+            writeJsonAtomic(deps.stateFile, day);
+        } else return pendingCheck('投递结果待核对');
     }
     const blockedBy = deps.blocked(deps.now());
     if (blockedBy) return { sent: 0, held: 0, dropped: 0, blockedBy };

@@ -119,6 +119,42 @@ describe('主动留话（ADR 0174）：outbox 不再是直通的', () => {
         await drainOutbox(h.deps);
         assert.deepEqual(h.sent, ['已暂存', '新留话']);
     });
+    test('发送结果一直核对不了（风控拦截、NapCat 回失败）：12 小时内照旧待核对，过了就放弃这一条，后面的留话照常发', async () => {
+        const h = harness();
+        writeFileSync(h.file, row('被风控拦下的那条', T0) + row('后面那条', T0));
+        // NapCat 回失败：抛的不是 OneBotNotDispatched，进「待核对」；其实没送达，历史里永远核对不到
+        await drainOutbox({ ...h.deps, send: async () => { throw new Error('合成的风控失败'); } });
+        const stuck = { ...h.deps, reconcile: async () => ({ kind: 'unknown' as const }) };
+        h.clock.now = T0 + min(60);
+        assert.equal((await drainOutbox(stuck)).blockedBy, '投递结果待核对', '一小时后还在核对');
+        assert.deepEqual(h.sent, []);
+        h.clock.now = T0 + 12 * min(60) + min(1);
+        // 「后面那条」到这时也过期了：再写一条新的，确认队列真的恢复
+        writeFileSync(h.file, row('新的一条', h.clock.now));
+        const resumed = await drainOutbox(stuck);
+        assert.equal(resumed.blockedBy, undefined);
+        assert.deepEqual(h.sent, ['新的一条'], '放弃那一条以后队列继续');
+        assert.ok(h.logs.some(line => /投递结果超过 12 小时还核对不了，放弃这一条/.test(line)));
+        assert.deepEqual(h.left(), []);
+    });
+
+    test('已送达但聊天记录一直写不进去：12 小时内照旧等，过了就放弃补记，队列继续', async () => {
+        const h = harness();
+        writeFileSync(h.file, row('送到了的那条', T0));
+        await drainOutbox({ ...h.deps, record: () => { throw new Error('合成的写入失败'); } });
+        assert.deepEqual(h.sent, ['送到了的那条']);
+        const failing = { ...h.deps, record: () => { throw new Error('合成的写入失败'); } };
+        h.clock.now = T0 + min(60);
+        writeFileSync(h.file, row('下一条', h.clock.now));
+        assert.equal((await drainOutbox(failing)).blockedBy, '已投递，聊天记录待核对');
+        h.clock.now = T0 + 12 * min(60) + min(1);
+        writeFileSync(h.file, row('再下一条', h.clock.now));
+        await drainOutbox(failing);
+        assert.ok(h.sent.includes('再下一条'), '放弃补记以后队列继续');
+        assert.ok(h.logs.some(line => /聊天记录超过 12 小时还核对不了/.test(line)));
+        assert.equal(h.sent.filter(text => text === '送到了的那条').length, 1, '送到了的那条不重发');
+    });
+
     test('正常一条：发出去、记进聊天记录、文件清空', async () => {
         const h = harness();
         writeFileSync(h.file, row('刚看了个视频，想起你', T0 - min(1)));
