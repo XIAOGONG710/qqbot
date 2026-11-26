@@ -136,3 +136,15 @@ describe('模型请求', () => {
         assert.equal(await unreachable(() => new Response('{}')), false, '回了但没有文本');
     });
 });
+
+test('请求体里落单的半个表情换成 U+FFFD，完整的表情和平常的字原样（按 UTF-16 截短截在表情中间时，有的接口转 UTF-8 会整条报错）', async () => {
+    const half = '小王😀'.slice(0, 3); // 截在表情中间：留下高位代理
+    assert.equal(half.isWellFormed(), false);
+    let body = '';
+    const fetch = (async (_url: string | URL | Request, init?: RequestInit) => { body = String(init?.body); return ok(); }) as typeof globalThis.fetch;
+    await chatCompletion(options, [{ role: 'user', content: `转发：${half}：在吗 / 阿明😀：好` }], { fetch });
+    assert.doesNotMatch(body, /\ud83d(?!\ude00)/i, '没有落单的高位代理转义');
+    const sent = JSON.parse(body) as { messages: { content: string }[] };
+    assert.equal(sent.messages[0]!.content, '转发：小王�：在吗 / 阿明😀：好');
+    assert.ok(sent.messages[0]!.content.isWellFormed());
+});

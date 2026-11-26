@@ -162,6 +162,15 @@ async function complete(
     }
 }
 
+/**
+ * 发给模型的请求体：每个字符串值都 toWellFormed（落单的半个代理对换成 U+FFFD，完整的字符串原样）。
+ * 到处有按 UTF-16 截短的地方（昵称 slice(0, 16)、各种 .slice(0, N)），截在表情中间就留下半个字符；
+ * JSON.stringify 会把它写成 � 这种转义，Python 写的接口在转 UTF-8 时可能整条请求报错（2026-11-26 复查入站修复时发现）。
+ */
+export function requestBody(body: Record<string, unknown>): string {
+    return JSON.stringify(body, (_key, value: unknown) => typeof value === 'string' ? value.toWellFormed() : value);
+}
+
 async function completeOnce(
     options: LlmOptions,
     messages: OpenAIMessage[],
@@ -177,7 +186,7 @@ async function completeOnce(
             'Content-Type': 'application/json',
             Authorization: `Bearer ${options.apiKey}`,
         },
-        body: JSON.stringify({
+        body: requestBody({
             model: options.model,
             messages,
             temperature: options.temperature,
