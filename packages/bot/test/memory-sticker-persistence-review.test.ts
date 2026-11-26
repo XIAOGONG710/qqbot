@@ -184,6 +184,16 @@ test('坏index与不安全元数据原文件保留且拒构造，不隔离或猜
     } finally { f.cleanup(); }
 });
 
+test('收藏的图片都用不了（文件没了）时不给清单——不给一个只有标题、底下一张都没有的', () => {
+    const f = fixture();
+    try {
+        unlinkSync(f.image);
+        assert.equal(f.shelf.prompt(), undefined);
+        assert.equal(f.shelf.prompt({ text: '哈哈' }), undefined);
+        assert.equal(f.shelf.resolve(`<sticker:${f.id}>`), undefined);
+    } finally { f.cleanup(); }
+});
+
 test('索引图片被换成跨目录file symlink时不供给且淘汰不删除链接目标', async t => {
     const f = fixture(), outside = fixture();
     try {

@@ -618,8 +618,9 @@ export function stickerShelf(options: StickerShelfOptions): StickerShelf {
         },
         prompt(context) {
             ensureIndex();
-            if (!index.entries.length) return undefined;
+            // 按「能用的」判空：图片都丢了 / 被换成链接时，原来照样给一个只有标题、底下一张都没有的清单（11-27 CI 上第一次跑到这条才发现）
             const available = index.entries.filter(present);
+            if (!available.length) return undefined;
             if (context) {
                 const shortlist = rankStickers(available, context.text).slice(0, STICKER_SHORTLIST);
                 if (!shortlist.length) return undefined;
