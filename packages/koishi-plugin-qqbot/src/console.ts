@@ -2,6 +2,9 @@
 // - 入口、数据服务、监听器挂在根上下文上，每个 Koishi 进程只注册一次：qqbot 插件配置有误（红点）或重启时，页面照样能用；
 // - 插件每次启动 / 停下 / 启动失败时更新模块里的状态（setConsoleState），数据服务每几秒推一次给页面；
 // - 所有监听器和数据服务都要求登录（authority 4，和 plugin-config 一样），页面本身和入口文件不受登录保护；
+//   拦截靠 plugin-auth 的 console/intercept：它没加载（停用、启动失败）时 Koishi 一个都不拦，而控制台 WebSocket 不查 Origin，
+//   本机任何网页都能连上来。所以监听器和数据服务自己再查一遍登录（consoleAuthorized），查不到就拒绝；
+// - 监听器抛出的异常 Koishi 会连 stack 一起发给页面（coerce）：这里统一换成不带堆栈的中文提示，原因只记日志第一行；
 // - 保存角色资料：先在内存里生成全部档位、做档位隐私检查，不过就不写；过了写 source/ 和 st/，插件按卡文件监听自动重启。
 
 import type { Context } from 'koishi';
@@ -17,7 +20,7 @@ import { PHOTO_MAX_BYTES, photoShelf } from '../../bot/src/vision/photos.ts';
 import { detectImageType, imageDataUrl } from '../../bot/src/vision/safe-image.ts';
 import { createExternalDraftStore, type ExternalDraftStatus } from '../../bot/src/social/external-drafts.ts';
 import type { ExternalPlatform } from '../../bot/src/social/external-platforms.ts';
-import { createCharacterEditor, type PublicProblem } from '../../character-tools/src/character-editing.ts';
+import { EDIT_PARTS, createCharacterEditor, type EditPart, type PublicProblem } from '../../character-tools/src/character-editing.ts';
 import { readSource } from '../../character-tools/src/source.ts';
 
 const require = createRequire(import.meta.url);
@@ -220,6 +223,10 @@ function photoReferenceStore() {
     return aiPhotoReferenceStore({ file: indexFile });
 }
 
+/** 和 ai-photo-references.ts 的参考 ID 规则一致：先在这里说清楚，别让用户只看到「请刷新页面后重试」 */
+const REFERENCE_NAME = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+const REFERENCE_NAME_HUMAN = /(?:person|people|human|face|selfie|portrait|人物|人脸|自拍|肖像)/i;
+
 function referenceBytes(value: unknown): Uint8Array | undefined {
     if (typeof value !== 'string' || value.length > Math.ceil(AI_PHOTO_REFERENCE_MAX_BYTES * 4 / 3) + 64) return undefined;
     const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
@@ -246,10 +253,13 @@ export function addAiPhotoReference(kind: unknown, image: unknown, referenceId: 
         || typeof referenceId !== 'string' || nonHumanConfirmed !== true || confirmation !== 'confirmed') {
         return { ok: false, error: '请选择参考类型、确认画面不含人物，并重新确认本次登记。' };
     }
+    const name = referenceId.trim();
+    if (!REFERENCE_NAME.test(name)) return { ok: false, error: '参考名称只能用英文字母、数字和 . _ : -，以字母或数字开头，最多 64 个字符（例如 cat-front）。' };
+    if (REFERENCE_NAME_HUMAN.test(name)) return { ok: false, error: '参考名称不能指向人物内容，请换一个描述物品或场景的名称。' };
     const bytes = referenceBytes(image);
     if (!bytes) return { ok: false, error: '请选择 5 MB 以内的 JPEG、PNG 或 WebP 图片。' };
     try {
-        const entry = photoReferenceStore().add({ kind: kind as AiPhotoReferenceKind, bytes, referenceId, nonHumanSubject: true });
+        const entry = photoReferenceStore().add({ kind: kind as AiPhotoReferenceKind, bytes, referenceId: name, nonHumanSubject: true });
         audit?.(`控制台登记了非人物 AI 照片参考（${entry.kind}；${entry.id}）`);
         return { ok: true, entry: { id: entry.id, kind: entry.kind, addedAt: entry.addedAt } };
     } catch {
@@ -451,13 +461,88 @@ function character() {
  * 用页面改过的一部分替换现有资料：校验结构、引用和档位隐私；dryRun 时不写。
  * 校验、构建、档位隐私检查和写入都在 packages/character-tools/src/character-editing.ts，
  * DSH 面板和这个页面用的是同一层；token 是读资料时的快照，资料在别处变过就不写。
+ * 控制台这边 token 必须带：编辑层在 token 缺省时不比快照，两个标签页会互相覆盖；缺了就按冲突回最新的 token，页面照冲突重读。
+ * part 只认页面上的几页（world / biography 等不在页面上的文件不能从这里改）。
  */
-export function saveCharacter(part: SourcePart, value: unknown, dryRun = false, token?: string): SaveResult {
+export function saveCharacter(part: unknown, value: unknown, dryRun = false, token?: unknown): SaveResult {
+    if (typeof part !== 'string' || !(EDIT_PARTS as readonly string[]).includes(part)) {
+        return { ok: false, problems: [{ part: 'output', field: '资料', kind: 'format', hint: '这一部分不能在控制台里改；请刷新页面后重试。' }] };
+    }
     const editor = createCharacterEditor(character());
-    const outcome = dryRun ? editor.preview(part, value, token) : editor.save(part, value, token);
+    if (typeof token !== 'string') return { ok: false, conflict: true, token: editor.load().token };
+    const outcome = dryRun ? editor.preview(part as EditPart, value, token) : editor.save(part as EditPart, value, token);
     if (outcome.ok) return { ok: true, written: outcome.written, token: outcome.token };
     if (outcome.conflict) return { ok: false, conflict: true, token: outcome.token };
     return { ok: false, problems: outcome.problems };
+}
+
+/** 和 plugin-config 一样要 4 级；页面（client/index.js）的 authority 也是 4 */
+const CONSOLE_AUTHORITY = 4;
+
+/**
+ * 这条控制台连接登录了、权限够、没过期吗（和 plugin-auth 的 console/intercept 同一套判断）。
+ * plugin-auth 没加载时连接上没有 auth，一律当没登录：失败关闭，不靠别的插件在不在。
+ */
+export function consoleAuthorized(client: unknown): boolean {
+    const auth = (client as { auth?: { authority?: unknown; expiredAt?: unknown } } | null | undefined)?.auth;
+    if (!auth || typeof auth.authority !== 'number' || auth.authority < CONSOLE_AUTHORITY) return false;
+    return !(typeof auth.expiredAt === 'number' && auth.expiredAt <= Date.now());
+}
+
+/** 数据服务按连接给：没登录的连接拿 null */
+export function consoleDataFor(client: unknown): ConsoleData | null {
+    return consoleAuthorized(client) ? consoleData() : null;
+}
+
+/** Koishi 发给页面的错误是 coerce(error)：有 stack 就发 stack。stack 设成提示本身，页面只看到这一句 */
+function publicFailure(message: string): Error {
+    const error = new Error(message);
+    error.stack = message;
+    return error;
+}
+
+const publicRequestError = '请求没有完成，请刷新页面后重试；详细原因见运行日志。';
+
+export type ConsoleListener = (this: unknown, ...args: unknown[]) => unknown;
+
+/**
+ * 页面用到的全部监听器。每个都先查登录，再把异常换成不带堆栈的中文提示（原因只记第一行，YAML 报错后面几行是资料原文）。
+ * 处理函数都是同步的：读、比快照、写在一次调用里做完，同一个进程里两个标签页的保存不会交错。
+ */
+export function consoleListeners(log: (message: string) => void): Record<string, ConsoleListener> {
+    const handlers: Record<string, (...args: unknown[]) => unknown> = {
+        'qqbot/character/load': () => {
+            const paths = character();
+            return { source: readSource(paths.sourceDir), token: createCharacterEditor(paths).load().token };
+        },
+        'qqbot/character/check': (part, value, token) => saveCharacter(part, value, true, token),
+        'qqbot/character/save': (part, value, token) => {
+            const result = saveCharacter(part, value, false, token);
+            if (result.ok) log(`控制台保存了角色资料（${String(part)}），重新生成 ${result.written.length} 个文件：${result.written.join('、') || '无变化'}`);
+            else if (result.conflict) log(`控制台没有保存角色资料（${String(part)}）：源文件在别处变过`);
+            return result;
+        },
+        'qqbot/ai-photos/list': (status, limit) => listAiPhotoDrafts(status, limit),
+        'qqbot/ai-photos/preview': id => aiPhotoPreview(id),
+        'qqbot/ai-photos/review': (action, id, confirmation) => reviewAiPhoto(action, id, confirmation, log),
+        'qqbot/ai-photos/runtime': () => aiPhotoRuntimeStatus(),
+        'qqbot/ai-photo-references/list': () => listAiPhotoReferences(),
+        'qqbot/ai-photo-references/add': (kind, image, referenceId, nonHumanConfirmed, confirmation) => addAiPhotoReference(kind, image, referenceId, nonHumanConfirmed, confirmation, log),
+        'qqbot/ai-photo-references/remove': (id, confirmation) => removeAiPhotoReference(id, confirmation, log),
+        'qqbot/external-drafts/list': (platform, status, limit) => listExternalDrafts(platform, status, limit),
+        'qqbot/external-drafts/review': (action, id, confirmation) => reviewExternalDraft(action, id, confirmation, log),
+        'qqbot/health/run': () => runConsoleHealthCheck(),
+    };
+    return Object.fromEntries(Object.entries(handlers).map(([event, handler]) => [event, function (this: unknown, ...args: unknown[]) {
+        if (!consoleAuthorized(this)) throw publicFailure('请先登录控制台。');
+        try {
+            return handler(...args);
+        } catch (error) {
+            const first = (error instanceof Error ? error.message : String(error)).split('\n')[0]!.slice(0, 200);
+            log(`控制台请求 ${event} 没有完成：${first}`);
+            throw publicFailure(publicRequestError);
+        }
+    } satisfies ConsoleListener]));
 }
 
 /** 每个 Koishi 进程注册一次，挂在根上下文上 */
@@ -478,12 +563,12 @@ export function registerConsole(ctx: Context, repoRoot: string): void {
         const { DataService } = require('@koishijs/console') as { DataService: new (ctx: Context, key: string, options: object) => { refresh(): Promise<void> } };
         class QqbotService extends DataService {
             constructor(ctx: Context) {
-                super(ctx, 'qqbot', { authority: 4 });
+                super(ctx, 'qqbot', { authority: CONSOLE_AUTHORITY });
                 service = this;
             }
 
-            async get(): Promise<ConsoleData> {
-                return consoleData();
+            async get(_forced: boolean, client: unknown): Promise<ConsoleData | null> {
+                return consoleDataFor(client);
             }
         }
         c.plugin(QqbotService as never);
@@ -494,32 +579,14 @@ export function registerConsole(ctx: Context, repoRoot: string): void {
             service = undefined;
         });
 
-        const authority = { authority: 4 };
-        api.addListener('qqbot/character/load', () => {
-            const paths = character();
-            return { source: readSource(paths.sourceDir), token: createCharacterEditor(paths).load().token };
-        }, authority);
-        api.addListener('qqbot/character/check', (part: SourcePart, value: unknown, token?: string) => saveCharacter(part, value, true, token), authority);
-        api.addListener('qqbot/character/save', (part: SourcePart, value: unknown, token?: string) => {
-            const result = saveCharacter(part, value, false, token);
-            if (result.ok) root.logger('qqbot').info(`控制台保存了角色资料（${part}），重新生成 ${result.written.length} 个文件：${result.written.join('、') || '无变化'}`);
-            else if (result.conflict) root.logger('qqbot').info(`控制台没有保存角色资料（${part}）：源文件在别处变过`);
-            return result;
-        }, authority);
-        api.addListener('qqbot/ai-photos/list', (status: unknown, limit: unknown) => listAiPhotoDrafts(status, limit), authority);
-        api.addListener('qqbot/ai-photos/preview', (id: unknown) => aiPhotoPreview(id), authority);
-        api.addListener('qqbot/ai-photos/review', (action: unknown, id: unknown, confirmation: unknown) => reviewAiPhoto(action, id, confirmation, message => root.logger('qqbot').info(message)), authority);
-        api.addListener('qqbot/ai-photos/runtime', () => aiPhotoRuntimeStatus(), authority);
-        api.addListener('qqbot/ai-photo-references/list', () => listAiPhotoReferences(), authority);
-        api.addListener('qqbot/ai-photo-references/add', (kind: unknown, image: unknown, referenceId: unknown, nonHumanConfirmed: unknown, confirmation: unknown) => addAiPhotoReference(kind, image, referenceId, nonHumanConfirmed, confirmation, message => root.logger('qqbot').info(message)), authority);
-        api.addListener('qqbot/ai-photo-references/remove', (id: unknown, confirmation: unknown) => removeAiPhotoReference(id, confirmation, message => root.logger('qqbot').info(message)), authority);
-        api.addListener('qqbot/external-drafts/list', (platform: unknown, status: unknown, limit: unknown) => listExternalDrafts(platform, status, limit), authority);
-        api.addListener('qqbot/external-drafts/review', (action: unknown, id: unknown, confirmation: unknown) => reviewExternalDraft(action, id, confirmation, message => root.logger('qqbot').info(message)), authority);
-        api.addListener('qqbot/health/run', () => runConsoleHealthCheck(), authority);
+        const qqbotLog = root.logger('qqbot');
+        for (const [event, listener] of Object.entries(consoleListeners(message => qqbotLog.info(message)))) {
+            api.addListener(event, listener, { authority: CONSOLE_AUTHORITY });
+        }
     });
 }
 
 interface ConsoleApi {
     addEntry(files: { dev: string; prod: string }): void;
-    addListener(event: string, callback: (...args: never[]) => unknown, options: { authority: number }): void;
+    addListener(event: string, callback: ConsoleListener, options: { authority: number }): void;
 }

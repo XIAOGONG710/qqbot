@@ -128,7 +128,7 @@ export const PhotoReferencesTab = defineComponent({
                     }, () => KINDS.map(item => h(c('el-option'), { key: item.value, label: item.label, value: item.value })))]),
                     h('label', null, [h('span', null, '参考名称'), h(c('el-input'), {
                         modelValue: referenceName.value, 'onUpdate:modelValue': value => { referenceName.value = value; },
-                        placeholder: '例如 猫的正面', maxlength: 64, disabled: saving.value,
+                        placeholder: '例如 cat-front（英文字母、数字和 - _ . :）', maxlength: 64, disabled: saving.value,
                     })]),
                     h('label', null, [h('span', null, '本地图片'), h('input', {
                         class: 'qqbot-reference-file', type: 'file', accept: 'image/jpeg,image/png,image/webp', disabled: saving.value,

@@ -4,11 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { readSource } from '../../character-tools/src/source.ts';
-import { addAiPhotoReference, aiPhotoPreview, aiPhotoRuntimeStatus, characterPaths, consoleData, listAiPhotoDrafts, listAiPhotoReferences, listExternalDrafts, publicCharacterError, removeAiPhotoReference, reviewAiPhoto, reviewExternalDraft, runConsoleHealthCheck, saveCharacter, setConsoleState } from '../src/console.ts';
+import { addAiPhotoReference, aiPhotoPreview, aiPhotoRuntimeStatus, characterPaths, consoleAuthorized, consoleData, consoleDataFor, consoleListeners, listAiPhotoDrafts, listAiPhotoReferences, listExternalDrafts, publicCharacterError, removeAiPhotoReference, reviewAiPhoto, reviewExternalDraft, runConsoleHealthCheck, saveCharacter, setConsoleState } from '../src/console.ts';
 import { aiPhotoDraftStore } from '../../bot/src/vision/ai-photo-drafts.ts';
 import { photoShelf } from '../../bot/src/vision/photos.ts';
 import { createExternalDraftStore } from '../../bot/src/social/external-drafts.ts';
 import { syntheticSourceDir, syntheticStDir } from '../../bot/test/fixtures/card.ts';
+import { createCharacterEditor } from '../../character-tools/src/character-editing.ts';
 
 const dir = mkdtempSync(join(tmpdir(), 'qqbot-console-'));
 cpSync(syntheticSourceDir, join(dir, 'source'), { recursive: true });
@@ -17,6 +18,8 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 
 const paths = characterPaths(join(dir, 'st', 'synthetic-{tier}.json'))!;
 setConsoleState({ character: paths });
+/** 页面保存时总带着读资料时的快照 token（ADR 0010）；测试也这样调 */
+const save = (part: Parameters<typeof saveCharacter>[0], value: unknown, dryRun = false) => saveCharacter(part, value, dryRun, createCharacterEditor(paths).load().token);
 const mtimes = () => Object.fromEntries(readdirSync(join(dir, 'st')).map(f => [f, statSync(join(dir, 'st', f)).mtimeMs]));
 
 describe('控制台的角色资料（ADR 0010）', () => {
@@ -41,14 +44,14 @@ describe('控制台的角色资料（ADR 0010）', () => {
     test('只检查不写；保存一次后资料没变就不再写（插件监听 st/，没变就不重启）', () => {
         const source = readSource(paths.sourceDir);
         const before = mtimes();
-        const preview = saveCharacter('scenes', source.scenes, true);
+        const preview = save('scenes', source.scenes, true);
         assert.ok(preview.ok && preview.token.length > 0);
         assert.deepEqual(mtimes(), before, '预览不写盘');
 
-        const first = saveCharacter('scenes', source.scenes);
+        const first = save('scenes', source.scenes);
         assert.ok(first.ok);
         const after = mtimes();
-        const again = saveCharacter('scenes', readSource(paths.sourceDir).scenes);
+        const again = save('scenes', readSource(paths.sourceDir).scenes);
         assert.ok(again.ok && again.written.length === 0, again.ok ? again.written.join(',') : '保存失败');
         assert.deepEqual(mtimes(), after, '内容没变就不写');
         assert.equal(again.ok && again.token, first.ok && first.token);
@@ -61,7 +64,7 @@ describe('控制台的角色资料（ADR 0010）', () => {
         assert.deepEqual(source.tiers.tiers.filter(t => t.scenes === group).map(t => t.name), ['boyfriend'], '合成资料里这一组只给男朋友档');
         const scene = source.scenes.find(s => s.tiers.length === 1 && s.tiers[0] === group)!;
         scene.examples.push('虚构的一句新例句');
-        const result = saveCharacter('scenes', source.scenes);
+        const result = save('scenes', source.scenes);
         // 用到这个场景的世界书：这一档的原卡一本，加上它的承认版一本（ADR 0067）；
         // 源文件按统一表头重写，所以第一次保存也会写回 source/（第二次相同内容就不写了）
         assert.ok(result.ok);
@@ -79,7 +82,7 @@ describe('控制台的角色资料（ADR 0010）', () => {
         const word = source.tiers.tiers.find(t => t.name === 'classmate')!.banned[0]!;
         const scene = source.scenes.find(s => s.tiers.includes(source.tiers.tiers.find(t => t.name === 'classmate')!.scenes))!;
         scene.avoid.push(word);
-        const result = saveCharacter('scenes', source.scenes);
+        const result = save('scenes', source.scenes);
         assert.equal(result.ok, false);
         // 页面拿到的是位置和类别；命中的词和原文都不返回
         assert.ok(!result.ok && result.problems?.some(p => p.tier === 'classmate' && p.kind === 'privacy' && p.field === `世界书 ${scene.id}`));
@@ -89,9 +92,9 @@ describe('控制台的角色资料（ADR 0010）', () => {
 
     test('结构写错、引用写错：不写，只给位置和类别', () => {
         const source = readSource(paths.sourceDir);
-        const bad = saveCharacter('tiers', { ...source.tiers, tiers: [{ ...source.tiers.tiers[0]!, social: 'nobody' }, ...source.tiers.tiers.slice(1)] });
+        const bad = save('tiers', { ...source.tiers, tiers: [{ ...source.tiers.tiers[0]!, social: 'nobody' }, ...source.tiers.tiers.slice(1)] });
         assert.ok(!bad.ok && bad.problems?.some(p => p.kind === 'reference' && p.part === 'tiers'));
-        const shape = saveCharacter('schedule', { ...source.schedule, sleep: '2点' });
+        const shape = save('schedule', { ...source.schedule, sleep: '2点' });
         assert.ok(!shape.ok && shape.problems?.some(p => p.kind === 'format' && p.part === 'schedule'));
         const shown = JSON.stringify([bad, shape]);
         // field 是给页面看的资料位置；输入值、档位名、原文和路径都不出现
@@ -102,22 +105,22 @@ describe('控制台的角色资料（ADR 0010）', () => {
     test('心情和在读的书（ADR 0015）：没变不写；改了重新生成带它们的卡；清空的可选项当作没写；书的内容也过档位隐私检查', () => {
         const source = readSource(paths.sourceDir);
         const before = mtimes();
-        const moodPreview = saveCharacter('moods', source.moods);
-        const bookPreview = saveCharacter('books', source.books);
-        assert.ok(moodPreview.ok && moodPreview.written.length === 0);
-        assert.ok(bookPreview.ok && bookPreview.written.length === 0);
+        const moodSave = save('moods', source.moods);
+        const bookSave = save('books', source.books);
+        assert.ok(moodSave.ok && moodSave.written.length === 0);
+        assert.ok(bookSave.ok && bookSave.written.length === 0);
         assert.deepEqual(mtimes(), before);
 
         const moods = structuredClone(source.moods)!;
         moods.moods.find(mood => mood.name === '开心')!.style.text = '今天有点蔫，回得短（虚构的改写）';
-        const saved = saveCharacter('moods', moods);
+        const saved = save('moods', moods);
         assert.ok(saved.ok && saved.written.includes('synthetic-classmate.json') && !saved.written.includes('synthetic-stranger.json'));
         assert.ok(readFileSync(join(dir, 'st', 'synthetic-classmate.json'), 'utf8').includes('虚构的改写'));
 
         const books = structuredClone(source.books)!;
         (books.books[0] as { activity?: unknown }).activity = { window: '', text: '' };
         (books.books[0] as { progress: { max?: unknown } }).progress.max = '';
-        assert.ok(saveCharacter('books', books).ok);
+        assert.ok(save('books', books).ok);
         const reread = readSource(paths.sourceDir).books!.books[0]!;
         assert.equal(reread.activity, undefined);
         assert.equal(reread.progress.max, undefined);
@@ -125,7 +128,7 @@ describe('控制台的角色资料（ADR 0010）', () => {
         const word = source.tiers.tiers.find(t => t.name === 'classmate')!.banned[0]!;
         const leaky = structuredClone(source.books)!;
         leaky.books.find(book => book.nodes.length)!.nodes[0]!.points.push(`虚构的一句${word}`);
-        const leak = saveCharacter('books', leaky);
+        const leak = save('books', leaky);
         assert.ok(!leak.ok && leak.problems?.some(p => p.tier === 'classmate' && p.kind === 'privacy'));
         assert.doesNotMatch(JSON.stringify(leak), new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     });
@@ -313,5 +316,92 @@ describe('控制台的非人物视觉参考（ADR 0242）', () => {
         assert.equal(result.ok, false);
         assert.doesNotMatch(JSON.stringify(result), /index\.json|unsafe|tmp|\\|\//);
         rmSync(unsafe, { recursive: true, force: true });
+    });
+});
+
+describe('控制台监听器自己查登录、不回堆栈（2026-11-26 审查）', () => {
+    const logged: string[] = [];
+    const listeners = consoleListeners(message => logged.push(message));
+    const admin = { auth: { authority: 4, expiredAt: Date.now() + 60_000 } };
+
+    test('没登录、权限不够、登录过期都拒绝：plugin-auth 没加载时 Koishi 不拦，这里失败关闭', () => {
+        const strangers = [undefined, {}, { auth: undefined }, { auth: { authority: 3, expiredAt: Date.now() + 60_000 } }, { auth: { authority: 4, expiredAt: Date.now() - 1 } }];
+        for (const client of strangers) {
+            assert.equal(consoleAuthorized(client), false);
+            assert.equal(consoleDataFor(client), null, '数据服务不给没登录的连接推状态');
+            for (const [event, listener] of Object.entries(listeners)) {
+                assert.throws(() => listener.call(client, 'persona', {}, 'x'), (error: Error) => error.message === '请先登录控制台。' && error.stack === error.message, event);
+            }
+        }
+        assert.equal(consoleAuthorized(admin), true);
+        assert.ok(consoleDataFor(admin));
+        assert.ok((listeners['qqbot/health/run']!.call(admin) as { items: unknown[] }).items.length > 0);
+        assert.ok(Object.keys(listeners).length >= 13, '页面用到的监听器都在这张表里');
+    });
+
+    test('监听器出错时页面只拿到中文提示：不带堆栈、磁盘路径和资料原文；日志只记第一行', () => {
+        const broken = mkdtempSync(join(tmpdir(), 'qqbot-console-broken-'));
+        cpSync(syntheticSourceDir, join(broken, 'source'), { recursive: true });
+        cpSync(syntheticStDir, join(broken, 'st'), { recursive: true });
+        writeFileSync(join(broken, 'source', 'persona.yml'), 'name: 虚构的秘密原文\n  bad: [indent\n');
+        setConsoleState({ character: characterPaths(join(broken, 'st', 'synthetic-{tier}.json')) });
+        try {
+            logged.length = 0;
+            assert.throws(() => listeners['qqbot/character/load']!.call(admin), (error: Error) => {
+                assert.equal(error.stack, error.message, 'Koishi 会把 stack 原样发给页面');
+                assert.doesNotMatch(error.message, /虚构的秘密原文|persona\.yml|qqbot-console-broken|[\/]/);
+                return true;
+            });
+            assert.equal(logged.length, 1);
+            assert.doesNotMatch(logged[0]!, /\n|虚构的秘密原文/);
+        } finally {
+            setConsoleState({ character: paths });
+            rmSync(broken, { recursive: true, force: true });
+        }
+    });
+
+    test('保存不带快照 token 时按冲突处理（两个标签页同时改时不互相覆盖）；不在页面上的部分不能改', () => {
+        const source = readSource(paths.sourceDir);
+        const changed = { ...source.persona, name: '另一个虚构名字' };
+        const missing = listeners['qqbot/character/save']!.call(admin, 'persona', changed) as { ok: boolean; conflict?: boolean; token?: string };
+        assert.equal(missing.ok, false);
+        assert.equal(missing.conflict, true);
+        assert.match(missing.token ?? '', /^[a-f0-9]{64}$/);
+        // 第一个标签页先存了，第二个标签页拿着旧 token 再存：冲突，不覆盖
+        const stale = createCharacterEditor(paths).load().token;
+        assert.ok(saveCharacter('persona', changed, false, stale).ok);
+        const second = saveCharacter('persona', { ...source.persona, name: '第三个虚构名字' }, false, stale);
+        assert.ok(!second.ok && second.conflict);
+        assert.ok(readFileSync(join(dir, 'source', 'persona.yml'), 'utf8').includes('另一个虚构名字'));
+        // 还原
+        assert.ok(saveCharacter('persona', source.persona, false, createCharacterEditor(paths).load().token).ok);
+        assert.equal(readSource(paths.sourceDir).persona.name, source.persona.name);
+
+        const afterRestore = mtimes();
+        const worldBefore = readFileSync(join(dir, 'source', 'world.yml'), 'utf8');
+        for (const part of ['world', 'biography', '__proto__', 'constructor', 42]) {
+            const result = saveCharacter(part as never, {}, false, createCharacterEditor(paths).load().token);
+            assert.ok(!result.ok && result.problems?.length, String(part));
+        }
+        assert.equal(readFileSync(join(dir, 'source', 'world.yml'), 'utf8'), worldBefore);
+        assert.deepEqual(mtimes(), afterRestore);
+    });
+
+    test('视觉参考名称不合规时说清楚要怎么写，不再一律「请刷新页面后重试」', () => {
+        const dataDir = mkdtempSync(join(tmpdir(), 'qqbot-photo-reference-name-'));
+        setConsoleState({ dataDir });
+        try {
+            const png = Buffer.alloc(33);
+            Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(png);
+            png.writeUInt32BE(13, 8); png.write('IHDR', 12, 'ascii'); png.writeUInt32BE(1024, 16); png.writeUInt32BE(1024, 20);
+            png[24] = 8; png[25] = 2;
+            const image = `data:image/png;base64,${png.toString('base64')}`;
+            const chinese = addAiPhotoReference('cat', image, '猫的正面', true, 'confirmed');
+            assert.deepEqual(chinese, { ok: false, error: '参考名称只能用英文字母、数字和 . _ : -，以字母或数字开头，最多 64 个字符（例如 cat-front）。' });
+            assert.deepEqual(listAiPhotoReferences(), { ok: true, entries: [] });
+            assert.ok(addAiPhotoReference('cat', image, 'cat-front', true, 'confirmed').ok);
+        } finally {
+            rmSync(dataDir, { recursive: true, force: true });
+        }
     });
 });
