@@ -265,7 +265,8 @@ describe('内心：计划器每隔一阵想一想', () => {
     function setup(thoughts: (string | InitiateOutcome)[], history: StoredMessage[] = [], start = t(10, 5, 9, 0), extra: { asleep?: (now: number) => boolean; inner?: boolean } = {}) {
         const dir = mkdtempSync(join(tmpdir(), 'qqbot-inner-'));
         dirs.push(dir);
-        const clock = new VirtualClock(new Date(start));
+        // 时钟只在拨的时候走、不跟真实时间漂：断言按毫秒级容差，机器一忙真实时间漏进来就偶发失败（全量并行时见过）
+        const clock = new VirtualClock(new Date(start), () => 0);
         const logs: string[] = [];
         const thinks: { at: number; request: InitiateRequest }[] = [];
         const sends: { at: number; request: InitiateRequest }[] = [];
