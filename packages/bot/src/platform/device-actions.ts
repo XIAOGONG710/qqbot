@@ -48,6 +48,8 @@ const textArg = (value: string | undefined, max = 60): string | undefined => {
 };
 const target = (value: string | undefined): DeviceTarget[] | undefined => (value !== undefined ? TARGETS[value.trim()] : undefined);
 const none = (args: readonly string[]) => (args.some(arg => arg.trim() !== '') ? '这个动作不带参数' : undefined);
+/** 只认十进制整数（不认空串、十六进制、科学计数、小数）：Number('') 是 0、Number('0x10') 是 16，会把写错的参数当成合法的数 */
+const integerArg = (value: string | undefined): number => { const text = (value ?? '').trim(); return /^\d{1,6}$/.test(text) ? Number(text) : Number.NaN; };
 
 export const DEVICE_ACTIONS: Readonly<Record<string, ActionSpec>> = {
     notify: {
@@ -63,7 +65,7 @@ export const DEVICE_ACTIONS: Readonly<Record<string, ActionSpec>> = {
         cls: 'auto', label: '定时提醒',
         check([where, seconds, label, ...rest]) {
             const targets = target(where);
-            const n = Number(seconds);
+            const n = integerArg(seconds);
             const name = textArg(label, 30);
             if (!targets || !Number.isInteger(n) || n < 10 || n > 86_400 || !name || rest.length) return '用法 timer|电脑 / 手机 / 都|10–86400 的秒数|名字';
             return { targets, params: { seconds: n, label: name } };
@@ -86,7 +88,7 @@ export const DEVICE_ACTIONS: Readonly<Record<string, ActionSpec>> = {
                 const plain: Checked = { targets: ['computer'], params: { op: kind } };
                 return plain;
             }
-            const n = Number(level);
+            const n = integerArg(level);
             if (!Number.isInteger(n) || n < 0 || n > context.maxVolume) return `音量要在 0 到 ${context.maxVolume} 之间`;
             return { targets: ['computer'], params: { op: 'set', level: n } };
         },
@@ -162,7 +164,8 @@ export function parseDeviceTokens(reply: string, context: PolicyContext): Parsed
     const rejected: ParsedTokens['rejected'] = [];
     for (const match of reply.matchAll(TOKEN)) {
         const action = match[1]!;
-        const spec = DEVICE_ACTIONS[action];
+        // 只认动作表自己的键：<device:constructor> / <device:__proto__> 会从原型链上拿到不是动作的东西（spec.check 不是函数，整轮回复抛错）
+        const spec = Object.hasOwn(DEVICE_ACTIONS, action) ? DEVICE_ACTIONS[action] : undefined;
         const args = match[2] ? match[2].slice(1).split('|') : [];
         if (!spec) { rejected.push({ action, reason: '没有这个动作' }); continue; }
         if (spec.cls === 'capture') { rejected.push({ action, reason: '看屏幕 / 摄像头只有他自己发命令才行' }); continue; }

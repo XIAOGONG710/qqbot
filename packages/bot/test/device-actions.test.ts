@@ -36,6 +36,25 @@ describe('设备令牌：动作表和参数校验（ADR 0148）', () => {
         assert.equal(bad('<device:lock>').proposals.length, 1);
     });
 
+    test('原型链上的名字不是动作：<device:constructor> / <device:__proto__> 不认，也不让整轮回复抛错（2026-11-26 审查）', () => {
+        const parsed = parseDeviceTokens('好\n<device:constructor>\n<device:__proto__|x>\n<device:notify|电脑|喝水>', context);
+        assert.equal(parsed.reply, '好');
+        assert.deepEqual(parsed.rejected, [{ action: 'constructor', reason: '没有这个动作' }, { action: '__proto__', reason: '没有这个动作' }]);
+        assert.deepEqual(parsed.proposals.map(p => p.action), ['notify'], '同一轮里合格的照样认');
+    });
+
+    test('数字参数只认十进制整数：空的音量不当 0，十六进制、科学计数、小数都不认（2026-11-26 审查）', () => {
+        const count = (token: string) => parseDeviceTokens(token, context).proposals.length;
+        assert.equal(count('<device:volume|set|>'), 0, '没写音量不是静音');
+        assert.equal(count('<device:volume|set| >'), 0);
+        assert.equal(count('<device:volume|set|0x10>'), 0);
+        assert.equal(count('<device:volume|set|1e1>'), 0);
+        assert.equal(count('<device:timer|电脑|6e2|泡面>'), 0);
+        assert.equal(count('<device:timer|电脑|600.0|泡面>'), 0);
+        assert.deepEqual(parseDeviceTokens('<device:volume|set| 0 >', context).proposals[0]?.params, { op: 'set', level: 0 }, '真写了 0 照样能设');
+        assert.deepEqual(parseDeviceTokens('<device:timer|电脑|600|泡面>', context).proposals[0]?.params, { seconds: 600, label: '泡面' });
+    });
+
     test('看屏幕 / 摄像头：她的回复里写了也不认（只有他自己发的命令能触发）', () => {
         const parsed = parseDeviceTokens('<device:capture_screen>\n<device:capture_camera>', context);
         assert.equal(parsed.proposals.length, 0);
