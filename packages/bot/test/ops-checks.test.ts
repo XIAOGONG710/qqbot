@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { classifyChanges, goLiveReport, switchMergeCheck } from '../src/ops/golive-check.ts';
+import { classifyChanges, deviceSecretsCheck, goLiveReport, switchMergeCheck } from '../src/ops/golive-check.ts';
 import { LIVE_2026_11_20, LIVE_LATER_ON } from './fixtures/live-switches.ts';
 import { exposedListeners, parseListeners } from '../src/ops/listeners.ts';
 
@@ -75,5 +75,37 @@ describe('上线前的开关合并预检（golive-check switchMergeCheck）', ()
     test('已经全是新键：不迁也不挡；读不到 koishi.yml：提示手动核', () => {
         assert.deepEqual(switchMergeCheck({ qzone: 'on', bilibili: 'on' }), { migrating: [], unrepresentable: [] });
         assert.match(goLiveReport({ ...base, switches: 'unreadable' }).notes.join(), /开关合并预检没做/);
+    });
+});
+
+describe('上线前的设备密钥预检（golive-check deviceSecretsCheck，e80b96f6 起更严）', () => {
+    const base = { liveHead: 'a1', targetHead: 'b2', dirty: false, commits: ['b2 x'], exposed: [], changes: classifyChanges(['packages/bot/src/a.ts']) };
+    const TOKEN = 'f'.repeat(64);
+    const good = { hub: { host: '192.168.56.10', port: 7789 }, token: TOKEN };
+
+    test('合格的（init 生成的样子）：没有问题，也不挡', () => {
+        assert.deepEqual(deviceSecretsCheck(good), []);
+        assert.deepEqual(deviceSecretsCheck({ ...good, hub: { host: 'vm-host.lan', port: 7789 } }), []);
+        assert.equal(goLiveReport({ ...base, devices: [] }).blockers.length, 0);
+        assert.equal(goLiveReport(base).blockers.length, 0, '没有 devices.json 不查');
+    });
+
+    test('「全部网卡」的各种写法、短令牌、端口不对：说出是哪一项，挡路；令牌不进输出', () => {
+        for (const host of ['::', '[::]', '::0', '::ffff:0.0.0.0', '0', '0.0', '0.0.0.0']) {
+            assert.deepEqual(deviceSecretsCheck({ ...good, hub: { host, port: 7789 } }), ['hub.host 是「全部网卡」的写法或不像主机名（:: / [::] / 0 / 0.0 这类）'], host);
+        }
+        const SHORT = 'SECRET_SHORT_TOKEN_123';
+        const problems = deviceSecretsCheck({ hub: { host: '::', port: 80 }, token: SHORT });
+        assert.deepEqual(problems, ['hub.host 是「全部网卡」的写法或不像主机名（:: / [::] / 0 / 0.0 这类）', 'hub.port 不在 1025–65535', 'token 短于 32 位']);
+        const report = goLiveReport({ ...base, devices: problems });
+        assert.equal(report.blockers.length, 1);
+        assert.match(report.blockers[0]!, /设备控制起不来.*token 短于 32 位/);
+        assert.doesNotMatch(JSON.stringify(report), new RegExp(SHORT));
+        assert.deepEqual(deviceSecretsCheck({ ...good, phone: { baseUrl: 'http://ntfy.example', topic: 'short' } }), ['phone 那一段不对（baseUrl 要 https、topic 至少 16 位）']);
+        assert.deepEqual(deviceSecretsCheck(null), ['hub.host 缺了', 'hub.port 不在 1025–65535', 'token 缺了']);
+    });
+
+    test('不是合法 JSON：挡路，说清先修文件', () => {
+        assert.match(goLiveReport({ ...base, devices: 'unreadable' }).blockers.join(), /devices\.json 不是合法 JSON/);
     });
 });

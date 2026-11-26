@@ -1,13 +1,14 @@
 // node src/ops/golive-check-cli.ts [--live <线上目录>] [--target origin/main] [--fetch] [--cards-ok] [--safety "<理由>"] [--restarts <重启记录，默认 <线上目录>/线上数据目录/restarts.log>]
 // 只读：不切分支、不改文件、不重启。把「快进线上目录之前该看的」一次列出来。退出码 1 = 有挡路的。
 import { execFileSync, spawnSync } from 'node:child_process';
-import { classifyChanges, goLiveReport, switchMergeCheck } from './golive-check.ts';
-import { readFileSync } from 'node:fs';
+import { classifyChanges, deviceSecretsCheck, goLiveReport, switchMergeCheck } from './golive-check.ts';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { lastBehaviorRestart, readRestartLog } from './restart-log.ts';
 import { exposedListeners, LISTENERS_POWERSHELL, parseListeners } from './listeners.ts';
 import { liveDataDir } from './data-dir.ts';
+import { devicesSecretsPath } from '../platform/device-service.ts';
 
 const args = process.argv.slice(2);
 const option = (name: string, fallback: string) => { const at = args.indexOf(name); return at >= 0 && args[at + 1] ? args[at + 1]! : fallback; };
@@ -33,8 +34,14 @@ const switches = (() => {
         return qqbot ? switchMergeCheck(qqbot) : 'unreadable' as const;
     } catch { return 'unreadable' as const; }
 })();
+// 设备密钥预检：线上 devices.json 按新代码的启动校验过一遍（只报哪一项不合格，令牌不打印）
+const devices = (() => {
+    const path = devicesSecretsPath(liveDataDir(live));
+    if (!existsSync(path)) return undefined;
+    try { return deviceSecretsCheck(JSON.parse(readFileSync(path, 'utf8'))); } catch { return 'unreadable' as const; }
+})();
 const safety = args.includes('--safety') ? args[args.indexOf('--safety') + 1] : undefined;
-const report = goLiveReport({ liveHead, targetHead, dirty, commits, changes: classifyChanges(files), exposed, lastBehaviorRestart: lastBehaviorRestart(restarts), restartLogEmpty: restarts.length === 0, switches }, { cardsApproved: args.includes('--cards-ok'), ...(safety ? { safety } : {}) });
+const report = goLiveReport({ liveHead, targetHead, dirty, commits, changes: classifyChanges(files), exposed, lastBehaviorRestart: lastBehaviorRestart(restarts), restartLogEmpty: restarts.length === 0, switches, ...(devices !== undefined ? { devices } : {}) }, { cardsApproved: args.includes('--cards-ok'), ...(safety ? { safety } : {}) });
 
 console.log(`线上目录 ${live}`);
 for (const commit of commits.slice(0, 30)) console.log(`  ${commit}`);

@@ -3,6 +3,7 @@
 
 import { SWITCH_DEFAULTS } from '../platform/config.ts';
 import { SWITCH_MERGES, unrepresentableSwitches, writtenLegacy, type SwitchMerge } from '../platform/switch-merge.ts';
+import { specificHubHost, validSecrets } from '../platform/device-service.ts';
 import { BEHAVIOR_GAP_MS, type RestartEntry } from './restart-log.ts';
 
 export interface ChangeSet { cards: string[]; code: string[]; scripts: string[]; docs: string[]; other: string[] }
@@ -34,6 +35,27 @@ export interface GoLiveInput {
     restartLogEmpty?: boolean;
     /** 线上 koishi.yml 里 qqbot 那一块的开关合并预检（switchMergeCheck）；读不到 koishi.yml 是 'unreadable'，没查是 undefined */
     switches?: SwitchMergeCheck | 'unreadable';
+    /** 线上 devices.json 按新代码的启动校验（deviceSecretsCheck）：不合格的项；不是合法 JSON 是 'unreadable'；没有这份文件是 undefined */
+    devices?: string[] | 'unreadable';
+}
+
+/**
+ * 线上 devices.json 按新代码启动时的同一个校验（validSecrets；e80b96f6 起令牌至少 32 位、hub.host 不许「全部网卡」的写法）过一遍。
+ * 只说哪一项不合格，不给值（令牌不进输出）。合格是空数组。
+ */
+export function deviceSecretsCheck(parsed: unknown): string[] {
+    if (validSecrets(parsed)) return [];
+    const v = (parsed && typeof parsed === 'object' ? parsed : {}) as { hub?: { host?: unknown; port?: unknown }; token?: unknown };
+    const problems: string[] = [];
+    const host = v.hub?.host;
+    if (typeof host !== 'string') problems.push('hub.host 缺了');
+    else if (!specificHubHost(host)) problems.push('hub.host 是「全部网卡」的写法或不像主机名（:: / [::] / 0 / 0.0 这类）');
+    const port = v.hub?.port;
+    if (typeof port !== 'number' || !Number.isInteger(port) || port <= 1024 || port >= 65536) problems.push('hub.port 不在 1025–65535');
+    if (typeof v.token !== 'string') problems.push('token 缺了');
+    else if (v.token.length < 32) problems.push('token 短于 32 位');
+    if (!problems.length) problems.push('phone 那一段不对（baseUrl 要 https、topic 至少 16 位）');
+    return problems;
 }
 
 /** 开关合并预检：部署后插件会把哪几组旧键改写成新键（migrateSwitches）、哪几组新键表达不了（parseAppConfig 会拒绝启动） */
@@ -89,6 +111,11 @@ export function goLiveReport(input: GoLiveInput, options: { cardsApproved?: bool
     } else if (input.switches) {
         for (const line of input.switches.unrepresentable) blockers.push(`开关合并：koishi.yml 里这一组旧键新键表达不了，新代码启动会报「配置有误」——先在控制台按新键改：${line}`);
         if (input.switches.migrating.length) notes.push(`开关合并：重启后插件会把 koishi.yml 里这 ${input.switches.migrating.length} 组旧键改写成新键（值等价）：${input.switches.migrating.join('；')}。改写 koishi.yml 前先备份一份`);
+    }
+    if (input.devices === 'unreadable') {
+        blockers.push('设备控制：线上 devices.json 不是合法 JSON，新代码启动设备控制时会报错——先修好这份文件（改线上配置，要用户点头）');
+    } else if (input.devices?.length) {
+        blockers.push(`设备控制：线上 devices.json 按新代码的启动校验不合格，重启后设备控制起不来：${input.devices.join('；')}。先改好再部署（改线上配置，要用户点头；换令牌后宿主机上的电脑端要跟着换）`);
     }
     const asks = [
         '用户在当前会话里点头了吗（合入 main 和上线是两次授权）？',
