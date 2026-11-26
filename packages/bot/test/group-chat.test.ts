@@ -6,7 +6,7 @@ import { afterEach, describe, test } from 'node:test';
 import { startApp } from '../src/platform/app.ts';
 import { parseGroups, type AppConfig } from '../src/platform/config.ts';
 import { isGroupMessage, type GroupMessageEvent } from '../src/platform/onebot.ts';
-import { GROUP_LIMITS, groupLine, groupLog, groupNote, groupPokePlan, groupReply, herNameList, mentionSegments, mentionsHer, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
+import { GROUP_LIMITS, claimsAnotherGroupMember, groupLine, groupLog, groupNote, groupPokePlan, groupReply, herNameList, mentionSegments, mentionsHer, nameAts, speakReason, withinBudget, type GroupEntry, type SpeakContext } from '../src/social/group-chat.ts';
 import { moodStateLine } from '../src/emotion/express.ts';
 import { analyzeGroupStyle, renderGroupStyle } from '../src/social/group-style.ts';
 import { DEFAULT_WORLD_INFO_SETTINGS } from '../src/st/world-info.ts';
@@ -314,10 +314,22 @@ describe('群聊：进应用', () => {
     });
 
     test('有人问「你也是来养鱼的吗」：说明里给了口径', () => {
-        const note = groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', disguise: true, cover: '算是来养鱼的，被穹P拉进来的' });
-        assert.ok(note.includes('你也是来养鱼的吗'), note);
+        const note = groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', targetLine: '群友：你也是来养鱼的吗？', disguise: true, cover: '算是来养鱼的，被穹P拉进来的' });
+        assert.ok(note.includes('眼前这条问的是你的来由'), note);
         assert.ok(note.includes('算是来养鱼的，被穹P拉进来的'), note);
+        assert.ok(!groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', targetLine: '群友：开饭啦', cover: '被人拉进来的' }).includes('被人拉进来的'));
+        assert.ok(groupNote({ groupName: 'x', boyfriendHere: false, reason: 'mentioned', targetLine: '群友：谁拉你进来的？', cover: '被人拉进来的' }).includes('被人拉进来的'));
         assert.ok(note.includes('别主动扯上他和你的关系'), note);
+    });
+
+    test('只拦明确认成群友，保留第三人称、反问和普通接话', () => {
+        const names = new Set(['小陈']);
+        for (const line of ['我是小陈。', '我叫「小陈」！', '我就是小陈啊']) {
+            assert.equal(claimsAnotherGroupMember(line, names), true, line);
+        }
+        for (const line of ['小陈说他饿了', '你是小陈吗？', '哪有，我又不是小陈', '我是小陈的同学', '给我留一口']) {
+            assert.equal(claimsAnotherGroupMember(line, names), false, line);
+        }
     });
 
     test('群里的鱼、别人的角色都是玩笑：不认成自己，也不照搬别人的话（11-19 群里的「我这条」）', () => {
@@ -429,6 +441,20 @@ describe('群聊：进应用', () => {
         await until(() => sentGroup.length > 0);
         a.stop();
         assert.equal(sentGroup[0], '555:@路人甲 你说呢');
+    });
+
+    test('拦群友身份串位，留下接梗并仍引用原消息', async () => {
+        const { app: a, sentGroup, sentRich } = app('on', false, {
+            generate: async () => '我是小陈。\n@小陈 给我留一口',
+        });
+        await a.connected(SELF);
+        const call = said(555, 30002, '小陈', [{ type: 'at', data: { qq: String(SELF) } }, text(' 开饭啦')]);
+        a.receiveGroup(call);
+        await until(() => sentGroup.length > 0);
+        try {
+            assert.deepEqual(sentGroup, ['555:@30002 给我留一口']);
+            assert.equal(sentRich[0]!.replyTo, call.message_id);
+        } finally { a.stop(); }
     });
 
     test('没 @ 她、只在群里聊到她：她听得见，也能接一句', async () => {

@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { segmentsToText, type GroupMessageEvent, type QuoteLookup, type Segment } from '../platform/onebot.ts';
 import { matchSingRequest, type singSong } from '../voice/sing.ts';
 import { personaFacts, type TierCard } from '../platform/contact.ts';
-import { GROUP_CONTEXT, HER_NAMES, groupLine, type groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type GroupDecisionTrace, type GroupEntry, type SpeakDecision, type SpeakReason } from './group-chat.ts';
+import { GROUP_CONTEXT, HER_NAMES, claimsAnotherGroupMember, groupLine, type groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type GroupDecisionTrace, type GroupEntry, type SpeakDecision, type SpeakReason } from './group-chat.ts';
 import { groupScheduleRecall } from './group-memory.ts';
 import { analyzeGroupStyle, renderGroupStyle } from './group-style.ts';
 import { groupAffectOf, mergeFelt, type groupAffect } from './group-affect.ts';
@@ -516,7 +516,12 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         // 她定的线：带她自己时（groupOwn）或群自主开着时都拦；有人想不开时不拦（劝人的话常带「挂科」「成绩」，保命在前）
         const lineCheck = withSelf || agencyOn;
         let lineBlocked = false;
-        const parts = groupReply(raw).filter(part => !inspectReply(part, card.character.banned).some(issue => issue.kind === 'banned'))
+        const myNames = new Set([...HER_NAMES, card.character.name, ...(herGroupNames.get(group.id) ?? [])]);
+        const otherNames = new Set(entries.slice(-GROUP_CONTEXT)
+            .filter(entry => !entry.mine && entry.name.length >= 2 && !myNames.has(entry.name))
+            .map(entry => entry.name));
+        const parts = groupReply(raw).filter(part => !claimsAnotherGroupMember(part, otherNames))
+            .filter(part => !inspectReply(part, card.character.banned).some(issue => issue.kind === 'banned'))
             .filter(part => {
                 const crossed = lineCheck && reason !== 'crisis' ? crossesHerLine(part) : undefined;
                 if (crossed) {

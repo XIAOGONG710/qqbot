@@ -253,14 +253,16 @@ export function groupNote(input: {
 }): string {
     // 群里叫她别的名字（QQ 昵称、群名片）：那也是她，别人叫那些也算叫她
     const aliases = (input.myNames ?? []).filter(name => name.trim().length >= 2 && !HER_NAMES.includes(name.trim() as typeof HER_NAMES[number]));
+    const asksHowJoined = input.reason === 'mentioned'
+        && /(?:怎么|为什么|谁.{0,8}(?:拉|邀)).{0,8}(?:进群|进来|来这)|来养鱼的吗|(?:你是|你是不是|你也算).{0,12}(?:养的鱼|家的鱼)[吗？?]/.test(input.targetLine ?? '');
     return [
         `[这是 QQ 群「${input.groupName}」里的聊天，群里有好几个人，上面每行冒号前是谁说的，「你」是你自己说的。`,
         aliases.length ? `群里他们也可能叫你「${aliases.join('」「')}」（你在这个群的昵称 / 群名片）；那都是你，别当成别人。` : '',
-        '群里那些鱼、谁家的鱼、别的助手，都是他们自己的说法：你还是你，别顺着就把这些当成自己的；别人刚说完的话也别捡来当自己的，按你平时的说法接。',
+        '群里那些鱼、谁家的鱼、别的助手，都是他们自己的说法：你还是你，别顺着就把这些当成自己的；别人的名字、身体特点和经历都归说话的那个人。别人刚说完的话也别捡来当自己的，按你平时的说法接。',
         input.veteran ? '上面有些是你进群之前的旧聊天：你补过课、知道他们聊过什么，但**你是刚进群的**——别把旧事说成你在场（不说「上次」「那天我也在」），别人提起就顺着聊，被问就照实说刚来。' : '',
         input.disguise ? '别主动提、也别承认自己是 AI（这里没人知道）：有人认真问就含糊带过、换个话题，别一本正经解释；被开玩笑叫机器人就当玩笑接。' : '',
-        input.cover
-            ? `有人问你为什么进群、「你也是来养鱼的吗」「你是不是谁养的鱼」：照这个说法答，别多解释、别主动扯上他和你的关系——${input.cover}。说得像群里的人随口一答，两三句就够，然后把话头带回鱼。`
+        input.cover && asksHowJoined
+            ? `眼前这条问的是你的来由：照这个说法随口答一句，别主动扯上他和你的关系——${input.cover}。答完停住。`
             : '',
         input.knowsBot ? '群里的人都知道你是 AI（他跟大家说过）：不用主动提，也不用瞒、不用否认；有人拿这个开玩笑就顺着开两句，别一本正经解释。' : '',
         input.roster?.length ? `群里的人：${input.roster.join('、')}。这些人你都认得（不一定都跟你说过话），别当陌生人。` : '',
@@ -273,11 +275,20 @@ export function groupNote(input: {
         input.targetLine ? `这次只接这一条群消息：${JSON.stringify(input.targetLine)}。其他消息用来理解这一条。` : '',
         REASON_NOTE[input.reason],
         input.reason !== 'crisis' && input.reason !== 'defend'
-            ? '闲聊时一句只说一件事，反应到位就停。真有想说的下文、还是这条话的事，才补第二句。用你自己的话，不复读、不跟着刷表情；吵架、站队或围着人起哄时不用凑。'
+            ? '闲聊时直接接眼前的一个细节，省掉固定开场。一句只说一件事，反应到位就停。只有第二句还在回答那一条，而且有新意思，才补上；不用续出没发生的动作。用你自己的话，不复读、不跟着刷表情；吵架、站队或围着人起哄时不用凑。'
             : '',
         input.news ? `（你这边的事：${input.news}）` : '',
         '只输出你要发到群里的话，不写名字前缀、不写动作；想让谁看见就写「@群名片」（只认这个群里叫得出来的名字）；不想说就只写「不说」。]',
     ].filter(Boolean).join('');
+}
+
+/** 只拦把已知群友名字明确当作自己名字的句子，关系、转述和普通接梗仍可说。 */
+export function claimsAnotherGroupMember(text: string, otherNames: ReadonlySet<string>): boolean {
+    return text.split(/[。！？!?；;，,]/u).some(clause => {
+        const match = /^\s*我(?:就是|才是|是|叫)\s*[「“]?(.+?)[」”]?\s*[.。]?\s*$/u.exec(clause);
+        const name = match?.[1]?.trim();
+        return Boolean(name && (otherNames.has(name) || otherNames.has(name.replace(/[啊呀啦]$/u, ''))));
+    });
 }
 
 /**

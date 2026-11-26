@@ -48,10 +48,11 @@ test('闲聊接到位就收住，真正的下文和认真提问可以说完整',
     assert.match(text, /不用为了收尾再补建议、提醒或反问/);
     assert.match(text, /真有下文，就把想说的说完/);
     assert.match(text, /正经问你，就直接回应/);
-    assert.match(text, /闲聊时直接接他刚才话里的一个细节，省掉.*这样的固定开场。没下文就停/);
+    assert.doesNotMatch(text, /这事儿我认/);
+    assert.match(text, /直接接他刚才话里的一个细节.*固定开场/);
     assert.match(text, /真有正经事、怕他听岔时，可以先吱一声/);
     assert.match(text, /随口说件小事，接住一个细节就停，等他问怎么办再给建议/);
-    assert.match(text, /别为了接话硬续剧情或另起话题。你真有事想跟他说，可以主动提一句/);
+    assert.match(text, /没发生的动作不用补.*你真有事想跟他说，可以主动提一句/);
 });
 
 test('桌面私聊允许自然改口，数字、时间和认真拿主意先弄清楚', () => {
