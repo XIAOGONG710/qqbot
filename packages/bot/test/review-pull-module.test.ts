@@ -148,7 +148,6 @@ describe('联系人流水线里的 <<查>>', () => {
     const NOW = Date.parse('2026-11-05T12:00:00+08:00');
     const llm = { baseUrl: 'https://unused.invalid', model: 'fake', apiKey: 'fake', temperature: 0, maxTokens: 300, timeoutMs: 100, extraBody: {}, promptPostProcessing: '' as const };
 
-    // TODO(ADR 0336 第 5 步)：删掉 contact.ts 里旧的 <<查>> 那一段、去掉 pullRecall 选项之后去掉 skip（接线之前旧逻辑先摘了标记，模块看不到）
     test('查到了：发出去的是带着结果重写的那一版', async () => {
         const rows: StoredMessage[] = [];
         const sent: string[] = [];

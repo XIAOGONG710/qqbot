@@ -15,7 +15,7 @@
 
 | 部分 | 版本 / 来源 | 位置 |
 | --- | --- | --- |
-| Python | 3.12.15，`uv python install 3.12`（uv 自带下载校验） | `%APPDATA%\uv\python\` |
+| Python | 3.12.14，`uv python install 3.12`（uv 自带下载校验） | `%APPDATA%\uv\python\` |
 | hindsight-api-slim | 0.10.2（PyPI），extras `embedded-db`、`local-onnx` | `runtime/hindsight/venv/` |
 | PostgreSQL | 18.1.0，pg0-embedded 0.15.2 自带（含 pgvector） | 程序在 `%USERPROFILE%\.pg0\installation\`，数据在 `runtime/hindsight/pgdata/`（仓库路径含中文时在 `%LOCALAPPDATA%\qqbot-hindsight\pgdata\`，见下文「本机安装记录」第 2 条） |
 | embedding | `intfloat/multilingual-e5-small`（多语言，384 维，ONNX，Hugging Face） | `runtime/hindsight/hf/` |

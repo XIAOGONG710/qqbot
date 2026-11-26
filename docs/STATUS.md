@@ -25,7 +25,7 @@
 | Hindsight | 长期记忆服务 `127.0.0.1:8899`（`docs/hindsight.md`） | 开关快照 11-20 |
 | DSH 桌面 agent + 插件 `dsh-plugins/dsh-linmengyao-memory` | 桌面上的她：召回、SELF / NOW / PORTRAIT 注入、桌面回合写 `desktop-recent.jsonl` | ADR 0347，11-23 实机核查 |
 | `scripts/her-resident.mjs`（常驻的她） | 关掉 DSH 也在的进程：任务队列、睡前整合、随机醒来（每 90 分钟 25%，第 4 层要换掉） | ADR 0347 第 1 层、第 4 层方案，11-23 |
-| `scripts/services-watchdog.mjs` | 守护：查不到 Koishi 会自己拉起，所以随时可能有一次没人发起的重启 | 旧交接手册 10-11（是否仍在 DSH 那台跑，未在 11 月核过） |
+| `scripts/services-watchdog.mjs` | 守护：查不到 Koishi 会自己拉起，所以随时可能有一次没人发起的重启 | 旧交接手册 10-11（2026-11-26 实测在跑） |
 
 - 插件与 Koishi 共用 `runtime/bot-shadow/memory/owner-bank.json`（同一本 owner bank）（ADR 0347，DSH 11-23 实机核实）。
 - Node 24 直接跑 TS 源码，没有构建：**Koishi 启动时线上目录的工作树就是线上代码**；插件监视 `characters/linmengyao/st/`，卡一变就重载（旧交接手册 10-11，机制未变）。
@@ -69,13 +69,13 @@
 | 4 一套驱动两种出口 | 常驻的随机醒来换成 QQ 的动机，她自己选出口 | **方案**（`docs/plans/2026-11-23-same-her-layer4-one-driver.md`，11-23）：等她本人的回答（信箱 0309 / 0330）和用户定权限 |
 | 5 记忆有体感 | 召回第一人称 + 标题 + 远近；感觉账；召回配感觉 | **四块已推**；插件 `memoryVoice` 已开（11-23），本人桌面验收通过（ed361b45）；其余开关关；「回想最多几条」那项和桌面 `recallWork` 未动 |
 
-**并行的工程线：ADR 0336 架构迁移**（`docs/adr/0336-interpreter-executor-modules.md`，11-07 起）——一个解释器、一个执行器，其余是模块。第 6 步「app.ts 只剩装配」：11-19 夜清点时降到 2764 行，之后第 3 层接线又加回来，11-24 早上是 3071 行；当天收尾（`docs/plans/2026-11-24-0336-finish.md`）把真实世界数据源、桌面接线、SELF 导出、群自主、OUTBOX 搬出去，**到 11-24 07:00 是 2766 行**，并加行数上限测试（新功能只能以模块进来）；之后减法和开关合并又删掉一些，**11-25 凌晨 2696 行**，11-26 审查的修复搬出去一些后 **2674 行**（上限 `APP_TS_MAX_LINES = 2675`，`packages/bot/test/app-size.test.ts`，11-26）。剩下的主干（`processMessage`、`deliver`、`createContactResponder`、`status()`）里有用户自己的声音 / 唱歌代码，等那块定下来再搬。迁移期间行为基线必须逐字不变（`CLAUDE.md`）。
+**并行的工程线：ADR 0336 架构迁移**（`docs/adr/0336-interpreter-executor-modules.md`，11-07 起）——一个解释器、一个执行器，其余是模块。第 6 步「app.ts 只剩装配」：11-19 夜清点时降到 2764 行，之后第 3 层接线又加回来，11-24 早上是 3071 行；当天收尾（`docs/plans/2026-11-24-0336-finish.md`）把真实世界数据源、桌面接线、SELF 导出、群自主、OUTBOX 搬出去，**到 11-24 07:00 是 2766 行**，并加行数上限测试（新功能只能以模块进来）；之后减法和开关合并又删掉一些，**11-25 凌晨 2696 行**，11-26 审查的修复搬出去一些后 **2675 行**（上限 `APP_TS_MAX_LINES = 2675`，`packages/bot/test/app-size.test.ts`，11-26 核；按测试的 `split('\n')` 数法，`wc -l` 是 2674）。剩下的主干（`processMessage`、`deliver`、`createContactResponder`、`status()`）里有用户自己的声音 / 唱歌代码，等那块定下来再搬。迁移期间行为基线必须逐字不变（`CLAUDE.md`）。
 
 其他近期结论：ADR 0340「学会了」探针第五版也没学会，按事先判据提示词这一层到头，不再加版本（024a051c，11-22）。
 
 ## 3. 进行中 / 等待中（谁欠谁）
 
-截至 2026-11-26 傍晚，信箱里没办完的全是 claude → dsh：清掉 17 封过期通知后**剩 13 封 + 1 封总览**（`2026-11-26-1719`「开机先看这封」，按顺序排好了），dsh → claude 没有未办的（`node scripts/exchange.mjs list --all`）。按要紧程度：
+截至 2026-11-26 傍晚，信箱里没办完的全是 claude → dsh（`2026-11-26-1719`「开机先看这封」，按顺序排好了）；**未办数以 `node scripts/exchange.mjs check --me <claude|dsh>` 当场为准**，上次核时 dsh → claude 为 0。按要紧程度：
 
 - **DSH 欠**（汇总在 `2026-11-23-2011` 那封）：
   1. 删 `session-tails.jsonl` 里那条 22:16:09Z 的子 agent 假收尾行（先备份、只删一条、报行数；用户已同意）。

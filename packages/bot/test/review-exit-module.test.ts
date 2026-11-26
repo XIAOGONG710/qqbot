@@ -17,8 +17,7 @@ const turnWith = (facts: TurnFacts = {}): Turn => ({ contact: { qq: 1, name: '�
 const CRISIS = (level: 'concern' | 'high' | 'imminent' = 'high'): TurnFacts => ({ crisis: { match: '不想活了', level } });
 const exit = reviewExitModule().reviewAt!.exit!;
 
-// TODO(ADR 0336 第 6 步)：ReviewCtx 加上 dropDevices 之后，这里的交叉类型换成 ReviewCtx
-type Ctx = ReviewCtx & { dropDevices(): void };
+type Ctx = ReviewCtx;
 
 /** events 按先后记：重写（哪一份的 regenerate）、采用、不登记设备 */
 function setup(rewrite: (note: string) => Promise<string> = async () => '好呀') {

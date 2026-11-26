@@ -36,13 +36,13 @@ SillyTavern 只用来编写、试聊角色并定义数据格式（角色卡 / �
 
 ## 环境
 
-- Git 为便携版，安装在 `%LOCALAPPDATA%\Programs\Git`（已加入用户 PATH，新终端生效）。
-- Node.js v24.22.0 LTS（npm 12.2.1），官方 MSI 安装到 `C:\Program Files\nodejs`（2026-10-18 安装，PATH 中实际解析到这份）。
+- Git 以 `where git` 为准（当前解析到 `C:\Program Files\Git\cmd\git.exe`，git 2.55.0.windows.3；Git Bash 的 `where git` 还会先列出 `C:\Program Files\Git\mingw64\bin\git.exe`）。
+- Node.js v26.4.0 LTS（npm 11.17.0），官方 MSI 安装到 `C:\Program Files\nodejs`（2026-10-18 安装，PATH 中实际解析到这份）；以 `node --version` / `npm --version` 为准。
   核对情况：`node.exe` 的 Authenticode 签名有效（OpenJS Foundation）；安装包的 SHA-256 与 `SHASUMS256.txt` 及其签名**未核对**。
   此前记录的 zip 版 v24.21.0（`%LOCALAPPDATA%\Programs\nodejs`）在 Claude 应用内不可见，是否仍存在未确认。
   升级：下载官方安装包，先核对 SHA-256 与 `SHASUMS256.txt` 一致、`SHASUMS256.txt.sig` 由 nodejs/node README 所列 release key 签名有效，再安装。
   SillyTavern 要求 Node `>= 20`。
-- GitHub CLI v2.103.3，官方 `gh_2.103.3_windows_amd64.zip` 解压到 `%LOCALAPPDATA%\Programs\gh`（`bin\` 已加入用户 PATH，新终端生效）。
+- GitHub CLI v2.103.3，官方 `gh_2.103.3_windows_amd64.zip` 解压到 `%LOCALAPPDATA%\Programs\gh`（`bin\` 已加入用户 PATH，新终端生效）。本机当前 `where gh` 查不到，装过的环境请以 `where gh` 复核。
   安装前核对过：zip 的 SHA-256（`98d0cfa7…0a22e0`）与 GitHub Release 资产摘要、官方 `checksums.txt` 三者一致；`gh.exe` 的 Authenticode 签名有效（GitHub, Inc.）。
   登录账号须是 XIAOGONG710（令牌存于 Windows 凭据管理器）。
   注意：从 Claude / Codex 桌面应用里的命令写到 `AppData` 下的文件和用户 PATH 会被应用隔离，在普通终端里看不到；
