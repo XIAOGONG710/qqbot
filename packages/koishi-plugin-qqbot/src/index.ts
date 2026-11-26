@@ -924,6 +924,40 @@ function plainError(prefix: string, error: unknown): Error {
 /** 断线后重连的等待：5 秒、10 秒、30 秒，之后每分钟一次 */
 export const RECONNECT_MS = [5_000, 10_000, 30_000, 60_000];
 
+/** Each OneBot login owns its retry. Online/dispose invalidate both timers and in-flight results. */
+export function napcatReconnect(
+    schedule: (callback: () => void, delay: number) => () => void,
+    start: (sid: string) => Promise<boolean | void>,
+    log: (message: string) => void,
+) {
+    const retries = new Map<string, { attempts: number; busy: boolean; cancel?: () => void }>();
+    const online = (sid: string) => {
+        retries.get(sid)?.cancel?.();
+        retries.delete(sid);
+    };
+    const offline = (sid: string) => {
+        const retry = retries.get(sid) ?? { attempts: 0, busy: false };
+        if (retry.cancel || retry.busy) return;
+        retries.set(sid, retry);
+        const delay = RECONNECT_MS[Math.min(retry.attempts++, RECONNECT_MS.length - 1)]!;
+        log(`NapCat 连接断开，${delay / 1000} 秒后重连`);
+        retry.cancel = schedule(() => {
+            if (retries.get(sid) !== retry) return;
+            delete retry.cancel;
+            retry.busy = true;
+            void (async () => {
+                let stillOffline: boolean | void = true;
+                try { stillOffline = await start(sid); }
+                catch { log('NapCat 重连启动失败，等待下次重试'); }
+                retry.busy = false;
+                if (retries.get(sid) !== retry) return;
+                if (stillOffline) offline(sid);
+            })();
+        }, delay);
+    };
+    return { offline, online, dispose: () => { for (const sid of retries.keys()) online(sid); } };
+}
+
 /** 角色卡、世界书文件改动后，等这么久没有新的改动再重启（转换器一次写十几个文件） */
 const CARD_RELOAD_DELAY_MS = 2000;
 
@@ -1200,12 +1234,19 @@ function applyNow(ctx: Context, config: Config) {
     };
     ctx.setInterval(() => void refreshFriends(), FRIENDS_REFRESH_MS);
 
-    let reconnects = 0;
+    const reconnect = napcatReconnect((fn, delay) => ctx.setTimeout(fn, delay), async sid => {
+        // 控制台重载过适配器的话旧 bot 已作废：到点时按 sid 找现在的
+        const current = ctx.bots.find(bot => bot.sid === sid);
+        if (current?.status !== OFFLINE) return false;
+        await current.start();
+        return ctx.bots.find(bot => bot.sid === sid)?.status === OFFLINE;
+    }, log);
+    ctx.on('dispose', reconnect.dispose);
     let warnedTemplate = false;
     ctx.on('login-updated', ({ bot }) => {
         if (bot.platform !== 'onebot') return;
         if (bot.status === ONLINE) {
-            reconnects = 0;
+            reconnect.online(bot.sid);
             log(`NapCat 账号 ${bot.selfId} 已就绪`);
             void app.connected(Number(bot.selfId));
             void refreshFriends();
@@ -1215,14 +1256,7 @@ function applyNow(ctx: Context, config: Config) {
                 warnedTemplate = true;
                 log('adapter-onebot 的 token 是没插值的 ${{ }} 原文：控制台保存适配器配置时不做插值，重启 Koishi 才会生效（ADR 0008）');
             }
-            const delay = RECONNECT_MS[Math.min(reconnects++, RECONNECT_MS.length - 1)]!;
-            log(`NapCat 连接断开，${delay / 1000} 秒后重连`);
-            // 控制台重载过适配器的话旧 bot 已作废：到点时按 sid 找现在的
-            const sid = bot.sid;
-            ctx.setTimeout(() => {
-                const current = ctx.bots.find(b => b.sid === sid);
-                if (current?.status === OFFLINE) void current.start();
-            }, delay);
+            reconnect.offline(bot.sid);
         }
     });
     // 插件因改配置重启时适配器还连着，不会再有上线事件
