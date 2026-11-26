@@ -135,7 +135,7 @@
 **以这些为准**：
 - 规则：`CLAUDE.md`（这台）/ `AGENTS.md`（DSH 那台，内容同步）；`思维链工作流.txt`。
 - 协作：`docs/governance/2026-11-10-single-mainline.md`（只有 main）、`docs/governance/2026-11-10-agent-mailbox.md`（信箱和「自己干活」的分工）。
-- 决策：`docs/adr/`（最新 0351，下一个号 0352）；**哪份还算数先看 `docs/adr/MAP.md`**（每份的开关在线上开没开，按快照；文件头的状态常常过时）；主线方案在 `docs/plans/2026-11-22-same-her-layer2-self.md`、`docs/plans/2026-11-22-same-her-layer3-writeback.md`、`docs/plans/2026-11-23-same-her-layer4-one-driver.md`。
+- 决策：`docs/adr/`（最新 0352「信谁、不信谁」，下一个号 0353；**加新功能前先看 0352 的五条**）；**哪份还算数先看 `docs/adr/MAP.md`**（每份的开关在线上开没开，按快照；文件头的状态常常过时）；主线方案在 `docs/plans/2026-11-22-same-her-layer2-self.md`、`docs/plans/2026-11-22-same-her-layer3-writeback.md`、`docs/plans/2026-11-23-same-her-layer4-one-driver.md`。
 - 模块与开关：`packages/bot/src/platform/features.ts`（开关总表）、`docs/modules/`（从模块定义生成）。
 - 线上：`exchange/live/` 最新快照；两台进度：`exchange/inbox/`。
 - **11-26 的审查**：要用户定的都在 `docs/plans/2026-11-26-decisions-for-user.md`（按急迫排、每条带推荐）；报告 `docs/reports/2026-11-26-{mobile-companion,koishi-console,device-control,web-bilibili,inbound-qq,memory,ai-photo,ops-scripts}-review.md`；部署照 `docs/plans/2026-11-25-deploy-runbook.md`（含 11-26 那一节）。
