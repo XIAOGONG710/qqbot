@@ -28,7 +28,16 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
+      # 下面几步互不挡：前一步挂了后面照样跑完，一次看全（11-27：根 npm test 是 test:scripts && 各包，
+      # 脚本一挂各包就不跑，bot 包的问题藏在后面好几轮才看到）。任何一步失败整个 job 仍是失败。
       - run: npm run typecheck
-      - run: npm test
+      - name: test (scripts)
+        if: ${{ !cancelled() }}
+        run: npm run test:scripts
+      - name: test (workspaces)
+        if: ${{ !cancelled() }}
+        run: npm test --workspaces --if-present
       # 依赖审计门（ADR 0070 第 11 项）：high / critical 或基线之外的新公告不通过；历史基线见 docs/security/npm-audit-baseline.json
-      - run: npm run audit:gate
+      - name: audit gate
+        if: ${{ !cancelled() }}
+        run: npm run audit:gate
