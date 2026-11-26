@@ -333,4 +333,21 @@ describe('DSH 连接层', () => {
         assert.equal(response.accepted, true);
         if (response.accepted) assert.equal((response.response?.body as { text?: string }).text, '回：在吗');
     });
+
+    test('bot 工厂把宿主下发动作的手机回执交给 onActionResult 审计', async () => {
+        let now = 2000;
+        const audited: string[] = [];
+        const integration = createMobileCompanion({
+            dsh: { advise: async () => '好' },
+            now: () => now,
+            onActionResult: async (result, clientId) => { audited.push(`${clientId}:${result.requestId}:${result.ok}:${result.decision}`); },
+        });
+        const ticket = integration.issuePairing('android-receipt', now);
+        await integration.runtime.handle(helloEnvelope({ clientId: ticket.clientId, pairingCode: ticket.pairingCode, capabilities: ['text'] }, 'req-receipt-hello', 'nonce-receipt-hello', new Date(now).toISOString()));
+        integration.runtime.requestPhoneAction(ticket.clientId, { action: 'notify', params: { title: '合成提醒' }, decision: 'auto' }, 'push-receipt-1');
+        now += 1;
+        const receipt = await integration.runtime.handle({ v: 1, requestId: 'req-receipt-1', kind: 'action.result', sentAt: new Date(now).toISOString(), nonce: 'nonce-receipt-1', body: { requestId: 'push-receipt-1', ok: true, decision: 'auto' } });
+        assert.deepEqual(receipt, { accepted: true });
+        assert.deepEqual(audited, ['android-receipt:push-receipt-1:true:auto']);
+    });
 });

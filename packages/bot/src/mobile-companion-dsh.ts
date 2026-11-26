@@ -46,7 +46,6 @@ export function createMobileDshHandlers(options: {
         ...(options.voice ? { voice: options.voice } : {}),
         ...(options.describeMedia ? { describeMedia: options.describeMedia } : {}),
         ...(options.onAction ? { onAction: options.onAction } : {}),
-        ...(options.onActionResult ? { onActionResult: options.onActionResult } : {}),
         ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
         ...(options.maxClients === undefined ? {} : { maxClients: options.maxClients }),
         ...(options.sharedConversation ? { sharedConversation: options.sharedConversation } : {}),
@@ -54,6 +53,9 @@ export function createMobileDshHandlers(options: {
     });
     const combined = {
         ...handlers,
+        // DSH 适配器只管消息和手机发起的动作；宿主下发动作的回执审计要挂在运行时这一层，
+        // 之前混在适配器选项里被静默丢掉，手机回执一律报「宿主未接入手机动作回执」。
+        ...(options.onActionResult ? { onActionResult: options.onActionResult } : {}),
         ...(options.onPhotoReviewList ? { onPhotoReviewList: options.onPhotoReviewList } : {}),
         ...(options.onPhotoReviewDecision ? { onPhotoReviewDecision: options.onPhotoReviewDecision } : {}),
     };
