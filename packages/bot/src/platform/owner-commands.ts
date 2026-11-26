@@ -12,6 +12,7 @@ import type { AppConfig, Contact } from './config.ts';
 import type { DeviceService } from './device-service.ts';
 import type { Log } from './log.ts';
 import type { MessageEvent } from './onebot.ts';
+import { logBody } from './sensitive.ts';
 import { readWorkMode, setWorkMode } from './work-mode.ts';
 
 // 他（男朋友档、设备所有者）发的指令：只认纯文字；命中的算处理完，不进聊天记录、不交给回复器。
@@ -123,7 +124,8 @@ export function ownerCommands(deps: OwnerCommandsDeps): OwnerCommands {
         // 他发「/dsh」「/QQ」「/模式」：只认男朋友档的他、只认纯文字；命中的算处理完，不进聊天记录
         if (event.user_id === deviceOwner?.qq) {
             const plain = plainTextOf(event.message)?.trim();
-            log(`[${event.user_id}] 命令检查：${JSON.stringify(plain)}`);
+            // 他每一条都走到这里：日志只在敏感调试开着时记原文（2026-11-26 入站审查：原来他说的每句话都整句进日志）
+            log(`[${event.user_id}] 命令检查：${plain === undefined ? '不是纯文字' : logBody(JSON.stringify(plain))}`);
             if (plain === '/dsh' || plain === '/工作') {
                 // 不机械切换：先挂起，让她自己答应/拒绝/提条件；反复催会让她烦
                 setWorkMode(config.dataDir, event.user_id, 'pending');
