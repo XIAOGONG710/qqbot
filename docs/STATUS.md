@@ -1,6 +1,6 @@
 # 现状（新会话先读这一页）
 
-- 写于 2026-11-24（claude）。每条事实后面括号里是**来源和日期**；过了几天还在看这一页，先按「怎么刷新」核一遍再信。
+- 写于 2026-11-24（claude），11-26 傍晚核过一遍数字（app.ts 行数、基线场景数、最新 ADR、上线预检、文档地图）。每条事实后面括号里是**来源和日期**；过了几天还在看这一页，先按「怎么刷新」核一遍再信。
 - 这一页只记「现在是什么样」，不记历史。历史看 ADR 和 `git log`；规则看 `CLAUDE.md` / `AGENTS.md`。
 - 不写真实隐私：联系人、QQ 号、群名都不进这页，要看去线上那台的 `runtime/`。
 
@@ -69,13 +69,13 @@
 | 4 一套驱动两种出口 | 常驻的随机醒来换成 QQ 的动机，她自己选出口 | **方案**（`docs/plans/2026-11-23-same-her-layer4-one-driver.md`，11-23）：等她本人的回答（信箱 0309 / 0330）和用户定权限 |
 | 5 记忆有体感 | 召回第一人称 + 标题 + 远近；感觉账；召回配感觉 | **四块已推**；插件 `memoryVoice` 已开（11-23），本人桌面验收通过（ed361b45）；其余开关关；「回想最多几条」那项和桌面 `recallWork` 未动 |
 
-**并行的工程线：ADR 0336 架构迁移**（`docs/adr/0336-interpreter-executor-modules.md`，11-07 起）——一个解释器、一个执行器，其余是模块。第 6 步「app.ts 只剩装配」：11-19 夜清点时降到 2764 行，之后第 3 层接线又加回来，11-24 早上是 3071 行；当天收尾（`docs/plans/2026-11-24-0336-finish.md`）把真实世界数据源、桌面接线、SELF 导出、群自主、OUTBOX 搬出去，**到 11-24 07:00 是 2766 行**，并加行数上限测试（新功能只能以模块进来）；之后减法和开关合并又删掉一些，**11-25 凌晨 2696 行**。剩下的主干（`processMessage`、`deliver`、`createContactResponder`、`status()`）里有用户自己的声音 / 唱歌代码，等那块定下来再搬。迁移期间行为基线必须逐字不变（`CLAUDE.md`）。
+**并行的工程线：ADR 0336 架构迁移**（`docs/adr/0336-interpreter-executor-modules.md`，11-07 起）——一个解释器、一个执行器，其余是模块。第 6 步「app.ts 只剩装配」：11-19 夜清点时降到 2764 行，之后第 3 层接线又加回来，11-24 早上是 3071 行；当天收尾（`docs/plans/2026-11-24-0336-finish.md`）把真实世界数据源、桌面接线、SELF 导出、群自主、OUTBOX 搬出去，**到 11-24 07:00 是 2766 行**，并加行数上限测试（新功能只能以模块进来）；之后减法和开关合并又删掉一些，**11-25 凌晨 2696 行**，11-26 审查的修复搬出去一些后 **2674 行**（上限 `APP_TS_MAX_LINES = 2675`，`packages/bot/test/app-size.test.ts`，11-26）。剩下的主干（`processMessage`、`deliver`、`createContactResponder`、`status()`）里有用户自己的声音 / 唱歌代码，等那块定下来再搬。迁移期间行为基线必须逐字不变（`CLAUDE.md`）。
 
 其他近期结论：ADR 0340「学会了」探针第五版也没学会，按事先判据提示词这一层到头，不再加版本（024a051c，11-22）。
 
 ## 3. 进行中 / 等待中（谁欠谁）
 
-截至 2026-11-24，信箱里**没办完的 13 封全是 claude → dsh**，dsh → claude 没有未办的（`node scripts/exchange.mjs list --all`）。按要紧程度：
+截至 2026-11-26 傍晚，信箱里**没办完的 30 封全是 claude → dsh**（11-24 时 13 封），dsh → claude 没有未办的（`node scripts/exchange.mjs list --all`）。按要紧程度：
 
 - **DSH 欠**（汇总在 `2026-11-23-2011` 那封）：
   1. 删 `session-tails.jsonl` 里那条 22:16:09Z 的子 agent 假收尾行（先备份、只删一条、报行数；用户已同意）。
@@ -96,7 +96,7 @@
 单子分四层：直接做（不改言行）/ 要用户点头（8 条，各带推荐）/ 合并开关组（目标约 55 个）/「此刻」块（等线上真实清单和她的意见）。
 - DSH 欠（11-24）：线上那台跑三个只读命令贴数（刷新开关快照、`inventory:live --manifests`、第一次 `metrics:weekly`）；代跑三个 ask-her（想一想的频率、每晚追求回顾、想事情时放不放回复用的说明）。
 
-- **DSH 那台的 agent 从 11-23 20:47 起没有动静**（11-24 发去的 4 封信都没回）：上面等 DSH 的事要那台的会话重新开起来才会动。
+- **DSH 那台**：11-24、11-25 做过面板，最后一封回信是 11-25 23:59（requestRejection 已在真 DSH 验过）；11-26 用户说那台已关机。开机后先照 `docs/plans/2026-11-26-dsh-boot-checklist.md` 走，再按要紧程度清上面的信（11-26 傍晚核过）。
 
 - **11-25 白天到晚上**（都不改她言行）：基线第二轮提速（feelings 单跑 60 → 27 秒，2cf5e5f3..1191319f）；偶发红排查修了 4 类（看墙上时钟、固定等几十毫秒、子进程冷启动、失败后连接不停，ebdd1ab0、cc0f6cba、a51fc61c）；
   时钟扫查——给她下判断却直接读真实时钟的地方改走 App 的 worldNow（f15830b3、b28ebacb、4f5422df，长期记忆这回也拿到了 App 的时钟），线上不变、模拟器的虚拟时间这下对得上；
@@ -121,9 +121,9 @@
 | 要查什么 | 命令 | 备注 |
 | --- | --- | --- |
 | 全量测试 | `npm test` | 约 8–9 分钟（11-24 simulateWorld 缓存之后；之前约 11 分钟），基线场景并行跑；只用合成角色（ADR 0333） |
-| 只核行为基线 | `npm run baseline:fast -w @qqbot/bot`（约 3 分钟；`-- --only 名字,名字` 只跑几个） | 41 个场景，对 `packages/bot/test/baseline/snapshots/` 逐字比；**不要为了过而 `UPDATE_BASELINE=1`** |
+| 只核行为基线 | `npm run baseline:fast -w @qqbot/bot`（约 3 分钟；`-- --only 名字,名字` 只跑几个） | 39 个场景（`packages/bot/test/baseline/snapshots/`，11-26 数过），对 `packages/bot/test/baseline/snapshots/` 逐字比；**不要为了过而 `UPDATE_BASELINE=1`** |
 | 真实角色资料 | `npm run test:real` | 只在改了转换器或真实 `source/` 后本机跑 |
-| 上线前 | `npm run golive-check -- --live <线上目录> --fetch`（11-25 起含开关合并预检：读线上 koishi.yml，列出重启后会被改写的旧键组；新键表达不了的组合算挡路） | 只读，列出快进线上目录前该看的，退出码 1 = 有挡路的（`docs/golive-guard.md`）；上线本身要用户点头 |
+| 上线前 | `npm run golive-check -- --live <线上目录> --fetch`（11-25 起含开关合并预检：读线上 koishi.yml，列出重启后会被改写的旧键组；新键表达不了的组合算挡路。11-26 起含设备密钥预检：线上 devices.json 按新代码的启动校验过一遍，令牌短于 32 位、hub.host 写成全部网卡就挡路，令牌不打印，5c8440f5） | 只读，列出快进线上目录前该看的，退出码 1 = 有挡路的（`docs/golive-guard.md`）；上线本身要用户点头 |
 | SELF 和 QQ「此刻」块是否一致 | `node scripts/prompt-manifest-diff.mjs runtime/bot-shadow` | 在 DSH 那台跑；逐槽比 sha256，不输出正文；跟着钟走的槽对不上先看时刻 |
 | 线上开关 | `node scripts/read-switches.mjs …` | 见第 1 节 |
 | 线上开关组合的提示词构成 | `npm run inventory:live -w @qqbot/bot`（合成角色两天，约 5–25 分钟）；线上那台 `-- --manifests <数据目录>/logs` 读真实清单 | 只出槽名、模块名和数；`-- --on a,b` 补快照之后开的开关 |
@@ -135,9 +135,10 @@
 **以这些为准**：
 - 规则：`CLAUDE.md`（这台）/ `AGENTS.md`（DSH 那台，内容同步）；`思维链工作流.txt`。
 - 协作：`docs/governance/2026-11-10-single-mainline.md`（只有 main）、`docs/governance/2026-11-10-agent-mailbox.md`（信箱和「自己干活」的分工）。
-- 决策：`docs/adr/`（最新 0348）；**哪份还算数先看 `docs/adr/MAP.md`**（每份的开关在线上开没开，按快照；文件头的状态常常过时）；主线方案在 `docs/plans/2026-11-22-same-her-layer2-self.md`、`docs/plans/2026-11-22-same-her-layer3-writeback.md`、`docs/plans/2026-11-23-same-her-layer4-one-driver.md`。
+- 决策：`docs/adr/`（最新 0351，下一个号 0352）；**哪份还算数先看 `docs/adr/MAP.md`**（每份的开关在线上开没开，按快照；文件头的状态常常过时）；主线方案在 `docs/plans/2026-11-22-same-her-layer2-self.md`、`docs/plans/2026-11-22-same-her-layer3-writeback.md`、`docs/plans/2026-11-23-same-her-layer4-one-driver.md`。
 - 模块与开关：`packages/bot/src/platform/features.ts`（开关总表）、`docs/modules/`（从模块定义生成）。
 - 线上：`exchange/live/` 最新快照；两台进度：`exchange/inbox/`。
+- **11-26 的审查**：要用户定的都在 `docs/plans/2026-11-26-decisions-for-user.md`（按急迫排、每条带推荐）；报告 `docs/reports/2026-11-26-{mobile-companion,koishi-console,device-control,web-bilibili,inbound-qq,memory,ai-photo,ops-scripts}-review.md`；部署照 `docs/plans/2026-11-25-deploy-runbook.md`（含 11-26 那一节）。
 - 专题：`docs/koishi.md`、`docs/hindsight.md`、`docs/napcat.md`、`docs/golive-guard.md`、`docs/heartbeat.md`、`docs/boot-start.md`、`docs/dsh-agent-identity-guide.md`、`docs/sensitive-logs.md`。
 
 **只当历史看**：
