@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 // 本人代发的前缀归 QQ 核心定义（它据此把代发挡在她的聊天账外），插件引用核心那一份
 import manualOrigin from '../../packages/bot/src/platform/desktop-manual-origin.json' with { type: 'json' }
 
@@ -6,6 +7,8 @@ const id = value => (typeof value === 'string' || typeof value === 'number') &&
   ? String(Number(value)) : null
 const list = value => Array.isArray(value) ? value : []
 const labels = { image: '图片', record: '语音', video: '视频', face: '表情', forward: '合并转发', file: '文件', reply: '引用' }
+const HISTORY_PAGE_SIZE = 60
+const HISTORY_PAGE_LIMIT = 8
 
 function textOf(message) {
   if (typeof message === 'string') return message
@@ -66,39 +69,67 @@ export function createChat(call, { ownerId, send, historyMedia } = {}) {
       return { account: self, sessions: [...friends, ...groups], sendKey: canSend ? `private:${manualTarget}` : null,
         ...(canSend ? { sendPrefix: manualOrigin.prefix } : {}) }
     },
-    async history(key, count = 30, expectedAccount) {
+    async history(key, count = 30, expectedAccount, after = null) {
       if (typeof expectedAccount !== 'string' || id(expectedAccount) !== expectedAccount) return null
+      if (after !== null && (typeof after !== 'string' || !/^[a-f0-9]{64}$/.test(after))) return null
       const session = await find(key)
       if (!session) return null
       const group = session.kind === 'group'
       const requested = Number(count)
       const limit = [15, 30, 60].includes(requested) ? requested : 30
-      const result = await call(group ? 'get_group_msg_history' : 'get_friend_msg_history', {
-        [group ? 'group_id' : 'user_id']: Number(session.target), count: 60,
-      }, expectedAccount)
-      if (!Array.isArray(result?.messages)) throw Error('history_unavailable')
-      const seen = new Set()
-      const rows = result.messages.flatMap(message => {
-        if (!message || group && message.group_id != null && id(message.group_id) !== session.target) return []
-        const senderId = id(message.sender?.user_id ?? message.user_id)
-        const messageId = Number.isSafeInteger(message.message_id) ? String(message.message_id) : null
-        const at = Number.isSafeInteger(message.time) && message.time > 0 && message.time < 253402300800 ? message.time : null
-        const text = textOf(message.message)
-        if (messageId !== null && at !== null) {
-          // ID 可能复用，以时间、发送者、序号和正文区分实际不同的消息。
-          const key = JSON.stringify([messageId, at, senderId, String(message.real_seq ?? ''), text])
-          if (seen.has(key)) return []
-          seen.add(key)
-        }
-        return [{ id: messageId, at,
-          senderId,
-          sender: String(message.sender?.card || message.sender?.nickname || senderId || '未知发送者'),
-          text, raw: message.message,
-        }]
-      })
-      return rows.sort((a, b) => a.at - b.at).slice(-limit).map(({ raw, ...message }) => ({
+      const page = async (before, reverseOrder = false) => {
+        const result = await call(group ? 'get_group_msg_history' : 'get_friend_msg_history', {
+          [group ? 'group_id' : 'user_id']: Number(session.target), count: HISTORY_PAGE_SIZE,
+          ...(before ? { message_seq: before, reverse_order: reverseOrder } : {}),
+        }, expectedAccount)
+        if (!Array.isArray(result?.messages)) throw Error('history_unavailable')
+        return uniqueHistory(result.messages.flatMap(message => {
+          if (!message || group && message.group_id != null && id(message.group_id) !== session.target) return []
+          const senderId = id(message.sender?.user_id ?? message.user_id)
+          const messageId = Number.isSafeInteger(message.message_id) ? String(message.message_id) : null
+          const at = Number.isSafeInteger(message.time) && message.time > 0 && message.time < 253402300800 ? message.time : null
+          const text = textOf(message.message)
+          const seq = String(message.real_seq ?? '')
+          // 短 ID 可能复用；同一条消息在重复页中的身份需要稳定。
+          const identity = messageId !== null && at !== null
+            ? createHash('sha256').update(JSON.stringify([expectedAccount, key, messageId, at, senderId, seq, text])).digest('hex') : null
+          return [{ id: messageId, at, identity, senderId, seq,
+            sender: String(message.sender?.card || message.sender?.nickname || senderId || '未知发送者'),
+            text, raw: message.message,
+          }]
+        }).sort((a, b) => a.at - b.at || a.seq.localeCompare(b.seq, 'en', { numeric: true })))
+      }
+      let rows = await page()
+      const cursor = rows.findLast(row => row.identity)?.identity ?? null
+      let anchor = after ? rows.findIndex(row => row.identity === after) : -1
+      let reverseOrder = false
+      for (let i = 1; after && anchor < 0 && rows.length && i < HISTORY_PAGE_LIMIT; i++) {
+        const first = rows[0]
+        if (!first.identity || !first.id || first.id === '0') break
+        try {
+          const older = async () => {
+            const batch = await page(first.id, reverseOrder)
+            const boundary = batch.findIndex(row => row.identity === first.identity)
+            return boundary > 0 ? batch.slice(0, boundary) : []
+          }
+          let prefix = await older()
+          if (!prefix.length && i === 1) {
+            reverseOrder = !reverseOrder
+            prefix = await older()
+          }
+          const existing = new Set(rows.map(row => row.identity).filter(Boolean))
+          prefix = prefix.filter(row => !existing.has(row.identity))
+          if (!prefix.length || !prefix[0].identity) break
+          rows = [...prefix, ...rows]
+          anchor = rows.findIndex(row => row.identity === after)
+        } catch { break }
+      }
+      const incomplete = Boolean(after && anchor < 0)
+      const visible = after ? rows.slice(anchor + 1) : rows.slice(-limit)
+      const messages = visible.map(({ raw, ...message }) => ({
         ...message, ...(historyMedia ? { media: historyMedia.register(key, raw) } : {}),
       }))
+      return { messages, cursor: incomplete ? after : cursor ?? after, incomplete }
     },
     media: id => historyMedia?.read(id) ?? null,
     async prepare(payload) {
@@ -113,6 +144,16 @@ export function createChat(call, { ownerId, send, historyMedia } = {}) {
       return { status: 200 }
     },
   }
+}
+
+function uniqueHistory(rows) {
+  const seen = new Set()
+  return rows.filter(({ identity }) => {
+    if (!identity) return true
+    if (seen.has(identity)) return false
+    seen.add(identity)
+    return true
+  })
 }
 
 function exchange({ token, connect = url => new WebSocket(url), timeout = 5000 }, steps) {

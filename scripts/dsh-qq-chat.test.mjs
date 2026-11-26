@@ -21,7 +21,7 @@ test('lists friends and groups and fetches only the selected conversation', asyn
   })
   assert.deepEqual((await chat.list()).sessions.map(({ key }) => key), ['private:200', 'group:300'])
   assert.equal(await chat.history('group:999', 30, '100'), null)
-  const [message] = await chat.history('group:300', 30, '100')
+  const { messages: [message] } = await chat.history('group:300', 30, '100')
   assert.equal(message.text, '你好[图片]')
   assert.equal(message.sender, '群名片')
   assert.equal(JSON.stringify(message).includes('kept-private'), false)
@@ -54,16 +54,50 @@ test('reconnect restores the missed rows once and rejects a changed QQ account',
     return socket
   } }))
   const poll = () => chat.history('private:200', 30, '100')
-  assert.deepEqual((await poll()).map(row => row.id), ['7'])
+  assert.deepEqual((await poll()).messages.map(row => row.id), ['7'])
   online = false
   await assert.rejects(poll, /napcat_closed/)
   online = true
   history = [old, old, fresh, fresh]
-  assert.deepEqual((await poll()).map(row => row.id), ['7', '8'])
-  assert.deepEqual((await poll()).map(row => row.id), ['7', '8'])
+  assert.deepEqual((await poll()).messages.map(row => row.id), ['7', '8'])
+  assert.deepEqual((await poll()).messages.map(row => row.id), ['7', '8'])
   account = 101
   await assert.rejects(poll)
   assert.equal(pulls, 3)
+})
+
+test('a reconnect walks inclusive NapCat pages back to the last seen message, without overlap', async () => {
+  const rows = Array.from({ length: 145 }, (_, i) => ({
+    message_id: i + 1, real_seq: String(i + 1), time: 1000 + Math.floor(i / 5), sender: { user_id: 200 }, message: `合成 ${i + 1}`,
+  }))
+  let available = rows.slice(0, 3), offline = false, stuck = false
+  const pages = []
+  const chat = createChat(async (action, params, account) => {
+    if (offline) throw Error('offline')
+    if (action === 'get_friend_list') return [{ user_id: 200 }]
+    assert.equal(action, 'get_friend_msg_history')
+    assert.equal(account, '100')
+    pages.push(params.message_seq ?? null)
+    const end = params.message_seq ? available.findIndex(row => String(row.message_id) === params.message_seq) + 1 : available.length
+    return { messages: stuck && params.message_seq ? [available[end - 1]] : available.slice(Math.max(0, end - params.count), end) }
+  })
+  const poll = after => chat.history('private:200', 30, '100', after)
+  const initial = await poll()
+  assert.deepEqual(initial.messages.map(message => message.id), ['1', '2', '3'])
+  offline = true
+  await assert.rejects(poll(initial.cursor))
+  offline = false
+  available = rows
+  const recovered = await poll(initial.cursor)
+  assert.deepEqual(recovered.messages.map(message => Number(message.id)), rows.slice(3).map(row => row.message_id))
+  assert.deepEqual(pages, [null, null, '86', '27'])
+  assert.equal(recovered.incomplete, false)
+  assert.deepEqual((await poll(recovered.cursor)).messages, [])
+  stuck = true
+  const partial = await poll(initial.cursor)
+  assert.equal(partial.incomplete, true)
+  assert.deepEqual(partial.messages.map(message => Number(message.id)), rows.slice(-60).map(row => row.message_id))
+  assert.equal(partial.cursor, initial.cursor, '保留缺口前的游标')
 })
 
 test('manual sending requires an owner-only transport and explicit matching account', async () => {

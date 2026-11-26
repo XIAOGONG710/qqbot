@@ -195,6 +195,23 @@ window.__ModuleLoader__.load({
       return 30
     }
 
+    function readHistoryCursor(key) {
+      try {
+        const cursor = window.localStorage.getItem(key)
+        if (/^[a-f0-9]{64}$/.test(cursor)) return cursor
+      } catch { /* 当前会话仍会记住位置 */ }
+      return null
+    }
+
+    function mergeHistory(previous, incoming) {
+      const rows = new Map()
+      for (const row of [...previous, ...incoming]) {
+        const identity = row.identity ?? JSON.stringify([row.id, row.at, row.senderId, row.text])
+        rows.set(identity, row)
+      }
+      return [...rows.values()].sort((a, b) => a.at - b.at || (a.seq ?? '').localeCompare(b.seq ?? '', 'en', { numeric: true })).slice(-1200)
+    }
+
     // 灵犀 WebChat 的发送者配色，保持同一人各条消息颜色一致。
     const senderColors = ['#e2686f', '#e0a44b', '#4bb07a', '#4b8fe0', '#9a6fe0', '#e07fa8', '#5fb8c9', '#c98f5f']
     function colorOf(sender) {
@@ -261,6 +278,7 @@ window.__ModuleLoader__.load({
     function Conversation({ session, account, sendPrefix, request, revision }) {
       const canSend = Boolean(sendPrefix)
       const viewKey = `qqbot-services:history-count:${account.id}:${session.key}`
+      const cursorKey = `qqbot-services:history-cursor:${account.id}:${session.key}`
       const [count, setCount] = React.useState(() => readHistoryCount(viewKey))
       const [messages, setMessages] = React.useState(null)
       const [notice, setNotice] = React.useState('')
@@ -268,24 +286,45 @@ window.__ModuleLoader__.load({
       const [sending, setSending] = React.useState(false)
       const [refresh, setRefresh] = React.useState(0)
       const [historyError, setHistoryError] = React.useState(false)
+      const [incomplete, setIncomplete] = React.useState(false)
       const busy = React.useRef(false)
+      const history = React.useRef({ rows: [], cursor: readHistoryCursor(cursorKey) })
       React.useEffect(() => {
         const controller = new AbortController()
         let timer
         const update = async () => {
+          let delay = 5000
           try {
             const query = new URLSearchParams({ key: session.key, accountId: account.id, count: String(count) })
+            if (history.current.cursor) query.set('after', history.current.cursor)
             const result = await request(`history?${query}`, { signal: controller.signal })
-            if (!controller.signal.aborted) { setMessages(result.messages); setHistoryError(false) }
+            if (!controller.signal.aborted) {
+              // 首次打开没有现成列表且游标已是最新时，再读一次初始快照。
+              let incoming = result.messages
+              if (!incoming.length && !history.current.rows.length && history.current.cursor && !result.incomplete) {
+                query.delete('after')
+                incoming = (await request(`history?${query}`, { signal: controller.signal })).messages
+                if (controller.signal.aborted) return
+              }
+              history.current.rows = mergeHistory(history.current.rows, incoming)
+              history.current.cursor = result.cursor
+              setMessages(history.current.rows)
+              setHistoryError(false)
+              setIncomplete(Boolean(result.incomplete))
+              if (result.incomplete) delay = 30_000
+              if (result.cursor) {
+                try { window.localStorage.setItem(cursorKey, result.cursor) } catch { /* 当前会话仍会记住位置 */ }
+              }
+            }
           } catch {
             if (!controller.signal.aborted) setHistoryError(true)
           } finally {
-            if (!controller.signal.aborted) timer = setTimeout(update, 5000)
+            if (!controller.signal.aborted) timer = setTimeout(update, delay)
           }
         }
         void update()
         return () => { controller.abort(); clearTimeout(timer) }
-      }, [session.key, account.id, count, revision, refresh])
+      }, [session.key, account.id, cursorKey, count, revision, refresh])
       const submit = async event => {
         event.preventDefault()
         if (!canSend || busy.current || !draft.trim()) return
@@ -314,16 +353,17 @@ window.__ModuleLoader__.load({
       return h('section', { 'aria-label': session.name },
         h('header', { className: 'qqb-thread-head qqb-actions' },
         h('h3', null, `${session.name}（${session.target}）`),
-        h('label', null, '最近消息 ', h('select', { className: 'qqb-input', value: count, onChange: event => {
+        h('label', null, '初次加载 ', h('select', { className: 'qqb-input', value: count, onChange: event => {
           const value = Number(event.target.value)
           setCount(value)
           try { window.localStorage.setItem(viewKey, String(value)) } catch { /* 当前页面仍可设置 */ }
         } }, ...[15, 30, 60].map(value => h('option', { value, key: value }, value))))),
         messages === null && !historyError && h('p', { className: 'qqb-chat-empty', role: 'status' }, '正在读取消息…'),
         historyError && h('p', { className: 'qqb-chat-empty', role: 'status' }, '暂时读不到新消息，将自动重试。'),
+        incomplete && h('p', { className: 'qqb-chat-empty', role: 'status' }, 'QQ 历史补回不完整，断线期间可能还有消息。稍后会继续核对。'),
         messages?.length === 0 && h('p', { className: 'qqb-chat-empty' }, '近期没有消息。'),
         Array.isArray(messages) && h('ol', { className: 'qqb-feed' },
-          ...messages.map((message, index) => h('li', { key: `${message.id}-${index}`,
+          ...messages.map((message, index) => h('li', { key: message.identity ?? `${message.id}-${index}`,
             className: `qqb-message${message.senderId === account.id ? ' is-mine' : ''}` },
           h('span', { className: 'qqb-avatar', 'aria-hidden': true,
             style: { backgroundColor: colorOf(message.senderId || message.sender) } }, Array.from(message.sender.trim())[0] || '?'),

@@ -195,11 +195,14 @@ test('client registers the same bridge console in DSH settings and the sidebar',
     assert.equal(entries[0].render, entries[2].render);
 });
 
-test('the DSH chat form commits only after the operator accepts the server preview', async () => {
+test('the DSH chat form sends only after confirmation and history keeps every resumed row', async () => {
     let panel, plugin, accepted = false;
     let theme;
     const requests = [], previews = [], effects = [], timers = [];
-    let historyResult = [{ id: '1', text: '断线前' }];
+    const first = { id: '1', at: 100, text: '断线前', identity: 'a'.repeat(64) };
+    const last = 'b'.repeat(64);
+    let historyResult = { messages: [first], cursor: first.identity, incomplete: false };
+    const cursors = [];
     const account = { id: '100', name: '测试账号' };
     const recipient = { key: 'private:200', target: '200', kind: 'private', name: '测试收件人' };
     const draft = '合成消息';
@@ -223,9 +226,11 @@ test('the DSH chat form commits only after the operator accepts the server previ
         },
         fetch: async (url, options) => {
             if (url.includes('/history?')) {
-                assert.equal(new URLSearchParams(url.split('?')[1]).get('accountId'), account.id);
+                const query = new URLSearchParams(url.split('?')[1]);
+                assert.equal(query.get('accountId'), account.id);
+                cursors.push(query.get('after'));
                 if (!historyResult) throw Error('synthetic disconnect');
-                return { ok: true, json: async () => ({ messages: historyResult }) };
+                return { ok: true, json: async () => historyResult };
             }
             requests.push([url.split('/').at(-1), JSON.parse(options.body)]);
             return { ok: true, json: async () => ({ confirmation: 'synthetic', preview: { account, recipient, text } }) };
@@ -246,7 +251,7 @@ test('the DSH chat form commits only after the operator accepts the server previ
     const chat = find(root, node => node.type?.name === 'Chat');
     states = [{ account, sessions: [recipient], sendKey: recipient.key, sendPrefix: '【本人手动代发】' }, recipient.key, '', 0, false];
     const conversation = find(chat.type(chat.props), node => node.type?.name === 'Conversation');
-    states = [30, null, '', draft, false, 0, false];
+    states = [30, null, '', draft, false, 0, false, false];
     const { props: form } = find(conversation.type(conversation.props), node => node.type === 'form');
     assert.equal(form.className, 'qqb-composer');
     await form.onSubmit({ preventDefault() {} });
@@ -261,15 +266,27 @@ test('the DSH chat form commits only after the operator accepts the server previ
     const cleanup = effects.at(-1)();
     try {
         await new Promise(resolve => setImmediate(resolve));
-        assert.deepEqual(stateUpdates, [historyResult, false]);
+        assert.deepEqual(Array.from(stateUpdates[0]), [first]);
+        assert.deepEqual(stateUpdates.slice(1), [false, false]);
         stateUpdates.length = 0;
         historyResult = null;
         await timers.shift()();
         assert.deepEqual(stateUpdates, [true], '离线只改连接状态，列表不清空');
         stateUpdates.length = 0;
-        historyResult = [{ id: '1', text: '断线前' }, { id: '2', text: '断线中' }];
+        const missed = Array.from({ length: 142 }, (_, i) => ({ id: String(i + 2), at: i + 101, text: '断线中' }));
+        historyResult = { messages: [first, ...missed], cursor: first.identity, incomplete: true };
         await timers.shift()();
-        assert.deepEqual(stateUpdates, [historyResult, false]);
+        assert.deepEqual(Array.from(stateUpdates[0]), [first, ...missed]);
+        assert.deepEqual(stateUpdates.slice(1), [false, true]);
+        stateUpdates.length = 0;
+        historyResult = { messages: missed, cursor: last, incomplete: false };
+        await timers.shift()();
+        assert.deepEqual(Array.from(stateUpdates[0]), [first, ...missed]);
+        assert.deepEqual(stateUpdates.slice(1), [false, false]);
+        assert.deepEqual(cursors, [null, first.identity, first.identity, first.identity]);
+        accepted = false;
+        await form.onSubmit({ preventDefault() {} });
+        assert.equal(requests.filter(([operation]) => operation === 'send').length, 1, '重连后取消仍不会增加发送调用');
     } finally { cleanup(); }
 });
 
