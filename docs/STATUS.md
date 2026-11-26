@@ -128,6 +128,7 @@
 | 线上开关 | `node scripts/read-switches.mjs …` | 见第 1 节 |
 | 线上开关组合的提示词构成 | `npm run inventory:live -w @qqbot/bot`（合成角色两天，约 5–25 分钟）；线上那台 `-- --manifests <数据目录>/logs` 读真实清单 | 只出槽名、模块名和数；`-- --on a,b` 补快照之后开的开关 |
 | 每周效果数 | `npm run metrics:weekly -w @qqbot/bot -- --compare` | ADR 0348；只出数，每周一在线上那台跑；新功能要写明改善哪个数 |
+| GitHub CI | `gh run list --branch main --limit 5`；挂了看 `gh run view <id> --log-failed` | **推送后看一眼**：11-26 查出 main 上最近 400 次没有一次绿、没人发现。CI 是 windows-latest **英文系统**、Node 24、有建符号链接的权限、.NET 不同——本机过 CI 挂多半是这几样：中文排序要写 `localeCompare(x, 'zh-CN')`（有测试守着）、解压别用 `Expand-Archive`（用 .NET 两参数 `ZipFile.ExtractToDirectory`）、本机 skip 的符号链接测试在 CI 上会真跑。根 `npm test` 是 test:scripts && 各包，脚本一挂后面不跑（11-27） |
 | 信箱 | `node scripts/exchange.mjs check --me claude`（或 `dsh`） | 开工和推送前都跑 |
 
 ## 6. 文档地图
