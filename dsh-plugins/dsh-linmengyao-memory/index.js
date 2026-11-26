@@ -795,6 +795,8 @@ async function recallBank(cfg, bank, query, ownImportant = false) {
   const data = await res.json()
   const facts = data.source_facts || {}
   return (Array.isArray(data.results) ? data.results : [])
+    .filter(item => !['recalled', 'retracted', 'withdrawn', 'forgotten'].some(mark =>
+      (Array.isArray(item.tags) && item.tags.includes(mark)) || [true, 'true'].includes(item.metadata?.[mark])))
     .map((item) => ({
       id: String(item.id || item.text),
       text: String(item.text || '').trim(),
@@ -836,7 +838,7 @@ export const herOwnCommonDoc = (documentId, ownerHashValue) => {
 
 const IMPORTANT_TOPICS = [
   /熬夜|晚睡|早睡|早点睡|没睡好|睡得[晚迟]|(?:昨晚|半夜|凌晨).{0,12}(?:到|才)[一二三四五六两1-6１-６]点/,
-  /早饭|早餐|早上.{0,5}(?:没吃|没顾上吃)/,
+  /早饭|早餐|早上.{0,5}(?:没吃|没顾上吃|顾不上吃)/,
 ]
 
 /** 所有库做语义召回，合并去重后取前 pick 条。命中明确话题时给亲手记的相关项留一个位置。 */
@@ -856,11 +858,13 @@ async function recallAll(cfg, query, currentUserText, checkImportant) {
   const extra = supplement ? settled.pop() : undefined
   const seen = new Set()
   const out = []
+  let relatedImportantSelected = false
   let important = extra?.status === 'rejected' ? 'failed' : extra ? 'no-match' : 'not-queried'
   if (extra?.status === 'fulfilled') {
     const item = extra.value.find(candidate => isOwnImportant(candidate) && isRelated(candidate))
     if (item) {
       important = 'matched'
+      relatedImportantSelected = true
       seen.add(item.id)
       out.push(item)
     }
@@ -871,6 +875,10 @@ async function recallAll(cfg, query, currentUserText, checkImportant) {
       if (banks[index] === common && !herOwnCommonDoc(item.documentId, mineHash)) continue
       if (isOwnImportant(item) && IMPORTANT_TOPICS.some(topic => topic.test(item.text)) && !isRelated(item)) continue
       if (seen.has(item.id)) continue
+      if (supplement && isOwnImportant(item) && isRelated(item)) {
+        if (relatedImportantSelected) continue
+        relatedImportantSelected = true
+      }
       seen.add(item.id)
       out.push(item)
     }
