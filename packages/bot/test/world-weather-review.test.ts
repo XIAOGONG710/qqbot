@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
@@ -32,7 +32,9 @@ test('保留 ADR0048 的历史补数政策，已观测小时不可覆盖', () =>
     assert.deepEqual(mergeHours(observed, hours(30), tomorrow), observed);
 });
 
-test('坏缓存拒绝使用且刷新不能覆盖，错误不包含坏 JSON 原文；合法旧缓存保持兼容', { skip: 'DSH 线对现实数据缓存（天气、空气质量、日照）的做法是把坏文件改名隔离（.corrupt-*）后照常重取，不是失败关闭；合并时保留 DSH 线的做法（见 weather.ts 的 readWeatherStore）' }, async () => {
+// 坏缓存的做法是 DSH 线定的（合并时保留，见 weather.ts 的 readWeatherStore）：改名隔离成 .corrupt-*、当没有，照常重取；
+// 原来这条按「失败关闭」写、整条 skip，等于这条路没有测试守着。改成测现在的做法。
+test('坏缓存改名隔离后当没有，刷新照常重取写新缓存；日志不带坏 JSON 原文', async () => {
     for (const bad of [
         { since: date, hours: Object.fromEntries(Object.keys(hours()).map(k => [k, { t: 'bad', p: 0, c: 0 }])) },
         { since: '2026-02-30', hours: hours() },
@@ -44,15 +46,14 @@ test('坏缓存拒绝使用且刷新不能覆盖，错误不包含坏 JSON 原�
         const dir = fixture(); const file = join(dir, 'school-town.json');
         const text = typeof bad === 'string' ? bad : JSON.stringify(bad); writeFileSync(file, text);
         const logs: string[] = [];
-        const fetcher = weatherFetcher({ places: SYNTHETIC_WEATHER_PLACES, dir, log: line => logs.push(line), now: () => at('03:00').getTime(), provider: { id: 'fake', fetchHourly: async () => hours() } });
-        assert.equal(fetcher.day('school-town', date, at('12:00')), undefined);
-        assert.ok(fetcher.status().places['school-town']!.error);
+        const fetcher = weatherFetcher({ places: SYNTHETIC_WEATHER_PLACES, dir, log: line => logs.push(line), now: () => at('03:00').getTime(), provider: { id: 'fake', fetchHourly: async () => hours(21) } });
+        assert.equal(fetcher.day('school-town', date, at('12:00')), undefined, '坏缓存不拿来用');
+        const quarantined = readdirSync(dir).filter(name => name.startsWith('school-town.json.corrupt-'));
+        assert.equal(quarantined.length, 1, '坏文件改名隔离');
+        assert.equal(readFileSync(join(dir, quarantined[0]!), 'utf8'), text, '隔离的是原样的坏文件');
         await fetcher.refresh();
-        assert.equal(readFileSync(file, 'utf8'), text);
+        assert.equal(fetcher.day('school-town', date, at('12:00'))!.low, 21, '刷新后用新取的');
         assert.ok(logs.every(line => !line.includes('BROKEN_PRIVATE_CACHE_JSON')));
-        // 原文件修好后不必重建 fetcher，就可以正常重试。
-        writeFileSync(file, JSON.stringify({ since: date, hours: hours(21, true) }));
-        assert.equal(fetcher.day('school-town', date, at('12:00'))!.low, 21);
     }
 });
 

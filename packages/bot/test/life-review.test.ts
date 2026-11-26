@@ -186,10 +186,13 @@ test('所有行动拒绝非法显式时长，固定时段也必须有限且正�
     }
 });
 
-test('早课困倦不受起床抖动影响，描述采用真实起床时间；无早课不误判', { skip: 'DSH 线的决定（ADR 0219，她说「别给我按课表编个『早八所以很累』出来」）：起床有浮动以后不再按课表推早上的困，早上的困只从真实的昨晚来；这条按 main 的修法写的测试和它相反，合并时保留 DSH 线的行为' }, () => {
+// ADR 0219（DSH 线，合并时保留）：起床有浮动以后不再按课表推早上的困（她说「别给我按课表编个『早八所以很累』出来」），
+// 早上的困从真实的昨晚来（nights.ts）。课表那条只在起床正好是 wake.early 的日子还在。原来这条按 main 的修法写、整条 skip；改成测现在的做法。
+test('起床有浮动以后，课表推的早上困只在起床正好是 wake.early 那天出现；其余早上不按课表编困，周末也没有', () => {
     const early: Schedule = { ...schedule, wake: { ...schedule.wake, jitter: { from: '2026-09-01', spreadMin: 10, weekendMin: 0 } },
         courses: [1, 2, 3, 4, 5].map(day => ({ day, slot: 'one', weeks: '1-20', kind: 'hard', name: '高等数学' })) };
     const signs = new Set<number>();
+    let exact = 0, jittered = 0;
     for (let offset = 0; offset < 28; offset++) {
         const date = new Date(2026, 10, 2 + offset, 10);
         if (date.getDay() === 0 || date.getDay() === 6) { assert.equal(bodyAt({}, early, date).sleepy, undefined); continue; }
@@ -197,11 +200,17 @@ test('早课困倦不受起床抖动影响，描述采用真实起床时间；�
         const baseline = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 7, 40);
         signs.add(Math.sign(woke.getTime() - baseline.getTime()));
         const sleepy = bodyAt({}, early, date).sleepy;
-        assert.equal(sleepy?.when, 'morning');
-        if (sleepy?.when === 'morning') assert.equal(sleepy.woke, woke.toTimeString().slice(0, 5));
-        assert.equal(bodyAt({}, early, new Date(woke.getTime() - 1)).sleepy, undefined);
+        if (woke.toTimeString().slice(0, 5) === early.wake.early) {
+            exact++;
+            assert.deepEqual(sleepy, { when: 'morning', slept: early.sleep, woke: early.wake.early });
+            assert.equal(bodyAt({}, early, new Date(woke.getTime() - 1)).sleepy, undefined, '起床之前不困');
+        } else {
+            jittered++;
+            assert.equal(sleepy, undefined, `${date.toDateString()} 起床 ${woke.toTimeString().slice(0, 5)}，不按课表编困`);
+        }
     }
-    assert.ok(signs.has(-1) && signs.has(1));
+    assert.ok(signs.has(-1) && signs.has(1), '起床时间确实有早有晚');
+    assert.ok(jittered > 0, '有浮动的日子');
 });
 
 test('偏好反思忽略非法提案并继续处理有效项，保存结果且维持每日上限', async () => {
