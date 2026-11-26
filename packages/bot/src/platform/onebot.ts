@@ -10,6 +10,7 @@
 
 import { faceText, textToSegments } from '.././language/qq-faces.ts';
 import { logBody } from './sensitive.ts';
+import { defuseMarkers } from './untrusted-markers.ts';
 import { FORWARD_TEXT, fileText, shareText } from '.././proactive/shares.ts';
 // 桌面「本人代发」的前缀（DSH 服务面板 chat.js 引用同一份）：带这个前缀、由她账号发出的消息不进她的聊天账
 import manualOrigin from './desktop-manual-origin.json' with { type: 'json' };
@@ -405,7 +406,8 @@ export function segmentsToText(message: Segment[] | string, quoted?: QuoteLookup
         switch (segment.type) {
             case 'text': return String(data.text ?? '');
             // 表情包、商城表情的 summary 是名字，如“[动画表情]”“[是的]”
-            case 'image': return typeof data.summary === 'string' && data.summary ? data.summary : '[图片]';
+            // summary 是发图那一端自己填的（2026-11-26 入站审查：可以很长、带换行、带 <<执行：…>>）：压成一行、拆掉标记、截短；正常的「[动画表情]」不变
+            case 'image': return imageSummary(data.summary) ?? '[图片]';
             // QQ 小黄脸按 id 换成名字「[捂脸]」，表里没有的照旧「[表情]」（ADR 0051）
             case 'face': return faceText(data.id);
             case 'at': return `@${String(data.qq ?? '')} `;
@@ -437,6 +439,24 @@ const FORWARD_LINES = 8;
 const FORWARD_LINE_CHARS = 40;
 const FORWARD_TOTAL_CHARS = 360;
 
+/** 图片段的 summary：一行、拆掉标记、最多 40 个字；空的返回 undefined */
+function imageSummary(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const text = defuseMarkers(value).replace(/\s+/g, ' ').trim();
+    if (!text) return undefined;
+    const chars = [...text];
+    return chars.length > 40 ? `${chars.slice(0, 40).join('')}…` : text;
+}
+
+/**
+ * 转发里的昵称：去掉换行、括号、冒号，截短。节点的昵称是拼转发的那一端随便填的（2026-11-26 入站审查）：
+ * 昵称就叫「他」「你」，写出来就成了「他：…」「你：…」，像他说的、像她自己说的——这种加上「昵称叫」，不当成他和她
+ */
+function forwardNickname(raw: string): string {
+    const name = defuseMarkers(raw).replace(/[\r\n\t[\]【】：:]+/g, ' ').trim().slice(0, 16);
+    return /^(?:他|你|她|我|你男朋友|男朋友)$/.test(name) ? `昵称叫「${name}」的人` : name;
+}
+
 /** 只把当前机器人账号发出的带标记消息认作桌面手动代发。 */
 export function isDesktopManualMessage(message: Segment[] | string, sender: number | undefined, selfId: number | undefined): boolean {
     return Boolean(selfId && sender === selfId && segmentsToText(message).startsWith(manualOrigin.prefix));
@@ -456,9 +476,10 @@ export function renderForward(items: readonly unknown[], who: (userId: number | 
         const node = rec(outer.data) ?? outer;
         const sender = rec(node.sender);
         const rawId = Number(node.user_id ?? sender?.user_id);
-        const nickname = String(node.nickname ?? sender?.card ?? sender?.nickname ?? '').replace(/[\r\n\t[\]【】：:]+/g, ' ').trim().slice(0, 16);
+        const nickname = forwardNickname(String(node.nickname ?? sender?.card ?? sender?.nickname ?? ''));
         const segments = node.message ?? node.content;
-        const text = (typeof segments === 'string' ? segments : Array.isArray(segments) ? segmentsToText(segments as Segment[]) : '').replace(/\s+/g, ' ').trim();
+        // 转发里是别人写的字（谁都能拼一段假的合并转发）：拆掉动作标记的样子再给她看（2026-11-26 入站审查）
+        const text = defuseMarkers((typeof segments === 'string' ? segments : Array.isArray(segments) ? segmentsToText(segments as Segment[]) : '').replace(/\s+/g, ' ').trim());
         if (!text || isDesktopManualMessage(text, rawId, selfId)) continue;
         const name = who(Number.isSafeInteger(rawId) ? rawId : undefined, nickname) || '别人';
         lines.push(`${name}：${text.length > FORWARD_LINE_CHARS ? `${text.slice(0, FORWARD_LINE_CHARS)}…` : text}`);
@@ -482,7 +503,7 @@ export function renderForward(items: readonly unknown[], who: (userId: number | 
 export function otherSegmentText(type: string, data: Record<string, unknown>): string {
     const str = (value: unknown, max = 40) => {
         if (typeof value !== 'string' && typeof value !== 'number') return '';
-        const text = String(value).replace(/[\r\n\t]+/g, ' ').replace(/[[\]【】]/g, '').replace(/\s+/g, ' ').trim();
+        const text = defuseMarkers(String(value)).replace(/[\r\n\t]+/g, ' ').replace(/[[\]【】]/g, '').replace(/\s+/g, ' ').trim();
         return text.length > max ? `${text.slice(0, max)}…` : text;
     };
     switch (type) {

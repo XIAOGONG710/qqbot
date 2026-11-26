@@ -2,6 +2,9 @@
 // NapCat 的分享（B 站、小红书、网页、音乐、位置……）是 json 段，data.data 是一段 JSON 文字；
 // 以前 segmentsToText 一律写成「[json]」，她看不懂，要么装没看见（接着问上一句），要么说「这是啥」。
 // 这里只取人看得懂的几个字：来源、标题。不放链接（她点不开，也不该把网址写进聊天记录和记忆）。
+// 卡片标题、文件名是发的那一端写的：拆掉 <<执行：…>> 这类标记的样子（2026-11-26 入站审查，platform/untrusted-markers.ts）。
+
+import { defuseMarkers } from '../platform/untrusted-markers.ts';
 
 const MAX_TITLE = 40;
 const MAX_NAME = 40;
@@ -10,7 +13,8 @@ const MAX_NAME = 40;
 function clean(value: unknown, max: number, links = false): string {
     if (typeof value !== 'string') return '';
     // 卡片的标题 / prompt 也可能直接是网址；先去掉，免得截短后留下带私有参数的半条链接。
-    const source = links ? value.replace(/https?:\/\/[^\s<>"'《》「」，。！？、）)\]]+/gi, '') : value;
+    const unmarked = defuseMarkers(value);
+    const source = links ? unmarked.replace(/https?:\/\/[^\s<>"'《》「」，。！？、）)\]]+/gi, '') : unmarked;
     const text = source.replace(/[\r\n\t]+/g, ' ').replace(/[[\]【】]/g, '').replace(/\s+/g, ' ').trim();
     let result = '';
     let count = 0;

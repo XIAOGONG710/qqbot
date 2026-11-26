@@ -9,6 +9,7 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { defuseMarkers } from '../platform/untrusted-markers.ts';
 
 /** 放进聊天记录的那一行里，文字部分、画面部分各最多几个字（表情包的字大多一两句） */
 export const STICKER_TEXT_MAX_CHARS = 30;
@@ -43,7 +44,8 @@ const NONE = /^(?:无|没有|没字|无文字|无字)$/;
  * 认不出格式就整句当画面；什么都没有返回 undefined。
  */
 export function stickerLine(raw: string): string | undefined {
-    const text = flat(String(raw ?? ''));
+    // 表情包上的字是谁都能写的：拆掉动作标记的样子（2026-11-26 入站审查）
+    const text = flat(defuseMarkers(String(raw ?? '')));
     if (!text) return undefined;
     const parts = /^文字[：:]\s*(.*?)\s*[｜|]\s*画面[：:]\s*(.*)$/.exec(text);
     const written = parts ? flat(parts[1]!).replace(/^[「“"']+|[」”"']+$/g, '').trim() : '';

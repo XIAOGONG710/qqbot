@@ -1,6 +1,7 @@
 import type { GroupEntry } from './group-chat.ts';
 import { formatDate } from '../life/schedule.ts';
 import { localDate } from '../local-date.ts';
+import { defuseMarkers } from '../platform/untrusted-markers.ts';
 
 const LOOKBACK_MS = 30 * 24 * 60 * 60_000;
 const QUESTION = /^(?:@你\s+)?我(之前|上次|上周|前几天|昨天)(?:在群里)?(?:说过|提过|说)(?:的)?[，,:： ]*(?:群)?(活动|集合|开会|报名|比赛|彩排|讲座|训练)(?:是)?几点(?:开始|截止|集合)?[？?。]?$/;
@@ -57,7 +58,8 @@ function publicAnnouncements(entries: readonly GroupEntry[], range: { start: num
         const time = Date.parse(message.time);
         if ((asker !== undefined && message.from !== asker) || message.history || !Number.isFinite(time) || time < range.start || time >= range.end) return [];
         const match = NOTICE.exec(message.content.trim());
-        const content = match?.[1]?.trim();
+        // 群公告是群里随便谁写的，会进他私聊里的提示词：拆掉 <<执行：…>> 这类标记的样子（2026-11-26 入站审查）
+        const content = match?.[1] === undefined ? undefined : defuseMarkers(match[1]).trim();
         if (!content || NOT_PUBLIC.test(content) || PERSONAL_OR_CODE.test(content) || MODEL_DIRECTIVE.test(content)) return [];
         const correction = CORRECTION.exec(content);
         return correction ? [{ time, text: content, topic: correction[1]!, correction: true as const }] : [{ time, text: content }];
@@ -140,7 +142,7 @@ export function privateGroupBulletinRecall(
         const time = seconds * 1000;
         const text = notice.message?.text;
         if (typeof text !== 'string' || !Number.isFinite(time) || time < range.start || time >= range.end) return [];
-        const content = text.trim().replace(/\s+/g, ' ');
+        const content = defuseMarkers(text).trim().replace(/\s+/g, ' ');
         return [{ time, text: content }];
     });
     if (!inRange.length) return { status: 'no-match' };

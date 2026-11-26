@@ -13,6 +13,7 @@ import { constants } from 'node:fs';
 import type { AudioHearing } from './hearing.ts';
 import { AsyncGate } from '../social/async-gate.ts';
 import type { Segment } from '../platform/onebot.ts';
+import { defuseMarkers } from '../platform/untrusted-markers.ts';
 import { STICKER_MAX_PER_MESSAGE, stickerIsNameless, stickerLine, type StickerReads } from './sticker-reads.ts';
 import { sameMessage, type MessageIdentity } from '../memory/history.ts';
 
@@ -80,9 +81,10 @@ export function needsReading(message: Segment[] | string, stickers = false): boo
         || (s.type === 'image' && (!isSticker(s.data ?? {}) || (stickers && stickerIsNameless(s.data ?? {})))));
 }
 
-/** 放进方括号里的字：去掉换行和方括号（免得把这一行截断，也免得和别的方括号行混），太长截断 */
+/** 放进方括号里的字：去掉换行和方括号（免得把这一行截断，也免得和别的方括号行混），太长截断。
+ * 图上的字是谁都能写的：拆掉 <<执行：…>> 这类标记的样子（2026-11-26 入站审查，platform/untrusted-markers.ts） */
 function inline(text: string, max: number): string {
-    const flat = text.replace(/\s+/g, ' ').replace(/\[/g, '【').replace(/\]/g, '】').trim();
+    const flat = defuseMarkers(text).replace(/\s+/g, ' ').replace(/\[/g, '【').replace(/\]/g, '】').trim();
     const chars: string[] = [];
     for (const char of flat) {
         if (chars.length === max) return `${chars.join('')}…`;

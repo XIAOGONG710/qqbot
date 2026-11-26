@@ -45,6 +45,7 @@
 - `platform/incoming.ts`
 - `platform/missed-messages.ts`
 - `platform/sensitive.ts`
+- `platform/untrusted-markers.ts`
 - `platform/web.ts`
 - `platform/consent.ts`
 - `platform/private-space.ts`

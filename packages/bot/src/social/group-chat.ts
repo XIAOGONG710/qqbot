@@ -190,10 +190,24 @@ export function nameAts(text: string, selfId: number, names: ReadonlyMap<number,
     });
 }
 
-/** 一条记录写成给她看的一行：她自己 =「你」，男朋友 =「宝宝（你男朋友）」，别人用群名片 */
+/** 群名片 / 昵称是群友自己随便改的：叫「你」「他」或带着「男朋友」，写出来就像她自己、像他说的 */
+const RESERVED_SPEAKER = /^(?:你|我|他|她)$|男朋友/;
+/** 一条群消息在记录里最多放几个字（太长的复制粘贴不整段塞进她的提示词） */
+export const GROUP_LINE_MAX_CHARS = 500;
+/** 换行（含 U+2028 / U+2029，模型也当换行看）连同两边的空白 */
+const LINE_BREAKS = new RegExp('\\s*[\\r\\n' + String.fromCharCode(0x2028, 0x2029) + ']+\\s*', 'g');
+
+/**
+ * 一条记录写成给她看的一行：她自己 =「你」，男朋友 =「宝宝（你男朋友）」，别人用群名片。
+ * 2026-11-26 入站审查：记录是一行一条拼起来的——群友的话里带换行就能自己另起一行「宝宝（你男朋友）：……」「你：……」，
+ * 名片改成「你」「某某（你男朋友）」也一样。所以内容压成一行、截短；名片撞上这几个叫法的写成「群友「…」」
+ */
 export function groupLine(entry: GroupEntry, boyfriend?: { qq: number; name: string }): string {
-    const who = entry.mine ? '你' : boyfriend && entry.from === boyfriend.qq ? `${boyfriend.name}（你男朋友）` : entry.name || '群友';
-    return `${who}：${entry.content}`;
+    const name = entry.name || '群友';
+    const who = entry.mine ? '你' : boyfriend && entry.from === boyfriend.qq ? `${boyfriend.name}（你男朋友）` : RESERVED_SPEAKER.test(name) ? `群友「${name}」` : name;
+    const flat = entry.content.replace(LINE_BREAKS, ' ');
+    const chars = [...flat];
+    return `${who}：${chars.length > GROUP_LINE_MAX_CHARS ? `${chars.slice(0, GROUP_LINE_MAX_CHARS).join('')}…` : flat}`;
 }
 
 const REASON_NOTE: Record<SpeakReason, string> = {
