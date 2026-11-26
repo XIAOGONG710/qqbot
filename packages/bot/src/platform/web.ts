@@ -15,7 +15,9 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { dirname, join } from 'node:path';
+import { Agent } from 'undici';
 import { clip } from '.././memory/timeline.ts';
+import { guardedLookup, publicAddress } from '.././vision/safe-image.ts';
 
 export const WEB_MODES = ['off', 'explicit', 'auto'] as const;
 export type WebMode = (typeof WEB_MODES)[number];
@@ -32,27 +34,13 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 // ───────── 地址检查（防 SSRF） ─────────
 
-/** 公网地址才放行：本机、内网、链路本地、运营商 NAT、多播、保留段都不行 */
+/**
+ * 公网地址才放行：本机、内网、链路本地、运营商 NAT、多播、保留段都不行。
+ * 和图片下载共用一份判断（safe-image.ts）：v4 映射 / v4 兼容 / NAT64 / 6to4 这些把 v4 包在 v6 里的写法也拦
+ * （2026-11-26 审查：原来只认 `::ffff:1.2.3.4` 这一种写法，`http://[::ffff:127.0.0.1]/` 被 URL 规范成 `[::ffff:7f00:1]` 就放过去了）。
+ */
 export function isPublicIp(address: string): boolean {
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
-    if (mapped) return isPublicIp(mapped[1]!);
-    if (isIP(address) === 4) {
-        const [a, b] = address.split('.').map(Number) as [number, number];
-        if (a === 0 || a === 10 || a === 127 || a >= 224) return false;
-        if (a === 100 && b >= 64 && b <= 127) return false;
-        if (a === 169 && b === 254) return false;
-        if (a === 172 && b >= 16 && b <= 31) return false;
-        if (a === 192 && (b === 168 || (b === 0 && address.startsWith('192.0.0.')))) return false;
-        if (a === 198 && (b === 18 || b === 19)) return false;
-        return true;
-    }
-    if (isIP(address) === 6) {
-        const lower = address.toLowerCase();
-        if (lower === '::' || lower === '::1') return false;
-        if (/^f[cd]/.test(lower) || /^fe[89ab]/.test(lower) || lower.startsWith('ff')) return false;
-        return true;
-    }
-    return false;
+    return publicAddress(address);
 }
 
 export type Resolver = (host: string) => Promise<string[]>;
@@ -73,17 +61,86 @@ export async function checkUrl(raw: string, resolve: Resolver = systemResolver):
     return { ok: true, url };
 }
 
+/**
+ * 默认的网络请求：连接时按真正要连的地址再查一次（DNS 重绑定：checkUrl 查的时候是公网，fetch 自己再解析一次可能就成了 127.0.0.1）。
+ * 只换连接用的解析，超时、重定向、请求头照旧；测试注入的假 fetch 不经过这里。
+ */
+const publicOnly = new Agent({ connect: { lookup: guardedLookup } });
+export function publicOnlyFetch(base: typeof fetch = fetch): typeof fetch {
+    return (input, init) => base(input, { ...init, dispatcher: publicOnly } as RequestInit);
+}
+
+/** 网上拿来的字（摘出的事实、搜图结果）放进提示词前去掉方括号和尖括号：不能提前收掉提示词里的 [ ]，也不能带进 <<记住>> <<执行>> <device:…> 这类标记 */
+export function untrustedText(text: string): string {
+    return text.replace(/[[\]<>＜＞]/g, '');
+}
+
 // ───────── 读网页 ─────────
 
 const ENTITIES: Record<string, string> = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", ldquo: '“', rdquo: '”', hellip: '…', mdash: '—' };
 
+/** 只把 ASCII 字母变小写：长度不变，下标和原文对得上（正则的 i 对这些 ASCII 标签名也只认 ASCII 大小写） */
+const asciiLower = (text: string): string => text.replace(/[A-Z]+/g, upper => upper.toLowerCase());
+
+const DROPPED_TAGS = ['script', 'style', 'noscript', 'svg', 'head', 'template'] as const;
+
+/**
+ * 和 `replace(/<(script|style|noscript|svg|head|template)[\s\S]*?<\/\1>/gi, ' ')` 结果一样，但是线性的：
+ * 原来的正则遇到一大串没有收尾的 `<style` 会对每一个都扫到结尾，1.5 MB 的页面能把整个进程卡住好几分钟（2026-11-26 审查）。
+ * 某个标签往后已经找不到收尾，之后的同名开头也不会再有，记下来不再找。
+ */
+function dropTagBlocks(html: string): string {
+    const lower = asciiLower(html);
+    const exhausted = new Set<string>();
+    let out = '';
+    let copied = 0;
+    let at = lower.indexOf('<');
+    while (at >= 0) {
+        let end = -1;
+        for (const tag of DROPPED_TAGS) {
+            if (exhausted.has(tag) || !lower.startsWith(tag, at + 1)) continue;
+            const close = lower.indexOf(`</${tag}>`, at + 1 + tag.length);
+            if (close < 0) { exhausted.add(tag); continue; }
+            end = close + tag.length + 3;
+            break;
+        }
+        if (end < 0) { at = lower.indexOf('<', at + 1); continue; }
+        out += `${html.slice(copied, at)} `;
+        copied = end;
+        at = lower.indexOf('<', end);
+    }
+    return out + html.slice(copied);
+}
+
+/** 和 `replace(/<!--[\s\S]*?-->/g, ' ')` 一样，线性 */
+function dropComments(html: string): string {
+    let out = '';
+    let copied = 0;
+    for (let at = html.indexOf('<!--'); at >= 0; at = html.indexOf('<!--', copied)) {
+        const close = html.indexOf('-->', at + 4);
+        if (close < 0) break;
+        out += `${html.slice(copied, at)} `;
+        copied = close + 3;
+    }
+    return out + html.slice(copied);
+}
+
+/** 和 `replace(/<[^>]+>/g, ' ')` 一样：最后一个 `>` 之后不可能再有匹配，只对它之前那段跑正则（一长串没有 `>` 的 `<` 是平方级） */
+function dropTags(html: string): string {
+    const last = html.lastIndexOf('>');
+    return last < 0 ? html : html.slice(0, last + 1).replace(/<[^>]+>/g, ' ') + html.slice(last + 1);
+}
+
+/** 和 `/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]` 一样：只在最后一个 `</title>` 之前找（再往后的开头不可能有收尾） */
+function titleOf(html: string): string {
+    const last = asciiLower(html).lastIndexOf('</title>');
+    return last < 0 ? '' : /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html.slice(0, last + 8))?.[1] ?? '';
+}
+
 export function htmlToText(html: string): { title: string; text: string } {
-    const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? '';
-    const body = html
-        .replace(/<(script|style|noscript|svg|head|template)[\s\S]*?<\/\1>/gi, ' ')
-        .replace(/<!--[\s\S]*?-->/g, ' ')
-        .replace(/<\/(p|div|li|tr|h[1-6]|section|article|br)\s*>|<br\s*\/?>/gi, '\n')
-        .replace(/<[^>]+>/g, ' ');
+    const title = titleOf(html);
+    const body = dropTags(dropComments(dropTagBlocks(html))
+        .replace(/<\/(p|div|li|tr|h[1-6]|section|article|br)\s*>|<br\s*\/?>/gi, '\n'));
     const decode = (s: string) => s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e: string) => {
         if (e[0] === '#') { const code = e[1]!.toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return Number.isFinite(code) && code > 0 && code < 0x110000 ? String.fromCodePoint(code) : ' '; }
         return ENTITIES[e.toLowerCase()] ?? m;
@@ -343,7 +400,7 @@ export class WebLookup {
 
     constructor(options: WebLookupOptions) {
         this.#options = options;
-        this.#fetch = options.fetch ?? fetch;
+        this.#fetch = options.fetch ?? publicOnlyFetch(fetch);
         this.#statePath = join(options.dataDir, 'web', 'state.json');
     }
 
@@ -511,7 +568,7 @@ export class WebLookup {
             if (signal?.aborted) return undefined;
             const raw = await this.#options.ask([{ role: 'system', content: EXTRACT_SYSTEM }, { role: 'user', content: `问题：${clip(question, 160)}\n\n资料：\n${material.slice(0, 5000)}` }]);
             if (signal?.aborted) return undefined;
-            const lines = raw.split('\n').map(l => l.replace(/^[\s\-*•\d.、)）]+/, '').replace(/[\[\]]/g, '').trim()).filter(Boolean);
+            const lines = raw.split('\n').map(l => untrustedText(l.replace(/^[\s\-*•\d.、)）]+/, '')).trim()).filter(Boolean);
             if (!lines.length || (lines.length === 1 && /^无[。.]?$/.test(lines[0]!))) return undefined;
             return lines.slice(0, 3).map(l => clip(l.replace(/https?:\/\/\S+/g, ''), 60)).filter(l => l.length >= 4);
         } catch { return undefined; }

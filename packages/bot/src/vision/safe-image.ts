@@ -50,7 +50,7 @@ for (const [address, prefix] of [['2001:3::', 32], ['2001:4:112::', 48], ['2001:
     globalProtocol.addSubnet(address, prefix, 'ipv6');
 }
 
-function publicAddress(address: string, family = isIP(address)): boolean {
+export function publicAddress(address: string, family = isIP(address)): boolean {
     if ((family !== 4 && family !== 6) || isIP(address) !== family) return false;
     // BlockList treats an IPv4-mapped IPv6 subnet as matching every IPv4 address on Node 24,
     // so mapped addresses are rejected explicitly instead of adding ::ffff:0:0/96 to the list.
@@ -64,7 +64,7 @@ function publicAddress(address: string, family = isIP(address)): boolean {
     return !blocked.check(address, family === 4 ? 'ipv4' : 'ipv6');
 }
 
-const guardedLookup: LookupFunction = (hostname, options, callback) => {
+export const guardedLookup: LookupFunction = (hostname, options, callback) => {
     dnsLookup(hostname, options, (error, address, family) => {
         if (error) return callback(error, address, family);
         const values = Array.isArray(address) ? address : [{ address, family }];

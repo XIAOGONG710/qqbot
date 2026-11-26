@@ -44,7 +44,7 @@ import { experiencesFromLife, experiencesFromWatched, Tastes } from '.././life/t
 import { readLifeEvents } from '.././world/life-events.ts';
 import { Timeline, timelineAccount } from '.././memory/timeline.ts';
 import { consumeDshTimelineInbox, consumeDshWorldInbox } from '.././memory/dsh-inbox.ts';
-import { planExplicit, readWebSecrets, searchCarry, searchNeedsClarification, WebLookup } from './web.ts';
+import { planExplicit, readWebSecrets, searchCarry, searchNeedsClarification, untrustedText, WebLookup } from './web.ts';
 import { acquireLock } from './lock.ts';
 import { unfinishedForgetJobs } from '../memory/forget-job.ts';
 import { unfinishedArchiveJobs } from '../memory/archive-job.ts';
@@ -1365,10 +1365,10 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                     try {
                         if (wantsImageSearch && imageSearcher) {
                             const found = await untilCancelled(imageSearcher.describe({ url: image!.url, signal }), signal);
-                            if (found?.startsWith('已搜图：')) looked = `[你刚用原图搜过并核对：${found.slice(4, 450)}。这是搜索所得的候选，不是你原本认识的；只在特征对得上时说名字，否则如实说不确定。]`;
+                            if (found?.startsWith('已搜图：')) looked = `[你刚用原图搜过并核对：${untrustedText(found.slice(4, 450))}。这是搜索所得的候选，不是你原本认识的；只在特征对得上时说名字，否则如实说不确定。]`;
                         } else if (wantsImageRecognition && imageRecognizer) {
                             const guessed = await untilCancelled(imageRecognizer.describe({ url: image!.url, signal }), signal);
-                            if (guessed?.trim()) looked = `[你刚重新看了他发的原图：${guessed.slice(0, 300)}。这是看图猜测，不能装作已经确认；说不准就说不准。]`;
+                            if (guessed?.trim()) looked = `[你刚重新看了他发的原图：${untrustedText(guessed.slice(0, 300))}。这是看图猜测，不能装作已经确认；说不准就说不准。]`;
                         }
                     } catch (error) {
                         if (!signal.aborted) log(`看原图辨认或搜图失败：${error instanceof Error ? error.name : '未知错误'}，退回文字检索`);
