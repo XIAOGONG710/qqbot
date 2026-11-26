@@ -190,6 +190,16 @@ export function createProjectPanels({ root, readConfig, dataDir, now = () => new
         const { days: listed, inventory: inv } = await run('inventory', { root, logs }, { root, timeZone: validTimeZone(block.timeZone) ?? DEFAULT_TIME_ZONE })
         const days = (Array.isArray(listed) ? listed : []).filter(day => DAY.test(day)).sort()
         if (!days.length || !inv) return { available: false, reason: 'no_manifests' }
+        // 名字按白名单放：槽只认 slots.ts 三张表里的，表只认 main / history / now，轮次只认 MANIFEST_KINDS；
+        // 模块没有集中的清单，只放小写加连字符的 id（modules/*.ts 都是这样）。其余一律 '?'（审查 2026-11-26 记的那一笔）
+        const [slotsTs, { MANIFEST_KINDS }] = await Promise.all([
+          load('packages/bot/src/interpreter/slots.ts'), load('packages/bot/src/platform/prompt-manifest.ts'),
+        ])
+        const only = names => value => names.has(value) ? value : '?'
+        const slotOf = only(new Set([...slotsTs.AFTER_MAIN_SLOTS, ...slotsTs.AFTER_HISTORY_SLOTS, ...slotsTs.NOW_SLOTS]))
+        const listOf = only(new Set(['main', 'history', 'now']))
+        const kindOf = only(new Set(MANIFEST_KINDS))
+        const moduleOf = value => typeof value === 'string' && /^[a-z][a-z0-9-]{0,40}$/.test(value) ? value : '?'
         const tally = map => Object.fromEntries(Object.entries(map ?? {}).filter(([, n]) => Number.isFinite(n)).map(([name, n]) => [ident(name), n]))
         const num = value => Number.isFinite(value) ? value : null
         const rows = value => Array.isArray(value) ? value : []
@@ -197,10 +207,10 @@ export function createProjectPanels({ root, readConfig, dataDir, now = () => new
           available: true, files: days.length, firstDay: days[0], lastDay: days.at(-1),
           inventory: {
             rounds: numbersOnly(inv.rounds) ?? {}, chars: numbersOnly(inv.chars) ?? {}, piecesPerRound: numbersOnly(inv.piecesPerRound) ?? {},
-            byKind: rows(inv.byKind).map(row => ({ kind: ident(row.kind), rounds: num(row.rounds), avgChars: num(row.avgChars), avgNow: num(row.avgNow), maxNow: num(row.maxNow) })),
-            slots: rows(inv.slots).map(row => ({ slot: ident(row.slot), module: ident(row.module), list: ident(row.list),
+            byKind: rows(inv.byKind).map(row => ({ kind: kindOf(row.kind), rounds: num(row.rounds), avgChars: num(row.avgChars), avgNow: num(row.avgNow), maxNow: num(row.maxNow) })),
+            slots: rows(inv.slots).map(row => ({ slot: slotOf(row.slot), module: moduleOf(row.module), list: listOf(row.list),
               rounds: num(row.rounds), chars: num(row.chars), omitted: num(row.omitted), kinds: numbersOnly(row.kinds) ?? {} })),
-            modules: rows(inv.modules).map(row => ({ module: ident(row.module), rounds: num(row.rounds), chars: num(row.chars) })),
+            modules: rows(inv.modules).map(row => ({ module: moduleOf(row.module), rounds: num(row.rounds), chars: num(row.chars) })),
             extra: { reviewStages: tally(inv.extra?.reviewStages), candidateCalls: num(inv.extra?.candidateCalls), groupReasons: tally(inv.extra?.groupReasons) },
           },
         }

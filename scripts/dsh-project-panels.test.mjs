@@ -331,3 +331,19 @@ test('效果数带他的反馈：窗口里「假」「像」各几条，上下�
     assert.doesNotMatch(JSON.stringify(view), /SECRET_FEEDBACK/)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
+
+test('提示词构成的名字按白名单放：不认识的槽、像主机名的模块、不在 MANIFEST_KINDS 的轮次一律是 ?', async () => {
+  const { writeFileSync, rmSync } = await import('node:fs')
+  const file = join(root, 'data', 'logs', 'prompt-manifest-2026-11-19.jsonl')
+  const odd = { v: 2, qq: OWNER, at: '2026-11-19T02:00:00.000Z', kind: 'reply', chars: 100,
+    pieces: [{ slot: 'evil.example.com', module: 'Some.Host', list: 'elsewhere', chars: 10, sha256: SHA }, { slot: 'time', module: 'time-block', list: 'now', chars: 5, sha256: SHA }],
+    messages: { count: 1, sha256: SHA, list: [] } }
+  writeFileSync(file, JSON.stringify(odd) + '\n')
+  try {
+    const view = await panels().promptInventory()
+    const text = JSON.stringify(view)
+    assert.doesNotMatch(text, /evil\.example\.com|Some\.Host|elsewhere/)
+    assert.ok(view.inventory.slots.some(row => row.slot === '?' && row.module === '?' && row.list === '?'), '不认识的都成了 ?')
+    assert.ok(view.inventory.slots.some(row => row.slot === 'time' && row.module === 'time-block' && row.list === 'now'), '认识的照常')
+  } finally { rmSync(file, { force: true }) }
+})
