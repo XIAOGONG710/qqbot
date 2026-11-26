@@ -87,7 +87,20 @@ function Start-DelayedToast([int]$seconds, [string]$title, [string]$text) {
 }
 
 function Test-Text([object]$value, [int]$max) {
-    return ($value -is [string]) -and $value.Length -ge 1 -and $value.Length -le $max -and ($value -notmatch '[\x00-\x1f<>]')
+    # count characters the way the bot does (code points): an emoji is one character there but two UTF-16 units here
+    if (-not ($value -is [string])) { return $false }
+    $length = ($value -replace '[\uD800-\uDBFF][\uDC00-\uDFFF]', '.').Length
+    return $length -ge 1 -and $length -le $max -and ($value -notmatch '[\x00-\x1f<>]')
+}
+
+# volume set: 50 x "down" (to 0), then one "up" per 2 percent. A plain range would be wrong for 0 and 1:
+# in PowerShell 1..0 is @(1, 0), so "set 0" used to press "up" twice and end at 4 percent.
+function Get-VolumeKeys([int]$level) {
+    $keys = New-Object System.Collections.Generic.List[byte]
+    for ($i = 0; $i -lt 50; $i++) { $keys.Add(0xAE) }
+    $ups = [int][Math]::Round($level / 2)
+    for ($i = 0; $i -lt $ups; $i++) { $keys.Add(0xAF) }
+    return ,$keys.ToArray()
 }
 
 function Get-ScreenPng {
@@ -148,8 +161,7 @@ function Invoke-Job($job) {
                 'set' {
                     $level = Get-Prop $p 'level'
                     if (-not ($level -is [int] -or $level -is [long]) -or $level -lt 0 -or $level -gt $maxVolume) { throw 'bad volume level' }
-                    1..50 | ForEach-Object { Send-Key 0xAE }
-                    1..([int][Math]::Round($level / 2)) | ForEach-Object { Send-Key 0xAF }
+                    foreach ($vk in (Get-VolumeKeys ([int]$level))) { Send-Key $vk }
                 }
                 default { throw 'bad volume op' }
             }
