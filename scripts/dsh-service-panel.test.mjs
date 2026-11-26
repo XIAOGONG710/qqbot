@@ -83,6 +83,20 @@ test('batch skips ready services and waits for each missing dependency in order'
     assert.deepEqual(calls, ['hindsight', 'koishi']);
 });
 
+test('batch with all three services already healthy skips every launcher', async () => {
+    const before = { napcat: 1101, hindsight: 1102, koishi: 1103 };
+    const pids = { ...before }, launches = [];
+    const controller = createController({
+        probe: async () => ({ ...health, napcat: true, hindsight: true, koishi: true, koishiListening: true, watchdog: true, pids }),
+        launch: async service => { launches.push(service); pids[service]++; },
+        sleep: async () => {},
+    });
+    assert.equal(controller.start('all'), 'accepted');
+    assert.deepEqual((await settled(controller)).steps, { napcat: 'skipped', hindsight: 'skipped', koishi: 'skipped' });
+    assert.deepEqual(launches, []);
+    assert.deepEqual(pids, before);
+});
+
 test('a missing dependency times out without launching the downstream service', async () => {
     let clock = 0;
     const calls = [];

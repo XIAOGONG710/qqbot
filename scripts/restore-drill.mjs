@@ -2,7 +2,7 @@
 // 不连接 PostgreSQL、不覆盖 runtime/bot、不重启服务；默认验证后删除演练目录。
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
-import { join, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { restoreDrillPlan, safeRestoreDrillTarget, verifyRestoredState } from './restore-drill-state.mjs';
 
@@ -14,7 +14,7 @@ const arg = name => {
 };
 const inside = (parent, child) => {
     const rel = relative(resolve(parent), resolve(child));
-    return rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`);
+    return rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 };
 const quoted = value => `'${value.replace(/'/g, "''")}'`;
 
@@ -36,12 +36,13 @@ mkdirSync(target, { recursive: true });
 let verified = false;
 try {
     execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-        `Expand-Archive -LiteralPath ${quoted(plan.state.path)} -DestinationPath ${quoted(target)} -Force`],
+        `$ErrorActionPreference = 'Stop'; Expand-Archive -LiteralPath ${quoted(plan.state.path)} -DestinationPath ${quoted(target)} -Force`],
     { timeout: 10 * 60_000, stdio: 'ignore' });
-    const result = verifyRestoredState(target);
+    const result = verifyRestoredState(target, plan.desktopFiles);
     verified = true;
     console.log(`[restore-drill] 通过：数据库备份 ${plan.database.bytes} 字节；状态 ${result.files} 个文件；AI 照片草稿 ${result.aiPhotos.present ? `${result.aiPhotos.entries} 条` : '无'}；视觉参考 ${result.aiPhotoReferences.present ? `${result.aiPhotoReferences.entries} 条 / ${result.aiPhotoReferences.localFiles} 张本地图` : '无'}`);
     console.log('[restore-drill] 文件级恢复通过；数据库可用 npm run restore:hindsight -- --backup <目录> --database-url <隔离库> --confirm-isolated 演练。');
+    if (result.desktopFiles !== undefined) console.log(`[restore-drill] DSH / 常驻状态核对通过：${result.desktopFiles} 个文件。`);
 } finally {
     if (!verified || !process.argv.includes('--keep')) rmSync(target, { recursive: true, force: true });
     else console.log(`[restore-drill] 演练目录保留在 ${target}`);

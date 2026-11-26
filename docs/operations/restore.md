@@ -1,6 +1,6 @@
 # 备份恢复手册（四个阶段）
 
-备份在 `runtime/backups/<日期>/`，每份带 `.complete.json` 完成标记，记录 `hindsight.sql` 与 `her-state.zip` 的大小。恢复分四步走，前三步都能离线反复演练，**第四步会覆盖当前数据，只在拿到当次授权后手动做**。
+备份在 `runtime/backups/<日期>/`。新版 `.complete.json` 记录 `hindsight.sql` 与 `her-state.zip` 的大小和 SHA-256。状态包包含 Koishi 数据目录，以及 `dsh-state` 下按清单收录的 DSH 日记、账本、留话队列和常驻任务进度等。令牌、服务配置与日志不在备份范围内。恢复分四步走，前三步都能离线演练，**第四步会覆盖当前数据，只在拿到当次授权后手动做**。
 
 面板上（系统 → 备份清单 → 分阶段）能点前三步，第四步只列出步骤、不会执行。
 
@@ -8,10 +8,10 @@
 
 ```powershell
 node --test scripts/dsh-restore-stages.test.mjs
-node -e "const {createRestoreStages}=await import('./scripts/restore-stages.mjs');console.log(createRestoreStages({root:'.'}).artifacts('2026-11-24'))"
+node -e "const {createRestoreStages}=await import('./scripts/restore-stages.mjs');console.log(await createRestoreStages({root:'.'}).artifacts('2026-11-24'))"
 ```
 
-看的是：完成标记有效、`hindsight.sql` 与 `her-state.zip` 的大小与标记一致、状态包来源是 `runtime/bot` 或 `runtime/bot-shadow`。任何一项不符就停下，换前一份备份——大小不符通常意味着备份写到一半断了。
+检查完成标记、制品大小、源目录和 SHA-256。只记录大小的旧备份仍可做文件演练，但无法用完成标记验证同大小损坏。任何一项不符就停下，换前一份备份。
 
 ## 二、文件隔离恢复（只写临时目录）
 
@@ -21,16 +21,18 @@ node scripts/restore-drill.mjs --backup runtime/backups/2026-11-24
 
 把状态包解压到 `runtime/restore-drills/<时间戳>/`，做只读检查：不能出现 `logs` / `secrets` / `bot.lock` / `last-prompt.json` / `config*`，不能有符号链接，AI 照片草稿与视觉参考的哈希和格式都要对得上。检查完默认删掉临时目录，`--keep` 才保留。失败时目录整体删除，不留半成品。
 
+新版还核对 `dsh-state/manifest.json`。其中 `soul`、`resident` 与 `outbox` 分别对应原灵魂目录、常驻目录和自定义留话文件。加密私密日记按原密文保存，解密仍依赖原 Windows 用户。
+
 ## 三、隔离数据库恢复（不连正式库）
 
 ```powershell
-node -e "const {createRestoreStages}=await import('./scripts/restore-stages.mjs');console.log(createRestoreStages({root:'.'}).database('2026-11-24'))"
+node -e "const {createRestoreStages}=await import('./scripts/restore-stages.mjs');console.log(await createRestoreStages({root:'.'}).database('2026-11-24'))"
 ```
 
 把 `hindsight.sql` 复制进系统临时目录里的一次性假库（库名固定 `hindsight_restore_drill`），校验 dump 头部（`PGDMP` / `SET` / `CREA` / `--`），然后**只打印恢复命令、不执行**。真正的恢复在隔离的 PostgreSQL 实例里跑：
 
 ```powershell
-node scripts/hindsight-restore-drill.mjs --backup runtime/backups/2026-11-24
+node scripts/hindsight-restore-drill.mjs --backup runtime/backups/2026-11-24 --database-url $env:QQBOT_RESTORE_DATABASE_URL --confirm-isolated
 ```
 
 隔离实例里核对：记忆条数、文档数、最近一次对话时间。对得上再进第四步。
@@ -41,8 +43,8 @@ node scripts/hindsight-restore-drill.mjs --backup runtime/backups/2026-11-24
 
 1. 确认本机与线上都在 `main`，制品校验、文件隔离恢复、隔离数据库恢复 三步都是绿的，行为基线 39/39 一致。
 2. 停线上服务（`/休眠` 或运维手动停），确认没有新的写入。
-3. `runtime/bot` 改名成 `runtime/bot.before-restore-<时间>`，整个留着，不删。
-4. 把状态包解压到 `runtime/bot`，按第二步的检查项再核一遍文件数、AI 照片草稿、视觉参考。
+3. 把 Koishi 配置中的数据目录改名留存。涉及 DSH 状态时也保留原灵魂目录、常驻状态及留话队列的副本。
+4. 从隔离解压目录将 Koishi 数据放回配置指定位置。按清单把 `dsh-state` 中各文件放回原来的 DSH、常驻或自定义留话路径，再逐项核对。
 5. 在隔离实例里恢复 `hindsight.sql`，核对记忆条数与最近对话，再切到正式库。
 6. 启动服务，看运维事件与召回诊断各 10 行，确认没有 `failed`。
 7. 一切正常后再删 `bot.before-restore-*` 与隔离实例；有异常就整体换回旧目录，不逐个文件修。

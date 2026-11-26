@@ -72,7 +72,10 @@ export function createLocalPanels({ root, readConfig, runGit, now = () => new Da
         const directory = lstatSync(backup, { throwIfNoEntry: false })
         if (!directory?.isDirectory() || directory.isSymbolicLink()) return null
         const { restoreDrillPlan } = await load('scripts/restore-drill-state.mjs')
-        const plan = restoreDrillPlan(backup)
+        const plan = restoreDrillPlan(backup, { verifyDigest: false })
+        const { checkBackupDigest } = await load('scripts/backup-integrity.mjs')
+        await Promise.all([plan.database, plan.state].filter(item => item.sha256)
+          .map(item => checkBackupDigest(item.path, item.sha256)))
         return { day, databaseBytes: plan.database.bytes, stateBytes: plan.state.bytes }
       }
       const config = readConfig()

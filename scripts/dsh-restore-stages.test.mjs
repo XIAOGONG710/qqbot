@@ -5,6 +5,11 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { createRestoreStages, STAGES } from './restore-stages.mjs';
+import { archiveStateSnapshot } from './backup-archive.mjs';
+import { desktopBackupFiles } from './backup-desktop-state.mjs';
+import { backupArtifactIdentity } from './backup-integrity.mjs';
+import { isCompleteBackup } from './backup-state.mjs';
+import { verifyRestoredState } from './restore-drill-state.mjs';
 
 const DAY = '2026-11-24';
 
@@ -51,6 +56,57 @@ test('制品校验：大小与标记不一致就停下，不进入后面阶段',
         const stage = await createRestoreStages({ root }).artifacts(DAY);
         assert.equal(stage.ok, false);
         assert.equal(stage.error, 'artifact_invalid');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('真实压缩解压只用合成目录，完整状态可恢复，同大小的坏包会被挡住', { skip: process.platform !== 'win32' }, async () => {
+    const root = workspace({ dump: '-- synthetic PostgreSQL backup\nCREATE TABLE test (id integer);\n' });
+    try {
+        const source = join(root, 'runtime', 'bot');
+        const soulDir = join(root, 'mock-soul');
+        const residentDir = join(root, 'mock-resident');
+        for (const dir of [source, soulDir, residentDir]) mkdirSync(dir, { recursive: true });
+        writeFileSync(join(source, 'outbox-state.json'), '{"pending":[]}');
+        writeFileSync(join(source, 'desktop-log.jsonl'), '{"synthetic":true}\n');
+        writeFileSync(join(soulDir, 'OUTBOX.jsonl.next'), '{"text":"合成留话"}\n');
+        writeFileSync(join(soulDir, 'JOURNAL.md'), '# 合成日记');
+        writeFileSync(join(soulDir, 'PRIVATE.dat'), 'synthetic ciphertext');
+        writeFileSync(join(soulDir, 'secret-token'), 'synthetic excluded');
+        writeFileSync(join(residentDir, 'jobs.json'), '{"sleep":"2026-11-24"}');
+        writeFileSync(join(residentDir, 'token'), 'synthetic excluded');
+
+        const backup = join(root, 'runtime', 'backups', DAY);
+        const zip = join(backup, 'her-state.zip');
+        const dump = join(backup, 'hindsight.sql');
+        const desktop = desktopBackupFiles({ soulDir, residentDir });
+        assert.equal(desktop.length, 4);
+        const archived = archiveStateSnapshot(zip, { items: [join(source, 'outbox-state.json'), join(source, 'desktop-log.jsonl')] }, desktop);
+        writeFileSync(join(backup, '.complete.json'), JSON.stringify({ completed: true, components: {
+            database: { ok: true, ...backupArtifactIdentity(dump) },
+            state: { ok: true, source: 'runtime/bot', ...archived },
+        } }));
+        assert.equal(isCompleteBackup(backup, 'runtime/bot', 4), true);
+        const stages = createRestoreStages({ root, run: async ({ dump: tempDump }) => {
+            assert.equal(readFileSync(tempDump, 'utf8'), readFileSync(dump, 'utf8'));
+            return { executed: true };
+        } });
+        const result = await stages.files(DAY, { keep: true });
+        assert.equal(result.ok, true, JSON.stringify(result));
+        assert.equal(result.desktopFiles, 4);
+        const restored = join(root, result.target);
+        for (const { name, path } of desktop) assert.deepEqual(readFileSync(join(restored, 'dsh-state', name)), readFileSync(path));
+        assert.equal(readFileSync(join(restored, 'outbox-state.json'), 'utf8'), '{"pending":[]}');
+        assert.deepEqual(readdirSync(join(restored, 'dsh-state', 'resident')), ['jobs.json']);
+        assert.equal((await stages.database(DAY)).isolated, 'executed');
+        rmSync(join(restored, 'dsh-state', 'soul', 'JOURNAL.md'));
+        assert.throws(() => verifyRestoredState(restored, 4), /缺少备份清单中的文件/);
+        const bytes = readFileSync(zip);
+        bytes[Math.floor(bytes.length / 2)] ^= 0xff;
+        writeFileSync(zip, bytes);
+        assert.equal(isCompleteBackup(backup, 'runtime/bot', 4), false);
+        assert.equal((await stages.artifacts(DAY)).error, 'artifact_invalid');
+        assert.equal((await stages.files(DAY)).error, 'artifact_invalid');
+        assert.equal(readFileSync(join(source, 'outbox-state.json'), 'utf8'), '{"pending":[]}');
     } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

@@ -3,6 +3,8 @@ import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from 'node
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { COMPLETE_MARKER } from './backup-state.mjs';
+import { DESKTOP_STATE_DIRECTORY, verifyDesktopBackup } from './backup-desktop-state.mjs';
+import { backupArtifactIdentity, validBackupDigest } from './backup-integrity.mjs';
 
 const STATE_SOURCES = new Set(['runtime/bot', 'runtime/bot-shadow']);
 const FORBIDDEN_TOP_LEVEL = new Set(['logs', 'secrets', 'bot.lock', 'last-prompt.json']);
@@ -20,24 +22,30 @@ function marker(path) {
     return value;
 }
 
-function artifact(path, status, label) {
+function artifact(path, status, label, verifyDigest) {
     if (status?.ok !== true || !Number.isSafeInteger(status.bytes) || status.bytes < 1) throw new Error(`${label}没有可信的大小记录`);
     let info;
     try { info = lstatSync(path); } catch { throw new Error(`${label}不存在`); }
     if (info.isSymbolicLink() || !info.isFile() || info.size !== status.bytes) throw new Error(`${label}与完成标记不一致`);
-    return { path, bytes: info.size };
+    if (status.sha256 !== undefined && (!validBackupDigest(status.sha256)
+        || verifyDigest && backupArtifactIdentity(path).sha256 !== status.sha256)) throw new Error(`${label}与完成标记的 SHA-256 不一致`);
+    return { path, bytes: info.size, ...(status.sha256 ? { sha256: status.sha256 } : {}) };
 }
 
 /** 读取一次可演练的完整备份；只信带大小记录的完成标记。 */
-export function restoreDrillPlan(backupDir) {
+export function restoreDrillPlan(backupDir, { verifyDigest = true } = {}) {
     const root = resolve(backupDir);
+    const directory = lstatSync(root, { throwIfNoEntry: false });
+    if (!directory?.isDirectory() || directory.isSymbolicLink()) throw new Error('备份目录不存在或不是普通目录');
     const complete = marker(join(root, COMPLETE_MARKER));
-    const database = artifact(join(root, 'hindsight.sql'), complete.components?.database, '数据库备份');
+    const database = artifact(join(root, 'hindsight.sql'), complete.components?.database, '数据库备份', verifyDigest);
     const stateStatus = complete.components?.state;
     if (stateStatus?.skipped === true) throw new Error('这份备份没有状态归档，不能做完整恢复演练');
     if (!STATE_SOURCES.has(stateStatus?.source)) throw new Error('状态备份来源不受支持');
-    const state = artifact(join(root, 'her-state.zip'), stateStatus, '状态备份');
-    return { backupDir: root, source: stateStatus.source, database, state };
+    const state = artifact(join(root, 'her-state.zip'), stateStatus, '状态备份', verifyDigest);
+    const desktopFiles = stateStatus.desktopFiles;
+    if (desktopFiles !== undefined && (!Number.isSafeInteger(desktopFiles) || desktopFiles < 0)) throw new Error('DSH 状态文件数无效');
+    return { backupDir: root, source: stateStatus.source, database, state, ...(desktopFiles !== undefined ? { desktopFiles } : {}) };
 }
 
 /** 演练永远只能写到工作区 runtime/restore-drills 的新空目录。 */
@@ -158,7 +166,7 @@ function verifyAiPhotoReferences(root) {
 }
 
 /** 对已解压的状态做只读完整性检查，不会把内容放回在线目录。 */
-export function verifyRestoredState(target) {
+export function verifyRestoredState(target, desktopFiles) {
     const root = resolve(target);
     const info = statSync(root);
     if (!info.isDirectory()) throw new Error('恢复演练结果不是目录');
@@ -168,6 +176,10 @@ export function verifyRestoredState(target) {
     const files = [];
     walk(root, root, files);
     if (!files.length) throw new Error('恢复演练结果为空');
-    return { files: files.length, aiPhotos: verifyAiPhotoDrafts(root), aiPhotoReferences: verifyAiPhotoReferences(root) };
+    const desktop = join(root, DESKTOP_STATE_DIRECTORY);
+    if (desktopFiles > 0) verifyDesktopBackup(desktop, desktopFiles);
+    else if (existsSync(desktop)) throw new Error('DSH 状态归档缺少标记中的文件清单');
+    return { files: files.length, aiPhotos: verifyAiPhotoDrafts(root), aiPhotoReferences: verifyAiPhotoReferences(root),
+        ...(desktopFiles !== undefined ? { desktopFiles } : {}) };
 }
 

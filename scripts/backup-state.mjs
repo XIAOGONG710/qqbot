@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { isAbsolute, join, relative, sep } from 'node:path';
+import { backupArtifactIdentity, validBackupDigest } from './backup-integrity.mjs';
 
 export const COMPLETE_MARKER = '.complete.json';
 export const FAILURE_MARKER = '.last-failure.json';
@@ -16,20 +17,22 @@ function readMarker(path) {
     }
 }
 
-export function isCompleteBackup(target, expectedStateSource) {
+export function isCompleteBackup(target, expectedStateSource, desktopFiles, { verifyDigests = expectedStateSource !== undefined } = {}) {
     const marker = readMarker(join(target, COMPLETE_MARKER));
     if (marker?.completed !== true) return false;
 
     const database = marker.components?.database;
     const state = marker.components?.state;
     if (database?.ok !== true || state?.ok !== true) return false;
+    if (desktopFiles !== undefined && (!validBackupDigest(database.sha256) || state.skipped !== true && !validBackupDigest(state.sha256))) return false;
+    if (desktopFiles > 0 && state.desktopFiles !== desktopFiles) return false;
     const requireRecordedSize = expectedStateSource !== undefined;
-    if (!matchesArtifact(join(target, 'hindsight.sql'), database, requireRecordedSize)) return false;
+    if (!matchesArtifact(join(target, 'hindsight.sql'), database, requireRecordedSize, verifyDigests)) return false;
     if (expectedStateSource === null) return state.skipped === true;
     if (typeof expectedStateSource === 'string' && state.source !== expectedStateSource) return false;
     // 已知存在权威状态目录时必须真的有状态归档；skipped 只适用于没有数据目录的安装。
     if (typeof expectedStateSource === 'string' && state.skipped === true) return false;
-    return state.skipped === true || matchesArtifact(join(target, 'her-state.zip'), state, requireRecordedSize);
+    return state.skipped === true || matchesArtifact(join(target, 'her-state.zip'), state, requireRecordedSize, verifyDigests);
 }
 
 export function retryDue(target, now = Date.now(), delayMs = RETRY_DELAY_MS) {
@@ -39,12 +42,13 @@ export function retryDue(target, now = Date.now(), delayMs = RETRY_DELAY_MS) {
     return !Number.isFinite(attempted) || age < 0 || age >= delayMs;
 }
 
-export function isReusableBackupArtifact(target, component, artifactName, expected = {}) {
+export function isReusableBackupArtifact(target, component, artifactName, expected = {}, requireDigest = false) {
     const complete = readMarker(join(target, COMPLETE_MARKER));
     const failure = readMarker(join(target, FAILURE_MARKER));
     const marker = complete?.completed === true ? complete : failure;
     const status = marker?.components?.[component];
     return status?.ok === true
+        && (!requireDigest || validBackupDigest(status.sha256))
         && Object.entries(expected).every(([key, value]) => status[key] === value)
         && matchesArtifact(join(target, artifactName), status, true);
 }
@@ -138,11 +142,15 @@ export function nonEmptyFile(path) {
     }
 }
 
-function matchesArtifact(path, status, requireRecordedSize) {
+function matchesArtifact(path, status, requireRecordedSize, verifyDigest = requireRecordedSize) {
     try {
-        const stat = statSync(path);
-        if (!stat.isFile() || stat.size <= 0) return false;
-        if (Number.isSafeInteger(status?.bytes) && status.bytes > 0) return stat.size === status.bytes;
+        const stat = lstatSync(path);
+        if (!stat.isFile() || stat.isSymbolicLink() || stat.size <= 0) return false;
+        if (status?.sha256 !== undefined && !validBackupDigest(status.sha256)) return false;
+        if (Number.isSafeInteger(status?.bytes) && status.bytes > 0) {
+            if (stat.size !== status.bytes) return false;
+            return !verifyDigest || status.sha256 === undefined || backupArtifactIdentity(path).sha256 === status.sha256;
+        }
         return !requireRecordedSize;
     } catch {
         return false;
@@ -150,7 +158,12 @@ function matchesArtifact(path, status, requireRecordedSize) {
 }
 
 export function writeBackupMarker(target, name, value) {
-    writeFileSync(join(target, name), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    const path = join(target, name);
+    const part = `${path}.${process.pid}.tmp`;
+    try {
+        writeFileSync(part, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+        renameSync(part, path);
+    } finally { rmSync(part, { force: true }); }
 }
 
 /** 状态包小于这个就不像真的：11-10 起那几份「完整」备份的 her-state.zip 只有 190 字节（认错了数据目录） */

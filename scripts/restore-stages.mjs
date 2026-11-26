@@ -3,15 +3,14 @@
 // 不在这里执行，等单独的上线授权。
 // 这些阶段在 DSH 面板进程里跑：解压、读 dump、算摘要、复制都走异步和流式，不能卡住面板的事件循环（审查第 7 条）。
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { createReadStream, existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { copyFile, mkdtemp, open, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { pipeline } from 'node:stream/promises';
+import { basename, dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import { restoreDrillPlan, safeRestoreDrillTarget, verifyRestoredState } from './restore-drill-state.mjs';
+import { checkBackupDigest } from './backup-integrity.mjs';
 
 export const STAGES = [
     { id: 'artifacts', label: '制品校验', writes: '不写盘' },
@@ -31,7 +30,7 @@ const execFileAsync = promisify(execFile);
 async function expandArchive(archive, destination) {
     const quoted = value => `'${value.replace(/'/g, "''")}'`;
     await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-        `Expand-Archive -LiteralPath ${quoted(archive)} -DestinationPath ${quoted(destination)} -Force`],
+        `$ErrorActionPreference = 'Stop'; Expand-Archive -LiteralPath ${quoted(archive)} -DestinationPath ${quoted(destination)} -Force`],
     { timeout: 10 * 60_000, windowsHide: true, maxBuffer: 64 * 1024 });
 }
 
@@ -43,13 +42,6 @@ async function head(path, bytes = 8) {
         const { bytesRead } = await handle.read(buffer, 0, bytes, 0);
         return buffer.subarray(0, bytesRead).toString('latin1');
     } finally { await handle.close(); }
-}
-
-/** 流式算摘要，几百 MB 的 dump 也只占一小块缓冲 */
-async function digest(path) {
-    const hash = createHash('sha256');
-    await pipeline(createReadStream(path), hash);
-    return hash.digest('hex').slice(0, 16);
 }
 
 /** 阶段结果只带固定的错误码（审查第 15 条）：原始 message 常带本机路径，只写进本机日志，不交给面板 */
@@ -81,7 +73,9 @@ export function createRestoreStages({ root, run = dryRun, extract = expandArchiv
         return backup;
     }
 
-    const planOf = day => step('artifact_invalid', () => restoreDrillPlan(directory(day)));
+    const planOf = day => step('artifact_invalid', () => restoreDrillPlan(directory(day), { verifyDigest: false }));
+    const verify = (artifact, path = artifact.path) => step('artifact_invalid', async () =>
+        (await checkBackupDigest(path, artifact.sha256)).slice(0, 16));
 
     function failed(stage, error) {
         const code = error instanceof StageError ? error.code : 'stage_failed';
@@ -98,8 +92,8 @@ export function createRestoreStages({ root, run = dryRun, extract = expandArchiv
                 ok: true,
                 stage: 'artifacts',
                 day,
-                database: { bytes: plan.database.bytes, digest: await step('artifact_invalid', () => digest(plan.database.path)) },
-                state: { bytes: plan.state.bytes, source: plan.source, digest: await step('artifact_invalid', () => digest(plan.state.path)) },
+                database: { bytes: plan.database.bytes, digest: await verify(plan.database) },
+                state: { bytes: plan.state.bytes, source: plan.source, digest: await verify(plan.state) },
             };
         } catch (error) {
             return failed('artifacts', error);
@@ -111,16 +105,19 @@ export function createRestoreStages({ root, run = dryRun, extract = expandArchiv
         let target;
         try {
             const plan = await planOf(day);
-            const name = stamp();
-            target = safeRestoreDrillTarget(root, join(root, 'runtime', 'restore-drills', name));
-            mkdirSync(target, { recursive: true });
+            if (plan.state.sha256) await verify(plan.state);
+            if (plan.database.sha256) await verify(plan.database);
+            const prefix = safeRestoreDrillTarget(root, join(root, 'runtime', 'restore-drills', `${stamp()}-`));
+            mkdirSync(dirname(prefix), { recursive: true });
+            target = await mkdtemp(prefix);
             await step('extract_failed', () => extract(plan.state.path, target));
-            const result = await step('restored_state_invalid', () => verifyRestoredState(target));
+            const result = await step('restored_state_invalid', () => verifyRestoredState(target, plan.desktopFiles));
             const kept = options.keep === true;
             if (!kept) await rm(target, { recursive: true, force: true });
             // 留下的演练目录只给仓库里的相对路径，不给本机绝对路径
             return { ok: true, stage: 'files', files: result.files, aiPhotos: result.aiPhotos, references: result.aiPhotoReferences,
-                target: kept ? `runtime/restore-drills/${name}` : null };
+                ...(result.desktopFiles !== undefined ? { desktopFiles: result.desktopFiles } : {}),
+                target: kept ? `runtime/restore-drills/${basename(target)}` : null };
         } catch (error) {
             if (target) await rm(target, { recursive: true, force: true });
             return failed('files', error);
@@ -138,6 +135,7 @@ export function createRestoreStages({ root, run = dryRun, extract = expandArchiv
             const copy = join(work, 'hindsight.sql');
             await copyFile(plan.database.path, copy);
             if ((await stat(copy)).size !== plan.database.bytes) throw new StageError('size_mismatch');
+            if (plan.database.sha256) await verify(plan.database, copy);
             const outcome = await run({
                 database: 'hindsight_restore_drill',
                 dump: copy,
@@ -164,8 +162,8 @@ export function createRestoreStages({ root, run = dryRun, extract = expandArchiv
             steps: [
                 '确认本机与线上都在 main，且 备份、恢复演练、行为基线 三个检查都是绿的',
                 '停掉线上服务（/休眠 或者运维手动停），确认没有新的写入',
-                '把 runtime/bot 重命名成 runtime/bot.before-restore-<时间>，保留原样',
-                '解压状态包到 runtime/bot，再按运行手册逐项核对文件数与 AI 照片草稿',
+                '保留 Koishi 配置指定的数据目录和 DSH / 常驻原目录副本',
+                '按运行手册将状态包与 dsh-state 各自放回对应目录，再核对清单和 AI 照片草稿',
                 '在隔离实例里恢复 hindsight.sql，核对记忆条数与最近一次对话，再切到正式库',
                 '启动服务，看运维事件与召回诊断各 10 行，确认没有 failed',
                 '确认无误后再删 bot.before-restore-* 与隔离实例；有异常就整体换回旧目录',
