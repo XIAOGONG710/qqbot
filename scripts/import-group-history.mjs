@@ -2,7 +2,7 @@
 // 把群里以前的聊天导进来（2026-11-14）：她进群前的那一段，得让她「看过」。
 //
 //   node scripts/import-group-history.mjs --group 555 --file 群聊.txt \
-//        [--data-dir runtime/bot-shadow] [--self-qq 2561299676] [--self-name 繁星] [--dry-run]
+//        [--data-dir runtime/bot-shadow] [--self-qq 20000] [--self-name 繁星] [--dry-run]
 //
 // 认得的格式见 packages/bot/src/social/group-import.ts（一份文件可以混用）：
 //   [2026-11-01 20:13] 老王: 在吗

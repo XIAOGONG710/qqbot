@@ -57,14 +57,14 @@ describe('导入群聊记录', () => {
             '2026-11-01 20:14 繁星：我来我来',
             '2026-11-01 20:15 陈陈：带我一个',
         ].join('\n'));
-        const result = importGroupHistory({ groupId: 555, lines, dataDir: dir, selfQq: 2561299676, selfName: '繁星' });
+        const result = importGroupHistory({ groupId: 555, lines, dataDir: dir, selfQq: 20000, selfName: '繁星' });
         assert.equal(result.added, 3);
         assert.equal(result.people, 2, '她自己不算「认得的人」');
         const entries = groupLog(dir).load(555);
         assert.equal(entries.length, 3);
         assert.ok(entries.every(entry => entry.history === true));
         assert.equal(entries[1]!.mine, true);
-        assert.equal(entries[1]!.from, 2561299676);
+        assert.equal(entries[1]!.from, 20000);
         assert.ok(hasHistory(dir, 555));
         // 成员底账：老王、陈陈认下了，她自己没有
         const people = groupPeople(dir).load(555);
