@@ -176,6 +176,35 @@ function decodeBase64(value: unknown): Uint8Array {
     return bytes;
 }
 
+/** 12 MB 图片的 base64 约 16 MB，再留一点 JSON 外壳；超过就不再往内存里读（2026-11-26 AI 照片审查 P4）。 */
+export const AI_PHOTO_RESPONSE_MAX_BYTES = Math.ceil(PHOTO_MAX_BYTES / 3) * 4 + 64 * 1024;
+
+async function boundedJson(response: Response): Promise<unknown> {
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > AI_PHOTO_RESPONSE_MAX_BYTES) {
+        void response.body?.cancel().catch(() => undefined);
+        throw new Error('生图服务返回内容过大');
+    }
+    if (!response.body) throw new Error('生图服务没有返回有效图片');
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            total += value.byteLength;
+            if (total > AI_PHOTO_RESPONSE_MAX_BYTES) {
+                void reader.cancel().catch(() => undefined);
+                throw new Error('生图服务返回内容过大');
+            }
+            chunks.push(value);
+        }
+    } finally { reader.releaseLock(); }
+    try { return JSON.parse(Buffer.concat(chunks, total).toString('utf8')); }
+    catch { throw new Error('生图服务返回格式无效'); }
+}
+
 /** 调用兼容 /v1/images/generations 的服务；错误不读取响应正文，避免供应商把输入或密钥回显进日志。 */
 export async function generateAiPhoto(prompt: string, options: ImageGenerationOptions): Promise<GeneratedAiPhoto> {
     if (!options.apiKey.trim()) throw new Error('缺少生图服务密钥');
@@ -190,9 +219,12 @@ export async function generateAiPhoto(prompt: string, options: ImageGenerationOp
             body: JSON.stringify({ model: options.model, prompt, n: 1, size: '1024x1024', quality: 'medium', output_format: 'jpeg', background: 'opaque' }),
             signal: controller.signal,
         });
-        if (!response.ok) throw new Error(`生图服务返回 ${response.status}`);
-        const body = await response.json() as { data?: Array<{ b64_json?: unknown }> };
-        return { bytes: decodeBase64(body.data?.[0]?.b64_json), model: options.model };
+        if (!response.ok) {
+            void response.body?.cancel().catch(() => undefined);
+            throw new Error(`生图服务返回 ${response.status}`);
+        }
+        const body = await boundedJson(response) as { data?: Array<{ b64_json?: unknown }> } | null;
+        return { bytes: decodeBase64(body?.data?.[0]?.b64_json), model: options.model };
     } finally {
         clearTimeout(timer);
     }
@@ -272,6 +304,8 @@ export function aiPhotoDraftStore(options: { dir: string; now?: () => Date; log?
             if (sameImage) throw new Error('生图服务返回了已经存在的图片，不能把旧图冒充新的当前照片');
             const ext = extension(generated.bytes);
             const file = `${id}.${ext}`;
+            // 生图要等几十秒到几分钟：写之前再核一次图片目录，期间被换成符号链接 / 目录联接就不往外写（审查 P5）
+            ensureFilesDir();
             writeFileSync(join(filesDir, file), generated.bytes, { flag: 'wx' });
             const entry: AiPhotoDraft = {
                 id, eventKey, kind: context.kind, subject: clean(context.subject)!, caption: clean(context.caption)!,

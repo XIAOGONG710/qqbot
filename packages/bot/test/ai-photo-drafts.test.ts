@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
@@ -199,5 +199,40 @@ describe('AI 生活照草稿（ADR 0239）', () => {
         assert.equal(reread.list().find(entry => entry.id === first.id)?.status, 'rejected');
         assert.equal(reread.list().find(entry => entry.id === second.id)?.status, 'approved');
         assert.equal(reread.status().total, 3);
+    });
+
+    test('生图期间图片目录被换成目录联接时不往外写（2026-11-26 AI 照片审查 P5）', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-swap-'));
+        const outside = mkdtempSync(join(tmpdir(), 'ai-photo-swap-outside-'));
+        const store = aiPhotoDraftStore({ dir });
+        await assert.rejects(store.generate(context({ eventKey: 'swap-dir' }), async () => {
+            rmSync(join(dir, 'files'), { recursive: true });
+            symlinkSync(outside, join(dir, 'files'), 'junction');
+            return { bytes: jpeg(21), model: 'm' };
+        }), /文件目录不安全/);
+        assert.deepEqual(readdirSync(outside), []);
+        assert.equal(store.list().length, 0);
+    });
+
+    test('生图服务返回超大正文时读到上限就停，不整段读进内存（2026-11-26 AI 照片审查 P4）', async () => {
+        const chunk = new Uint8Array(1024 * 1024).fill(0x41);
+        let pulled = 0;
+        const body = new ReadableStream<Uint8Array>({
+            start(controller) { controller.enqueue(new TextEncoder().encode('{"data":[{"b64_json":"')); },
+            pull(controller) {
+                pulled++;
+                if (pulled > 40) { controller.enqueue(new TextEncoder().encode('"}]}')); controller.close(); return; }
+                controller.enqueue(chunk);
+            },
+        });
+        await assert.rejects(generateAiPhoto('x', {
+            baseUrl: 'https://api.example.test/v1/', apiKey: 'k', model: 'm',
+            fetch: async () => new Response(body, { status: 200 }),
+        }), error => error instanceof Error && error.message === '生图服务返回内容过大');
+        assert.ok(pulled < 25, `读了 ${pulled} MB`);
+        await assert.rejects(generateAiPhoto('x', {
+            baseUrl: 'https://api.example.test/v1/', apiKey: 'k', model: 'm',
+            fetch: async () => new Response('{}', { status: 200, headers: { 'content-length': String(64 * 1024 * 1024) } }),
+        }), error => error instanceof Error && error.message === '生图服务返回内容过大');
     });
 });
