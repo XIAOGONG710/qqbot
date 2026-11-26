@@ -2,7 +2,7 @@
 
 - 状态：已实现；真模型回归通过
 - 日期：2026-10-11
-- 关联：[ADR 0019](0019-turn-intent.md)、[ADR 0036](0036-conversation-naturalness.md)、[ADR 0041](0041-candidate-selection.md)
+- 关联：[ADR 0019](0019-today-layer.md)、[ADR 0036](0036-conversation-naturalness.md)、[ADR 0041](0041-candidate-pick.md)
 
 ## 问题
 

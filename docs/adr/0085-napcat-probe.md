@@ -2,7 +2,7 @@
 
 - 状态：**已实现，2026-10-19 在线上跑过两次（见「确认记录」）**（分支 `claude/napcat-probe`；脚本 `scripts/napcat-probe.ts`，不属于机器人，不开任何开关）
 - 日期：2026-10-19
-- 关联：[ADR 0077](0077-typing-status.md)（正在输入，同类的未验证）、[ADR 0079](0079-pokes.md)、[ADR 0081](0081-quote-read.md)、[ADR 0082](0082-recalls.md)、[ADR 0083](0083-presence.md)
+- 关联：[ADR 0077](0077-typing-status.md)（正在输入，同类的未验证）、[ADR 0079](0079-poke.md)、[ADR 0081](0081-quote-reply-read.md)、[ADR 0082](0082-recalls.md)、[ADR 0083](0083-presence.md)
 
 ## 背景
 

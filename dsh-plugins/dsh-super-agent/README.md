@@ -151,7 +151,7 @@ npm test                                   # engine 14 · worktree 6 · sources 
 node scripts/verify-github-source.mjs      # 真网轮询一个公开仓库（无 token，约 9 个请求）
 ```
 
-CI（GitHub Actions）在 Node 22 / 24 上跑语法检查、五套离线断言和 bundle 清单校验，见 [.github/workflows/ci.yml](.github/workflows/ci.yml)。
+CI（GitHub Actions）在 Node 22 / 24 上跑语法检查、五套离线断言和 bundle 清单校验，见 [.github/workflows/ci.yml](../../.github/workflows/ci.yml)。
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)：代码分区、离线断言纪律、本地装载方式
 - [SECURITY.md](SECURITY.md)：权限模型与漏洞报告流程（请走私密 advisory）

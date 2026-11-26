@@ -2,7 +2,7 @@
 
 - 状态：**已实现，开关 `worldDrama`（默认关；2026-11-02 用户要求开着）**
 - 日期：2026-11-02
-- 关联：[ADR 0106](0106-everyday-life.md)（日常小事）、[ADR 0102](0102-her-feelings.md)（她的感受）、[ADR 0110](0110-feeling-strength.md)、[ADR 0200](0200-private-space.md)
+- 关联：[ADR 0106](0106-everyday-life.md)（日常小事）、[ADR 0102](0102-feelings.md)（她的感受）、ADR 0110、[ADR 0200](0200-private-space.md)
 - **用户（2026-11-02 20:00）**：Claude 的清单里问「她的世界」要不要手写几件会让她真难过 / 真开心的事（W1–W3），用户答「**直接模拟现实世界**」——不手写单点，改成让日子自己长出起伏
 
 ## 起因

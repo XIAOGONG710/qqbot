@@ -2,7 +2,7 @@
 
 - 状态：已上线（2026-10-08 20:59）
 - 日期：2026-10-08
-- 关联：[ADR 0014](0014-speech-habits.md)（说话的毛病）、[ADR 0019](0019-todays-layer.md)（这一轮意图）、[ADR 0028](0028-emotional-inertia.md)（情绪余温）
+- 关联：[ADR 0014](0014-speech-habits.md)（说话的毛病）、[ADR 0019](0019-today-layer.md)（这一轮意图）、[ADR 0028](0028-emotional-inertia.md)（情绪余温）
 
 ## 问题
 

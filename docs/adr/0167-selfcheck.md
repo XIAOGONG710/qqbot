@@ -2,7 +2,7 @@
 
 - 状态：**已实现（只读工具），未上线**（分支 `dsh/qq-control`；不进运行时、不改任何开关）
 - 日期：2026-10-26
-- 关联：[ADR 0014](0014-speech-check.md)（出口检查）、[ADR 0131](0131-texture.md)（质感）、[ADR 0097](0097-ai-smell.md) / [0098](0098-ai-smell-2.md)（去 AI 味）、[ADR 0119](0119-consistency-check.md)（一致性只读检查）、[ADR 0129](0129-memes.md)（热梗）、[ADR 0158](0158-memory-ledger.md)（记忆账本）
+- 关联：[ADR 0014](0014-speech-habits.md)（出口检查）、[ADR 0131](0131-texture.md)（质感）、[ADR 0097](0097-ai-smell-night-test.md) / [0098](0098-already-told-and-topic-pick.md)（去 AI 味）、[ADR 0119](0119-consistency-check.md)（一致性只读检查）、[ADR 0129](0129-memes.md)（热梗）、[ADR 0158](0158-memory-ledger.md)（记忆账本）
 - 用户提出：2026-10-26 晚发来四张 B 站截图（人格自检 skill、评论区量出来的说话数字、bili-cli、梗百科插件 + retcon-form），要求「看一下这些，找一下，并将其合理地运用到我们的项目中」。
 
 > 说明：截图里的四个来源，本机当时访问不到 GitHub（`github.com:443` 连不上，B 站项目本来就有间歇断网），只按截图和搜索摘要核对过，没有拉到源码。下面「采纳 / 不采纳」是基于它公开描述的做法，不是复刻它的实现。

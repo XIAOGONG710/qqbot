@@ -5,11 +5,11 @@
 
 ## 结论报告
 
-- [1213 条之后：灵魂的五条闭环与插件清单](../../exchange/research/2026-10-27-1213-videos-plugins.md)
-- [16:30 收工：1693 条与睡眠记忆](../../exchange/research/2026-10-27-1693-sleep-memory.md)
-- [374 条逐条精读](../../exchange/research/2026-10-27-deepread-374.md)
-- [项目评估](../../exchange/research/2026-10-27-project-assessment.md)
-- [改造工程量评估](../../exchange/research/2026-10-27-soul-effort-estimate.md)
+- 1213 条之后：灵魂的五条闭环与插件清单
+- 16:30 收工：1693 条与睡眠记忆
+- 374 条逐条精读
+- 项目评估
+- 改造工程量评估
 
 - [外部项目：AstrBot 陪伴插件 v6.7.2（2026-11-22）](2026-11-22-private-companion-v2.md)：在场租约、计划与实际对账、提示词指纹；化用建议 10 条（本目录内的正文）
 

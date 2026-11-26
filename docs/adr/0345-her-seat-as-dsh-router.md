@@ -2,7 +2,7 @@
 
 - 状态：**已落地（本机 desktop profile）**。她本人的条件已写进她的 preset；用户 2026-11-21 拍板「让她通过 Super Agent 来做 dsh 的主控大脑」。
 - 日期：2026-11-21
-- 关联：`dsh-plugins/dsh-linmengyao-preset/`（新建，本次）、`dsh-plugins/dsh-linmengyao-memory/`、`dsh-plugins/dsh-super-agent/`（aowind/dsh-super-agent 0.2.0，MIT，原样 vendor + 一处补丁，见其 `LOCAL-PATCH.md`）、[ADR 0336](0336-architecture-migration.md)（行为基线不动）、`docs/koishi.md`。
+- 关联：`dsh-plugins/dsh-linmengyao-preset/`（新建，本次）、`dsh-plugins/dsh-linmengyao-memory/`、`dsh-plugins/dsh-super-agent/`（aowind/dsh-super-agent 0.2.0，MIT，原样 vendor + 一处补丁，见其 `LOCAL-PATCH.md`）、[ADR 0336](0336-interpreter-executor-modules.md)（行为基线不动）、`docs/koishi.md`。
 - 机制名「她的主控座」（preset-linmengyao）。
 
 ## 起因

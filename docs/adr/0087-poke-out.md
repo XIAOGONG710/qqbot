@@ -2,7 +2,7 @@
 
 - 状态：**已实现，未上线、未开启**（分支 `claude/poke-out`；配置 `pokeOut`，默认关）
 - 日期：2026-10-19
-- 关联：[ADR 0079](0079-pokes.md)（他戳她、她戳回去）、[ADR 0083](0083-presence.md)（存在感的每分钟小循环）、[ADR 0085](0085-napcat-probe.md)（`friend_poke` 和 packet 服务在线上验过）
+- 关联：[ADR 0079](0079-poke.md)（他戳她、她戳回去）、[ADR 0083](0083-presence.md)（存在感的每分钟小循环）、[ADR 0085](0085-napcat-probe.md)（`friend_poke` 和 packet 服务在线上验过）
 - 用户提出：2026-10-19「继续之后让其更像人」。
 
 ## 背景

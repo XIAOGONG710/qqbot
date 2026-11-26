@@ -7,11 +7,11 @@
 
 | 交付 | 路径 |
 | --- | --- |
-| Bundle（Host + Client 双半，免构建纯 JS） | [dsh-super-agent/](../dsh-super-agent) |
-| Host 控制面（五模块本体，无 DSH import，可离线测） | [lib/engine.js](../dsh-super-agent/lib/engine.js) |
-| Host 适配层（会话创建/事件回灌/工具/HTTP/提示词段） | [index.js](../dsh-super-agent/index.js) |
-| 控制台 UI（侧栏图标 + 主面板 + 拓扑可视化） | [client.js](../dsh-super-agent/client.js) |
-| 离线断言（9 组） | [test/engine.test.mjs](../dsh-super-agent/test/engine.test.mjs) |
+| Bundle（Host + Client 双半，免构建纯 JS） | [dsh-super-agent/](..) |
+| Host 控制面（五模块本体，无 DSH import，可离线测） | [lib/engine.js](../lib/engine.js) |
+| Host 适配层（会话创建/事件回灌/工具/HTTP/提示词段） | [index.js](../index.js) |
+| 控制台 UI（侧栏图标 + 主面板 + 拓扑可视化） | [client.js](../client.js) |
+| 离线断言（9 组） | [test/engine.test.mjs](../test/engine.test.mjs) |
 | 前端数据契约 | [super-agent-ui-contract.md](./super-agent-ui-contract.md) |
 | 原型蒸馏：架构档案 | [super-agent-architecture.md](./super-agent-architecture.md) |
 | 原型蒸馏：DSH API 骨架与坑 | [dsh-api-patterns.md](./dsh-api-patterns.md) |
@@ -60,8 +60,8 @@
 
 由于 Web GUI 需要 `dsh web` 打印的鉴权 URL（无头浏览器无法复用桌面端 cookie），视觉证据采用**同一份 `client.js` + 真实 React 18 + jsdom + 真实主题令牌**离线渲染，并喂入 `GET /api/super-agent/state` 的真机快照：
 
-- 渲染器：[probes/render-console.mjs](../probes/render-console.mjs)（`--state <live-state.json>`）
-- 证据图：[probes/console-live.png](../probes/console-live.png)（来自真机快照 `probes/live-final4.json`）
+- 渲染器：probes/render-console.mjs（`--state <live-state.json>`）
+- 证据图：probes/console-live.png（来自真机快照 `probes/live-final4.json`）
 - 覆盖：架构拓扑（Router→准入→线程轴→Worker 泳道→注意力闸门，含流动点/订阅虚线/脉冲/卡住红抖）、准入漏斗、注意力预算、18 张 Worker 卡片、Watchdog 健康环、p50/p95 与单会话双条对比、事件流、控制条、在线状态条。
 - 渲染断言：`superagent` 主面板与侧栏图标均注册成功；页面含全部 8 个分区；点击「重放论文实验」发出 `POST {command:"demo"}`；无 React key 警告（唯一告警是 harness 自身的 `ReactDOMTestUtils.act` 弃用提示）。
 

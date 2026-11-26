@@ -2,7 +2,7 @@
 
 - 状态：**已实现，未上线、未开启**（分支 `claude/self-recall`；配置 `selfRecall`，默认关）
 - 日期：2026-10-19
-- 关联：[ADR 0024](0024-expression.md)（打错字再改口）、[ADR 0082](0082-recalls.md)（他撤回她看得到）、[ADR 0085](0085-napcat-probe.md)（NapCat 的动作在真 QQ 上验过）、[ADR 0068](0068-crisis.md)（危机回合不打错字）
+- 关联：[ADR 0024](0024-expression-layer.md)（打错字再改口）、[ADR 0082](0082-recalls.md)（他撤回她看得到）、[ADR 0085](0085-napcat-probe.md)（NapCat 的动作在真 QQ 上验过）、[ADR 0068](0068-crisis-response.md)（危机回合不打错字）
 - 用户提出：2026-10-19「继续之后让其更像人」。
 
 ## 背景

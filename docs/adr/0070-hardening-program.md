@@ -2,7 +2,7 @@
 
 - 状态：**进行中**（第 1、3、7 批已实现，待审查与上线；其余批次见下表）
 - 日期：2026-10-13
-- 关联：[ADR 0069](0069-stability-and-privacy-baseline.md)（第一批基线）、[ADR 0017](0017-long-term-memory-like-a-person.md)、[ADR 0020](0020-talking-about-others.md)、[ADR 0067](0067-disclosure-per-contact.md)、[ADR 0068](0068-crisis-response.md)
+- 关联：[ADR 0069](0069-stability-and-privacy-baseline.md)（第一批基线）、[ADR 0017](0017-long-term-memory-like-a-person.md)、[ADR 0020](0020-disclosure-and-social-life.md)、[ADR 0067](0067-disclosure-per-contact.md)、[ADR 0068](0068-crisis-response.md)
 
 ## 背景
 

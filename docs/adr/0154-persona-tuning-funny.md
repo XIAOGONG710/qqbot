@@ -2,7 +2,7 @@
 
 - 状态：**已上线 2026-10-25 21:59**（`bb3f77e`；人设与重新生成的 13 张角色卡随合并生效；回退：`git revert` 后重新生成 `st/` 并重启）
 - 日期：2026-10-25
-- 关联：[ADR 0010](0010-character-source.md)（人设来源）、[ADR 0149](0149-answer-then-continue.md)、[ADR 0150](0150-long-answers.md)、[ADR 0151](0151-deliberate.md)、[ADR 0153](0153-fluff.md)
+- 关联：[ADR 0010](0010-character-editor-page.md)（人设来源）、[ADR 0149](0149-answer-then-continue.md)、[ADR 0150](0150-long-answers.md)、[ADR 0151](0151-deliberate.md)、[ADR 0153](0153-fluff.md)
 - **作者（用户）的裁决**：2026-10-25「人设微调即可，我希望她有点搞笑女的属性」；随后「你先自己了解网络上搞笑女是怎么样的」
 
 ## 改了什么（`characters/linmengyao/source/persona.yml`，每项的 `note` 里写了原因）

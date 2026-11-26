@@ -2,7 +2,7 @@
 
 - 状态：**第一期已实现（只读），其余四期只有设计、没写代码**
 - 日期：2026-10-26
-- 关联：[ADR 0084](0084-bilibili.md)（刷视频发给他）、[ADR 0089](0089-bilibili-account.md)（她的号 / 私信 / 评论）、[ADR 0090](0090-bilibili-replies.md)、[ADR 0092](0092-bilibili-topics.md)、[ADR 0129](0129-memes.md)、[ADR 0130](0130-watching.md)、[ADR 0132](0132-bili-stickers.md)、[ADR 0147](0147-platform-accounts.md)（平台账号熔断）、[ADR 0166](0166-social-accounts.md)（小红书 / 抖音）
+- 关联：[ADR 0084](0084-bilibili-browsing.md)（刷视频发给他）、[ADR 0089](0089-bilibili-account.md)（她的号 / 私信 / 评论）、[ADR 0090](0090-bilibili-replies.md)、[ADR 0092](0092-bilibili-topic-comments.md)、[ADR 0129](0129-memes.md)、[ADR 0130](0130-watching.md)、[ADR 0132](0132-bili-stickers.md)、[ADR 0147](0147-platform-accounts.md)（平台账号熔断）、ADR 0166（小红书 / 抖音）
 - 用户提出：2026-10-26「将差的这些全部补齐，用我们自己的方式将其化用，实现他的所有功能，照着（一、能力对照）的表进行补齐」。
 
 ## 原则（「用我们自己的方式」= 五条）

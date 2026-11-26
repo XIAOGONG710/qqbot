@@ -2,7 +2,7 @@
 
 - 状态：**已实现，未上线**（2026-10-22；配置 `proactiveInvite`；默认关）。上线 = `koishi.yml` 里加 `proactiveInvite: true` + 重启；回滚 = 改回 false + 重启（不存新状态，只多几条 `invite` 主动记录）
 - 日期：2026-10-22
-- 关联：[ADR 0011](0011-proactive-messages.md)（主动消息）、[ADR 0096](0096-share-and-filler.md)（随口说件事）、[ADR 0100](0100-reach-when-unanswered.md)（没回也继续）、[ADR 0101](0101-inner-life.md)（心里惦记）
+- 关联：[ADR 0011](0011-proactive-messages.md)（主动消息）、[ADR 0096](0096-split-and-share.md)（随口说件事）、[ADR 0100](0100-reach-when-unanswered.md)（没回也继续）、[ADR 0101](0101-inner-life.md)（心里惦记）
 - 用户提出：2026-10-22「继续开发新功能让她作为人」
 
 ## 差距
