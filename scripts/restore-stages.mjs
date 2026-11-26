@@ -81,7 +81,9 @@ export function createRestoreStages({ root, run = dryRun, extract = expandArchiv
     function failed(stage, error) {
         const code = error instanceof StageError ? error.code : 'stage_failed';
         const cause = error instanceof StageError ? error.cause : error;
-        if (cause !== undefined) log(`${stage} ${code}: ${String(cause?.message ?? cause).split('\n')[0].slice(0, 300)}`);
+        // 子进程失败时 message 第一行只是命令本身，真正的报错在 stderr：带上第一行有内容的（只进本机日志）
+        const stderr = typeof cause?.stderr === 'string' ? cause.stderr.split('\n').map(line => line.trim()).find(Boolean) : undefined;
+        if (cause !== undefined) log(`${stage} ${code}: ${String(cause?.message ?? cause).split('\n')[0].slice(0, 300)}${stderr ? ` | stderr: ${stderr.slice(0, 300)}` : ''}`);
         return { ok: false, stage, error: code };
     }
 
