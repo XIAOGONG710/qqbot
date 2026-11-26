@@ -964,7 +964,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 return note;
             },
             // 她写的 <<执行：命令>>（2026-10-30 用户：把最高权限给她）：标记不发出去，命令后台跑，结果留给下一轮
-            commands: {
+            commands: { allowed: contact => contact.qq === deviceOwner?.qq,
                 lookedRecently: contact => (Date.now() - (webTurns.get(contact.qq) ?? 0)) < 3 * 60_000,
                 setNote: (contact, note) => { shellNotes.set(contact.qq, note); },
                 run: command => exec.process.shell(command, { cwd: process.env.USERPROFILE }),
