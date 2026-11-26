@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { classifyChanges, deviceSecretsCheck, goLiveReport, switchMergeCheck } from '../src/ops/golive-check.ts';
+import { classifyChanges, deviceSecretsCheck, goLiveReport, napcatWebUiCheck, switchMergeCheck } from '../src/ops/golive-check.ts';
 import { LIVE_2026_11_20, LIVE_LATER_ON } from './fixtures/live-switches.ts';
 import { exposedListeners, parseListeners } from '../src/ops/listeners.ts';
 
@@ -25,6 +25,20 @@ describe('本机监听检查（ADR 0070 第 12 项）', () => {
 });
 
 describe('上线前检查（ADR 0070 第 17 项）', () => {
+    test('NapCat 未运行时也从 WebUI 配置拦外部绑定，错误里不带配置原文', () => {
+        const base = { liveHead: 'a', targetHead: 'a', dirty: false, commits: [], exposed: [], changes: classifyChanges([]) };
+        for (const host of ['127.0.0.1', '::1']) {
+            assert.equal(goLiveReport({ ...base, napcatWebUi: napcatWebUiCheck(JSON.stringify({ host })) }).blockers.length, 0);
+        }
+        for (const host of ['::', '0.0.0.0', '192.0.2.10', undefined]) {
+            const report = goLiveReport({ ...base, napcatWebUi: napcatWebUiCheck(JSON.stringify({ host, token: 'synthetic-secret' })) });
+            assert.match(report.blockers.join(), /NapCat.*WebUI.*回环/);
+            assert.doesNotMatch(JSON.stringify(report), /synthetic-secret/);
+        }
+        assert.match(goLiveReport({ ...base, napcatWebUi: napcatWebUiCheck('broken synthetic-secret') }).blockers.join(), /不是合法 JSON/);
+        assert.match(goLiveReport({ ...base, napcatWebUi: 'missing' }).blockers.join(), /缺少/);
+    });
+
     test('把改动分成卡、代码、脚本、文档和测试', () => {
         const set = classifyChanges([
             'characters/linmengyao/st/card.json', 'packages/bot/src/app.ts', 'packages/koishi-plugin-qqbot/client/status.js',

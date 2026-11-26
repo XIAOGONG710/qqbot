@@ -37,6 +37,19 @@ export interface GoLiveInput {
     switches?: SwitchMergeCheck | 'unreadable';
     /** 线上 devices.json 按新代码的启动校验（deviceSecretsCheck）：不合格的项；不是合法 JSON 是 'unreadable'；没有这份文件是 undefined */
     devices?: string[] | 'unreadable';
+    /** 未安装 NapCat 时不查，已有工作目录但缺配置时拦截上游默认值。 */
+    napcatWebUi?: NapcatWebUiCheck;
+}
+
+type NapcatWebUiCheck = 'loopback' | 'non-loopback' | 'invalid-json' | 'missing' | 'unreadable';
+
+export function napcatWebUiCheck(text: string): NapcatWebUiCheck {
+    try {
+        const config = JSON.parse(text.replace(/^\uFEFF/, '')) as { host?: unknown } | null;
+        return config?.host === '127.0.0.1' || config?.host === '::1' ? 'loopback' : 'non-loopback';
+    } catch {
+        return 'invalid-json';
+    }
 }
 
 /**
@@ -78,6 +91,15 @@ export function goLiveReport(input: GoLiveInput, options: { cardsApproved?: bool
     if (input.exposed.length) {
         const who = input.exposed.map(item => `${item.name} ${item.address}:${item.port}`).join('、');
         blockers.push(`有进程监听了非本机地址：${who}`);
+    }
+    if (input.napcatWebUi && input.napcatWebUi !== 'loopback') {
+        const reason = {
+            'non-loopback': 'host 没有显式绑定回环地址（127.0.0.1 或 ::1）',
+            'invalid-json': '配置不是合法 JSON',
+            missing: '缺少配置，上游会使用默认监听地址',
+            unreadable: '配置无法读取',
+        }[input.napcatWebUi];
+        blockers.push(`NapCat WebUI：${reason}。检查 runtime/napcat/workdir/config/webui.json`);
     }
     if (input.changes.cards.length && !options.cardsApproved) {
         blockers.push(`快进会改角色卡（${input.changes.cards.length} 个文件）：线上插件当场热加载，等于上线。要用户当次点头，并加 --cards-ok 确认过`);

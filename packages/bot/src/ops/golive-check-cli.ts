@@ -1,7 +1,7 @@
 // node src/ops/golive-check-cli.ts [--live <线上目录>] [--target origin/main] [--fetch] [--cards-ok] [--safety "<理由>"] [--restarts <重启记录，默认 <线上目录>/线上数据目录/restarts.log>]
 // 只读：不切分支、不改文件、不重启。把「快进线上目录之前该看的」一次列出来。退出码 1 = 有挡路的。
 import { execFileSync, spawnSync } from 'node:child_process';
-import { classifyChanges, deviceSecretsCheck, goLiveReport, switchMergeCheck } from './golive-check.ts';
+import { classifyChanges, deviceSecretsCheck, goLiveReport, napcatWebUiCheck, switchMergeCheck } from './golive-check.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -40,8 +40,14 @@ const devices = (() => {
     if (!existsSync(path)) return undefined;
     try { return deviceSecretsCheck(JSON.parse(readFileSync(path, 'utf8'))); } catch { return 'unreadable' as const; }
 })();
+const napcatWorkDir = join(live, 'runtime', 'napcat', 'workdir');
+const napcatWebUi = (() => {
+    if (!existsSync(napcatWorkDir)) return undefined;
+    try { return napcatWebUiCheck(readFileSync(join(napcatWorkDir, 'config', 'webui.json'), 'utf8')); }
+    catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' as const : 'unreadable' as const; }
+})();
 const safety = args.includes('--safety') ? args[args.indexOf('--safety') + 1] : undefined;
-const report = goLiveReport({ liveHead, targetHead, dirty, commits, changes: classifyChanges(files), exposed, lastBehaviorRestart: lastBehaviorRestart(restarts), restartLogEmpty: restarts.length === 0, switches, ...(devices !== undefined ? { devices } : {}) }, { cardsApproved: args.includes('--cards-ok'), ...(safety ? { safety } : {}) });
+const report = goLiveReport({ liveHead, targetHead, dirty, commits, changes: classifyChanges(files), exposed, lastBehaviorRestart: lastBehaviorRestart(restarts), restartLogEmpty: restarts.length === 0, switches, ...(devices !== undefined ? { devices } : {}), ...(napcatWebUi !== undefined ? { napcatWebUi } : {}) }, { cardsApproved: args.includes('--cards-ok'), ...(safety ? { safety } : {}) });
 
 console.log(`线上目录 ${live}`);
 for (const commit of commits.slice(0, 30)) console.log(`  ${commit}`);

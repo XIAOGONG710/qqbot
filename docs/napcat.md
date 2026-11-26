@@ -47,6 +47,7 @@
 - `onebot11.json`：只开一个 WebSocket 服务端，`127.0.0.1:3001`，`messagePostFormat: array`，`reportSelfMessage: false`，设了 token。
   NapCat 首次登录后会另存一份 `onebot11_<QQ 号>.json`，之后以那份为准。
 - `webui.json`：WebUI 只监听 `127.0.0.1:6099`（默认是 `::`，会暴露到局域网）。WebUI 的登录 token 在 NapCat 启动日志里。
+- `golive-check` 会在 NapCat 未运行时照样检查已建成的工作目录。如果 WebUI 配置缺失、损坏或没有显式绑定回环，就先修配置。经授权备份配置、修改 `host` 后，只重启 NapCat，再核对 WebUI 的 6099 与 OneBot 的 3001 分别在回环监听，以及 Koishi 是否自动连回。
 
 OneBot token 同时存在用户环境变量 `QQBOT_ONEBOT_TOKEN` 里，bot 从这里读取。
 
