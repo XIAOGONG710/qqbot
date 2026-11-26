@@ -30,6 +30,7 @@ import { DerivedRepair } from './derived-repair.ts';
 import { repairFingerprint, repairModelIdentityHash, repairSourceManifestHash, type RepairCandidate } from './derived-repair-protocol.ts';
 import { repairDocumentContentHash, type DerivedRepairApi } from './hindsight.ts';
 import { knowsPeople } from '../life/people.ts';
+import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
 import type { ChatMessage } from '../language/prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes, type Episode } from './episodes.ts';
@@ -418,6 +419,8 @@ export class LongTermMemory {
     #entitiesVersion = 0;
     #entitiesFlight?: { version: number; promise: Promise<readonly string[]> };
     #stopped = false;
+    /** rememberSelfNote 上一次用的时间戳（document_id 不重复） */
+    #lastSelfNote = 0;
     /** 读路径里进度不可信、已经记过诊断的（避免每一轮都刷一行）；读成功一次就清掉 */
     readonly #unreadable = new Set<string>();
 
@@ -1314,7 +1317,7 @@ export class LongTermMemory {
         const about = (r: RecallResult) => focus.some(name => r.entities?.includes(name) || r.text.includes(name));
         const results = focus.length ? [...inWindow].sort((a, b) => Number(about(b)) - Number(about(a))) : inWindow;
         const own = `${this.#hash(contact)}:`;
-        return this.#formatDerived(stored.bankId, results.filter(r => !r.document_id?.startsWith(own)
+        return this.#formatDerived(stored.bankId, results.filter(r => !r.document_id?.startsWith(own) && !this.#isOwnHigherTierDocument(contact, r.document_id)
             && (this.#isPrivateOwner(contact) || !this.#options.privateContact
                 || this.#isKnownCommonDocument(r.document_id) && !this.#isPrivateOwnerDocument(r.document_id))), {
             header: `[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和${contact.name}聊的，用不上就别提）]`,
@@ -1330,6 +1333,8 @@ export class LongTermMemory {
      * 工作房的事实是 observation、且没有 qq-private 标签，所以单独放开类型和标签过滤。
      */
     async recallWork(contact: NamedContact, chat: readonly ChatMessage[], now: Date): Promise<string | undefined> {
+        // DSH 工作房是设备所有者的（owner-bank.ts）：名单里有第二个男朋友档时也不给他（2026-11-26 记忆审查）
+        if (this.#options.privateContact && !this.#isPrivateOwner(contact)) return undefined;
         // 连发时最后一句可能只是「喂喂喂」，真正的问题在前一条：最近三条用户消息一起当查询
         const recent = chat.filter(message => message.role === 'user').slice(-3).map(message => message.content).join(' ');
         const query = (recent || recallQuery(chat) || '').slice(-MAX_QUERY_CHARS);
@@ -1367,7 +1372,10 @@ export class LongTermMemory {
             tags_match: 'any' as unknown as RecallRequest['tags_match'],
         };
         const banks = [this.bankId(contact), this.commonBankId(), this.#options.bankPrefix];
-        const settled = await Promise.allSettled(banks.map(bank => this.#recall(bank, request, `[${contact.qq}] 主动查记忆失败：${bank}`)));
+        // 公共库和 recallCommon 同一道门：没开公共库、陌生人档都不查（ADR 0016「陌生人档不写不查」；2026-11-26 记忆审查）
+        const commonAllowed = Boolean(this.#options.common) && knowsPeople(contact.tier);
+        const settled = await Promise.allSettled(banks.map((bank, index) => index === 1 && !commonAllowed ? Promise.resolve(undefined)
+            : this.#recall(bank, request, `[${contact.qq}] 主动查记忆失败：${bank}`)));
         const seen = new Set<string>();
         const results: RecallResult[] = [];
         const sources = new Map<RecallResult, string>();
@@ -1378,6 +1386,7 @@ export class LongTermMemory {
             for (const result of item.value) {
                 if (!this.#isPrivateOwner(contact) && (index === 2 || index === 1
                     && (result.type === 'observation' || !this.#isKnownCommonDocument(result.document_id) || this.#isPrivateOwnerDocument(result.document_id)))) continue;
+                if (index === 1 && this.#isOwnHigherTierDocument(contact, result.document_id)) continue;
                 if (seen.has(result.id)) continue;
                 seen.add(result.id);
                 results.push(result);
@@ -1407,11 +1416,14 @@ export class LongTermMemory {
     /** 她自己决定要记的事（回复里的 <<记住：…>> / <<日记：…>>）：写进公共库，标 self */
     async rememberSelfNote(contact: NamedContact, content: string, kind: '记住' | '日记' = '记住'): Promise<void> {
         const text = content.trim().slice(0, 2000);
-        if (!text || !this.#options.common) return;
+        // 陌生人档不写公共库（ADR 0016）；停下以后不再派发（2026-11-26 记忆审查）
+        if (!text || !this.#options.common || this.#stopped || !knowsPeople(contact.tier)) return;
+        // 同一条回复里的几条 <<记住>> 在同一毫秒派发：document_id 撞上会互相覆盖，只剩最后一条（2026-11-26 记忆审查）
+        const stamp = this.#lastSelfNote = Math.max(Date.now(), this.#lastSelfNote + 1);
         await this.#options.api.retain(this.commonBankId(), {
             content: `${kind === '记住' ? IMPORTANT : ''}林梦瑶自己记下的${kind}：${text}`,
             context: kind,
-            document_id: `${kind === '日记' ? 'diary-self' : 'self'}:${this.#hash(contact)}:${Date.now()}`,
+            document_id: `${kind === '日记' ? 'diary-self' : 'self'}:${this.#hash(contact)}:${stamp}`,
             timestamp: new Date(this.#now()).toISOString(),
             tags: ['qq-private', 'self'],
             metadata: {},
@@ -1602,6 +1614,20 @@ export class LongTermMemory {
         return Boolean(id && this.#privateOwnerHashes().some(hash => id.startsWith(`${hash}:`) || id.startsWith(`self:${hash}:`) || id.startsWith(`diary-self:${hash}:`)));
     }
 
+    /**
+     * 公共库里他自己在更高档位时的片段（ADR 0003「实现时的调整」第 3 条：降档后不再读高档位时的记忆）。
+     * 私人库按档位分开；公共库的 document_id 也带档位哈希，但原来只排除当前档位的，降档后旧的那些按「来源不明」又进了他的提示词。
+     */
+    #isOwnHigherTierDocument(contact: MemoryContact, id: string | null | undefined): boolean {
+        const order: readonly string[] = [...CONTACT_TIERS, UNLISTED_TIER];
+        const rank = order.indexOf(contact.tier);
+        if (!id || rank <= 0) return false;
+        return order.slice(0, rank).some(tier => {
+            const hash = this.#hash({ qq: contact.qq, tier });
+            return id.startsWith(`${hash}:`) || id.startsWith(`self:${hash}:`) || id.startsWith(`diary-self:${hash}:`);
+        });
+    }
+
     #isKnownCommonDocument(id: string | null | undefined): boolean {
         return Boolean(id && (/^(?:diary|week|phase):/.test(id) || SELF_NOTE_ID.test(id) || /^[0-9a-f]{16}:ep--?\d+$/.test(id)));
     }
@@ -1787,7 +1813,8 @@ export function formatRecalled(
             : r.type === 'observation' ? valid(r.mentioned_at) ?? valid(r.occurred_start) : valid(r.occurred_start) ?? valid(r.mentioned_at);
         const faded = clarity === 'vague' ? '记不太清了' : clarity === 'recognized' ? '他一提才想起来，记不太清了' : undefined;
         // 事实后面常带「 | When: … | Involving: …」，日期已经写在前面了；【重要】是给我们看的记号
-        const text = withoutMark(r.text.split(' | ')[0]!);
+        // 一条记忆只占一行：事实里的换行会伪造出新的一行和来源标签（2026-11-26 记忆审查）
+        const text = withoutMark(r.text.split(' | ')[0]!).replace(/\s*[\r\n\u2028\u2029]+\s*/g, ' ');
         // 那时的感觉（ADR 0218）：有日子、不是还没到的计划才附
         const felt = options.felt && when && !future ? options.felt(when, text) : undefined;
         const notes = [options.source?.(r), future ? `打算 ${day(future)}` : undefined, faded, felt].filter(Boolean);

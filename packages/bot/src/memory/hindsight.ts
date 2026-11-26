@@ -552,12 +552,16 @@ export class HindsightClient implements HindsightApi {
 
     async listEntities(bankId: string, timeoutMs = this.#timeoutMs): Promise<string[]> {
         const names: string[] = [];
-        // 一页 100 个，最多读 10 页
+        // 一页 100 个，最多读 10 页。聊天前要等它（公共记忆线索）：10 页合用一个限时，不是每页各等一次（2026-11-26 记忆审查）
+        const deadline = performance.now() + timeoutMs;
         for (let offset = 0; offset < 1000; offset += 100) {
-            const page = await this.#request<{ items: { canonical_name: string }[]; total: number }>(
-                'GET', `${this.#bank(bankId)}/entities?limit=100&offset=${offset}`, undefined, timeoutMs,
+            const left = Math.ceil(deadline - performance.now());
+            if (left <= 0) throw new HindsightError(`记忆服务超时（${timeoutMs} ms）`);
+            const page = await this.#request<{ items?: unknown; total?: unknown }>(
+                'GET', `${this.#bank(bankId)}/entities?limit=100&offset=${offset}`, undefined, Math.min(left, timeoutMs),
             );
-            names.push(...page.items.map(item => item.canonical_name));
+            if (!stateObject(page) || !Array.isArray(page.items) || typeof page.total !== 'number') throw new HindsightError('记忆服务实体响应格式无效');
+            names.push(...page.items.flatMap(item => stateObject(item) && typeof item.canonical_name === 'string' && item.canonical_name ? [item.canonical_name] : []));
             if (offset + 100 >= page.total || page.items.length === 0) break;
         }
         return names;
