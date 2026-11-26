@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import type { Executor } from '../executor/executor.ts';
 import type { Transport } from '../platform/app.ts';
-import type { AppConfig } from '../platform/config.ts';
+import { ownerOf, type AppConfig } from '../platform/config.ts';
 import type { TierCard } from '../platform/contact.ts';
 import type { Log } from '../platform/log.ts';
 import type { ChatHistory } from '../memory/history.ts';
@@ -117,7 +117,7 @@ export function bilibiliOwners(deps: BilibiliOwnersDeps): BilibiliOwners {
     function startBrowsing(): void {
         const mode = config.bilibili ?? 'off';
         if (browsing || mode === 'off') return;
-        const target = config.contacts.find(c => c.tier === 'boyfriend');
+        const target = ownerOf(config.contacts);
         if (!target || !worldCard?.schedule) {
             log('刷 B 站：没有男朋友档的联系人或没有作息，不启动');
             return;

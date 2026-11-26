@@ -1,5 +1,5 @@
 import type { StoredMessage } from '../memory/history.ts';
-import type { AppConfig, Contact } from '../platform/config.ts';
+import { ownerOf, type AppConfig, type Contact } from '../platform/config.ts';
 import type { AgencyShadow } from '../world/agency-shadow.ts';
 import type { GroupDecisionTrace } from './group-chat.ts';
 import { groupOpportunity, type GroupMotiveDecision } from './group-opportunity.ts';
@@ -38,7 +38,7 @@ export function groupAgencyWiring({ config, hooks: agencyHooks, worldNow, agency
     const agencyActive = (config.groupAgency ?? 'off') !== 'off' || Boolean(agencyHooks?.motiveOverride);
     const agencyMotive = agencyActive ? (): GroupMotiveDecision =>
         agencyHooks?.motiveOverride ?? groupOpportunity(new Date(groupWorldNow()), agencyShadow) : undefined;
-    const groupBoyfriend: Contact | undefined = config.contacts.find(c => c.tier === 'boyfriend');
+    const groupBoyfriend: Contact | undefined = ownerOf(config.contacts);
     return {
         worldNow: groupWorldNow,
         ...(agencyMotive ? { groupOpportunity: agencyMotive } : {}),

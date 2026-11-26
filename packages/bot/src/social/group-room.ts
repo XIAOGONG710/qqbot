@@ -13,7 +13,7 @@ import { groupScheduleRecall } from './group-memory.ts';
 import { analyzeGroupStyle, renderGroupStyle } from './group-style.ts';
 import { groupAffectOf, mergeFelt, type groupAffect } from './group-affect.ts';
 import type { groupPeople } from './group-people.ts';
-import type { AppConfig } from '../platform/config.ts';
+import { ownerOf, type AppConfig } from '../platform/config.ts';
 import type { Executor } from '../executor/executor.ts';
 import type { FeelingsReport } from '../emotion/feeling-export.ts';
 import type { Log } from '../platform/log.ts';
@@ -218,7 +218,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         const group = (config.groups ?? []).find(g => g.id === event.group_id);
         if (!group) return; // 不在名单的群：不看、不记、不写日志
         if (groupQueued.has(event.message_id) || groupLogs.has(group.id, event.message_id) || dormancy?.isDormant()) return;
-        const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
+        const boyfriend = ownerOf(config.contacts);
         const entries = groupLogs.load(group.id);
         // 群里他叫什么就写什么（他的群名片）：提示词里写「宝宝（你男朋友）」时她会当众喊「宝宝」（真模型 2/2），群里收着点
         const senderCard = (event.sender.card || event.sender.nickname || '').replace(/\s+/g, ' ').trim().slice(0, 16);
@@ -308,7 +308,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
     /** 有人损他，她出不出头（groupAgency B）：这一批已经进了记录，从记录里取最近 PILE_ON 时间内别人损他的那几条 */
     function defendFor(groupId: number, batch: readonly { reason?: SpeakReason; text: string }[]): { defend: boolean; why: string } {
         if (batch.some(item => item.reason === 'defend' && teasesUs(item.text))) return { defend: false, why: '是在起哄问你俩，装看不见' };
-        const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
+        const boyfriend = ownerOf(config.contacts);
         if (!boyfriend || !groupLogs) return { defend: false, why: '名单里没有他' };
         const now = worldNow();
         const entries = groupLogs.load(groupId);
@@ -412,7 +412,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
                 const overheard = groupOverheard.get(groupId);
                 groupOverheard.set(groupId, { day: groupDay(), count: (overheard && overheard.day === groupDay() ? overheard.count : 0) + 1 });
             }
-            const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
+            const boyfriend = ownerOf(config.contacts);
             const bf = boyfriend ? { qq: boyfriend.qq, name: entries.findLast(e => e.from === boyfriend.qq)?.name ?? boyfriend.name } : undefined;
             const target = entries.findLast(entry => entry.messageId === sourceItem.event.message_id);
             await speakInGroup(group, reason, bf, {
@@ -631,7 +631,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             if (!budget.ok) { if (trace) { trace.blockedBy = 'budget'; } emit(); log(`[群 ${group.id}] 想自己冒一句但${budget.why}`); continue; }
             if (trace) trace.passed = true;
             groupChimes.set(group.id, { ...done, [plan.kind]: done[plan.kind] + 1 });
-            const boyfriend = config.contacts.find(c => c.tier === 'boyfriend');
+            const boyfriend = ownerOf(config.contacts);
             const bf = boyfriend ? { qq: boyfriend.qq, name: entries.findLast(e => e.from === boyfriend.qq)?.name ?? boyfriend.name } : undefined;
             groupBusy.add(group.id);
             try {

@@ -5,7 +5,7 @@ import { desktopLogPath, desktopTurns, ingestDesktopRecent } from '../memory/des
 import type { StoredMessage } from '../memory/history.ts';
 import type { Timeline } from '../memory/timeline.ts';
 import { desktopMessages } from '../memory/owner-day-view.ts';
-import { oneLifeAt, type AppConfig, type Contact } from '../platform/config.ts';
+import { oneLifeAt, ownerOf, type AppConfig, type Contact } from '../platform/config.ts';
 import type { Log } from '../platform/log.ts';
 import type { Character } from '../st/card.ts';
 import type { ActionQueue } from '../world/action-queue.ts';
@@ -78,7 +78,7 @@ export interface DesktopHost {
 export function desktopHost({ config, soulDir, worldNow, cardFor, bedtimes, files, log }: DesktopHostDeps): DesktopHost {
     // （同 App 里的 deviceOwner，这里先按同一条规则取，生活执行器要用）。desktopDay 要 crossRecent（桌面回合靠它那条路传过来）；
     // 另外四个开关各自再要 desktopDay / feelingReview / herDays / 长期记忆，依赖不齐就当没开
-    const desktopOwner = config.contacts.find(c => c.tier === 'boyfriend');
+    const desktopOwner = ownerOf(config.contacts);
     const desktopSource = oneLifeAt(config.oneLife, 'desktop') && desktopOwner
         ? desktopNowSource({ dataDir: config.dataDir, soulDir, log }) : undefined;
     if (oneLifeAt(config.oneLife, 'desktop') && !desktopSource) log('桌面上的时间：oneLife 开到 desktop，但名单里没有男朋友档，不起作用');

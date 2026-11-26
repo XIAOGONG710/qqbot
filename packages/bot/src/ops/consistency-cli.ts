@@ -10,6 +10,7 @@ import { loadCharacterCard } from '../st/card.ts';
 import { worldState } from '../world/world.ts';
 import { localDate } from '../local-date.ts';
 import { liveDataDir } from './data-dir.ts';
+import { ownerOf } from '../platform/config.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const args = process.argv.slice(2);
@@ -19,7 +20,7 @@ const cardFile = resolve(process.env.INIT_CWD ?? process.cwd(), one('--card') ??
 let qq = Number(one('--qq'));
 if (!qq && existsSync(join(dataDir, 'config.json'))) {
     const config = JSON.parse(readFileSync(join(dataDir, 'config.json'), 'utf8')) as { contacts?: { qq: number; tier: string }[] };
-    qq = config.contacts?.find(c => c.tier === 'boyfriend')?.qq ?? 0;
+    qq = ownerOf(config.contacts ?? [])?.qq ?? 0;
 }
 if (!qq) { console.error('不知道是哪个联系人：用 --qq 给 QQ 号'); process.exit(2); }
 const since = one('--since') ? Date.parse(one('--since')!) : 0;

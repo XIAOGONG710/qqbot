@@ -12,7 +12,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, oneLifeAt, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
+import { canGiveFeedback, cardKey, CONTACT_TIERS, DEFAULTS, deliberateLlm, oneLifeAt, ownerOf, UNLISTED_TIER, type AppConfig, type Contact, type Tier } from './config.ts';
 import { loadOthers } from '.././social/others.ts';
 import { createAccount } from '.././social/account.ts';
 import { chatCompletion, forExtraction } from '.././language/llm.ts';
@@ -805,7 +805,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const openQuestionsNow = config.openQuestions ? thoughtsReader(config.dataDir) : undefined;
     // 她猜的事（ADR 0213）：要她那边的世界（世界账）才对得上结果
     const herGuessesNow = config.herGuesses ? guessesReader(config.dataDir) : undefined;
-    const deviceOwner = config.contacts.find(c => c.tier === 'boyfriend');
+    const deviceOwner = ownerOf(config.contacts);
     // 她自己想一想的那几样（ADR 0336 第 6 步）：只有定时任务，App 搭好时开；好些东西（聊天记录、时钟、追求、心境、自我认识的导出）在后面才建，这里给的都是到点再取的函数
     const reflections = reflectionsModule({
         owner: deviceOwner,

@@ -674,6 +674,15 @@ export interface Contact {
 }
 
 /** 这个联系人是不是可以用反馈通道（ADR 0073）：男朋友档，或名单里单独写了 feedback: true */
+/**
+ * 「他」：名单里第一个男朋友档——设备所有者（能跑命令、动电脑、收设备菜单）、B 站私信对象、桌面和群聊里的「他」。
+ * 原来 9 处各自 find 一遍；收成这一处，免得哪处改了规则，「他」在不同功能里指向不同的人（决定单第 28 条：
+ * 名单里第二个男朋友档排到前面，所有权会悄悄换人——要改规则就改这里）。
+ */
+export function ownerOf<C extends { tier: string }>(contacts: readonly C[]): C | undefined {
+    return contacts.find(c => c.tier === 'boyfriend');
+}
+
 export function canGiveFeedback(contact: Pick<Contact, 'tier' | 'feedback'>): boolean {
     return contact.tier === 'boyfriend' || contact.feedback === true;
 }
