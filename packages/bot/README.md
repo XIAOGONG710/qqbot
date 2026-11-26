@@ -4,12 +4,12 @@ QQ 机器人的核心：按 SillyTavern 角色卡 + 世界书拼提示词，调 
 回复名单（`contacts`）里的人的直接私聊，每人按自己的档位（[ADR 0003](../../docs/adr/0003-contact-tiers.md)）用对应的角色卡和世界书；
 名单外的好友私聊用 `unlisted` 档回复（可关）；群聊、群临时会话一律忽略。
 
-两个入口共用同一份编排（`src/app.ts`）和数据目录 `runtime/bot`，同一时间只能跑一个（[ADR 0008](../../docs/adr/0008-koishi-runtime.md)）：
+两个入口共用同一份编排（`src/platform/app.ts`）和数据目录 `runtime/bot`，同一时间只能跑一个（[ADR 0008](../../docs/adr/0008-koishi-runtime.md)）：
 
 - **Koishi 插件**（`packages/koishi-plugin-qqbot`）：Koishi 的 OneBot 适配器连 NapCat，名单、档位等在 Koishi 控制台里改，保存后生效。安装、配置、启动见 [docs/koishi.md](../../docs/koishi.md)。
-- **独立入口** `src/main.ts`：自写的 OneBot 客户端（`src/onebot.ts`），配置在 `runtime/bot/config.json`，下面「运行」一节。Koishi 路线验收、稳定跑一周之前保持可用。
+- **独立入口** `src/platform/main.ts`：自写的 OneBot 客户端（`src/platform/onebot.ts`），配置在 `runtime/bot/config.json`，下面「运行」一节。Koishi 路线验收、稳定跑一周之前保持可用。
 
-两边的配置项一样（Koishi 那边没有 `onebot` 一节，`llm.extraBody` 写成 JSON 文本，长期记忆用 `memory.enabled` 开关），校验和默认值都在 `src/config.ts`。
+两边的配置项一样（Koishi 那边没有 `onebot` 一节，`llm.extraBody` 写成 JSON 文本，长期记忆用 `memory.enabled` 开关），校验和默认值都在 `src/platform/config.ts`。
 
 ## 运行（独立入口）
 
@@ -57,7 +57,7 @@ QQ 机器人的核心：按 SillyTavern 角色卡 + 世界书拼提示词，调 
 
 回复按行拆成多条依次发出，空行跳过（模型用换行表示连发几条）；超过 5 行时按顺序合并成 5 条，每条里面换行。
 条与条之间按作息时隔这一条的打字时间（见下文），关掉作息时隔 1 秒。
-发出之前有出口检查（ADR 0006，`src/exit-check.ts`）：清理时先执行卡上作用于 AI 输出的 ST 正则（整行、行首括号里的动作删掉）；
+发出之前有出口检查（ADR 0006，`src/language/exit-check.ts`）：清理时先执行卡上作用于 AI 输出的 ST 正则（整行、行首括号里的动作删掉）；
 再查答应或假装发照片、语音、视频、打电话这类做不到的事，和这一档的禁用词（卡的 `extensions.qqbot.banned`）。命中就在提示词末尾加一句说明重写一次，
 仍命中的行删掉；重写请求失败时用第一版、删掉命中的行。日志里是「出口检查：……」。
 对方连发时，等对方停下 2 秒没有新消息再回，几条合在一起回；从这一串的第一条算起最多等 6 秒（调研方案 5.2 的起点）。
@@ -66,11 +66,11 @@ QQ 机器人的核心：按 SillyTavern 角色卡 + 世界书拼提示词，调 
 Node 自带的固定 10 秒）；HTTP 错误和整体超时不重试。模型返回空串时当场再生成一次。
 还是失败（真断网）就过 1 分钟、5 分钟各再试一次，再失败就等对方下一条消息一起回；对方的消息一直记在聊天记录里。
 
-每次生成时在聊天记录之后、末尾指令之前加一条时间提示（`src/time-context.ts`，ADR 0004 决策 2）：当前日期、星期和时间（本机时区），
+每次生成时在聊天记录之后、末尾指令之前加一条时间提示（`src/language/time-context.ts`，ADR 0004 决策 2）：当前日期、星期和时间（本机时区），
 距上一条消息多久（对方连发几条时按第一条算），以及对方的消息如果是 10 分钟以前发的（例如停机期间发的），是什么时候发的。
 这部分 ST 里没有，用 SillyTavern 试聊时提示词会比运行时少这一条。
 
-作息（ADR 0007，配置 `schedule` 开着时；`src/schedule.ts`、`src/reply-timing.ts`）：转换器把 `legacy` 的作息、课表、假期按档位写进卡的
+作息（ADR 0007，配置 `schedule` 开着时；`src/life/schedule.ts`、`src/social/reply-timing.ts`）：转换器把 `legacy` 的作息、课表、假期按档位写进卡的
 `extensions.qqbot.schedule`，运行时按它算她此刻在睡觉、上课还是空闲，在时间提示里加一行 `[你现在：在哪；在干什么；他在哪]`。
 什么时候看到：空闲时正聊着马上看到，冷场（她 10 分钟内没说话）15–60 秒后；机房课 2–6 分钟、硬课 5–20 分钟后（只回 1–2 条），先下课就下课后；
 睡觉（02:00 到 09:30，有早课 07:40）时起床后再回。男朋友档睡着后 15 分钟内来到第 3 条、或隔 2 分钟以上又来一条，会被吵醒迷糊地回一句，一晚一次。
@@ -107,12 +107,12 @@ npm run privacy-audit -w @qqbot/bot -- runtime/bot <QQ号>
 
 | 模块 | 对照的 ST 源码 |
 | --- | --- |
-| `src/prompt.ts` | `default/content/presets/openai/Default.json` 的顺序（`dummyId 100001`，含人设描述）；`public/scripts/openai.js` 的拼装与聊天记录截断 |
+| `src/language/prompt.ts` | `default/content/presets/openai/Default.json` 的顺序（`dummyId 100001`，含人设描述）；`public/scripts/openai.js` 的拼装与聊天记录截断 |
 | `src/st/world-info.ts` | `public/scripts/world-info.js` 的 `checkWorldInfo` 关键词激活子集 |
 | `src/st/examples.ts` | `public/script.js` 的 `parseMesExamples`；`public/scripts/openai.js` 的 `parseExampleIntoIndividual`、`populateDialogueExamples` |
 | `src/st/macros.ts` | `{{user}}` `{{char}}` `{{original}}` `<USER>` `<BOT>` |
 | `src/st/time-macros.ts` | `public/scripts/macros/definitions/time-macros.js`：`{{time}}` `{{date}}` `{{weekday}}` `{{isotime}}` `{{isodate}}` `{{idleDuration}}`，按中文界面（moment zh-cn）格式化 |
-| `src/reply.ts` | `public/script.js` 的 `cleanUpMessage`（默认设置下生效的部分） |
+| `src/language/reply.ts` | `public/script.js` 的 `cleanUpMessage`（默认设置下生效的部分） |
 | `src/st/regex.ts` | `public/scripts/extensions/regex/engine.js` 的 `getRegexedString` / `runRegexScript`（角色卡上的 Scoped 脚本，只在 AI 输出位置）；`public/scripts/utils.js` 的 `regexFromString` |
 | `src/st/prompt-converters.ts` | `src/prompt-converters.js` 的 `postProcessPrompt` / `mergeMessages`（无工具、无多模态） |
 

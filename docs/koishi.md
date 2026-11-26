@@ -31,7 +31,7 @@
 2. 复制 `packages/koishi-app/koishi.example.yml` 到 `runtime/koishi/koishi.yml`，填 `adapter-onebot.selfId`（小号 QQ 号）和 `qqbot` 一节。
    `qqbot` 一节和 `runtime/bot/config.json` 同形（少了 `onebot`，连接归适配器），区别有三处：思考用 `llm.thinking`（`off` / `low` / `high` / `max`），
    其他额外参数 `llm.extraBody` 写成 JSON 文本，长期记忆用 `memory.enabled` 开关。
-   没写的项用 `packages/bot/src/config.ts` 的 `DEFAULTS`，控制台表单里显示的就是这些值。
+   没写的项用 `packages/bot/src/platform/config.ts` 的 `DEFAULTS`，控制台表单里显示的就是这些值。
 3. 控制台管理员密码放用户级环境变量（自己设，不进仓库、不写进 `koishi.yml`）。用下面两行，提示时输入密码，
    这样密码不会出现在命令里（Windows PowerShell 5.1 会把整行命令存进 PSReadLine 的历史文件）：
    ```powershell
