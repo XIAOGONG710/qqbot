@@ -35,8 +35,9 @@ mkdirSync(target, { recursive: true });
 
 let verified = false;
 try {
+    // 不带 -Force（目标必须是空目录）：带了的 Expand-Archive 在部分 .NET 上调不存在的三参数 ExtractToDirectory（见 restore-stages.mjs）
     execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-        `$ErrorActionPreference = 'Stop'; Expand-Archive -LiteralPath ${quoted(plan.state.path)} -DestinationPath ${quoted(target)} -Force`],
+        `$ErrorActionPreference = 'Stop'; Expand-Archive -LiteralPath ${quoted(plan.state.path)} -DestinationPath ${quoted(target)}`],
     { timeout: 10 * 60_000, stdio: 'ignore' });
     const result = verifyRestoredState(target, plan.desktopFiles);
     verified = true;

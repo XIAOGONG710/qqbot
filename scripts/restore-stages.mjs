@@ -30,8 +30,10 @@ const execFileAsync = promisify(execFile);
 async function expandArchive(archive, destination) {
     const quoted = value => `'${value.replace(/'/g, "''")}'`;
     await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-        // 进度条关掉：非交互时 PowerShell 会把进度当 CLIXML 写进 stderr；缓冲和压缩那边（execFileSync 默认 1 MB）一样大（11-27 CI 上 extract_failed）
-        `$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; Expand-Archive -LiteralPath ${quoted(archive)} -DestinationPath ${quoted(destination)} -Force`],
+        // 不带 -Force：目标是刚 mkdtemp 出来的空目录，没有要覆盖的；带了 -Force 的 Expand-Archive 在部分 .NET 上调不存在的
+        // 三参数 ExtractToDirectory（CI windows-latest：「Cannot find an overload for "ExtractToDirectory" and the argument count: "3"」，11-27）。
+        // 进度条关掉、缓冲放到 1 MB：非交互时进度会当 CLIXML 写进 stderr
+        `$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; Expand-Archive -LiteralPath ${quoted(archive)} -DestinationPath ${quoted(destination)}`],
     { timeout: 10 * 60_000, windowsHide: true, maxBuffer: 1024 * 1024 });
 }
 
