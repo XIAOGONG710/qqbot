@@ -304,12 +304,14 @@ export function createRelayCore(deps: CoreDeps): RelayCore {
         if (event.post_type !== 'notice' || !isOwner(event.user_id)) return;
         if (event.notice_type === 'friend_recall') {
             const id = Number(event.message_id);
-            if (Number.isSafeInteger(id)) void enqueue(() => recall(id));
+            // 写账失败（磁盘满等）原来被队列静默吞掉，至少留一条日志
+            if (Number.isSafeInteger(id)) void enqueue(() => recall(id)).catch(() => log('一条 QQ 撤回没能记进消息账'));
         } else if (event.notice_type === 'notify' && event.sub_type === 'poke') {
             // 她戳他的那一下在动作成功时已经记过；这里只记他戳她
             const sender = event.sender_id === undefined ? event.user_id : event.sender_id;
             if (isOwner(sender) && Number(event.target_id) === config.selfId) {
-                void enqueue(() => { emitMessage({ id: nextRelayId++, from: 'me', via: 'qq', at, parts: [{ kind: 'poke' }] }); });
+                void enqueue(() => { emitMessage({ id: nextRelayId++, from: 'me', via: 'qq', at, parts: [{ kind: 'poke' }] }); })
+                    .catch(() => log('一次 QQ 戳一戳没能记进消息账'));
             }
         }
     }

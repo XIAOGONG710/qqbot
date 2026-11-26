@@ -12,9 +12,12 @@ const text = (value: string) => [{ type: 'text', data: { text: value } }];
 
 function setup(t: TestContext, options: { delivery?: DeliveryRule; upstream?: boolean; koishi?: boolean; log?: string } = {}) {
     const storage = memoryLedgerStorage(options.log);
-    const ledger = createLedger(storage);
+    const state = { upstream: options.upstream ?? true, koishi: options.koishi ?? true, time: T0, nextQQId: 500, diskFull: false };
+    const ledger = createLedger({
+        read: () => storage.read(),
+        append(chunk) { if (state.diskFull) throw new Error('ENOSPC: synthetic disk full'); storage.append(chunk); },
+    });
     const media = createMediaStore({ dir: tempDir(t) });
-    const state = { upstream: options.upstream ?? true, koishi: options.koishi ?? true, time: T0, nextQQId: 500 };
     const calls: { action: string; params: unknown }[] = [];
     const pushed: Record<string, unknown>[] = [];
     const frames: ServerFrame[] = [];
@@ -444,4 +447,23 @@ test('日志里没有消息内容', async t => {
     await h.core.idle();
     assert.ok(h.logs.length >= 3);
     assert.equal(h.logs.some(line => line.includes('绝密')), false);
+});
+
+test('写账失败（磁盘满）时 QQ 上的撤回、戳一戳留一条日志，不静默丢掉、也不留下未处理的 rejection', async t => {
+    const h = setup(t);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    t.after(() => { process.off('unhandledRejection', onUnhandled); });
+    h.core.handleUpstreamEvent({ post_type: 'message', message_type: 'private', time: 1, self_id: HER, user_id: OWNER, message_id: 41, message: text('a') });
+    await h.core.idle();
+    h.state.diskFull = true;
+    h.core.handleUpstreamEvent({ post_type: 'notice', notice_type: 'friend_recall', time: 2, self_id: HER, user_id: OWNER, message_id: 41 });
+    h.core.handleUpstreamEvent({ post_type: 'notice', notice_type: 'notify', sub_type: 'poke', time: 3, self_id: HER, user_id: OWNER, sender_id: OWNER, target_id: HER });
+    await h.core.idle();
+    await new Promise(resolve => setImmediate(resolve));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.deepEqual(unhandled, []);
+    assert.ok(h.logs.some(line => line.includes('撤回没能记进消息账')));
+    assert.ok(h.logs.some(line => line.includes('戳一戳没能记进消息账')));
 });

@@ -298,7 +298,17 @@ export async function startAppServer(options: AppServerOptions): Promise<AppServ
 
             if (!clients.has(socket)) {
                 // 第一帧必须是 hello；凭据不对就断
-                if (frame.type !== 'hello' || !devices.verify(frame.deviceId, frame.token)) {
+                let verified = false;
+                if (frame.type === 'hello') {
+                    try { verified = devices.verify(frame.deviceId, frame.token); } catch {
+                        // 设备表读不了（比如正在手改 devices.json）：这次先断开，但不回 unauthorized——
+                        // App 收到 unauthorized 会删掉本机凭据，表修好后还得重新配对
+                        log('设备表读不了，一次连接先断开');
+                        socket.close(1011, 'device table unreadable');
+                        return;
+                    }
+                }
+                if (!verified) {
                     send(socket, { type: 'error', code: 'unauthorized', message: '凭据不对，重新配对' });
                     socket.close(1008, 'unauthorized');
                     return;
@@ -332,8 +342,16 @@ export async function startAppServer(options: AppServerOptions): Promise<AppServ
     });
 
     // 设备被撤销（另一个进程改了 devices.json）后，已经连着的那条也要断
+    let tableUnreadable = false;
     const sweep = setInterval(() => {
-        const known = new Set(devices.list().map(device => device.id));
+        let known: Set<string>;
+        // 定时器里抛错会让整个中继进程退出；表读不了就这一轮不核对，等它恢复
+        try { known = new Set(devices.list().map(device => device.id)); } catch {
+            if (!tableUnreadable) log('设备表读不了，暂停核对撤销，修好 devices.json 后自动恢复');
+            tableUnreadable = true;
+            return;
+        }
+        tableUnreadable = false;
         for (const [socket, deviceId] of clients) {
             if (known.has(deviceId)) continue;
             send(socket, { type: 'error', code: 'unauthorized', message: '这台设备已被撤销' });

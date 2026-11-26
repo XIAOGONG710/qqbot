@@ -1,7 +1,7 @@
 // 端到端：真的把中继起在 127.0.0.1 的临时端口上，上游是进程内的假 NapCat，Koishi 和手机都是进程内的 ws 客户端。
 // 不连任何真实服务；号码和名字都是虚构的。
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -630,4 +630,34 @@ test('Koishi 没连着时 App 发消息：not_delivered，不入账；重启后�
     t.after(() => reopened.stop());
     assert.equal(reopened.ledger.byClientId('lost')?.seq, 1);
     assert.equal(reopened.devices.verify(device.deviceId, device.token), true);
+});
+
+test('设备表被改坏（比如正在手改 devices.json）：中继不退出，已连着的不断，新连接先断开但不回 unauthorized；修好后恢复', async t => {
+    const { relay, base, pair, config, logs } = await startAll(t, { upstream: false });
+    const device = await pair();
+    const app = await appSocket(t, relay.appPort);
+    app.send({ type: 'hello', deviceId: device.deviceId, token: device.token, since: 0 });
+    await app.wait('ready');
+
+    const table = join(config.dataDir, 'devices.json');
+    const good = readFileSync(table, 'utf8');
+    writeFileSync(table, '{ "devices": [ 写了一半');
+    // 撤销核对每 20ms 一轮：等过好几轮
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(app.closed(), false);
+    app.send({ type: 'ping' });
+    await app.wait('pong');
+    assert.ok(logs.some(line => line.includes('设备表读不了')));
+
+    const second = await appSocket(t, relay.appPort);
+    second.send({ type: 'hello', deviceId: device.deviceId, token: device.token, since: 0 });
+    await until(() => second.closed(), '新连接被断开');
+    assert.equal(second.frames.some(frame => frame.type === 'error' && frame.code === 'unauthorized'), false, '不能让 App 以为配对失效而删掉凭据');
+    assert.notEqual((await fetch(`${base}/api/history`, { headers: { Authorization: device.authorization } })).status, 401);
+
+    writeFileSync(table, good);
+    const third = await appSocket(t, relay.appPort);
+    third.send({ type: 'hello', deviceId: device.deviceId, token: device.token, since: 0 });
+    await third.wait('ready');
+    assert.equal((await fetch(`${base}/api/history`, { headers: { Authorization: device.authorization } })).status, 200);
 });
