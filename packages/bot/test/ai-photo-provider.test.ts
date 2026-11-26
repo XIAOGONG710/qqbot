@@ -74,3 +74,23 @@ describe('AI 照片供应商与预算（ADR 0244）', () => {
     });
 });
 
+
+describe('AI 照片预算跨实例（2026-11-26 AI 照片审查）', () => {
+    test('运行中的 app 和命令行各开一个池子时，合起来也不超过每日上限', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ai-photo-shared-budget-'));
+        const now = () => new Date(2026, 10, 26, 12, 0);
+        const generate = async (_prompt: string, options: { model: string }) => ({ bytes: new Uint8Array([0xff, 0xd8, 0xff]), model: options.model });
+        const app = createAiPhotoProviderPool({ dir, providers: [providers[1]!], dailyLimit: 2, now, generate });
+        const cli = createAiPhotoProviderPool({ dir, providers: [providers[1]!], dailyLimit: 2, now, generate });
+        await app.generate('app');
+        await cli.generate('cli');
+        await assert.rejects(app.generate('app again'), /达到上限/);
+        assert.equal(app.status().attempts, 2);
+        const saved = JSON.parse(readFileSync(join(dir, 'usage.json'), 'utf8')) as { days: Array<{ attempts: number }> };
+        assert.equal(saved.days[0]!.attempts, 2);
+    });
+
+    test('本地 IPv6 回环地址按 ADR 0244 可用', () => {
+        assert.deepEqual(aiPhotoProvidersFromEnv({ QQBOT_IMAGE_LOCAL_BASE_URL: 'http://[::1]:8188/v1' }).map(item => item.id), ['local']);
+    });
+});

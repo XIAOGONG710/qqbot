@@ -62,7 +62,8 @@ const safeBaseUrl = (value: string | undefined, local: boolean): string | undefi
         const url = new URL(value.trim());
         if (url.username || url.password || url.search || url.hash) return undefined;
         if (local) {
-            if (!['http:', 'https:'].includes(url.protocol) || !['127.0.0.1', '::1', 'localhost'].includes(url.hostname)) return undefined;
+            // URL 把 IPv6 主机写成带方括号的 [::1]；不认方括号时 ADR 0244 说可以用的 ::1 实际被静默丢掉
+            if (!['http:', 'https:'].includes(url.protocol) || !['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname)) return undefined;
         } else if (url.protocol !== 'https:') return undefined;
         return url.toString();
     } catch { return undefined; }
@@ -102,7 +103,12 @@ export function createAiPhotoProviderPool(options: {
     const now = options.now ?? (() => new Date());
     const dailyLimit = Number.isInteger(options.dailyLimit) && options.dailyLimit! >= 1 && options.dailyLimit! <= 100 ? options.dailyLimit! : 4;
     const path = join(options.dir, 'usage.json');
-    let file = readJsonOr<UsageFile>(path, { version: 1, days: [] }, options.log, { validate: validUsage, invalid: 'throw', label: 'AI 照片用量' });
+    const read = (log = options.log) => readJsonOr<UsageFile>(path, { version: 1, days: [] }, log, { validate: validUsage, invalid: 'throw', label: 'AI 照片用量' });
+    let file = read();
+    // 运行中的 app、命令行 generate / smoke、控制台各开一个池子，共用同一个 usage.json：每次计数前从盘上重读，
+    // 免得一方拿着启动时的旧计数把另一方记下的尝试覆盖掉，合起来超出每日上限（2026-11-26 AI 照片审查 P1）。
+    // 要花钱的路径读不了就失败关闭；只展示的 status() 读不了时用上一份。
+    const refresh = () => { file = read(); };
     const providers = [...options.providers].sort((a, b) => Number(b.local) - Number(a.local));
     if (new Set(providers.map(provider => provider.id)).size !== providers.length) throw new Error('AI 生图供应商 id 重复');
     const call = options.generate ?? generateAiPhoto;
@@ -117,6 +123,7 @@ export function createAiPhotoProviderPool(options: {
         writeJsonAtomic(path, file);
     };
     const bump = (provider: AiPhotoProvider, outcome: 'attempt' | 'generated' | 'failed') => {
+        refresh();
         const day = current();
         const existing = day.byProvider[provider.id] ?? { attempts: 0, generated: 0, failed: 0 };
         const stats = { ...existing, ...(outcome === 'attempt' ? { attempts: existing.attempts + 1 } : outcome === 'generated' ? { generated: existing.generated + 1 } : { failed: existing.failed + 1 }) };
@@ -125,8 +132,10 @@ export function createAiPhotoProviderPool(options: {
     return {
         async generate(prompt) {
             if (!providers.length) throw new Error('没有配置 AI 生图服务');
+            refresh();
             if (current().attempts >= dailyLimit) throw new Error(`今天的 AI 生图调用已达到上限（${dailyLimit} 次）`);
             for (const provider of providers) {
+                refresh();
                 if (current().attempts >= dailyLimit) break;
                 bump(provider, 'attempt');
                 try {
@@ -142,6 +151,7 @@ export function createAiPhotoProviderPool(options: {
             throw new Error('AI 生图服务暂时不可用，或今天的调用额度已经用完');
         },
         status() {
+            try { file = read(() => {}); } catch { /* 用上一份 */ }
             const day = current();
             return { day: day.day, attempts: day.attempts, generated: day.generated, failed: day.failed, remaining: Math.max(0, dailyLimit - day.attempts), providers: providers.map(provider => provider.id) };
         },
