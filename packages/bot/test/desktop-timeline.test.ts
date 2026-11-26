@@ -208,7 +208,7 @@ test('账本缓存：同一分钟里文件没变不重读，换了分钟或文�
         const row = (when: number) => JSON.stringify({ v: 1, id: desktopLogId(when, '在吗', '在'), at: new Date(when).toISOString(), user: '在吗', assistant: '在' });
         writeFileSync(desktopLogPath(dataDir), `${row(at)}\n`);
         let reads = 0;
-        const ops = { ...desktopLogOps, readText: (path: string, maxBytes?: number) => { reads++; return desktopLogOps.readText(path, maxBytes); } };
+        const ops = { ...desktopLogOps, readText: (path: string) => { reads++; return desktopLogOps.readText(path); } };
         const src = desktopNowSource({ dataDir, soulDir: join(root, 'soul'), ops });
         src.turns(t(16)); src.turns(t(16) + 30_000);
         assert.equal(reads, 1);

@@ -788,16 +788,21 @@ describe('同一个她·第 2 层：DSH 读他刚在 QQ 上聊的（ADR 0177）'
 });
 
 describe('同一个她·第 2 层：DSH 桌面对话回合记给 QQ 读（ADR 0177）', () => {
-    test('桌面对话记一行 { at, user, assistant }；超长截断；最多留 40 行', async () => {
+    test('QQ 离线超过 40 轮，恢复导入时窗口内回合齐全，反复导入不重复', async () => {
         await withChannel(undefined, () => {
             const c = crossRoot();
+            cross().recordDesktopTurn(c.cfg, '窗口外', '好', T - 15 * 86_400_000);
             for (let i = 0; i < 45; i++) assert.equal(cross().recordDesktopTurn(c.cfg, `第${i}句`, i === 44 ? '长'.repeat(900) : '好', T + i), true);
             const rows = readFileSync(c.files.desktopFile, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as { at: number; user: string; assistant: string });
-            assert.equal(rows.length, 40);
-            assert.equal(rows[0]!.user, '第5句', '最老的 5 行被挤掉');
+            assert.equal(rows.length, 45);
+            assert.equal(rows[0]!.user, '第0句');
             assert.equal(rows.at(-1)!.at, T + 44);
             assert.ok([...rows.at(-1)!.assistant].length <= 601, '超长截断');
             assert.equal(readdirSync(join(c.root, 'memory')).filter(name => name.endsWith('.tmp')).length, 0, '临时文件不留');
+            const logFile = join(c.root, 'memory', 'desktop-log.jsonl');
+            const options = { recentFile: c.files.desktopFile, logFile, now: T + 44 + 60_000 };
+            assert.equal(ingestDesktopRecent(options).added, 45);
+            assert.equal(ingestDesktopRecent(options).added, 0);
         });
     });
 
@@ -1350,7 +1355,7 @@ describe('一个生活·第 2 层：桌面进门拿到「此刻的她」（SELF.
     });
 });
 
-// ───────── 一个生活·第 3 层地基（ADR 0347，方案 docs/plans/2026-11-22-same-her-layer3-writeback.md §2.1）：userAt、40 行、在场租约 ─────────
+// ───────── 一个生活·第 3 层地基（ADR 0347）：userAt、回写保留窗口和在场租约 ─────────
 
 interface PresenceApi {
     recordDesktopTurn: (cfg: unknown, user: string, assistant: string, now?: number, userAt?: unknown) => boolean;
@@ -1363,7 +1368,7 @@ const presence = () => plugin as unknown as PresenceApi;
 const desktopRows = (file: string) => readFileSync(file, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as { at: number; userAt?: number; user: string; assistant: string });
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-describe('一个生活·第 3 层：桌面回合多记他开口的时刻（userAt），40 行名副其实', () => {
+describe('一个生活·第 3 层：桌面回合记录开口时刻和离线回写', () => {
     test('整条路径：userAt 是本轮第一次 pre-step 记下他原话的那一刻，工具调用后的 pre-step 不改它；at 仍是一轮结束', async () => {
         await withChannel(undefined, async () => {
             const fake = fakeHindsight({ banks: ALL_BANKS });
@@ -1422,15 +1427,17 @@ describe('一个生活·第 3 层：桌面回合多记他开口的时刻（userA
         });
     });
 
-    test('每行都长（两边各 600 个汉字）：照样留满 40 行（原来只读最后 64 KB，实际只剩十几行）', async () => {
+    test('长回合使回写文件超过 1 MiB，重连导入仍从第一轮开始', async () => {
         await withChannel(undefined, () => {
             const c = crossRoot();
-            for (let i = 0; i < 45; i++) assert.equal(presence().recordDesktopTurn(c.cfg, `${i}`.padEnd(600, '他'), '她'.repeat(600), T + i, T + i - 1000), true);
+            for (let i = 0; i < 300; i++) assert.equal(presence().recordDesktopTurn(c.cfg, `${i}`.padEnd(600, '他'), '她'.repeat(600), T + i, T + i - 1000), true);
             const rows = desktopRows(c.files.desktopFile);
-            assert.ok(statSync(c.files.desktopFile).size > 64 * 1024, '对照：文件确实比 64 KB 大');
-            assert.equal(rows.length, 40);
-            assert.ok(rows[0]!.user.startsWith('5他'), '最老的 5 行被挤掉');
-            assert.equal(rows.at(-1)!.at, T + 44);
+            assert.ok(statSync(c.files.desktopFile).size > 1024 * 1024);
+            assert.equal(rows.length, 300);
+            assert.ok(rows[0]!.user.startsWith('0他'));
+            const options = { recentFile: c.files.desktopFile, logFile: join(c.root, 'memory', 'desktop-log.jsonl'), now: T + 60_000 };
+            assert.equal(ingestDesktopRecent(options).added, 300);
+            assert.equal(ingestDesktopRecent(options).added, 0);
         });
     });
 });

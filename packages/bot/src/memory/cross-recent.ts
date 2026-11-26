@@ -2,7 +2,7 @@
 //
 // 为什么：共用一份记忆（ADR 0176）以后，她在 QQ 上和在 DSH 桌面上仍然「不知道对方刚才发生了什么」——记忆是语义召回，刚说完的话不一定召得回来，
 // 也要等 Hindsight 整理。他在电脑上让她整理了文件，转头在 QQ 上问「弄好了吗」，她得知道。反过来，他刚在 QQ 上说了心情不好，回到电脑前她也该知道。
-//   · DSH → QQ：DSH 插件每个桌面对话回合往 <数据目录>/memory/desktop-recent.jsonl 追加一行 { at, user, assistant }（最近 40 行），QQ 这边读最近几行放进提示词；
+//   · DSH → QQ：DSH 在 desktop-recent.jsonl 保留 14 天回合，QQ 提示词仍只取最近几轮；
 //   · QQ → DSH：DSH 插件读他的 QQ 聊天记录文件（chats/<QQ>.jsonl）的最后几行放进提示词（这个读法在插件里，见 dsh-plugins/dsh-linmengyao-memory/index.js）。
 // 只给男朋友档（他在桌面上的对话不会出现在别人的提示词里）。窗口 6 小时：更早的靠语义召回。
 // 机器自己发起的回合（QQ 工作模式派的活、随机醒来 / 睡眠整合的提示）不算「桌面对话」，由环境变量 HER_CHANNEL 标出来，插件不记。

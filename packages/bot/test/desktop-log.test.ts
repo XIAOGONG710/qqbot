@@ -158,7 +158,7 @@ describe('desktop-log：从插件整份重写的 desktop-recent.jsonl 收进 QQ 
         assert.throws(() => h.ingest(T, failing), /busy/);
         assert.equal(readFileSync(h.logFile, 'utf8'), before);
         assert.deepEqual(readdirSync(join(h.dataDir, 'memory')).filter(name => name.includes('.tmp')), []);
-        const unreadable: DesktopLogOps = { ...desktopLogOps, readText: (path, max) => { if (path === h.logFile) throw Object.assign(new Error('locked'), { code: 'EBUSY' }); return desktopLogOps.readText(path, max); } };
+        const unreadable: DesktopLogOps = { ...desktopLogOps, readText: path => { if (path === h.logFile) throw Object.assign(new Error('locked'), { code: 'EBUSY' }); return desktopLogOps.readText(path); } };
         assert.throws(() => h.ingest(T, unreadable), /locked/);
         assert.equal(readFileSync(h.logFile, 'utf8'), before);
         assert.equal(h.ingest().added, 1, '对照：读得了就照常收');
@@ -171,12 +171,13 @@ describe('desktop-log：从插件整份重写的 desktop-recent.jsonl 收进 QQ 
         assert.deepEqual(desktopTurns(h.dataDir, T), []);
     });
 
-    test('来源超过 1 MB：只读尾部，头上截断的那一行丢掉，最后的照收', () => {
+    test('来源超过 1 MB：还能导入第一条及最后一条，重读没有新增', () => {
         const h = setup();
         const filler = Array.from({ length: 400 }, (_, i) => JSON.stringify(turn(100 + i, `旧${i}`.padEnd(600, '。'), '。'.repeat(600))));
         h.writeRecent([...filler, turn(1, '最后一句ZQL')]);
         const result = h.ingest();
-        assert.ok(result.added > 0 && result.added < 401);
+        assert.equal(result.added, 401);
+        assert.equal(h.ingest().added, 0);
         assert.ok(readFileSync(h.logFile, 'utf8').includes('最后一句ZQL'));
     });
 });

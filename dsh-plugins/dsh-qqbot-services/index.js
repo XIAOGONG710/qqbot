@@ -463,7 +463,7 @@ export function createHandler(controller, events, chat, connection, now = Date.n
       try {
         if (path === `${prefix}/chat/list`) return send(200, await chat.list())
         if (path === `${prefix}/chat/history`) {
-          const messages = await chat.history(query.get('key'), query.get('count'))
+          const messages = await chat.history(query.get('key'), query.get('count'), query.get('accountId'))
           return messages ? send(200, { messages }) : send(404, { error: 'unknown_conversation' })
         }
         if (path === `${prefix}/chat/prepare` || path === `${prefix}/chat/send`) {

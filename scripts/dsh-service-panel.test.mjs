@@ -198,7 +198,8 @@ test('client registers the same bridge console in DSH settings and the sidebar',
 test('the DSH chat form commits only after the operator accepts the server preview', async () => {
     let panel, plugin, accepted = false;
     let theme;
-    const requests = [], previews = [];
+    const requests = [], previews = [], effects = [], timers = [];
+    let historyResult = [{ id: '1', text: '断线前' }];
     const account = { id: '100', name: '测试账号' };
     const recipient = { key: 'private:200', target: '200', kind: 'private', name: '测试收件人' };
     const draft = '合成消息';
@@ -210,16 +211,22 @@ test('the DSH chat form commits only after the operator accepts the server previ
         createElement: (type, props, ...children) => ({ type, props, children }),
         useState: () => [states.shift(), value => stateUpdates.push(value)],
         useRef: current => ({ current }),
-        useEffect() {},
+        useEffect: effect => effects.push(effect),
         useId: () => 'test',
     };
     runInNewContext(source, {
+        AbortController, URLSearchParams, setTimeout: callback => timers.push(callback), clearTimeout() {},
         document: { getElementById: () => theme ?? null, createElement: () => ({}), head: { appendChild: style => { theme = style; } } },
         window: {
             __ModuleLoader__: { load(bundle) { plugin = bundle.factory(() => React); } },
             confirm(message) { previews.push(message); return accepted; },
         },
         fetch: async (url, options) => {
+            if (url.includes('/history?')) {
+                assert.equal(new URLSearchParams(url.split('?')[1]).get('accountId'), account.id);
+                if (!historyResult) throw Error('synthetic disconnect');
+                return { ok: true, json: async () => ({ messages: historyResult }) };
+            }
             requests.push([url.split('/').at(-1), JSON.parse(options.body)]);
             return { ok: true, json: async () => ({ confirmation: 'synthetic', preview: { account, recipient, text } }) };
         },
@@ -239,7 +246,7 @@ test('the DSH chat form commits only after the operator accepts the server previ
     const chat = find(root, node => node.type?.name === 'Chat');
     states = [{ account, sessions: [recipient], sendKey: recipient.key, sendPrefix: '【本人手动代发】' }, recipient.key, '', 0, false];
     const conversation = find(chat.type(chat.props), node => node.type?.name === 'Conversation');
-    states = [30, null, '', draft, false, 0];
+    states = [30, null, '', draft, false, 0, false];
     const { props: form } = find(conversation.type(conversation.props), node => node.type === 'form');
     assert.equal(form.className, 'qqb-composer');
     await form.onSubmit({ preventDefault() {} });
@@ -250,6 +257,20 @@ test('the DSH chat form commits only after the operator accepts the server previ
     assert.match(previews.at(-1), /测试账号（100）.*测试收件人（200）/);
     assert.ok(previews.at(-1).endsWith(text));
     assert.deepEqual(requests.at(-1), ['send', { key: recipient.key, accountId: account.id, text: draft, confirmation: 'synthetic' }]);
+    stateUpdates.length = 0;
+    const cleanup = effects.at(-1)();
+    try {
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(stateUpdates, [historyResult, false]);
+        stateUpdates.length = 0;
+        historyResult = null;
+        await timers.shift()();
+        assert.deepEqual(stateUpdates, [true], '离线只改连接状态，列表不清空');
+        stateUpdates.length = 0;
+        historyResult = [{ id: '1', text: '断线前' }, { id: '2', text: '断线中' }];
+        await timers.shift()();
+        assert.deepEqual(stateUpdates, [historyResult, false]);
+    } finally { cleanup(); }
 });
 
 test('PowerShell launchers hold one shared lock for the whole foreground run', { skip: process.platform !== 'win32', timeout: 20_000 }, async () => {

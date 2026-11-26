@@ -183,7 +183,7 @@ assert.equal(response.payload.diagnostic.split('\n')[0], '林梦瑶 · DSH 服�
 response = await call('POST', 'chat/list')
 assert.equal(response.status, 200)
 assert.deepEqual(response.payload.sessions.map(session => session.key), ['private:200', 'group:300'])
-response = await call('POST', 'chat/history?key=private%3A200')
+response = await call('POST', 'chat/history?key=private%3A200&accountId=100')
 assert.equal(response.status, 200)
 assert.equal(response.payload.messages[0].text, '合成私聊')
 

@@ -1,7 +1,7 @@
 // 桌面对话收进 QQ 自己的账（ADR 0347 第 3 层地基，方案 docs/plans/2026-11-22-same-her-layer3-writeback.md §2.1「采集」）。
 // 只是纯读写，还没接线（开关 desktopDay 由主会话加），不改她的言行。
 //
-// - 来源：<数据目录>/memory/desktop-recent.jsonl，DSH 插件写（每轮一行 { at, user, assistant, userAt? }，最近 40 行），
+// - 来源：<数据目录>/memory/desktop-recent.jsonl，DSH 插件写（每轮一行 { at, user, assistant, userAt? }，最近 14 天），
 //   而且是**整份重写**（临时文件再改名），不是只追加——所以不能用 dsh-inbox.ts 那种按行号的游标，按 id 去重。
 // - 去处：<数据目录>/memory/desktop-log.jsonl，QQ 写、插件不读；每行
 //   { v: 1, id: 'dk-<at 毫秒>-<sha256(user + assistant) 前 8 位>', at: ISO（一轮结束）, userAt?: ISO（他开口）, user: ≤600 字, assistant: ≤600 字 }。
@@ -13,7 +13,7 @@
 // 文件读写和时间都由调用方给（ops / now），测试里可以换。
 
 import { createHash } from 'node:crypto';
-import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { desktopRecentPath } from './cross-recent.ts';
 import type { PresenceTurn } from '../life/desktop-presence.ts';
@@ -28,8 +28,6 @@ export const DESKTOP_LOG_FUTURE_SLACK_MS = 60_000;
 export const DESKTOP_LOG_TEXT_CHARS = 600;
 /** 他开口到一轮结束最长算这么久；userAt 比这还早（或晚于 at）就当没有 userAt，免得一个错的时刻把会话开始拉到几天前 */
 export const DESKTOP_TURN_MAX_MS = 3 * 3_600_000;
-/** desktop-recent.jsonl 最多读这么多字节（插件只留 40 行，最坏每行 8 KB 左右；超了只读尾部） */
-export const DESKTOP_RECENT_MAX_BYTES = 1024 * 1024;
 
 const ID_RE = /^dk-\d{1,16}-[0-9a-f]{8}$/;
 
@@ -56,7 +54,7 @@ export interface DesktopLogTurn extends PresenceTurn {
 
 /** 文件操作（测试里可以换成会失败的版本）；readText 遇到「没有这个文件」返回 undefined，别的错误照抛 */
 export interface DesktopLogOps {
-    readText(path: string, maxBytes?: number): string | undefined;
+    readText(path: string): string | undefined;
     writeText(path: string, text: string): void;
     rename(from: string, to: string): void;
     unlink(path: string): void;
@@ -69,23 +67,8 @@ const enoent = (error: unknown) => {
 };
 
 export const desktopLogOps: DesktopLogOps = {
-    readText(path, maxBytes) {
-        if (maxBytes === undefined) {
-            try { return readFileSync(path, 'utf8'); } catch (error) { if (enoent(error)) return undefined; throw error; }
-        }
-        let fd: number;
-        try { fd = openSync(path, 'r'); } catch (error) { if (enoent(error)) return undefined; throw error; }
-        try {
-            const size = fstatSync(fd).size;
-            const start = Math.max(0, size - maxBytes);
-            const buffer = Buffer.alloc(size - start);
-            readSync(fd, buffer, 0, buffer.length, start);
-            const text = buffer.toString('utf8');
-            if (!start) return text;
-            // 只读了尾部：头上那一行可能被截断，丢掉
-            const cut = text.indexOf('\n');
-            return cut < 0 ? '' : text.slice(cut + 1);
-        } finally { closeSync(fd); }
+    readText(path) {
+        try { return readFileSync(path, 'utf8'); } catch (error) { if (enoent(error)) return undefined; throw error; }
     },
     writeText: (path, text) => writeFileSync(path, text),
     rename: renameSync,
@@ -207,7 +190,7 @@ export function ingestDesktopRecent(options: DesktopIngestOptions): DesktopInges
     const kept = existing.rows.filter(row => row.at >= now - DESKTOP_LOG_KEEP_MS);
     const pruned = existing.rows.length - kept.length;
     const ids = new Set(kept.map(row => row.id));
-    const source = parseLines(ops.readText(options.recentFile, DESKTOP_RECENT_MAX_BYTES) ?? '', value => parseRecentRow(value, now));
+    const source = parseLines(ops.readText(options.recentFile) ?? '', value => parseRecentRow(value, now));
     const added: DesktopLogTurn[] = [];
     for (const turn of source.rows) {
         const id = desktopLogId(turn.at, turn.user, turn.assistant);

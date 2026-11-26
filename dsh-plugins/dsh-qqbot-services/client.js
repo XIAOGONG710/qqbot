@@ -267,24 +267,25 @@ window.__ModuleLoader__.load({
       const [draft, setDraft] = React.useState('')
       const [sending, setSending] = React.useState(false)
       const [refresh, setRefresh] = React.useState(0)
+      const [historyError, setHistoryError] = React.useState(false)
       const busy = React.useRef(false)
       React.useEffect(() => {
         const controller = new AbortController()
         let timer
         const update = async () => {
           try {
-            const query = new URLSearchParams({ key: session.key, count: String(count) })
+            const query = new URLSearchParams({ key: session.key, accountId: account.id, count: String(count) })
             const result = await request(`history?${query}`, { signal: controller.signal })
-            if (!controller.signal.aborted) setMessages(result.messages)
+            if (!controller.signal.aborted) { setMessages(result.messages); setHistoryError(false) }
           } catch {
-            if (!controller.signal.aborted) setMessages(false)
+            if (!controller.signal.aborted) setHistoryError(true)
           } finally {
             if (!controller.signal.aborted) timer = setTimeout(update, 5000)
           }
         }
         void update()
         return () => { controller.abort(); clearTimeout(timer) }
-      }, [session.key, count, revision, refresh])
+      }, [session.key, account.id, count, revision, refresh])
       const submit = async event => {
         event.preventDefault()
         if (!canSend || busy.current || !draft.trim()) return
@@ -318,8 +319,8 @@ window.__ModuleLoader__.load({
           setCount(value)
           try { window.localStorage.setItem(viewKey, String(value)) } catch { /* 当前页面仍可设置 */ }
         } }, ...[15, 30, 60].map(value => h('option', { value, key: value }, value))))),
-        messages === null && h('p', { className: 'qqb-chat-empty', role: 'status' }, '正在读取消息…'),
-        messages === false && h('p', { className: 'qqb-chat-empty', role: 'status' }, '暂时读不到消息，将自动重试。'),
+        messages === null && !historyError && h('p', { className: 'qqb-chat-empty', role: 'status' }, '正在读取消息…'),
+        historyError && h('p', { className: 'qqb-chat-empty', role: 'status' }, '暂时读不到新消息，将自动重试。'),
         messages?.length === 0 && h('p', { className: 'qqb-chat-empty' }, '近期没有消息。'),
         Array.isArray(messages) && h('ol', { className: 'qqb-feed' },
           ...messages.map((message, index) => h('li', { key: `${message.id}-${index}`,

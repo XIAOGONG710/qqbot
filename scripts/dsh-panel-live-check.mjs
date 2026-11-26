@@ -82,7 +82,8 @@ async function call(method, route, body) {
   })
   // 只回状态码和错误码，不回内容：巡检输出要能贴给用户看，不能带真实数据。
   const code = payload && typeof payload === 'object' && typeof payload.error === 'string' ? ` ${payload.error}` : ''
-  return { route: `${method} ${route}`, status, code }
+  return { route: `${method} ${route.replace(/(accountId=|private:)\d+/g, '$1<id>')}`, status, code,
+    ...(route === 'chat/list' ? { accountId: payload?.account?.id } : {}) }
 }
 
 const latest = backupEntries(join(root, 'runtime', 'backups')).find(item => item.complete)?.name
@@ -98,11 +99,12 @@ const checks = [
   ['GET', 'memory/search?q=%E6%9C%80%E8%BF%91'],
   ['GET', 'memory/graph?q=%E6%9C%80%E8%BF%91'],
   ['POST', 'chat/list'],
-  ...(owner ? [['POST', `chat/history?key=private:${owner}&count=15`]] : []),
 ]
 
 const results = []
 for (const [method, route] of checks) results.push(await call(method, route))
+const account = results.at(-1)?.accountId
+if (owner && account) results.push(await call('POST', `chat/history?key=private:${owner}&accountId=${account}&count=15`))
 
 for (const item of results) {
   console.log(`${item.status === 200 ? 'ok  ' : 'FAIL'} ${item.route} -> ${item.status}${item.code}`)

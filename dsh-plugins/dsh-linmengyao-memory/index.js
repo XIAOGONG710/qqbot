@@ -568,11 +568,8 @@ export function ownerBanks(cfg) {
 const CROSS_WINDOW_MS = 6 * 3_600_000
 const CROSS_TAIL_BYTES = 64 * 1024
 const CROSS_LINE_CHARS = 200
-const DESKTOP_KEEP = 40
-// 重写 desktop-recent.jsonl 时读回多少字节来留最近 40 行（ADR 0347 第 3 层方案 §2.1）：原来用 CROSS_TAIL_BYTES（64 KB），
-// 一行两边各 600 字、中文 3 字节，一行就要 3.6 KB 多，实际只留下十几行。最坏一行：两边各 601 个码点、每个按 JSON 转义最多 6 字节，
-// 加字段名和时间不到 7.4 KB，所以按每行 8 KB 留够：40 行最多读 320 KB，读的大小仍然有上限。
-const DESKTOP_TAIL_BYTES = DESKTOP_KEEP * 8 * 1024
+// 与 QQ 桌面账的接收窗口一致。提示词仍只取最近几轮。
+const DESKTOP_KEEP_MS = 14 * 86_400_000
 
 /** 这一轮是谁发起的：桌面上他自己在和她说话 = desktop；QQ 工作模式派的活 / 随机醒来 / 睡眠整合由派活的一方设 HER_CHANNEL，那些不算「桌面对话」 */
 const channel = () => process.env.HER_CHANNEL || 'desktop'
@@ -670,7 +667,7 @@ export function qqRecentBlock(cfg, now = Date.now()) {
 }
 
 /**
- * 桌面对话回合记一行给 QQ 那边读（<数据目录>/memory/desktop-recent.jsonl，最近 40 行）。
+ * 桌面对话回合记一行给 QQ 那边读（<数据目录>/memory/desktop-recent.jsonl，最近 14 天）。
  * 只记桌面上他自己和她说的话；机器自己发起的回合（HER_CHANNEL 不是 desktop）、QQ 没开 crossRecent（owner-bank.json 里没有 desktopFile）都不记。返回有没有记。
  * at 是一轮结束的时刻；userAt（ADR 0347 第 3 层，可缺）是这一轮在 pre-step 里第一次记下他原话的时刻，不是有限数或晚于 at 就不写。
  * QQ 那边的旧读法（cross-recent.ts 的 readDesktopTurns）只看 at / user / assistant，多一个字段不影响。
@@ -686,11 +683,25 @@ export function recordDesktopTurn(cfg, user, assistant, now = Date.now(), userAt
     assistant: clipText(assistant, 600),
   }
   if (!row.user && !row.assistant) return false
-  const keep = tailLines(file, DESKTOP_TAIL_BYTES).filter((line) => { try { return typeof JSON.parse(line).at === 'number' } catch { return false } }).slice(-(DESKTOP_KEEP - 1))
+  let previous = ''
+  try { previous = fs.readFileSync(file, 'utf8') } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+  const keep = previous.split('\n').filter((line) => {
+    if (!line.trim()) return false
+    try {
+      const at = JSON.parse(line)?.at
+      return Number.isSafeInteger(at) && at >= now - DESKTOP_KEEP_MS
+    } catch { return false }
+  })
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  const tmp = `${file}.${process.pid}.tmp`
-  fs.writeFileSync(tmp, `${[...keep, JSON.stringify(row)].join('\n')}\n`)
-  fs.renameSync(tmp, file)
+  const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    fs.writeFileSync(tmp, `${[...keep, JSON.stringify(row)].join('\n')}\n`)
+    fs.renameSync(tmp, file)
+  } finally {
+    try { fs.rmSync(tmp, { force: true }) } catch { /* 保留原始写入错误 */ }
+  }
   return true
 }
 

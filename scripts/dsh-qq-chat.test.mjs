@@ -20,12 +20,50 @@ test('lists friends and groups and fetches only the selected conversation', asyn
     }[action]
   })
   assert.deepEqual((await chat.list()).sessions.map(({ key }) => key), ['private:200', 'group:300'])
-  assert.equal(await chat.history('group:999'), null)
-  const [message] = await chat.history('group:300')
+  assert.equal(await chat.history('group:999', 30, '100'), null)
+  const [message] = await chat.history('group:300', 30, '100')
   assert.equal(message.text, '你好[图片]')
   assert.equal(message.sender, '群名片')
   assert.equal(JSON.stringify(message).includes('kept-private'), false)
-  assert.deepEqual(calls.at(-1), ['get_group_msg_history', { group_id: 300, count: 30 }])
+  assert.deepEqual(calls.at(-1), ['get_group_msg_history', { group_id: 300, count: 60 }])
+})
+
+test('reconnect restores the missed rows once and rejects a changed QQ account', async () => {
+  let online = true, account = 100
+  const old = { message_id: 7, time: 20, sender: { user_id: 200 }, message: '断线前' }
+  const fresh = { message_id: 8, time: 21, sender: { user_id: 200 }, message: '断线中' }
+  let history = [old]
+  let pulls = 0
+  const chat = createChat(createNapCatReader({ connect() {
+    const socket = new EventTarget()
+    let verified = false
+    socket.close = () => socket.dispatchEvent(new Event('close'))
+    socket.send = frame => {
+      const { action, echo } = JSON.parse(frame)
+      let data
+      if (action === 'get_login_info') { verified = true; data = { user_id: account } }
+      if (action === 'get_friend_list') data = [{ user_id: 200 }]
+      if (action === 'get_friend_msg_history') {
+        assert.equal(verified, true, 'history must be scoped on the same connection')
+        pulls++
+        data = { messages: history }
+      }
+      socket.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ status: 'ok', retcode: 0, echo, data }) }))
+    }
+    queueMicrotask(() => socket.dispatchEvent(new Event(online ? 'open' : 'close')))
+    return socket
+  } }))
+  const poll = () => chat.history('private:200', 30, '100')
+  assert.deepEqual((await poll()).map(row => row.id), ['7'])
+  online = false
+  await assert.rejects(poll, /napcat_closed/)
+  online = true
+  history = [old, old, fresh, fresh]
+  assert.deepEqual((await poll()).map(row => row.id), ['7', '8'])
+  assert.deepEqual((await poll()).map(row => row.id), ['7', '8'])
+  account = 101
+  await assert.rejects(poll)
+  assert.equal(pulls, 3)
 })
 
 test('manual sending requires an owner-only transport and explicit matching account', async () => {
@@ -80,7 +118,7 @@ test('chat routes use the host session and an exact, single-use confirmation', a
   assert.equal((await call('POST', 'chat/list')).status, 403)
   assert.equal((await call('POST', 'chat/list', { cookie: 'dsh-auth-forged=true' })).status, 403)
   assert.equal((await call('POST', 'chat/list', headers)).payload.account.id, '100')
-  assert.equal((await call('POST', 'chat/history?key=private%3A444', headers)).status, 404)
+  assert.equal((await call('POST', 'chat/history?key=private%3A444&accountId=100', headers)).status, 404)
   const message = { key: 'private:200', accountId: '100', text: '仅测试' }
   const post = (path, value, auth = headers) => call('POST', path, auth, JSON.stringify(value))
   assert.equal((await post('chat/send', message)).status, 403)

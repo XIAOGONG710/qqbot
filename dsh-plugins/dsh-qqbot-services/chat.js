@@ -66,27 +66,39 @@ export function createChat(call, { ownerId, send, historyMedia } = {}) {
       return { account: self, sessions: [...friends, ...groups], sendKey: canSend ? `private:${manualTarget}` : null,
         ...(canSend ? { sendPrefix: manualOrigin.prefix } : {}) }
     },
-    async history(key, count = 30) {
+    async history(key, count = 30, expectedAccount) {
+      if (typeof expectedAccount !== 'string' || id(expectedAccount) !== expectedAccount) return null
       const session = await find(key)
       if (!session) return null
       const group = session.kind === 'group'
       const requested = Number(count)
       const limit = [15, 30, 60].includes(requested) ? requested : 30
       const result = await call(group ? 'get_group_msg_history' : 'get_friend_msg_history', {
-        [group ? 'group_id' : 'user_id']: Number(session.target), count: limit,
-      })
-      return list(result?.messages).filter(message => message && (!group || message.group_id == null ||
-        id(message.group_id) === session.target)).slice(-limit).map(message => {
+        [group ? 'group_id' : 'user_id']: Number(session.target), count: 60,
+      }, expectedAccount)
+      if (!Array.isArray(result?.messages)) throw Error('history_unavailable')
+      const seen = new Set()
+      const rows = result.messages.flatMap(message => {
+        if (!message || group && message.group_id != null && id(message.group_id) !== session.target) return []
         const senderId = id(message.sender?.user_id ?? message.user_id)
-        return {
-          id: Number.isSafeInteger(message.message_id) ? String(message.message_id) : null,
-          at: Number.isSafeInteger(message.time) && message.time > 0 && message.time < 253402300800 ? message.time : null,
+        const messageId = Number.isSafeInteger(message.message_id) ? String(message.message_id) : null
+        const at = Number.isSafeInteger(message.time) && message.time > 0 && message.time < 253402300800 ? message.time : null
+        const text = textOf(message.message)
+        if (messageId !== null && at !== null) {
+          // ID 可能复用，以时间、发送者、序号和正文区分实际不同的消息。
+          const key = JSON.stringify([messageId, at, senderId, String(message.real_seq ?? ''), text])
+          if (seen.has(key)) return []
+          seen.add(key)
+        }
+        return [{ id: messageId, at,
           senderId,
           sender: String(message.sender?.card || message.sender?.nickname || senderId || '未知发送者'),
-          text: textOf(message.message),
-          ...(historyMedia ? { media: historyMedia.register(key, message.message) } : {}),
-        }
-      }).sort((a, b) => a.at - b.at)
+          text, raw: message.message,
+        }]
+      })
+      return rows.sort((a, b) => a.at - b.at).slice(-limit).map(({ raw, ...message }) => ({
+        ...message, ...(historyMedia ? { media: historyMedia.register(key, raw) } : {}),
+      }))
     },
     media: id => historyMedia?.read(id) ?? null,
     async prepare(payload) {
@@ -138,11 +150,18 @@ function exchange({ token, connect = url => new WebSocket(url), timeout = 5000 }
 }
 
 export function createNapCatReader(options) {
-  return async (action, params) => {
+  return async (action, params, expectedAccount) => {
     if (!['get_login_info', 'get_friend_list', 'get_group_list', 'get_friend_msg_history', 'get_group_msg_history'].includes(action)) {
       throw Error('read_action_required')
     }
-    return exchange(options, [() => ({ action, params })])
+    if (expectedAccount === undefined) return exchange(options, [() => ({ action, params })])
+    return exchange(options, [
+      () => ({ action: 'get_login_info', params: {} }),
+      login => {
+        if (id(login?.user_id) !== expectedAccount) throw Error('account_changed')
+        return { action, params }
+      },
+    ])
   }
 }
 
