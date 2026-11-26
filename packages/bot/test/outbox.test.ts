@@ -5,6 +5,9 @@ import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { inspectReply } from '../src/language/exit-check.ts';
 import { outboxDesktopBlock } from '../src/life/desktop-now.ts';
+import { fileOps } from '../src/memory/json-file.ts';
+import { OneBotNotDispatched } from '../src/platform/onebot.ts';
+import { reconcileOutboxHistory } from '../src/social/outbox-host.ts';
 import { drainOutbox, OUTBOX_DAILY_MAX, OUTBOX_MAX_AGE_MS, OUTBOX_MIN_GAP_MS, OUTBOX_MAX_TRIES, type OutboxDeps } from '../src/social/outbox.ts';
 
 const dirs: string[] = [];
@@ -29,7 +32,7 @@ function harness(options: { now?: number; blocked?: string; failSends?: number; 
         now: () => clock.now,
         blocked: () => options.blocked,
         inspect: options.inspect ?? (() => undefined),
-        send: async text => { if (failures > 0) { failures--; throw new Error('网络不通'); } sent.push(text); return 1000 + sent.length; },
+        send: async text => { if (failures > 0) { failures--; throw new OneBotNotDispatched('网络不通'); } sent.push(text); return 1000 + sent.length; },
         record: (text, id, at) => { recorded.push({ text, id, at }); },
         log: message => { logs.push(message); },
     };
@@ -43,6 +46,55 @@ function harness(options: { now?: number; blocked?: string; failSends?: number; 
 }
 
 describe('主动留话（ADR 0174）：outbox 不再是直通的', () => {
+    test('QQ 已确认但本地提交失败，重建时按真实历史匹配补记且不重发', async ({ mock }) => {
+        const h = harness();
+        const scope = '20001:10001';
+        writeFileSync(h.file, row('本地提交断点', T0));
+        await assert.rejects(drainOutbox({ ...h.deps, scope, send: async text => {
+            const id = await h.deps.send(text);
+            mock.method(fileOps, 'renameSync', () => { throw new Error('合成落盘中断'); });
+            return id;
+        } }), /合成落盘中断/);
+        mock.restoreAll();
+        assert.deepEqual(h.recorded, []);
+        h.clock.now += min(1);
+        const history = [{ message_id: 1001, time: T0 / 1000, sender: { user_id: 20001 }, message: '本地提交断点' }];
+        const restart: OutboxDeps = { ...h.deps, scope, reconcile: async (text, startedAt) => reconcileOutboxHistory(history, 20001, text, startedAt) };
+        await drainOutbox({ ...restart, scope: '其他账号' });
+        assert.deepEqual(h.recorded, []);
+        await drainOutbox(restart);
+        await drainOutbox(restart);
+        assert.deepEqual(h.sent, ['本地提交断点']);
+        assert.deepEqual(h.recorded, [{ text: '本地提交断点', id: 1001, at: T0 }]);
+    });
+
+    test('QQ 历史空页、只有对方同文、重复候选或太早的同文都属未知', () => {
+        const match = { message_id: 1001, time: T0 / 1000, user_id: 20001, message: '待核对' };
+        for (const rows of [[], [{ ...match, user_id: 10001 }], [match, { ...match, message_id: 1002 }], [{ ...match, time: match.time - 1 }]]) {
+            assert.deepEqual(reconcileOutboxHistory(rows, 20001, '待核对', T0), { kind: 'unknown' });
+        }
+    });
+    test('发送结果丢失后先核对，确认送达只补记，确认未送达才补发', async () => {
+        for (const received of [true, false]) {
+            const h = harness();
+            writeFileSync(h.file, row('断点留话', T0));
+            const interrupted = { ...h.deps, send: async (text: string) => {
+                if (received) h.sent.push(text);
+                throw new Error('合成断点');
+            } };
+            await drainOutbox(interrupted);
+            const unknown = await drainOutbox({ ...h.deps, reconcile: async () => ({ kind: 'unknown' }) });
+            assert.equal(unknown.blockedBy, '投递结果待核对');
+            assert.deepEqual(h.sent, received ? ['断点留话'] : []);
+            const reconciled = { ...h.deps, reconcile: async () => received
+                ? { kind: 'delivered' as const, messageId: 1001, at: T0 } : { kind: 'not-delivered' as const } };
+            await drainOutbox(reconciled);
+            await drainOutbox(reconciled);
+            assert.deepEqual(h.sent, ['断点留话']);
+            assert.deepEqual(h.recorded, [{ text: '断点留话', id: 1001, at: T0 }]);
+            assert.deepEqual(h.left(), []);
+        }
+    });
     test('在场和刚离开时保留旧批次及新留话，恢复后历史写入失败也不重发', async () => {
         const h = harness();
         const lease = { kind: 'dsh-presence', version: 1, session: 'mock', ttlMs: min(15),

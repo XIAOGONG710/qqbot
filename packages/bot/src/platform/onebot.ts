@@ -101,6 +101,9 @@ function endpointForLog(value: string): string {
     }
 }
 
+/** 调用尚未交给 OneBot，重试不会复制这次投递。 */
+export class OneBotNotDispatched extends Error {}
+
 export class OneBotClient {
     #options: OneBotOptions;
     #ws: WebSocket | null = null;
@@ -195,7 +198,7 @@ export class OneBotClient {
 
     call<T>(action: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
         const ws = this.#ws;
-        if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.reject(new Error('OneBot 未连接'));
+        if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.reject(new OneBotNotDispatched('OneBot 未连接'));
         if (signal?.aborted) return Promise.reject(signal.reason ?? new DOMException('已取消', 'AbortError'));
         const echo = String(this.#nextEcho++);
         return new Promise<T>((resolve, reject) => {

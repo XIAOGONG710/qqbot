@@ -6,12 +6,13 @@
 //   · 危机暂停 / 睡了 / 休眠：整个文件原样留着，等能说话了再发（不丢）；
 //   · 每天最多 DAILY_MAX 条，两条之间至少隔 MIN_GAP_MS；一次只发一条；
 //   · 出口检查里「硬」的那几类（做不到的承诺、禁用词、照抄的语音图片写法、编的对话）命中就不发、记日志；
-//   · 超过 MAX_AGE_MS 的不发（「刚看了个视频」隔一天就不是刚看了）；发不出去重试，MAX_TRIES 次后丢；
+//   · 超过 MAX_AGE_MS 的不发；确认未派出的才自动重试，结果不明的留待核对。
 //   · 发出去的话记进聊天记录（role=assistant），她下一轮知道自己说过。
 // 先用 .next 接管生产者的文件，再把待发队列和导入进度一并原子写入状态。
 
 import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { OneBotNotDispatched } from '../platform/onebot.ts';
 
 export const OUTBOX_DAILY_MAX = 3;
 export const OUTBOX_MIN_GAP_MS = 20 * 60_000;
@@ -20,7 +21,16 @@ export const OUTBOX_MAX_TRIES = 3;
 
 interface Line { text: string; at: number; tries?: number }
 type Stage = 'work' | 'next';
-interface State { day: string; sent: number; lastSentAt: number; pending: Line[]; imported?: Stage[] }
+interface Attempt { startedAt: number; scope?: string }
+interface Receipt extends Attempt { text: string; messageId: number; at: number }
+interface State {
+    day: string; sent: number; lastSentAt: number; pending: Line[]; imported?: Stage[];
+    attempt?: Attempt;
+    receipt?: Receipt;
+}
+
+export type OutboxReconciliation = { kind: 'delivered'; messageId: number; at: number }
+    | { kind: 'not-delivered' } | { kind: 'unknown' };
 
 export interface OutboxDeps {
     file: string;
@@ -31,6 +41,8 @@ export interface OutboxDeps {
     /** 出口检查：命中就返回说明，通过返回 undefined */
     inspect: (text: string) => string | undefined;
     send: (text: string) => Promise<number>;
+    scope?: string;
+    reconcile?: (text: string, startedAt: number) => Promise<OutboxReconciliation>;
     /** 发出去之后记进聊天记录 */
     record: (text: string, messageId: number, at: number) => void;
     log: (message: string) => void;
@@ -78,13 +90,51 @@ export async function drainOutbox(deps: OutboxDeps): Promise<OutboxResult> {
 
     const state = readJsonOr<Partial<State>>(deps.stateFile, {}, deps.log, { invalid: 'throw' });
     const stages = (['work', 'next'] as const).filter(stage => existsSync(stagePath(stage)));
-    if (!existsSync(deps.file) && !stages.length && !state.pending?.length) return { sent: 0, held: 0, dropped: 0 };
-    const blockedBy = deps.blocked(now);
-    if (blockedBy) return { sent: 0, held: 0, dropped: 0, blockedBy };
+    if (!existsSync(deps.file) && !stages.length && !state.pending?.length && !state.attempt && !state.receipt) return { sent: 0, held: 0, dropped: 0 };
 
     const today = localDay(now);
     const day: State = { day: today, sent: state.day === today ? state.sent ?? 0 : 0,
-        lastSentAt: state.lastSentAt ?? 0, pending: state.pending ?? [] };
+        lastSentAt: state.lastSentAt ?? 0, pending: state.pending ?? [],
+        ...(state.attempt ? { attempt: state.attempt } : {}), ...(state.receipt ? { receipt: state.receipt } : {}) };
+    const pendingCheck = (reason: string): OutboxResult => ({ sent: 0, held: day.pending.length, dropped: 0, blockedBy: reason });
+    const recordReceipt = () => {
+        const receipt = day.receipt!;
+        try { deps.record(receipt.text, receipt.messageId, receipt.at); }
+        catch { return false; }
+        delete day.receipt;
+        writeJsonAtomic(deps.stateFile, day);
+        return true;
+    };
+    const settle = (line: Line, messageId: number, at: number) => {
+        const attempt = day.attempt!;
+        delete day.attempt;
+        day.pending = day.pending.slice(1);
+        day.lastSentAt = Math.max(day.lastSentAt, at);
+        if (localDay(at) === today) day.sent++;
+        day.receipt = { ...attempt, text: line.text, messageId, at };
+        writeJsonAtomic(deps.stateFile, day);
+    };
+    if (day.receipt) {
+        if (day.receipt.scope !== deps.scope || !recordReceipt()) return pendingCheck('已投递，聊天记录待核对');
+    }
+    if (day.attempt) {
+        const line = day.pending[0];
+        if (!line || day.attempt.scope !== deps.scope || !deps.reconcile) return pendingCheck('投递结果待核对');
+        let result: OutboxReconciliation;
+        try { result = await deps.reconcile(line.text, day.attempt.startedAt); }
+        catch { return pendingCheck('投递结果待核对'); }
+        if (result.kind === 'unknown') return pendingCheck('投递结果待核对');
+        if (result.kind === 'delivered') {
+            if (!validMessageId(result.messageId) || !Number.isFinite(new Date(result.at).getTime())) return pendingCheck('投递结果待核对');
+            settle(line, result.messageId, result.at);
+            if (!recordReceipt()) return pendingCheck('已投递，聊天记录待核对');
+        } else {
+            delete day.attempt;
+            writeJsonAtomic(deps.stateFile, day);
+        }
+    }
+    const blockedBy = deps.blocked(deps.now());
+    if (blockedBy) return { sent: 0, held: 0, dropped: 0, blockedBy };
     let dropped = 0;
     const importStages = (batch: readonly Stage[], imported: readonly Stage[] = []) => {
         for (const stage of batch) {
@@ -114,10 +164,17 @@ export async function drainOutbox(deps: OutboxDeps): Promise<OutboxResult> {
         const problem = deps.inspect(line.text);
         if (problem) { dropped++; deps.log(`主动留话：「${line.text.slice(0, 20)}」没过出口检查（${problem}），不发`); continue; }
         if (sent > 0 || day.sent >= dailyMax || now - day.lastSentAt < minGap) { rest.push(line); continue; }
+        day.pending = lines.slice(index);
+        const startedAt = deps.now();
+        day.attempt = { startedAt, ...(deps.scope !== undefined ? { scope: deps.scope } : {}) };
+        writeJsonAtomic(deps.stateFile, day);
         let messageId: number;
         try {
             messageId = await deps.send(line.text);
+            if (!validMessageId(messageId)) return pendingCheck('投递结果待核对');
         } catch (error) {
+            if (!(error instanceof OneBotNotDispatched)) return pendingCheck('投递结果待核对');
+            delete day.attempt;
             const tries = (line.tries ?? 0) + 1;
             deps.log(`主动留话发不出去（第 ${tries} 次）：${error instanceof Error ? error.message : String(error)}`);
             if (tries >= maxTries) dropped++;
@@ -125,14 +182,9 @@ export async function drainOutbox(deps: OutboxDeps): Promise<OutboxResult> {
             rest.push(...lines.slice(index + 1));
             break;
         }
-        day.sent++;
-        day.lastSentAt = now;
+        settle(line, messageId, startedAt);
         sent++;
-        // 先提交队列和额度，再写聊天历史。历史出错不能把已投递的消息当成待重试。
-        day.pending = [...rest, ...lines.slice(index + 1)];
-        writeJsonAtomic(deps.stateFile, day);
-        try { deps.record(line.text, messageId, now); }
-        catch { deps.log('主动留话已发送，聊天记录写入失败'); }
+        if (!recordReceipt()) return { sent, held: day.pending.length, dropped, blockedBy: '已投递，聊天记录待核对' };
     }
 
     if (rest.length !== day.pending.length || rest.some((line, index) => line !== day.pending[index])) {
@@ -140,4 +192,8 @@ export async function drainOutbox(deps: OutboxDeps): Promise<OutboxResult> {
         writeJsonAtomic(deps.stateFile, day);
     }
     return { sent, held: rest.length, dropped };
+}
+
+function validMessageId(id: number): boolean {
+    return Number.isSafeInteger(id) && id > 0;
 }

@@ -31,7 +31,7 @@ import { readFriendsFeed } from '../../bot/src/social/qzone-feeds3.ts';
 import { sessionFromCookies } from '../../bot/src/social/qzone-remote.ts';
 import { readStrangerFeed } from '../../bot/src/social/qzone-strangers.ts';
 import { QQ_FRIEND_GATES, type ControlMode, type FriendGate } from '../../bot/src/social/account.ts';
-import { assertKernelOk, isFriendRecall, isGroupMessage, isPokeAtMe, isPrivateFriendMessage, replySegment, type OneBotEvent } from '../../bot/src/platform/onebot.ts';
+import { assertKernelOk, isFriendRecall, isGroupMessage, isPokeAtMe, isPrivateFriendMessage, OneBotNotDispatched, replySegment, type OneBotEvent } from '../../bot/src/platform/onebot.ts';
 import { ocrLines, type MediaReader } from '../../bot/src/vision/media.ts';
 import { textToSegments } from '../../bot/src/language/qq-faces.ts';
 import { type FestivalMode } from '../../bot/src/world/festivals.ts';
@@ -1060,7 +1060,7 @@ function applyNow(ctx: Context, config: Config) {
     // 只支持一个 NapCat 账号：用在线的那个
     const onlineBot = () => {
         const bot = ctx.bots.find(b => b.platform === 'onebot' && b.status === ONLINE);
-        if (!bot) throw new Error('NapCat 未连接');
+        if (!bot) throw new OneBotNotDispatched('NapCat 未连接');
         return bot as Bot & { internal: OneBotInternal };
     };
     const transport: Transport = {

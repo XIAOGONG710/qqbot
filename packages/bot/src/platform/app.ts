@@ -1560,11 +1560,11 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
 
 
     // 她自己想让他知道的事：常驻进程/她写进 OUTBOX.jsonl，这里发出去（ADR 0174：和别的主动消息守同一套规矩）
-    // 怎么发、什么时候先留着在 social/outbox-host.ts（ADR 0336 收尾）；每 30 秒一拍由 outbox 模块声明（App 搭好时开）
     const outboxTick = outboxHost({
         config, owner: deviceOwner, file: process.env.QQBOT_OUTBOX ?? join(soulDir(), 'OUTBOX.jsonl'), cardFor, now: () => clockNow().getTime(),
         crisisPaused: (qq, now) => crisisState.pausedAt(qq, now), dormant: () => Boolean(dormancy?.isDormant()), bedtimes, desktopSource,
-        send: (qq, text) => transport.sendPrivateText(qq, text), record: (qq, message) => history.append(qq, message), log,
+        send: (qq, text) => transport.sendPrivateText(qq, text), selfId: () => stopped ? 0 : selfIdKnown, friendHistory: (qq, count) => transport.friendHistory(qq, count), log,
+        record: (qq, message) => { if (!chatHistory.hasMessage(qq, message.messageId!, message)) history.append(qq, message); },
     }).tick;
 
     // 追求（ADR 0104）：作者的文件 + 内置；开了 selfPursuits（ADR 0178）再套上她自己的决定、接上她自己加的
