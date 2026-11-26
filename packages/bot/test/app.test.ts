@@ -3199,6 +3199,29 @@ describe('设备控制：他的命令在回复器之前截住（ADR 0148）', ()
         assert.equal(logs.some(l => l.includes('设备控制：启动出错')), false);
     });
 
+    test('名单里第二个男朋友档的人：不给菜单，她回他的指令行只摘不用（设备只属于 deviceOwner，ADR 0148 第 10 条；2026-11-26 审查）', async () => {
+        const cfg = config({ contacts: [...bf, { qq: 10002, name: '小号', tier: 'boyfriend' }], deviceControl: 'on' });
+        const fake = fakeDevices();
+        const prompts = new Map<number, string>();
+        const { app, sent } = setup(cfg, {}, { startDevices: fake.start, generate: messages => {
+            const all = messages.map(m => m.content).join('\n');
+            prompts.set(all.includes('小号') ? 10002 : 10001, all);
+            return '好\n<device:notify|电脑|该喝水了>';
+        } });
+        await new Promise(r => setTimeout(r, 30));
+        app.receive(event(10002, 11, '提醒我喝水'));
+        await until(() => sent.length === 1);
+        await new Promise(r => setTimeout(r, 30));
+        assert.deepEqual(sent, ['10002:好'], '指令行照样不给他看');
+        assert.deepEqual(fake.jobs, [], '别人的聊天不能操作他的设备');
+        assert.ok(prompts.has(10002), '认得出是给小号的那一份提示词');
+        assert.doesNotMatch(prompts.get(10002)!, /<device:notify/, '也不给菜单');
+        app.receive(event(10001, 12, '提醒我喝水'));
+        await until(() => sent.length === 2 && fake.jobs.length === 1);
+        assert.deepEqual(fake.jobs, ['notify'], '他本人照常能用');
+        assert.match(prompts.get(10001) ?? '', /<device:notify/);
+    });
+
     test('名单里没有男朋友档：不启动，日志里说清；关着（off）时根本不调启动函数', async () => {
         let started = 0;
         const start: StartDevices = async () => { started++; return undefined; };

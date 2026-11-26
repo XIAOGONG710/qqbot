@@ -1066,7 +1066,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ...(config.innerLife ? { innerLine: (contact: Contact) => planners.get(contact.qq)?.innerLine() } : {}),
         // 她能替他操作的设备的菜单（ADR 0148，配置 deviceControl）：名单里有男朋友档才有设备控制（同下面的 deviceOwner）；服务是异步起的，起来之前菜单是空串，每轮现取
         ...(config.deviceControl !== 'off' && config.contacts.some(c => c.tier === 'boyfriend')
-            ? { devices: { menu: () => devicesHost.service()?.control.menu() ?? '', allowed: (contact: Contact) => contact.tier === 'boyfriend' } }
+            ? { devices: { menu: () => devicesHost.service()?.control.menu() ?? '', allowed: (contact: Contact) => contact.qq === deviceOwner?.qq } }
             : {}),
         // 他的请求等她点头（2026-10-30）：他发「/看屏幕」「/摄像头」时下面的 pendingAsk 先记下来，她写 <<同意>> 才做；只给男朋友档、过期的不算，每轮现取
         consent: {
@@ -1785,7 +1785,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             herDays: config.herDays,
             ...contextWindowFor(contact),
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
-            ...(deviceHooks && contact.tier === 'boyfriend' ? { devices: deviceHooks } : {}),
+            ...(deviceHooks && contact.qq === deviceOwner?.qq ? { devices: deviceHooks } : {}),
             // 桌面对话文件只属于唯一 deviceOwner；不能仅按 boyfriend 档放行，否则多个同档联系人会互相看到私聊。
             ...(oneLifeAt(config.oneLife, 'read') && deviceOwner?.qq === contact.qq ? { desktopRecent: (now: Date) => desktopBlock(desktopRecentPath(join(config.dataDir, 'memory')), now.getTime()) } : {}),
             ...(photos && contact.tier === 'boyfriend' ? { photos } : {}),
