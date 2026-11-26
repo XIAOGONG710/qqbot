@@ -86,12 +86,14 @@ test('真实压缩解压只用合成目录，完整状态可恢复，同大小�
             state: { ok: true, source: 'runtime/bot', ...archived },
         } }));
         assert.equal(isCompleteBackup(backup, 'runtime/bot', 4), true);
-        const stages = createRestoreStages({ root, run: async ({ dump: tempDump }) => {
+        // 失败原因只进 log（不进返回值）：收起来放进断言消息，CI 上挂了才看得到是哪一步、什么错（11-27 CI 上 extract_failed 本机复现不了）
+        const logs = [];
+        const stages = createRestoreStages({ root, log: line => logs.push(line), run: async ({ dump: tempDump }) => {
             assert.equal(readFileSync(tempDump, 'utf8'), readFileSync(dump, 'utf8'));
             return { executed: true };
         } });
         const result = await stages.files(DAY, { keep: true });
-        assert.equal(result.ok, true, JSON.stringify(result));
+        assert.equal(result.ok, true, `${JSON.stringify(result)} ${logs.join(' | ')}`);
         assert.equal(result.desktopFiles, 4);
         const restored = join(root, result.target);
         for (const { name, path } of desktop) assert.deepEqual(readFileSync(join(restored, 'dsh-state', name)), readFileSync(path));

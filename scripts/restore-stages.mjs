@@ -30,8 +30,9 @@ const execFileAsync = promisify(execFile);
 async function expandArchive(archive, destination) {
     const quoted = value => `'${value.replace(/'/g, "''")}'`;
     await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-        `$ErrorActionPreference = 'Stop'; Expand-Archive -LiteralPath ${quoted(archive)} -DestinationPath ${quoted(destination)} -Force`],
-    { timeout: 10 * 60_000, windowsHide: true, maxBuffer: 64 * 1024 });
+        // 进度条关掉：非交互时 PowerShell 会把进度当 CLIXML 写进 stderr；缓冲和压缩那边（execFileSync 默认 1 MB）一样大（11-27 CI 上 extract_failed）
+        `$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; Expand-Archive -LiteralPath ${quoted(archive)} -DestinationPath ${quoted(destination)} -Force`],
+    { timeout: 10 * 60_000, windowsHide: true, maxBuffer: 1024 * 1024 });
 }
 
 /** 只读文件头几个字节，不为了 5 个字节把整份 dump 读进内存 */
