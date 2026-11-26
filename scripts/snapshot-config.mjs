@@ -7,19 +7,32 @@ import { fileURLToPath } from 'node:url';
 const SECRET_KEY = /^(?:api[-_]?key|access[-_]?token|client[-_]?secret|token|password|secret|authorization|cookie)$/i;
 const OBVIOUS_SECRET = /(?:\bsk-[A-Za-z0-9_-]{10,}\b|\bBearer\s+[^\s"']{10,})/i;
 
+// 快照只用来核对开关，用不着真的号码：键名以 qq / uid / id 结尾、值是 5 位以上纯数字的（联系人、群、B 站 uid）一律遮掉。
+// 2026-11-27：仓库被发现是公开的，exchange/live 里的快照带着名单里联系人的 QQ 号。端口（5140）、timeoutMs 这类不受影响。
+const ID_KEY = /(?:qq|uid|id)$/i;
+export const ID_MASK = '<号码已隐去>';
+export function isIdentifier(key, value) {
+    return ID_KEY.test(String(key)) && /^\d{5,}$/.test(String(value ?? '').trim().replace(/^(["'])(.*)\1$/, '$2'));
+}
+
+// 行首可以是列表项「- 」：原来匹配不上，列表里的 token / qq 都漏掉
+const LINE = /^(\s*(?:-\s+)?)(["']?)([A-Za-z0-9_-]+)\2(\s*:\s*)(.*)$/;
+
 export function redactYamlSecrets(text) {
     return text.split(/(\r?\n)/).map(part => {
         if (/^\r?\n$/.test(part)) return part;
-        const match = /^(\s*)(["']?)([A-Za-z0-9_-]+)\2(\s*:\s*)(.*)$/.exec(part);
-        if (!match || !SECRET_KEY.test(match[3])) return part;
-        return `${match[1]}${match[2]}${match[3]}${match[2]}${match[4]}<已脱敏>`;
+        const match = LINE.exec(part);
+        if (!match) return part;
+        if (SECRET_KEY.test(match[3])) return `${match[1]}${match[2]}${match[3]}${match[2]}${match[4]}<已脱敏>`;
+        if (isIdentifier(match[3], match[5])) return `${match[1]}${match[2]}${match[3]}${match[2]}${match[4]}${ID_MASK}`;
+        return part;
     }).join('');
 }
 
 export function containsObviousSecret(text) {
     if (OBVIOUS_SECRET.test(text)) return true;
     return text.split(/\r?\n/).some(line => {
-        const match = /^\s*["']?([A-Za-z0-9_-]+)["']?\s*:\s*(.*)$/.exec(line);
+        const match = /^\s*(?:-\s+)?["']?([A-Za-z0-9_-]+)["']?\s*:\s*(.*)$/.exec(line);
         return Boolean(match && SECRET_KEY.test(match[1]) && match[2].trim() !== '<已脱敏>');
     });
 }

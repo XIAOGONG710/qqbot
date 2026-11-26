@@ -33,6 +33,34 @@ describe('Koishi config snapshot', () => {
         assert.equal(containsObviousSecret(redacted), false);
     });
 
+    test('遮掉联系人 / 群 / B 站 uid 的号码和列表项里的密钥；端口、超时、开关照留（2026-11-27：仓库被发现公开，快照里带着 QQ 号）', () => {
+        const source = [
+            'qqbot:',
+            '  contacts:',
+            '    - qq: 1234567',
+            '      tier: boyfriend',
+            "    - qq: '7654321'",
+            '  groups:',
+            '    - id: 987654321',
+            '    - token: list-item-secret',
+            '  bilibiliAtUid: 3546789012',
+            '  port: 5140',
+            '  timeoutMs: 120000',
+            '  dailyMax: 4',
+            '  deviceControl: on',
+            '',
+        ].join('\n');
+        const redacted = redactYamlSecrets(source);
+        assert.doesNotMatch(redacted, /1234567|7654321|987654321|3546789012|list-item-secret/);
+        assert.equal((redacted.match(/<号码已隐去>/g) ?? []).length, 4);
+        assert.match(redacted, /- token: <已脱敏>/, '列表项里的密钥也遮');
+        assert.match(redacted, /port: 5140/);
+        assert.match(redacted, /timeoutMs: 120000/, '键名不以 qq / uid / id 结尾的数字不动');
+        assert.match(redacted, /tier: boyfriend/);
+        assert.equal(containsObviousSecret(redacted), false);
+        assert.equal(containsObviousSecret('items:\n  - token: still-here'), true, '列表项里没遮的密钥也认得出');
+    });
+
     test('refuses residual obvious credentials and writes a unique non-overwriting snapshot', () => {
         assert.equal(containsObviousSecret('endpoint: https://example.test\nnote: sk-abcdefghijklmnop'), true);
         assert.equal(snapshotStamp(new Date(2026, 10, 4, 10, 8, 9)), '2026-11-04-100809');

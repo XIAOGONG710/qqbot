@@ -4,6 +4,7 @@
 //   用法：node scripts/read-switches.mjs [输出路径]
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { ID_MASK, isIdentifier } from './snapshot-config.mjs';
 const require = createRequire(import.meta.url);
 const yaml = require('js-yaml');
 
@@ -19,7 +20,8 @@ const redact = (value, key = '') => {
         for (const [k, v] of Object.entries(value)) out[k] = SECRET.test(k) ? '<REDACTED>' : redact(v, k);
         return out;
     }
-    return SECRET.test(key) ? '<REDACTED>' : value;
+    // 联系人 / 群 / B 站 uid 的号码也遮掉（见 snapshot-config.mjs 的 isIdentifier，2026-11-27）
+    return SECRET.test(key) ? '<REDACTED>' : isIdentifier(key, value) ? ID_MASK : value;
 };
 
 const qqbot = Object.values(config.plugins ?? {}).find(p => p && typeof p === 'object' && 'contacts' in p) ?? {};
