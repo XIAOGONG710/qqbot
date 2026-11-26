@@ -999,7 +999,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 // 回复进聊天记录（和 /dsh 工作模式一样，ADR 0176），工作桥只带当轮任务。
                 start: (contact, task) => work.handOff(contact.qq, task, '她判断要动电脑、没干成'),
                 notTyped: () => tellOwner(WANTED_BUT_NOT_TYPED_NOTICE),
-                log,
+                owner: contact => contact.qq === deviceOwner?.qq, log,
             },
         },
         // 她自己记的（<<记住>> / <<日记>> / <<私密>>）：发出去之前摘掉、该记的记下；摘标记和开关无关，总是挂。memory 在后面才建，记的时候现取

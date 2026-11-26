@@ -165,12 +165,13 @@ describe('跑命令（modules/shell.ts 的 absorbAt）', () => {
 });
 
 describe('切工作和动电脑（modules/work-mode.ts 的 absorbAt）', () => {
-    const setup = (task?: string) => {
+    const setup = (task?: string, owner?: (contact: Contact) => boolean) => {
         const modes: [number, string][] = [], refusals: string[] = [], started: [number, string][] = [], lines: string[] = [];
         let notTyped = 0;
         const hooks: WorkMarkerHooks = {
             setMode: (contact, mode) => { modes.push([contact.qq, mode]); }, refused: reason => { refusals.push(reason); },
             taskOf: () => task, start: (contact, what) => { started.push([contact.qq, what]); }, notTyped: () => { notTyped++; }, log: line => lines.push(line),
+            ...(owner ? { owner } : {}),
         };
         const modules = [workModeModule(() => 'chat', hooks)];
         return {
@@ -212,6 +213,24 @@ describe('切工作和动电脑（modules/work-mode.ts 的 absorbAt）', () => {
         const other = setup('帮我看下');
         assert.equal(other.run('work', '<<用电脑>>', classmate), '<<用电脑>>');
         assert.deepEqual(other.started, []);
+    });
+
+    test('名单里第二个男朋友档（不是设备所有者）：<<用电脑>> 不交给电脑、<<同意工作>> 不切工作模式，标记照样摘掉；所有者照常', () => {
+        const second: Contact = { qq: 3, name: '另一个', tier: 'boyfriend' };
+        const ownerOnly = (contact: Contact) => contact.qq === boyfriend.qq;
+        const s = setup('帮我把桌面的文件打包发给我', ownerOnly);
+        assert.equal(s.run('work', '我去弄\n<<用电脑>>', second), '我去弄');
+        assert.equal(s.run('workSwitch', '好\n<<同意工作>>', second), '好');
+        assert.equal(s.run('workSwitch', '不了\n<<拒绝工作：没心情>>', second), '不了');
+        assert.deepEqual(s.started, [], '不动电脑');
+        assert.deepEqual(s.modes, [], '不切进工作模式（切进去以后他的消息都转去电脑）');
+        assert.deepEqual(s.refusals, []);
+        assert.equal(s.notTyped(), 0);
+        assert.match(s.lines.join('\n'), /\[3\] 她写了 .*不是设备所有者，不动电脑/);
+        assert.equal(s.run('work', '我去看看\n<<用电脑>>'), '我去看看');
+        assert.equal(s.run('workSwitch', '行\n<<同意工作>>'), '行');
+        assert.deepEqual(s.started, [[1, '帮我把桌面的文件打包发给我']], '设备所有者照常');
+        assert.deepEqual(s.modes, [[1, 'work']]);
     });
 
     test('不给 markers（模拟器）时不摘标记', () => {

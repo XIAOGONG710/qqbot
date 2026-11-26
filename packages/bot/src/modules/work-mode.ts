@@ -36,6 +36,12 @@ export interface WorkMarkerHooks {
     start: (contact: Contact, task: string) => void;
     /** 她写了 <<用电脑>>、但他最后那一条不是亲手打的：告诉主人 */
     notTyped: () => void;
+    /**
+     * 这个人是不是能动电脑的那一个（App 给：设备所有者）。不给就只看档位。
+     * 2026-11-26：名单里第二个男朋友档的人那里，她写 <<用电脑>> 原来也会交给电脑那边干、<<同意工作>> 会把这个人切进工作模式
+     * （之后他的消息都转去电脑）——和 <<执行>>（cf3a83c6）、设备菜单（c3c6980b）同一类，按 QQ 号认
+     */
+    owner?: (contact: Contact) => boolean;
     log: Log;
 }
 
@@ -54,7 +60,7 @@ export function workModeModule(modeOf: (contact: Contact) => WorkMode, markers?:
             workSwitch: (input: string, contact: Contact) => {
                 // 只有男朋友档有工作模式（教她写这两个标记的那一行也只给他）。别人那里标记照样摘掉，不改状态、不记拒绝原因：
                 // 2026-11-26 入站审查——原来不看档位，同学档的私聊里她照抄一句 <<拒绝工作：…>>，那段字就进了「你最近拒绝过」，出现在他的提示词里
-                if (contact.tier !== 'boyfriend') {
+                if (contact.tier !== 'boyfriend' || markers.owner?.(contact) === false) {
                     const stripped = input.replace(/<<同意工作>>/g, '').replace(/<<拒绝工作[：:][\s\S]*?>>/g, '');
                     return stripped === input ? input : stripped.trim();
                 }
@@ -78,6 +84,10 @@ export function workModeModule(modeOf: (contact: Contact) => WorkMode, markers?:
                 if (contact.tier !== 'boyfriend') return input;
                 const judged = takeWorkMarker(input);
                 if (!judged.wanted) return input;
+                if (markers.owner?.(contact) === false) {
+                    markers.log(`[${contact.qq}] 她写了 ${WORK_MARKER}，但这个人不是设备所有者，不动电脑`);
+                    return judged.text;
+                }
                 const task = markers.taskOf(contact);
                 if (task) {
                     markers.log(`[${contact.qq}] 她判断这条要动电脑：${logBody(task.slice(0, 60))}`);
