@@ -219,14 +219,12 @@
 @ 2026-12-09 09:45:00.000 他 10001 发 #1000
 下课了吗
 @ 2026-12-09 09:45:53.542 qq markRead [10001]
-@ 2026-12-09 09:45:53.542 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
-@ 2026-12-09 09:45:53.542 记忆 POST /banks/baseline-common/memories/recall → 没有
-{"query":"今天和小周聊了什么","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T09:45:53+08:00","temporal_window":{"start":"2026-12-09T02:00:00+08:00","end":"2026-12-09T09:46:53+08:00"}}
 @ 2026-12-09 09:45:53.542 记忆 POST /banks/baseline-@10001/memories/recall → 没有
 {"query":"她：去吧\n对方：下课了吗","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T09:45:53+08:00"}
-@ 2026-12-09 09:45:53.542 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 09:45:53.542 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"昨天说好的电影没看成，临时被叫去加班了 那我先去忙了 下课了吗","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-09T09:45:53+08:00"}
+@ 2026-12-09 09:45:53.542 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
+@ 2026-12-09 09:45:53.542 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 09:45:53.542 llm #6 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
@@ -388,12 +386,12 @@
 @ 2026-12-09 09:57:00.000 他 10001 发 #1002
 抱抱，别难过
 @ 2026-12-09 09:57:00.000 qq markRead [10001]
-@ 2026-12-09 09:57:04.000 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
 @ 2026-12-09 09:57:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 没有
 {"query":"她：就是做了个梦，有点难过\n对方：抱抱，别难过","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T09:57:04+08:00"}
-@ 2026-12-09 09:57:04.000 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 09:57:04.000 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"下课了吗 怎么了，感觉你不太开心 抱抱，别难过","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-09T09:57:04+08:00"}
+@ 2026-12-09 09:57:04.000 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
+@ 2026-12-09 09:57:04.000 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 09:57:04.000 llm #8 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #6.1）
 --- user
@@ -658,14 +656,12 @@ d2026-12-08：好
 @ 2026-12-09 11:50:00.000 他 10001 发 #1004
 我也刚吃完饭
 @ 2026-12-09 11:50:57.723 qq markRead [10001]
-@ 2026-12-09 11:50:57.723 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
-@ 2026-12-09 11:50:57.723 记忆 POST /banks/baseline-common/memories/recall → 没有
-{"query":"今天和小周聊了什么","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T11:50:57+08:00","temporal_window":{"start":"2026-12-09T02:00:00+08:00","end":"2026-12-09T11:51:57+08:00"}}
 @ 2026-12-09 11:50:57.723 记忆 POST /banks/baseline-@10001/memories/recall → 没有
 {"query":"她：好\n对方：我也刚吃完饭","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T11:50:57+08:00"}
-@ 2026-12-09 11:50:57.723 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 11:50:57.723 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"抱抱，别难过 我先去写作业了 我也刚吃完饭","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-09T11:50:57+08:00"}
+@ 2026-12-09 11:50:57.723 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
+@ 2026-12-09 11:50:57.723 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 11:50:57.723 llm #12 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #6.1）
 --- user
@@ -784,14 +780,12 @@ d2026-12-08：好
 @ 2026-12-09 13:10:00.000 他 10001 发 #1005
 我这节课上完了
 @ 2026-12-09 13:10:20.023 qq markRead [10001]
-@ 2026-12-09 13:10:20.023 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
-@ 2026-12-09 13:10:20.023 记忆 POST /banks/baseline-common/memories/recall → 没有
-{"query":"今天和小周聊了什么","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T13:10:20+08:00","temporal_window":{"start":"2026-12-09T02:00:00+08:00","end":"2026-12-09T13:11:20+08:00"}}
 @ 2026-12-09 13:10:20.023 记忆 POST /banks/baseline-@10001/memories/recall → 没有
 {"query":"她：下午还有一节高数要上\n现在只想躺着什么都不想干\n对方：我这节课上完了","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T13:10:20+08:00"}
-@ 2026-12-09 13:10:20.023 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 13:10:20.023 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"我先去写作业了 我也刚吃完饭 我这节课上完了","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-09T13:10:20+08:00"}
+@ 2026-12-09 13:10:20.023 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
+@ 2026-12-09 13:10:20.023 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 13:10:20.023 llm #14 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #6.1）
 --- user
@@ -1062,14 +1056,12 @@ d2026-12-08：好
 @ 2026-12-09 14:00:00.000 他 10001 发 #1007
 我刚到图书馆
 @ 2026-12-09 14:00:48.616 qq markRead [10001]
-@ 2026-12-09 14:00:48.616 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
-@ 2026-12-09 14:00:48.616 记忆 POST /banks/baseline-common/memories/recall → 没有
-{"query":"今天和小周聊了什么","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T14:00:48+08:00","temporal_window":{"start":"2026-12-09T02:00:00+08:00","end":"2026-12-09T14:01:48+08:00"}}
 @ 2026-12-09 14:00:48.616 记忆 POST /banks/baseline-@10001/memories/recall → 没有
 {"query":"她：社长刚刚在群里发的名单\n我开心到现在还在笑\n对方：我刚到图书馆","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T14:00:48+08:00"}
-@ 2026-12-09 14:00:48.616 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 14:00:48.616 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"我也刚吃完饭 我这节课上完了 我刚到图书馆","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-09T14:00:48+08:00"}
+@ 2026-12-09 14:00:48.616 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
+@ 2026-12-09 14:00:48.616 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 14:00:48.616 llm #18 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #6.1）
 --- user
@@ -1263,14 +1255,12 @@ d2026-12-08：好
 @ 2026-12-09 14:50:00.000 他 10001 发 #1008
 刚打完游戏
 @ 2026-12-09 14:50:53.960 qq markRead [10001]
-@ 2026-12-09 14:50:53.960 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
-@ 2026-12-09 14:50:53.960 记忆 POST /banks/baseline-common/memories/recall → 没有
-{"query":"今天和小周聊了什么","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T14:50:53+08:00","temporal_window":{"start":"2026-12-09T02:00:00+08:00","end":"2026-12-09T14:51:53+08:00"}}
 @ 2026-12-09 14:50:53.960 记忆 POST /banks/baseline-@10001/memories/recall → 没有
 {"query":"她：好烦\n对方：刚打完游戏","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T14:50:53+08:00"}
-@ 2026-12-09 14:50:53.960 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 14:50:53.960 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"我这节课上完了 我刚到图书馆 刚打完游戏","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-09T14:50:53+08:00"}
+@ 2026-12-09 14:50:53.960 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
+@ 2026-12-09 14:50:53.960 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 14:50:53.960 llm #21 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #6.1）
 --- user
@@ -1534,12 +1524,12 @@ d2026-12-08：好
 @ 2026-12-09 15:10:00.000 他 10001 发 #1010
 我现在安全，室友回来了在旁边陪我
 @ 2026-12-09 15:10:45.718 qq markRead [10001]
-@ 2026-12-09 15:10:45.718 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
 @ 2026-12-09 15:10:45.718 记忆 POST /banks/baseline-@10001/memories/recall → 没有
 {"query":"她：是呀\n对方：我现在安全，室友回来了在旁边陪我","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-09T15:10:45+08:00"}
-@ 2026-12-09 15:10:45.718 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 15:10:45.718 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"刚打完游戏 我不想活了 我现在安全，室友回来了在旁边陪我","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-09T15:10:45+08:00"}
+@ 2026-12-09 15:10:45.718 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 0 个
+@ 2026-12-09 15:10:45.718 记忆 GET /banks/baseline-@10001/mental-models/relationship → 空的
 @ 2026-12-09 15:10:45.718 llm #23 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #6.1）
 --- user

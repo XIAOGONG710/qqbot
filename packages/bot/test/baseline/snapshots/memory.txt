@@ -96,6 +96,8 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 测试角色 (20:01): 好认真／我也该复习了
 @ 2026-12-08 18:30:00.000 llm #3 回复
 []
+@ 2026-12-08 18:30:00.000 记忆 POST /banks/baseline/memories/recall → 没有
+{"query":"今天去图书馆复习了一下午 明天上午考高数，有点慌","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-08T18:30:00+08:00"}
 @ 2026-12-08 18:30:00.000 llm #4 background model=baseline-chat temperature=1 maxTokens=8192
 --- system（同 #2.1）
 --- user
@@ -106,8 +108,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 —— 2026年12月7日 星期一 ——
 阿明 (21:00): 明天上午考高数，有点慌
 测试角色 (21:01): 你肯定没问题的／早点睡
-@ 2026-12-08 18:30:00.000 记忆 POST /banks/baseline/memories/recall → 没有
-{"query":"今天去图书馆复习了一下午 明天上午考高数，有点慌","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-08T18:30:00+08:00"}
 @ 2026-12-08 18:30:00.000 llm #4 回复
 []
 @ 2026-12-08 18:30:00.000 llm #5 background model=baseline-chat temperature=1 maxTokens=8192
@@ -556,14 +556,12 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:00:00.000 他 10001 发 #1000
 在干嘛
 @ 2026-12-08 19:00:53.542 qq markRead [10001]
-@ 2026-12-08 19:00:53.542 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
-@ 2026-12-08 19:00:53.542 记忆 POST /banks/baseline-common/memories/recall → 1 条：c-today
-{"query":"今天和小周聊了什么","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:00:53+08:00","temporal_window":{"start":"2026-12-08T02:00:00+08:00","end":"2026-12-08T19:01:53+08:00"}}
 @ 2026-12-08 19:00:53.542 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
 {"query":"她：你肯定没问题的\n早点睡\n对方：在干嘛","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:00:53+08:00"}
-@ 2026-12-08 19:00:53.542 记忆 GET /banks/baseline-@10001/mental-models/relationship → 有内容
 @ 2026-12-08 19:00:53.542 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"今天去图书馆复习了一下午 明天上午考高数，有点慌 在干嘛","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-08T19:00:53+08:00"}
+@ 2026-12-08 19:00:53.542 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
+@ 2026-12-08 19:00:53.542 记忆 GET /banks/baseline-@10001/mental-models/relationship → 有内容
 @ 2026-12-08 19:00:53.542 llm #21 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
@@ -630,11 +628,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 [你们以前聊过的事（从记忆里想起来的，只作参考；和最近的聊天对不上时以最近的为准，用不上就别提）]
 - 12月7日：他说12月8日上午考高数，有点慌
 - 12月7日：你答应他考完一起去吃火锅
-
-[你今天和别人聊过的事（是你今天的一部分，不是和阿明聊的；只挑大面上的一件，有自然由头时含糊地随口提，不要一上来汇报）]
-- 12月8日（可明说·和小周聊的）：小周问下周的实验报告怎么分工，你说自己写数据分析
-
-[说别人的事的分寸：上面的每条别人的事都标了披露上限。「可明说」只表示被问时可以讲大面事实，别人的家事、难处、心事等私事仍然最多说个大概；「只能含糊」只在对方直接问起时说「好像听谁提过」「不太清楚」这一类，不给名字和细节；「不能说」的不能透露、确认或暗示，但要顺着当前话题自然回应，不能因为不能说就突然截断整句。主动向阿明提别人时比标签再保守一级：只有「可明说」的能挑一件大面上的事，带着自然由头、含糊地随口提；其余不主动提。你和某个人之间说好、让你别说的事只跟那个人说；你心里对谁的看法（喜欢、嫌弃、觉得他怎样）不主动说；阿明直接问你觉得某人怎么样时，可以用自己的话说句实在的，不刻薄、不添油加醋，也不借机翻那个人的私事。]
 
 [当前时间：2026-12-08 星期二 19:00]
 [距上一条消息：21 小时 59 分钟（上一条在昨天 21:01）]
@@ -783,14 +776,14 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:12:00.000 他 10001 发 #1002
 学校门口那家奶茶店你去过没
 @ 2026-12-08 19:12:00.000 qq markRead [10001]
-@ 2026-12-08 19:12:04.000 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
 @ 2026-12-08 19:12:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
 {"query":"她：怎么啦\n对方：学校门口那家奶茶店你去过没","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:12:04+08:00"}
+@ 2026-12-08 19:12:04.000 记忆 POST /banks/baseline/memories/recall → 没有
+{"query":"在干嘛 考试考完了，感觉还行 学校门口那家奶茶店你去过没","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-08T19:12:04+08:00"}
+@ 2026-12-08 19:12:04.000 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
 @ 2026-12-08 19:12:04.000 记忆 POST /banks/baseline-common/memories/recall → 1 条：c-tea
 {"query":"她：怎么啦\n对方：学校门口那家奶茶店你去过没","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:12:04+08:00"}
 @ 2026-12-08 19:12:04.000 记忆 GET /banks/baseline-@10001/mental-models/relationship → 有内容
-@ 2026-12-08 19:12:04.000 记忆 POST /banks/baseline/memories/recall → 没有
-{"query":"在干嘛 考试考完了，感觉还行 学校门口那家奶茶店你去过没","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-08T19:12:04+08:00"}
 @ 2026-12-08 19:12:04.000 llm #23 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #22.1）
 --- user
@@ -821,11 +814,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 [你们以前聊过的事（从记忆里想起来的，只作参考；和最近的聊天对不上时以最近的为准，用不上就别提）]
 - 12月7日：他说12月8日上午考高数，有点慌
 - 12月7日：你答应他考完一起去吃火锅
-
-[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和阿明聊的，用不上就别提）]
-- 12月5日（可明说·和小周聊的）：小周说学校门口的奶茶店这周买一送一
-
-[说别人的事的分寸：上面的每条别人的事都标了披露上限。「可明说」只表示被问时可以讲大面事实，别人的家事、难处、心事等私事仍然最多说个大概；「只能含糊」只在对方直接问起时说「好像听谁提过」「不太清楚」这一类，不给名字和细节；「不能说」的不能透露、确认或暗示，但要顺着当前话题自然回应，不能因为不能说就突然截断整句。主动向阿明提别人时比标签再保守一级：只有「可明说」的能挑一件大面上的事，带着自然由头、含糊地随口提；其余不主动提。你和某个人之间说好、让你别说的事只跟那个人说；你心里对谁的看法（喜欢、嫌弃、觉得他怎样）不主动说；阿明直接问你觉得某人怎么样时，可以用自己的话说句实在的，不刻薄、不添油加醋，也不借机翻那个人的私事。]
 
 [当前时间：2026-12-08 星期二 19:12]
 [距上一条消息：5 分钟（上一条在今天 19:06）]
@@ -865,10 +853,10 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:18:00.000 qq markRead [10001]
 @ 2026-12-08 19:18:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
 {"query":"她：好\n对方：你昨天干嘛了","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:18:04+08:00"}
-@ 2026-12-08 19:18:04.000 记忆 POST /banks/baseline-common/memories/recall → 1 条：c-diary
-{"query":"她：好\n对方：你昨天干嘛了","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":2000,"query_timestamp":"2026-12-08T19:18:04+08:00","temporal_window":{"start":"2026-12-07T00:00:00+08:00","end":"2026-12-08T02:00:00+08:00"}}
 @ 2026-12-08 19:18:04.000 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"考试考完了，感觉还行 学校门口那家奶茶店你去过没 你昨天干嘛了","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-08T19:18:04+08:00"}
+@ 2026-12-08 19:18:04.000 记忆 POST /banks/baseline-common/memories/recall → 1 条：c-diary
+{"query":"她：好\n对方：你昨天干嘛了","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":2000,"query_timestamp":"2026-12-08T19:18:04+08:00","temporal_window":{"start":"2026-12-07T00:00:00+08:00","end":"2026-12-08T02:00:00+08:00"}}
 @ 2026-12-08 19:18:04.000 llm #24 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #22.1）
 --- user
@@ -904,12 +892,7 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 - 12月7日：他说12月8日上午考高数，有点慌
 - 12月7日：你答应他考完一起去吃火锅
 
-[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和阿明聊的，用不上就别提）]
-- 12月7日（可明说·你的日记）：你的日记：下午去图书馆还书，晚上和他聊到考试，你给他打气
-
 [那天（12月7日 周一）你那边的流水账（你自己过的，都是真的：他问到具体的事——下没下雨、喂没喂猫、快递拿没拿——照这个说，别说错；泛泛问那天干了什么时，先说上面记得住的事，这里的不用一件件报）：没下雨，-3–6℃；20:30 下楼喂了团子饼，没见着它；20:10 和许小禾一起去图书馆；花了 80 元（午饭 14、晚饭 14、零碎 7、网购猫粮 45）；22:17 去洗了澡]
-
-[说别人的事的分寸：上面的每条别人的事都标了披露上限。「可明说」只表示被问时可以讲大面事实，别人的家事、难处、心事等私事仍然最多说个大概；「只能含糊」只在对方直接问起时说「好像听谁提过」「不太清楚」这一类，不给名字和细节；「不能说」的不能透露、确认或暗示，但要顺着当前话题自然回应，不能因为不能说就突然截断整句。主动向阿明提别人时比标签再保守一级：只有「可明说」的能挑一件大面上的事，带着自然由头、含糊地随口提；其余不主动提。你和某个人之间说好、让你别说的事只跟那个人说；你心里对谁的看法（喜欢、嫌弃、觉得他怎样）不主动说；阿明直接问你觉得某人怎么样时，可以用自己的话说句实在的，不刻薄、不添油加醋，也不借机翻那个人的私事。]
 
 [当前时间：2026-12-08 星期二 19:18]
 [距上一条消息：5 分钟（上一条在今天 19:12）]
@@ -946,17 +929,14 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:26:00.000 他 10001 发 #1004
 小周最近在忙什么
 @ 2026-12-08 19:26:00.000 qq markRead [10001]
-@ 2026-12-08 19:26:04.000 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
 @ 2026-12-08 19:26:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
 {"query":"她：嗯嗯\n对方：小周最近在忙什么","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:26:04+08:00"}
-@ 2026-12-08 19:26:04.000 记忆 POST /banks/baseline-common/memories/recall → 1 条：c-mate
-{"query":"她：嗯嗯\n对方：小周最近在忙什么","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:26:04+08:00"}
-@ 2026-12-08 19:26:04.000 记忆 POST /banks/baseline-@10002/memories/recall → 1 条：m-old
-{"query":"她：嗯嗯\n对方：小周最近在忙什么","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:26:04+08:00"}
-@ 2026-12-08 19:26:04.000 记忆 GET /banks/baseline-@10001/mental-models/relationship → 有内容
 @ 2026-12-08 19:26:04.000 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"学校门口那家奶茶店你去过没 你昨天干嘛了 小周最近在忙什么","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-08T19:26:04+08:00"}
-@ 2026-12-08 19:26:04.000 记忆 GET /banks/baseline-common/mental-models/person-@10002 → 有内容
+@ 2026-12-08 19:26:04.000 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
+@ 2026-12-08 19:26:04.000 记忆 POST /banks/baseline-common/memories/recall → 1 条：c-mate
+{"query":"她：嗯嗯\n对方：小周最近在忙什么","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:26:04+08:00"}
+@ 2026-12-08 19:26:04.000 记忆 GET /banks/baseline-@10001/mental-models/relationship → 有内容
 @ 2026-12-08 19:26:04.000 llm #25 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #22.1）
 --- user
@@ -996,13 +976,8 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 - 12月7日：他说12月8日上午考高数，有点慌
 - 12月7日：你答应他考完一起去吃火锅
 
-[你和名单里别的人聊天时说过、听过的事（从记忆里想起来的，只作参考；不是和阿明聊的，用不上就别提）]
-- 12月8日（可明说·和小周聊的）：小周和你约好周五前把实验报告合起来
-
 [你认识的人：小周]
 小周：同班同学，实验课和她一组
-[关于小周的旧事（可明说·和小周聊的；从记忆里想起来的，只作参考）]
-- 12月3日：小周说他上学期实验课拿了优秀
 
 [说别人的事的分寸：上面的每条别人的事都标了披露上限。「可明说」只表示被问时可以讲大面事实，别人的家事、难处、心事等私事仍然最多说个大概；「只能含糊」只在对方直接问起时说「好像听谁提过」「不太清楚」这一类，不给名字和细节；「不能说」的不能透露、确认或暗示，但要顺着当前话题自然回应，不能因为不能说就突然截断整句。主动向阿明提别人时比标签再保守一级：只有「可明说」的能挑一件大面上的事，带着自然由头、含糊地随口提；其余不主动提。你和某个人之间说好、让你别说的事只跟那个人说；你心里对谁的看法（喜欢、嫌弃、觉得他怎样）不主动说；阿明直接问你觉得某人怎么样时，可以用自己的话说句实在的，不刻薄、不添油加醋，也不借机翻那个人的私事。]
 
@@ -1042,12 +1017,10 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:32:00.000 qq markRead [10001]
 @ 2026-12-08 19:32:04.000 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
 {"query":"她：是呀\n对方：他实验报告写完了吗","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:32:04+08:00"}
-@ 2026-12-08 19:32:04.000 记忆 POST /banks/baseline-common/memories/recall → 没有
-{"query":"她：是呀\n对方：他实验报告写完了吗","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:32:04+08:00"}
-@ 2026-12-08 19:32:04.000 记忆 POST /banks/baseline-@10002/memories/recall → 1 条：m-own
-{"query":"她：是呀\n对方：他实验报告写完了吗","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:32:04+08:00"}
 @ 2026-12-08 19:32:04.000 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"你昨天干嘛了 小周最近在忙什么 他实验报告写完了吗","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-08T19:32:04+08:00"}
+@ 2026-12-08 19:32:04.000 记忆 POST /banks/baseline-common/memories/recall → 没有
+{"query":"她：是呀\n对方：他实验报告写完了吗","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:32:04+08:00"}
 @ 2026-12-08 19:32:04.000 llm #26 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #22.1）
 --- user
@@ -1093,10 +1066,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 
 [你认识的人：小周]
 小周：同班同学，实验课和她一组
-[你心里对小周的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）：里面的事实可以按披露规则使用；你对小周的看法是你自己的念头，不主动说，被问起时按说别人的事的分寸]
-小周做事认真，交作业从不拖，就是话少。
-[关于小周的旧事（可明说·和小周聊的；从记忆里想起来的，只作参考）]
-- 12月8日：小周负责写实验原理，你写数据分析
 
 [说别人的事的分寸：上面的每条别人的事都标了披露上限。「可明说」只表示被问时可以讲大面事实，别人的家事、难处、心事等私事仍然最多说个大概；「只能含糊」只在对方直接问起时说「好像听谁提过」「不太清楚」这一类，不给名字和细节；「不能说」的不能透露、确认或暗示，但要顺着当前话题自然回应，不能因为不能说就突然截断整句。主动向阿明提别人时比标签再保守一级：只有「可明说」的能挑一件大面上的事，带着自然由头、含糊地随口提；其余不主动提。你和某个人之间说好、让你别说的事只跟那个人说；你心里对谁的看法（喜欢、嫌弃、觉得他怎样）不主动说；阿明直接问你觉得某人怎么样时，可以用自己的话说句实在的，不刻薄、不添油加醋，也不借机翻那个人的私事。]
 
@@ -1134,9 +1103,9 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:40:00.000 他 10002 发 #1006
 实验报告我写完了，你看看
 @ 2026-12-08 19:41:35.218 qq markRead [10002]
-@ 2026-12-08 19:41:35.218 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
 @ 2026-12-08 19:41:35.218 记忆 POST /banks/baseline-@10002/memories/recall → 1 条：m-own
 {"query":"她：我写数据分析吧\n对方：实验报告我写完了，你看看","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:41:35+08:00"}
+@ 2026-12-08 19:41:35.218 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
 @ 2026-12-08 19:41:35.218 记忆 GET /banks/baseline-@10002/mental-models/relationship → 有内容
 @ 2026-12-08 19:41:35.218 llm #27 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
@@ -1269,16 +1238,11 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 嗯嗯
 @ 2026-12-08 19:46:05.644 qq setInputStatus [10002]
 @ 2026-12-08 19:46:07.329 qq sendPrivateText [10002,"嗯嗯"]
-@ 2026-12-08 19:52:06.967 记忆 POST /banks/baseline-common/memories/recall → 1 条：c-today
-{"query":"今天和小周聊了什么","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:52:06+08:00","temporal_window":{"start":"2026-12-08T02:00:00+08:00","end":"2026-12-08T19:53:06+08:00"}}
 @ 2026-12-08 19:52:06.967 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
 {"query":"阿明最近在忙什么、我自己最近惦记什么、担心什么、期待什么\n对方：他实验报告写完了吗\n她：怎么啦","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:52:06+08:00","temporal_window":{"start":"2026-12-05T19:52:06+08:00","end":"2026-12-10T19:52:06+08:00"}}
-@ 2026-12-08 19:52:06.967 记忆 POST /banks/baseline-@10002/memories/recall → 1 条：m-own
-{"query":"阿明最近在忙什么、我自己最近惦记什么、担心什么、期待什么\n对方：他实验报告写完了吗\n她：怎么啦","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:52:06+08:00","temporal_window":{"start":"2026-12-05T19:52:06+08:00","end":"2026-12-10T19:52:06+08:00"}}
-@ 2026-12-08 19:52:06.967 记忆 GET /banks/baseline-@10001/mental-models/relationship → 有内容
 @ 2026-12-08 19:52:06.967 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"你昨天干嘛了 小周最近在忙什么 他实验报告写完了吗","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-08T19:52:06+08:00"}
-@ 2026-12-08 19:52:06.967 记忆 GET /banks/baseline-common/mental-models/person-@10002 → 有内容
+@ 2026-12-08 19:52:06.967 记忆 GET /banks/baseline-@10001/mental-models/relationship → 有内容
 @ 2026-12-08 19:52:06.967 llm #29 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
@@ -1329,15 +1293,8 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 - 12月7日：他说12月8日上午考高数，有点慌
 - 12月7日：你答应他考完一起去吃火锅
 
-[你今天和别人聊过的事（是你今天的一部分，不是和阿明聊的；只挑大面上的一件，有自然由头时含糊地随口提，不要一上来汇报）]
-- 12月8日（可明说·和小周聊的）：小周问下周的实验报告怎么分工，你说自己写数据分析
-
 [你认识的人：小周]
 小周：同班同学，实验课和她一组
-[你心里对小周的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）：里面的事实可以按披露规则使用；你对小周的看法是你自己的念头，不主动说，被问起时按说别人的事的分寸]
-小周做事认真，交作业从不拖，就是话少。
-[关于小周的旧事（可明说·和小周聊的；从记忆里想起来的，只作参考）]
-- 12月8日：小周负责写实验原理，你写数据分析
 
 [说别人的事的分寸：上面的每条别人的事都标了披露上限。「可明说」只表示被问时可以讲大面事实，别人的家事、难处、心事等私事仍然最多说个大概；「只能含糊」只在对方直接问起时说「好像听谁提过」「不太清楚」这一类，不给名字和细节；「不能说」的不能透露、确认或暗示，但要顺着当前话题自然回应，不能因为不能说就突然截断整句。主动向阿明提别人时比标签再保守一级：只有「可明说」的能挑一件大面上的事，带着自然由头、含糊地随口提；其余不主动提。你和某个人之间说好、让你别说的事只跟那个人说；你心里对谁的看法（喜欢、嫌弃、觉得他怎样）不主动说；阿明直接问你觉得某人怎么样时，可以用自己的话说句实在的，不刻薄、不添油加醋，也不借机翻那个人的私事。]
 
@@ -1371,15 +1328,13 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 @ 2026-12-08 19:55:00.000 他 10001 发 #1008
 晚安啦
 @ 2026-12-08 19:55:53.960 qq markRead [10001]
-@ 2026-12-08 19:55:53.960 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
 @ 2026-12-08 19:55:53.960 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
-{"query":"她：怎么啦\n对方：晚安啦","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:55:53+08:00"}
-@ 2026-12-08 19:55:53.960 记忆 POST /banks/baseline-common/memories/recall → 没有
-{"query":"她：怎么啦\n对方：晚安啦","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:55:53+08:00"}
-@ 2026-12-08 19:55:53.960 记忆 POST /banks/baseline-@10002/memories/recall → 没有
 {"query":"她：怎么啦\n对方：晚安啦","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:55:53+08:00"}
 @ 2026-12-08 19:55:53.960 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"小周最近在忙什么 他实验报告写完了吗 晚安啦","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-08T19:55:53+08:00"}
+@ 2026-12-08 19:55:53.960 记忆 GET /banks/baseline-common/entities?limit=100&offset=0 → 2 个
+@ 2026-12-08 19:55:53.960 记忆 POST /banks/baseline-common/memories/recall → 没有
+{"query":"她：怎么啦\n对方：晚安啦","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T19:55:53+08:00"}
 @ 2026-12-08 19:55:53.960 llm #30 chat model=baseline-chat temperature=1 maxTokens=300
 --- system（同 #22.1）
 --- user
@@ -1429,8 +1384,6 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 
 [你认识的人：小周]
 小周：同班同学，实验课和她一组
-[你心里对小周的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）：里面的事实可以按披露规则使用；你对小周的看法是你自己的念头，不主动说，被问起时按说别人的事的分寸]
-小周做事认真，交作业从不拖，就是话少。
 
 [说别人的事的分寸：上面的每条别人的事都标了披露上限。「可明说」只表示被问时可以讲大面事实，别人的家事、难处、心事等私事仍然最多说个大概；「只能含糊」只在对方直接问起时说「好像听谁提过」「不太清楚」这一类，不给名字和细节；「不能说」的不能透露、确认或暗示，但要顺着当前话题自然回应，不能因为不能说就突然截断整句。主动向阿明提别人时比标签再保守一级：只有「可明说」的能挑一件大面上的事，带着自然由头、含糊地随口提；其余不主动提。你和某个人之间说好、让你别说的事只跟那个人说；你心里对谁的看法（喜欢、嫌弃、觉得他怎样）不主动说；阿明直接问你觉得某人怎么样时，可以用自己的话说句实在的，不刻薄、不添油加醋，也不借机翻那个人的私事。]
 
@@ -1483,16 +1436,11 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 挑一个你真没想通的问题。
 @ 2026-12-08 20:00:00.000 llm #31 回复
 好
-@ 2026-12-08 20:22:06.967 记忆 POST /banks/baseline-common/memories/recall → 1 条：c-today
-{"query":"今天和小周聊了什么","types":["world","experience"],"prefer_observations":false,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T20:22:06+08:00","temporal_window":{"start":"2026-12-08T02:00:00+08:00","end":"2026-12-08T20:23:06+08:00"}}
 @ 2026-12-08 20:22:06.967 记忆 POST /banks/baseline-@10001/memories/recall → 2 条：b-exam、b-hotpot
 {"query":"阿明最近在忙什么、我自己最近惦记什么、担心什么、期待什么\n对方：晚安啦\n她：怎么啦","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T20:22:06+08:00","temporal_window":{"start":"2026-12-05T20:22:06+08:00","end":"2026-12-10T20:22:06+08:00"}}
-@ 2026-12-08 20:22:06.967 记忆 POST /banks/baseline-@10002/memories/recall → 没有
-{"query":"阿明最近在忙什么、我自己最近惦记什么、担心什么、期待什么\n对方：晚安啦\n她：怎么啦","types":["world","experience","observation"],"prefer_observations":true,"tags":["qq-private"],"tags_match":"all_strict","max_tokens":1000,"query_timestamp":"2026-12-08T20:22:06+08:00","temporal_window":{"start":"2026-12-05T20:22:06+08:00","end":"2026-12-10T20:22:06+08:00"}}
-@ 2026-12-08 20:22:06.967 记忆 GET /banks/baseline-@10001/mental-models/relationship → 有内容
 @ 2026-12-08 20:22:06.967 记忆 POST /banks/baseline/memories/recall → 没有
 {"query":"小周最近在忙什么 他实验报告写完了吗 晚安啦","types":["world","experience","observation"],"prefer_observations":true,"tags":[],"tags_match":"any","max_tokens":1000,"query_timestamp":"2026-12-08T20:22:06+08:00"}
-@ 2026-12-08 20:22:06.967 记忆 GET /banks/baseline-common/mental-models/person-@10002 → 有内容
+@ 2026-12-08 20:22:06.967 记忆 GET /banks/baseline-@10001/mental-models/relationship → 有内容
 @ 2026-12-08 20:22:06.967 llm #32 chat model=baseline-chat temperature=1 maxTokens=300
 --- system
 你是测试角色，正在用 QQ 和阿明私聊。下面是你的设定。
@@ -1543,13 +1491,8 @@ time 写 morning（上午）、afternoon（下午）、evening（晚上）或 HH
 - 12月7日：他说12月8日上午考高数，有点慌
 - 12月7日：你答应他考完一起去吃火锅
 
-[你今天和别人聊过的事（是你今天的一部分，不是和阿明聊的；只挑大面上的一件，有自然由头时含糊地随口提，不要一上来汇报）]
-- 12月8日（可明说·和小周聊的）：小周问下周的实验报告怎么分工，你说自己写数据分析
-
 [你认识的人：小周]
 小周：同班同学，实验课和她一组
-[你心里对小周的印象（从你和大家的聊天里整理的，只作参考，不要原样说出来）：里面的事实可以按披露规则使用；你对小周的看法是你自己的念头，不主动说，被问起时按说别人的事的分寸]
-小周做事认真，交作业从不拖，就是话少。
 
 [说别人的事的分寸：上面的每条别人的事都标了披露上限。「可明说」只表示被问时可以讲大面事实，别人的家事、难处、心事等私事仍然最多说个大概；「只能含糊」只在对方直接问起时说「好像听谁提过」「不太清楚」这一类，不给名字和细节；「不能说」的不能透露、确认或暗示，但要顺着当前话题自然回应，不能因为不能说就突然截断整句。主动向阿明提别人时比标签再保守一级：只有「可明说」的能挑一件大面上的事，带着自然由头、含糊地随口提；其余不主动提。你和某个人之间说好、让你别说的事只跟那个人说；你心里对谁的看法（喜欢、嫌弃、觉得他怎样）不主动说；阿明直接问你觉得某人怎么样时，可以用自己的话说句实在的，不刻薄、不添油加醋，也不借机翻那个人的私事。]
 
