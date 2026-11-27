@@ -179,6 +179,16 @@ describe('从收据补回（recoverIncoming）', () => {
         assert.deepEqual(h.chatHistory.load(FRIEND.qq).map(m => m.content), ['/屏幕']);
     });
 
+    test('补回时设备命令的各种写法都不进她的聊天记录：和收消息那一路认同一套（设备审查 I）', async () => {
+        const h = harness({ deviceOwner: HIM });
+        const commands = ['/看屏幕', '/看屏幕 你看', '/拍照', '/摄像头', '/批准', '/拒绝', '取消', '批准。', '拒绝！'];
+        for (const command of commands) h.receipts.stageEvent(event(HIM.qq, text(command)));
+        h.receipts.stageEvent(event(HIM.qq, text('约会取消了')));
+        assert.equal(await h.receipts.recoverIncoming(HIM.qq), 1);
+        assert.deepEqual(h.chatHistory.load(HIM.qq).map(m => m.content), ['约会取消了']);
+        assert.equal(h.chatHistory.pendingIncoming(HIM.qq).length, commands.length, '收据留着，不重跑');
+    });
+
     test('要读的图 / 语音先读；读失败就按原消息转文字', async () => {
         let reads = 0;
         const h = harness({ reader: { needs: m => typeof m !== 'string' && m.some(s => s.type === 'image'), read: async () => { reads++; if (reads === 2) throw new Error('看不清'); return text('[图片：一只猫]'); } } });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { createDeviceControl, DEVICE_ACTIONS, deviceMenu, parseDeviceTokens, stripDeviceTokens, type AuditEntry, type DeviceControlDeps, type DispatchJob, type PolicyContext } from '../src/platform/device-actions.ts';
+import { createDeviceControl, DEVICE_ACTIONS, deviceMenu, looksLikeDeviceCommand, MALFORMED, parseDeviceTokens, stripDeviceTokens, type AuditEntry, type DeviceControlDeps, type DispatchJob, type PolicyContext } from '../src/platform/device-actions.ts';
 
 const context: PolicyContext = { links: new Map([['音乐', 'https://music.example/play']]), apps: ['网易云', '记事本'], maxVolume: 60 };
 
@@ -64,6 +64,22 @@ describe('设备令牌：动作表和参数校验（ADR 0148）', () => {
     test('stripDeviceTokens：不管开没开，令牌都不给他看；一行里夹着的只去掉令牌', () => {
         assert.equal(stripDeviceTokens('好呀<device:notify|电脑|x>\n<device:lock>\n晚安'), '好呀\n晚安');
         assert.equal(stripDeviceTokens('没有令牌的话 <3 不动'), '没有令牌的话 <3 不动');
+    });
+
+    test('写错格式的指令行（大写、参数太长、参数里带 <、少了 >）：不认，也不原样发给他；记成「格式不对」，不带原文（设备审查 J）', () => {
+        const long = 'x'.repeat(81);
+        const parsed = parseDeviceTokens(['好呀', '<device:Lock>', `<device:notify|电脑|${long}>`, '<device:notify|电脑|a<b>', '<DEVICE:lock>', '<device:lock', '晚安<device:sleep >', '<device:notify|电脑|喝水>'].join('\n'), context);
+        assert.equal(parsed.reply, '好呀\n晚安');
+        assert.deepEqual(parsed.proposals.map(p => p.action), ['notify'], '同一轮里合格的照样认');
+        assert.deepEqual(parsed.rejected, Array.from({ length: 6 }, () => ({ action: MALFORMED, reason: '格式不对' })));
+        assert.equal(JSON.stringify(parsed.rejected).includes('xxx'), false);
+        assert.equal(stripDeviceTokens('嗯\n<device:Lock>\n<device:lock'), '嗯', '没开设备控制时也摘');
+        assert.equal(stripDeviceTokens('我的设备：电脑 <3'), '我的设备：电脑 <3', '不是 <device: 开头的不动');
+    });
+
+    test('looksLikeDeviceCommand：和收消息那一路认同一套写法（补回过滤用，设备审查 I）', () => {
+        for (const text of ['批准', '批准。', '/批准', '拒绝', '/拒绝', '取消', '取消！', '/屏幕', '/看屏幕', '/看屏幕 你看我在干嘛', '/摄像头', '/拍照', '/设备']) assert.equal(looksLikeDeviceCommand(text), true, text);
+        for (const text of ['批准吧', '约会取消了', '屏幕，好亮', '看屏幕', '/设备 x']) assert.equal(looksLikeDeviceCommand(text), false, text);
     });
 
     test('菜单只列这轮可用的：没配手机就不提手机、不提 ring；音量上限写进去', () => {
@@ -188,6 +204,29 @@ describe('设备控制器：分档、限额、批准、审计', () => {
         assert.equal(t.control.pending()?.action, 'lock');
         assert.equal(t.audit.at(-1)!.decision, 'rejected');
         assert.equal(t.said.length, 1);
+    });
+
+    test('过期很久的待批准不吞他的话：过期后再宽限一个有效期，之后「取消」「拒绝」「批准」都是普通的话（设备审查 H）', async () => {
+        const t = setup();
+        t.control.take('<device:lock>');
+        t.tick(5 * 60_000 + 1000);
+        assert.equal(t.control.isOwnerCommand('取消'), true, '宽限内：照现在这样当命令');
+        assert.deepEqual(t.control.ownerSays('取消'), { kind: 'reply', text: '（取消了）' });
+
+        t.control.take('<device:sleep>');
+        t.tick(7 * 60_000);
+        assert.deepEqual(t.control.ownerSays('批准'), { kind: 'reply', text: '（已经过期了，她要再提议一次才行）' }, '宽限内说批准：告诉他过期了');
+
+        t.control.take('<device:sleep>');
+        t.tick(10 * 60_000);
+        for (const text of ['取消', '拒绝', '批准']) {
+            assert.equal(t.control.isOwnerCommand(text), false, `过了宽限：「${text}」不是设备命令`);
+            assert.deepEqual(t.control.ownerSays(text), { kind: 'none' }, `过了宽限：「${text}」交给她`);
+        }
+        await settle();
+        assert.deepEqual(t.jobs, []);
+        assert.deepEqual(t.audit.map(a => a.decision), ['pending', 'declined', 'pending', 'expired', 'pending', 'expired']);
+        assert.equal(t.control.pending(), undefined);
     });
 
     test('approve 每天最多 6 次提议', () => {

@@ -9,6 +9,7 @@ import type { Executor } from '../executor/executor.ts';
 import type { Responder } from '../social/responder.ts';
 import type { mediaReading } from '../vision/media.ts';
 import type { AppConfig, Contact } from './config.ts';
+import { looksLikeDeviceCommand } from './device-actions.ts';
 import type { Log } from './log.ts';
 import { segmentsToText, type ForwardLookup, type MessageEvent, type QuoteLookup, type Segment } from './onebot.ts';
 
@@ -104,8 +105,9 @@ export function incomingReceipts({ config, stopped, syncing, exec, now: nowMs = 
     function interruptedCommand(qq: number, message: Segment[] | string): boolean {
         if (qq !== deviceOwner?.qq) return false;
         const plain = plainTextOf(message)?.trim();
+        // 设备命令和收消息那一路认同一套写法（/看屏幕、/拍照、/批准、取消、批准。……，设备审查 I）：补回时不进她的聊天记录
         return Boolean(plain && (/^\/(?:dsh|休眠|屏幕|摄像头|设备)(?:\s|$)/.test(plain)
-            || ['/设定', '/唤醒', '/主动', '批准', '拒绝'].includes(plain)));
+            || ['/设定', '/唤醒', '/主动'].includes(plain) || looksLikeDeviceCommand(plain)));
     }
     async function recoverIncoming(qq: number): Promise<number> {
         if (!tracksIncoming(qq) || stopped() || dormancy?.isDormant()) return 0;

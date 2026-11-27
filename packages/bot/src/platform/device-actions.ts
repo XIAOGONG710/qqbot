@@ -136,6 +136,11 @@ export const DEVICE_ACTIONS: Readonly<Record<string, ActionSpec>> = {
 const TOKEN = /<device:([a-z_]{1,24})((?:\|[^|<>\r\n]{0,80})*)>/g;
 /** 一轮回复里最多认几条 */
 export const MAX_PER_REPLY = 2;
+// 写错格式的指令行（大写、参数超过 80 字、参数里带 <、少了 >）：不认，但也不能原样发给他（设备审查 J）。
+// 从 <device: 起到第一个 > 为止，没有 > 就到行尾；只摘、不认
+const LOOSE_TOKEN = /<\s*device\s*:[^>\r\n]*>?/gi;
+/** 写错格式的指令行在审计里的动作名（不是动作表里的键） */
+export const MALFORMED = '(格式不对)';
 
 export interface DeviceProposal {
     action: string;
@@ -151,10 +156,10 @@ export interface ParsedTokens {
     rejected: { action: string; reason: string }[];
 }
 
-/** 不管开没开：回复里的设备令牌一律不给他看 */
+/** 不管开没开：回复里的设备令牌一律不给他看（写错格式的也摘掉） */
 export function stripDeviceTokens(reply: string): string {
     return reply.split('\n').flatMap(line => {
-        const cleaned = line.replace(TOKEN, '').replace(/[ \t]+$/g, '');
+        const cleaned = line.replace(TOKEN, '').replace(LOOSE_TOKEN, '').replace(/[ \t]+$/g, '');
         return line.trim() !== '' && cleaned.trim() === '' ? [] : [cleaned];
     }).join('\n');
 }
@@ -174,6 +179,8 @@ export function parseDeviceTokens(reply: string, context: PolicyContext): Parsed
         if (proposals.length >= MAX_PER_REPLY) { rejected.push({ action, reason: `一轮最多 ${MAX_PER_REPLY} 条` }); continue; }
         proposals.push({ action, targets: checked.targets, params: checked.params });
     }
+    // 合格的摘走以后还剩 <device: 形状的，就是写错格式的：照样摘掉，记一笔（不记原文）
+    rejected.push(...Array.from(reply.replace(TOKEN, '').matchAll(LOOSE_TOKEN), () => ({ action: MALFORMED, reason: '格式不对' })));
     return { reply: stripDeviceTokens(reply), proposals, rejected };
 }
 
@@ -294,6 +301,11 @@ const SCREEN = /^\s*\/(?:看屏幕|屏幕)(?:[\s，,：:]+(.{1,60}?))?\s*$/;
 const CAMERA = /^\s*\/(?:摄像头|拍照)(?:[\s，,：:]+(.{1,60}?))?\s*$/;
 const STATUS = /^\s*\/设备\s*$/;
 
+/** 写法上像不像他的设备命令（批准 / 拒绝 / 取消 / 看屏幕 / 摄像头 / 设备，含 /批准、批准。这些写法）；不看有没有待批准的。补回消息时用它过滤，和收消息那一路认同一套写法 */
+export function looksLikeDeviceCommand(text: string): boolean {
+    return [APPROVE, DECLINE, SCREEN, CAMERA, STATUS].some(pattern => pattern.test(text));
+}
+
 export function createDeviceControl(deps: DeviceControlDeps): DeviceControl {
     const now = deps.now ?? Date.now;
     const limits: Limits = { ...DEFAULT_LIMITS, ...deps.limits };
@@ -309,6 +321,13 @@ export function createDeviceControl(deps: DeviceControlDeps): DeviceControl {
     const keyOf = (proposal: DeviceProposal) => `${proposal.action}|${proposal.targets.join(',')}|${JSON.stringify(proposal.params)}`;
     const names = (proposal: DeviceProposal) => DEVICE_ACTIONS[proposal.action]!.label;
     const pendingExpired = (item: Pending, t: number) => item.expiresAt <= t || t - item.issuedAt < -MAX_CLOCK_ROLLBACK_MS;
+    // 过期以后再宽限一个有效期（设备审查 H）：宽限内他说「批准」照样回「已经过期了」；过了宽限就当没有待办，
+    // 他之后随口说的「取消」「拒绝」「批准」是普通的话，交给她
+    const pendingStale = (item: Pending, t: number) => t >= item.expiresAt + limits.approveTtlMs;
+    const livePending = (): Pending | undefined => {
+        if (pending && pendingStale(pending, now())) { record({ source: 'owner', action: pending.proposal.action, decision: 'expired' }); pending = undefined; }
+        return pending;
+    };
 
     async function run(proposal: DeviceProposal, source: 'model' | 'owner'): Promise<boolean> {
         let ok = true;
@@ -362,6 +381,8 @@ export function createDeviceControl(deps: DeviceControlDeps): DeviceControl {
     const parse = (reply: string): ParsedTokens => parseDeviceTokens(reply, deps.context);
     const commit = (parsed: ParsedTokens): void => {
         for (const bad of parsed.rejected) record({ source: 'model', action: bad.action, decision: 'rejected', reason: bad.reason });
+        const malformed = parsed.rejected.filter(bad => bad.action === MALFORMED).length;
+        if (malformed) deps.log(`设备：她回复里有 ${malformed} 条写错格式的指令行，没执行，已摘掉`);
         for (const proposal of parsed.proposals) {
             const spec = DEVICE_ACTIONS[proposal.action]!;
             if (spec.cls === 'auto') handleAuto(proposal);
@@ -381,11 +402,12 @@ export function createDeviceControl(deps: DeviceControlDeps): DeviceControl {
         menu: () => deviceMenu(deps.context, deps.available()),
 
         isOwnerCommand(text) {
-            if (APPROVE.test(text) || DECLINE.test(text)) return pending !== undefined;
+            if (APPROVE.test(text) || DECLINE.test(text)) return pending !== undefined && !pendingStale(pending, now());
             return STATUS.test(text) || SCREEN.test(text) || CAMERA.test(text);
         },
 
         ownerSays(text) {
+            if ((APPROVE.test(text) || DECLINE.test(text)) && !livePending()) return { kind: 'none' }; // 没有待办（或过了宽限）：这就是一句普通的话，让她照常回
             if (APPROVE.test(text)) {
                 const t = now();
                 if (!pending) return { kind: 'none' }; // 没有待办：这就是一句普通的话，让她照常回
