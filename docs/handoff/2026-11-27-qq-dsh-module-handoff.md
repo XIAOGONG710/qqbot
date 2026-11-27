@@ -28,6 +28,15 @@ QQ 接入走 NapCat → OneBot 11 → Koishi。Koishi 维护聊天、世界、�
 - 持续守护保持停止。现有守护会自动启动缺失的 Koishi，并具备 QQ 告警发送路径。仅运行了一次 `--once --local-only` 检查，结果确认 NapCat 和 Hindsight 正常，Koishi 和守护未运行。
 - Koishi 自动连回 NapCat 留待实机验收。继续前需要可用的既有部署版本，以及能够隔离真实 QQ 出站的验收条件。本轮未上线、未发送真实 QQ 消息、未改开关，`oneDiary` 继续关闭。
 
+## 11 月 27 日只收不发验收
+
+- 合成验收使用 Koishi `4.18.11`、OneBot 适配器 `6.9.4` 和当前项目的重连函数。收到 1 条合成私聊，断开后自动建立第二条连接，Koishi 的 QQ 发送调用为 0。额外注入的发送请求在隔离代理上返回 403。
+- 本机阶段沿用上述版本，项目逻辑取自 `a61b12be`。通过回环代理为 Koishi 建立到实际 NapCat 的 WebSocket，只允许转发 `get_login_info`。只断开隔离连接，随后重连成功，两次登录读取均成功。生产 QQBot、真实 QQ 入站事件和正式聊天账未进入这次验收。结束后隔离 Koishi 已退出，正式 Koishi 仍停止。
+- 单独运行 `node scripts/monitor-services-only.mjs`，验收时进程 PID 为 2692。连续两轮本地探测显示 NapCat、Hindsight 正常，正式 Koishi 和正式守护未运行。监测入口只调用守护的只读探针，不接管生产心跳、服务拉起、QQ 告警或备份。
+- NapCat 和 Hindsight 的进程在验收中保持不变，`oneDiary` 继续关闭。没有部署，也没有发真实 QQ 消息。
+
+离线重跑用 `node scripts/koishi-receive-only-drill.mjs`。本机 NapCat 的授权验收用同一命令加 `--live`，OneBot 令牌只从进程环境读取。
+
 ## 近期模块
 
 | 模块 | 代码和验收结果 | 接手时核对 |
