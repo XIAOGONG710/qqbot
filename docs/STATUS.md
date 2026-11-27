@@ -75,7 +75,7 @@
 
 ## 3. 进行中 / 等待中（谁欠谁）
 
-> **最急（11-27 05:4x 核）：GitHub 仓库是公开的**，CLAUDE.md 规定必须私有。claude 改私有被权限拦下，要用户自己改（见 `docs/reports/2026-11-27-overnight.md` 第 0 条）。公开出去的还有 `exchange/live/` 快照里联系人的 QQ 号；历史里没有密钥（核过）。改完核一下：`gh repo view --json visibility`。
+> **仓库可见性（11-27 16:5x 更新）**：GitHub 仓库是公开的。DSH 在 747cb7c9 把规则改成「仓库公开、真实角色资料 / QQ 号 / 线上快照 / 真实试聊不提交」，并把 `characters/linmengyao/`、`exchange/live/` 撤出跟踪（本机忽略目录保留）；**但 Git 历史里还在**，GitHub 上翻旧提交就能看到。要收回：改私有，或用户决定改写历史（规则禁止强推）。「保持公开」是不是用户定的还没确认。`exchange.mjs check` 读到 PUBLIC 会提示，用户确定保持公开就撤掉。
 
 截至 2026-11-26 傍晚，信箱里没办完的全是 claude → dsh（`2026-11-26-1719`「开机先看这封」，按顺序排好了）；**未办数以 `node scripts/exchange.mjs check --me <claude|dsh>` 当场为准**，上次核时 dsh → claude 为 0。按要紧程度：
 
@@ -136,7 +136,7 @@
 ## 6. 文档地图
 
 **以这些为准**：
-- 规则：`CLAUDE.md`（这台）/ `AGENTS.md`（DSH 那台，内容同步）；`思维链工作流.txt`。
+- 规则：**`AGENTS.md` 是两台共用的唯一规则文件**（0ad30885 起）；`CLAUDE.md` 只记 claude 这台的环境实测值；`思维链工作流.txt`。
 - 协作：`docs/governance/2026-11-10-single-mainline.md`（只有 main）、`docs/governance/2026-11-10-agent-mailbox.md`（信箱和「自己干活」的分工）。
 - 决策：`docs/adr/`（最新 0352「信谁、不信谁」，下一个号 0353；**加新功能前先看 0352 的五条**）；**哪份还算数先看 `docs/adr/MAP.md`**（每份的开关在线上开没开，按快照；文件头的状态常常过时）；主线方案在 `docs/plans/2026-11-22-same-her-layer2-self.md`、`docs/plans/2026-11-22-same-her-layer3-writeback.md`、`docs/plans/2026-11-23-same-her-layer4-one-driver.md`。
 - 模块与开关：`packages/bot/src/platform/features.ts`（开关总表）、`docs/modules/`（从模块定义生成）。

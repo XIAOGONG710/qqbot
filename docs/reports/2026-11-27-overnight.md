@@ -4,7 +4,8 @@
 
 ## 一、要你定的（按急迫）
 
-0. **最急：GitHub 仓库现在是公开的（11-27 05:4x 核：visibility=PUBLIC）**，CLAUDE.md 规定必须私有（角色资料含真实隐私）。`characters/` 下 46 个文件任何人都能看。能查到的事件从 11-19 起没有「设为公开」，所以至少从那时起就公开；没有 fork、star、关注者。
+0. **最急：GitHub 仓库现在是公开的（11-27 05:4x 核：visibility=PUBLIC）**，当时规则规定必须私有（角色资料含真实隐私）。
+   **11-27 下午更新**：DSH 在 747cb7c9 把规则改成「仓库公开、真实资料不提交」，并把真实资料和快照撤出跟踪；但 Git 历史里还在，要收回仍是改私有或改写历史（见 STATUS 第 3 节）。`characters/` 下 46 个文件任何人都能看。能查到的事件从 11-19 起没有「设为公开」，所以至少从那时起就公开；没有 fork、star、关注者。
    claude 想改私有，被权限拦下了。**请你自己改**：GitHub 网页 Settings → Danger Zone → Change visibility → Private，或终端 `gh repo edit XIAOGONG710/qqbot --visibility private --accept-visibility-change-consequences`。
    **公开出去的不只角色资料**（11-27 06:0x 核，只读、没打印任何号码）：`exchange/live/` 的线上开关快照里有名单里联系人的 **QQ 号**（每份 5–8 处）。提交历史里**没有**密钥：没提交过 .env / secrets / runtime / devices.json；两处 `sk-` 是测试里造的假令牌；那份 PRIVATE KEY 是 DSH 测试用的合成证书（scripts/fixtures/room-test/），别处不引用。所以改私有之后不用换密钥；QQ 号和角色资料已经公开过一段时间，这一点收不回来。
    改私有后要知道：私有仓库的 Actions 有免费分钟数上限（CI 一次约 10 分钟，推得多会用完，用完 CI 就不跑）。
