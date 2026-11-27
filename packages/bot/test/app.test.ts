@@ -3832,7 +3832,7 @@ describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不
             return Response.json({ results: [], entities: [], banks: [] });
         };
         try {
-            const dsh = await import(pathToFileURL(resolve('dsh-plugins/dsh-linmengyao-memory/index.js')).href) as {
+            const dsh = await import(pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), '../../../dsh-plugins/dsh-linmengyao-memory/index.js')).href) as {
                 recordDesktopTurn(cfg: object, user: string, assistant: string, at: number): boolean;
                 qqRecentBlock(cfg: object, at: number): string;
                 desktopUnderstanding(cfg: object, query: string, at: number): string;
