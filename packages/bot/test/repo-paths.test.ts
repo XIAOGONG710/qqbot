@@ -13,7 +13,8 @@ const repoRoot = resolve(botRoot, '../..');
 const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry => (
     entry.isDirectory() ? (entry.name === 'node_modules' || entry.name === 'vendor' ? [] : walk(join(dir, entry.name))) : [join(dir, entry.name)]));
 
-const isRepoRoot = (dir: string) => existsSync(join(dir, 'characters')) && existsSync(join(dir, 'packages')) && existsSync(join(dir, 'docs'));
+// 认仓库根的标志要是一定被跟踪的：747cb7c9 把 characters/linmengyao 撤出跟踪后 characters/ 在全新检出里不存在了，CI 上这条一直挂
+const isRepoRoot = (dir: string) => existsSync(join(dir, 'AGENTS.md')) && existsSync(join(dir, 'packages')) && existsSync(join(dir, 'docs'));
 
 describe('目录重构之后的路径（防止「往上数几层」悄悄错位）', () => {
     test('测试自己算出来的仓库根是对的（否则下面的核对没有意义）', () => {
