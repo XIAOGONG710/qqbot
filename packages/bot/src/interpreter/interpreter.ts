@@ -366,7 +366,7 @@ export interface DecideCtx {
         feltLedger?: () => readonly LedgerEntry[];
         /** 设备所有者在当前私聊明确问起已配置的某个群时，按需查该群公开日程或公告（可能要等） */
         groupRecent?: (question: string, at: Date) => string | undefined | Promise<string | undefined>;
-        desktopRecent?: (at: Date) => string | undefined;
+        desktopRecent?: (at: Date, query?: string) => string | undefined;
     };
     /** 他问到过去的某一天（ADR 0032）：那天她那边的流水账（按这一档的卡、那天的世界 / 身体 / 改了的打算 / 日记 / 感觉；只到 7 天前，没有就是 undefined） */
     recapOf?: (dayStart: Date, time: Date) => { day: string; lines: string[]; text: string } | undefined;

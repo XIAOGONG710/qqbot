@@ -1788,7 +1788,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(sendingStickers && contact.tier === 'boyfriend' ? { stickers: sendingStickers } : {}),
             ...(deviceHooks && contact.qq === deviceOwner?.qq ? { devices: deviceHooks } : {}),
             // 桌面对话文件只属于唯一 deviceOwner；不能仅按 boyfriend 档放行，否则多个同档联系人会互相看到私聊。
-            ...(oneLifeAt(config.oneLife, 'read') && deviceOwner?.qq === contact.qq ? { desktopRecent: (now: Date) => desktopBlock(desktopRecentPath(join(config.dataDir, 'memory')), now.getTime()) } : {}),
+            ...(oneLifeAt(config.oneLife, 'read') && deviceOwner?.qq === contact.qq ? { desktopRecent: (now: Date, query?: string) => desktopBlock(desktopRecentPath(join(config.dataDir, 'memory')), now.getTime(), { query, ownerBank: memory?.bankId(deviceOwner) }) } : {}),
             ...(photos && contact.tier === 'boyfriend' ? { photos } : {}),
             ...(aiPhotoRequests && contact.tier === 'boyfriend' ? {
                 currentAiPhoto: ({ kind, dish, at, world }: { kind: PhotoKind; dish?: string; at: Date; world: WorldNow }) => requestCurrentAiPhoto(aiPhotoRequests, kind, world, at, dish),

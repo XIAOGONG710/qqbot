@@ -248,7 +248,7 @@ export interface ContactPipelineOptions {
     /** 她对他的电脑和手机的有限控制（ADR 0148，配置 deviceControl）：只给男朋友档；回复里的 <device:…> 令牌清理时摘出来（Draft.devices），发送前只登记选中那一稿的（App 的 commit 经执行器的 device 动作）。菜单是解释器的模块（modules/devices.ts） */
     devices?: Pick<DeviceControl, 'parse' | 'commit'>;
     /** 他刚才在 DSH 桌面上和她的对话（ADR 0177，配置 crossRecent）：只给男朋友档；返回一段放进提示词的话，没有就不放 */
-    desktopRecent?: (now: Date) => string | undefined;
+    desktopRecent?: (now: Date, query?: string) => string | undefined;
     /** 指定今天的心情（模拟器比较不同心情用）；不传按日期抽 */
     mood?: string;
     /** herDays 开着时每次生成前调一次（app 按她的一天去重，写当天的摘要） */

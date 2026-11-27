@@ -157,7 +157,7 @@ async function recall(turn: Turn, ctx: DecideCtx): Promise<void> {
     // 同一个她（ADR 0177）：他刚才在电脑上（DSH）和她说的，QQ 这边接着知道
     const groupQuestion = !initiate && chat.at(-1)?.role === 'user' ? chat.at(-1)?.content : undefined;
     const groupEcho = groupQuestion ? await options.groupRecent?.(groupQuestion, time) : undefined;
-    const desktop = options.desktopRecent?.(time);
+    const desktop = options.desktopRecent?.(time, groupQuestion);
     if (desktop) log(`带上他刚才在 DSH 桌面上的对话 ${(desktop.match(/ 他：/g) ?? []).length} 轮`);
     let common = freshCommon;
     const commonNote = [`线索：${cue}`, fadeParts(faded[1]).join('，')].filter(Boolean).join('；');

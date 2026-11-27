@@ -44,13 +44,13 @@ export function closeTurn(user, assistant) {
 export const tailsPath = (soulDir) => join(soulDir, 'session-tails.jsonl')
 
 /** 追加一行：{at, session, line}。file 是收尾文件的完整路径（插件里是 cfg.sessionTailsFile，测试里指到临时目录——2026-11-22 原来用模块顶上的 SOUL_DIR，测试会写进她真实的灵魂目录） */
-export function appendTail(file, session, line, at = new Date().toISOString()) {
+export function appendTail(file, session, line, at = new Date().toISOString(), scope = undefined) {
     if (!line || !session) return false
     if (line === CONFLICT_LINE || line === TECH_LINE) {
         // 这两句本身就是要留的（她说的「写个这句就够了」），照记，不跳过
     }
     try {
-        appendFileSync(file, `${JSON.stringify({ at, session, line })}\n`)
+        appendFileSync(file, `${JSON.stringify({ at, session, line, scope })}\n`)
         return true
     } catch {
         return false
@@ -63,7 +63,7 @@ export function appendTail(file, session, line, at = new Date().toISOString()) {
  * - 最多 maxLines 句（默认 3）
  * - 当前 session 自己的行跳过：同一场不重复塞
  */
-export function lastSessionTail(file, session, { maxLines = 3, maxAgeMs = 7 * 24 * 3600_000, now = Date.now() } = {}) {
+export function lastSessionTail(file, session, { maxLines = 3, maxAgeMs = 7 * 24 * 3600_000, now = Date.now(), scope } = {}) {
     let raw = ''
     try {
         if (!existsSync(file)) return ''
@@ -77,7 +77,7 @@ export function lastSessionTail(file, session, { maxLines = 3, maxAgeMs = 7 * 24
         let row
         try { row = JSON.parse(line) } catch { continue }
         if (!row || typeof row.session !== 'string' || typeof row.line !== 'string' || !row.line.trim()) continue
-        if (row.session === session) continue
+        if (row.session === session || row.scope !== scope) continue
         const at = Date.parse(row.at)
         if (Number.isFinite(at) && now - at > maxAgeMs) continue
         rows.push({ ...row, at: Number.isFinite(at) ? at : 0 })

@@ -1209,6 +1209,32 @@ describe('编排（app.ts）', () => {
         assert.doesNotMatch(stale.toBoyfriend, /ZQD/, '超过 6 小时的不放（更早的靠语义召回）');
     });
 
+    test('隔天接续：昨晚桌面的查错进度在 QQ 的「接着办」问法里进提示词，换账号问同一句读不到', async () => {
+        const prompts: string[] = [];
+        const cfg = config({ oneLife: 'read', contacts: [
+            { qq: 10001, name: '第一位', tier: 'boyfriend' },
+            { qq: 10002, name: '第二位', tier: 'boyfriend' },
+        ], memory: { baseUrl: 'http://127.0.0.1:1', timeoutMs: 50, recallTimeoutMs: 50, bankPrefix: 'test' } });
+        mkdirSync(join(cfg.dataDir, 'memory'), { recursive: true });
+        writeFileSync(join(cfg.dataDir, 'memory', 'desktop-recent.jsonl'), `${JSON.stringify({
+            at: Date.now() - 16 * 3_600_000,
+            user: '昨晚在桌面查的蓝灯报错ZQY',
+            assistant: '等合成配置再试',
+        })}\n`);
+        const { app, sent } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
+        await app.connected(SELF);
+        const question = '昨晚在桌面查的蓝灯报错，接着办';
+        app.receive(event(10001, 1, question, '第一位'));
+        app.receive(event(10002, 2, question, '第二位'));
+        await until(() => sent.length >= 2);
+        const toOwner = prompts.find(prompt => prompt.includes('第一位私聊') || prompt.includes('和第一位'));
+        const toOther = prompts.find(prompt => prompt.includes('第二位私聊') || prompt.includes('和第二位'));
+        assert.ok(toOwner && toOther, '两个联系人的提示词都要拿到');
+        assert.match(toOwner!, /续办线索/, '隔天回看的提示词用续办线索的说法');
+        assert.match(toOwner!, /等合成配置再试/, '带上桌面那轮的进度线索');
+        assert.doesNotMatch(toOther!, /ZQY|等合成配置再试|续办线索/, '换账号问同一句读不到');
+    });
+
     test('跨端最近对话只属于唯一 deviceOwner，第二个男朋友档也不能看到', async () => {
         const prompts: string[] = [];
         const cfg = config({ oneLife: 'read', contacts: [

@@ -24,6 +24,7 @@ export interface DesktopTurn {
     at: number;
     user: string;
     assistant: string;
+    ownerBank?: string;
 }
 
 export const desktopRecentPath = (memoryDir: string): string => join(memoryDir, 'desktop-recent.jsonl');
@@ -45,12 +46,14 @@ export function tailLines(file: string, maxBytes = TAIL_BYTES): string[] {
     } catch { return []; }
 }
 
-export function readDesktopTurns(file: string, now: number, windowMs = CROSS_WINDOW_MS): DesktopTurn[] {
+export function readDesktopTurns(file: string, now: number, windowMs = CROSS_WINDOW_MS, ownerBank?: string): DesktopTurn[] {
     const turns: DesktopTurn[] = [];
     for (const line of tailLines(file)) {
         try {
             const value = JSON.parse(line) as Partial<DesktopTurn>;
             if (typeof value.at !== 'number' || typeof value.user !== 'string' || typeof value.assistant !== 'string') continue;
+            // 传了 ownerBank：没有该字段的旧行仍可读（只可能属于唯一的设备所有者），别的 ownerBank 排除；没传就按原来的方式读全部
+            if (ownerBank !== undefined && value.ownerBank !== undefined && value.ownerBank !== ownerBank) continue;
             if (now - value.at > windowMs || value.at > now + 60_000) continue;
             turns.push({ at: value.at, user: value.user, assistant: value.assistant });
         } catch { /* 写到一半 / 坏行：跳过 */ }
@@ -68,12 +71,24 @@ const clip = (text: string, max: number): string => { const flat = text.replace(
 export const DESKTOP_CHOICE_MARK = /【(?:聊完还在想，也想写进今天的日记|我答应并记下|我改主意了)[：:][^【】\r\n]*】/g;
 
 /** 放进 QQ 提示词的一段：他刚才在电脑上（DSH）和她的最近几轮；没有（或都超过窗口）返回 undefined */
-export function desktopBlock(file: string, now: number, options: { maxTurns?: number; windowMs?: number } = {}): string | undefined {
-    const turns = readDesktopTurns(file, now, options.windowMs).slice(-(options.maxTurns ?? DESKTOP_MAX_TURNS));
+export function desktopBlock(file: string, now: number, options: { maxTurns?: number; windowMs?: number; query?: string; ownerBank?: string } = {}): string | undefined {
+    const recent = options.windowMs ?? CROSS_WINDOW_MS;
+    const query = options.query ?? '';
+    const lookingBack = Boolean(options.ownerBank && /昨晚|昨天|昨夜|接着|继续/.test(query) && /DSH|桌面|电脑|报错|配置/i.test(query));
+    const terms = query.replace(/昨晚|昨天|昨夜|接着|继续|桌面|电脑|dsh/gi, ' ').match(/[\p{L}\p{N}]+/gu) ?? [];
+    const matchesTopic = (source: string) => terms.some(term => {
+        for (let i = 0; i + 2 <= term.length; i++) if (source.includes(term.slice(i, i + 2))) return true;
+        return false;
+    });
+    const turns = readDesktopTurns(file, now, lookingBack ? Math.max(recent, 36 * 3_600_000) : recent, options.ownerBank)
+        .filter(turn => now - turn.at <= recent || matchesTopic(`${turn.user}\n${turn.assistant}`))
+        .slice(-(options.maxTurns ?? DESKTOP_MAX_TURNS));
     if (!turns.length) return undefined;
     const lines = turns.flatMap(turn => [
         `${hhmm(turn.at)} 他：${clip(turn.user, CROSS_LINE_CHARS)}`,
         `${hhmm(turn.at)} 你：${clip(turn.assistant.replace(DESKTOP_CHOICE_MARK, ''), CROSS_LINE_CHARS)}`,
     ]);
-    return `[你刚才在电脑上（DSH）和他的对话——同一个他、同一个你；接着聊就行，不用复述，也别说成「我在电脑上看到」]\n${lines.join('\n')}`;
+    const title = turns.some(turn => now - turn.at > recent) ? '[他在桌面上聊过的续办线索——按记录接上，不把计划当成已完成]'
+        : '[你刚才在电脑上（DSH）和他的对话——同一个他、同一个你；接着聊就行，不用复述，也别说成「我在电脑上看到」]';
+    return `${title}\n${lines.join('\n')}`;
 }

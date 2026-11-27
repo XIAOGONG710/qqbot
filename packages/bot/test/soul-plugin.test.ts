@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, before, describe, test } from 'node:test';
@@ -10,7 +10,7 @@ import { writeFeelingsExport } from '../src/emotion/feeling-export.ts';
 import { clarity as qqMemoryClarity } from '../src/memory/fading.ts';
 import { ChatHistory } from '../src/memory/history.ts';
 import { SELF_FILE, SELF_KIND, SELF_RECEIPTS_FILE, SELF_VERSION, type SelfExport, type SelfReceipt } from '../src/life/self-types.ts';
-import { readDesktopTurns } from '../src/memory/cross-recent.ts';
+import { CROSS_WINDOW_MS, readDesktopTurns } from '../src/memory/cross-recent.ts';
 import { renderDshState } from '../src/dsh-state-export.ts';
 import { ingestDesktopRecent, readDesktopLog } from '../src/memory/desktop-log.ts';
 import { recordUnderstandingTurn } from '../src/life/understanding.ts';
@@ -717,6 +717,51 @@ const withChannel = async (value: string | undefined, run: () => Promise<void> |
 };
 
 describe('同一个她·第 2 层：DSH 读他刚在 QQ 上聊的（ADR 0177）', () => {
+    test('撤回后新桌面会话不复活旧摘要、旧回复或旧收尾，换账号也不继承', async () => {
+        const c = crossRoot();
+        const now = new Date().toISOString();
+        const history = new ChatHistory(c.root);
+        history.append(10002, { role: 'user', content: '合成来源MEMORY-SECRET', time: now, messageId: 700 });
+        const fake = fakeHindsight({ banks: ALL_BANKS, recall: { [OWNER]: [{ id: 'stale', type: 'observation', text: '摘要MEMORY-SECRET', document_id: 'ep-700' }] } });
+        try {
+            const tails = join(c.root, 'session-tails.jsonl');
+            const open = () => boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: c.cfg.ownerBankFile, sessionTailsFile: tails });
+            const step = async (app: ReturnType<typeof open>) => {
+                await app.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '帮我想想之前聊到哪了' }] }, async () => undefined);
+                return app.contexts.map(entry => entry.text()).join('\n');
+            };
+            const old = open();
+            assert.match(await step(old), /摘要MEMORY-SECRET/);
+            old.handlers['agent/assistant-stream']!({ frame: { type: 'chunk', chunk: { type: 'text-delta', text: '收尾MEMORY-SECRET' } } });
+            await old.handlers['agent/turn-stopping']!();
+            writeFileSync(tails, readFileSync(tails, 'utf8').replace('"session":"a1"', '"session":"older"'));
+            assert.match(await step(open()), /收尾MEMORY-SECRET/);
+            assert.equal(history.recall(10002, 700), true);
+            history.append(10002, { role: 'assistant', content: '复述MEMORY-SECRET', time: now, messageId: 701 });
+            assert.doesNotMatch(await step(open()), /MEMORY-SECRET/);
+            assert.match(await step(open()), /撤回了一条消息/);
+            const manifest = JSON.parse(readFileSync(c.cfg.ownerBankFile, 'utf8'));
+            writeFileSync(c.cfg.ownerBankFile, JSON.stringify({ ...manifest, ownerBank: ALL_BANKS[3], chatFile: undefined, recalledFile: undefined }));
+            assert.doesNotMatch(await step(open()), /MEMORY-SECRET/);
+        } finally { fake.restore(); }
+    });
+
+    test('记忆库列表卡住时按截止点继续并保留近期对话', async () => {
+        const c = crossRoot();
+        const original = globalThis.fetch;
+        writeFileSync(c.files.chatFile, `${JSON.stringify({ time: new Date().toISOString(), role: 'user', content: '合成近期进度', messageId: 1 })}\n`);
+        globalThis.fetch = (async () => new Promise<never>(() => undefined)) as typeof fetch;
+        try {
+            const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: c.cfg.ownerBankFile });
+            const started = performance.now();
+            let progressed = false;
+            const keepAlive = setTimeout(() => {}, 5000);
+            try { await h.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: '继续聊' }] }, () => { progressed = true; }); }
+            finally { clearTimeout(keepAlive); }
+            assert.ok(progressed && performance.now() - started < 4700);
+            assert.match(h.contexts.map(entry => entry.text()).join('\n'), /合成近期进度/);
+        } finally { globalThis.fetch = original; }
+    });
     test('只取 6 小时内的、最多 10 句、带时刻和谁说的；他撤回的遮成「[撤回了一条消息]」', () => {
         const c = crossRoot();
         let text = c.chatRow(7 * 60, 'user', '昨晚的话（太久以前）');
@@ -1480,6 +1525,17 @@ describe('一个生活·第 3 层：桌面回合记录开口时刻和离线回�
             const logFile = join(c.root, 'memory', 'desktop-log.jsonl');
             assert.equal(ingestDesktopRecent({ recentFile: c.files.desktopFile, logFile, now: T }).added, 2);
             assert.deepEqual(readDesktopLog(logFile, T).map(turn => turn.userAt), [undefined, T - mins(1)]);
+            // 隔离语义：传了 ownerBank 时，没有该字段的旧行仍可读（只可能属于唯一的设备所有者），别的 ownerBank 排除；没传时读全部
+            appendFileSync(c.files.desktopFile, `${JSON.stringify({ at: T - mins(2), ownerBank: 'synthetic-other', user: '别家的行', assistant: '不该出现' })}\n`);
+            assert.deepEqual(readDesktopTurns(c.files.desktopFile, T, CROSS_WINDOW_MS, OWNER), [
+                { at: T - mins(5), user: '旧格式的一轮', assistant: '嗯嗯' },
+                { at: T, user: '新格式的一轮', assistant: '好' },
+            ], '旧行仍可见、别家的行不可见');
+            assert.deepEqual(readDesktopTurns(c.files.desktopFile, T, CROSS_WINDOW_MS, 'synthetic-other'), [
+                { at: T - mins(5), user: '旧格式的一轮', assistant: '嗯嗯' },
+                { at: T - mins(2), user: '别家的行', assistant: '不该出现' },
+            ], '只看到自己的和无归属旧行：本人的新行不可见');
+            assert.equal(readDesktopTurns(c.files.desktopFile, T).length, 3, '没传 ownerBank 时三行都读');
         });
     });
 

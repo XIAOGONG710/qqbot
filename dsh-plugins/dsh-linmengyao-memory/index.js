@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { appendTail, closeTurn, sessionBridgeText } from './session-tail.js'
 import { FOCUS_CHECKPOINT_FILE, focusCheckpoint } from './focus-checkpoints.mjs'
 import { UNDERSTANDING_EXPORT, sharedUnderstandingLine } from './shared-understanding.mjs'
@@ -636,19 +636,45 @@ function inboxTime(value, now = Date.now()) {
  * 老格式是一个 id 数组（QQ 那边第一次读到就改写成 v2）。只按 id 遮：比 QQ 那边（id + 内容哈希，kept 的不遮）遮得宽，宁可多遮。
  * 没有文件 = 没撤回过，返回空集合；文件在但读不了 / 认不出格式返回 undefined——调用方整段不放，不能当成「没撤回过」把原文放出去。
  */
-export function recalledIds(file) {
+function recallEvidence(file) {
   let raw
-  try { raw = fs.readFileSync(file, 'utf8') } catch (error) { return error?.code === 'ENOENT' ? new Set() : undefined }
+  try { raw = fs.readFileSync(file, 'utf8') } catch (error) { return error?.code === 'ENOENT' ? { ids: new Set(), revision: '' } : undefined }
   let value
   try { value = JSON.parse(raw) } catch { return undefined }
   const id = (item) => (Number.isSafeInteger(item) && item >= 0 ? [item] : [])
-  if (Array.isArray(value)) return new Set(value.flatMap(id))
+  const revision = createHash('sha256').update(raw).digest('hex')
+  if (Array.isArray(value)) return { ids: new Set(value.flatMap(id)), revision }
   if (!value || typeof value !== 'object' || value.version !== 2 || !Array.isArray(value.legacyIds) || !Array.isArray(value.messages)) return undefined
-  return new Set([
+  return { ids: new Set([
     ...value.legacyIds.flatMap(id),
     ...value.messages.flatMap((mark) => id(mark?.messageId)),
     ...(Array.isArray(value.pending) ? value.pending.filter((entry) => entry?.withdrawn === true).flatMap((entry) => id(entry?.source?.messageId)) : []),
-  ])
+  ]), revision }
+}
+
+export const recalledIds = file => recallEvidence(file)?.ids
+
+// A session summary carries the exact owner and withdrawal view used to create it.
+function continuityScope(cfg) {
+  const owner = ownerBanks(cfg)
+  if (!owner) return fs.existsSync(cfg.ownerBankFile) ? null : undefined
+  const evidence = owner.recalledFile ? recallEvidence(owner.recalledFile) : { revision: '' }
+  if (!evidence) return null
+  return createHash('sha256').update(JSON.stringify([owner.owner, evidence.revision])).digest('hex')
+}
+
+// DSH cannot verify repaired source generations. Keep only identifiable, unaffected
+// raw episodes from the bound QQ bank once its local withdrawal view is nonempty.
+function withdrawalAllows(bank, item, cfg, owner, withdrawn) {
+  if (!owner?.recalledFile || withdrawn?.size === 0) return true
+  if (!withdrawn || bank !== owner.owner || !['world', 'experience'].includes(item.type) || !/^ep--?\d+$/.test(item.documentId)) return false
+  try {
+    const state = JSON.parse(fs.readFileSync(path.join(path.dirname(cfg.ownerBankFile), 'derived.json'), 'utf8'))
+    const dirty = state?.banks?.[bank]
+    return (state.version === 1 || state.version === 2) && Array.isArray(dirty?.documents) && dirty.documents.length > 0
+      && Array.isArray(dirty.owners) && dirty.owners.length > 0 && dirty.owners.every(source => source?.allDocuments === false)
+      && !dirty.documents.includes(item.documentId)
+  } catch { return false }
 }
 
 /** 他的 QQ 聊天记录最后几句（6 小时内、最多 10 句；他撤回的遮成「[撤回了一条消息]」）。QQ 那边没开 crossRecent（owner-bank.json 里没有 chatFile）就是空串 */
@@ -659,6 +685,7 @@ export function qqRecentBlock(cfg, now = Date.now()) {
   const hidden = files.recalledFile ? recalledIds(files.recalledFile) : new Set()
   if (!hidden) return ''
   const rows = []
+  let sourceWithdrawn = false
   for (const line of tailLines(files.chatFile)) {
     try {
       const row = JSON.parse(line)
@@ -666,6 +693,8 @@ export function qqRecentBlock(cfg, now = Date.now()) {
       if (!Number.isFinite(at) || now - at > CROSS_WINDOW_MS || at > now + 60_000) continue
       if ((row.role !== 'user' && row.role !== 'assistant') || typeof row.content !== 'string') continue
       const revoked = row.role === 'user' && row.messageId !== undefined && hidden.has(row.messageId)
+      if (row.role === 'user') sourceWithdrawn = revoked
+      else if (sourceWithdrawn) continue
       rows.push(`${hhmm(at)} ${row.role === 'user' ? '他' : '你'}：${revoked ? '[撤回了一条消息]' : clipText(row.content, CROSS_LINE_CHARS)}`)
     } catch { /* 坏行 */ }
   }
@@ -681,10 +710,12 @@ export function qqRecentBlock(cfg, now = Date.now()) {
  */
 export function recordDesktopTurn(cfg, user, assistant, now = Date.now(), userAt = undefined) {
   if (channel() !== 'desktop') return false
-  const file = ownerBanks(cfg)?.desktopFile
+  const owner = ownerBanks(cfg)
+  const file = owner?.desktopFile
   if (!file) return false
   const row = {
     at: now,
+    ownerBank: owner.owner,
     ...(Number.isSafeInteger(userAt) && userAt <= now ? { userAt } : {}),
     user: clipText(user, 600),
     assistant: clipText(assistant, 600),
@@ -879,6 +910,8 @@ async function beforeRecallDeadline(signal, work) {
 async function recallAll(cfg, query, currentUserText, checkImportant) {
   const deadline = AbortSignal.timeout(3000)
   const within = work => beforeRecallDeadline(deadline, work)
+  const initialScope = continuityScope(cfg)
+  if (initialScope === null) return { items: [], important: 'not-queried', failedBanks: 0 }
   const banks = await within(() => allBanks(cfg, deadline))
   deadline.throwIfAborted()
   const owner = ownerBanks(cfg)
@@ -892,13 +925,15 @@ async function recallAll(cfg, query, currentUserText, checkImportant) {
   const supplement = checkImportant && topics.length && banks.includes(owner?.owner)
   if (supplement) jobs.push(within(() => recallBank(cfg, owner.owner, currentUserText, deadline, true)))
   const settled = await Promise.allSettled(jobs)
+  if (initialScope !== continuityScope(cfg)) return { items: [], important: 'not-queried', failedBanks: 0 }
+  const withdrawn = owner?.recalledFile ? recalledIds(owner.recalledFile) : undefined
   const extra = supplement ? settled.pop() : undefined
   const seen = new Set()
   const out = []
   let relatedImportantSelected = false
   let important = extra?.status === 'rejected' ? 'failed' : extra ? 'no-match' : 'not-queried'
   if (extra?.status === 'fulfilled') {
-    const item = extra.value.find(candidate => isOwnImportant(candidate) && isRelated(candidate))
+    const item = extra.value.find(candidate => withdrawalAllows(owner.owner, candidate, cfg, owner, withdrawn) && isOwnImportant(candidate) && isRelated(candidate))
     if (item) {
       important = 'matched'
       relatedImportantSelected = true
@@ -909,6 +944,7 @@ async function recallAll(cfg, query, currentUserText, checkImportant) {
   for (const [index, result] of settled.entries()) {
     if (result.status !== 'fulfilled') continue
     for (const item of result.value) {
+      if (!withdrawalAllows(banks[index], item, cfg, owner, withdrawn)) continue
       if (banks[index] === common && (item.type === 'observation' || !herOwnCommonDoc(item.documentId, mineHash, item.tags))) continue
       if (isOwnImportant(item) && IMPORTANT_TOPICS.some(topic => topic.test(item.text)) && !isRelated(item)) continue
       if (seen.has(item.id)) continue
@@ -1269,7 +1305,7 @@ export function apply(ctx, config = {}) {
 
     // self：这一步放进「此刻的你」的 SELF（selfBlock 的结果，没有就是 null）；selfShown / selfAt：这一轮放给她看过的攒着的事，turn-stopping 写回执后清空
     // userAt：本轮第一次记下他原话（cache.user）的时刻，turn-stopping 清空
-    const cache = { text: '', preset, user: '', userAt: undefined, assistant: '', outbox: 0, self: null, selfShown: new Set(), selfAt: '', bridge: '', firstStep: true }
+    const cache = { text: '', preset, user: '', userAt: undefined, assistant: '', outbox: 0, self: null, selfShown: new Set(), selfAt: '', scope: undefined, firstStep: true }
 
     const off = agent.ctx.effect(() => {
       const disposers = []
@@ -1290,7 +1326,6 @@ export function apply(ctx, config = {}) {
         if (!ownerInput) {
           cache.text = ''
           cache.self = null
-          cache.bridge = ''
           cache.user = ''
           cache.userAt = undefined
           cache.assistant = ''
@@ -1305,14 +1340,10 @@ export function apply(ctx, config = {}) {
         cache.self = null
         if (!privateTurn()) return next()
         const version = inputVersion
-        // 串会话（2026-11-22）：这一场第一次跑起来时，把上一场留下的收尾读进来；同一场只读一次
-        if (!cache.bridge) {
-          try {
-            // 只有他在桌面上和她说话的那一场接收尾（醒来 / 睡眠整合 / QQ 派的活不接）
-            cache.bridge = channel() === 'desktop' ? sessionBridgeText(cfg.sessionTailsFile, agent.id) : ''
-            if (cache.bridge) log(cfg, '上一场：接了收尾')
-          } catch (e) { cache.bridge = ''; log(cfg, `bridge error ${e}`) }
-        }
+        const scope = continuityScope(cfg)
+        const bridge = scope === null ? '' : sessionBridgeText(cfg.sessionTailsFile, agent.id, { scope })
+        const localContext = () => [qqRecentBlock(cfg), bridge].filter(Boolean).join('\n\n')
+        cache.text = localContext()
         try {
           let p = cache.preset
           if (!p) {
@@ -1337,6 +1368,7 @@ export function apply(ctx, config = {}) {
           if (!cache.user) {
             const originalUser = [...messages].reverse().find((message) => message?.role === 'user')
             cache.user = textOf(originalUser).trim()
+            cache.scope = scope
             // userAt（ADR 0347 第 3 层）：本轮第一次记下他原话的这一刻，turn-stopping 写进 desktop-recent.jsonl
             if (cache.user) {
               cache.userAt = Date.now()
@@ -1347,6 +1379,7 @@ export function apply(ctx, config = {}) {
           if (query) {
             const { items: all, important, failedBanks } = await recallAll(cfg, query, cache.user, messages.at(-1)?.role === 'user')
             if (version !== inputVersion || !privateTurn()) return next()
+            if (scope !== continuityScope(cfg)) { cache.text = ''; return next() }
             // 第 5 层：她自己的口气 + 多久以前（ADR 0347）。原来原样贴「林梦瑶……」，
             // 她说那读起来像在翻别人的日记；这里只换人称和加远近，事实一个字不加。
             const voice = cfg.memoryVoice === true
@@ -1389,12 +1422,12 @@ export function apply(ctx, config = {}) {
               insights,
               ledgerShown ? `[你的判断账本]\n${ledgerShown}` : '',
               text ? `${voice ? '[你想起来的]\n' : ''}${text}` : '',
-              cache.bridge,
+              bridge,
             ].filter(Boolean).join('\n\n')
             cache.firstStep = false
             log(cfg, `recall items=${all.length} selected=${Math.min(cfg.pick, all.length)} memoryChars=${text.length} important=${important} failedBanks=${failedBanks}`)
           }
-        } catch { log(cfg, 'recall error') }
+        } catch { if (scope !== continuityScope(cfg)) cache.text = ''; log(cfg, 'recall error') }
         return next()
       }))
 
@@ -1422,7 +1455,7 @@ export function apply(ctx, config = {}) {
         cache.assistant = ''
         cache.selfShown = new Set()
         cache.selfAt = ''
-        if (!canRemember || !user) return
+        if (!canRemember || !user || cache.scope === null || cache.scope !== continuityScope(cfg)) return
         let p = cache.preset
         if (!p) {
           try { p = ctx.get('agentPresets')?.composedPreset?.(agent.ctx) || '' } catch {}
@@ -1434,7 +1467,7 @@ export function apply(ctx, config = {}) {
           // 只记他在桌面上亲口说了话的那一轮：醒来 / 睡眠整合（idle）、QQ 派的活（qq-work）不是他和她在桌面上聊
           // （2026-11-22 原来不分，idle 的提示词一堆技术词，会凭空记成「他那晚在忙」）
           const tail = channel() === 'desktop' && user ? closeTurn(user, assistant) : ''
-          if (tail && appendTail(cfg.sessionTailsFile, agent.id, tail)) log(cfg, `收尾：留了一句（${tail.length}字）`)
+          if (tail && appendTail(cfg.sessionTailsFile, agent.id, tail, new Date().toISOString(), cache.scope)) log(cfg, `收尾：留了一句（${tail.length}字）`)
         } catch (e) { log(cfg, `tail error ${e}`) }
         // 回执：桌面上他自己说了话、这一轮放过攒着的事，才追加一行；QQ 那边认没认成「说过了」由它自己判断
         if (channel() === 'desktop') {
