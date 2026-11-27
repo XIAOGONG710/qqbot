@@ -28,10 +28,13 @@ export const HINDSIGHT_INVENTORY_MAX_METADATA_BYTES = 8 * 1024 * 1024;
 
 export class HindsightError extends Error {
     readonly status?: number;
-    constructor(message: string, status?: number) {
+    /** 等到点了也没回应（不是连不上、不是报错）：长期记忆的熔断只数这种（决定单第 26 条） */
+    readonly timedOut: boolean;
+    constructor(message: string, status?: number, timedOut = false) {
         super(message);
         this.name = 'HindsightError';
         this.status = status;
+        this.timedOut = timedOut;
     }
 }
 
@@ -557,7 +560,7 @@ export class HindsightClient implements HindsightApi {
         const deadline = performance.now() + timeoutMs;
         for (let offset = 0; offset < 1000; offset += 100) {
             const left = Math.ceil(deadline - performance.now());
-            if (left <= 0) throw new HindsightError(`记忆服务超时（${timeoutMs} ms）`);
+            if (left <= 0) throw new HindsightError(`记忆服务超时（${timeoutMs} ms）`, undefined, true);
             const page = await this.#request<{ items?: unknown; total?: unknown }>(
                 'GET', `${this.#bank(bankId)}/entities?limit=100&offset=${offset}`, undefined, Math.min(left, timeoutMs),
             );
@@ -623,7 +626,7 @@ export class HindsightClient implements HindsightApi {
         if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new HindsightError('记忆服务超时配置无效');
         const controller = new AbortController();
         let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-        const timeout = new HindsightError(`记忆服务超时（${timeoutMs} ms）`);
+        const timeout = new HindsightError(`记忆服务超时（${timeoutMs} ms）`, undefined, true);
         let timer: ReturnType<typeof setTimeout>;
         const expired = new Promise<never>((_, reject) => {
             timer = setTimeout(() => {

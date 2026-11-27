@@ -28,7 +28,7 @@ import { stateObject, stateTimestamp } from './state-schema.ts';
 import { DerivedState, type DerivedSnapshot } from './derived-state.ts';
 import { DerivedRepair } from './derived-repair.ts';
 import { repairFingerprint, repairModelIdentityHash, repairSourceManifestHash, type RepairCandidate } from './derived-repair-protocol.ts';
-import { repairDocumentContentHash, type DerivedRepairApi } from './hindsight.ts';
+import { HindsightError, repairDocumentContentHash, type DerivedRepairApi } from './hindsight.ts';
 import { knowsPeople } from '../life/people.ts';
 import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
 import { defuseMarkers } from '../platform/untrusted-markers.ts';
@@ -369,6 +369,14 @@ export function readCommonMemoryState(path: string, log?: (message: string) => v
     });
 }
 const MEMORY_STOPPED = Symbol('memory stopped');
+/** 熔断中、这次不查（不记日志，状态变化时记一次） */
+const MEMORY_PAUSED = Symbol('memory paused');
+/**
+ * Hindsight 卡住时的熔断（决定单第 26 条，记忆审查 U1）：每一轮的查询连续这么多次超时，就这么久之内不查，这几轮照出错时一样不带记忆；
+ * 到点后先试一次：还超时就再停这么久，有回应（成功或很快报错）就恢复。
+ */
+export const RECALL_BREAKER_TIMEOUTS = 2;
+export const RECALL_BREAKER_MS = 60_000;
 
 /** 一次写入或召回的结果 */
 export interface MemoryEvent {
@@ -454,6 +462,9 @@ export class LongTermMemory {
     /** 最近一次写入、召回的结果（控制台的状态页，ADR 0010） */
     #lastWrite?: MemoryEvent;
     #lastRecall?: MemoryEvent;
+    /** 熔断（RECALL_BREAKER_*）：连续超时几次、停到什么时候（过了这个点还没清掉就是在试） */
+    #recallTimeouts = 0;
+    #recallPausedUntil?: number;
 
     constructor(options: LongTermMemoryOptions) {
         if (Boolean(options.api.submitRetain) !== Boolean(options.api.retentionStatus)) throw new Error('记忆异步派发与状态查询能力必须成对提供');
@@ -506,6 +517,40 @@ export class LongTermMemory {
                 if (this.#stopped) reject(MEMORY_STOPPED); else resolve(value);
             }, error => { this.#cancelReads.delete(cancel); reject(error); });
         });
+    }
+
+    /**
+     * 每一轮都要等的查询（召回、公共库实体名）：过熔断（RECALL_BREAKER_*）。
+     * 原样交回 #read 的那个 promise、记账挂在旁边：调用方等待的时机和原来一样，不多一个微任务（行为基线核对事件顺序）
+     */
+    #query<T>(work: () => Promise<T>): Promise<T> {
+        if (this.#recallPausedUntil !== undefined && this.#now() < this.#recallPausedUntil) return Promise.reject(MEMORY_PAUSED);
+        const pending = this.#read(work);
+        pending.then(() => this.#queryAnswered(), error => {
+            if (error === MEMORY_STOPPED) return;
+            if (error instanceof HindsightError && error.timedOut) this.#queryTimedOut();
+            else this.#queryAnswered();
+        });
+        return pending;
+    }
+
+    #queryAnswered(): void {
+        this.#recallTimeouts = 0;
+        if (this.#recallPausedUntil === undefined) return;
+        this.#recallPausedUntil = undefined;
+        this.#options.log('记忆服务有回应了，接着查记忆');
+    }
+
+    #queryTimedOut(): void {
+        const now = this.#now();
+        // 停着的时候之前发出去的查询陆续超时：不重复算
+        if (this.#recallPausedUntil !== undefined && now < this.#recallPausedUntil) return;
+        const trying = this.#recallPausedUntil !== undefined;
+        if (!trying && ++this.#recallTimeouts < RECALL_BREAKER_TIMEOUTS) return;
+        this.#recallPausedUntil = now + RECALL_BREAKER_MS;
+        this.#options.log(trying
+            ? `记忆服务还是超时，再停 ${RECALL_BREAKER_MS / 60_000} 分钟不查`
+            : `记忆服务连续 ${RECALL_BREAKER_TIMEOUTS} 次超时，${RECALL_BREAKER_MS / 60_000} 分钟内不查记忆（这几轮不带记忆）`);
     }
 
     #invalidateEntities(): void {
@@ -1463,13 +1508,13 @@ export class LongTermMemory {
             const snapshot = this.#derivedSnapshot(bankId);
             if (!snapshot) return undefined;
             const guarded = snapshot.dirty || snapshot.allOwners.length || this.#writtenBlocked(bankId) ? { ...request, types: ['world', 'experience'] as RecallRequest['types'], prefer_observations: false } : request;
-            const results = await this.#read(() => this.#options.api.recall(bankId, guarded, this.#options.recallTimeoutMs));
+            const results = await this.#query(() => this.#options.api.recall(bankId, guarded, this.#options.recallTimeoutMs));
             if (this.#stopped) return undefined;
             this.#lastRecall = { at: this.#now(), ok: true, operation: 'recall', source: 'hindsight-recall', items: results.length, fingerprint: evidenceFingerprint(request.query ?? '') };
             return this.#filterDerived(bankId, results.filter(result =>
                 !result.tags?.some(tag => ['recalled', 'retracted', 'withdrawn', 'forgotten'].includes(tag))));
         } catch (error) {
-            if (error === MEMORY_STOPPED) return undefined;
+            if (error === MEMORY_STOPPED || error === MEMORY_PAUSED) return undefined;
             const message = error instanceof Error ? error.message : String(error);
             this.#lastRecall = { at: this.#now(), ok: false, error: message, operation: 'recall', source: 'hindsight-recall', fingerprint: evidenceFingerprint(request.query ?? '') };
             this.#options.log(`${failure}：${message}`);
@@ -1493,12 +1538,12 @@ export class LongTermMemory {
         if (this.#entitiesFlight?.version === version) return this.#entitiesFlight.promise.then(names => this.#modelsAllowed(this.commonBankId(), generation) ? [...names] : []);
         const promise = (async () => {
             try {
-                const names = await this.#read(() => list.call(this.#options.api, this.commonBankId(), this.#options.recallTimeoutMs));
+                const names = await this.#query(() => list.call(this.#options.api, this.commonBankId(), this.#options.recallTimeoutMs));
                 if (!this.#stopped && version === this.#entitiesVersion && this.#modelsAllowed(this.commonBankId(), generation)) this.#entities = { names: [...names], fetchedAt: this.#now(), generation };
             } catch (error) {
                 if (error !== MEMORY_STOPPED && !this.#stopped && version === this.#entitiesVersion && this.#modelsAllowed(this.commonBankId(), generation)) {
                     // 公共库还没建是 404，不用记；只延长当前世代的已有缓存。
-                    if ((error as { status?: number }).status !== 404) this.#options.log(`读取公共记忆的实体失败，用上一次的：${error instanceof Error ? error.message : String(error)}`);
+                    if (error !== MEMORY_PAUSED && (error as { status?: number }).status !== 404) this.#options.log(`读取公共记忆的实体失败，用上一次的：${error instanceof Error ? error.message : String(error)}`);
                     this.#entities = { names: this.#entities.generation === generation ? this.#entities.names : [], fetchedAt: this.#now(), generation };
                 }
             }
