@@ -4,6 +4,7 @@
 import { SWITCH_DEFAULTS } from '../platform/config.ts';
 import { SWITCH_MERGES, unrepresentableSwitches, writtenLegacy, type SwitchMerge } from '../platform/switch-merge.ts';
 import { specificHubHost, validSecrets } from '../platform/device-service.ts';
+import { ENV_SWITCHES } from '../platform/features.ts';
 import { BEHAVIOR_GAP_MS, type RestartEntry } from './restart-log.ts';
 
 export interface ChangeSet { cards: string[]; code: string[]; scripts: string[]; docs: string[]; other: string[] }
@@ -139,6 +140,8 @@ export function goLiveReport(input: GoLiveInput, options: { cardsApproved?: bool
     } else if (input.devices?.length) {
         blockers.push(`设备控制：线上 devices.json 按新代码的启动校验不合格，重启后设备控制起不来：${input.devices.join('；')}。先改好再部署（改线上配置，要用户点头；换令牌后宿主机上的电脑端要跟着换）`);
     }
+    // 靠环境变量开的功能（features.ts 的 ENV_SWITCHES）：koishi.yml 里看不到，线上启动脚本没设 =1 就是关的
+    if (ENV_SWITCHES.length) notes.push(`环境变量开关 ${ENV_SWITCHES.length} 个（koishi.yml 里看不到，线上没设 =1 就是关的；要开先问用户）：${ENV_SWITCHES.map(def => def.env).join('、')}`);
     const asks = [
         '用户在当前会话里点头了吗（合入 main 和上线是两次授权）？',
         'exchange/handoff 里写了重启通知吗？另一个窗口看过吗？',

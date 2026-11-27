@@ -346,6 +346,43 @@ export const FEATURES: readonly FeatureDef[] = [
 ];
 
 /** config 里有、但不是“功能开关”的键（配置数值、对象、字符串……）：features.test.ts 用它核对没有开关被漏掉 */
+/**
+ * 靠环境变量（不是 koishi.yml）开的功能（2026-11-28 收编）：11-27/28 DSH 加的几个新功能先用 `QQBOT_*=1` 开，没进上面的 FEATURES，
+ * 开关审计、上线预检、控制台都看不见。这里登记一行，env-switches.test.ts 核对：src 里读的每个 `process.env.QQBOT_*`
+ * 要么在这里，要么在 ENV_SETTINGS 里说明不是开关。要改成正式的配置键（控制台能开关）是另一回事，用户点头再做。
+ * requires：除了这个环境变量，还要哪些配置开关 / 条件才真正生效。
+ */
+export interface EnvSwitchDef { env: string; label: string; group: FeatureGroup; adr?: string; requires?: readonly string[]; description: string }
+
+export const ENV_SWITCHES: readonly EnvSwitchDef[] = [
+    { env: 'QQBOT_FEELING_RECOVERY', label: '道歉后难过回落快一点', group: '说话', adr: '0328', requires: ['herFeelings', '设备所有者的私聊'],
+        description: '他明确道歉或解释后，最近一条被晾着的感受按证据加快回落；单纯哄一句不算。私聊来由不进群提示词。' },
+    { env: 'QQBOT_SHARED_UNDERSTANDING', label: 'QQ 和桌面共享她没把握的理解', group: '记忆和安全', adr: '0347', requires: ['selfDirectedMemory', '他亲手打的私聊'],
+        description: '「行，你去忙吧」这类两可的话：原话和两种可能的理解分开记，后来他澄清了就追加；桌面读同一份 UNDERSTANDING.json。' },
+    { env: 'QQBOT_NOTEBOOK_LEARNING', label: '复用查读书笔记的经验', group: '她的日子', adr: '0204', requires: ['设备所有者', '他亲手打的私聊'],
+        description: '查读书札记时记下试过的方法和命中的记录，下次按场景复用；不改人设。（征询时用的是合成角色卡，打开前宜再问她本人）' },
+    { env: 'QQBOT_GROUP_BOUNDARIES', label: '群里的熟悉度和玩笑分寸', group: '在 QQ 上的样子', adr: '0210', requires: ['groupChat'],
+        description: '按同群近 30 天跨日的公开往来算熟悉度；陌生人起哄要她追着逗会被拦，熟人明确邀请也只接一句；私聊关系标签不进群。' },
+    { env: 'QQBOT_FOCUS_WORK', label: '工作模式的共享检查点', group: '工具', adr: '0347',
+        description: '他私聊的工作模式把任务 ID 和进度记进灵魂目录的检查点，重启或中断后同一条消息不重复领、能接着干。' },
+    { env: 'QQBOT_DECISION_AUDIT', label: '判断审计和不安全回复拦截', group: '记忆和安全',
+        description: '记下她每轮的判断依据（不带正文和账号），质量检查不过的回复拦下不发；导出用 scripts/export-decision-audit.mjs。' },
+];
+
+/** src 里读的、但不是功能开关的环境变量：路径、密钥、额度、运维和用户的声音代码（不改，只登记） */
+export const ENV_SETTINGS: readonly string[] = [
+    'QQBOT_CONFIG', 'QQBOT_LLM_API_KEY', 'QQBOT_SOUL_DIR', 'QQBOT_OUTBOX', 'QQBOT_OWNER_QQ', 'QQBOT_PRIVATE_SCRIPT', 'QQBOT_GIT_COMMIT',
+    'QQBOT_ALERT_COMMAND', 'QQBOT_DNS_CACHE', 'QQBOT_DNS_FALLBACK_HOSTS', 'QQBOT_MODEL_CONCURRENT', 'QQBOT_MODEL_DAILY_CALLS', 'QQBOT_IMAGE_DAILY_LIMIT',
+    'QQBOT_FFMPEG',
+    // 用户自己的声音 / 唱歌代码用的（agent 不碰）
+    'QQBOT_TTS', 'QQBOT_TTS_DIR', 'QQBOT_VOICE_GATEWAY', 'QQBOT_VOICE_REFS',
+];
+
+/** 这几个环境变量开关这会儿开没开（Koishi 进程里读；只看是不是 '1'） */
+export function envSwitchStatuses(env: Readonly<Record<string, string | undefined>> = process.env): { env: string; label: string; on: boolean }[] {
+    return ENV_SWITCHES.map(def => ({ env: def.env, label: def.label, on: env[def.env] === '1' }));
+}
+
 export const NOT_SWITCHES: readonly string[] = [
     'llm', 'prompt', 'memory', 'vision', 'externalPlatforms', 'deviceLinks', 'deviceApps', 'bilibiliCommentKeywords', 'bilibiliAtName', 'bilibiliAtUid', 'deliberateModel', 'qzoneVisibility', 'candidates', 'contextTurns', 'contextContacts', 'dataDir',
     // 账号控制面的两个允许清单和危险闸（ADR 0142）：是 qqControl 的附属配置，不是独立功能开关
