@@ -27,6 +27,7 @@ export interface HerNotesOptions {
     chatReview?: () => readonly ReviewNote[];
     diaryInsights?: () => readonly Insight[];
     readingTakes?: () => readonly Take[];
+    notebook?: (qq: number, text: string, at: number) => { reading?: string | undefined; tone?: string | undefined };
     openQuestions?: () => readonly Thought[];
     herGuesses?: () => readonly Guess[];
     /** 她猜的事按这个时刻算「最近几天对上的」（同联系人流水线的时钟） */
@@ -51,7 +52,10 @@ export function herNotesModule(options: HerNotesOptions): Module {
             if (options.speechNotes) add('speechNote', speechNotesLine(options.speechNotes(), said), '说话习惯：这一轮放了几条她自己总结的（日志不记内容）');
             if (options.chatReview && !needsCareText(said ?? '')) add('review', reviewLine(options.chatReview()), '聊天回顾：这一轮放了她自己记下的（日志不记内容）');
             if (options.diaryInsights) add('insight', insightsLine(options.diaryInsights(), said), '自我认识：这一轮放了几条她翻日记时发现的自己（日志不记内容）');
-            if (options.readingTakes) add('takes', takesLine(options.readingTakes(), said), '读完看完的想法：这一轮放了她自己想的（日志不记内容）');
+            const notebook = !turn.initiate && turn.history.at(-1)?.role === 'user' && said ? options.notebook?.(turn.contact.qq, said, turn.at.getTime()) : undefined;
+            if (notebook?.tone) add('speechNote', notebook.tone, '说话反馈：只给这一轮的语气建议');
+            if (notebook?.reading) add('takes', notebook.reading, '读书笔记：使用当前场景的查询结果');
+            else if (options.readingTakes) add('takes', takesLine(options.readingTakes(), said), '读完看完的想法：这一轮放了她自己想的（日志不记内容）');
             if (options.openQuestions) add('thoughts', thoughtsLine(options.openQuestions(), said), '没想完的问题：这一轮放了她自己后来想的（日志不记内容）');
             if (options.herGuesses) add('guesses', guessesLine(options.herGuesses(), said, options.now()), '她猜的事：这一轮放了她自己记的（日志不记内容）');
             return pieces;

@@ -23,8 +23,10 @@ describe('她的私人空间（ADR 0200）', () => {
     });
 
     test('按天滚动的私人文件：提示词指纹清单（只有哈希，但短行能穷举，同样不带）；和写清单用的是同一个名字规则', () => {
-        assert.deepEqual(PRIVATE_PATTERNS, [MANIFEST_FILE]);
+        assert.ok(PRIVATE_PATTERNS.includes(MANIFEST_FILE));
         assert.equal(isPrivateFile(manifestFileName('2026-11-22')), true);
+        assert.equal(isPrivateFile('notebook-learning-10002.json'), true);
+        assert.equal(isPrivateFile('notebook-learning.ts'), false);
         assert.equal(isPrivateFile('2026-11-22.log'), false, '按天日志不在这里（另有隐私审计）');
     });
 });

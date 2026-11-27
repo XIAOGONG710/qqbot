@@ -29,8 +29,10 @@ describe('免费网关（第三方）不该看到的东西（用户 10-31：「�
     });
 
     test('提示词指纹清单（按天滚动，和 PRIVATE_PATTERNS 同一个名字规则）：不管放在哪都拒绝，理由写明是清单', () => {
-        for (const pattern of PRIVATE_PATTERNS) assert.ok(pattern.test(manifestFileName('2026-11-22')));
+        assert.ok(PRIVATE_PATTERNS.some(pattern => pattern.test(manifestFileName('2026-11-22'))));
         for (const path of ['some/where/prompt-manifest-2026-11-22.jsonl', 'C:\\data\\logs\\Prompt-Manifest-2026-01-02.jsonl']) assert.match(privateReason(path) ?? '', /提示词指纹清单/, path);
+        assert.ok(PRIVATE_PATTERNS.some(pattern => pattern.test('notebook-learning-10002.json')));
+        assert.match(privateReason('some/where/notebook-learning-10002.json') ?? '', /私人文件/);
         assert.equal(privateReason('packages/bot/src/platform/prompt-manifest.ts'), undefined, '源码可以给');
     });
 

@@ -147,6 +147,7 @@ import { promiseKeeper, type Appointment } from '.././life/promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from '.././life/her-days.ts';
 import { herPlanActivities } from '.././life/her-plans.ts';
 import { correctionReplyLine, isCorrection, recordCorrection, sharedUnderstandingHost, understandingLine } from '.././life/understanding.ts';
+import { notebookLearning, notebookToneHint } from '../life/notebook-learning.ts';
 import { attachMatchingMemoryReviews, finishMemoryReviews, readMemoryReviews, recordMemoryReview } from '../memory/memory-review.ts';
 import { recordTrace, traceOf, tracesLine } from '.././life/traces.ts';
 import { bodyAt } from '.././life/body.ts';
@@ -807,6 +808,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 她猜的事（ADR 0213）：要她那边的世界（世界账）才对得上结果
     const herGuessesNow = config.herGuesses ? guessesReader(config.dataDir) : undefined;
     const deviceOwner = ownerOf(config.contacts);
+    const notebook = deviceOwner && process.env.QQBOT_NOTEBOOK_LEARNING === '1' ? notebookLearning(config.dataDir, config.timeZone, log, deviceOwner.qq) : undefined;
     // 她自己想一想的那几样（ADR 0336 第 6 步）：只有定时任务，App 搭好时开；好些东西（聊天记录、时钟、追求、心境、自我认识的导出）在后面才建，这里给的都是到点再取的函数
     const reflections = reflectionsModule({
         owner: deviceOwner,
@@ -946,8 +948,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                 desktopCalled: (at: Date) => desktop.calledAt(at),
             } : {}),
         },
-        // 她自己记下的东西（DSH：说话习惯、聊天回顾、日记里发现的自己、读完看完的想法、没想完的问题、她猜的事）：各自的开关开着才给读取；只给男朋友档
         herNotes: {
+            ...(notebook ? { notebook: (qq: number, text: string, at: number) => qq === deviceOwner?.qq && lastUserText.get(qq) === text ? { reading: notebook.reply(text, at), tone: notebookToneHint(text) } : {} } : {}),
             ...(speechNotesNow ? { speechNotes: speechNotesNow } : {}),
             ...(config.chatReview ? { chatReview: chatReviewReader(config.dataDir) } : {}),
             ...(diaryInsightsNow ? { diaryInsights: diaryInsightsNow } : {}),
@@ -2329,15 +2331,14 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         if (typed) lastUserText.set(event.user_id, text); else lastUserText.delete(event.user_id);
         if (typed && realities.noteUserWeather(event.user_id, text, accepted.time)) planners.get(event.user_id)?.poke();
         if (event.user_id === deviceOwner?.qq && !typed && readWorkMode(config.dataDir, event.user_id) === 'work') tellOwner(NOT_TYPED_NOTICE);
-        // 工作模式：不进普通聊天回复器，交给 headless 的她干活，干完再回（工具桥）
         if (event.user_id === deviceOwner?.qq && typed && !text.startsWith('/') && readWorkMode(config.dataDir, event.user_id) === 'work') {
             const qq = event.user_id;
             log(`[${qq}] 工作模式：交给 dsh 干活`);
-            // 他的话、她的回复都进聊天记录（ADR 0176）：原来工作模式里的来回不进记录，切回聊天后她不知道刚才说过什么
             history.append(qq, accepted);
             void work.handOff(qq, text, '工作桥出错', event.message_id);
             return;
         }
+        if (typed) notebook?.observe(String(event.message_id), text, worldNow());
         if (config.selfDirectedMemory && typed) understanding.receive(event.message_id, text, worldNow());
         responder.receive(accepted.content, event.message_id, new Date(accepted.time), accepted.messageSeq, accepted.incomingId);
         if (config.selfDirectedMemory && deviceOwner && event.user_id === deviceOwner.qq && isCorrection(text)) {
@@ -2351,7 +2352,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         }
         exportNow();
         // 他说过的话、做过的事留痕（10-31 用户）：亲密话 / 承诺 / 他自己的事，提炼成一句她记得的事
-        // 只记男朋友档那位的：traces.json 不分人，同学档说的「我喜欢你」会变成“他说喜欢我”，还会出现在别人的对话里
         if (config.selfDirectedMemory && deviceOwner && event.user_id === deviceOwner.qq) {
             const trace = traceOf(text);
             if (trace && recordTrace(config.dataDir, trace, worldNow())) log(`[${event.user_id}] 痕迹：记下${trace.kind === 'affection' ? '他说的话' : trace.kind === 'promise' ? '他答应的事' : '他做过的事'}（日志不记内容）`);

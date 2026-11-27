@@ -30,6 +30,7 @@ export function privateReason(path) {
     const full = norm(path);
     const base = full.slice(full.lastIndexOf('/') + 1);
     if (PRIVATE_PATTERNS.some(pattern => pattern.test(base))) return `提示词指纹清单 ${base}`;
+    if (/^notebook-learning(?:-\d+)?\.json$/.test(base)) return `私人文件 ${base}`;
     if (/\.jsonl$/.test(full)) return '.jsonl（聊天记录 / 语料 / 样本）';
     if (/(^|\/)\.env(\.|$)/.test(full) || /secret|apikey|api-key|credential/.test(full)) return '密钥';
     const hit = PRIVATE_SEGMENTS.find(segment => full.includes(segment))

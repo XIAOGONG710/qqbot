@@ -36,6 +36,7 @@ import { CRISIS_MARK } from '../src/language/intent.ts';
 import { createDeviceControl } from '../src/platform/device-actions.ts';
 import type { DeviceService, startDeviceService } from '../src/platform/device-service.ts';
 import { readOwnerBank } from '../src/memory/owner-bank.ts';
+import { emptyTakesState, saveTakesState } from '../src/life/reading-takes.ts';
 import { groupLog } from '../src/social/group-chat.ts';
 import { syntheticCardPath, syntheticCardPattern, syntheticStDir } from './fixtures/card.ts';
 
@@ -3726,6 +3727,40 @@ describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不
             assert.equal(groupLog(cfg.dataDir).load(555).find(row => row.messageId === 902)?.replyTo, 102);
         } finally {
             if (previous === undefined) delete process.env.QQBOT_GROUP_BOUNDARIES; else process.env.QQBOT_GROUP_BOUNDARIES = previous;
+        }
+    });
+
+    test('J 合成私聊用已验证的笔记排序，流水查日期，单次反馈只进当轮语气', async () => {
+        const previous = process.env.QQBOT_NOTEBOOK_LEARNING;
+        process.env.QQBOT_NOTEBOOK_LEARNING = '1';
+        try {
+            const clock = new VirtualClock(virtualStart);
+            const cfg = config({ contacts: bf });
+            const original = { id: 'note-1', key: 'book:synthetic', kind: 'book' as const, title: '航海', names: [], text: '潮汐提醒我换个时间出船。', at: clock.now() - 60_000, progress: 1 };
+            const state = { ...emptyTakesState(), takes: [original] };
+            saveTakesState(cfg.dataDir, state);
+            const prompts: string[] = [];
+            const { app, sent } = setup(cfg, {}, { clock, generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '合成回复'; } });
+            const ask = async (id: number, text: string) => {
+                clock.advance(60_000);
+                const seen = sent.length;
+                app.receive({ ...event(10002, id, text), time: Math.floor(clock.now() / 1000) });
+                await drive(clock, () => sent.length > seen);
+                return prompts.at(-1)!;
+            };
+            const query = '找一下读书笔记，主题航海，关键词潮汐';
+            assert.match(await ask(111, `${query}，按日期查 2020-03-03`), /没有找到匹配笔记/);
+            assert.match(await ask(112, `${query}，按主题查`), /潮汐提醒我换个时间出船/);
+            saveTakesState(cfg.dataDir, { ...state, takes: [...state.takes, { ...original, id: 'note-2', title: '航海补记', text: '潮汐也会影响另一条路线。', at: clock.now() }] });
+            assert.match(await ask(113, query), /沿用已验证的主题加关键词检索[^]*潮汐提醒[^]*另一条路线/);
+            assert.match(await ask(114, '查一下读书笔记流水'), /按日期列流水[^]*2020-03-04[^]*航海/);
+            const ledger = join(cfg.dataDir, 'notebook-learning-10002.json');
+            const before = readFileSync(ledger, 'utf8');
+            assert.match(await ask(115, '你刚才说话太直了。'), /这条反馈只用于这轮语气/);
+            assert.doesNotMatch(await ask(116, '那我们接着聊照片吧'), /这条反馈只用于这轮语气/);
+            assert.equal(readFileSync(ledger, 'utf8'), before, '反馈不入经验账');
+        } finally {
+            if (previous === undefined) delete process.env.QQBOT_NOTEBOOK_LEARNING; else process.env.QQBOT_NOTEBOOK_LEARNING = previous;
         }
     });
 
