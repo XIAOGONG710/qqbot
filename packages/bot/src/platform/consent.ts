@@ -36,3 +36,16 @@ export const ASK_TTL_MS = 10 * 60_000;
 export function askExpired(at: number, now: number, ttlMs = ASK_TTL_MS): boolean {
     return now - at > ttlMs;
 }
+
+/**
+ * 他提给她、等她点头的请求（看屏幕 / 摄像头……），状态在 app.ts 的 pendingAsk。
+ * 记下他那条请求的 message_id 和时间：她答应后看到的描述（kind: 'message'）作为他这一条消息交给回复器，她自然地回（ADR 0148 第 6 条）；
+ * kind: 'reply' 是失败、没看成这类小提示，直接发给他
+ */
+export interface PendingAsk {
+    label: string;
+    at: number;
+    messageId: number;
+    time: Date;
+    run: () => Promise<{ kind: 'reply' | 'message'; text: string }>;
+}

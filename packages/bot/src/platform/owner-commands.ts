@@ -9,6 +9,7 @@ import { summarize as summarizeMemoryLedger, type memoryLedger } from '../memory
 import type { MobileCompanionIntegration } from '../mobile-companion-dsh.ts';
 import type { createCommandReceiptStore } from './command-receipts.ts';
 import type { AppConfig, Contact } from './config.ts';
+import type { PendingAsk } from './consent.ts';
 import type { DeviceService } from './device-service.ts';
 import type { Log } from './log.ts';
 import type { MessageEvent } from './onebot.ts';
@@ -40,7 +41,7 @@ export interface OwnerCommandsDeps {
     transport: Pick<Executor['qq'], 'sendPrivateText'>;
     sendOwnedNotice: (send: () => Promise<unknown>, success: () => void, failure: (error: unknown) => void) => Promise<void>;
     /** 他提给她、等她点头的请求（看屏幕 / 摄像头……） */
-    pendingAsk: Map<number, { label: string; at: number; run: () => Promise<{ kind: string; text?: string }> }>;
+    pendingAsk: Map<number, PendingAsk>;
     planners: ReadonlyMap<number, { poke(): void }>;
     log: Log;
 }
@@ -159,7 +160,7 @@ export function ownerCommands(deps: OwnerCommandsDeps): OwnerCommands {
             }
             if (outcome?.kind === 'capture') {
                 // 她有权拒绝（用户 10-30）：先把请求提给她，不直接做
-                pendingAsk.set(event.user_id, { label: '看你的屏幕或摄像头', at: clockNow().getTime(), run: outcome.run });
+                pendingAsk.set(event.user_id, { label: '看你的屏幕或摄像头', at: clockNow().getTime(), messageId: event.message_id, time: new Date(event.time * 1000), run: outcome.run });
                 void transport.sendPrivateText(event.user_id, '（我跟她说了，她愿意就给我看）').catch(error => log(`设备控制：话说没发出去：${error instanceof Error ? error.message : String(error)}`));
                 planners.get(event.user_id)?.poke();
                 return true;

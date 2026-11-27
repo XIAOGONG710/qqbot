@@ -200,7 +200,7 @@ import { loadQuestion, questionLine } from '.././life/learning-questions.ts';
 import { openMemeDict } from '.././language/meme-dict.ts';
 import { loadExemplars } from '.././language/exemplars.ts';
 import { NOW_REFRESH_MS } from '.././life/now-export.ts';
-import { askExpired, askLine } from './consent.ts';
+import { askExpired, askLine, type PendingAsk } from './consent.ts';
 import { createTurnWeigher, WEIGH_TIMEOUT_MS } from '.././language/turn-weight.ts';
 import { externalPlatformMode } from '../social/external-platforms.ts';
 import { createExternalDraftStore } from '../social/external-drafts.ts';
@@ -959,12 +959,12 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
                         // 停止后不再发晚到的结果；已交给 transport 的回复由 App 持有到成功或失败确认，之后才释放租约（ADR 0148）
                         run: () => {
                             void pending.run().then(async handled => {
-                                if (stopped) return;
-                                if (handled.kind === 'reply' && handled.text) {
-                                    const text = handled.text;
-                                    await sendOwnedNotice(() => transport.sendPrivateText(userId, text), () => {},
-                                        error => log(`[${userId}] 她答应了，结果没发出去：${error instanceof Error ? error.message : String(error)}`));
-                                }
+                                if (stopped || !handled.text) return;
+                                const text = handled.text;
+                                // 看到的描述作为他那条「/屏幕」交给回复器，她自然地回（ADR 0148 第 6 条；10-30 加「她有权拒绝」时漏了这一步，设备审查 G）
+                                if (handled.kind === 'message') { responders.get(userId)?.receive(text, pending.messageId, pending.time); planners.get(userId)?.poke(); return; }
+                                await sendOwnedNotice(() => transport.sendPrivateText(userId, text), () => {},
+                                    error => log(`[${userId}] 她答应了，结果没发出去：${error instanceof Error ? error.message : String(error)}`));
                             }).catch(error => log(`[${userId}] 她答应了但没做成：${error instanceof Error ? error.message : String(error)}`));
                         },
                     };
@@ -1487,7 +1487,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     if (config.silenceNotice) log(deviceOwner ? '没回时告诉他原因：开（随正常回复解释，不另发通知）' : '没回时告诉他原因：开着，但名单里没有男朋友档，不解释');
 
     /** 他提给她、等她点头的请求（看屏幕 / 摄像头……）：她写 <<同意>> 才做，写 <<拒绝：原因>> 就作罢（2026-10-30） */
-    const pendingAsk = new Map<number, { label: string; at: number; run: () => Promise<{ kind: string; text?: string }> }>();
+    const pendingAsk = new Map<number, PendingAsk>();
 
     /** 最近几轮 + 要点（ADR 0043）：开了 contextTurns、这个人开了记忆、在灰度名单里（空 = 都开）才给；整理好的要点存在 context/<QQ>.json */
     function contextWindowFor(contact: Contact): Pick<ContactPipelineOptions, 'contextWindow'> {

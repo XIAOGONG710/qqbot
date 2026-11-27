@@ -3215,6 +3215,30 @@ describe('设备控制：他的命令在回复器之前截住（ADR 0148）', ()
         assert.deepEqual(fake.jobs, [], '她还没答应，什么都不做');
     });
 
+    test('她写了 <<同意>>：看到的描述作为他那条「/屏幕」交给回复器，她就此自然地回（ADR 0148 第 6 条；设备审查 G）', async () => {
+        const cfg = config({ contacts: bf, deviceControl: 'on' });
+        const fake = fakeDevices();
+        const prompts: string[] = [];
+        const { app, sent } = setup(cfg, {}, { startDevices: fake.start, generate: messages => {
+            const all = messages.map(m => m.content).join('\n');
+            prompts.push(all);
+            if (all.includes('他让你看了一眼他的电脑屏幕')) return '你在写文档呀';
+            return all.includes('他刚才想看你的屏幕或摄像头') ? '好吧\n<<同意>>' : '嗯';
+        } });
+        await new Promise(r => setTimeout(r, 30));
+        app.receive(event(10001, 21, '/屏幕 看这个'));
+        await until(() => sent.length === 1);
+        app.receive(event(10001, 22, '给我看看嘛'));
+        await until(() => sent.length === 3);
+        assert.deepEqual(sent, ['10001:（我跟她说了，她愿意就给我看）', '10001:好吧', '10001:你在写文档呀'], '她答应了一句，看完又就此回了一句；描述本身不发给他');
+        // 假服务的截屏是立刻返回的，描述可能比「好吧」先进记录；这里只核对进了什么，不核对先后
+        assert.deepEqual(chat(cfg, 10001).filter(line => line.startsWith('user:')), ['user:给我看看嘛', 'user:[他让你看了一眼他的电脑屏幕：一份文档] 看这个'], '描述作为他的一条消息进记录；/屏幕 本身不进');
+        assert.deepEqual(chat(cfg, 10001).filter(line => line.startsWith('assistant:')), ['assistant:好吧', 'assistant:你在写文档呀']);
+        const stored = new ChatHistory(cfg.dataDir).load(10001).find(m => m.content.startsWith('[他让你看了一眼'));
+        assert.equal(stored?.messageId, 21, '用他那条「/屏幕」的 message_id');
+        assert.ok(prompts.at(-1)!.includes('他让你看了一眼他的电脑屏幕：一份文档'));
+    });
+
     test('请求等她点头的「过了几分钟」和过期按她那边的现在算（worldNow；模拟器是虚拟时钟）', async () => {
         const cfg = config({ contacts: bf, deviceControl: 'on' });
         const fake = fakeDevices();
