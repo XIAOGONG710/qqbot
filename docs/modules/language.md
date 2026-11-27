@@ -77,6 +77,7 @@
 - `modules/self-memory.ts`
 - `modules/soul.ts`
 - `modules/her-notes.ts`
+- `life/notebook-learning.ts`
 - `modules/reflections.ts`
 - `modules/dreams.ts`
 - `modules/leave-note.ts`

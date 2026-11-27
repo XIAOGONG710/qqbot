@@ -16,6 +16,7 @@
 - `social/private-admission.ts`
 - `social/group-chat.ts`
 - `social/group-room.ts`
+- `social/group-boundaries.ts`
 - `social/group-agency-wiring.ts`
 - `social/group-people.ts`
 - `social/group-affect.ts`
