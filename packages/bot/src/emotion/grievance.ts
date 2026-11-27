@@ -3,7 +3,7 @@
 // 和 ADR 0028 一样不落盘：每一轮都从聊天记录里的时间戳和原话重算，重启、隔几天之后得到的是同一个结果；没有「她生气了」这样的字段。
 // 一次最多动一档：只有「小别扭」一档，没有升级、没有冷战；不在他难过 / 生病、说收尾、要她哄、说了想念或道歉的时候出现。
 
-import { hasAffirmedSignal, warmSignal } from './affect.ts';
+import { hasAffirmedSignal, isApologyText, warmSignal } from './affect.ts';
 import type { StoredMessage } from '../memory/history.ts';
 
 type Said = Pick<StoredMessage, 'role' | 'content'> & { time?: string | undefined };
@@ -41,6 +41,11 @@ const EXTRA_REPAIR = /不好意思|怪我|我的错|错了错了/;
 /** 他这句话是不是在道歉 / 解释 / 哄 / 说想念——任何一样都算修补 */
 export function isRepairText(text: string): boolean {
     return warmSignal(text) !== undefined || hasAffirmedSignal(text, EXPLAIN) || hasAffirmedSignal(text, EXTRA_REPAIR);
+}
+
+/** 只算道歉 / 把原因解释清楚这种「真的把事说开」的修补，不算单纯哄一句或说想念（心境回落要的判据比「和好」严） */
+export function isExplanationText(text: string): boolean {
+    return isApologyText(text) || hasAffirmedSignal(text, EXPLAIN) || hasAffirmedSignal(text, EXTRA_REPAIR);
 }
 
 const DAY_MS = 86_400_000;

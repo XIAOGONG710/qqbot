@@ -20,7 +20,7 @@ import type { Log } from '../platform/log.ts';
 import type { mediaReading } from '../vision/media.ts';
 import { impressionCandidate, impressionPrompt, parseImpression } from './group-impression.ts';
 import { moodStateLine } from '../emotion/express.ts';
-import { feelingsAt } from '../emotion/feelings.ts';
+import { feelingsAt, feltForAudience } from '../emotion/feelings.ts';
 import { pick } from './reply-timing.ts';
 import { inspectReply } from '../language/exit-check.ts';
 import { chimePlan, crossesHerLine, defendCall, freeToChime, groupNowLine, LINE_LABEL, PILE_ON, smallNews, teasesHim, teasesUs, type DefendWish } from './group-self.ts';
@@ -485,7 +485,8 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         const feltNow = config.herFeelings
             ? mergeFelt(privateFelt(withSelf), groupFeel ? feelingsAt(groupFeel.appraisals(group.id), worldNow()) : [])
             : [];
-        const mood = feltNow.length ? moodStateLine(feltNow) : undefined;
+        // 群提示词只带可分享的当下线索：私聊形成的原因在 feltForAudience 里抹掉
+        const mood = feltNow.length ? moodStateLine(feltForAudience(feltNow, 'group')) : undefined;
         const note = groupNote({
             groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason,
             ...(extra.target ? { targetLine: groupLine(extra.target, bf) } : {}),

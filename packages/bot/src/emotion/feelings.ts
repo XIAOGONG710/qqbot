@@ -14,6 +14,7 @@ import { endingText, goodNewsText, needsCareText } from '../language/intent.ts';
 import { worldNews, type WorldNow } from '../world/world.ts';
 import { NEWS_KINDS } from '../proactive/proactive.ts';
 import { stateTimestamp } from '../memory/state-schema.ts';
+import { applyRecovery, RECOVERY_HALF_LIFE_H, type RepairEvent } from './recovery.ts';
 
 type Said = Pick<StoredMessage, 'role' | 'content'> & { time?: string | undefined };
 
@@ -42,6 +43,13 @@ const HISTORY_WINDOW_MS = 30 * HOUR;
 /** world：她那边的事；him：他的态度；author：作者写下的大事；self：她自己夜里回想、指出了依据的（ADR 0197）；group：群里的遭遇（2026-11-14） */
 export type Source = 'world' | 'him' | 'author' | 'self' | 'group' | 'desktop';
 
+/** 原因的受众级别：私聊里形成的原因只留在私聊；群提示词只带可分享的当下线索（语气、状态），不带具体原因 */
+export type Audience = 'private' | 'group';
+const PRIVATE_SOURCES: ReadonlySet<Source> = new Set(['him', 'self', 'desktop']);
+export function audienceOf(source: Source): Audience {
+    return PRIVATE_SOURCES.has(source) ? 'private' : 'group';
+}
+
 export interface Appraisal {
     /** 稳定的标识：同一件事每次算出来一样 */
     id: string;
@@ -56,6 +64,10 @@ export interface Appraisal {
     aboutHim?: boolean;
     /** 覆盖默认半衰期（小时） */
     halfLifeH?: number;
+    /** 原因的受众级别：不写按来源定（他的态度、她自己回想、桌面上的话算私聊） */
+    audience?: Audience;
+    /** 修复事件之后才更快衰减；没有修复事件时这个字段不出现（默认关） */
+    repairedAt?: number;
 }
 
 /** 作者写下的事（runtime/bot/moments.json）：她生活里发生的、引起情绪的大事；不是我编的，是作者定的 */
@@ -82,6 +94,8 @@ export interface FeelingFacts {
     moments?: readonly Moment[];
     /** 别处算好的评估（她的追求做完一步、好几天没碰，ADR 0104） */
     extra?: readonly Appraisal[];
+    /** 修复事件（D 模块，默认关）：传了才让负面评估在证据之后更快回落 */
+    repairs?: readonly RepairEvent[];
 }
 
 const atOf = (message: Said): number => Date.parse(message.time ?? '');
@@ -175,7 +189,7 @@ function momentAppraisals(moments: readonly Moment[]): Appraisal[] {
 
 /** 这一刻之前的所有评估（还没到的、散光了的不在这里过滤，feelingsAt 里算） */
 export function appraisals(facts: FeelingFacts): Appraisal[] {
-    return [
+    const list = [
         ...(facts.world ? worldAppraisals(facts.world, facts.now) : []),
         ...(facts.world ? eventAppraisals(facts.world) : []),
         ...(facts.previousWorld ? eventAppraisals(facts.previousWorld) : []),
@@ -183,6 +197,8 @@ export function appraisals(facts: FeelingFacts): Appraisal[] {
         ...momentAppraisals(facts.moments ?? []),
         ...(facts.extra ?? []),
     ];
+    // 默认关：没传修复事件时逐字走原来的路径，行为基线不受影响
+    return facts.repairs?.length ? applyRecovery(list, facts.repairs).list : list;
 }
 
 // ───────── 当下的感受：评估按半衰期衰减后加起来 ─────────
@@ -197,6 +213,8 @@ export interface Felt {
     cause: string;
     source: Source;
     aboutHim: boolean;
+    /** 这条来由的受众级别：私聊的原因不进群提示词 */
+    audience?: Audience;
 }
 
 const levelOf = (weight: number): Level => (weight >= STRONG ? 'strong' : weight >= CLEAR ? 'clear' : 'faint');
@@ -212,11 +230,19 @@ export function feelingsAt(list: readonly Appraisal[], now: number): Felt[] {
             || (item.aboutHim !== undefined && typeof item.aboutHim !== 'boolean')) continue;
         if (item.at > now) continue;
         if (item.halfLifeH !== undefined && typeof item.halfLifeH !== 'number') continue;
+        if (item.audience !== undefined && item.audience !== 'private' && item.audience !== 'group') continue;
+        if (item.repairedAt !== undefined && (!Number.isFinite(item.repairedAt) || item.repairedAt < item.at)) continue;
         const halfLife = (item.halfLifeH ?? HALF_LIFE_H[item.kind]) * HOUR;
         if (!Number.isFinite(halfLife) || halfLife <= 0) continue;
         const age = now - item.at;
-        if (age > halfLife * HALF_LIVES_KEPT) continue;
-        const weight = AMPLITUDE[item.strength] * 0.5 ** (age / halfLife);
+        // 修复事件之前照常衰减，之后从那条证据起按更短的半衰期回落；没有证据就不改速度
+        const repairedAt = item.repairedAt;
+        const recovering = repairedAt !== undefined && repairedAt > item.at && repairedAt <= now;
+        if (age > halfLife * HALF_LIVES_KEPT && !recovering) continue;
+        const base = AMPLITUDE[item.strength];
+        const weight = recovering
+            ? base * 0.5 ** ((repairedAt! - item.at) / halfLife) * 0.5 ** ((now - repairedAt!) / (RECOVERY_HALF_LIFE_H * HOUR))
+            : base * 0.5 ** (age / halfLife);
         const entry = byKind.get(item.kind);
         if (!entry) byKind.set(item.kind, { weight, top: item, topWeight: weight });
         else {
@@ -227,10 +253,19 @@ export function feelingsAt(list: readonly Appraisal[], now: number): Felt[] {
     return [...byKind]
         .map(([kind, { weight, top }]): Felt => {
             const capped = Math.min(KIND_CAP, weight);
-            return { kind, weight: capped, level: levelOf(capped), cause: top.cause, source: top.source, aboutHim: Boolean(top.aboutHim) };
+            return { kind, weight: capped, level: levelOf(capped), cause: top.cause, source: top.source, aboutHim: Boolean(top.aboutHim), audience: top.audience ?? audienceOf(top.source) };
         })
         .filter(felt => felt.weight >= FAINT)
         .sort((a, b) => b.weight - a.weight);
+}
+
+/**
+ * 给某个受众看的心境：私聊形成的原因只留在私聊；群只看可分享的当下线索（语气、状态），
+ * 所以群这一路把私聊来由抹掉，只留种类和分量。不改原来的 Felt，免得影响别的入口。
+ */
+export function feltForAudience(felt: readonly Felt[], audience: Audience): Felt[] {
+    if (audience === 'private') return [...felt];
+    return felt.map(item => (item.audience ?? audienceOf(item.source)) === 'group' ? item : { ...item, cause: '' });
 }
 
 /** 心里压着事的时候：回得短、不另起话题（让 contact.ts 的 low 用） */

@@ -16,6 +16,7 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FEELING_KINDS, FEELING_NAME, type Felt, type FeelingKind } from './feelings.ts';
+import type { Recovery } from './recovery.ts';
 
 export const LEDGER_FILE = 'feeling-ledger.jsonl';
 export const ledgerPath = (soulDir: string) => join(soulDir, LEDGER_FILE);
@@ -153,4 +154,69 @@ export function ledgerSaid(entry: Pick<LedgerEntry, 'kind' | 'level' | 'aboutHim
 export function ledgerNote(entry: LedgerEntry): string {
     const loose = entry.coarse ? '只记得个大概：' : '';
     return `那时候你心里${loose}${ledgerSaid(entry)}（那是你当时的感觉，现在不一定还这样）`;
+}
+
+// ───────── 回落账（D 模块，默认关：没有修复事件就不写） ─────────
+// 和感觉账同一个文件、只追加；readLedger 不认这种行，原有的感觉账逐字不变。
+// 记的是「哪条评估、因为哪条证据回落」，不写她没说过的话，也不带进群提示词。
+
+/** 回落行的标记；和 LedgerEntry 的 level 字段互斥，readLedger 会跳过 */
+const RECOVERY_TYPE = 'recovery';
+
+type RecoveryRow = Recovery & { type: typeof RECOVERY_TYPE };
+
+const asRecovery = (value: unknown): RecoveryRow | undefined => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+    const row = value as Partial<RecoveryRow>;
+    if (row.type !== RECOVERY_TYPE || typeof row.at !== 'number' || !Number.isFinite(row.at)) return undefined;
+    if (typeof row.repaired !== 'string' || !row.repaired.trim() || typeof row.by !== 'string' || !row.by.trim()) return undefined;
+    if (!FEELING_KINDS.includes(row.kind as FeelingKind)) return undefined;
+    return {
+        type: RECOVERY_TYPE, at: row.at, repaired: row.repaired, kind: row.kind as FeelingKind,
+        repairedCause: String(row.repairedCause ?? ''), by: row.by, byCause: String(row.byCause ?? ''),
+    };
+};
+
+/** 读回落账：不存在、坏行都跳过；只追加，不按天数删行 */
+export function readRecoveries(soulDir: string): Recovery[] {
+    let text = '';
+    try { text = readFileSync(ledgerPath(soulDir), 'utf8'); }
+    catch { return []; }
+    const out: Recovery[] = [];
+    for (const line of text.split('\n')) {
+        if (!line.trim()) continue;
+        let parsed: unknown;
+        try { parsed = JSON.parse(line); }
+        catch { continue; }
+        const row = asRecovery(parsed);
+        if (row) out.push(row);
+    }
+    return out;
+}
+
+/** 只追加回落行，同一条评估的同一条证据不重复记；返回追加了几条 */
+export function appendRecoveries(soulDir: string, recoveries: readonly Recovery[]): number {
+    const seen = new Set(readRecoveries(soulDir).map(row => `${row.repaired}|${row.by}`));
+    const rows: string[] = [];
+    for (const item of recoveries) {
+        if (typeof item.repaired !== 'string' || !item.repaired.trim() || typeof item.by !== 'string' || !item.by.trim()) continue;
+        if (!Number.isFinite(item.at) || !FEELING_KINDS.includes(item.kind)) continue;
+        const key = `${item.repaired}|${item.by}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        rows.push(JSON.stringify({ type: RECOVERY_TYPE, ...item }));
+    }
+    if (!rows.length) return 0;
+    let prefix = '';
+    try {
+        const text = readFileSync(ledgerPath(soulDir), 'utf8');
+        if (text && !text.endsWith('\n')) prefix = '\n';
+    } catch { /* 文件还没有 */ }
+    appendFileSync(ledgerPath(soulDir), `${prefix}${rows.join('\n')}\n`, 'utf8');
+    return rows.length;
+}
+
+/** 回落账里的一行怎么说：能看出是哪条证据让那种感觉落下去的 */
+export function recoveryNote(row: Recovery): string {
+    return `那件让你${FEELING_NAME[row.kind]}的事，后来因为「${row.byCause}」慢慢放下了（证据 ${row.by}）`;
 }

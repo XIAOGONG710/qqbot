@@ -13,6 +13,7 @@
 - `emotion/feeling-review.ts`
 - `emotion/felt-then.ts`
 - `emotion/feeling-ledger.ts`
+- `emotion/recovery.ts`
 - `emotion/moments.ts`
 - `emotion/grievance.ts`
 - `emotion/crisis.ts`

@@ -25,6 +25,11 @@ export function warmSignal(text: string): WarmAffectKind | undefined {
     return kindOf(text);
 }
 
+/** 只有道歉这一类，不含安慰和亲近：说「抱抱」「想你了」不算真把事说开 */
+export function isApologyText(text: string): boolean {
+    return hasAffirmedSignal(text, REPAIR);
+}
+
 function kindOf(text: string): WarmAffectKind | undefined {
     if (hasAffirmedSignal(text, REPAIR)) return 'repair';
     if (hasAffirmedSignal(text, COMFORT)) return 'comfort';
