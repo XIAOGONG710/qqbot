@@ -52,7 +52,7 @@ describe('exchange 信箱', () => {
 });
 
 test('仓库可见性：只有确实读到 PUBLIC 才喊；私有、读不到（没装 gh / 断网）都不喊', () => {
-    assert.match(visibilityWarning('PUBLIC'), /仓库现在是公开的.*Private/);
+    assert.match(visibilityWarning('PUBLIC'), /仓库是公开的.*Git 历史里还在.*改私有/);
     assert.equal(visibilityWarning('PRIVATE'), undefined);
     assert.equal(visibilityWarning('INTERNAL'), undefined);
     assert.equal(visibilityWarning(undefined), undefined);

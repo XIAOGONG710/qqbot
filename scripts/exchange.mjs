@@ -91,7 +91,7 @@ export function parseMessage(text) {
 /** gh 读到的仓库可见性 → 要不要喊；只有确实是 PUBLIC 才喊（读不到、私有都不喊） */
 export function visibilityWarning(visibility) {
     return visibility === 'PUBLIC'
-        ? '🔴 仓库现在是公开的（CLAUDE.md 规定必须私有，角色资料含真实隐私）：请用户在 GitHub Settings → Danger Zone 改成 Private，或 gh repo edit --visibility private --accept-visibility-change-consequences'
+        ? '🔴 仓库是公开的：当前版本已撤掉真实角色资料和快照（747cb7c9），但 Git 历史里还在（含联系人 QQ 号），GitHub 上翻旧提交就能看到。要收回：改私有（gh repo edit --visibility private --accept-visibility-change-consequences），或用户决定改写历史；确定保持公开就让 claude 撤掉这条提示'
         : undefined;
 }
 
