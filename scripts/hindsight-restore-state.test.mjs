@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -14,15 +14,21 @@ test('Hindsight 恢复只接受明确命名的隔离数据库，连接参数不�
     assert.throws(() => isolatedDatabaseTarget('postgresql://user@localhost/hindsight'), /qqbot_restore_drill_/);
 });
 
-test('Hindsight 恢复制品拒绝符号链接和大小错配', t => {
+test('Hindsight 恢复制品拒绝大小错配和符号链接', t => {
     const dir = mkdtempSync(join(tmpdir(), 'qqbot-restore-sql-'));
     try {
         const sql = join(dir, 'hindsight.sql');
         writeFileSync(sql, 'select 1;');
         assert.equal(safeSqlArtifact(sql, 9).bytes, 9);
         assert.throws(() => safeSqlArtifact(sql, 8), /大小/);
-        const link = join(dir, 'linked.sql');
-        try { symlinkSync(sql, link, 'file'); } catch (error) { if (error?.code === 'EPERM') return t.skip('当前 Windows 账户不能创建符号链接'); throw error; }
+        let link = join(dir, 'linked.sql');
+        try { symlinkSync(sql, link, 'file'); }
+        catch (error) {
+            if (process.platform !== 'win32' || error?.code !== 'EPERM') throw error;
+            link = process.env.QQBOT_TEST_EXISTING_FILE_SYMLINK;
+            if (!link) return t.skip('当前 Windows 账户不能创建符号链接，且未提供现有文件符号链接');
+        }
+        assert.equal(lstatSync(link).isSymbolicLink(), true);
         assert.throws(() => safeSqlArtifact(link), /普通文件/);
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });

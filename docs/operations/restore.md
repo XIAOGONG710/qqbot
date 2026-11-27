@@ -35,7 +35,7 @@ node -e "const {createRestoreStages}=await import('./scripts/restore-stages.mjs'
 node scripts/hindsight-restore-drill.mjs --backup runtime/backups/2026-11-24 --database-url $env:QQBOT_RESTORE_DATABASE_URL --confirm-isolated
 ```
 
-隔离实例里核对：记忆条数、文档数、最近一次对话时间。对得上再进第四步。
+SQL 导入使用单个事务。语句失败时回滚本次导入，避免留下半恢复的库。隔离实例里核对记忆条数、文档数和最近一次对话时间。对得上再进第四步。
 
 ## 四、正式切换（需要单独授权）
 

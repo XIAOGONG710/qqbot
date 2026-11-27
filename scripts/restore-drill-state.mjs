@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { COMPLETE_MARKER } from './backup-state.mjs';
@@ -168,8 +168,8 @@ function verifyAiPhotoReferences(root) {
 /** 对已解压的状态做只读完整性检查，不会把内容放回在线目录。 */
 export function verifyRestoredState(target, desktopFiles) {
     const root = resolve(target);
-    const info = statSync(root);
-    if (!info.isDirectory()) throw new Error('恢复演练结果不是目录');
+    const info = lstatSync(root);
+    if (info.isSymbolicLink() || !info.isDirectory()) throw new Error('恢复演练结果不是普通目录');
     for (const name of readdirSync(root)) {
         if (FORBIDDEN_TOP_LEVEL.has(name) || /^config(?:\.|$)/i.test(name)) throw new Error(`备份意外包含敏感或临时内容：${name}`);
     }

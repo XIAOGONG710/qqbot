@@ -22,12 +22,12 @@ if (args.includes('--plan')) {
 }
 
 const psql = one('--psql') ?? process.env.PSQL_BIN ?? 'psql';
-const connection = psqlConnectionArgs(target);
+const connection = ['-X', ...psqlConnectionArgs(target)];
 const env = { ...process.env, ...(target.password ? { PGPASSWORD: target.password } : {}), ...(target.sslmode ? { PGSSLMODE: target.sslmode } : {}) };
 const scalar = sql => execFileSync(psql, [...connection, '-v', 'ON_ERROR_STOP=1', '-Atc', sql], { env, encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 const existing = Number(scalar("SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema')"));
 if (!Number.isInteger(existing) || existing !== 0) throw new Error('隔离数据库不是空库，拒绝导入');
-execFileSync(psql, [...connection, '-v', 'ON_ERROR_STOP=1', '-f', artifact.path], { env, timeout: 10 * 60_000, stdio: 'ignore' });
+execFileSync(psql, [...connection, '-v', 'ON_ERROR_STOP=1', '--single-transaction', '-f', artifact.path], { env, timeout: 10 * 60_000, stdio: 'ignore' });
 const restored = Number(scalar("SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema')"));
 if (!Number.isInteger(restored) || restored < 1) throw new Error('导入结束但没有发现业务表');
 console.log(`[hindsight-restore] 通过：隔离库中发现 ${restored} 张业务表。目标库已保留供人工核验，不会自动删除。`);

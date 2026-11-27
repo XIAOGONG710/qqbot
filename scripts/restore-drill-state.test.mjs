@@ -77,6 +77,15 @@ test('演练目标拒绝经过符号链接或目录联接', t => {
     );
 });
 
+test('解压结果根目录是符号链接或目录联接时拒绝检查', () => {
+    const root = fresh();
+    const outside = fresh();
+    const linked = join(root, 'restored');
+    writeFileSync(join(outside, 'state.json'), '{}');
+    symlinkSync(outside, linked, 'junction');
+    assert.throws(() => verifyRestoredState(linked), /不是普通目录/);
+});
+
 test('解压结果检查 AI 照片索引、文件哈希和敏感目录', () => {
     const root = fresh();
     const bytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from('fake-image-content')]);
