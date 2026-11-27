@@ -777,6 +777,7 @@ async function allBanks(cfg, signal) {
     const res = await fetch(`${cfg.baseUrl}/v1/default/banks`, { signal: AbortSignal.any([signal, AbortSignal.timeout(2500)]) })
     if (!res.ok) throw new Error(`banks ${res.status}`)
     const data = await res.json()
+    signal.throwIfAborted()
     existing = (Array.isArray(data.banks) ? data.banks : []).map((bank) => String(bank.bank_id || ''))
     bankCache = { at: Date.now(), ids: existing, baseUrl: cfg.baseUrl }
   }
@@ -852,10 +853,26 @@ const IMPORTANT_TOPICS = [
   /早饭|早餐|早上.{0,5}(?:没吃|没顾上吃|顾不上吃)/,
 ]
 
+// Abort the wait as well as the request. A transport or body parser may ignore cancellation.
+async function beforeRecallDeadline(signal, work) {
+  signal.throwIfAborted()
+  let onAbort
+  const expired = new Promise((_, reject) => {
+    onAbort = () => reject(signal.reason)
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+  try {
+    return await Promise.race([expired, work()])
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+  }
+}
+
 /** 所有库做语义召回，合并去重后取前 pick 条。命中明确话题时给亲手记的相关项留一个位置。 */
 async function recallAll(cfg, query, currentUserText, checkImportant) {
   const deadline = AbortSignal.timeout(3000)
-  const banks = await allBanks(cfg, deadline)
+  const within = work => beforeRecallDeadline(deadline, work)
+  const banks = await within(() => allBanks(cfg, deadline))
   deadline.throwIfAborted()
   const owner = ownerBanks(cfg)
   const common = owner?.common ?? `${cfg.prefix}-common`
@@ -864,9 +881,9 @@ async function recallAll(cfg, query, currentUserText, checkImportant) {
   const isRelated = item => topics.some(topic => topic.test(item.text))
   const isOwnImportant = item => Boolean(owner?.owner && item.documentId.startsWith(`dsh-${owner.owner}-`)
     && item.tags.includes('dsh') && item.tags.includes('important'))
-  const jobs = banks.map(bank => recallBank(cfg, bank, query, deadline))
+  const jobs = banks.map(bank => within(() => recallBank(cfg, bank, query, deadline)))
   const supplement = checkImportant && topics.length && banks.includes(owner?.owner)
-  if (supplement) jobs.push(recallBank(cfg, owner.owner, currentUserText, deadline, true))
+  if (supplement) jobs.push(within(() => recallBank(cfg, owner.owner, currentUserText, deadline, true)))
   const settled = await Promise.allSettled(jobs)
   const extra = supplement ? settled.pop() : undefined
   const seen = new Set()

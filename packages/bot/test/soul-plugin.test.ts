@@ -329,7 +329,7 @@ describe('不再写死某个用户的路径', () => {
 // ───────── 同一个她（ADR 0176）：DSH 桌面上的她读写哪些 bank ─────────
 
 interface Call { method: string; url: string; body?: Record<string, any> }
-function fakeHindsight(options: { banks: string[]; items?: Array<Record<string, unknown>>; recall?: Record<string, Array<Record<string, unknown>>>; importantRecall?: Array<Record<string, unknown>> | Error; stalledBank?: string }) {
+function fakeHindsight(options: { banks: string[]; items?: Array<Record<string, unknown>>; recall?: Record<string, Array<Record<string, unknown>>>; importantRecall?: Array<Record<string, unknown>> | Error; stalledBank?: string; stallBody?: boolean }) {
     const calls: Call[] = [];
     const original = globalThis.fetch;
     globalThis.fetch = (async (url: string, init?: { method?: string; body?: string; signal?: AbortSignal }) => {
@@ -337,6 +337,7 @@ function fakeHindsight(options: { banks: string[]; items?: Array<Record<string, 
         calls.push({ method, url: String(url), ...(init?.body ? { body: JSON.parse(init.body) } : {}) });
         const path = new URL(String(url)).pathname;
         if (path.endsWith('/memories/recall') && decodeURIComponent(path.split('/')[4]!) === options.stalledBank) {
+            if (options.stallBody) return { ok: true, status: 200, json: () => new Promise<never>(() => undefined) };
             await new Promise<never>((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true }));
         }
         const important = path.endsWith('/memories/recall') && calls.at(-1)?.body?.tags?.includes('important');
@@ -419,10 +420,10 @@ test('16:04 圆珠笔不补查，16:05 作息早餐只补进本人亲手记下�
     } finally { fake.restore(); }
 });
 
-test('DSH 公共库超时不抹掉已返回的同一主人私有召回', async () => {
+test('DSH 公共库响应正文忽略取消时，预算耗尽仍保留已返回的同一主人私有召回', async () => {
     const common = 'linmengyao-common';
     const note = { id: 'synthetic-timeout', document_id: `dsh-${OWNER}-456`, type: 'world', tags: ['dsh'], text: '合成的同一主人私有笔记。' };
-    const fake = fakeHindsight({ banks: [OWNER, common], recall: { [OWNER]: [note] }, stalledBank: common });
+    const fake = fakeHindsight({ banks: [OWNER, common], recall: { [OWNER]: [note] }, stalledBank: common, stallBody: true });
     let guard: ReturnType<typeof setTimeout> | undefined;
     try {
         const h = boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: common }) });
