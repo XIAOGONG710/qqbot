@@ -7,6 +7,7 @@
 ## 文件（`packages/bot/src/` 下）
 
 - `platform/app.ts`
+- `platform/app-types.ts`
 - `platform/turn-modules.ts`
 - `modules/synced-jobs.ts`
 - `platform/main.ts`

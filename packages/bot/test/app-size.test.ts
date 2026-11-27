@@ -8,7 +8,7 @@ import { test } from 'node:test';
 // 这条测试让它只降不升：新功能写成模块（src/modules/，在 platform/turn-modules.ts 或解释器里登记）或独立的宿主文件
 // （像 life/desktop-host.ts、world/reality-feeds.ts 那样「原样搬、依赖交进去」），app.ts 里只留建它、登记停法、调用的一两行。
 // 搬出去一块之后把 APP_TS_MAX_LINES 跟着调低（同一个提交）。真要调高：提交说明里写清为什么不能做成模块，并在上面那份方案的「进度」里记一笔。
-const APP_TS_MAX_LINES = 2675;
+const APP_TS_MAX_LINES = 2539;
 
 test(`platform/app.ts 不超过 ${APP_TS_MAX_LINES} 行（新功能做成模块，别往 app.ts 里接线）`, () => {
     const file = join(import.meta.dirname, '..', 'src', 'platform', 'app.ts');
