@@ -31,6 +31,7 @@ import { repairFingerprint, repairModelIdentityHash, repairSourceManifestHash, t
 import { repairDocumentContentHash, type DerivedRepairApi } from './hindsight.ts';
 import { knowsPeople } from '../life/people.ts';
 import { CONTACT_TIERS, UNLISTED_TIER } from '../platform/config.ts';
+import { defuseMarkers } from '../platform/untrusted-markers.ts';
 import type { ChatMessage } from '../language/prompt.ts';
 import type { MacroNames } from '../st/macros.ts';
 import { EPISODE_GAP_MS, episodeTranscript, localIso, splitEpisodes, type Episode } from './episodes.ts';
@@ -1525,7 +1526,7 @@ export class LongTermMemory {
             const entry = { content: cached?.content, fetchedAt: cached?.fetchedAt ?? 0, fetching: true, generation };
             this.#relationship.set(key, entry);
             this.#read(() => this.#options.api.getMentalModel(this.commonBankId(), this.#personModelId(person)))
-                .then(model => { if (!this.#stopped && this.#modelsAllowed(this.commonBankId(), generation)) entry.content = withoutMark(model?.content ?? '') || undefined; })
+                .then(model => { if (!this.#stopped && this.#modelsAllowed(this.commonBankId(), generation)) entry.content = defuseMarkers(withoutMark(model?.content ?? '')) || undefined; })
                 .catch(error => { if (error !== MEMORY_STOPPED && !this.#stopped) this.#options.log(`[${person.qq}] 读取「她眼中的${person.name}」失败：${error instanceof Error ? error.message : String(error)}`); })
                 .finally(() => { if (!this.#stopped) { entry.fetchedAt = this.#now(); entry.fetching = false; } });
         }
@@ -1554,7 +1555,7 @@ export class LongTermMemory {
             const entry = { content: cached?.content, fetchedAt: cached?.fetchedAt ?? 0, fetching: true, generation };
             this.#relationship.set(key, entry);
             this.#read(() => this.#options.api.getMentalModel(state.bankId, RELATIONSHIP_MODEL_ID))
-                .then(model => { if (!this.#stopped && this.#modelsAllowed(state.bankId, generation)) entry.content = withoutMark(model?.content ?? '') || undefined; })
+                .then(model => { if (!this.#stopped && this.#modelsAllowed(state.bankId, generation)) entry.content = defuseMarkers(withoutMark(model?.content ?? '')) || undefined; })
                 .catch(error => { if (error !== MEMORY_STOPPED && !this.#stopped) this.#options.log(`[${contact.qq}] 读取关系概况失败：${error instanceof Error ? error.message : String(error)}`); })
                 .finally(() => { if (!this.#stopped) { entry.fetchedAt = this.#now(); entry.fetching = false; } });
         }
@@ -1776,7 +1777,8 @@ export function formatRecalled(
         const faded = clarity === 'vague' ? '记不太清了' : clarity === 'recognized' ? '他一提才想起来，记不太清了' : undefined;
         // 事实后面常带「 | When: … | Involving: …」，日期已经写在前面了；【重要】是给我们看的记号
         // 一条记忆只占一行：事实里的换行会伪造出新的一行和来源标签（2026-11-26 记忆审查）
-        const text = withoutMark(r.text.split(' | ')[0]!).replace(/\s*[\r\n\u2028\u2029]+\s*/g, ' ');
+        // 记忆是从大家的聊天里提炼的：别人写的 <<执行：…>> 这类标记的样子先拆掉，只拆标记（ADR 0352 第 3 条；决定单第 13 条）
+        const text = defuseMarkers(withoutMark(r.text.split(' | ')[0]!)).replace(/\s*[\r\n\u2028\u2029]+\s*/g, ' ');
         // 那时的感觉（ADR 0218）：有日子、不是还没到的计划才附
         const felt = options.felt && when && !future ? options.felt(when, text) : undefined;
         const notes = [options.source?.(r), future ? `打算 ${day(future)}` : undefined, faded, felt].filter(Boolean);
