@@ -75,7 +75,7 @@
 
 ## 3. 进行中 / 等待中（谁欠谁）
 
-> **仓库可见性（11-27 16:5x 更新）**：GitHub 仓库是公开的。DSH 在 747cb7c9 把规则改成「仓库公开、真实角色资料 / QQ 号 / 线上快照 / 真实试聊不提交」，并把 `characters/linmengyao/`、`exchange/live/` 撤出跟踪（本机忽略目录保留）；**但 Git 历史里还在**，GitHub 上翻旧提交就能看到。要收回：改私有，或用户决定改写历史（规则禁止强推）。「保持公开」是不是用户定的还没确认。`exchange.mjs check` 读到 PUBLIC 会提示，用户确定保持公开就撤掉。
+> **仓库公开**（用户 2026-11-28 确认「公开仓库就行」）：真实角色资料、QQ 号、线上快照、真实试聊不提交（`.gitignore` 已挡 `characters/linmengyao/`、`exchange/live/`），快照工具自动遮号码；早先历史里留下的不再追收。
 
 截至 2026-11-26 傍晚，信箱里没办完的全是 claude → dsh（`2026-11-26-1719`「开机先看这封」，按顺序排好了）；**未办数以 `node scripts/exchange.mjs check --me <claude|dsh>` 当场为准**，上次核时 dsh → claude 为 0。按要紧程度：
 

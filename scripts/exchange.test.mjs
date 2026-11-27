@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { isForMe, isOpen, markDone, messageFileName, parseArgs, parseMessage, renderMessage, slugify, stamp, visibilityWarning } from './exchange.mjs';
+import { isForMe, isOpen, markDone, messageFileName, parseArgs, parseMessage, renderMessage, slugify, stamp } from './exchange.mjs';
 
 const when = new Date('2026-11-10T09:05:00Z'); // UTC+8 17:05
 
@@ -51,10 +51,3 @@ describe('exchange 信箱', () => {
     });
 });
 
-test('仓库可见性：只有确实读到 PUBLIC 才喊；私有、读不到（没装 gh / 断网）都不喊', () => {
-    assert.match(visibilityWarning('PUBLIC'), /仓库是公开的.*Git 历史里还在.*改私有/);
-    assert.equal(visibilityWarning('PRIVATE'), undefined);
-    assert.equal(visibilityWarning('INTERNAL'), undefined);
-    assert.equal(visibilityWarning(undefined), undefined);
-    assert.equal(visibilityWarning(''), undefined);
-});

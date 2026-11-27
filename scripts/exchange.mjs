@@ -88,13 +88,6 @@ export function parseMessage(text) {
     return { meta, body: m[2] };
 }
 
-/** gh 读到的仓库可见性 → 要不要喊；只有确实是 PUBLIC 才喊（读不到、私有都不喊） */
-export function visibilityWarning(visibility) {
-    return visibility === 'PUBLIC'
-        ? '🔴 仓库是公开的：当前版本已撤掉真实角色资料和快照（747cb7c9），但 Git 历史里还在（含联系人 QQ 号），GitHub 上翻旧提交就能看到。要收回：改私有（gh repo edit --visibility private --accept-visibility-change-consequences），或用户决定改写历史；确定保持公开就让 claude 撤掉这条提示'
-        : undefined;
-}
-
 export function markDone(text, { by, date = new Date(), note }) {
     const { meta } = parseMessage(text);
     if (!meta.status) throw new Error('不是留言文件（没有 status 字段）');
@@ -184,13 +177,6 @@ function check(args) {
             if (fresh) lines.push(m.body.trim().split('\n').slice(1).join('\n').trim().replace(/^/gm, '      '));
         }
     }
-
-    // 仓库必须私有（CLAUDE.md：角色资料含真实隐私）。2026-11-27 发现它公开了至少一周、没人发现——每次检查顺带看一眼。
-    // 没装 gh / 没登录 / 断网就静默跳过（DSH 那台没有 gh），只有确实读到 PUBLIC 才喊。
-    let visibility;
-    try { visibility = execFileSync('gh', ['repo', 'view', '--json', 'visibility', '-q', '.visibility'], { cwd: ROOT, encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* 查不了就不查 */ }
-    const warning = visibilityWarning(visibility);
-    if (warning) lines.unshift(warning);
 
     writeState(me, { ...state, checkedAt: now, seen: remote ?? state.seen, shown: open.map((m) => m.name) });
     if (!state.seen && !args.quiet) lines.unshift(`（${me} 第一次检查，从 ${remote?.slice(0, 8)} 开始记）`);
