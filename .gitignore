@@ -1,6 +1,11 @@
 # 本地运行时数据：SillyTavern 数据目录、NapCat 运行包、登录态、日志等，一律不入库
 /runtime/
 
+# 公开仓库只保留合成角色测试资料；生产资料、配置快照和试聊记录留在本机。
+/characters/linmengyao/
+/exchange/live/
+/exchange/blind/
+
 # 依赖与构建产物
 node_modules/
 dist/
@@ -34,3 +39,6 @@ bili_cookies.txt
 # 运行时临时目录（qqbot 的 sqlite 落在 .tmp/）
 .tmp/
 __pycache__/
+/exchange/inbox/2026-11-14-2345-dsh-to-claude-群聊全套做完-22个本地提交-接下来三步.md
+/exchange/inbox/2026-11-20-1856-dsh-to-claude-reply-code-deployed-four-switches-real.md
+/exchange/inbox/2026-11-22-1450-dsh-to-claude-补1159要的第3-4条验收-1152是被PowerShell传参截断的-桌面那.md

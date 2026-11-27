@@ -27,7 +27,7 @@ SillyTavern 只用来编写、试聊角色并定义数据格式（角色卡 / �
 - 绝不提交对 NapCat 源码的修改（其许可证禁止公开发布修改版）。
 - Koishi 和它的插件（含 AGPL 的控制台系列）原样使用，不改源码；上游的问题在我们的插件里绕开（`docs/koishi.md`）。
 - `characters/*/legacy/` 是旧项目 astrbot-linmengyao 的原样导入，只读；转换产物另放。
-  旧项目的设计文档与观点已过时，不作为本项目依据。角色资料含真实隐私信息，仓库须保持私有。
+  旧项目的设计文档与观点已过时，不作为本项目依据。仓库公开，真实角色资料、QQ 号码、线上配置快照和真实试聊记录不得提交。同步前先将旧版本仍跟踪的真实角色资料备份到仓库之外，更新后再放回本机忽略目录。Git 信箱仅发送脱敏的工程信息。
 - 运行时数据、密钥、NapCat 运行包放在 `runtime/`（已被忽略）。
 - 测试只用合成角色（`packages/bot/test/fixtures/synthetic-character/`，ADR 0333），不读真实角色资料；`npm test` 可随时全量跑。
   校验真实资料本身的测试在 `packages/character-tools/test-real/`，改了转换器或真实 `source/` 后在本机跑 `npm run test:real`，失败时只看断言行。
