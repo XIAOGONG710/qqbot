@@ -160,7 +160,7 @@ export function buildTurnModules(d: TurnModuleDeps): Module[] {
         ...(d.learningQuestion ? [learningQuestionModule(d.learningQuestion)] : []),
         shellModule(d.shell),
         repetitionModule(log),
-        booksModule({ herDays }),
+        booksModule({ herDays, events: () => d.worldState()?.events?.() }),
         pastModule(log),
         peopleAroundModule({ herDays, log }),
         meetupModule({ herDays, worldState: d.worldState, promises: d.promises, log }),

@@ -187,6 +187,7 @@ export interface BookSource {
     kind: string;
     platform: string;
     status: string;
+    shared_reading?: true;
     /** herDays 开着时并入作息的空闲活动；放在新文件里，旧 schedule.yml 不加键 */
     activity?: { window: 'morning' | 'afternoon' | 'evening'; text: string };
     tiers: string[];
@@ -791,7 +792,8 @@ function checkBooks(raw: unknown): BooksSource {
     const books = root.at('books').array(o.books).map((value, i): BookSource => {
         const c = root.at(`books[${i}]`);
         const book = c.object(value);
-        c.keys(book, ['id', 'title', 'aliases', 'author', 'kind', 'platform', 'status', 'activity', 'tiers', 'total', 'progress', 'attitude', 'unread_keywords', 'nodes', 'note']);
+        c.keys(book, ['id', 'title', 'aliases', 'author', 'kind', 'platform', 'status', 'shared_reading', 'activity', 'tiers', 'total', 'progress', 'attitude', 'unread_keywords', 'nodes', 'note']);
+        if (book.shared_reading !== undefined && typeof book.shared_reading !== 'boolean') c.at('shared_reading').fail('应为布尔值');
         const progressRaw = c.at('progress').object(book.progress);
         c.at('progress').keys(progressRaw, ['start_day', 'start', 'every_days', 'amount', 'unit', 'max', 'state']);
         const stateText = c.at('progress.state').optionalString(progressRaw.state) as BookState | undefined;
@@ -849,6 +851,7 @@ function checkBooks(raw: unknown): BooksSource {
             id: c.at('id').string(book.id), title: c.at('title').string(book.title),
             aliases: c.at('aliases').strings(book.aliases), author: c.at('author').string(book.author),
             kind: c.at('kind').string(book.kind), platform: c.at('platform').string(book.platform), status: c.at('status').string(book.status),
+            ...(book.shared_reading === true ? { shared_reading: true as const } : {}),
             ...(activity ? { activity } : {}), tiers: c.at('tiers').strings(book.tiers, { allowEmpty: false }), ...(total ? { total } : {}), progress,
             attitude: c.at('attitude').string(book.attitude), unread_keywords: c.at('unread_keywords').strings(book.unread_keywords), nodes,
         };

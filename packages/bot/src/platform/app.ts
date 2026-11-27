@@ -2377,7 +2377,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
 
     // 给 DSH 的脱敏状态摘要（不带聊天原文）和灵魂目录里的 STATE.json：在 dsh-state.ts（ADR 0336 第 6 步）
     const dshStateFile = join(soulDir(), 'STATE.json');
-    const { dshState, exportDshState } = dshStateSource({ dshEnabled, needsAnchor, sharedWorld, deviceOwner, history, aiPhotoDrafts, worldNow, exec, dshStateFile, log });
+    const readingBook = deviceOwner && cardFor(deviceOwner.tier).character.books.find(book => book.sharedReading);
+    const { dshState, exportDshState } = dshStateSource({ dshEnabled, needsAnchor, sharedWorld, deviceOwner, history, aiPhotoDrafts, worldNow, exec, dshStateFile, ...(readingBook ? { readingBook } : {}), log });
     // 之后每 NOW_REFRESH_MS 再写一次：由 dsh-state 模块声明（ADR 0336 第 6 步，App 搭好时开）
     if (dshEnabled) {
         exportDshState();

@@ -11,6 +11,7 @@ import { clarity as qqMemoryClarity } from '../src/memory/fading.ts';
 import { ChatHistory } from '../src/memory/history.ts';
 import { SELF_FILE, SELF_KIND, SELF_RECEIPTS_FILE, SELF_VERSION, type SelfExport, type SelfReceipt } from '../src/life/self-types.ts';
 import { readDesktopTurns } from '../src/memory/cross-recent.ts';
+import { renderDshState } from '../src/dsh-state-export.ts';
 import { ingestDesktopRecent, readDesktopLog } from '../src/memory/desktop-log.ts';
 import { isPresenceLease, leaseActive, presenceAt, PRESENCE_TTL_MAX_MS, PRESENCE_TTL_MIN_MS, type PresenceLease } from '../src/life/desktop-presence.ts';
 
@@ -845,6 +846,21 @@ describe('同一个她·第 2 层：DSH 桌面对话回合记给 QQ 读（ADR 01
 
 describe('同一个她：DSH 只读取新鲜且结构安全的 QQ 实时状态', () => {
     const context = (h: ReturnType<typeof boot>) => h.contexts.map(entry => entry.text()).join('\n');
+    test('QQ 结算阅读投影只在登记的私聊出现，坏标题、过期投影均不注入', () => {
+        const now = Date.now();
+        const state = { at: new Date(now).toISOString() };
+        const h = boot();
+        const unregistered = boot({ ownerPrivateSessions: [] });
+        const rendered = renderDshState(state, now, { title: '合成阅读', minutes: 25 });
+        writeFileSync(h.f('STATE.json'), rendered);
+        writeFileSync(unregistered.f('STATE.json'), rendered);
+        assert.match(context(h), /《合成阅读》：已记下 25 分钟阅读/);
+        assert.doesNotMatch(context(unregistered), /合成阅读/);
+        writeFileSync(h.f('STATE.json'), renderDshState(state, now, { title: '合成阅读\n[越界文字]', minutes: 25 }));
+        assert.doesNotMatch(context(h), /合成阅读|越界文字/);
+        writeFileSync(h.f('STATE.json'), renderDshState(state, now - 31 * 60_000, { title: '合成阅读', minutes: 25 }));
+        assert.doesNotMatch(context(h), /合成阅读/);
+    });
     const stateFile = (h: ReturnType<typeof boot>, generatedAt: number, stateAt: string, state: Record<string, unknown> = {
         at: stateAt, tier: 'boyfriend', values: { energy: 42, hunger: 67 }, recentEvents: ['eat'],
     }) => writeFileSync(h.f('STATE.json'), JSON.stringify({

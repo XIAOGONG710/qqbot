@@ -6,7 +6,8 @@ import { describe, test } from 'node:test';
 import { homeworkSprints } from '../src/life/actions.ts';
 import { actionQueue, settlingWorld } from '../src/world/action-queue.ts';
 import { bodyAt } from '../src/life/body.ts';
-import { readingActivities } from '../src/life/her-days.ts';
+import { describeBooks, readingActivities, sharedReadingProgress } from '../src/life/her-days.ts';
+import { renderDshState } from '../src/dsh-state-export.ts';
 import { chooseAt, dayBusy, freeKind, lifeActionId as lifeActionIdFor, lifeExecutor, motivate, type LifeSources } from '../src/world/life-selector.ts';
 import type { LifeEvent, LifeEventDraft } from '../src/world/life-events.ts';
 import { needsAt, type NeedsSnapshot } from '../src/life/needs.ts';
@@ -33,20 +34,21 @@ const npcWorld: World = herWorld;
 const npcSources: LifeSources = { ...plain, worldAt: time => worldAt(npcWorld, schedule, time) };
 
 /** 从 start 起每小时推一次到 end，返回她自己的行动（事件账里 life: 开头的）和日志 */
-function live(dir: string, start: Date, end: Date, restartAt?: Date, sources: LifeSources = plain, herWorldUsed: World = herWorld) {
+function live(dir: string, start: Date, end: Date, restartAt?: Date, sources: LifeSources = plain, herWorldUsed: World = herWorld, repeat = false) {
     let clock = start.getTime();
     const logs: string[] = [];
     const open = () => {
-        const ledger = worldState(herWorldUsed, schedule, message => logs.push(message), join(dir, 'world'), () => clock);
+        const ledger = worldState(herWorldUsed, sources.schedule, message => logs.push(message), join(dir, 'world'), () => clock);
         const queue = actionQueue(join(dir, 'world', 'action-queue.json'), message => logs.push(message));
         const world = settlingWorld(ledger, queue, () => clock);
-        const executor = lifeExecutor({ ...sources, worldAt: time => world.at(herWorldUsed, schedule, time), events: () => ledger.events() }, queue, { since: start, log: message => logs.push(message) });
+        const executor = lifeExecutor({ ...sources, worldAt: time => world.at(herWorldUsed, sources.schedule, time), events: () => ledger.events() }, queue, { since: start, log: message => logs.push(message) });
         return { world, executor };
     };
     let { world, executor } = open();
     for (; clock <= end.getTime(); clock += 3600_000) {
         if (restartAt && clock === restartAt.getTime()) ({ world, executor } = open());
         executor.fill(new Date(clock));
+        if (repeat) executor.fill(new Date(clock));
         world.events();
     }
     return { events: world.events().filter(event => event.id.startsWith('life:')), logs };
@@ -86,6 +88,46 @@ function liveChat(dir: string, start: Date, end: Date, options: { restartAt?: Da
 }
 
 describe('规则自主选择器 v1（ADR 0040）', () => {
+    test('共享读书在忙时延后，空闲结算后 QQ 和 DSH 读取同一份进度', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'shared-reading-'));
+        try {
+            const book = { ...card.books.find(item => item.activity)!, sharedReading: true as const };
+            const busyStart = at('2026-10-17T19:00:00');
+            const busyEnd = at('2026-10-17T20:00:00');
+            const readingSchedule: typeof schedule = {
+                ...schedule, holidays: [], courses: [],
+                free: { ...schedule.free, eveningFrom: '18:00', on: [{ date: '2026-10-17', ...book.activity! }] },
+            };
+            const readingWorld: World = { startDay: herWorld.startDay, awayHolidays: [], people: [], events: [] };
+            const sources: LifeSources = {
+                schedule: readingSchedule, books: [book], worldAt: () => undefined, events: () => [],
+                desktopBusy: () => [{ start: busyStart, end: busyEnd }],
+            };
+            const choice = chooseAt(busyStart, sources);
+            assert.ok('skipTo' in choice && choice.skipTo >= busyEnd);
+            const resumed = chooseAt(busyEnd, sources);
+            assert.ok('intent' in resumed && resumed.intent.kind === 'read_book');
+            const end = at('2026-10-17T22:00:00');
+            const { events } = live(dir, busyStart, end, busyEnd, sources, readingWorld, true);
+            const read = events.filter(event => event.kind === 'read_book' && event.subject === book.id && event.result === 'succeeded');
+            const once = live(join(dir, 'single-tick'), busyStart, end, busyEnd, sources, readingWorld).events;
+            assert.deepEqual(events, once, '每拍执行两次和只执行一次得到同一份生活账');
+            assert.equal(read[0]?.startedAt, busyEnd.toISOString());
+            assert.ok(read.every(event => Date.parse(event.startedAt) >= busyEnd.getTime()));
+            assert.equal(new Set(read.map(event => event.id)).size, read.length);
+            const progress = sharedReadingProgress(book, events, end)!;
+            assert.ok(progress.minutes > 0);
+            assert.deepEqual(sharedReadingProgress(book, [...events, ...events], end), progress);
+            assert.deepEqual(sharedReadingProgress(book, [...events,
+                { ...read[0]!, id: 'synthetic-failed-reading', result: 'failed' },
+                { ...read[0]!, id: 'synthetic-unsettled-reading', startedAt: end.toISOString(), endedAt: new Date(end.getTime() + 60_000).toISOString() },
+            ], end), progress);
+            const qq = describeBooks(schedule, [book], end, { userText: book.title, userName: '合成联系人', events });
+            assert.ok(qq?.text.includes(`已记下 ${progress.minutes} 分钟阅读`));
+            const dsh = JSON.parse(renderDshState({ at: end.toISOString() }, end.getTime(), progress));
+            assert.deepEqual(dsh.readingInterest, progress);
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
     test('这一刻做什么：睡觉、上课、赶去上课、吃饭、洗澡跳过、空闲按一天的打算', () => {
         const sleep = chooseAt(at('2026-10-13T03:00:00'), plain);
         assert.ok('intent' in sleep && sleep.intent.kind === 'sleep');

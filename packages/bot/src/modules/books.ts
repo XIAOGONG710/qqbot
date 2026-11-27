@@ -7,10 +7,12 @@
 
 import type { Module } from '../interpreter/interpreter.ts';
 import { readingSection } from '../life/her-days.ts';
+import type { LifeEvent } from '../world/life-events.ts';
 
 export interface BooksModuleOptions {
     /** 她自己的日子（配置 herDays） */
     herDays?: boolean;
+    events?: () => readonly LifeEvent[] | undefined;
 }
 
 export function booksModule(options: BooksModuleOptions = {}): Module {
@@ -22,6 +24,7 @@ export function booksModule(options: BooksModuleOptions = {}): Module {
             const { state } = turn.facts;
             const books = readingSection(schedule, turn.card!.books, turn.at, {
                 history: turn.history, userName: turn.contact.name,
+                ...(options.events ? { events: options.events } : {}),
                 ...(state?.activity.kind === 'free' ? { activity: state.activity.text } : {}),
             });
             if (books) turn.facts.books = books;

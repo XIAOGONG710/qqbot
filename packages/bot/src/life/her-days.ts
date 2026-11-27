@@ -2,6 +2,7 @@
 
 import { localDate } from '../local-date.ts';
 import type { StoredMessage } from '../memory/history.ts';
+import type { LifeEvent } from '../world/life-events.ts';
 import type { BodyNow } from './body.ts';
 import type { WorldNow } from '.././world/world.ts';
 import { classesOn, formatDate, herDay, type ExtraFreeActivity, type Schedule } from './schedule.ts';
@@ -27,6 +28,7 @@ export interface ReadingBook {
     kind: string;
     platform: string;
     status: string;
+    sharedReading?: true;
     activity?: { window: 'morning' | 'afternoon' | 'evening'; text: string };
     total?: { amount: number; unit: string };
     progress: {
@@ -143,6 +145,24 @@ export function bookProgressAt(schedule: Schedule, book: ReadingBook, now: Date)
     return bookProgressOn(book, herDay(schedule, now));
 }
 
+export interface SharedReadingProgress { title: string; minutes: number }
+
+/** 只统计世界账中已经结算的阅读，分钟数不推断读到了哪些情节。 */
+export function sharedReadingProgress(book: ReadingBook, events: readonly LifeEvent[], now: Date): SharedReadingProgress | undefined {
+    if (!book.sharedReading || !/^[^\p{C}\p{Zl}\p{Zp}<>\[\]]{1,80}$/u.test(book.title)) return;
+    const seen = new Set<string>();
+    let elapsed = 0;
+    for (const event of events) {
+        if (event.kind !== 'read_book' || event.subject !== book.id || event.result !== 'succeeded' || seen.has(event.id)) continue;
+        const start = Date.parse(event.startedAt);
+        const end = Date.parse(event.endedAt);
+        if (!(end > start && end <= now.getTime())) continue;
+        seen.add(event.id);
+        elapsed += end - start;
+    }
+    return { title: book.title, minutes: Math.floor(elapsed / 60_000) };
+}
+
 /** 只给已经读到的情节节点。 */
 export function availableBookNodes(book: ReadingBook, progress: BookProgress): ReadingBook['nodes'] {
     return book.nodes.filter(node => node.from <= progress.amount);
@@ -227,7 +247,7 @@ export interface DescribedBooks {
  * 泛问「在看什么书」时也有情节可说，不用自己补。
  */
 export function describeBooks(schedule: Schedule, books: readonly ReadingBook[], now: Date,
-    options: { userText: string; userName: string; named?: readonly string[] }): DescribedBooks | undefined {
+    options: { userText: string; userName: string; named?: readonly string[]; events?: readonly LifeEvent[] }): DescribedBooks | undefined {
     if (!books.length) return undefined;
     const { userName } = options;
     const asked = options.userText.toLowerCase();
@@ -244,7 +264,8 @@ export function describeBooks(schedule: Schedule, books: readonly ReadingBook[],
         });
         // 不再把作者写的「你的感受」塞给她（10-30 用户：把这种类型的限制去掉）——
         // 喜欢什么书、怎么看，由她自己说；设定里的 attitude 只留下不注入。
-        return [`- 《${book.title}》（${book.author}；${book.kind}；${book.platform}；${book.status}）：${position}${total}`, ...nodes];
+        const settled = options.events && sharedReadingProgress(book, options.events, now);
+        return [`- 《${book.title}》（${book.author}；${book.kind}；${book.platform}；${book.status}）：${position}${total}${settled ? `；已记下 ${settled.minutes} 分钟阅读` : ''}`, ...nodes];
     });
     // 点名问了哪本，只提醒那本没看到的地方；泛问时每本都看
     const unread = items.filter(({ book }) => !named.size || named.has(book.id))
@@ -263,7 +284,7 @@ export function describeBooks(schedule: Schedule, books: readonly ReadingBook[],
  * activity：状态行里的空闲活动（没在空闲、作息关着时不传）。userText 取他在她上次回复之后发的几条
  */
 export function readingSection(schedule: Schedule, books: readonly ReadingBook[], now: Date,
-    options: { history: readonly Said[]; userName: string; activity?: string }): DescribedBooks | undefined {
+    options: { history: readonly Said[]; userName: string; activity?: string; events?: () => readonly LifeEvent[] | undefined }): DescribedBooks | undefined {
     if (!books.length) return undefined;
     const mention = bookMention(options.history, books);
     let chosen = mention.mentioned ? books.filter(book => mention.bookIds.includes(book.id)) : [];
@@ -274,7 +295,8 @@ export function readingSection(schedule: Schedule, books: readonly ReadingBook[]
     if (!chosen.length) return undefined;
     const lastReply = options.history.findLastIndex(message => message.role === 'assistant');
     const userText = options.history.slice(lastReply + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
-    return describeBooks(schedule, chosen, now, { userText, userName: options.userName, named: mention.named ? mention.bookIds : [] });
+    const events = chosen.some(book => book.sharedReading) ? options.events?.() : undefined;
+    return describeBooks(schedule, chosen, now, { userText, userName: options.userName, named: mention.named ? mention.bookIds : [], ...(events ? { events } : {}) });
 }
 
 /** 启动和每天第一次生成时的摘要：心情、原因和进度，不含聊天内容。 */
@@ -394,10 +416,12 @@ export function parseBooks(value: unknown, source: string): ReadingBook[] {
                 points: strings(node.points, `[${i}].nodes[${j}].points`),
             };
         });
+        if (book.sharedReading !== undefined && typeof book.sharedReading !== 'boolean') fail(`[${i}].sharedReading 应为布尔值`);
         return {
             id: text(book.id, `[${i}].id`), title: text(book.title, `[${i}].title`), aliases: strings(book.aliases, `[${i}].aliases`),
             author: text(book.author, `[${i}].author`), kind: text(book.kind, `[${i}].kind`), platform: text(book.platform, `[${i}].platform`),
-            status: text(book.status, `[${i}].status`), ...parseActivity(book.activity, `[${i}].activity`), ...(total ? { total } : {}), progress,
+            status: text(book.status, `[${i}].status`), ...(book.sharedReading === true ? { sharedReading: true } : {}),
+            ...parseActivity(book.activity, `[${i}].activity`), ...(total ? { total } : {}), progress,
             attitude: text(book.attitude, `[${i}].attitude`), unreadKeywords: strings(book.unreadKeywords, `[${i}].unreadKeywords`), nodes,
         };
     });

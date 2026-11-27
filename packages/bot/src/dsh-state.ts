@@ -3,6 +3,7 @@ import type { DshState } from './dsh-link.ts';
 import type { Executor } from './executor/executor.ts';
 import { humanStateAt } from './human-projection.ts';
 import type { loadNeedsAnchor } from './life/needs.ts';
+import { sharedReadingProgress, type ReadingBook } from './life/her-days.ts';
 import type { currentTierHistory } from './memory/tier-record.ts';
 import type { Contact } from './platform/config.ts';
 import type { Log } from './platform/log.ts';
@@ -23,10 +24,11 @@ export interface DshStateDeps {
     exec: Pick<Executor, 'files'>;
     /** 灵魂目录里的 STATE.json */
     dshStateFile: string;
+    readingBook?: ReadingBook;
     log: Log;
 }
 
-export function dshStateSource({ dshEnabled, needsAnchor, sharedWorld, deviceOwner, history, aiPhotoDrafts, worldNow, exec, dshStateFile, log }: DshStateDeps) {
+export function dshStateSource({ dshEnabled, needsAnchor, sharedWorld, deviceOwner, history, aiPhotoDrafts, worldNow, exec, dshStateFile, readingBook, log }: DshStateDeps) {
     /** DSH 咨询只拿脱敏状态摘要，不带完整聊天记录。 */
     const dshState = (): DshState | undefined => {
         if (!needsAnchor) return undefined;
@@ -68,7 +70,9 @@ export function dshStateSource({ dshEnabled, needsAnchor, sharedWorld, deviceOwn
         if (!dshEnabled) return;
         try {
             const state = dshState();
-            if (state) writeDshState(dshStateFile, state, worldNow());
+            const at = worldNow();
+            const reading = state && readingBook && sharedWorld ? sharedReadingProgress(readingBook, sharedWorld.events(), new Date(at)) : undefined;
+            if (state) writeDshState(dshStateFile, state, at, reading);
             else exec.files.remove(dshStateFile);
         } catch (error) {
             log(`DSH：状态快照没写出去（${error instanceof Error ? error.message : String(error)}）`);

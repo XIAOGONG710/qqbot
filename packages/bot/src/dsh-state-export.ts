@@ -1,6 +1,7 @@
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { sanitizeDshState, type DshState } from './dsh-link.ts';
+import type { SharedReadingProgress } from './life/her-days.ts';
 
 /** QQ → DSH 的只读状态快照版本；过期后 DSH 必须降级，不得拿旧值冒充当前状态。 */
 export const DSH_STATE_EXPORT_VERSION = 1;
@@ -11,14 +12,16 @@ export interface DshStateExport {
     version: typeof DSH_STATE_EXPORT_VERSION;
     generatedAt: string;
     state: DshState;
+    readingInterest?: SharedReadingProgress;
 }
 
-export function renderDshState(state: DshState, at = Date.now()): string {
+export function renderDshState(state: DshState, at = Date.now(), readingInterest?: SharedReadingProgress): string {
     const safe = sanitizeDshState(state);
     const output: DshStateExport = {
         kind: 'qq-dsh-state',
         version: DSH_STATE_EXPORT_VERSION,
         generatedAt: new Date(at).toISOString(),
+        ...(readingInterest ? { readingInterest } : {}),
         state: {
             at: safe.at,
             ...(safe.tier ? { tier: safe.tier } : {}),
@@ -35,10 +38,10 @@ export function renderDshState(state: DshState, at = Date.now()): string {
 }
 
 /** 原子写入，避免 DSH 读到半个 JSON。目录不存在时一并创建。 */
-export function writeDshState(path: string, state: DshState, at = Date.now()): void {
+export function writeDshState(path: string, state: DshState, at = Date.now(), readingInterest?: SharedReadingProgress): void {
     mkdirSync(dirname(path), { recursive: true });
     const tmp = `${path}.tmp-${process.pid}`;
-    writeFileSync(tmp, renderDshState(state, at), 'utf8');
+    writeFileSync(tmp, renderDshState(state, at, readingInterest), 'utf8');
     renameSync(tmp, path);
 }
 

@@ -1181,6 +1181,11 @@ function readStateBlock(cfg, now = Date.now()) {
       return ''
     }
     const lines = [`时间：${new Date(stateAt).toISOString()}`]
+    const reading = data.readingInterest
+    if (typeof reading?.title === 'string' && /^[^\p{C}\p{Zl}\p{Zp}<>\[\]]{1,80}$/u.test(reading.title)
+      && Number.isSafeInteger(reading.minutes) && reading.minutes >= 0) {
+      lines.push(`《${reading.title}》：已记下 ${reading.minutes} 分钟阅读`)
+    }
     if (typeof state.tier === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(state.tier)) lines.push(`关系档位：${state.tier}`)
     const numbers = (label, value, allowed) => {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return
