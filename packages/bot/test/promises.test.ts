@@ -176,7 +176,7 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
         let originalId: string | undefined;
         let clock = at('2026-10-08T11:00:00').getTime();
         let calls = 0;
-        const keeper = promiseKeeper({
+        const reopen = () => promiseKeeper({
             contacts: [amin], dir, now: () => clock, names: () => names, log: () => undefined,
             history: ownerDayHistory({ load: () => [] }, { ownerQq: amin.qq, desktop: () => desktopPromiseTurns(desktop) }),
             extract: async messages => {
@@ -185,9 +185,10 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
                 if (calls === 2) return JSON.stringify({ add: [{ what: '看表格', evidence: 2 }] });
                 assert.match(messages[1]!.content, new RegExp(`${originalId}：下次 挑两首歌`));
                 assert.match(messages[1]!.content, /证据 2.*我改主意了/);
-                return JSON.stringify({ resolved: [{ id: originalId, evidence: 2 }] });
+                return JSON.stringify({ resolved: [{ id: originalId, evidence: 2 }, { id: originalId, evidence: 2 }] });
             },
         });
+        let keeper = reopen();
         try {
             addTurn('08', '嗯嗯，到时候看看', '【我答应并记下：你帮我挑歌】');
             addTurn('09', '【我答应并记下：');
@@ -203,9 +204,13 @@ describe('她答应的事：记下、划掉、忘掉（ADR 0018 决策 2，假�
             addTurn('12', '【我答应并记下：下次帮你看表格】');
             addTurn('14', '【我改主意了：之前答应挑两首歌，那件事我不做了】');
             clock = at('2026-10-08T16:00:00').getTime();
-            await keeper.sync();
-            await keeper.sync();
+            await Promise.all([keeper.sync(), keeper.sync()]);
             assert.equal(calls, 3);
+            assert.deepEqual(ledger().map(row => row.what), ['看表格']);
+            await keeper.stop();
+            keeper = reopen();
+            await keeper.sync();
+            assert.equal(calls, 3, '重建后不重复抽取已结算的改口');
             assert.deepEqual(ledger().map(row => row.what), ['看表格']);
         } finally {
             await keeper.stop();

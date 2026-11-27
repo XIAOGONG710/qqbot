@@ -138,6 +138,38 @@ describe('主动留话（ADR 0174）：outbox 不再是直通的', () => {
         assert.deepEqual(h.left(), []);
     });
 
+    test('等待历史时跨过过期边界：丢掉未决和已过期留话，只投递仍有效的一条', async () => {
+        const h = harness();
+        writeFileSync(h.file, row('等待核对', T0) + row('核对期间过期', T0 + 1));
+        await drainOutbox({ ...h.deps, send: async () => { throw new Error('回执丢失'); } });
+        h.clock.now = T0 + OUTBOX_MAX_AGE_MS;
+        writeFileSync(h.file, row('仍有效', h.clock.now));
+        const result = await drainOutbox({ ...h.deps, reconcile: async () => {
+            h.clock.now += 2;
+            return { kind: 'unknown' };
+        } });
+        assert.equal(result.blockedBy, undefined);
+        assert.deepEqual(h.sent, ['仍有效']);
+        await drainOutbox(h.deps);
+        assert.deepEqual(h.sent, ['仍有效']);
+    });
+
+    test('跨午夜收到核对结果，按 QQ 实际投递日期计入当天额度', async () => {
+        const midnight = Date.parse('2026-10-30T00:00:00+08:00');
+        const h = harness({ now: midnight - 60_000 });
+        writeFileSync(h.file, row('跨午夜已送达', h.clock.now) + row('下一条', h.clock.now));
+        await drainOutbox({ ...h.deps, send: async text => { h.sent.push(text); throw new Error('回执丢失'); } });
+        await drainOutbox({ ...h.deps, dailyMax: 1, minGapMs: 0, reconcile: async () => {
+            h.clock.now = midnight + 1000;
+            return { kind: 'delivered', messageId: 1001, at: midnight };
+        } });
+        assert.deepEqual(h.recorded, [{ text: '跨午夜已送达', id: 1001, at: midnight }]);
+        assert.deepEqual(h.sent, ['跨午夜已送达']);
+        await drainOutbox({ ...h.deps, dailyMax: 1, minGapMs: 0 });
+        assert.deepEqual(h.sent, ['跨午夜已送达']);
+        assert.deepEqual(h.left().map(line => line.text), ['下一条']);
+    });
+
     test('已送达但聊天记录一直写不进去：12 小时内照旧等，过了就放弃补记，队列继续', async () => {
         const h = harness();
         writeFileSync(h.file, row('送到了的那条', T0));

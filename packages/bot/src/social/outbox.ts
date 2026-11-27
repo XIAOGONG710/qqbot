@@ -96,6 +96,12 @@ export async function drainOutbox(deps: OutboxDeps): Promise<OutboxResult> {
     const day: State = { day: today, sent: state.day === today ? state.sent ?? 0 : 0,
         lastSentAt: state.lastSentAt ?? 0, pending: state.pending ?? [],
         ...(state.attempt ? { attempt: state.attempt } : {}), ...(state.receipt ? { receipt: state.receipt } : {}) };
+    const refreshDay = (at: number) => {
+        const date = localDay(at);
+        if (day.day === date) return;
+        day.day = date;
+        day.sent = 0;
+    };
     const pendingCheck = (reason: string): OutboxResult => ({ sent: 0, held: day.pending.length, dropped: 0, blockedBy: reason });
     const recordReceipt = () => {
         const receipt = day.receipt!;
@@ -110,14 +116,15 @@ export async function drainOutbox(deps: OutboxDeps): Promise<OutboxResult> {
         delete day.attempt;
         day.pending = day.pending.slice(1);
         day.lastSentAt = Math.max(day.lastSentAt, at);
-        if (localDay(at) === today) day.sent++;
+        refreshDay(deps.now());
+        if (localDay(at) === day.day) day.sent++;
         day.receipt = { ...attempt, text: line.text, messageId, at };
         writeJsonAtomic(deps.stateFile, day);
     };
     // 一直核对不了的，超过 maxAge（这条本来也过期不发了）就放弃这一条、队列继续。
     // 风控拦截、NapCat 回失败、超时都进「待核对」，这些其实没送达、历史里永远核对不到；没有这个出口，之后给他的留话会永久卡住
     // （2026-11-26 claude 审 3ac758b8；旧代码是 MAX_TRIES 次后丢）。最坏是那一条丢一次或重复一次。
-    const stale = (since: number) => now - since > maxAge;
+    const stale = (since: number) => deps.now() - since > maxAge;
     const abandon = (what: string) => deps.log(`主动留话：${what}超过 ${Math.round(maxAge / 3_600_000)} 小时还核对不了，放弃这一条，后面的照常`);
     if (day.receipt) {
         if (day.receipt.scope !== deps.scope || !recordReceipt()) {
@@ -174,10 +181,12 @@ export async function drainOutbox(deps: OutboxDeps): Promise<OutboxResult> {
     const rest: Line[] = [];
     let sent = 0;
     for (const [index, line] of lines.entries()) {
-        if (now - line.at > maxAge) { dropped++; deps.log(`主动留话：「${line.text.slice(0, 20)}」过期了，不发`); continue; }
+        const checkedAt = deps.now();
+        if (checkedAt - line.at > maxAge) { dropped++; deps.log(`主动留话：「${line.text.slice(0, 20)}」过期了，不发`); continue; }
         const problem = deps.inspect(line.text);
         if (problem) { dropped++; deps.log(`主动留话：「${line.text.slice(0, 20)}」没过出口检查（${problem}），不发`); continue; }
-        if (sent > 0 || day.sent >= dailyMax || now - day.lastSentAt < minGap) { rest.push(line); continue; }
+        refreshDay(checkedAt);
+        if (sent > 0 || day.sent >= dailyMax || checkedAt - day.lastSentAt < minGap) { rest.push(line); continue; }
         day.pending = lines.slice(index);
         const startedAt = deps.now();
         day.attempt = { startedAt, ...(deps.scope !== undefined ? { scope: deps.scope } : {}) };
