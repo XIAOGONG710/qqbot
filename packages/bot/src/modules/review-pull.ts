@@ -49,7 +49,8 @@ export function reviewPullModule(options: ReviewPullOptions = {}): Module {
                     let reviewed = text;
                     if (recalled) {
                         const material = typeof recalled === 'string' ? recalled : recalled.text;
-                        ctx.log(`她主动查记忆：${query}（${countLines(material)} 条）`);
+                        // 她查的词可能是私事，日志只记字数（决定单第 29 条，记忆审查 U6）
+                        ctx.log(`她主动查记忆：${[...query].length} 字（${countLines(material)} 条）`);
                         reviewed = await ctx.regenerate(pullNote(material));
                         if (typeof recalled !== 'string' && recalled.offers.length) {
                             const resolution = takeMemoryReviewResolution(reviewed).resolutions[0];

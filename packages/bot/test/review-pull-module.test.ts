@@ -75,7 +75,7 @@ describe('<<查>> 模块（ADR 0336）', () => {
         assert.equal(r.calls[0]!.contact, turn.contact);
         assert.deepEqual(s.notes, [pullNote('[你刚才想起来的]\n- 12月6日：第一次约会去的是学校后门那家火锅店')]);
         assert.equal(s.notes[0], '（你刚才想起来了：\n[你刚才想起来的]\n- 12月6日：第一次约会去的是学校后门那家火锅店\n用这些回答他，不要再写 <<查>> 标记。这些记录没有可精确回连的引用；拿不准就直接说不确定，不要写待核对标记，也不要自行改动或删除旧记忆。）');
-        assert.deepEqual(s.logs, ['她主动查记忆：第一次约会的地方（1 条）']);
+        assert.deepEqual(s.logs, ['她主动查记忆：8 字（1 条）'], '查的词不进日志，只记字数');
         assert.equal(s.accepted(), 0);
     });
 
