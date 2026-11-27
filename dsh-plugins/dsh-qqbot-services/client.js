@@ -19,6 +19,38 @@ window.__ModuleLoader__.load({
 
     // 灵犀 QQ 桥接的 MIT 主题。命名空间与上游独立，避免共装时串样式。
     const STYLE_ID = 'qqb-style'
+    const REASONING_STYLE_ID = 'qqb-reasoning-preview'
+    const REASONING_PREVIEW_KEY = 'qqbot-services:show-reasoning-preview'
+
+    function showReasoningPreview() {
+      try { return window.localStorage.getItem(REASONING_PREVIEW_KEY) === '1' }
+      catch { return false }
+    }
+
+    function updateReasoningPreview(show) {
+      if (typeof document === 'undefined') return
+      const existing = document.getElementById(REASONING_STYLE_ID)
+      if (show) { existing?.remove(); return }
+      if (existing) return
+      const row = '[data-variant="think"][data-preview]:not([data-expanded]) [data-shimmer-decoration]'
+      const style = document.createElement('style')
+      style.id = REASONING_STYLE_ID
+      style.textContent = `${row},\n${row} + span { display: none !important; }`
+      document.head.appendChild(style)
+    }
+
+    function DesktopDisplaySettings() {
+      const [show, setShow] = React.useState(showReasoningPreview)
+      return h('section', { className: 'qqb-card' },
+        h('h3', { className: 'qqb-title' }, '桌面对话显示'),
+        h('label', null, h('input', { type: 'checkbox', checked: show, onChange: event => {
+          const enabled = event.target.checked
+          setShow(enabled)
+          updateReasoningPreview(enabled)
+          try { window.localStorage.setItem(REASONING_PREVIEW_KEY, enabled ? '1' : '0') } catch { /* 当前窗口仍生效 */ }
+        } }), ' 在「思考」行自动显示原始预览'))
+    }
+
     function ensureStyle() {
       if (typeof document === 'undefined') return
       if (document.getElementById(STYLE_ID) !== null) return
@@ -1417,6 +1449,7 @@ window.__ModuleLoader__.load({
           koishiConsole && h('div', { className: 'qqb-actions' },
             h('a', { className: 'qqb-btn', href: koishiConsole, target: '_blank', rel: 'noopener noreferrer' }, '在 Koishi 管理配置'))),
         section('sys',
+          tab === 'sys' && h(DesktopDisplaySettings),
           tab === 'sys' && h(DetailsCard, { kind: 'backups' }),
           tab === 'sys' && h(DetailsCard, { kind: 'versions' }),
           tab === 'sys' && h(LogsPanel),
@@ -1443,6 +1476,7 @@ window.__ModuleLoader__.load({
       inject: ['slots'],
       apply(ctx) {
         if (mounted) return
+        updateReasoningPreview(showReasoningPreview())
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: panel, inject: () => ({}) }, Panel))
         ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist', id: panel, order: 13, label: () => '服务管理',
@@ -1452,7 +1486,7 @@ window.__ModuleLoader__.load({
         }, Panel))
         if (typeof removeSettings === 'function') ctx.effect?.(() => removeSettings, '林梦瑶 QQ 桥接设置页')
         mounted = true
-        ctx.on?.('dispose', () => { mounted = false })
+        ctx.on?.('dispose', () => { updateReasoningPreview(true); mounted = false })
       },
     }
   },

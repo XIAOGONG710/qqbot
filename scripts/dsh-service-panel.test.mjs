@@ -209,6 +209,34 @@ test('client registers the same bridge console in DSH settings and the sidebar',
     assert.equal(entries[0].render, entries[2].render);
 });
 
+test('the desktop client suppresses only automatic reasoning previews and cleans up on dispose', () => {
+    const styles = new Map();
+    const document = {
+        getElementById: id => styles.get(id) ?? null,
+        createElement: () => ({ remove() { styles.delete(this.id); } }),
+        head: { appendChild: style => styles.set(style.id, style) },
+    };
+    const storage = new Map();
+    let plugin, dispose;
+    const source = readFileSync(new URL('../dsh-plugins/dsh-qqbot-services/client.js', import.meta.url), 'utf8');
+    runInNewContext(source, { document, window: {
+        localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
+        __ModuleLoader__: { load(bundle) { plugin = bundle.factory(() => ({ createElement() {} })); } },
+    } });
+    const ctx = { slots: { inject() {} }, on(name, listener) { assert.equal(name, 'dispose'); dispose = listener; } };
+    plugin.apply(ctx);
+    const style = styles.get('qqb-reasoning-preview');
+    assert.ok(style);
+    assert.equal(style.textContent, '[data-variant="think"][data-preview]:not([data-expanded]) [data-shimmer-decoration],\n' +
+        '[data-variant="think"][data-preview]:not([data-expanded]) [data-shimmer-decoration] + span { display: none !important; }');
+    dispose();
+    assert.equal(styles.size, 0);
+    storage.set('qqbot-services:show-reasoning-preview', '1');
+    plugin.apply(ctx);
+    assert.equal(styles.size, 0, 'the explicit preference restores the built-in preview');
+    dispose();
+});
+
 test('the DSH chat form sends only after confirmation and history keeps every resumed row', async () => {
     let panel, plugin, accepted = false;
     let theme;
@@ -234,7 +262,8 @@ test('the DSH chat form sends only after confirmation and history keeps every re
     };
     runInNewContext(source, {
         AbortController, URLSearchParams, setTimeout: callback => timers.push(callback), clearTimeout() {},
-        document: { getElementById: () => theme ?? null, createElement: () => ({}), head: { appendChild: style => { theme = style; } } },
+        document: { getElementById: id => theme?.id === id ? theme : null, createElement: () => ({}),
+            head: { appendChild: style => { if (style.id === 'qqb-style') theme = style; } } },
         window: {
             __ModuleLoader__: { load(bundle) { plugin = bundle.factory(() => React); } },
             localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
