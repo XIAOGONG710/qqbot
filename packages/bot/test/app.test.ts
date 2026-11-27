@@ -1216,12 +1216,15 @@ describe('编排（app.ts）', () => {
             { qq: 10002, name: '第二位', tier: 'boyfriend' },
         ], memory: { baseUrl: 'http://127.0.0.1:1', timeoutMs: 50, recallTimeoutMs: 50, bankPrefix: 'test' } });
         mkdirSync(join(cfg.dataDir, 'memory'), { recursive: true });
+        const { app, sent } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
+        const { ownerBank } = JSON.parse(readFileSync(join(cfg.dataDir, 'memory', 'owner-bank.json'), 'utf8'));
+        assert.match(ownerBank, /^test-/);
         writeFileSync(join(cfg.dataDir, 'memory', 'desktop-recent.jsonl'), `${JSON.stringify({
             at: Date.now() - 16 * 3_600_000,
+            ownerBank,
             user: '昨晚在桌面查的蓝灯报错ZQY',
             assistant: '等合成配置再试',
         })}\n`);
-        const { app, sent } = setup(cfg, {}, { generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '好'; } });
         await app.connected(SELF);
         const question = '昨晚在桌面查的蓝灯报错，接着办';
         app.receive(event(10001, 1, question, '第一位'));

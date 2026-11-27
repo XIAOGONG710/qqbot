@@ -36,7 +36,7 @@ describe('文件尾部读法', () => {
 });
 
 describe('QQ 这边读桌面对话（ADR 0177）', () => {
-    test('隔天只按续聊线索读取同一账号的桌面查错：别家行不回放，无归属旧行仍可见', () => {
+    test('隔天只按续聊线索读取有相同账号归属的桌面查错', () => {
         const file = desktopRecentPath(tmp());
         const write = (age: number, ownerBank: string | undefined, user: string, assistant: string) =>
             JSON.stringify({ at: NOW - min(age), ownerBank, user, assistant });
@@ -46,10 +46,9 @@ describe('QQ 这边读桌面对话（ADR 0177）', () => {
         const query = '昨晚在桌面查的蓝灯报错，继续吧';
         const view = desktopBlock(file, NOW, { query, ownerBank: 'synthetic-first' })!;
         assert.match(view, /等合成配置/);
-        assert.match(view, /旧记录归属未知/, '没有 ownerBank 字段的历史行仍可读（只可能属于唯一的设备所有者）');
-        assert.doesNotMatch(view, /不属于/, '别的 ownerBank 的行排除');
-        const other = desktopBlock(file, NOW, { query, ownerBank: 'synthetic-new' })!;
-        assert.doesNotMatch(other, /等合成配置|不属于/, '换 ownerBank 就读不到前一账号的行');
+        assert.doesNotMatch(view, /不属于|归属未知/, '排除别的账号和没有归属证据的旧行');
+        assert.equal(desktopBlock(file, NOW, { query, ownerBank: 'synthetic-new' }), undefined);
+        assert.equal(desktopBlock(file, NOW, { windowMs: 36 * 3_600_000, query })?.includes('等合成配置'), false, '缺少账号绑定时不读取带归属的行');
         assert.equal(desktopBlock(file, NOW, { query: '今天吃什么', ownerBank: 'synthetic-first' }), undefined, '不回看时只按 6 小时窗口，隔天的不放');
     });
     test('只取 6 小时内的、按时间从旧到新；超过窗口、未来的时间、坏行、缺字段都丢掉', () => {

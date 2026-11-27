@@ -525,16 +525,17 @@ describe('同一个她：他在 DSH 桌面上和在 QQ 上用同一个 bank，�
     });
 
     test('公共库只取她自己的日记 / 周记 / 阶段总结；别人的聊天片段和没有 document_id 的整合观察不取', async () => {
+        const date = new Date().toISOString().slice(0, 10);
         const result = (id: string, text: string, document_id?: string) => ({ id, text, ...(document_id ? { document_id } : {}), fact_type: 'world', date: new Date().toISOString() });
         const fake = fakeHindsight({
             banks: ALL_BANKS,
             recall: {
                 [OWNER]: [result('o1', '他说想吃火锅', 'ep-1')],
                 'linmengyao-common': [
-                    { ...result('c1', '我今天去了图书馆', 'diary:2026-10-28'), tags: ['qq-public'] },
-                    { ...result('c2', '这周的周记内容', 'week:2026-10-26'), tags: ['qq-public'] },
-                    { ...result('c3', '寒假的总结', 'phase:寒假:2027-02-28'), tags: ['qq-public'] },
-                    result('c6', '未公开的合成混合来源日记', 'diary:2026-10-27'),
+                    { ...result('c1', '我今天去了图书馆', `diary:${date}`), tags: ['qq-public'] },
+                    { ...result('c2', '这周的周记内容', `week:${date}`), tags: ['qq-public'] },
+                    { ...result('c3', '寒假的总结', `phase:寒假:${date}`), tags: ['qq-public'] },
+                    result('c6', '未公开的合成混合来源日记', `diary:${date}`),
                     result('c4', '鸽鸽私下说他其实很怕挂科', 'bbbb444455556666:ep-9'),
                     result('c5', '大家好像都在说挂科的事（整合观察，没有来源）'),
                 ],
@@ -1525,17 +1526,16 @@ describe('一个生活·第 3 层：桌面回合记录开口时刻和离线回�
             const logFile = join(c.root, 'memory', 'desktop-log.jsonl');
             assert.equal(ingestDesktopRecent({ recentFile: c.files.desktopFile, logFile, now: T }).added, 2);
             assert.deepEqual(readDesktopLog(logFile, T).map(turn => turn.userAt), [undefined, T - mins(1)]);
-            // 隔离语义：传了 ownerBank 时，没有该字段的旧行仍可读（只可能属于唯一的设备所有者），别的 ownerBank 排除；没传时读全部
+            // 原始格式校验仍读全量；给提示词的读取只接受匹配的账号归属。
             appendFileSync(c.files.desktopFile, `${JSON.stringify({ at: T - mins(2), ownerBank: 'synthetic-other', user: '别家的行', assistant: '不该出现' })}\n`);
-            assert.deepEqual(readDesktopTurns(c.files.desktopFile, T, CROSS_WINDOW_MS, OWNER), [
-                { at: T - mins(5), user: '旧格式的一轮', assistant: '嗯嗯' },
+            assert.deepEqual(readDesktopTurns(c.files.desktopFile, T, CROSS_WINDOW_MS, { ownerBank: OWNER }), [
                 { at: T, user: '新格式的一轮', assistant: '好' },
-            ], '旧行仍可见、别家的行不可见');
-            assert.deepEqual(readDesktopTurns(c.files.desktopFile, T, CROSS_WINDOW_MS, 'synthetic-other'), [
-                { at: T - mins(5), user: '旧格式的一轮', assistant: '嗯嗯' },
+            ], '账号只读自己的新行');
+            assert.deepEqual(readDesktopTurns(c.files.desktopFile, T, CROSS_WINDOW_MS, { ownerBank: 'synthetic-other' }), [
                 { at: T - mins(2), user: '别家的行', assistant: '不该出现' },
-            ], '只看到自己的和无归属旧行：本人的新行不可见');
-            assert.equal(readDesktopTurns(c.files.desktopFile, T).length, 3, '没传 ownerBank 时三行都读');
+            ], '换号也只读自己的行');
+            assert.equal(readDesktopTurns(c.files.desktopFile, T, CROSS_WINDOW_MS, {}).length, 1, '提示词未绑定时只读取旧格式');
+            assert.equal(readDesktopTurns(c.files.desktopFile, T).length, 3, '原始读取仍兼容三行');
         });
     });
 

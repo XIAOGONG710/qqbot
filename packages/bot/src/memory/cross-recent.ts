@@ -46,14 +46,14 @@ export function tailLines(file: string, maxBytes = TAIL_BYTES): string[] {
     } catch { return []; }
 }
 
-export function readDesktopTurns(file: string, now: number, windowMs = CROSS_WINDOW_MS, ownerBank?: string): DesktopTurn[] {
+export function readDesktopTurns(file: string, now: number, windowMs = CROSS_WINDOW_MS, scope?: { ownerBank?: string }): DesktopTurn[] {
     const turns: DesktopTurn[] = [];
     for (const line of tailLines(file)) {
         try {
             const value = JSON.parse(line) as Partial<DesktopTurn>;
             if (typeof value.at !== 'number' || typeof value.user !== 'string' || typeof value.assistant !== 'string') continue;
-            // 传了 ownerBank：没有该字段的旧行仍可读（只可能属于唯一的设备所有者），别的 ownerBank 排除；没传就按原来的方式读全部
-            if (ownerBank !== undefined && value.ownerBank !== undefined && value.ownerBank !== ownerBank) continue;
+            // 提示词按归属读取；内部兼容读口仍可读取完整文件用于检查格式。
+            if (scope && value.ownerBank !== scope.ownerBank) continue;
             if (now - value.at > windowMs || value.at > now + 60_000) continue;
             turns.push({ at: value.at, user: value.user, assistant: value.assistant });
         } catch { /* 写到一半 / 坏行：跳过 */ }
@@ -80,7 +80,7 @@ export function desktopBlock(file: string, now: number, options: { maxTurns?: nu
         for (let i = 0; i + 2 <= term.length; i++) if (source.includes(term.slice(i, i + 2))) return true;
         return false;
     });
-    const turns = readDesktopTurns(file, now, lookingBack ? Math.max(recent, 36 * 3_600_000) : recent, options.ownerBank)
+    const turns = readDesktopTurns(file, now, lookingBack ? Math.max(recent, 36 * 3_600_000) : recent, { ownerBank: options.ownerBank })
         .filter(turn => now - turn.at <= recent || matchesTopic(`${turn.user}\n${turn.assistant}`))
         .slice(-(options.maxTurns ?? DESKTOP_MAX_TURNS));
     if (!turns.length) return undefined;
