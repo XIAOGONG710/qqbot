@@ -15,6 +15,7 @@ import { OPS_NOTICE_PREFIX } from '.././ops/alert-qq.ts';
 import { stateObject, stateTimestamp } from './state-schema.ts';
 
 export const BACKFILL_COUNT = 20;
+const BACKFILL_PAGING_BUDGET_MS = 12_000;
 /** 最后一条没回的消息在这段时间内才回复，更早的只补记录（时间感知在 M3 之前，隔太久再接话会很怪） */
 export const CATCH_UP_WINDOW_MS = 3 * 60 * 60 * 1000;
 const CATCH_UP_FUTURE_GRACE_MS = 60_000;
@@ -27,6 +28,61 @@ export interface HistoryMessage {
     user_id?: number;
     sender?: { user_id?: number };
     message: Segment[] | string;
+}
+
+export interface HistoryCursor {
+    before: number;
+    reverse: boolean;
+}
+
+/** 只从 NapCat 本轮返回的消息翻页，避免重启前缓存的短 ID 已失效。 */
+export async function readReconnectHistory(
+    read: (count: number, cursor?: HistoryCursor) => Promise<HistoryMessage[]>,
+    anchor: StoredMessage | undefined,
+    selfId: number,
+    stopped: () => boolean,
+): Promise<{ rows: HistoryMessage[]; incomplete: boolean }> {
+    const first = await read(BACKFILL_COUNT);
+    const oldestFirst = (rows: HistoryMessage[]) => rows.filter(validHistoryMessage).sort((a, b) => a.time - b.time);
+    let rows = oldestFirst(first);
+    if (!anchor || first.length < BACKFILL_COUNT) return { rows, incomplete: false };
+    const sender = (row: HistoryMessage) => row.sender?.user_id ?? row.user_id;
+    const source = (row: HistoryMessage) => ({
+        messageId: row.message_id, role: sender(row) === selfId ? 'assistant' as const : 'user' as const,
+        time: new Date(row.time * 1000).toISOString(), sourceTime: row.time, messageSeq: sourceMessageSeq(row.real_seq),
+    });
+    const reached = () => rows.some(row => sameMessage(anchor, source(row)))
+        || rows.some(row => row.time < Math.floor(Date.parse(anchor.time) / 1000));
+    let reverse = false;
+    const deadline = Date.now() + BACKFILL_PAGING_BUDGET_MS;
+    for (let page = 1; page < 8 && !reached() && !stopped(); page++) {
+        const boundary = rows[0];
+        if (!boundary?.message_id) break;
+        const older = async (direction: boolean) => {
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) return [];
+            let timer: NodeJS.Timeout | undefined;
+            const bounded = new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error('历史补回分页超时')), remaining);
+            });
+            let batch: HistoryMessage[];
+            try {
+                batch = oldestFirst(await Promise.race([read(BACKFILL_COUNT, { before: boundary.message_id, reverse: direction }), bounded]));
+            } finally { clearTimeout(timer); }
+            const index = batch.findIndex(row => sameMessage(source(boundary), source(row)) && sender(row) === sender(boundary));
+            return index > 0 ? batch.slice(0, index) : [];
+        };
+        try {
+            let prefix = await older(reverse);
+            if (!prefix.length && page === 1 && !stopped()) {
+                reverse = !reverse;
+                prefix = await older(reverse);
+            }
+            if (!prefix.length || sameMessage(source(prefix[0]!), source(boundary))) break;
+            rows = [...prefix, ...rows];
+        } catch { break; }
+    }
+    return { rows, incomplete: !reached() };
 }
 
 /** QQ历史是外部输入。单条坏记录不能让完整补回在toISOString/map处中断。 */

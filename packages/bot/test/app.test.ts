@@ -137,13 +137,13 @@ function setup(cfg: AppConfig, history: Record<number, HistoryMessage[]> = {}, o
         sendPrivateText: async (userId, text) => { sent.push(`${userId}:${text}`); return nextId++; },
         sendPrivateImage: async (userId, file, summary) => { images.push(`${userId}:${file}:${summary}`); return options.extra?.sendPrivateImage ? options.extra.sendPrivateImage(userId, file, summary) : nextId++; },
         ...(options.pokeFriend ? { pokeFriend: options.pokeFriend } : {}),
-        friendHistory: async (userId, count) => {
+        friendHistory: options.extra?.friendHistory ?? (async (userId, count) => {
             asked.push(userId);
             await options.holdHistory;
             const list = history[userId];
             if (!list) throw new Error('OneBot 调用失败 retcode 1200：消息不存在');
             return list.slice(-count);
-        },
+        }),
     };
     // 同一个数据目录「重启」= 先停旧的再起新的：stop() 要等收尾做完才放目录租约，闲着的 App 同步就放（ADR 0259）。
     // 多个用例原来靠同进程可重复拿锁来模拟重启，现在要先停旧的；旧的停不干净（仍有收尾）时 startApp 会按设计拒绝。
@@ -1124,6 +1124,28 @@ describe('编排（app.ts）', () => {
         assert.deepEqual(asked, [10001], '同一轮重连只拉一次该联系人的历史');
         assert.deepEqual(sent, ['10001:好']);
         assert.deepEqual(chat(cfg, 10001), ['user:停机时发的', 'user:重连时发的', 'assistant:好']);
+    });
+
+    test('跨页补回和重叠实时事件都只入账一次，只补一条回复', async () => {
+        const cfg = config();
+        const rows = Array.from({ length: 55 }, (_, i) => historyMessage(i + 1, 10001, `合成 ${i + 1}`, 80 - i));
+        new ChatHistory(cfg.dataDir).append(10001, {
+            role: 'user', time: new Date(rows[0]!.time * 1000).toISOString(), content: '合成 1', messageId: 1,
+        });
+        const pulls: (number | undefined)[] = [];
+        const { app, sent } = setup(cfg, {}, { extra: { friendHistory: async (_qq, count, cursor) => {
+            pulls.push(cursor?.before);
+            const end = cursor?.before ?? rows.length;
+            return rows.slice(Math.max(0, end - count), end);
+        } } });
+        const first = app.connected(SELF);
+        const second = app.connected(SELF);
+        app.receive({ ...event(10001, 55, '合成 55'), time: rows[54]!.time });
+        await Promise.all([first, second]);
+        await until(() => sent.length > 0);
+        assert.deepEqual(pulls, [undefined, 36, 17]);
+        assert.deepEqual(chat(cfg, 10001), [...rows.map((_, i) => `user:合成 ${i + 1}`), 'assistant:好']);
+        assert.deepEqual(sent, ['10001:好']);
     });
 
     test('拉不到历史（没有任何记录时 NapCat 也报错）：写日志、跳过这个人，其他人照常补回', async () => {

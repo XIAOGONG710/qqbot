@@ -60,9 +60,10 @@ const app = startApp({
         sendLike: async (userId, times) => { await client.call('send_like', { user_id: String(userId), times }); },
         setSignature: async text => { await client.call('set_self_longnick', { longNick: text }); },
         postQzone: async post => (await client.call<{ tid: string }>('send_qzone_msg', { content: post.content, ...(post.images ? { images: post.images } : {}), ugc_right: post.ugcRight })).tid,
-        friendHistory: async (userId, count) => (await client.call<{ messages: HistoryMessage[] }>('get_friend_msg_history', {
+        friendHistory: async (userId, count, cursor) => (await client.call<{ messages: HistoryMessage[] }>('get_friend_msg_history', {
             user_id: String(userId),
             count,
+            ...(cursor ? { message_seq: String(cursor.before), reverse_order: cursor.reverse } : {}),
         })).messages,
     },
     log,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { CATCH_UP_WINDOW_MS, findMissed, shouldCatchUp, type HistoryMessage } from '../src/memory/backfill.ts';
+import { CATCH_UP_WINDOW_MS, findMissed, readReconnectHistory, shouldCatchUp, type HistoryMessage } from '../src/memory/backfill.ts';
 import type { StoredMessage } from '../src/memory/history.ts';
 
 const SELF = 1024;
@@ -10,6 +10,30 @@ const text = (s: string) => [{ type: 'text', data: { text: s } }];
 // NapCat 返回的形状：对方发的 post_type message、sender 是对方；小号发的 message_sent、sender 是小号
 const fromPeer = (id: number, time: number, s: string): HistoryMessage => ({ message_id: id, time, user_id: PEER, sender: { user_id: PEER }, message: text(s) });
 const fromSelf = (id: number, time: number, s: string): HistoryMessage => ({ message_id: id, time, user_id: SELF, sender: { user_id: SELF }, message: text(s) });
+
+test('重连跨页补回超过 20 条，页边界重叠只收一次', async () => {
+    const rows = Array.from({ length: 55 }, (_, i) => fromPeer(i + 1, 1795000000 + i, `合成 ${i + 1}`));
+    const stored = [findMissed([], rows.slice(0, 1), SELF)[0]!];
+    const pages: (number | undefined)[] = [];
+    const result = await readReconnectHistory(async (count, cursor) => {
+        const before = cursor?.before;
+        pages.push(before);
+        const end = before === undefined ? rows.length : before;
+        return rows.slice(Math.max(0, end - count), end);
+    }, stored.at(-1), SELF, () => false);
+    assert.equal(result.incomplete, false);
+    assert.deepEqual(pages, [undefined, 36, 17]);
+    assert.deepEqual(findMissed(stored, result.rows, SELF).map(row => row.messageId), rows.slice(1).map(row => row.message_id));
+});
+
+test('NapCat 返回不相接的页时，报告缺口且保留已读的最新页', async () => {
+    const latest = Array.from({ length: 20 }, (_, i) => fromPeer(i + 30, 1795000100 + i, '合成'));
+    const old = fromPeer(1, 1795000000, '上次已知');
+    const anchor = findMissed([], [old], SELF)[0]!;
+    const result = await readReconnectHistory(async (_count, cursor) => cursor ? [old] : latest, anchor, SELF, () => false);
+    assert.equal(result.incomplete, true);
+    assert.deepEqual(result.rows, latest);
+});
 
 describe('补回漏掉的消息', () => {
     const stored: StoredMessage[] = [

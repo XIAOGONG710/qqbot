@@ -1109,7 +1109,14 @@ function applyNow(ctx: Context, config: Config) {
         sendPrivateImage: async (userId, file, summary) => Number(await onlineBot().internal.sendPrivateMsg(userId, [{ type: 'image', data: { file, summary, sub_type: 1 } }])),
         // NapCat 的扩展动作 set_input_status（adapter-onebot 没有定义它，走通用的 _get：retcode 不是 0 就抛错；ADR 0077）
         setInputStatus: async (userId, eventType = 1) => { assertKernelOk('set_input_status', await (onlineBot().internal as unknown as OneBotMediaInternal)._get('set_input_status', { user_id: String(userId), event_type: eventType })); },
-        friendHistory: (userId, count) => onlineBot().internal.getFriendMsgHistory(String(userId), undefined, count),
+        friendHistory: async (userId, count, cursor) => {
+            if (!cursor) return onlineBot().internal.getFriendMsgHistory(String(userId), undefined, count);
+            const data = await (onlineBot().internal as unknown as OneBotMediaInternal)._get('get_friend_msg_history', {
+                user_id: String(userId), count, message_seq: String(cursor.before), reverse_order: cursor.reverse,
+            }) as { messages?: HistoryMessage[] };
+            if (!Array.isArray(data?.messages)) throw new Error('NapCat 历史分页没有返回消息数组');
+            return data.messages;
+        },
         // 账号控制面（ADR 0142）的通用调用：动作名和参数由 account.ts 的白名单决定，这里只负责发
         callAction: async (action, params) => (onlineBot().internal as unknown as OneBotMediaInternal)._get(action, params),
     };

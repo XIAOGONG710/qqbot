@@ -53,7 +53,7 @@ import { appLifetime, type Lifetime } from './lifetime.ts';
 import { ChatHistory, type StoredMessage } from '.././memory/history.ts';
 import { describeError } from '../memory/transient-io.ts';
 import { saidBedtimes } from '.././life/bedtime.ts';
-import { type HistoryMessage } from '.././memory/backfill.ts';
+import { type HistoryCursor, type HistoryMessage } from '.././memory/backfill.ts';
 import { segmentsToText, type GroupMessageEvent, type MessageEvent, type PokeEvent, type RecallEvent, type Segment } from './onebot.ts';
 import { isSticker, MEDIA_TIMEOUTS, mediaReading, type ImageDescriber, type MediaReader } from '.././vision/media.ts';
 import { createHearing } from '.././vision/hearing.ts';
@@ -248,7 +248,7 @@ export interface Transport extends PresenceTransport {
     /** 发一条语音（本机 wav，NapCat 转语音条）；没有就不发语音（2026-11-01） */
     sendPrivateVoice?(userId: number, file: string): Promise<number>;
     /** NapCat 的 get_friend_msg_history：某人最近 count 条私聊（含小号自己发的），从旧到新。没有任何记录时 NapCat 也报错 */
-    friendHistory(userId: number, count: number): Promise<HistoryMessage[]>;
+    friendHistory(userId: number, count: number, cursor?: HistoryCursor): Promise<HistoryMessage[]>;
     /** 通用 OneBot 调用（账号控制面用，ADR 0142）：传什么动作就发什么，闸由 account.ts 管；没有就不开控制面 */
     callAction?(action: string, params: Record<string, unknown>): Promise<unknown>;
 }

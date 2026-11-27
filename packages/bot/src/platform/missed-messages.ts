@@ -5,7 +5,7 @@ import type { createFeedbackChannel } from '../emotion/feedback.ts';
 import { detectCrisis, type CrisisLevel } from '../emotion/crisis.ts';
 import { CRISIS_PAUSE_MS } from '../emotion/crisis-state.ts';
 import type { Executor } from '../executor/executor.ts';
-import { BACKFILL_COUNT, CATCH_UP_WINDOW_MS, newerThanStored, shouldCatchUp, toStored, type HistoryMessage } from '../memory/backfill.ts';
+import { CATCH_UP_WINDOW_MS, newerThanStored, readReconnectHistory, shouldCatchUp, toStored, type HistoryMessage } from '../memory/backfill.ts';
 import { sourceMessageSeq, type ChatHistory, type StoredMessage } from '../memory/history.ts';
 import type { currentTierHistory, TierRecord } from '../memory/tier-record.ts';
 import type { Responder } from '../social/responder.ts';
@@ -62,7 +62,10 @@ export function missedMessages({ config, stopped, now: nowMs = Date.now, transpo
                 }
                 let fetched: HistoryMessage[] = [];
                 try {
-                    fetched = await transport.friendHistory(contact.qq, BACKFILL_COUNT);
+                    const result = await readReconnectHistory((count, cursor) => transport.friendHistory(contact.qq, count, cursor),
+                        beforeRecovery.at(-1), selfId, stopped);
+                    fetched = result.rows;
+                    if (result.incomplete && !stopped()) log(`[${contact.qq}] 重连补回未到上次记录，历史可能有缺口`);
                 } catch (error) {
                     if (stopped()) return;
                     // 没有任何聊天记录时 NapCat 也报错（“消息…不存在”）
