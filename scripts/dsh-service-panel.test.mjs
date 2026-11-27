@@ -216,7 +216,8 @@ test('the DSH chat form sends only after confirmation and history keeps every re
     const first = { id: '1', at: 100, text: '断线前', identity: 'a'.repeat(64) };
     const last = 'b'.repeat(64);
     let historyResult = { messages: [first], cursor: first.identity, incomplete: false };
-    const cursors = [];
+    const cursors = [], historyRequests = [];
+    const storage = new Map();
     const account = { id: '100', name: '测试账号' };
     const recipient = { key: 'private:200', target: '200', kind: 'private', name: '测试收件人' };
     const draft = '合成消息';
@@ -236,12 +237,13 @@ test('the DSH chat form sends only after confirmation and history keeps every re
         document: { getElementById: () => theme ?? null, createElement: () => ({}), head: { appendChild: style => { theme = style; } } },
         window: {
             __ModuleLoader__: { load(bundle) { plugin = bundle.factory(() => React); } },
+            localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
             confirm(message) { previews.push(message); return accepted; },
         },
         fetch: async (url, options) => {
             if (url.includes('/history?')) {
                 const query = new URLSearchParams(url.split('?')[1]);
-                assert.equal(query.get('accountId'), account.id);
+                historyRequests.push([query.get('accountId'), query.get('key'), query.get('after')]);
                 cursors.push(query.get('after'));
                 if (!historyResult) throw Error('synthetic disconnect');
                 return { ok: true, json: async () => historyResult };
@@ -302,6 +304,29 @@ test('the DSH chat form sends only after confirmation and history keeps every re
         await form.onSubmit({ preventDefault() {} });
         assert.equal(requests.filter(([operation]) => operation === 'send').length, 1, '重连后取消仍不会增加发送调用');
     } finally { cleanup(); }
+
+    const group = { ...recipient, key: 'group:200', kind: 'group' };
+    const other = { ...account, id: '101' };
+    const sync = async (self, session, identity) => {
+        states = [{ account: self, sessions: [session] }, session.key, '', 0, false];
+        const next = find(chat.type(chat.props), node => node.type?.name === 'Conversation');
+        assert.equal(next.props.key, `${self.id}:${session.key}`, '切换时重新挂载消息列表');
+        states = [30, null, '', '', false, 0, false, false];
+        next.type(next.props);
+        historyResult = { messages: [{ ...first, identity }], cursor: identity, incomplete: false };
+        const close = effects.at(-1)();
+        try { await new Promise(resolve => setImmediate(resolve)); }
+        finally { close(); }
+    };
+    await sync(account, group, 'c'.repeat(64));
+    await sync(other, recipient, 'd'.repeat(64));
+    await sync(account, recipient, 'e'.repeat(64));
+    await sync(account, group, 'f'.repeat(64));
+    await sync(other, recipient, '0'.repeat(64));
+    assert.deepEqual(historyRequests.slice(-5), [
+        ['100', group.key, null], ['101', recipient.key, null], ['100', recipient.key, last],
+        ['100', group.key, 'c'.repeat(64)], ['101', recipient.key, 'd'.repeat(64)],
+    ]);
 });
 
 test('PowerShell launchers hold one shared lock for the whole foreground run', { skip: process.platform !== 'win32', timeout: 20_000 }, async () => {

@@ -28,6 +28,24 @@ test('lists friends and groups and fetches only the selected conversation', asyn
   assert.deepEqual(calls.at(-1), ['get_group_msg_history', { group_id: 300, count: 60 }])
 })
 
+test('an account change between list requests cannot publish another account’s conversations', async () => {
+  let loggedIn = 100
+  const chat = createChat(async (action, _params, expected) => {
+    if (action === 'get_login_info') {
+      const user_id = loggedIn
+      loggedIn = 101
+      return { user_id }
+    }
+    if (expected !== undefined && expected !== String(loggedIn)) throw Error('account_changed')
+    return action === 'get_friend_list' ? [{ user_id: 202 }] : [{ group_id: 303 }]
+  })
+  await assert.rejects(chat.list(), /account_changed/)
+  const current = await chat.list()
+  assert.equal(current.account.id, '101')
+  assert.deepEqual(current.sessions.map(row => row.key), ['private:202', 'group:303'])
+  await assert.rejects(chat.history('private:999', 30, '100'), /account_changed/)
+})
+
 test('reconnect restores the missed rows once and rejects a changed QQ account', async () => {
   let online = true, account = 100
   const old = { message_id: 7, time: 20, sender: { user_id: 200 }, message: '断线前' }

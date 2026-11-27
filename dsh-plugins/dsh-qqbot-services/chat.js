@@ -33,9 +33,9 @@ export function configuredManualOwner(config) {
 
 export function createChat(call, { ownerId, send, historyMedia } = {}) {
   const manualTarget = typeof send === 'function' && id(ownerId)
-  async function conversations(kind) {
+  async function conversations(kind, expectedAccount) {
     const group = kind === 'group'
-    const rows = await call(group ? 'get_group_list' : 'get_friend_list', {})
+    const rows = await call(group ? 'get_group_list' : 'get_friend_list', {}, expectedAccount)
     return list(rows).flatMap(row => {
       const target = id(group ? row?.group_id : row?.user_id)
       if (!target) return []
@@ -49,22 +49,25 @@ export function createChat(call, { ownerId, send, historyMedia } = {}) {
     if (!accountId) throw Error('account_unavailable')
     return { id: accountId, name: String(user.nickname || accountId) }
   }
-  async function find(key) {
+  async function find(key, expectedAccount) {
     if (typeof key !== 'string' || !/^(private|group):[1-9]\d{0,15}$/.test(key)) return
-    return (await conversations(key.split(':')[0])).find(session => session.key === key)
+    return (await conversations(key.split(':')[0], expectedAccount)).find(session => session.key === key)
   }
   async function resolveSend(payload) {
     if (!manualTarget || payload?.key !== `private:${manualTarget}`) return { status: 403, error: 'send_unavailable' }
     if (typeof payload.text !== 'string' || !payload.text.trim() || payload.text.length > 2000) {
       return { status: 400, error: 'invalid_message' }
     }
-    const [self, session] = await Promise.all([account(), find(payload.key)])
-    if (!session || self.id === session.target || self.id !== payload.accountId) return { status: 409, error: 'recipient_or_account_changed' }
+    const self = await account()
+    if (self.id === manualTarget || self.id !== payload.accountId) return { status: 409, error: 'recipient_or_account_changed' }
+    const session = await find(payload.key, self.id)
+    if (!session) return { status: 409, error: 'recipient_or_account_changed' }
     return { status: 200, self, session }
   }
   return {
     async list() {
-      const [self, friends, groups] = await Promise.all([account(), conversations('private'), conversations('group')])
+      const self = await account()
+      const [friends, groups] = await Promise.all([conversations('private', self.id), conversations('group', self.id)])
       const canSend = manualTarget && self.id !== manualTarget && friends.some(friend => friend.target === manualTarget)
       return { account: self, sessions: [...friends, ...groups], sendKey: canSend ? `private:${manualTarget}` : null,
         ...(canSend ? { sendPrefix: manualOrigin.prefix } : {}) }
@@ -72,7 +75,7 @@ export function createChat(call, { ownerId, send, historyMedia } = {}) {
     async history(key, count = 30, expectedAccount, after = null) {
       if (typeof expectedAccount !== 'string' || id(expectedAccount) !== expectedAccount) return null
       if (after !== null && (typeof after !== 'string' || !/^[a-f0-9]{64}$/.test(after))) return null
-      const session = await find(key)
+      const session = await find(key, expectedAccount)
       if (!session) return null
       const group = session.kind === 'group'
       const requested = Number(count)
