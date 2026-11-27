@@ -8,4 +8,5 @@ export type SharedUnderstanding = { id: string; original: string; at: number; hy
     { status: 'corrected'; revision: { id: string; at: number; evidence: string; interpretation: string } }
 );
 export function readSharedUnderstanding(file: string, strict?: boolean): SharedUnderstanding[];
+export function readSharedUnderstandingState(file: string, strict?: boolean): { entries: SharedUnderstanding[]; withdrawn: string[] };
 export function sharedUnderstandingLine(file: string, query: string, now?: number): string;

@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { focusCheckpoint } from '../../../dsh-plugins/dsh-linmengyao-memory/focus-checkpoints.mjs';
 import { WORK_FAILED_LINE, workHandoff, type WorkHandoffDeps } from '../src/platform/work-handoff.ts';
+import { createDecisionAudit, exportDecisionAudit } from '../src/platform/decision-audit.ts';
 
 // 把活交给 dsh、干完发回去（ADR 0336 第 6 步把 app.ts 里的两份合成一份时补的测试：没干成那条路原来没有测试）
 const NOW = new Date('2026-11-19T12:00:00.000Z');
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
 
-function setup(run: WorkHandoffDeps['runWork'], focusFile?: string) {
+function setup(run: WorkHandoffDeps['runWork'], focusFile?: string, decisionAudit?: WorkHandoffDeps['decisionAudit']) {
     const sent: { qq: number; text: string }[] = [];
     const appended: { qq: number; message: Record<string, unknown> }[] = [];
     const logs: string[] = [];
@@ -32,6 +33,7 @@ function setup(run: WorkHandoffDeps['runWork'], focusFile?: string) {
         clockNow: () => NOW,
         log: message => { logs.push(message); },
         ...(focusFile ? { focusFile } : {}),
+        ...(decisionAudit ? { decisionAudit } : {}),
     });
     return { work, sent, appended, logs, remembered };
 }
@@ -39,6 +41,40 @@ function setup(run: WorkHandoffDeps['runWork'], focusFile?: string) {
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
 describe('交给 dsh 干活', () => {
+    test('任务正常完成但回话未过质量门，既不发送也不重新执行', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'work-quality-'));
+        try {
+            const file = join(dir, 'focus-checkpoints.json');
+            const account = 123456789;
+            let executions = 0;
+            const { work, sent } = setup(async () => { executions++; return '我给你打电话。PRIVATE-WORK'; }, file, createDecisionAudit(dir, () => {}));
+            await work.handOff(account, '核对合成结果', '工作桥出错', 100);
+            await work.handOff(account, '核对合成结果', '工作桥出错', 100);
+            assert.equal(executions, 1);
+            assert.deepEqual(sent, []);
+            const logDir = join(dir, 'logs');
+            const data = readFileSync(join(logDir, readdirSync(logDir)[0]!), 'utf8');
+            assert.ok(exportDecisionAudit(data).some(row => row.outcome === 'blocked' && row.reasons.includes('unsupported-action')));
+            assert.doesNotMatch(data, /PRIVATE-WORK|123456789/);
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
+    test('QQ 可接续 DSH 自己创建并等待配置的任务 ID', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'work-dsh-origin-'));
+        try {
+            const file = join(dir, 'focus-checkpoints.json');
+            const taskId = 'dsh-blue-lamp';
+            focusCheckpoint(file, { action: 'start', taskId, operationId: 'inspect', next: '查合成报错' }, +NOW - 1000);
+            focusCheckpoint(file, { action: 'wait', taskId, operationId: 'wait', next: '读取合成配置' }, +NOW - 500);
+            const { work, sent } = setup(async (_task, options) => {
+                assert.equal(options?.checkpoint?.taskId, taskId);
+                assert.equal(options?.context, '读取合成配置');
+                return '合成核对完成';
+            }, file);
+            await work.handOff(1001, `继续任务 ${taskId}，合成配置齐了`, '工作桥出错', 100);
+            assert.equal(focusCheckpoint(file, { action: 'read', taskId }).status, 'finished');
+            assert.equal(sent.length, 1);
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
     test('同一个 QQ 任务在 DSH 可查，回执丢失保持待核对，取消允许下一件继续', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'work-recovery-'));
         try {

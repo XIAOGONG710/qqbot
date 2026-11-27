@@ -6,7 +6,7 @@ export const understandingKey = text => text.replace(/[\p{P}\s]/gu, '')
 export const isAmbiguousAcknowledgement = text => /^(行|好|好吧|嗯)(你)?(先)?去忙吧$/.test(understandingKey(text))
 export const acknowledgementHypotheses = Object.freeze(['想让你安心去忙', '对话收得比较快，可能有些不高兴'])
 
-export function readSharedUnderstanding(file, strict = false) {
+export function readSharedUnderstandingState(file, strict = false) {
   try {
     const data = JSON.parse(readFileSync(file, 'utf8'))
     if (data?.version !== 1 || !Array.isArray(data.entries)) throw new Error('理解记录格式无效')
@@ -16,12 +16,16 @@ export function readSharedUnderstanding(file, strict = false) {
       && (entry.status === 'tentative' || (entry.status === 'corrected' && typeof entry.revision?.evidence === 'string'
         && typeof entry.revision?.interpretation === 'string' && Number.isSafeInteger(entry.revision?.at))))
     if (strict && entries.length !== data.entries.length) throw new Error('理解记录条目无效')
-    return entries
+    const withdrawn = data.withdrawn ?? []
+    if (!Array.isArray(withdrawn) || !withdrawn.every(id => typeof id === 'string')) throw new Error('理解记录撤回标记无效')
+    return { entries, withdrawn }
   } catch (error) {
     if (strict && error?.code !== 'ENOENT') throw error
-    return []
+    return { entries: [], withdrawn: [] }
   }
 }
+
+export const readSharedUnderstanding = (file, strict = false) => readSharedUnderstandingState(file, strict).entries
 
 export function sharedUnderstandingLine(file, query, now = Date.now()) {
   const key = understandingKey(query)

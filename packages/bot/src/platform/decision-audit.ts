@@ -11,7 +11,7 @@ import { SENSITIVE_OFF } from './sensitive.ts';
 const PHASES = ['judgment', 'quality', 'delivery'] as const;
 const OUTCOMES = ['selected', 'passed', 'rewritten', 'filtered', 'blocked', 'delivered', 'unconfirmed'] as const;
 const REASONS = {
-    'private-reply': '按当前私聊作答', 'planned-contact': '按已选主动话题开口', 'reflection': '仅作内部回顾',
+    'private-reply': '按当前私聊作答', 'planned-contact': '按已选主动话题开口', 'reflection': '仅作内部回顾', 'work-request': '接续明确派发的工作',
     'memory-context': '本轮有可用记忆上下文', 'reading-context': '有在读资料作为依据',
     'relationship-state': '本轮关系中的别扭或修复影响回应', 'safety-route': '本轮走安全回应路径', 'interruption': '当前有打断事件',
     'group-addressed': '群友点名或引用', 'group-topic': '群里出现相关话题', 'group-other': '群聊触发了其他公开开口条件',
@@ -93,7 +93,6 @@ export function judgmentReasons(turn: Turn): AuditReason[] {
 }
 
 export function qualityReasons(text: string, options?: ReviewOptions): AuditReason[] {
-    if (!options) return [];
-    return [...new Set(inspectReply(text, options.banned, options.speech, options.books, options.faces, options.textIntimacy, options.imageStickers)
+    return [...new Set(inspectReply(text, options?.banned ?? [], options?.speech, options?.books, options?.faces, options?.textIntimacy, options?.imageStickers)
         .map(issue => HARD_CODES[issue.kind] ?? 'style-review'))];
 }

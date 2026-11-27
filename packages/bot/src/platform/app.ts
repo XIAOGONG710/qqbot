@@ -865,7 +865,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     // 他戳她（限流、戳回去的冷却在下面才建，事件来了再取）
     const pokes = pokesModule(() => pokeDeps);
     // 他撤回消息（聊天记录、记忆在下面才建，事件来了再取）
-    const recalls = recallsModule(() => ({ config, stopped: () => stopped, chatHistory, hasMemory: Boolean(memory), observeRecalledMemory, syncRecalledMemory, incomingFailure, log }));
+    const recalls = recallsModule(() => ({ config, stopped: () => stopped, chatHistory, hasMemory: Boolean(memory), observeRecalledMemory, syncRecalledMemory, incomingFailure, log, withdrawUnderstanding: (qq, id) => { if (qq === deviceOwner?.qq) understanding.withdraw(id); } }));
     const followUps = followUpsModule(() => syncFollowUps(), () => planners.size > 0, MEMORY_SYNC_MS);
     const tastesJob = tastesModule(config.tastes ? () => reflectTastes() : undefined);
     // 长期记忆同步、「她现在在干嘛」导出、她留的话（ADR 0336 第 6 步）：只有定时任务，App 搭好时开，先后同原来（在她自己想一想的那几样之前）；做的事都在后面才建，到点再取
@@ -1590,7 +1590,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const lastUserText = new Map<number, string>();
     const runWork: typeof runWorkTask = (task, options) => exec.process.work(task, options);
     // 把活交给 dsh、干完发回去（工作模式和她自己判断动电脑两处共用）：在 work-handoff.ts（ADR 0336 第 6 步）
-    const work = workHandoff({ runWork, transport, history, clockNow, log });
+    const work = workHandoff({ runWork, transport, history, clockNow, log, ...(decisionAudit ? { decisionAudit } : {}) });
 
     // 下面这几样她自己想一想的事，定时都在 modules/reflections.ts（ADR 0336 第 6 步，App 搭好时由解释器开）；这里只留开没开的日志和自我认识那一份导出
     // 她每晚想一次要不要放下 / 改主意 / 提新的（ADR 0178）：到点才想，失败 2 小时后再试，每天最多试 3 次

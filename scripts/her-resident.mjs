@@ -26,6 +26,7 @@ const PRESENCE_FILE = desktopPresencePath(SOUL_DIR)
 const LOG = join(DIR, 'resident.log')
 const MAX_BODY = 64 * 1024
 const TIMEOUT_MS = 180_000
+const PRIVATE_DIAGNOSTICS = process.env.QQBOT_DECISION_AUDIT !== '1'
 
 mkdirSync(DIR, { recursive: true })
 const log = (line) => { try { appendFileSync(LOG, `${new Date().toISOString()} ${line}\n`) } catch {} }
@@ -75,7 +76,7 @@ function drain() {
     running = true
     const item = queue.shift()
     const started = Date.now()
-    log(`task start: ${item.task.slice(0, 80)}`)
+    log(`task start${PRIVATE_DIAGNOSTICS ? `: ${item.task.slice(0, 80)}` : ''}`)
     const record = action => focusCheckpoint(FOCUS_FILE, { ...item.checkpoint, action,
         operationId: `${action}-${item.checkpoint.operationId}` })
     void Promise.resolve().then(async () => {
@@ -86,7 +87,7 @@ function drain() {
         return { ...result, checkpoint: item.checkpoint.operationId }
     }).catch(() => ({ ok: false, error: '工作执行状态待核对' })).then((result) => {
         lastTaskAt = new Date().toISOString()
-        log(`task ${result.ok ? 'ok' : 'fail'} ${Date.now() - started}ms ${result.ok ? result.reply.slice(0, 80) : result.error}`)
+        log(`task ${result.ok ? 'ok' : 'fail'} ${Date.now() - started}ms${PRIVATE_DIAGNOSTICS ? ` ${result.ok ? result.reply.slice(0, 80) : result.error}` : ''}`)
         item.resolve(result)
     }).finally(() => {
         running = false
@@ -102,7 +103,7 @@ const server = http.createServer((req, res) => {
     // 先过守卫（ADR 0172）：Host / Origin / 令牌 / Content-Type；只有 GET /health 不要令牌
     const verdict = checkRequest(req, { token: TOKEN, port: PORT })
     if (!verdict.ok) {
-        log(`rejected ${req.method} ${req.url}: ${verdict.error}`)
+        log(PRIVATE_DIAGNOSTICS ? `rejected ${req.method} ${req.url}: ${verdict.error}` : `rejected HTTP ${verdict.status}`)
         return send(verdict.status, { ok: false, error: verdict.error })
     }
     if (req.method === 'GET' && req.url === '/health') {
@@ -142,14 +143,14 @@ const server = http.createServer((req, res) => {
             if (!task) return send(400, { ok: false, error: 'task required' })
             const context = String(data.context || '').slice(0, 4000)
             const { checkpoint } = data
-            if (checkpoint !== undefined && (!checkpoint || !/^qq-[a-f0-9]{24}$/.test(checkpoint.taskId)
+            if (checkpoint !== undefined && (!checkpoint || typeof checkpoint.taskId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(checkpoint.taskId)
                 || !/^[a-f0-9]{24}$/.test(checkpoint.operationId)
                 || ![`start-${checkpoint.operationId}`, `resume-${checkpoint.operationId}`].includes(checkpoint.claimId))) {
                 return send(400, { ok: false, error: 'bad checkpoint' })
             }
             if (offlineUntil() > Date.now()) return send(200, { ok: true, reply: '她这会儿不在电脑前，晚点再说。' })
             queue.push({ task, context, checkpoint, resolve: (result) => send(200, result) })
-            log(`task queued: ${task.slice(0, 80)} (queue ${queue.length})`)
+            log(`task queued${PRIVATE_DIAGNOSTICS ? `: ${task.slice(0, 80)}` : ''} (queue ${queue.length})`)
             drain()
         })
         return
@@ -158,7 +159,7 @@ const server = http.createServer((req, res) => {
 })
 
 server.listen(PORT, '127.0.0.1', () => {
-    log(`resident up pid=${process.pid} port=${PORT} profile=${PROFILE}`)
+    log(`resident up pid=${process.pid} port=${PORT}${PRIVATE_DIAGNOSTICS ? ` profile=${PROFILE}` : ''}`)
     // 心跳：每 5 分钟写一行，确认她还活着
     setInterval(() => log('heartbeat'), 5 * 60_000).unref()
     setInterval(sleepCheck, 30 * 60_000).unref()
@@ -227,7 +228,7 @@ async function idleRun(prompt, label, timeoutMs = 480_000) {
 ${prompt}`, timeoutMs)
     running = false
     // 失败时把原因写出来（和 drain 里 QQ 派的活同一个写法）：11-10 起 sleep 失败两百多次，日志里只有 fail，看不出为什么（DSH 信箱 11-22 1214）
-    log(`${label} ${result.ok ? 'ok' : 'fail'} ${Date.now() - started}ms${result.ok ? '' : ` ${String(result.error ?? '').replace(/\s+/g, ' ').slice(0, 300)}`}`)
+    log(`${label} ${result.ok ? 'ok' : 'fail'} ${Date.now() - started}ms${result.ok || !PRIVATE_DIAGNOSTICS ? '' : ` ${String(result.error ?? '').replace(/\s+/g, ' ').slice(0, 300)}`}`)
     drain()
     return result.ok
 }

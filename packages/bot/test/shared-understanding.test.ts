@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { recordUnderstandingTurn } from '../src/life/understanding.ts';
+import { recordUnderstandingTurn, withdrawUnderstandingTurn } from '../src/life/understanding.ts';
 import { sharedUnderstandingLine, readSharedUnderstanding } from '../../../dsh-plugins/dsh-linmengyao-memory/shared-understanding.mjs';
 import { pathToFileURL } from 'node:url';
 import { selfMemoryModule } from '../src/modules/self-memory.ts';
@@ -51,5 +51,12 @@ test('有歧义的合成回复隔天澄清，QQ 和桌面重读同一条记录',
         assert.equal(qq(original, tomorrow), dsh(original, tomorrow));
         assert.equal(qq(clarification, tomorrow), dsh(clarification, tomorrow));
         assert.equal(dsh('中午吃什么', tomorrow), '');
+        withdrawUnderstandingTurn(file, '3');
+        recordUnderstandingTurn(file, '3', clarification, tomorrow);
+        assert.equal(readSharedUnderstanding(file)[0]!.status, 'tentative');
+        assert.doesNotMatch(dsh(original, tomorrow), /赶车|已澄清/);
+        withdrawUnderstandingTurn(file, '1');
+        recordUnderstandingTurn(file, '1', original, day);
+        assert.equal(readSharedUnderstanding(file).length, 0);
     } finally { rmSync(dir, { recursive: true, force: true }); }
 });

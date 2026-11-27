@@ -8,7 +8,7 @@
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
-import { acknowledgementHypotheses, isAmbiguousAcknowledgement, readSharedUnderstanding, sharedUnderstandingLine, UNDERSTANDING_EXPORT, understandingKey, type SharedUnderstanding } from '../../../../dsh-plugins/dsh-linmengyao-memory/shared-understanding.mjs';
+import { acknowledgementHypotheses, isAmbiguousAcknowledgement, readSharedUnderstandingState, sharedUnderstandingLine, UNDERSTANDING_EXPORT, understandingKey, type SharedUnderstanding } from '../../../../dsh-plugins/dsh-linmengyao-memory/shared-understanding.mjs';
 
 const DECLARED_INTENT = /(?:^|[，。；,;])\s*(?:我)?(?:只是|就是)?(?:想让你先忙|让你安心去忙)(?=$|[，。；,;])/;
 const DENIED_ANGER = /(?:^|[，。；,;])\s*(?:我)?(?:没有|没|并没|不是在)生气[。！!]?(?:\s*)$/;
@@ -20,8 +20,8 @@ export function recordUnderstandingTurn(file: string, id: string, text: string, 
     if (text.length > 240) return;
     const isAcknowledgement = isAmbiguousAcknowledgement(text);
     if (!isAcknowledgement && (!DECLARED_INTENT.test(text) || !DENIED_ANGER.test(text))) return;
-    const entries = readSharedUnderstanding(file, true);
-    if (entries.some(item => item.id === id || item.revision?.id === id)) return;
+    const { entries, withdrawn } = readSharedUnderstandingState(file, true);
+    if (withdrawn.includes(id) || entries.some(item => item.id === id || item.revision?.id === id)) return;
     if (isAcknowledgement) {
         entries.push({ id, at, original: text, status: 'tentative', hypotheses: [...acknowledgementHypotheses] });
     } else {
@@ -35,7 +35,15 @@ export function recordUnderstandingTurn(file: string, id: string, text: string, 
         } };
         entries[entries.indexOf(item)] = corrected;
     }
-    writeJsonAtomic(file, { version: 1, entries: entries.slice(-UNDERSTANDING_KEPT) });
+    writeJsonAtomic(file, { version: 1, entries: entries.slice(-UNDERSTANDING_KEPT), withdrawn });
+}
+
+export function withdrawUnderstandingTurn(file: string, id: string): void {
+    const { entries, withdrawn } = readSharedUnderstandingState(file, true);
+    if (withdrawn.includes(id) || !entries.some(entry => entry.id === id || entry.revision?.id === id)) return;
+    const retained = entries.filter(entry => entry.id !== id).map(({ revision, ...entry }): SharedUnderstanding =>
+        revision && revision.id !== id ? { ...entry, status: 'corrected', revision } : { ...entry, status: 'tentative' });
+    writeJsonAtomic(file, { version: 1, entries: retained, withdrawn: [...withdrawn, id].slice(-100) });
 }
 
 export function sharedUnderstandingHost(soulDir: string, log: (message: string) => void) {
@@ -48,6 +56,7 @@ export function sharedUnderstandingHost(soulDir: string, log: (message: string) 
             try { mkdirSync(soulDir, { recursive: true }); recordUnderstandingTurn(file, String(id), text, at); }
             catch { log('共享理解记录未写入，保留原记录'); }
         },
+        withdraw: (id: number) => { if (enabled) withdrawUnderstandingTurn(file, String(id)); },
     };
 }
 

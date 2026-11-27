@@ -146,7 +146,7 @@ describe('隔离常驻进程的守卫和工作回执', () => {
         const calls = join(dir, 'calls');
         writeFileSync(fakeBin, `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(calls)}, 'run\\n');\nconsole.log('合成结果');\nif (process.argv.at(-1).includes('模拟中断')) process.exitCode = 1;`);
         const start = () => spawn(process.execPath, [script], {
-            env: { ...process.env, HER_PORT: String(port), HER_DIR: dir, HER_SOUL_DIR: dir, QQBOT_SOUL_DIR: dir, HER_CWD: dir, DSH_BIN: fakeBin, QQBOT_LLM_API_KEY: '' },
+            env: { ...process.env, HER_PORT: String(port), HER_DIR: dir, HER_SOUL_DIR: dir, QQBOT_SOUL_DIR: dir, HER_CWD: dir, DSH_BIN: fakeBin, QQBOT_LLM_API_KEY: '', QQBOT_DECISION_AUDIT: '1' },
             stdio: 'ignore', windowsHide: true,
         });
         let child = start();
@@ -184,7 +184,7 @@ describe('隔离常驻进程的守卫和工作回执', () => {
             assert.equal(existsSync(join(dir, 'LIFE.json')), false, '不再有第二套生活写 LIFE.json');
             assert.equal(readFileSync(join(dir, 'NOW.md'), 'utf8'), nowBefore, 'NOW.md 只归 QQ 写');
             assert.equal((await call(port, { method: 'GET', path: '/health' })).status, 200);
-            assert.match(readFileSync(join(dir, 'resident.log'), 'utf8'), /rejected POST \/task: token required/);
+            assert.match(readFileSync(join(dir, 'resident.log'), 'utf8'), /rejected HTTP 401/);
             const file = join(dir, 'focus-checkpoints.json');
             const submit = (checkpoint: { taskId: string; operationId: string; claimId: string }, task: string) => call(port, {
                 method: 'POST', path: '/task', headers: { ...json, [TOKEN_HEADER]: token }, body: JSON.stringify({ task, checkpoint }),
@@ -209,9 +209,14 @@ describe('隔离常驻进程的守卫和工作回执', () => {
             assert.equal(focusCheckpoint(file, { action: 'read', taskId: interrupted.taskId }).status, 'active');
             assert.equal(JSON.parse((await submit(interrupted, '模拟中断')).body).ok, false);
             assert.equal(focusCheckpoint(file, { action: 'cancel', taskId: interrupted.taskId, operationId: 'cancel' }).status, 'cancelled');
-            const next = claim('c');
-            assert.equal(JSON.parse((await submit(next, '检查下一项')).body).checkpoint, next.operationId);
+            const taskId = 'dsh-native-checkpoint', operationId = 'c'.repeat(24), claimId = `resume-${operationId}`;
+            focusCheckpoint(file, { taskId, action: 'start', operationId: 'desktop-inspect', next: '查合成日志' });
+            focusCheckpoint(file, { taskId, action: 'wait', operationId: 'desktop-wait', next: '核对合成配置' });
+            assert.equal(focusCheckpoint(file, { taskId, action: 'resume', operationId: claimId }).acquired, true);
+            const next = { taskId, operationId, claimId };
+            assert.equal(JSON.parse((await submit(next, '检查下一项 PRIVATE-RESIDENT 123456789')).body).checkpoint, next.operationId);
             assert.equal(readFileSync(calls, 'utf8'), 'run\nrun\nrun\n');
+            assert.doesNotMatch(readFileSync(join(dir, 'resident.log'), 'utf8'), /PRIVATE-RESIDENT|123456789|合成结果/);
         } finally {
             child.kill();
         }

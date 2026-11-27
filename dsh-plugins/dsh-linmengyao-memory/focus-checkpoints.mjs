@@ -68,7 +68,7 @@ export function focusCheckpoint(file, args, now = Date.now()) {
     if (claimId && claim?.id !== claimId) {
       return { status: 'stale', acquired: false }
     }
-    if (action === 'finish' && /^qq-[a-f0-9]{24}$/.test(taskId) && /^(start|resume)-[a-f0-9]{24}$/.test(claim?.id ?? '') && !claimId) {
+    if (action === 'finish' && /^(start|resume)-[a-f0-9]{24}$/.test(claim?.id ?? '') && !claimId) {
       return { status: status(task), next: task.next, acquired: false }
     }
     if (action === 'dispatch') {

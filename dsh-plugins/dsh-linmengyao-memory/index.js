@@ -337,6 +337,7 @@ export function journalRead(text, { days, date } = {}, now = new Date()) {
 }
 
 function log(cfg, line) {
+  if (process.env.QQBOT_DECISION_AUDIT === '1') return
   try { fs.appendFileSync(cfg.logFile, `${new Date().toISOString()} ${line}\n`) } catch {}
 }
 
@@ -1206,7 +1207,7 @@ export function selfReceipt(user, assistant, shown, selfAt, now = Date.now()) {
 }
 
 /** QQ 侧唯一计算的真人式状态：这里只读数字和事件类型，坏文件 / 旧文件直接降级。 */
-function readStateBlock(cfg, now = Date.now()) {
+export function readStateBlock(cfg, now = Date.now()) {
   if (channel() !== 'desktop') return ''
   try {
     const data = JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8'))

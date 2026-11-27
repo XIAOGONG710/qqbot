@@ -37,6 +37,12 @@ import { createDeviceControl } from '../src/platform/device-actions.ts';
 import type { DeviceService, startDeviceService } from '../src/platform/device-service.ts';
 import { readOwnerBank } from '../src/memory/owner-bank.ts';
 import { exportDecisionAudit } from '../src/platform/decision-audit.ts';
+import { desktopFocusBusy, focusCheckpoint } from '../../../dsh-plugins/dsh-linmengyao-memory/focus-checkpoints.mjs';
+import { describeBooks, sharedReadingProgress } from '../src/life/her-days.ts';
+import { actionQueue, settlingWorld } from '../src/world/action-queue.ts';
+import { lifeExecutor } from '../src/world/life-selector.ts';
+import { worldState, type World } from '../src/world/world.ts';
+import { renderDshState } from '../src/dsh-state-export.ts';
 import { emptyTakesState, saveTakesState } from '../src/life/reading-takes.ts';
 import { groupLog } from '../src/social/group-chat.ts';
 import { syntheticCardPath, syntheticCardPattern, syntheticStDir } from './fixtures/card.ts';
@@ -3811,6 +3817,137 @@ describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不
             assert.equal(existsSync(join(cfg.dataDir, 'last-prompt.json')), false);
         } finally {
             if (before === undefined) delete process.env.QQBOT_DECISION_AUDIT; else process.env.QQBOT_DECISION_AUDIT = before;
+        }
+    });
+
+    test('两天联动：同一本书和同一个查错任务跨端接续，丢回执、撤回与质量拦截可核对', async () => {
+        const flags = ['QQBOT_SOUL_DIR', 'QQBOT_FOCUS_WORK', 'QQBOT_SHARED_UNDERSTANDING', 'QQBOT_DECISION_AUDIT', 'HER_CHANNEL'] as const;
+        const previous = Object.fromEntries(flags.map(key => [key, process.env[key]]));
+        const soul = mkdtempSync(join(tmpdir(), 'qqbot-two-day-soul-'));
+        dirs.push(soul);
+        Object.assign(process.env, { QQBOT_SOUL_DIR: soul, QQBOT_FOCUS_WORK: '1', QQBOT_SHARED_UNDERSTANDING: '1', QQBOT_DECISION_AUDIT: '1', HER_CHANNEL: 'desktop' });
+        const oldFetch = globalThis.fetch;
+        globalThis.fetch = async url => {
+            assert.ok(String(url).startsWith('http://synthetic.invalid/'), '不得请求实际记忆服务');
+            return Response.json({ results: [], entities: [], banks: [] });
+        };
+        try {
+            const dsh = await import(pathToFileURL(resolve('dsh-plugins/dsh-linmengyao-memory/index.js')).href) as {
+                recordDesktopTurn(cfg: object, user: string, assistant: string, at: number): boolean;
+                qqRecentBlock(cfg: object, at: number): string;
+                desktopUnderstanding(cfg: object, query: string, at: number): string;
+                readStateBlock(cfg: object, at: number): string;
+            };
+            const firstDay = new Date('2026-10-17T19:00:00+08:00');
+            const secondDay = new Date('2026-10-18T09:00:00+08:00');
+            let clock = new VirtualClock(firstDay);
+            const owner = 123456789, other = 123456788;
+            const cfg = config({ contacts: [{ qq: owner, name: '合成主人', tier: 'boyfriend' }, { qq: other, name: '合成另一账号', tier: 'boyfriend' }],
+                memory: { baseUrl: 'http://synthetic.invalid', timeoutMs: 80, recallTimeoutMs: 50, bankPrefix: 'synthetic' },
+                oneLife: 'read', recalls: true, selfDirectedMemory: true });
+            const dshCfg = { prefix: 'synthetic', ownerBankFile: join(cfg.dataDir, 'memory', 'owner-bank.json'), understandingFile: join(soul, 'UNDERSTANDING.json') };
+            const focus = join(soul, 'focus-checkpoints.json');
+            const taskId = 'dsh-synthetic-blue-light';
+            const card = loadCharacterCard(syntheticCardPath('boyfriend'));
+            const book = { ...card.books.find(item => item.activity)!, sharedReading: true as const };
+            const schedule = { ...card.schedule!, holidays: [], courses: [], free: { ...card.schedule!.free, eveningFrom: '18:00',
+                on: [{ date: '2026-10-17', ...book.activity! }] } };
+            const life: World = { startDay: card.herWorld!.startDay, awayHolidays: [], people: [], events: [] };
+            const openLife = () => {
+                const ledger = worldState(life, schedule, () => {}, join(cfg.dataDir, 'synthetic-world'), () => clock.now());
+                const queue = actionQueue(join(cfg.dataDir, 'synthetic-world', 'action-queue.json'));
+                const exec = lifeExecutor({ schedule, books: [book], worldAt: () => undefined, events: () => ledger.events(),
+                    desktopBusy: () => desktopFocusBusy(focus, [], clock.now()) }, queue, { since: firstDay });
+                return { queue, world: settlingWorld(ledger, queue, () => clock.now(), at => { exec.fill(at); }) };
+            };
+            let lifeRuntime = openLife();
+            lifeRuntime.world.events();
+            let runs = 0;
+            const prompts: string[] = [];
+            const openQQ = () => setup(cfg, {}, { clock,
+                workRunner: async (_text, opts) => {
+                    const claim = opts?.checkpoint;
+                    assert.ok(claim && claim.taskId === taskId && opts?.context === '收到配置后核对蓝灯路径');
+                    assert.equal(focusCheckpoint(focus, { ...claim, action: 'dispatch', operationId: `dispatch-${claim.operationId}` }, clock.now()).acquired, true);
+                    runs++;
+                    assert.equal(focusCheckpoint(focus, { ...claim, action: 'finish', operationId: `finish-${claim.operationId}` }, clock.now()).status, 'finished');
+                    throw new Error('合成 HTTP 回执丢失');
+                },
+                generate: messages => {
+                    const prompt = messages.map(message => message.content).join('\n');
+                    prompts.push(prompt);
+                    return prompt.includes('合成质量拦截') ? '我给你打电话。PRIVATE-AUDIT' : '合成正常回复';
+                },
+            });
+            let qq = openQQ();
+            await qq.app.connected(SELF);
+            clock.advance(30 * 60_000);
+            focusCheckpoint(focus, { taskId, action: 'start', operationId: 'dsh-inspect', next: '检查蓝灯报错' }, clock.now());
+            clock.advance(15 * 60_000);
+            focusCheckpoint(focus, { taskId, action: 'wait', operationId: 'dsh-wait', next: '收到配置后核对蓝灯路径' }, clock.now());
+            assert.equal(dsh.recordDesktopTurn(dshCfg, '查一下蓝灯报错', '等合成配置再核对蓝灯路径', clock.now()), true);
+            clock.advance(20 * 60_000);
+            const received = (tx: ReturnType<typeof openQQ>, from: number, id: number, text: string) => tx.app.receive({ ...event(from, id, text), time: Math.floor(clock.now() / 1000) });
+            received(qq, owner, 301, '行，你去忙吧。');
+            await drive(clock, () => qq.sent.length >= 1);
+            const dayOne = sharedReadingProgress(book, lifeRuntime.world.events(), new Date(clock.now()))!;
+            assert.ok(dayOne.minutes >= 30);
+            const waited = Date.parse('2026-10-17T19:45:00+08:00');
+            assert.ok(lifeRuntime.queue.pending().some(item => item.kind === 'read_book' && Math.abs(Date.parse(item.event.startedAt ?? item.event.at) - waited) < 60_000), '等配置时阅读已接回');
+            await qq.app.stop();
+
+            clock = new VirtualClock(secondDay);
+            lifeRuntime = openLife();
+            qq = openQQ();
+            await qq.app.connected(SELF);
+            const resumedEvents = lifeRuntime.world.events();
+            const progress = sharedReadingProgress(book, resumedEvents, new Date(clock.now()))!;
+            assert.ok(progress.minutes >= dayOne.minutes);
+            assert.equal(new Set(resumedEvents.map(row => row.id)).size, resumedEvents.length);
+            assert.match(describeBooks(schedule, [book], new Date(clock.now()), { userText: book.title, userName: '合成主人', events: resumedEvents })?.text ?? '', new RegExp(`已记下 ${progress.minutes} 分钟阅读`));
+            const stateFile = join(soul, 'STATE.json');
+            writeFileSync(stateFile, renderDshState({ at: new Date(clock.now()).toISOString() }, clock.now(), progress));
+            assert.match(dsh.readStateBlock({ stateFile }, clock.now()), new RegExp(`已记下 ${progress.minutes} 分钟阅读`));
+            const before = prompts.length;
+            received(qq, owner, 302, '昨晚在桌面查的蓝灯报错，继续吧。');
+            await drive(clock, () => prompts.length > before);
+            assert.match(prompts.at(-1)!, /等合成配置再核对蓝灯路径/);
+            const afterOwner = prompts.length;
+            received(qq, other, 303, '昨晚在桌面查的蓝灯报错，继续吧。');
+            await drive(clock, () => prompts.length > afterOwner);
+            assert.doesNotMatch(prompts.at(-1)!, /等合成配置再核对蓝灯路径/);
+
+            setWorkMode(cfg.dataDir, owner, 'work');
+            const followUp = `继续任务 ${taskId}，配置好了。`;
+            received(qq, owner, 304, followUp);
+            await drive(clock, () => qq.sent.some(line => line.includes('回复内容待核对')));
+            await qq.app.stop();
+            qq = openQQ();
+            await qq.app.connected(SELF);
+            received(qq, owner, 304, followUp);
+            assert.equal(runs, 1);
+            assert.equal(qq.sent.length, 0);
+            assert.equal(focusCheckpoint(focus, { taskId, action: 'read' }).status, 'finished');
+            setWorkMode(cfg.dataDir, owner, 'chat');
+
+            const evidence = '我当时在赶车，想让你先忙，没有生气。';
+            received(qq, owner, 305, evidence);
+            assert.match(dsh.desktopUnderstanding(dshCfg, '行，你去忙吧。', clock.now()), /赶车/);
+            qq.app.receiveRecall({ post_type: 'notice', notice_type: 'friend_recall', self_id: SELF, user_id: owner, message_id: 305, time: Math.floor(clock.now() / 1000) });
+            assert.doesNotMatch(dsh.desktopUnderstanding(dshCfg, '行，你去忙吧。', clock.now()), /赶车|已澄清/);
+            assert.doesNotMatch(dsh.qqRecentBlock(dshCfg, clock.now()), /赶车/);
+
+            received(qq, owner, 306, '合成质量拦截');
+            const logs = join(cfg.dataDir, 'logs');
+            const auditText = () => readdirSync(logs).filter(name => name.startsWith('decision-audit-')).map(name => readFileSync(join(logs, name), 'utf8')).join('');
+            await drive(clock, () => exportDecisionAudit(auditText()).some(row => row.outcome === 'blocked' && row.reasons.includes('unsupported-action')));
+            const audit = exportDecisionAudit(auditText());
+            assert.equal(runs, 1, '重开后的消息重放和后续正常聊天都没有再次执行查错');
+            assert.ok(!qq.sent.some(line => /打电话|PRIVATE-AUDIT/.test(line)));
+            assert.doesNotMatch(`${auditText()}\n${JSON.stringify(audit)}\n${qq.logs.join('\n')}`, /123456789|PRIVATE-AUDIT|赶车/);
+        } finally {
+            globalThis.fetch = oldFetch;
+            for (const key of flags) if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key];
         }
     });
 
