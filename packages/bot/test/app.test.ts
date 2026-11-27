@@ -36,6 +36,7 @@ import { CRISIS_MARK } from '../src/language/intent.ts';
 import { createDeviceControl } from '../src/platform/device-actions.ts';
 import type { DeviceService, startDeviceService } from '../src/platform/device-service.ts';
 import { readOwnerBank } from '../src/memory/owner-bank.ts';
+import { groupLog } from '../src/social/group-chat.ts';
 import { syntheticCardPath, syntheticCardPattern, syntheticStDir } from './fixtures/card.ts';
 
 type StartDevices = typeof startDeviceService;
@@ -3676,6 +3677,55 @@ describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不
             globalThis.fetch = originalFetch;
             if (previousSoul === undefined) delete process.env.QQBOT_SOUL_DIR; else process.env.QQBOT_SOUL_DIR = previousSoul;
             if (previousRecovery === undefined) delete process.env.QQBOT_FEELING_RECOVERY; else process.env.QQBOT_FEELING_RECOVERY = previousRecovery;
+        }
+    });
+
+    test('H 合成群聊按公开熟悉度接梗，没接住就停，私聊关系和矛盾不进群', async () => {
+        const previous = process.env.QQBOT_GROUP_BOUNDARIES;
+        process.env.QQBOT_GROUP_BOUNDARIES = '1';
+        try {
+            const clock = new VirtualClock(virtualStart);
+            const cfg = config({ contacts: [{ ...bf[0]!, name: 'PRIVATEPETNAME' }], groupChat: 'on', groups: [{ id: 555, name: '合成群' }] });
+            const history = new ChatHistory(cfg.dataDir);
+            history.append(10002, { role: 'user', time: virtualStart.toISOString(), content: 'PRIVATEAFFECTION 私下的亲密话' });
+            history.append(10002, { role: 'assistant', time: virtualStart.toISOString(), content: 'PRIVATECONFLICT 私下刚才争执的事' });
+            const room = groupLog(cfg.dataDir);
+            for (const [offset, id] of [[25, 10], [1, 12]] as const) {
+                const time = new Date(+virtualStart - offset * 3_600_000).toISOString();
+                room.append(555, { from: 10002, name: '熟面孔', time, content: '聊过摄影', messageId: id });
+                room.append(555, { from: SELF, name: '你', time, content: '好呀', messageId: id + 1, mine: true, replyTo: id });
+            }
+            const prompts: string[] = [], sent: string[] = [];
+            const { app, logs } = setup(cfg, {}, { clock, extra: { sendGroupText: async (_group, text) => { sent.push(text); return 900 + sent.length; } },
+                generate: messages => {
+                    const prompt = messages.map(message => message.content).join('\n');
+                    if (!prompt.includes('这是 QQ 群')) return '不说';
+                    prompts.push(prompt);
+                    if (prompt.includes('现在收住')) return '别装了，再叫一声\n好，刚才那句揭过。';
+                    if (prompt.includes('初见或普通群友')) return '叫声姐姐听听\n你好，刚聊到照片。';
+                    return '叫声姐姐听听\n再叫一声';
+                } });
+            await app.connected(SELF);
+            const groupMessage = (qq: number, id: number, content: string, replyTo?: number) => app.receiveGroup({
+                ...event(qq, id, content, qq === 10002 ? '熟面孔' : '新群友'), time: Math.floor(clock.now() / 1000),
+                message_type: 'group', sub_type: 'normal', group_id: 555,
+                message: [replyTo === undefined ? { type: 'at', data: { qq: String(SELF) } } : { type: 'reply', data: { id: String(replyTo) } },
+                    { type: 'text', data: { text: content } }],
+            } as GroupMessageEvent);
+            groupMessage(10003, 101, '来逗我两句');
+            await until(() => sent.length === 1);
+            groupMessage(10002, 102, '来逗我两句');
+            await until(() => sent.length === 2);
+            groupMessage(10002, 103, '嗯。', 902);
+            await until(() => sent.length === 3).catch(() => assert.fail(JSON.stringify({ sent, logs: logs.filter(line => line.includes('群 555')) })));
+            assert.deepEqual(sent, ['你好，刚聊到照片。', '叫声姐姐听听', '好，刚才那句揭过。']);
+            assert.match(prompts[0]!, /初见或普通群友/);
+            assert.match(prompts[1]!, /自己邀请开玩笑/);
+            assert.match(prompts[2]!, /没接住或请你停下/);
+            assert.doesNotMatch(prompts.join('\n'), /PRIVATE(?:PETNAME|AFFECTION|CONFLICT)|熟面孔（你男朋友）/);
+            assert.equal(groupLog(cfg.dataDir).load(555).find(row => row.messageId === 902)?.replyTo, 102);
+        } finally {
+            if (previous === undefined) delete process.env.QQBOT_GROUP_BOUNDARIES; else process.env.QQBOT_GROUP_BOUNDARIES = previous;
         }
     });
 

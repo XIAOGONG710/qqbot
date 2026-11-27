@@ -20,6 +20,8 @@ export interface GroupEntry {
     name: string;
     content: string;
     messageId: number;
+    replyTo?: number;
+    playful?: true;
     mine?: true;
     /** 进群之前导进来的旧记录（2026-11-14）：只当上下文，不是刚到的消息、不触发回话 */
     history?: true;
@@ -246,6 +248,7 @@ export function groupNote(input: {
     roster?: readonly string[];
     /** 这个群平时的味儿（group-style.ts 从聊天记录里统计的） */
     style?: string;
+    publicBoundaries?: string;
     /** 她自己（ADR 0341，groupOwn）：群里能带的「你现在」那一段 + 她自己定的群里的边界（group-self.ts） */
     self?: string;
     /** 她那边刚有的事（reason 是 news 时） */
@@ -265,7 +268,7 @@ export function groupNote(input: {
             ? `眼前这条问的是你的来由：照这个说法随口答一句，别主动扯上他和你的关系——${input.cover}。答完停住。`
             : '',
         input.knowsBot ? '群里的人都知道你是 AI（他跟大家说过）：不用主动提，也不用瞒、不用否认；有人拿这个开玩笑就顺着开两句，别一本正经解释。' : '',
-        input.roster?.length ? `群里的人：${input.roster.join('、')}。这些人你都认得（不一定都跟你说过话），别当陌生人。` : '',
+        input.roster?.length ? `群里的人：${input.roster.join('、')}。${input.publicBoundaries ? '这是成员名单，不能凭名单判断熟不熟。' : '这些人你都认得（不一定都跟你说过话），别当陌生人。'}` : '',
         input.style ?? '',
         '群里说话像在群里：短，一两句，不刷屏，不用每句都接；不在群里说你和他之间的私事，也不说别人私下跟你说的事。',
         input.boyfriendHere && input.boyfriendName ? `${input.boyfriendName}（你男朋友）也在这个群：群里收着点，正常说话，别喊得黏，也别装不认识。` : '',
@@ -273,7 +276,8 @@ export function groupNote(input: {
         input.self ?? '',
         input.mood ?? '',
         input.targetLine ? `这次只接这一条群消息：${JSON.stringify(input.targetLine)}。其他消息用来理解这一条。` : '',
-        REASON_NOTE[input.reason],
+        input.publicBoundaries && input.reason === 'defend' ? '有人在挤兑群友。要接话就只就眼前的话劝一句，别站队。' : REASON_NOTE[input.reason],
+        input.publicBoundaries ?? '',
         input.reason !== 'crisis' && input.reason !== 'defend'
             ? '闲聊时直接接眼前的一个细节，省掉固定开场。一句只说一件事，反应到位就停。只有第二句还在回答那一条，而且有新意思，才补上；不用续出没发生的动作。用你自己的话，不复读、不跟着刷表情；吵架、站队或围着人起哄时不用凑。'
             : '',

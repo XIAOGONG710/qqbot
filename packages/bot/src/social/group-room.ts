@@ -11,6 +11,7 @@ import { personaFacts, type TierCard } from '../platform/contact.ts';
 import { GROUP_CONTEXT, HER_NAMES, claimsAnotherGroupMember, groupLine, type groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type GroupDecisionTrace, type GroupEntry, type SpeakDecision, type SpeakReason } from './group-chat.ts';
 import { groupScheduleRecall } from './group-memory.ts';
 import { analyzeGroupStyle, renderGroupStyle } from './group-style.ts';
+import { groupBoundary, groupBoundaryAllows, groupBoundaryLine } from './group-boundaries.ts';
 import { groupAffectOf, mergeFelt, type groupAffect } from './group-affect.ts';
 import type { groupPeople } from './group-people.ts';
 import { ownerOf, type AppConfig } from '../platform/config.ts';
@@ -83,6 +84,7 @@ export interface GroupRoom {
 }
 
 export function groupRoom(deps: GroupRoomDeps): GroupRoom {
+    const publicBoundaries = process.env.QQBOT_GROUP_BOUNDARIES === '1';
     const { config, exec, transport, log, worldNow, reading, dormancy, cardFor, sendOwnedNotice, sing, repoRoot, groupsOn, groupLogs, groupPeopleBook, groupFeel, groupSongRequests, songRequestLifetime, stopped, selfId, lastFeelings, plainTextOf, singBusyLine } = deps;
     const groupBusy = new Set<number>();
     /** 攒一攒再处理（用户 2026-11-14「多人同时找她要读记录、有选择地回答，不然很混乱」）：安静这么久就处理这一批 */
@@ -232,7 +234,8 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             const hit = entries.findLast(e => e.messageId === id);
             return hit ? { role: hit.mine ? 'assistant' : 'user', content: hit.content } : undefined;
         };
-        const text = nameAts(segmentsToText(event.message, quoted).trim(), selfId(), names, bf);
+        const visibleBf = publicBoundaries ? undefined : bf;
+        const text = nameAts(segmentsToText(event.message, quoted).trim(), selfId(), names, visibleBf);
         if (!text) return;
         const topics = groupTopics.get(group.id);
         const topicToday = topics && topics.day === groupDay() ? topics.count : 0;
@@ -288,7 +291,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         const queue = groupQueue.get(group.id) ?? [];
         queue.push({
             event, text, ...(reason ? { reason } : {}), ...(decision ? { decision } : {}),
-            render: message => nameAts(segmentsToText(message, quoted).trim(), selfId(), names, bf) || text,
+            render: message => nameAts(segmentsToText(message, quoted).trim(), selfId(), names, visibleBf) || text,
         });
         groupQueue.set(group.id, queue);
         groupQueued.add(event.message_id);
@@ -367,7 +370,10 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             for (const item of batch) {
                 const name = (item.event.sender.card || item.event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16);
                 const at = new Date(item.event.time * 1000).toISOString();
-                groupLogs.append(groupId, { time: at, from: item.event.user_id, name, content: item.text, messageId: item.event.message_id });
+                const quote = publicBoundaries && Array.isArray(item.event.message) ? item.event.message.find(segment => segment.type === 'reply') : undefined;
+                const replyTo = quote ? Number(quote.data.id) : undefined;
+                groupLogs.append(groupId, { time: at, from: item.event.user_id, name, content: item.text, messageId: item.event.message_id,
+                    ...(replyTo !== undefined && Number.isSafeInteger(replyTo) ? { replyTo } : {}) });
                 // 谁在这个群说过什么：下次再见她不能当陌生人
                 groupPeopleBook?.note(groupId, { qq: item.event.user_id, name, content: item.text, at });
                 // 冲她来的话（夸、骂、有人想不开）在她心里留一件事，按半衰期慢慢散
@@ -415,8 +421,10 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             const boyfriend = ownerOf(config.contacts);
             const bf = boyfriend ? { qq: boyfriend.qq, name: entries.findLast(e => e.from === boyfriend.qq)?.name ?? boyfriend.name } : undefined;
             const target = entries.findLast(entry => entry.messageId === sourceItem.event.message_id);
+            const message = sourceItem.event.message;
             await speakInGroup(group, reason, bf, {
                 ...(target ? { target } : {}),
+                ...(publicBoundaries ? { utterance: typeof message === 'string' ? message : message.filter(part => part.type === 'text').map(part => String(part.data.text ?? '')).join(' ') } : {}),
                 ...(trace ? { trace } : {}),
                 ...(sourceItem.decision?.source === 'motive' ? { motive: true } : {}),
             });
@@ -450,7 +458,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
     }
 
     async function speakInGroup(group: { id: number; name: string; knowsBot?: boolean; disguise?: boolean; cover?: string }, reason: SpeakReason, bf: { qq: number; name: string } | undefined,
-        extra: { target?: GroupEntry; news?: string; trace?: GroupDecisionTrace; motive?: boolean } = {}): Promise<void> {
+        extra: { target?: GroupEntry; utterance?: string; news?: string; trace?: GroupDecisionTrace; motive?: boolean } = {}): Promise<void> {
         // 群里的人都知道她是 AI（用户标过）：原卡，被问时由她定；没标：承认版卡，认真问到就承认；有人说想不开：一律承认版（ADR 0067 / 0068 / 0208）
         // 都知道、或者要装成真人：用同学档原卡（她不用承认）；没标的群用承认版；危机一律承认版
         const tier = tierOf(group, reason);
@@ -463,8 +471,10 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         }
         const entries = groupLogs!.load(group.id);
         const boyfriendHere = Boolean(bf && entries.some(e => e.from === bf.qq));
-        const system = `你是${card.character.name}，在 QQ 群里和大家聊天。下面是你的设定。\n${personaFacts(card.character.description)}`;
-        const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, bf)).join('\n');
+        const visibleBf = publicBoundaries ? undefined : bf;
+        const boundary = publicBoundaries ? groupBoundary(entries, extra.target, reason, extra.utterance) : undefined;
+        const system = `你是${card.character.name}，在 QQ 群里和大家聊天。${publicBoundaries ? '' : `下面是你的设定。\n${personaFacts(card.character.description)}`}`;
+        const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, visibleBf)).join('\n');
         const question = reason === 'mentioned' ? extra.target : undefined;
         const quotedTarget = reason === 'mentioned' || reason === 'defend' ? extra.target : undefined;
         const recalled = question
@@ -488,8 +498,9 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         // 群提示词只带可分享的当下线索：私聊形成的原因在 feltForAudience 里抹掉
         const mood = feltNow.length ? moodStateLine(feltForAudience(feltNow, 'group')) : undefined;
         const note = groupNote({
-            groupName: group.name, boyfriendHere, ...(bf ? { boyfriendName: bf.name } : {}), reason,
-            ...(extra.target ? { targetLine: groupLine(extra.target, bf) } : {}),
+            groupName: group.name, boyfriendHere: boyfriendHere && !publicBoundaries, ...(visibleBf ? { boyfriendName: visibleBf.name } : {}), reason,
+            ...(extra.target ? { targetLine: groupLine(extra.target, visibleBf) } : {}),
+            ...(boundary ? { publicBoundaries: groupBoundaryLine(boundary) } : {}),
             ...(extra.news ? { news: extra.news } : {}),
             ...(memory ? { memory } : {}), ...(mood ? { mood } : {}), ...(self ? { self } : {}),
             ...(herGroupNames.get(group.id) ? { myNames: herGroupNames.get(group.id)! } : {}),
@@ -522,6 +533,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
             .filter(entry => !entry.mine && entry.name.length >= 2 && !myNames.has(entry.name))
             .map(entry => entry.name));
         const parts = groupReply(raw).filter(part => !claimsAnotherGroupMember(part, otherNames))
+            .filter(part => !boundary || groupBoundaryAllows(part, boundary))
             .filter(part => !inspectReply(part, card.character.banned).some(issue => issue.kind === 'banned'))
             .filter(part => {
                 const crossed = lineCheck && reason !== 'crisis' ? crossesHerLine(part) : undefined;
@@ -530,7 +542,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
                     log(`[群 ${group.id}] 有一条越过了她自己定的线（${LINE_LABEL[crossed]}），没发`);
                 }
                 return !crossed;
-            });
+            }).slice(0, boundary === 'playful' || boundary === 'stop' ? 1 : undefined);
         if (!parts.length) {
             if (lineBlocked && extra.trace) { extra.trace.passed = false; extra.trace.blockedBy = 'line'; }
             log(`[群 ${group.id}] 看了一眼，没说话（${reason}）`); return;
@@ -556,7 +568,8 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
                 ? await transport.sendGroupMessage(group.id, segments, replyTo)
                 : await transport.sendGroupText(group.id, part, replyTo);
             if (extra.trace) (extra.trace.deliveries ??= []).push({ messageId, ...(replyTo === undefined ? {} : { replyTo }) });
-            groupLogs!.append(group.id, { time: new Date(worldNow()).toISOString(), from: selfId(), name: '你', content: part, messageId, mine: true });
+            groupLogs!.append(group.id, { time: new Date(worldNow()).toISOString(), from: selfId(), name: '你', content: part, messageId, mine: true,
+                ...(publicBoundaries && replyTo !== undefined ? { replyTo } : {}), ...(boundary === 'playful' ? { playful: true } : {}) });
         }
         log(`[群 ${group.id}] 说了 ${parts.length} 条（${reason}；日志不记内容）`);
         // 接完话的小动作：顺手戳一下、给资料卡点个赞（不冲男朋友、危机回合不做）
