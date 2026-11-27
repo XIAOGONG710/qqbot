@@ -44,6 +44,7 @@ import type { Pursuit } from '.././life/pursuits.ts';
 import { appraisals, type Appraisal, type Felt, type Moment } from '.././emotion/feelings.ts';
 import type { LedgerEntry } from '../emotion/feeling-ledger.ts';
 import type { FeelingsReport } from '../emotion/feeling-export.ts';
+import { judgmentReasons, qualityReasons, type AuditEvent, type DecisionAudit } from './decision-audit.ts';
 
 import { type PromiseKeeper } from '.././life/promises.ts';
 import { herDay, type ExtraFreeActivity } from '.././life/schedule.ts';
@@ -134,6 +135,7 @@ export interface ContactPipelineOptions {
     /** 整个名单（ADR 0016）：她认识名单里写了「别人提起时」的人；不传就谁都不认识 */
     contacts?: readonly Contact[];
     send: (userId: number, text: string, options?: { replyTo?: number }) => Promise<number>;
+    decisionAudit?: DecisionAudit;
     /** 整条只有内部标记（<<记住>> / <<日记>> / <<同意工作>>…）的气泡：不发、不进记录，但标记要处理（responder 的 absorb） */
     absorb?: (userId: number, part: string) => void;
     /** 存进聊天记录前清洗发送文本（内部标记、贴纸说明等） */
@@ -341,6 +343,7 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
     let quoteNow: QuotePlan | undefined;
     /** 这一轮的 turn（拼提示词时建的）：生成之后审稿的模块（ADR 0336 reviewAt）要读它 */
     let turnNow: Turn | undefined;
+    let auditTurn: AuditEvent | undefined;
     /** 这一轮拼出来的提示词（ST 后处理之前，system 还是 system）：事实检查拿它当“她能依据的事实”（ADR 0137） */
     let promptSource: OpenAIMessage[] | undefined;
     /** 每份拼好的提示词对应的清单材料（提示词指纹清单，onManifest 给了才有）：回复器调 onPrompt 时按同一个对象取出、算好交出去 */
@@ -411,6 +414,7 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
         history: options.history,
         buildPrompt: async (chat, { woken, initiate, offlineSince }) => {
             chosen = undefined;
+            auditTurn = options.decisionAudit?.begin();
             const time = new Date(now());
             // 只想一想（ADR 0101 内心）：不是在聊天，不要意图行、形状、字数提示、表情；聊天记录当成“回想”放进说明里，不当成要接着回的对话
             const thinking = Boolean(initiate?.think);
@@ -604,6 +608,7 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
         // 发出去之前的修饰（ADR 0336「生成之后那一段」第 11 步）：拆好条之后按修饰顺序表交给挂了 decorateAt 的模块（modules/decorate.ts：先加质感、再打错字，危机回合都不做）
         decorate: (parts, maxBubbles) => (turnNow ? decorateStages(options.turnModules ?? [], parts, turnNow, { original: parts, maxBubbles, canRecall: Boolean(options.recallOwn), log }) : parts),
         review: async (reply, messages, reviewContext) => {
+            const audit = auditTurn;
             // 审稿从选中的那一稿开始：模块只改字；重写出来的那一稿先放在一边，模块说采用了（accept）才换成选中的，危机回合（dropDevices）选中的不带设备指令
             let rewrite: Draft | undefined;
             /** 审稿走到哪一步了：重写的清单记是哪一步要的 */
@@ -628,13 +633,25 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             // 逐条事实检查（ADR 0137）是解释器的模块（modules/review-facts.ts），开着 factCheck 时挂在 facts / factsFinal：先于出口检查；主动找他时删光了就 stop，这轮不发
             let atFacts = at('facts', reply);
             if (atFacts instanceof Promise) atFacts = await atFacts;
-            if (atFacts.stop) return atFacts.text;
+            if (atFacts.stop) {
+                audit?.('quality', atFacts.text.trim() ? 'filtered' : 'blocked', 'factual-review');
+                return atFacts.text;
+            }
             const factual = atFacts.text;
             // 出口检查那一刻的上下文（禁用词、说话的毛病、在读的书、小黄脸、文字抱抱、图片表情）由出口检查模块在 exit 位置自己算（modules/review-exit.ts），写进 scratch.exitOptions 给删行收尾用；
             // 这个联系人才有的几样经 ReviewCtx.exit / history 给
             // 出口检查 / 危机检查是解释器的模块（modules/review-exit.ts），挂在 exit 位置：危机回合它换成危机检查、不登记设备指令，并到此为止（stop）
             let atExit = at('exit', factual);
             if (atExit instanceof Promise) atExit = await atExit;
+            if (audit && !reviewCtx.scratch.exitOptions && !turnNow?.facts.crisis) {
+                chosen = undefined;
+                audit('quality', 'blocked', 'check-unavailable');
+                return '';
+            }
+            if (audit && atExit.text !== factual) {
+                const reasons = qualityReasons(factual, reviewCtx.scratch.exitOptions);
+                audit('quality', atExit.text.trim() ? 'filtered' : 'blocked', ...(reasons.length ? reasons : ['style-review' as const]));
+            }
             if (atExit.stop) return atExit.text;
             let reviewed = atExit.text;
             // 她想查才查（<<查：…>>）是解释器的模块（modules/review-pull.ts），挂在 pull 位置：查到就带着结果重写一次，查没查到都把标记摘掉
@@ -651,14 +668,32 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             // 删行收尾是解释器的模块（modules/review-finalize.ts），挂在 finalize 位置，用上面出口检查那一刻算好的同一份上下文
             let atFinalize = at('finalize', finished);
             if (atFinalize instanceof Promise) atFinalize = await atFinalize;
+            if (audit && atFinalize.text !== finished) {
+                const reasons = qualityReasons(finished, reviewCtx.scratch.exitOptions);
+                audit('quality', atFinalize.text.trim() ? 'filtered' : 'blocked', ...(reasons.length ? reasons : ['style-review' as const]));
+            }
             if (atFinalize.stop) return atFinalize.text;
             const final = atFinalize.text;
             // 最后再查一次事实：同一个模块，稿子跟第一次查完的不一样时只删行
             let atFactsFinal = at('factsFinal', final);
             if (atFactsFinal instanceof Promise) atFactsFinal = await atFactsFinal;
+            if (audit && atFactsFinal.text !== final) audit('quality', atFactsFinal.text.trim() ? 'filtered' : 'blocked', 'factual-review');
+            if (audit && atFactsFinal.text.trim()) {
+                const unresolved = qualityReasons(atFactsFinal.text, reviewCtx.scratch.exitOptions).filter(reason => reason !== 'style-review');
+                if (unresolved.length) {
+                    chosen = undefined;
+                    audit('quality', 'blocked', ...unresolved);
+                    return '';
+                }
+                if (atFactsFinal.text === reply) audit('quality', 'passed', 'quality-checked');
+            }
             return atFactsFinal.text;
         },
-        send: options.send,
+        send: options.decisionAudit ? async (...args) => {
+            const audit = auditTurn;
+            try { const messageId = await options.send(...args); audit?.('delivery', Number.isSafeInteger(messageId) ? 'delivered' : 'unconfirmed', 'transport-result'); return messageId; }
+            catch (error) { audit?.('delivery', 'unconfirmed', 'transport-result'); throw error; }
+        } : options.send,
         ...(options.absorb ? { absorb: (part: string) => options.absorb!(contact.qq, part) } : {}),
         ...(options.quoteReply ? { quote: () => quoteNow?.messageId, quoteFix: (wrongId: number) => quoteFix(contact.qq, wrongId) } : {}),
         ...(options.typing ? { typing: options.typing } : {}),
@@ -700,8 +735,9 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
         },
         waitUntil: options.waitUntil,
         // 提示词指纹清单（onManifest）：在原来的 onPrompt 之后，按同一份提示词算清单交出去；算或交出错只记一句，不挡回复。没给 onManifest 时和原来一样
-        onPrompt: options.onManifest ? prompt => {
+        onPrompt: options.onManifest || options.decisionAudit ? prompt => {
             options.onPrompt?.(prompt);
+            if (auditTurn && turnNow) auditTurn('judgment', 'selected', ...judgmentReasons(turnNow));
             const parts = manifestParts.get(prompt);
             if (!parts) return;
             manifestParts.delete(prompt);

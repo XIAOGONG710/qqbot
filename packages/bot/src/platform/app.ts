@@ -184,6 +184,7 @@ import { photoShelf, PHOTO_HISTORY_PREFIX, type PhotoKind, type PhotoSource } fr
 import type { StickerShelf } from '.././social/stickers.ts';
 import { sensitiveSwitch, useSensitiveSwitch, type SensitiveSwitch } from './sensitive.ts';
 import type { PromptManifest } from './prompt-manifest.ts';
+import { withDecisionAudit, type DecisionAudit } from './decision-audit.ts';
 import { runtimeInfo, type RuntimeInfo } from './runtime-info.ts';
 import { loadNeedsAnchor, needsAt } from '.././life/needs.ts';
 import { regulationAt } from '.././life/regulation.ts';
@@ -400,6 +401,7 @@ export interface AppOptions {
      * 宿主给（platform/main.ts、Koishi 插件按天写进 <数据目录>/logs，默认就写，不看敏感开关）；不给就不算（测试、行为基线、模拟器）
      */
     promptManifest?: (manifest: PromptManifest) => void;
+    decisionAudit?: DecisionAudit;
     /** 测试 / 审计：执行器派发每个动作之前看一眼（ADR 0336；行为基线用它记下每次调模型的完整配置） */
     observe?: ExecutorOptions['observe'];
     /** 测试用：仓库根（休眠封存从这里复制角色目录、设定账本从这里核对）；不给按本文件位置往上推。测试给合成的根，就不会把真实角色复制出来 */
@@ -428,13 +430,13 @@ const STOP_ORDER = [
 type StopName = typeof STOP_ORDER[number];
 
 export function startApp(options: AppOptions): App {
+    options = withDecisionAudit(options);
     realFiles.mkdir(options.config.dataDir);
     const release = acquireLock(join(options.config.dataDir, 'bot.lock'));
     const lifetime = appLifetime({ release, log: options.log, stopOrder: STOP_ORDER });
     try {
         if (unfinishedForgetJobs(options.config.dataDir).length) throw new Error('数据目录有未完成遗忘任务；保留原记录，请先按原任务 --resume 核实恢复，再启动 bot');
         if (unfinishedArchiveJobs(options.config.dataDir).length) throw new Error('数据目录有未完成归档任务；保留原计划，请先 --resume 原归档任务恢复，再启动 bot');
-        // 少规矩（ADR 0342）：只管说话风格的开关（说话的毛病检查、句尾封顶、质感、形状、挑候选）一并关掉
         const app = createApp(options.config.fewerRules ? { ...options, config: relaxStyle(options.config) } : options, lifetime);
         lifetime.commit();
         return app;
@@ -442,7 +444,7 @@ export function startApp(options: AppOptions): App {
     catch (error) { lifetime.rollback(); throw error; }
 }
 
-function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), promptManifest, observe, repoRoot: repoRootOverride, groupAgencyHooks }: AppOptions, lifetime: Lifetime<StopName>): App {
+function createApp({ config, transport: rawTransport, log, pipeline, media, vision, imageRecognition, imageSearch, stickerReader, stickers, photoSource, photoRetryMs, sing = singSong, stickerChance, stickerOnlyChance, mediaTimeouts, bilibiliFetch, bilibiliRequest, startDevices, workRunner, sensitive = sensitiveSwitch(), promptManifest, decisionAudit, observe, repoRoot: repoRootOverride, groupAgencyHooks }: AppOptions, lifetime: Lifetime<StopName>): App {
     // 碰外部的都经执行器（ADR 0336 第 3 步）：QQ 动作、调模型、时钟和计时器、设备登记（第 8 步：设备服务下面才异步起，登记时现取）
     const exec = createExecutor({ transport: rawTransport, ...(pipeline?.generate ? { generate: pipeline.generate } : {}), ...(pipeline?.now ? { now: pipeline.now } : {}), ...(observe ? { observe } : {}), ...(workRunner ? { processes: { work: workRunner } } : {}), devices: () => devicesHost.service()?.control });
     const transport = exec.qq;
@@ -1964,15 +1966,13 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             // 整条只有内部标记的气泡不发，但里面的标记要处理（responder 的 absorb）
             absorb: (userId, part) => { absorbMarkers(userId, part); },
             log,
-            // last-prompt.json 记录的是后处理之后、实际发给模型的消息
             sensitive: sensitive.on,
             // last-prompt.json 记录的是后处理之后、实际发给模型的消息（要 QQBOT_SENSITIVE_LOGS 开着才写，见 docs）
             onPrompt: prompt => {
                 if (!sensitive.on()) return;
                 exec.files.write(join(config.dataDir, 'last-prompt.json'), JSON.stringify({ qq: contact.qq, ...prompt }, null, 2));
             },
-            // 提示词指纹清单：宿主给了才算（不含正文，不看敏感开关）
-            ...(promptManifest ? { onManifest: promptManifest } : {}),
+            ...(decisionAudit ? { decisionAudit } : promptManifest ? { onManifest: promptManifest } : {}),
             turnModules: interpreter.turnModules,
             // 桌面上已经说过的那件她那边的事（ADR 0347 第 2 层回执，selfReceipts）：意图阶梯的 news 不再当没说过；只给他，开关关着时不给（和原来一样）
             ...(oneLifeAt(config.oneLife, 'export') && contact.qq === deviceOwner?.qq

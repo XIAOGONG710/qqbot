@@ -1254,7 +1254,7 @@ function applyNow(ctx: Context, config: Config) {
         if (bot.platform !== 'onebot') return;
         if (bot.status === ONLINE) {
             reconnect.online(bot.sid);
-            log(`NapCat 账号 ${bot.selfId} 已就绪`);
+            log(process.env.QQBOT_DECISION_AUDIT === '1' ? 'NapCat 已就绪' : `NapCat 账号 ${bot.selfId} 已就绪`);
             void app.connected(Number(bot.selfId));
             void refreshFriends();
         } else if (bot.status === OFFLINE) {

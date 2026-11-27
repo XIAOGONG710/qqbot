@@ -81,7 +81,7 @@ process.on('exit', () => app.stop());
 function onEvent(event: OneBotEvent): void {
     // 每次连上 NapCat 先补回漏掉的消息
     if (event.post_type === 'meta_event' && event.meta_event_type === 'lifecycle') {
-        log(`NapCat 账号 ${String(event.self_id)} 已就绪`);
+        log(process.env.QQBOT_DECISION_AUDIT === '1' ? 'NapCat 已就绪' : `NapCat 账号 ${String(event.self_id)} 已就绪`);
         void app.connected(Number(event.self_id));
         return;
     }

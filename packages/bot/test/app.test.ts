@@ -36,6 +36,7 @@ import { CRISIS_MARK } from '../src/language/intent.ts';
 import { createDeviceControl } from '../src/platform/device-actions.ts';
 import type { DeviceService, startDeviceService } from '../src/platform/device-service.ts';
 import { readOwnerBank } from '../src/memory/owner-bank.ts';
+import { exportDecisionAudit } from '../src/platform/decision-audit.ts';
 import { emptyTakesState, saveTakesState } from '../src/life/reading-takes.ts';
 import { groupLog } from '../src/social/group-chat.ts';
 import { syntheticCardPath, syntheticCardPattern, syntheticStDir } from './fixtures/card.ts';
@@ -3761,6 +3762,55 @@ describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不
             assert.equal(readFileSync(ledger, 'utf8'), before, '反馈不入经验账');
         } finally {
             if (previous === undefined) delete process.env.QQBOT_NOTEBOOK_LEARNING; else process.env.QQBOT_NOTEBOOK_LEARNING = previous;
+        }
+    });
+
+    test('K 合成私聊的判断可核对，质量拦截不给 QQ，日志和导出没有正文或账号', async () => {
+        const before = process.env.QQBOT_DECISION_AUDIT;
+        process.env.QQBOT_DECISION_AUDIT = '1';
+        try {
+            const qq = 123456789;
+            const original = `合成私聊 PRIVATE_SENTINEL ${qq}`;
+            const cfg = config({ contacts: [{ qq, name: '合成联系人', tier: 'boyfriend' }] });
+            const clock = new VirtualClock(virtualStart);
+            const manifests: PromptManifest[] = [];
+            let count = 0;
+            let unsafe = true;
+            const { app, sent, logs } = setup(cfg, {}, { clock, promptManifest: manifest => manifests.push(manifest), generate: () => {
+                count++;
+                return unsafe ? `我这就给你打电话。${original}` : '合成回复：我可以在这里回你。';
+            } });
+            app.receive({ ...event(qq, 301, original), time: Math.floor(clock.now() / 1000) });
+            await drive(clock, () => count >= 6 && app.status().contacts[0]?.responder.phase !== 'generating');
+            assert.equal(sent.length, 0);
+            const dir = join(cfg.dataDir, 'logs');
+            const files = readdirSync(dir).filter(name => name.startsWith('decision-audit-'));
+            assert.equal(files.length, 1);
+            const file = join(dir, files[0]!);
+            const data = readFileSync(file, 'utf8');
+            const records = exportDecisionAudit(data);
+            const block = records.find(row => row.phase === 'quality' && row.outcome === 'blocked');
+            assert.ok(block);
+            assert.ok(block.reasons.includes('unsupported-action'));
+            assert.ok(records.some(row => row.id === block.id && row.phase === 'judgment' && row.reasons.includes('private-reply')));
+            assert.ok(!records.some(row => row.phase === 'delivery'));
+            assert.match(logs.join('\n'), /不支持的动作/);
+            unsafe = false;
+            clock.advance(60_000);
+            app.receive({ ...event(qq, 302, '下一句合成对话'), time: Math.floor(clock.now() / 1000) });
+            await drive(clock, () => sent.length === 1);
+            const finalData = readFileSync(file, 'utf8');
+            const exported = execFileSync(process.execPath, [resolve('scripts/export-decision-audit.mjs'), file], { encoding: 'utf8' });
+            const finalRecords = exportDecisionAudit(finalData);
+            assert.deepEqual(JSON.parse(exported), finalRecords);
+            const delivered = finalRecords.find(row => row.phase === 'delivery' && row.outcome === 'delivered');
+            assert.ok(delivered && delivered.id !== block.id);
+            assert.ok(finalRecords.some(row => row.id === delivered.id && row.phase === 'quality' && row.outcome === 'passed'));
+            assert.doesNotMatch(`${finalData}\n${exported}\n${logs.join('\n')}`, /PRIVATE_SENTINEL|123456789|打电话/);
+            assert.equal(manifests.length, 0);
+            assert.equal(existsSync(join(cfg.dataDir, 'last-prompt.json')), false);
+        } finally {
+            if (before === undefined) delete process.env.QQBOT_DECISION_AUDIT; else process.env.QQBOT_DECISION_AUDIT = before;
         }
     });
 
