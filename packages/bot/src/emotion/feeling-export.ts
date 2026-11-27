@@ -11,6 +11,7 @@
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { join } from 'node:path';
 import { CLEAR, FEELING_KINDS, STRONG, type Felt, type FeelingKind } from './feelings.ts';
+import type { Recovery } from './recovery.ts';
 
 export const FEELINGS_EXPORT_FILE = 'FEELINGS.json';
 export const FEELINGS_EXPORT_KIND = 'qq-feelings';
@@ -27,6 +28,7 @@ export interface FeelingsReport {
     felt: readonly Felt[];
     /** 要放进提示词的那一行；这一刻没有明显的感受 / 在小别扭那一轮就是 undefined */
     line: string | undefined;
+    recoveries?: readonly Recovery[];
 }
 
 export interface FeelingsExport {

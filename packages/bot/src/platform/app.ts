@@ -110,7 +110,7 @@ import { speechNotesReader } from '.././language/speech-notes.ts';
 import { reviewReader as chatReviewReader } from '.././language/chat-review.ts';
 import { loadFeedback, recentFeedback } from '.././language/speech-feedback.ts';
 import { readSavedFeelings, writeFeelingsExport, type FeelingsReport } from '.././emotion/feeling-export.ts';
-import { appendFeelings, readLedger } from '../emotion/feeling-ledger.ts';
+import { appendFeelings, appendRecoveries, readLedger } from '../emotion/feeling-ledger.ts';
 import { desktopAffects } from '../social/desktop-affect.ts';
 import { reviewReader } from '.././emotion/feeling-review.ts';
 import { takesReader } from '.././life/reading-takes.ts';
@@ -1865,14 +1865,14 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             ...(config.herFeelings && (config.groupChat ?? 'off') !== 'off' && (config.groups ?? []).length > 0 ? { groupMood: () => groupFeel?.appraisals() ?? [] } : {}),
             // 桌面上的事也进心境（ADR 0347 第 5 层）：他在电脑上说想她、关心她、说难受、冲她发火，QQ 这边心里也带着
             ...(desktop.moodOn ? { desktopMood: () => desktopAffects(desktop.mood(), worldNow()) } : {}),
-            // 桌面上的她读同一份心境（ADR 0197）：QQ 是唯一算心境的地方，算完写进灵魂目录
+            ...(config.herFeelings && contact.qq === deviceOwner?.qq && process.env.QQBOT_FEELING_RECOVERY === '1' ? { feelingRecovery: true } : {}),
             ...(config.herFeelings && contact.tier === 'boyfriend' ? { onFeelings: (report: FeelingsReport) => {
                 lastFeelings = report;
                 writeFeelingsExport(soulDir(), report);
                 // 感觉账（ADR 0347 第 5 层）：只追加，几天以后想起那件事还配得上当时的感觉。
-                // 「聊完回想」记下的感受同时最多 8 条、放下就丢种类，靠账补；疼和她妈那块的慌记账时不换、召回时才换说法。有心境就记（开关合并：原 feelingLedger）
                 try {
                     const added = appendFeelings(soulDir(), report.felt, report.at);
+                    if (report.recoveries?.length) appendRecoveries(soulDir(), report.recoveries);
                     if (added) log(`感觉账：记了 ${added} 条（日志不记内容）`);
                 } catch (e) { log(`感觉账：写不进去 ${e}`); }
             } } : {}),

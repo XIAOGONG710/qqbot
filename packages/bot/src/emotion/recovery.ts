@@ -4,9 +4,7 @@
 // 不会让短时心里的难过 / 烦 / 担心因此更快回落，账里也看不出是哪条证据让它回落的。
 // 这里不碰她的措辞、口白、人设：只是给已有的负面评估标上「哪条证据之后开始更快衰减」，由 feelings.ts 按这个标记算分量。
 //
-// **开关默认关**：没有任何调用方传 repairs 时行为逐字不变（appraisals 不调 applyRecovery，feeling-ledger 也不写这个账）。
-// 要开：在 FeelingFacts.repairs 里传入修复事件，再调 appendRecoveries 把回落记录落进感觉账；开关状态写在这段注释里，
-// 不在 runtime/ 下新增配置。没有修复事件就不产生回落记录，也不改变任何衰减速度。
+// 私聊流水线按明确证据给近期的一条别扭加快恢复。没有有效证据时沿用自然衰减。
 // 纯函数，合成用例可重放：同一组输入每次得到同样的评估和账本行。
 
 import type { StoredMessage } from '../memory/history.ts';
@@ -35,19 +33,30 @@ export interface RepairEvent {
     source: Source;
 }
 
-type Said = Pick<StoredMessage, 'role' | 'content'> & { time?: string | undefined; messageId?: number };
+type Said = Pick<StoredMessage, 'role' | 'content'> & { time?: string | undefined; messageId?: number; recalled?: boolean };
 
 /** 从聊天记录里认「道歉 / 说开了 / 解释清楚了」：判据和 grievance.ts 同源，但只用道歉和解释那一档，
  *  不算单纯哄一句、说句想念——那种话不该把此前所有难过一律拖下来 */
 export function repairFromHistory(history: readonly Said[], now: number): RepairEvent[] {
     return history.flatMap(message => {
-        if (message.role !== 'user') return [];
+        if (message.role !== 'user' || message.recalled) return [];
         const at = Date.parse(message.time ?? '');
         if (!Number.isFinite(at) || at > now || !isExplanationText(message.content)) return [];
         const id = typeof message.messageId === 'number' && Number.isSafeInteger(message.messageId)
             ? `m${message.messageId}` : `him:repair:${Math.floor(at / 60_000)}`;
         return [{ id, at, cause: '他道歉、解释或者哄你了', source: 'him' as const }];
     });
+}
+
+/** 私聊道歉就近作用于这次被晾着的感受，不改作息、群聊或别的烦心事。 */
+export function privateConversationRecovery(list: readonly Appraisal[], history: readonly Said[], now: number) {
+    const recentConflict = list.filter(item => item.source === 'him' && item.aboutHim && /^(him:ignored:|him:silent:)/.test(item.id))
+        .sort((a, b) => b.at - a.at);
+    const repairs = repairFromHistory(history, now).flatMap(event => {
+        const target = recentConflict.find(item => event.at > item.at && event.at - item.at <= 12 * 3_600_000);
+        return target ? [{ ...event, target: target.id }] : [];
+    });
+    return applyRecovery(list, repairs);
 }
 
 /** 一条账：哪条评估因为哪条证据回落 */

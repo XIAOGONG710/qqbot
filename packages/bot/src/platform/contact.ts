@@ -229,6 +229,7 @@ export interface ContactPipelineOptions {
     herFeelings?: boolean;
     /** 每次给他算完心境交出来（ADR 0197）：app.ts 写进灵魂目录，桌面上的她读同一份；出错不影响回复 */
     onFeelings?: (report: FeelingsReport) => void;
+    feelingRecovery?: boolean;
     /** 她夜里回想、指出了依据的感受（ADR 0197，配置 feelingReview）：作为「别处算好的评估」进心境；要 herFeelings 开着 */
     feelingReview?: () => readonly Appraisal[];
     /** 设备所有者在当前私聊明确问起已配置的某个群时，按需查该群公开日程或公告 */
@@ -309,7 +310,7 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             ...(options.pursuits ? { pursuits: options.pursuits } : {}), ...(options.worldState?.events ? { worldEvents: () => options.worldState!.events!() } : {}),
             worldAt: (herWorld, schedule, end) => options.worldState?.at(herWorld, schedule, end) ?? worldAt(herWorld, schedule, end),
             ...(options.moments ? { moments: options.moments } : {}), ...(options.feelingReview ? { feelingReview: options.feelingReview } : {}), ...(options.groupMood ? { groupMood: options.groupMood } : {}), ...(options.desktopMood ? { desktopMood: options.desktopMood } : {}),
-            ...(options.onFeelings ? { onFeelings: options.onFeelings } : {}),
+            ...(options.onFeelings ? { onFeelings: options.onFeelings } : {}), ...(options.feelingRecovery ? { feelingRecovery: true } : {}),
         }, ...(options.currentAiPhoto ? { currentAiPhoto: options.currentAiPhoto } : {}), log: message => log(message) };
     const shelves: CleanCtx = { ...(options.stickers ? { stickers: options.stickers } : {}), ...(options.photos ? { photos: options.photos } : {}) };
     /**

@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appraisals, feelingsAt, feltForAudience, type Appraisal } from '../src/emotion/feelings.ts';
 import { moodStateLine } from '../src/emotion/express.ts';
-import { applyRecovery, repairFromHistory, type RepairEvent } from '../src/emotion/recovery.ts';
+import { applyRecovery, privateConversationRecovery, repairFromHistory, type RepairEvent } from '../src/emotion/recovery.ts';
 import { appendRecoveries, readLedger, readRecoveries, recoveryNote } from '../src/emotion/feeling-ledger.ts';
 
 const T0 = Date.parse('2026-11-27T10:00:00Z');
@@ -28,6 +28,22 @@ const repair: RepairEvent = {
     id: 'm7', at: T0 + 30 * min, kind: 'sad', target: hurt.id,
     cause: '他说刚才在忙，还说对不起', source: 'him',
 };
+
+test('合成私聊只加快同一件别扭的恢复，道歉当刻分量不跳变', () => {
+    const ignored = { ...hurt, id: 'him:ignored:1' };
+    const other: Appraisal = { ...hurt, id: 'world:deadline', kind: 'worry', source: 'world' };
+    const at = T0 + 30 * min;
+    const after = at + 60 * min;
+    const apology = [{ role: 'user' as const, time: new Date(at).toISOString(), messageId: 7, content: '对不起，是我没回你' }];
+    const raw = [ignored, other];
+    const result = privateConversationRecovery(raw, apology, after);
+    const weight = (entries: readonly Appraisal[], when: number) => feelingsAt(entries, when).find(item => item.kind === 'sad')?.weight ?? 0;
+    assert.ok(weight(raw, after) < weight(raw, at), '自然恢复随时间回落');
+    assert.equal(weight(result.list, at), weight(raw, at));
+    assert.ok(weight(result.list, after) > 0 && weight(result.list, after) < weight(raw, after));
+    assert.deepEqual(result.list.find(item => item.id === other.id), other);
+    assert.deepEqual(result.recoveries.map(item => [item.repaired, item.by]), [[ignored.id, 'm7']]);
+});
 
 test('修复事件后负面心境在后续几轮回落，账里记着是哪条证据；没有修复事件就不动', () => {
     const later = T0 + 3.5 * 3_600_000;
@@ -66,6 +82,18 @@ test('修复事件后负面心境在后续几轮回落，账里记着是哪条�
     const none = applyRecovery([hurt], []).recoveries;
     assert.equal(appendRecoveries(soul, none), 0, '没有修复事件时账里不会多一行');
     assert.equal(readRecoveries(soul).length, 1);
+});
+
+test('回来第一句就道歉，等待造成的难过仍在并从这时开始慢慢缓和', () => {
+    const say = (role: 'user' | 'assistant', content: string, at: number) => ({ role, content, time: new Date(at).toISOString() });
+    const history = [say('assistant', '我有点难过', T0 - min), say('assistant', '你有空听我说吗', T0),
+        say('user', '对不起，我刚才没看手机', T0 + 60 * min)];
+    const now = T0 + 60 * min;
+    const entries = appraisals({ now, history, trackRepairedReturn: true });
+    const recovery = privateConversationRecovery(entries, history, now);
+    assert.equal(recovery.recoveries.length, 1);
+    const sad = (at: number) => feelingsAt(recovery.list, at).find(item => item.kind === 'sad')?.weight ?? 0;
+    assert.ok(sad(now) >= 1.2 && sad(now + 60 * min) > 0 && sad(now + 60 * min) < sad(now));
 });
 
 test('修复事件匹配按目标和种类收窄，别的证据不会凭空把它算成回落', () => {

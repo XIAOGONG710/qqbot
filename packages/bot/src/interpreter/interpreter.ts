@@ -396,6 +396,7 @@ export interface DecideCtx {
     feelings?: {
         /** 开了心境（配置 herFeelings） */
         herFeelings: boolean;
+        feelingRecovery?: boolean;
         /** 开了今天的小事（她的追求里小测那一条读它） */
         everydayLife: boolean;
         /** 作息（开了她自己的日子才有）：她的一天从几点算 */

@@ -20,6 +20,7 @@ import { moodPaceLine, moodShape } from '../emotion/express.ts';
 import { appraisals, asksAfterHer, criedRecently, describeFeelings, FEELING_NAME, feelingsAt, voicedKinds } from '../emotion/feelings.ts';
 import { pursuitViews } from '../life/pursuits.ts';
 import { herDay } from '../life/schedule.ts';
+import { privateConversationRecovery } from '../emotion/recovery.ts';
 
 export function feelingsModule(): Module {
     return {
@@ -53,9 +54,12 @@ export function feelingsModule(): Module {
                     ? given.worldAt(card.herWorld, schedule, new Date(herDay(schedule, time).getTime() - 60_000))
                     : undefined;
                 // 心境（ADR 0102）：事实 → 带来由的评估 → 按半衰期衰减的感受，不落盘、每一轮重算；只给男朋友档，危机回合不算
-                const felt = given.herFeelings && boyfriend && !facts.crisis
-                    ? feelingsAt(appraisals({ now: time.getTime(), history: chat, ...(around ? { world: around } : {}), ...(previous ? { previousWorld: previous } : {}), moments: given.moments?.() ?? [], extra: [...views.flatMap(view => view.appraisals), ...(given.feelingReview?.() ?? []), ...(given.groupMood?.() ?? []), ...(given.desktopMood?.() ?? []), ...(facts.dreamAppraisals ?? [])] }), time.getTime())
+                const at = time.getTime();
+                const entries = given.herFeelings && boyfriend && !facts.crisis
+                    ? appraisals({ now: at, history: chat, trackRepairedReturn: given.feelingRecovery ?? false, ...(around ? { world: around } : {}), ...(previous ? { previousWorld: previous } : {}), moments: given.moments?.() ?? [], extra: [...views.flatMap(view => view.appraisals), ...(given.feelingReview?.() ?? []), ...(given.groupMood?.() ?? []), ...(given.desktopMood?.() ?? []), ...(facts.dreamAppraisals ?? [])] })
                     : [];
+                const recovery = given.feelingRecovery && entries.length ? privateConversationRecovery(entries, chat, at) : undefined;
+                const felt = feelingsAt(recovery?.list ?? entries, at);
                 if (given.herFeelings && boyfriend && !facts.crisis) facts.felt = felt;
                 const shown = felt.length > 0 && !facts.grievanceActive;
                 const hisWords = chat.slice(chat.findLastIndex(message => message.role === 'assistant') + 1).filter(message => message.role === 'user').map(message => message.content).join('\n');
@@ -70,7 +74,7 @@ export function feelingsModule(): Module {
                     const neutral = shown
                         ? describeFeelings(felt, contact.name, { melt: false, voiced: voicedKinds(chat, time.getTime()), mayCry: !criedRecently(chat, time.getTime()) })
                         : undefined;
-                    try { given.onFeelings({ at: time.getTime(), felt, line: neutral }); } catch (error) { ctx.log(`心境：没能交给桌面上的她（${error instanceof Error ? error.message : String(error)}）`); }
+                    try { given.onFeelings({ at, felt, line: neutral, ...(recovery?.recoveries.length ? { recoveries: recovery.recoveries } : {}) }); } catch (error) { ctx.log(`心境：没能交给桌面上的她（${error instanceof Error ? error.message : String(error)}）`); }
                 }
                 if (feelingLine) ctx.log(`心境：${felt.filter(item => item.level !== 'faint').slice(0, 2).map(item => `${FEELING_NAME[item.kind]}·${item.level === 'strong' ? '很重' : '明显'}（${item.source === 'world' ? '她那边的事' : item.source === 'him' ? '他的态度' : item.source === 'self' ? '她自己回想的' : '作者写下的事'}）`).join('、')}（日志不记内容）`);
                 if (feelingLine) facts.feelingLine = feelingLine;

@@ -3628,6 +3628,57 @@ describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不
         }
     });
 
+    test('D 合成私聊道歉后逐渐恢复，群聊只读状态不读私聊原因', async () => {
+        const soul = mkdtempSync(join(tmpdir(), 'qqbot-emotion-app-'));
+        dirs.push(soul);
+        const originalFetch = globalThis.fetch;
+        const previousSoul = process.env.QQBOT_SOUL_DIR;
+        const previousRecovery = process.env.QQBOT_FEELING_RECOVERY;
+        const prompts: string[] = [];
+        process.env.QQBOT_SOUL_DIR = soul;
+        process.env.QQBOT_FEELING_RECOVERY = '1';
+        globalThis.fetch = async () => { throw new Error('合成验收禁止外部请求'); };
+        try {
+            const start = +virtualStart;
+            const clock = new VirtualClock(virtualStart);
+            const cfg = config({ contacts: bf, herFeelings: true, groupChat: 'on', groups: [{ id: 555, name: '合成群' }] });
+            const history = new ChatHistory(cfg.dataDir);
+            history.append(10002, { role: 'assistant', time: new Date(start - 61 * 60_000).toISOString(), content: '合成私事 ZXPRIVATE 让我心里有点难过。' });
+            history.append(10002, { role: 'assistant', time: new Date(start - 60 * 60_000).toISOString(), content: '你现在有空听我说么？' });
+            const { app, sent } = setup(cfg, {}, { clock, extra: { sendGroupText: async () => 999 }, generate: messages => {
+                prompts.push(messages.map(message => message.content).join('\n'));
+                return '合成回复';
+            } });
+            await app.connected(SELF);
+            const receive = (id: number, content: string) => app.receive({ ...event(10002, id, content), time: Math.floor(clock.now() / 1000) });
+            const sadness = () => (JSON.parse(readFileSync(join(soul, 'FEELINGS.json'), 'utf8')).felt as Array<{ kind: string; cause: string }>).find(item => item.kind === 'sad');
+            receive(301, '刚看到。');
+            await drive(clock, () => sent.length >= 1);
+            assert.match(sadness()?.cause ?? '', /隔了很久才回/);
+            clock.advance(10 * 60_000);
+            receive(302, '对不起，是我没回你。');
+            await drive(clock, () => sent.length >= 2);
+            assert.ok(sadness(), '道歉当轮仍看得到难过');
+            app.receiveGroup({ ...event(10002, 303, '在吗'), time: Math.floor(clock.now() / 1000), message_type: 'group', sub_type: 'normal', group_id: 555,
+                message: [{ type: 'at', data: { qq: String(SELF) } }, { type: 'text', data: { text: '大家好' } }] } as GroupMessageEvent);
+            await until(() => prompts.some(prompt => prompt.includes('大家好') && prompt.includes('你这会儿')));
+            const publicPrompt = prompts.find(prompt => prompt.includes('大家好') && prompt.includes('你这会儿'))!;
+            assert.match(publicPrompt, /你这会儿/);
+            assert.doesNotMatch(publicPrompt, /ZXPRIVATE|隔了很久才回|是我没回你/);
+            clock.advance(60 * 60_000);
+            receive(304, '回来继续聊。');
+            await drive(clock, () => sent.length >= 3);
+            assert.equal(sadness(), undefined, '一小时后难过已低于明显阈值');
+            const rows = readFileSync(join(soul, 'feeling-ledger.jsonl'), 'utf8').split('\n').filter(line => line.includes('"type":"recovery"'));
+            assert.equal(rows.length, 1);
+            assert.match(rows[0]!, /"by":"him:repair:\d+"/);
+        } finally {
+            globalThis.fetch = originalFetch;
+            if (previousSoul === undefined) delete process.env.QQBOT_SOUL_DIR; else process.env.QQBOT_SOUL_DIR = previousSoul;
+            if (previousRecovery === undefined) delete process.env.QQBOT_FEELING_RECOVERY; else process.env.QQBOT_FEELING_RECOVERY = previousRecovery;
+        }
+    });
+
     test('首轮铺底：他走了几小时按她那边的现在算', async () => {
         const soul = mkdtempSync(join(tmpdir(), 'qqbot-app-soul-wake-'));
         dirs.push(soul);

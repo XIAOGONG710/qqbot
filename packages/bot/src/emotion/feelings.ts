@@ -9,7 +9,7 @@
 import { ownVoice } from '../language/own-voice.ts';
 import { warmSignal } from './affect.ts';
 import type { StoredMessage } from '../memory/history.ts';
-import { ignoredNow, IGNORED_GAP_MS, IGNORED_MAX_MS } from './grievance.ts';
+import { ignoredNow, IGNORED_GAP_MS, IGNORED_MAX_MS, isExplanationText } from './grievance.ts';
 import { endingText, goodNewsText, needsCareText } from '../language/intent.ts';
 import { worldNews, type WorldNow } from '../world/world.ts';
 import { NEWS_KINDS } from '../proactive/proactive.ts';
@@ -96,6 +96,8 @@ export interface FeelingFacts {
     extra?: readonly Appraisal[];
     /** 修复事件（D 模块，默认关）：传了才让负面评估在证据之后更快回落 */
     repairs?: readonly RepairEvent[];
+    /** 已经受影响的等待可以在回来第一句道歉时开始恢复。 */
+    trackRepairedReturn?: boolean;
 }
 
 const atOf = (message: Said): number => Date.parse(message.time ?? '');
@@ -139,7 +141,7 @@ function worldAppraisals(world: WorldNow, now: number): Appraisal[] {
 }
 
 /** 他做的事：哄她 / 想她、认真道歉、说他不舒服、有好事、她难过时晾了她很久、她发的话他一直没回 */
-function historyAppraisals(history: readonly Said[], now: number): Appraisal[] {
+function historyAppraisals(history: readonly Said[], now: number, trackRepairedReturn = false): Appraisal[] {
     // 未来消息还没有改变等待/回应关系；无时间记录保留为未知，不能据此推断一直没回。
     history = history.filter(message => !(atOf(message) > now));
     const out: Appraisal[] = [];
@@ -159,9 +161,14 @@ function historyAppraisals(history: readonly Said[], now: number): Appraisal[] {
         if (goodNewsText(message.content)) add({ id: `him:good:${bucket}`, at, kind: 'joy', strength: 1, cause: '他有好消息', source: 'him', aboutHim: true, halfLifeH: 4 });
         // 她倾诉了几条，他隔了很久才回：他回来的那条消息的时刻（和 ADR 0074 的 ignoredNow 同一个判断）
         const before = history[index - 1];
-        if (before?.role === 'assistant' && atOf(message) - atOf(before) >= IGNORED_GAP_MS && atOf(message) - atOf(before) <= IGNORED_MAX_MS
-            && ignoredNow(history.slice(0, index + 1))) {
-            add({ id: `him:ignored:${Math.floor(at / 60_000)}`, at, kind: 'sad', strength: 2, cause: '你难过的时候他隔了很久才回', source: 'him', aboutHim: true, halfLifeH: 5 });
+        if (before?.role === 'assistant' && at - atOf(before) >= IGNORED_GAP_MS && at - atOf(before) <= IGNORED_MAX_MS) {
+            const beforeReturn = history.slice(0, index);
+            const ignored = ignoredNow([...beforeReturn, message]);
+            const repairedOnReturn = !ignored && trackRepairedReturn && isExplanationText(message.content)
+                && at > atOf(before) + IGNORED_GAP_MS && ignoredNow([...beforeReturn, { ...message, content: '' }]);
+            if (ignored || repairedOnReturn) add({ id: `him:ignored:${Math.floor(at / 60_000)}`,
+                at: repairedOnReturn ? atOf(before) + IGNORED_GAP_MS : at,
+                kind: 'sad', strength: 2, cause: '你难过的时候他隔了很久才回', source: 'him', aboutHim: true, halfLifeH: 5 });
         }
     });
     // 她发的话他一直没回：最后一条是她的，那串离现在 ≥ 4 小时，他前一句不是要走 / 去睡 / 去忙
@@ -193,7 +200,7 @@ export function appraisals(facts: FeelingFacts): Appraisal[] {
         ...(facts.world ? worldAppraisals(facts.world, facts.now) : []),
         ...(facts.world ? eventAppraisals(facts.world) : []),
         ...(facts.previousWorld ? eventAppraisals(facts.previousWorld) : []),
-        ...historyAppraisals(facts.history, facts.now),
+        ...historyAppraisals(facts.history, facts.now, facts.trackRepairedReturn),
         ...momentAppraisals(facts.moments ?? []),
         ...(facts.extra ?? []),
     ];
@@ -238,10 +245,10 @@ export function feelingsAt(list: readonly Appraisal[], now: number): Felt[] {
         // 修复事件之前照常衰减，之后从那条证据起按更短的半衰期回落；没有证据就不改速度
         const repairedAt = item.repairedAt;
         const recovering = repairedAt !== undefined && repairedAt > item.at && repairedAt <= now;
-        if (age > halfLife * HALF_LIVES_KEPT && !recovering) continue;
+        if ((recovering ? repairedAt! - item.at : age) > halfLife * HALF_LIVES_KEPT) continue;
         const base = AMPLITUDE[item.strength];
         const weight = recovering
-            ? base * 0.5 ** ((repairedAt! - item.at) / halfLife) * 0.5 ** ((now - repairedAt!) / (RECOVERY_HALF_LIFE_H * HOUR))
+            ? base * 0.5 ** ((repairedAt! - item.at) / halfLife) * 0.5 ** ((now - repairedAt!) / Math.min(halfLife, RECOVERY_HALF_LIFE_H * HOUR))
             : base * 0.5 ** (age / halfLife);
         const entry = byKind.get(item.kind);
         if (!entry) byKind.set(item.kind, { weight, top: item, topWeight: weight });
