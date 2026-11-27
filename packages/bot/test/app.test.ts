@@ -3806,7 +3806,7 @@ describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不
             app.receive({ ...event(qq, 302, '下一句合成对话'), time: Math.floor(clock.now() / 1000) });
             await drive(clock, () => sent.length === 1);
             const finalData = readFileSync(file, 'utf8');
-            const exported = execFileSync(process.execPath, [resolve('scripts/export-decision-audit.mjs'), file], { encoding: 'utf8' });
+            const exported = execFileSync(process.execPath, [resolve(dirname(fileURLToPath(import.meta.url)), '../../../scripts/export-decision-audit.mjs'), file], { encoding: 'utf8' });
             const finalRecords = exportDecisionAudit(finalData);
             assert.deepEqual(JSON.parse(exported), finalRecords);
             const delivered = finalRecords.find(row => row.phase === 'delivery' && row.outcome === 'delivered');
