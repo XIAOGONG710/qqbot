@@ -371,6 +371,8 @@ function validOneBotMessage(message: unknown): boolean {
 export interface QuotedMessage {
     role: 'user' | 'assistant';
     content: string;
+    /** 群里被引用的那个人怎么称呼（群名片，撞上「他」「你」的写成「群友「…」」，group-chat.ts 的 groupSpeaker）：给了就写「引用某某说的」，不给照旧「他之前说的」（私聊里「他」就是他） */
+    speaker?: string;
 }
 
 export type QuoteLookup = (messageId: number) => QuotedMessage | undefined;
@@ -398,7 +400,8 @@ function quoteText(id: unknown, lookup: QuoteLookup | undefined): string {
     if (!quoted) return QUOTE_UNKNOWN;
     const text = quoted.content.replace(/^\[引用.*?」\]/, '').replace(/\s+/g, ' ').trim();
     if (!text) return '';
-    return `[引用${quoted.role === 'assistant' ? '你说的' : '他之前说的'}：「${text.length > MAX_QUOTE ? `${text.slice(0, MAX_QUOTE)}…` : text}」]`;
+    const who = quoted.speaker !== undefined ? `${quoted.speaker}说的` : quoted.role === 'assistant' ? '你说的' : '他之前说的';
+    return `[引用${who}：「${text.length > MAX_QUOTE ? `${text.slice(0, MAX_QUOTE)}…` : text}」]`;
 }
 
 /** 把消息段转成给模型看的纯文本；非文字的段用占位符（听过、看过的语音和图片在这之前已经换成一段文字，media.ts，ADR 0052）。quoted 给了就把引用回复的那句话写进去 */

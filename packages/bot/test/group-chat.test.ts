@@ -257,6 +257,26 @@ describe('群聊：进应用', () => {
         assert.match(prompt, /这次只接这一条群消息："陈陈：梦瑶你中午吃啥"/);
     });
 
+    test('群友引用另一个群友：写被引用人的群名片，不写「他之前说的」（提示词里「他」是男朋友，入站审查 ③）', async () => {
+        const { app: a, sentGroup, prompts, dataDir } = app('on');
+        const now = new Date().toISOString();
+        groupLog(dataDir).append(555, { time: now, from: 30002, name: 'Lisa', content: '我明天请假', messageId: 7001 });
+        groupLog(dataDir).append(555, { time: now, from: 30004, name: '他', content: '我也请', messageId: 7002 });
+        groupLog(dataDir).append(555, { time: now, from: 10001, name: '阿明', content: '那我去', messageId: 7003 });
+        groupLog(dataDir).append(555, { time: now, from: SELF, name: '梦瑶', content: '我也想请', messageId: 7004, mine: true });
+        await a.connected(SELF);
+        a.receiveGroup(said(555, 30001, '老王', [{ type: 'reply', data: { id: '7001' } }, { type: 'reply', data: { id: '7002' } },
+            { type: 'reply', data: { id: '7003' } }, { type: 'reply', data: { id: '7004' } }, { type: 'at', data: { qq: String(SELF) } }, text(' 你们都请？')]));
+        await until(() => sentGroup.length > 0);
+        a.stop();
+        const prompt = prompts.at(-1)!;
+        assert.ok(prompt.includes('[引用Lisa说的：「我明天请假」]'), prompt.slice(-600));
+        assert.ok(prompt.includes('[引用群友「他」说的：「我也请」]'), '名片叫「他」的照「群友「…」」写');
+        assert.ok(prompt.includes('[引用阿明（你男朋友）说的：「那我去」]'), '引用他的写他的名片（你男朋友）');
+        assert.ok(prompt.includes('[引用你说的：「我也想请」]'), '引用她自己的照旧「你说的」');
+        assert.doesNotMatch(prompt, /引用他之前说的/);
+    });
+
     test('她说话的时候又有人叫她：不丢，说完接着处理下一批', async () => {
         const pending: (() => void)[] = [];
         const { app: a, sentGroup } = app('on', false, {

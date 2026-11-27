@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { segmentsToText, type GroupMessageEvent, type QuoteLookup, type Segment } from '../platform/onebot.ts';
 import { matchSingRequest, type singSong } from '../voice/sing.ts';
 import { personaFacts, type TierCard } from '../platform/contact.ts';
-import { GROUP_CONTEXT, HER_NAMES, claimsAnotherGroupMember, groupLine, type groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type GroupDecisionTrace, type GroupEntry, type SpeakDecision, type SpeakReason } from './group-chat.ts';
+import { GROUP_CONTEXT, HER_NAMES, claimsAnotherGroupMember, groupLine, groupSpeaker, type groupLog, groupNote, groupPokePlan, groupReply, mentionSegments, nameAts, speakReason, withinBudget, type GroupDecisionTrace, type GroupEntry, type SpeakDecision, type SpeakReason } from './group-chat.ts';
 import { groupScheduleRecall } from './group-memory.ts';
 import { analyzeGroupStyle, renderGroupStyle } from './group-style.ts';
 import { groupBoundary, groupBoundaryAllows, groupBoundaryLine } from './group-boundaries.ts';
@@ -230,11 +230,12 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         const senderName = (event.sender.card || event.sender.nickname || '群友').replace(/\s+/g, ' ').trim().slice(0, 16);
         names.set(event.user_id, senderName);
         const herIds = new Set(entries.filter(e => e.mine).map(e => e.messageId));
+        const visibleBf = publicBoundaries ? undefined : bf;
+        // 被引用的是谁就写谁（和记录那一行同一个叫法）：不写「他之前说的」，提示词里「他」是男朋友
         const quoted: QuoteLookup = id => {
             const hit = entries.findLast(e => e.messageId === id);
-            return hit ? { role: hit.mine ? 'assistant' : 'user', content: hit.content } : undefined;
+            return hit ? { role: hit.mine ? 'assistant' : 'user', content: hit.content, speaker: groupSpeaker(hit, visibleBf) } : undefined;
         };
-        const visibleBf = publicBoundaries ? undefined : bf;
         const text = nameAts(segmentsToText(event.message, quoted).trim(), selfId(), names, visibleBf);
         if (!text) return;
         const topics = groupTopics.get(group.id);

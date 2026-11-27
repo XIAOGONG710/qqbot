@@ -200,13 +200,21 @@ export const GROUP_LINE_MAX_CHARS = 500;
 const LINE_BREAKS = new RegExp('\\s*[\\r\\n' + String.fromCharCode(0x2028, 0x2029) + ']+\\s*', 'g');
 
 /**
+ * 一条记录是谁说的，写给她看：她自己 =「你」，男朋友 =「宝宝（你男朋友）」，别人用群名片，名片撞上「你」「他」「男朋友」的写成「群友「…」」。
+ * 记录的每一行和群里的引用（「[引用老王说的：「…」]」，2026-11-26 入站审查 ③：原来一律写「他之前说的」，而提示词里「他」都是男朋友）都用这一份
+ */
+export function groupSpeaker(entry: Pick<GroupEntry, 'mine' | 'from' | 'name'>, boyfriend?: { qq: number; name: string }): string {
+    const name = entry.name || '群友';
+    return entry.mine ? '你' : boyfriend && entry.from === boyfriend.qq ? `${boyfriend.name}（你男朋友）` : RESERVED_SPEAKER.test(name) ? `群友「${name}」` : name;
+}
+
+/**
  * 一条记录写成给她看的一行：她自己 =「你」，男朋友 =「宝宝（你男朋友）」，别人用群名片。
  * 2026-11-26 入站审查：记录是一行一条拼起来的——群友的话里带换行就能自己另起一行「宝宝（你男朋友）：……」「你：……」，
  * 名片改成「你」「某某（你男朋友）」也一样。所以内容压成一行、截短；名片撞上这几个叫法的写成「群友「…」」
  */
 export function groupLine(entry: GroupEntry, boyfriend?: { qq: number; name: string }): string {
-    const name = entry.name || '群友';
-    const who = entry.mine ? '你' : boyfriend && entry.from === boyfriend.qq ? `${boyfriend.name}（你男朋友）` : RESERVED_SPEAKER.test(name) ? `群友「${name}」` : name;
+    const who = groupSpeaker(entry, boyfriend);
     const flat = entry.content.replace(LINE_BREAKS, ' ');
     const chars = [...flat];
     return `${who}：${chars.length > GROUP_LINE_MAX_CHARS ? `${chars.slice(0, GROUP_LINE_MAX_CHARS).join('')}…` : flat}`;
