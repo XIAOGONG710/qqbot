@@ -146,7 +146,7 @@ import { PromiseStateUnavailable } from '.././life/promise-state.ts';
 import { promiseKeeper, type Appointment } from '.././life/promises.ts';
 import { bookProgressAt, herDayLogger, moodAt, readingActivities } from '.././life/her-days.ts';
 import { herPlanActivities } from '.././life/her-plans.ts';
-import { correctionReplyLine, isCorrection, recordCorrection, understandingLine } from '.././life/understanding.ts';
+import { correctionReplyLine, isCorrection, recordCorrection, sharedUnderstandingHost, understandingLine } from '.././life/understanding.ts';
 import { attachMatchingMemoryReviews, finishMemoryReviews, readMemoryReviews, recordMemoryReview } from '../memory/memory-review.ts';
 import { recordTrace, traceOf, tracesLine } from '.././life/traces.ts';
 import { bodyAt } from '.././life/body.ts';
@@ -616,6 +616,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
     const weather = realities.weather;
     // 桌面上的时间算进她的一天（ADR 0347 第 3 层）：开没开、缓存、「被他叫上电脑」、收桌面记录、记世界事件都在 life/desktop-host.ts（ADR 0336 收尾）；
     // 都只给名单里第一个男朋友档，都关着时什么都不建，和原来逐字一样
+    const understanding = sharedUnderstandingHost(soulDir(), log);
     const desktop = desktopHost({ config, soulDir: soulDir(), worldNow, cardFor, bedtimes: (schedule, now) => bedtimes(schedule, now), files: exec.files, log });
     const desktopSource = desktop.source;
     // 没人聊天时她一件件过日子（ADR 0040，影子模式）：读世界之前先排到现在、结算到期的；从这次启动排起，以前排过的从事件账接着排
@@ -984,7 +985,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 她自己决定记不记（selfDirectedMemory，DSH 10-30 / 10-31）：「记忆由你自己决定」、理解偏过、他最近的事
         ...(config.selfDirectedMemory ? { selfMemory: {
             understanding: hisWords => understandingLine(config.dataDir, hisWords, worldNow()),
-            immediateCorrection: (contact, hisWords) => deviceOwner && contact.qq === deviceOwner.qq ? correctionReplyLine(hisWords) : undefined,
+            immediateCorrection: (contact, hisWords) => deviceOwner && contact.qq === deviceOwner.qq ? understanding.read(hisWords, worldNow()) ?? correctionReplyLine(hisWords) : undefined,
             traces: () => tracesLine(config.dataDir, worldNow()),
         } } : {}),
         // 工作模式的三行（DSH 10-29 / 10-30）：按他现在的状态放其中一行；只给男朋友档
@@ -2337,9 +2338,8 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             void work.handOff(qq, text, '工作桥出错', event.message_id);
             return;
         }
+        if (config.selfDirectedMemory && typed) understanding.receive(event.message_id, text, worldNow());
         responder.receive(accepted.content, event.message_id, new Date(accepted.time), accepted.messageSeq, accepted.incomingId);
-        // 他这句在纠正她上一轮的接法（10-30 用户：让她自己学习去理解人说的话）：记下他说的、她接的、他纠正的
-        // 只记男朋友档那位的（同学档说的不是“他”；记在同一个文件里会串到别人的对话里）
         if (config.selfDirectedMemory && deviceOwner && event.user_id === deviceOwner.qq && isCorrection(text)) {
             const chat = chatHistory.load(event.user_id);
             const lastHer = [...chat].reverse().find(m => m.role === 'assistant');

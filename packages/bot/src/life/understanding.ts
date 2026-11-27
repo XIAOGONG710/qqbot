@@ -6,7 +6,50 @@
 // 纯规则 + 原文，不用模型；只留最近 20 条，30 天外的丢掉；文件坏了当没有。
 
 import { join } from 'node:path';
+import { mkdirSync } from 'node:fs';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { acknowledgementHypotheses, isAmbiguousAcknowledgement, readSharedUnderstanding, sharedUnderstandingLine, UNDERSTANDING_EXPORT, understandingKey, type SharedUnderstanding } from '../../../../dsh-plugins/dsh-linmengyao-memory/shared-understanding.mjs';
+
+const DECLARED_INTENT = /(?:^|[，。；,;])\s*(?:我)?(?:只是|就是)?(?:想让你先忙|让你安心去忙)(?=$|[，。；,;])/;
+const DENIED_ANGER = /(?:^|[，。；,;])\s*(?:我)?(?:没有|没|并没|不是在)生气[。！!]?(?:\s*)$/;
+const REFERS_BACK = /昨天|前面那句|我当时|我之前/;
+const TWO_DAYS = 2 * 86_400_000;
+
+/** Current scope is a short go-ahead whose tone remains ambiguous until explicitly clarified. */
+export function recordUnderstandingTurn(file: string, id: string, text: string, at: number): void {
+    if (text.length > 240) return;
+    const isAcknowledgement = isAmbiguousAcknowledgement(text);
+    if (!isAcknowledgement && (!DECLARED_INTENT.test(text) || !DENIED_ANGER.test(text))) return;
+    const entries = readSharedUnderstanding(file, true);
+    if (entries.some(item => item.id === id || item.revision?.id === id)) return;
+    if (isAcknowledgement) {
+        entries.push({ id, at, original: text, status: 'tentative', hypotheses: [...acknowledgementHypotheses] });
+    } else {
+        const quotes = [...text.matchAll(/[「“]([^」”]+)[」”]/g)].map(match => understandingKey(match[1]!));
+        const candidates = entries.filter(item => item.status === 'tentative' && at > item.at && at - item.at <= TWO_DAYS
+            && (quotes.length ? quotes.includes(understandingKey(item.original)) : REFERS_BACK.test(text)));
+        if (candidates.length !== 1) return;
+        const item = candidates[0]!;
+        const corrected: SharedUnderstanding = { ...item, status: 'corrected', revision: {
+            id, at, evidence: text, interpretation: '他说自己是想让你先忙，当时没有生气',
+        } };
+        entries[entries.indexOf(item)] = corrected;
+    }
+    writeJsonAtomic(file, { version: 1, entries: entries.slice(-UNDERSTANDING_KEPT) });
+}
+
+export function sharedUnderstandingHost(soulDir: string, log: (message: string) => void) {
+    const file = join(soulDir, UNDERSTANDING_EXPORT);
+    const enabled = process.env.QQBOT_SHARED_UNDERSTANDING === '1';
+    return {
+        read: (text: string, at: number) => enabled ? sharedUnderstandingLine(file, text, at) || undefined : undefined,
+        receive: (id: number, text: string, at: number) => {
+            if (!enabled) return;
+            try { mkdirSync(soulDir, { recursive: true }); recordUnderstandingTurn(file, String(id), text, at); }
+            catch { log('共享理解记录未写入，保留原记录'); }
+        },
+    };
+}
 
 export const UNDERSTANDING_FILE = 'understanding.json';
 export const UNDERSTANDING_KEPT = 20;

@@ -13,6 +13,7 @@ import { SELF_FILE, SELF_KIND, SELF_RECEIPTS_FILE, SELF_VERSION, type SelfExport
 import { readDesktopTurns } from '../src/memory/cross-recent.ts';
 import { renderDshState } from '../src/dsh-state-export.ts';
 import { ingestDesktopRecent, readDesktopLog } from '../src/memory/desktop-log.ts';
+import { recordUnderstandingTurn } from '../src/life/understanding.ts';
 import { isPresenceLease, leaseActive, presenceAt, PRESENCE_TTL_MAX_MS, PRESENCE_TTL_MIN_MS, type PresenceLease } from '../src/life/desktop-presence.ts';
 
 // 林梦瑶的 DSH 记忆桥（dsh-plugins/dsh-linmengyao-memory）：灵魂模块 1245 行里原来一条测试都没有。
@@ -90,6 +91,21 @@ test('没有经过确认的私聊不提供私有上下文或工具写入', async
     assert.ok(h.contexts.every(entry => !entry.text()));
     await assert.throws(() => h.tools.ledger_append!.execute({ content: '不应写入' }));
     assert.equal(existsSync(h.f('LEDGER.md')), false);
+});
+
+test('DSH 主人私聊重开后读到 QQ 更新的理解，未确认的窗口不读取', async () => {
+    const file = boot().f('UNDERSTANDING.json');
+    const original = '行，你去忙吧。';
+    const now = Date.now();
+    recordUnderstandingTurn(file, 'first', original, now - 86_400_000);
+    const prompt = async (app: ReturnType<typeof boot>) => {
+        await app.handlers['agent/pre-step']!({ messages: [{ role: 'user', content: original }] }, async () => undefined);
+        return app.contexts.map(entry => entry.text()).join('\n');
+    };
+    assert.match(await prompt(boot({ understandingFile: file })), /理解待确认/);
+    recordUnderstandingTurn(file, 'second', '我当时在赶车，想让你先忙，没有生气。', now);
+    assert.match(await prompt(boot({ understandingFile: file })), /理解已澄清[^]*我当时在赶车/);
+    assert.doesNotMatch(await prompt(boot({ understandingFile: file, ownerPrivateSessions: [] })), /理解已澄清|赶车/);
 });
 
 test('只有确认的桌面私聊可发布或收回她的家公开状态，正文不可发布', () => {

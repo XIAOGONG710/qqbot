@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { appendTail, closeTurn, sessionBridgeText } from './session-tail.js'
 import { FOCUS_CHECKPOINT_FILE, focusCheckpoint } from './focus-checkpoints.mjs'
+import { UNDERSTANDING_EXPORT, sharedUnderstandingLine } from './shared-understanding.mjs'
 import { homeActivities, homePlaces, publishHomeStatus } from './home-status.js'
 
 export const name = 'dsh-linmengyao-memory'
@@ -16,6 +17,11 @@ export const name = 'dsh-linmengyao-memory'
 // 灵魂目录：和 packages/bot 的 soulDir() 一致（环境变量 QQBOT_SOUL_DIR，默认当前用户的 ~/.dsh/linmengyao），换机器不会静默失效
 const SOUL_DIR = process.env.QQBOT_SOUL_DIR || path.join(os.homedir(), '.dsh', 'linmengyao')
 const soulPath = (file) => path.join(SOUL_DIR, file)
+
+export function desktopUnderstanding(cfg, query, now = Date.now()) {
+  return cfg.sharedUnderstanding === true || typeof cfg.understandingFile === 'string'
+    ? sharedUnderstandingLine(cfg.understandingFile ?? soulPath(UNDERSTANDING_EXPORT), query, now) : ''
+}
 
 const DEFAULTS = {
   baseUrl: 'http://127.0.0.1:8888',
@@ -1492,6 +1498,11 @@ ${now}` : ''
           name: 'linmengyao-state',
           order: 75,
           text: () => privateTurn() ? readStateBlock(cfg) : '',
+        }))
+        disposers.push(sp.context({
+          name: 'linmengyao-understanding',
+          order: 76,
+          text: () => privateTurn() ? desktopUnderstanding(cfg, cache.user) : '',
         }))
         disposers.push(sp.context({
           name: 'linmengyao-bridge-rules',

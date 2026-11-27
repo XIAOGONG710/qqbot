@@ -3575,6 +3575,30 @@ describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不
         assert.match(traces.traces.find(item => item.text === '他说想我')?.at ?? '', /^2020-03-0/, '新记的痕迹是她那边的时间');
     });
 
+    test('主人私聊的歧义原话与隔天澄清进入真实 QQ 提示词', async () => {
+        const soul = mkdtempSync(join(tmpdir(), 'qqbot-understanding-app-'));
+        dirs.push(soul);
+        const env = { soul: process.env.QQBOT_SOUL_DIR, shared: process.env.QQBOT_SHARED_UNDERSTANDING };
+        process.env.QQBOT_SOUL_DIR = soul;
+        process.env.QQBOT_SHARED_UNDERSTANDING = '1';
+        try {
+            const cfg = config({ contacts: bf, selfDirectedMemory: true });
+            const clock = new VirtualClock(virtualStart);
+            const prompts: string[] = [];
+            const { app, sent } = setup(cfg, {}, { clock, generate: messages => { prompts.push(messages.map(m => m.content).join('\n')); return '嗯'; } });
+            app.receive(event(10002, 301, '行，你去忙吧。'));
+            await drive(clock, () => sent.length === 1);
+            assert.match(prompts.at(-1)!, /理解待确认[^]*语气和动机未确认/);
+            clock.advance(86_400_000);
+            app.receive(event(10002, 302, '我当时在赶车，想让你先忙，没有生气。'));
+            await drive(clock, () => sent.length === 2);
+            assert.match(prompts.at(-1)!, /理解已澄清[^]*他说自己是想让你先忙，当时没有生气/);
+        } finally {
+            if (env.soul === undefined) delete process.env.QQBOT_SOUL_DIR; else process.env.QQBOT_SOUL_DIR = env.soul;
+            if (env.shared === undefined) delete process.env.QQBOT_SHARED_UNDERSTANDING; else process.env.QQBOT_SHARED_UNDERSTANDING = env.shared;
+        }
+    });
+
     test('首轮铺底：他走了几小时按她那边的现在算', async () => {
         const soul = mkdtempSync(join(tmpdir(), 'qqbot-app-soul-wake-'));
         dirs.push(soul);
