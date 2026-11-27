@@ -2315,7 +2315,6 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         ...(promptManifest ? { promptManifest } : {}),
     });
 
-
     function deliver(responder: Responder, event: MessageEvent, message: Segment[] | string, receipt?: string): void {
         const text = segmentsToText(message, quoteLookup(event.user_id), forwardLookup(event.user_id)).trim();
         if (!text) { if (receipt) chatHistory.discardIncoming(event.user_id, receipt); return; }
@@ -2335,7 +2334,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
             log(`[${qq}] 工作模式：交给 dsh 干活`);
             // 他的话、她的回复都进聊天记录（ADR 0176）：原来工作模式里的来回不进记录，切回聊天后她不知道刚才说过什么
             history.append(qq, accepted);
-            work.handOff(qq, text, '工作桥出错');
+            void work.handOff(qq, text, '工作桥出错', event.message_id);
             return;
         }
         responder.receive(accepted.content, event.message_id, new Date(accepted.time), accepted.messageSeq, accepted.incomingId);

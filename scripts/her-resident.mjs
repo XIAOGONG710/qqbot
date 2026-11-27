@@ -10,6 +10,7 @@ import { checkRequest, ensureToken, permissionMode, residentDir } from '../packa
 import { desktopPresencePath, leaseActive } from '../packages/bot/src/life/desktop-presence.ts'
 import { herAsleep, localDay, nowFreshText, sleepDue, wakeDue } from './her-schedule.mjs'
 import { IDLE_DATA_NOT_COMMANDS, workPrompt } from '../packages/bot/src/platform/instruction-source.ts'
+import { focusCheckpoint, FOCUS_CHECKPOINT_FILE } from '../dsh-plugins/dsh-linmengyao-memory/focus-checkpoints.mjs'
 
 const PORT = Number(process.env.HER_PORT || 7777)
 const PROFILE = process.env.HER_PROFILE || 'lmy'
@@ -18,6 +19,7 @@ const DSH_BIN = process.env.DSH_BIN || 'D:/nodejs/global/node_modules/@deepseek-
 const DIR = residentDir()
 // 灵魂目录和 packages/bot 的 soulDir()、DSH 插件一致
 const SOUL_DIR = process.env.QQBOT_SOUL_DIR || join(homedir(), '.dsh', 'linmengyao')
+const FOCUS_FILE = join(SOUL_DIR, FOCUS_CHECKPOINT_FILE)
 // 她现在在干嘛、睡没睡：只有 QQ 那边算（ADR 0347 第 1 层），写成 NOW.md，这里只读
 const NOW_FILE = join(SOUL_DIR, 'NOW.md')
 const PRESENCE_FILE = desktopPresencePath(SOUL_DIR)
@@ -62,7 +64,7 @@ function runTask(task, context = '', rawPrompt = undefined, timeoutMs = TIMEOUT_
         child.on('close', (code) => {
             clearTimeout(timer)
             const text = stdout.trim()
-            if (text) return resolve({ ok: true, reply: text.slice(0, 600), code })
+            if (code === 0 && !timedOut && text) return resolve({ ok: true, reply: text.slice(0, 600), code })
             resolve({ ok: false, error: `${timedOut ? `超时 ${timeoutMs}ms 被掐掉，` : ''}exit ${code}: ${stderr.slice(-300)}` })
         })
     })
@@ -74,7 +76,15 @@ function drain() {
     const item = queue.shift()
     const started = Date.now()
     log(`task start: ${item.task.slice(0, 80)}`)
-    void runTask(item.task, item.context).then((result) => {
+    const record = action => focusCheckpoint(FOCUS_FILE, { ...item.checkpoint, action,
+        operationId: `${action}-${item.checkpoint.operationId}` })
+    void Promise.resolve().then(async () => {
+        if (item.checkpoint && !record('dispatch').acquired) return { ok: false, error: '任务未领取或已经派发' }
+        const result = await runTask(item.task, item.context)
+        if (!item.checkpoint || !result.ok) return result
+        if (record('finish').status !== 'finished') return { ok: false, error: '任务已经暂停或取消' }
+        return { ...result, checkpoint: item.checkpoint.operationId }
+    }).catch(() => ({ ok: false, error: '工作执行状态待核对' })).then((result) => {
         lastTaskAt = new Date().toISOString()
         log(`task ${result.ok ? 'ok' : 'fail'} ${Date.now() - started}ms ${result.ok ? result.reply.slice(0, 80) : result.error}`)
         item.resolve(result)
@@ -131,8 +141,14 @@ const server = http.createServer((req, res) => {
             const task = String(data.task || '').trim().slice(0, 4000)
             if (!task) return send(400, { ok: false, error: 'task required' })
             const context = String(data.context || '').slice(0, 4000)
+            const { checkpoint } = data
+            if (checkpoint !== undefined && (!checkpoint || !/^qq-[a-f0-9]{24}$/.test(checkpoint.taskId)
+                || !/^[a-f0-9]{24}$/.test(checkpoint.operationId)
+                || ![`start-${checkpoint.operationId}`, `resume-${checkpoint.operationId}`].includes(checkpoint.claimId))) {
+                return send(400, { ok: false, error: 'bad checkpoint' })
+            }
             if (offlineUntil() > Date.now()) return send(200, { ok: true, reply: '她这会儿不在电脑前，晚点再说。' })
-            queue.push({ task, context, resolve: (result) => send(200, result) })
+            queue.push({ task, context, checkpoint, resolve: (result) => send(200, result) })
             log(`task queued: ${task.slice(0, 80)} (queue ${queue.length})`)
             drain()
         })

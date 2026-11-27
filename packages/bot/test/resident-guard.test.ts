@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
 import { checkRequest, ensureToken, permissionMode, readToken, residentDir, TOKEN_FILE, TOKEN_HEADER } from '../src/platform/resident-guard.ts';
 import { runWorkTask } from '../src/platform/work-bridge.ts';
+import { focusCheckpoint } from '../../../dsh-plugins/dsh-linmengyao-memory/focus-checkpoints.mjs';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'qqbot-resident-')); dirs.push(d); return d; };
@@ -108,9 +109,17 @@ describe('工作桥：带令牌去找常驻的她；被明确拒绝不能悄悄�
             await assert.rejects(runWorkTask('整理桌面'), new RegExp(`常驻的她拒绝了这次请求（HTTP ${status}）.*RESIDENT_TOKEN`));
         }
     });
+
+    test('回执损坏或连接中途断开不改走临时执行', async () => {
+        process.env.HER_DIR = tmp();
+        globalThis.fetch = (async () => new Response('broken receipt')) as never;
+        await assert.rejects(runWorkTask('查合成报错'), /工作回执未确认/);
+        globalThis.fetch = (async () => { throw new TypeError('terminated'); }) as never;
+        await assert.rejects(runWorkTask('查合成报错'), /工作回执未收到/);
+    });
 });
 
-describe('真的把 scripts/her-resident.mjs 起起来：守卫接上了（不发任何合法的 /task，免得在装了 DSH 的机器上跑起真的智能体）', () => {
+describe('隔离常驻进程的守卫和工作回执', () => {
     const freePort = () => new Promise<number>((resolvePort, reject) => {
         const server = createServer();
         server.listen(0, '127.0.0.1', () => { const { port } = server.address() as { port: number }; server.close(() => resolvePort(port)); });
@@ -126,23 +135,30 @@ describe('真的把 scripts/her-resident.mjs 起起来：守卫接上了（不�
         req.end(options.body);
     });
 
-    test('无令牌 401、错令牌 401、带 Origin 403、text/plain 415、伪造 Host 400；有令牌的 GET /life 200；GET /health 不要令牌；/note 只是个空接口（ADR 0347 第 1 层）', async () => {
+    test('守卫正常工作，已落地但丢失的回执在重启后仍可核对，崩溃的执行不重跑', async () => {
         const dir = tmp();
         const port = await freePort();
         const script = resolve(import.meta.dirname, '../../../scripts/her-resident.mjs');
         // QQ 那边写的 NOW.md（生成时间 + 睡没睡）；常驻只读它
         const freshNow = `<!-- generated-at: ${new Date().toISOString()} -->\n<!-- asleep: no -->\n\n在宿舍看书\n`;
         writeFileSync(join(dir, 'NOW.md'), freshNow);
-        const child = spawn(process.execPath, [script], {
-            env: { ...process.env, HER_PORT: String(port), HER_DIR: dir, HER_SOUL_DIR: dir, QQBOT_SOUL_DIR: dir, HER_CWD: dir, DSH_PERMISSION_MODE: '', QQBOT_LLM_API_KEY: '' },
+        const fakeBin = join(dir, 'synthetic.mjs');
+        const calls = join(dir, 'calls');
+        writeFileSync(fakeBin, `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(calls)}, 'run\\n');\nconsole.log('合成结果');\nif (process.argv.at(-1).includes('模拟中断')) process.exitCode = 1;`);
+        const start = () => spawn(process.execPath, [script], {
+            env: { ...process.env, HER_PORT: String(port), HER_DIR: dir, HER_SOUL_DIR: dir, QQBOT_SOUL_DIR: dir, HER_CWD: dir, DSH_BIN: fakeBin, QQBOT_LLM_API_KEY: '' },
             stdio: 'ignore', windowsHide: true,
         });
-        try {
+        let child = start();
+        const ready = async () => {
             let up = false;
             for (let i = 0; i < 80 && !up; i++) {
                 try { up = (await call(port, { method: 'GET', path: '/health' })).status === 200; } catch { await new Promise(done => setTimeout(done, 100)); }
             }
             assert.ok(up, '常驻没起来');
+        };
+        try {
+            await ready();
             const token = readToken(dir);
             assert.ok(token, '常驻第一次启动应该生成令牌文件');
             const json = { 'content-type': 'application/json' };
@@ -169,6 +185,33 @@ describe('真的把 scripts/her-resident.mjs 起起来：守卫接上了（不�
             assert.equal(readFileSync(join(dir, 'NOW.md'), 'utf8'), nowBefore, 'NOW.md 只归 QQ 写');
             assert.equal((await call(port, { method: 'GET', path: '/health' })).status, 200);
             assert.match(readFileSync(join(dir, 'resident.log'), 'utf8'), /rejected POST \/task: token required/);
+            const file = join(dir, 'focus-checkpoints.json');
+            const submit = (checkpoint: { taskId: string; operationId: string; claimId: string }, task: string) => call(port, {
+                method: 'POST', path: '/task', headers: { ...json, [TOKEN_HEADER]: token }, body: JSON.stringify({ task, checkpoint }),
+            });
+            const claim = (key: string) => {
+                const operationId = key.repeat(24), taskId = `qq-${operationId}`, claimId = `start-${operationId}`;
+                assert.equal(focusCheckpoint(file, { taskId, action: 'start', operationId: claimId, next: '核对合成日志' }).acquired, true);
+                return { taskId, operationId, claimId };
+            };
+            const confirmed = claim('a');
+            await submit(confirmed, '查合成日志'); // Discard the HTTP reply and reconstruct from storage.
+            const interrupted = claim('b');
+            assert.equal(focusCheckpoint(file, { action: 'finish', taskId: interrupted.taskId, operationId: 'desktop-finish' }).status, 'active');
+            assert.equal(JSON.parse((await submit(interrupted, '模拟中断')).body).ok, false, '有输出但非正常退出，不能用作完成回执');
+            const closed = new Promise(resolveExit => child.once('exit', resolveExit));
+            child.kill();
+            await closed;
+            child = start();
+            await ready();
+            assert.equal(focusCheckpoint(file, { action: 'read', taskId: confirmed.taskId }).status, 'finished');
+            assert.equal(JSON.parse((await submit(confirmed, '查合成日志')).body).ok, false);
+            assert.equal(focusCheckpoint(file, { action: 'read', taskId: interrupted.taskId }).status, 'active');
+            assert.equal(JSON.parse((await submit(interrupted, '模拟中断')).body).ok, false);
+            assert.equal(focusCheckpoint(file, { action: 'cancel', taskId: interrupted.taskId, operationId: 'cancel' }).status, 'cancelled');
+            const next = claim('c');
+            assert.equal(JSON.parse((await submit(next, '检查下一项')).body).checkpoint, next.operationId);
+            assert.equal(readFileSync(calls, 'utf8'), 'run\nrun\nrun\n');
         } finally {
             child.kill();
         }

@@ -1517,16 +1517,19 @@ ${now}` : ''
           const file = cfg.focusCheckpointFile ?? soulPath(FOCUS_CHECKPOINT_FILE)
           disposers.push(register({
             name: 'focus_checkpoint',
-            description: '保存本机私聊任务的下一步。先 read 可找回任务；真正开始时 start，缺材料时 wait，拿到材料后 resume，做完才 finish。start/resume 只有 acquired=true 才执行该步；重试沿用同一 operationId。下一步简短，不记录账号、密钥或聊天原文。',
+            description: '保存私聊任务的下一步。跨 QQ 和桌面接续先 read 查原任务 ID。开始用 start，缺材料用 wait，拿到材料用 resume，有结果才 finish。执行中断且结果不明用 interrupt，停止跟进用 cancel；这两种状态都不能重跑原步骤。start/resume 只有 acquired=true 才执行，重试沿用同一 operationId。下一步不记录账号、密钥或聊天原文。',
             parameters: { type: 'object', properties: {
-              action: { type: 'string', enum: ['read', 'start', 'wait', 'resume', 'finish'] },
+              action: { type: 'string', enum: ['read', 'start', 'wait', 'resume', 'finish', 'interrupt', 'cancel'] },
               taskId: { type: 'string' }, operationId: { type: 'string' }, next: { type: 'string' },
             }, required: ['action'], additionalProperties: false },
             output: { schema: { type: 'object', properties: {
               status: { type: 'string' }, taskId: { type: 'string' }, next: { type: 'string' }, acquired: { type: 'boolean' },
             }, required: ['status'] } },
             render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-            execute: args => focusCheckpoint(file, args),
+            execute: ({ action, taskId, operationId, next }) => {
+              if (action === 'dispatch') throw new Error('派发回执只能由工作桥记录')
+              return focusCheckpoint(file, { action, taskId, operationId, next })
+            },
           }))
         }
         disposers.push(register({

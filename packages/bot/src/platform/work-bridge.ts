@@ -18,6 +18,7 @@ export interface WorkTaskOptions {
     apiKey?: string
     /** 最近几条 QQ 对话，给 headless 的她当上下文 */
     context?: string
+    checkpoint?: { taskId: string; operationId: string; claimId: string }
 }
 
 function spawnWorkTask(task: string, options: WorkTaskOptions = {}): Promise<string> {
@@ -50,7 +51,7 @@ function spawnWorkTask(task: string, options: WorkTaskOptions = {}): Promise<str
         child.on('close', (code) => {
             clearTimeout(timer)
             const reply = stdout.trim()
-            if (reply) {
+            if (code === 0 && reply) {
                 // 兜底：她说长了就截到最后一个句号/问号/感叹号，免得 QQ 里刷屏
                 const short = reply.length > 260
                     ? reply.slice(0, 260).replace(/[^。！？!?]*$/, '') + '…'
@@ -74,17 +75,24 @@ export async function runWorkTask(task: string, options: WorkTaskOptions = {}): 
         res = await fetch(`${resident}/task`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...(token ? { [TOKEN_HEADER]: token } : {}) },
-            body: JSON.stringify({ task, context: options.context ?? '' }),
+            body: JSON.stringify({ task, context: options.context ?? '', checkpoint: options.checkpoint }),
             signal: AbortSignal.timeout((options.timeoutMs ?? 180_000) + 10_000),
         })
-    } catch { /* 常驻没起来（连不上），走临时 headless */ }
+    } catch (error) {
+        // Only a refused connection proves the resident never received this request.
+        if (error instanceof Error && (error.cause as NodeJS.ErrnoException | undefined)?.code === 'ECONNREFUSED') {
+            if (!options.checkpoint) return spawnWorkTask(task, options)
+            throw new Error('常驻未接收这次工作请求')
+        }
+        throw new Error('常驻工作回执未收到', { cause: error })
+    }
     // 常驻明确拒绝（令牌不对 / 没有令牌）不能悄悄改走临时 headless：那样会绕过常驻的队列和「她离开电脑」（ADR 0172）
     if (res && (res.status === 401 || res.status === 403)) throw new Error(`常驻的她拒绝了这次请求（HTTP ${res.status}）：令牌不对或不存在，检查 ${residentDir()}\\RESIDENT_TOKEN`);
     if (res?.ok) {
         try {
-            const data = await res.json() as { ok?: boolean; reply?: string }
-            if (data?.ok && data.reply) return String(data.reply)
-        } catch { /* 读不出来按没回处理 */ }
+            const data = await res.json() as { ok?: boolean; reply?: string; checkpoint?: string }
+            if (data?.ok && data.reply && (!options.checkpoint || data.checkpoint === options.checkpoint.operationId)) return String(data.reply)
+        } catch { /* 回执失效，交给调用方核对持久状态 */ }
     }
-    return spawnWorkTask(task, options)
+    throw new Error(`常驻工作回执未确认（HTTP ${res.status}）`)
 }
