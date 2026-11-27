@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { appendTail, closeTurn, sessionBridgeText } from './session-tail.js'
+import { FOCUS_CHECKPOINT_FILE, focusCheckpoint } from './focus-checkpoints.mjs'
 import { homeActivities, homePlaces, publishHomeStatus } from './home-status.js'
 
 export const name = 'dsh-linmengyao-memory'
@@ -1512,6 +1513,22 @@ ${now}` : ''
             return tool.execute(...args)
           },
         })
+        if (cfg.focusCheckpoints === true || typeof cfg.focusCheckpointFile === 'string') {
+          const file = cfg.focusCheckpointFile ?? soulPath(FOCUS_CHECKPOINT_FILE)
+          disposers.push(register({
+            name: 'focus_checkpoint',
+            description: '保存本机私聊任务的下一步。先 read 可找回任务；真正开始时 start，缺材料时 wait，拿到材料后 resume，做完才 finish。start/resume 只有 acquired=true 才执行该步；重试沿用同一 operationId。下一步简短，不记录账号、密钥或聊天原文。',
+            parameters: { type: 'object', properties: {
+              action: { type: 'string', enum: ['read', 'start', 'wait', 'resume', 'finish'] },
+              taskId: { type: 'string' }, operationId: { type: 'string' }, next: { type: 'string' },
+            }, required: ['action'], additionalProperties: false },
+            output: { schema: { type: 'object', properties: {
+              status: { type: 'string' }, taskId: { type: 'string' }, next: { type: 'string' }, acquired: { type: 'boolean' },
+            }, required: ['status'] } },
+            render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+            execute: args => focusCheckpoint(file, args),
+          }))
+        }
         disposers.push(register({
           name: 'home_publish',
           description: '只在你自己愿意时，把一条日常状态展示给本机「她的家」面板的主人。一小时后自动隐藏。只选预设地点和活动，不填日记、私聊或自由文本；不想展示时可用 hide 收回。',

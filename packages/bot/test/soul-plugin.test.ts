@@ -902,6 +902,29 @@ describe('同一个她：DSH 只读取新鲜且结构安全的 QQ 实时状态',
     });
 });
 
+test('已登记桌面私聊的任务等配置时存下下一步，重建后同一请求只获执行资格一次', async () => {
+    const initial = boot();
+    const file = initial.f('focus-checkpoints.json');
+    const first = boot({ focusCheckpointFile: file });
+    assert.equal(initial.tools.focus_checkpoint, undefined);
+    const denied = boot({ focusCheckpointFile: file, ownerPrivateSessions: [] });
+    assert.throws(() => denied.tools.focus_checkpoint!.execute({ action: 'read' }), /私聊/);
+    const query = (action: string, operationId?: string, next?: string) => ({ action, taskId: 'synthetic-debug', operationId, next });
+    const start = query('start', 'begin', '检查合成日志');
+    assert.equal((await first.tools.focus_checkpoint!.execute(start)).acquired, true);
+    assert.equal((await first.tools.focus_checkpoint!.execute(start)).acquired, false);
+    const wait = query('wait', 'await-config', '收到配置后核对加载路径');
+    assert.equal((await first.tools.focus_checkpoint!.execute(wait)).status, 'waiting');
+    const second = boot({ focusCheckpointFile: file });
+    assert.deepEqual(await second.tools.focus_checkpoint!.execute(query('read')), { status: 'waiting', next: '收到配置后核对加载路径' });
+    const resume = query('resume', 'got-config');
+    assert.deepEqual(await second.tools.focus_checkpoint!.execute(resume), { status: 'active', next: '收到配置后核对加载路径', acquired: true });
+    assert.equal((await second.tools.focus_checkpoint!.execute(resume)).acquired, false);
+    assert.equal((await second.tools.focus_checkpoint!.execute(wait)).status, 'active');
+    assert.equal((await second.tools.focus_checkpoint!.execute(query('finish', 'done'))).status, 'finished');
+    assert.equal((await second.tools.focus_checkpoint!.execute(start)).acquired, false);
+});
+
 describe('同一个她·「她现在在干嘛」只从一条路进、过期不注入（任务书 §2、验收 S7）', () => {
     const nowFile = (generatedAt: Date) => `<!-- 生成的，别手改 -->\n<!-- generated-at: ${generatedAt.toISOString()} -->\n\n她这会儿在图书馆写作业ZQN，有点困。\n`;
     const injected = async (h: ReturnType<typeof boot>) => {

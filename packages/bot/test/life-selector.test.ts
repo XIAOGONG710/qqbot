@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { desktopFocusBusy, focusCheckpoint } from '../../../dsh-plugins/dsh-linmengyao-memory/focus-checkpoints.mjs';
 import { describe, test } from 'node:test';
 import { homeworkSprints } from '../src/life/actions.ts';
 import { actionQueue, settlingWorld } from '../src/world/action-queue.ts';
@@ -88,6 +89,65 @@ function liveChat(dir: string, start: Date, end: Date, options: { restartAt?: Da
 }
 
 describe('规则自主选择器 v1（ADR 0040）', () => {
+    test('查报错打断共享阅读，等配置后继续读，重建可接回两件事且重复请求不重做', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'reading-focus-'));
+        try {
+            const file = join(dir, 'focus-checkpoints.json');
+            const start = at('2026-10-17T19:00:00');
+            const book = { ...card.books.find(item => item.activity)!, sharedReading: true as const };
+            const readingSchedule: typeof schedule = { ...schedule, holidays: [], courses: [], free: {
+                ...schedule.free, eveningFrom: '18:00', on: [{ date: '2026-10-17', ...book.activity! }],
+            } };
+            const readingWorld: World = { startDay: herWorld.startDay, awayHolidays: [], people: [], events: [] };
+            let now = at('2026-10-17T19:15:00').getTime();
+            const started = at('2026-10-17T19:30:00');
+            const waiting = at('2026-10-17T19:45:00');
+            const resumed = at('2026-10-17T20:30:00');
+            let toolCalls = 0;
+            const step = (action: string, operationId?: string, next?: string) => {
+                const input = { action, taskId: 'synthetic-debug', ...(operationId ? { operationId } : {}), ...(next ? { next } : {}) };
+                const result = focusCheckpoint(file, input, now);
+                if (result.acquired) toolCalls++;
+                return result;
+            };
+            const open = () => {
+                const ledger = worldState(readingWorld, readingSchedule, () => {}, join(dir, 'world'), () => now);
+                const queue = actionQueue(join(dir, 'world', 'action-queue.json'));
+                const exec = lifeExecutor({ schedule: readingSchedule, books: [book], worldAt: () => undefined,
+                    events: () => ledger.events(), desktopBusy: () => desktopFocusBusy(file,
+                        now >= +started ? [{ start: started, end: new Date(now) }] : [], now),
+                }, queue, { since: start });
+                const world = settlingWorld(ledger, queue, () => now, time => { exec.fill(time); });
+                return { queue, world };
+            };
+            let runtime = open();
+            runtime.world.events();
+            assert.ok(runtime.queue.pending().some(item => item.kind === 'read_book'));
+            now = +started;
+            assert.equal(step('start', 'inspect', '查看错误日志').acquired, true);
+            assert.equal(step('start', 'inspect', '查看错误日志').acquired, false);
+            now = +waiting;
+            assert.equal(step('wait', 'await-config', '收到配置后核对加载路径').status, 'waiting');
+            now += 15 * 60_000;
+            assert.equal(sharedReadingProgress(book, runtime.world.events(), new Date(now))?.minutes, 30);
+            assert.ok(runtime.queue.pending().some(item => item.kind === 'read_book' && item.event.startedAt === waiting.toISOString()));
+            runtime = open();
+            assert.equal(step('read').next, '收到配置后核对加载路径');
+            assert.equal(sharedReadingProgress(book, runtime.world.events(), new Date(now))?.minutes, 30);
+            now = +resumed;
+            assert.equal(step('resume', 'configured').acquired, true);
+            assert.equal(step('resume', 'configured').acquired, false);
+            now += 15 * 60_000;
+            assert.equal(step('finish', 'finished').status, 'finished');
+            const events = runtime.world.events();
+            const read = events.filter(event => event.kind === 'read_book');
+            assert.deepEqual(read.map(event => [event.startedAt, event.endedAt]), [
+                [start.toISOString(), started.toISOString()], [waiting.toISOString(), resumed.toISOString()],
+            ]);
+            assert.equal(sharedReadingProgress(book, runtime.world.events(), new Date(now))?.minutes, 75);
+            assert.equal(toolCalls, 2, '初查和续查各执行一次');
+        } finally { rmSync(dir, { recursive: true, force: true }); }
+    });
     test('共享读书在忙时延后，空闲结算后 QQ 和 DSH 读取同一份进度', () => {
         const dir = mkdtempSync(join(tmpdir(), 'shared-reading-'));
         try {

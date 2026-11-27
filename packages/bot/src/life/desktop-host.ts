@@ -1,4 +1,5 @@
 import { dirname, join } from 'node:path';
+import { desktopFocusBusy, FOCUS_CHECKPOINT_FILE } from '../../../../dsh-plugins/dsh-linmengyao-memory/focus-checkpoints.mjs';
 import type { Files } from '../executor/executor.ts';
 import { desktopRecentPath } from '../memory/cross-recent.ts';
 import { desktopLogPath, desktopTurns, ingestDesktopRecent } from '../memory/desktop-log.ts';
@@ -100,6 +101,8 @@ export function desktopHost({ config, soulDir, worldNow, cardFor, bedtimes, file
         const turns = desktopSource.turns(now);
         if (desktopConflictOn) {
             desktopBusyCache = desktopBusySpans({ turns, lease: desktopSource.lease(), now });
+            try { desktopBusyCache = desktopFocusBusy(join(soulDir, FOCUS_CHECKPOINT_FILE), desktopBusyCache, now); }
+            catch { log('桌面任务检查点无法读取，暂用原桌面在场区间'); }
             desktopChatCache = desktopMessages(turns);
         }
         if (desktopMoodOn) desktopMoodCache = desktopMessages(turns);
