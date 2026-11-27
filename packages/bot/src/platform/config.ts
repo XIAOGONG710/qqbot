@@ -678,9 +678,15 @@ export interface Contact {
  * 「他」：名单里第一个男朋友档——设备所有者（能跑命令、动电脑、收设备菜单）、B 站私信对象、桌面和群聊里的「他」。
  * 原来 9 处各自 find 一遍；收成这一处，免得哪处改了规则，「他」在不同功能里指向不同的人（决定单第 28 条：
  * 名单里第二个男朋友档排到前面，所有权会悄悄换人——要改规则就改这里）。
+ * 11-28 起 parseAppConfig 只允许一个男朋友档（多了拒绝启动），「第一个」就是唯一的那个。
  */
 export function ownerOf<C extends { tier: string }>(contacts: readonly C[]): C | undefined {
     return contacts.find(c => c.tier === 'boyfriend');
+}
+
+/** 名单里有几个男朋友档：parseAppConfig 超过一个就拒绝启动，上线前检查（golive-check）也照这个数（决定单第 28 条） */
+export function boyfriendCount(contacts: readonly unknown[]): number {
+    return contacts.filter(c => typeof c === 'object' && c !== null && (c as { tier?: unknown }).tier === 'boyfriend').length;
 }
 
 export function canGiveFeedback(contact: Pick<Contact, 'tier' | 'feedback'>): boolean {
@@ -775,6 +781,8 @@ export function parseAppConfig(file: Json, repoRoot: string, env: NodeJS.Process
     });
     const duplicate = contacts.find((c, i) => contacts.findIndex(d => d.qq === c.qq) !== i);
     if (duplicate) throw new Error(`配置 contacts 里 QQ ${duplicate.qq} 重复`);
+    const boyfriends = boyfriendCount(contacts);
+    if (boyfriends > 1) throw new Error(`配置 contacts 里有 ${boyfriends} 个男朋友档（tier: "boyfriend"），只能有一个：设备、电脑、记忆这些只给他的功能认的是名单里第一个男朋友档，两个会悄悄换人。把多出来的改成别的档位`);
 
     const characterCard = resolvePath(repoRoot, str(file, 'characterCard', ''));
     if (!characterCard.includes('{tier}')) throw new Error('配置 characterCard 应包含 {tier}，例如 characters/linmengyao/st/linmengyao-{tier}.json');

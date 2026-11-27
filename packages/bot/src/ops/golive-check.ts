@@ -38,6 +38,8 @@ export interface GoLiveInput {
     switches?: SwitchMergeCheck | 'unreadable';
     /** 线上 devices.json 按新代码的启动校验（deviceSecretsCheck）：不合格的项；不是合法 JSON 是 'unreadable'；没有这份文件是 undefined */
     devices?: string[] | 'unreadable';
+    /** 线上 koishi.yml 的 contacts 里有几个男朋友档（只要个数，不带 QQ 号）；新代码多于一个拒绝启动（决定单第 28 条）。读不到 koishi.yml 是 undefined */
+    boyfriends?: number;
     /** 未安装 NapCat 时不查，已有工作目录但缺配置时拦截上游默认值。 */
     napcatWebUi?: NapcatWebUiCheck;
 }
@@ -134,6 +136,9 @@ export function goLiveReport(input: GoLiveInput, options: { cardsApproved?: bool
     } else if (input.switches) {
         for (const line of input.switches.unrepresentable) blockers.push(`开关合并：koishi.yml 里这一组旧键新键表达不了，新代码启动会报「配置有误」——先在控制台按新键改：${line}`);
         if (input.switches.migrating.length) notes.push(`开关合并：重启后插件会把 koishi.yml 里这 ${input.switches.migrating.length} 组旧键改写成新键（值等价）：${input.switches.migrating.join('；')}。改写 koishi.yml 前先备份一份`);
+    }
+    if (input.boyfriends !== undefined && input.boyfriends > 1) {
+        blockers.push(`联系人：线上 koishi.yml 的 contacts 里有 ${input.boyfriends} 个男朋友档，新代码只允许一个，重启时会报「配置有误」起不来——先在控制台把多出来的改成别的档位（改线上配置，要用户点头）`);
     }
     if (input.devices === 'unreadable') {
         blockers.push('设备控制：线上 devices.json 不是合法 JSON，新代码启动设备控制时会报错——先修好这份文件（改线上配置，要用户点头）');

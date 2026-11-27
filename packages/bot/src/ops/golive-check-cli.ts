@@ -9,6 +9,7 @@ import { lastBehaviorRestart, readRestartLog } from './restart-log.ts';
 import { exposedListeners, LISTENERS_POWERSHELL, parseListeners } from './listeners.ts';
 import { liveDataDir } from './data-dir.ts';
 import { devicesSecretsPath } from '../platform/device-service.ts';
+import { boyfriendCount } from '../platform/config.ts';
 
 const args = process.argv.slice(2);
 const option = (name: string, fallback: string) => { const at = args.indexOf(name); return at >= 0 && args[at + 1] ? args[at + 1]! : fallback; };
@@ -25,15 +26,18 @@ const dirty = git('status', '--porcelain').length > 0;
 const shell = spawnSync('powershell', ['-NoProfile', '-Command', LISTENERS_POWERSHELL], { encoding: 'utf8' });
 const exposed = shell.status === 0 ? exposedListeners(parseListeners(shell.stdout)) : [];
 const restarts = readRestartLog(option('--restarts', join(liveDataDir(live), 'restarts.log')));
-// 开关合并预检：读线上 koishi.yml 里 qqbot 那一块（只看开关键，不打印任何值以外的东西）
-const switches = (() => {
+// 开关合并预检：读线上 koishi.yml 里 qqbot 那一块（只看开关键，不打印任何值以外的东西）；
+// 顺带数 contacts 里有几个男朋友档（只数个数，不打印 QQ 号；新代码多于一个拒绝启动）
+const liveConfig = (() => {
     try {
         const yaml = createRequire(import.meta.url)('js-yaml') as { load(text: string): unknown };
         const root = yaml.load(readFileSync(join(live, 'runtime', 'koishi', 'koishi.yml'), 'utf8')) as { plugins?: Record<string, unknown> } | undefined;
         const qqbot = Object.values(root?.plugins ?? {}).find((p): p is Record<string, unknown> => Boolean(p && typeof p === 'object' && 'contacts' in p));
-        return qqbot ? switchMergeCheck(qqbot) : 'unreadable' as const;
-    } catch { return 'unreadable' as const; }
+        return qqbot ? { switches: switchMergeCheck(qqbot), boyfriends: boyfriendCount(Array.isArray(qqbot.contacts) ? qqbot.contacts : []) } : undefined;
+    } catch { return undefined; }
 })();
+const switches = liveConfig?.switches ?? 'unreadable' as const;
+const boyfriends = liveConfig?.boyfriends;
 // 设备密钥预检：线上 devices.json 按新代码的启动校验过一遍（只报哪一项不合格，令牌不打印）
 const devices = (() => {
     const path = devicesSecretsPath(liveDataDir(live));
@@ -47,7 +51,7 @@ const napcatWebUi = (() => {
     catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' as const : 'unreadable' as const; }
 })();
 const safety = args.includes('--safety') ? args[args.indexOf('--safety') + 1] : undefined;
-const report = goLiveReport({ liveHead, targetHead, dirty, commits, changes: classifyChanges(files), exposed, lastBehaviorRestart: lastBehaviorRestart(restarts), restartLogEmpty: restarts.length === 0, switches, ...(devices !== undefined ? { devices } : {}), ...(napcatWebUi !== undefined ? { napcatWebUi } : {}) }, { cardsApproved: args.includes('--cards-ok'), ...(safety ? { safety } : {}) });
+const report = goLiveReport({ liveHead, targetHead, dirty, commits, changes: classifyChanges(files), exposed, lastBehaviorRestart: lastBehaviorRestart(restarts), restartLogEmpty: restarts.length === 0, switches, ...(boyfriends !== undefined ? { boyfriends } : {}), ...(devices !== undefined ? { devices } : {}), ...(napcatWebUi !== undefined ? { napcatWebUi } : {}) }, { cardsApproved: args.includes('--cards-ok'), ...(safety ? { safety } : {}) });
 
 console.log(`线上目录 ${live}`);
 for (const commit of commits.slice(0, 30)) console.log(`  ${commit}`);

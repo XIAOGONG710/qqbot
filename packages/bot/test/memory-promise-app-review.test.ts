@@ -8,7 +8,7 @@ import { parseAppConfig } from '../src/platform/config.ts';
 import { ChatHistory } from '../src/memory/history.ts';
 import { promiseKeeper } from '../src/life/promises.ts';
 
-const A = { qq: 10001, tier: 'boyfriend' as const, name: '合成甲' }, B = { qq: 10002, tier: 'boyfriend' as const, name: '合成乙' };
+const A = { qq: 10001, tier: 'boyfriend' as const, name: '合成甲' }, B = { qq: 10002, tier: 'bestie' as const, name: '合成乙' };
 const roots: string[] = [], apps: App[] = [], releases: (() => void)[] = [];
 const at = (clock: string) => new Date(`2026-11-05T${clock}:00`);
 const answer = JSON.stringify({ add: [{ what: '合成晚饭约定', date: '2026-11-05', meet: { time: '18:00', where: '合成门口' } }], resolved: [] });
@@ -25,7 +25,7 @@ function fixture(content = '好，18点合成门口见') {
     const root = mkdtempSync(join(tmpdir(), 'qqbot-promise-app-')); roots.push(root); const dataDir = join(root, 'bot'); mkdirSync(dataDir);
     const schedule = { sleep: '02:00', wake: { early: '07:00', lazy: '09:00', earlySlot: '1' }, periods: { '1': { start: '08:00', end: '09:30' } }, semester: { start: '2026-09-01', weeks: 20 },
         holidays: [], makeups: [], kinds: { hard: {}, machine: {}, water: {}, pe: {} }, courses: [], free: { morning: ['合成休息'], afternoon: ['合成休息'], evening: ['合成休息'], afternoonFrom: '12:00', eveningFrom: '18:00' }, where: '合成学校' };
-    for (const tier of ['classmate', 'classmate-open', 'boyfriend', 'boyfriend-open']) writeFileSync(join(root, `${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色', extensions: { qqbot: { schedule } } } }));
+    for (const tier of ['classmate', 'classmate-open', 'bestie', 'bestie-open', 'boyfriend', 'boyfriend-open']) writeFileSync(join(root, `${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色', extensions: { qqbot: { schedule } } } }));
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, '{tier}.json'), dataDir, contacts: [A, B],
         memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic', timeoutMs: 100, recallTimeoutMs: 50 }, recalls: true, schedule: true, moody: false,
         speechCheck: false, herDays: false, realWorld: false, proactive: 'off' }, root, { QQBOT_LLM_API_KEY: 'synthetic' });

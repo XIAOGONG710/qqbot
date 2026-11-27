@@ -1042,8 +1042,13 @@ describe('配置', () => {
         assert.throws(() => withContacts([{ qq: '123', name: 'a', tier: 'boyfriend' }]), /contacts\[0\]\.qq/);
         assert.throws(() => withContacts([]), /contacts/);
         assert.throws(() => withContacts([{ qq: 1, name: 'a', tier: 'boyfriend' }, { qq: 1, name: 'b', tier: 'classmate' }]), /重复/);
+        // 只允许一个男朋友档（决定单第 28 条）：「他」= 名单里第一个男朋友档，两个的话设备 / 电脑 / 记忆的所有权会悄悄换人，启动就拒绝
         const twins = [{ qq: 1, name: '宝宝', tier: 'boyfriend' }, { qq: 2, name: '宝宝', tier: 'boyfriend' }];
-        assert.deepEqual(withContacts(twins).contacts.map(c => c.qq), [1, 2]);
+        assert.throws(() => withContacts(twins), /2 个男朋友档.*只能有一个/);
+        assert.throws(() => withContacts([...twins, { qq: 3, name: 'c', tier: 'boyfriend' }]), /3 个男朋友档/);
+        const namesakes = [{ qq: 1, name: '宝宝', tier: 'boyfriend' }, { qq: 2, name: '宝宝', tier: 'classmate' }];
+        assert.deepEqual(withContacts(namesakes).contacts.map(c => c.qq), [1, 2]);
+        assert.deepEqual(withContacts([{ qq: 2, name: 'b', tier: 'classmate' }]).contacts.map(c => c.qq), [2], '没有男朋友档照旧能起');
     });
 
     test('联系人的人设描述可选，必须是字符串，空串当作没有', () => {

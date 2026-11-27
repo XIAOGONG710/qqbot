@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import { classifyChanges, deviceSecretsCheck, goLiveReport, napcatWebUiCheck, switchMergeCheck } from '../src/ops/golive-check.ts';
 import { LIVE_2026_11_20, LIVE_LATER_ON } from './fixtures/live-switches.ts';
 import { exposedListeners, parseListeners } from '../src/ops/listeners.ts';
+import { boyfriendCount } from '../src/platform/config.ts';
 
 describe('本机监听检查（ADR 0070 第 12 项）', () => {
     const rows = [
@@ -89,6 +90,22 @@ describe('上线前的开关合并预检（golive-check switchMergeCheck）', ()
     test('已经全是新键：不迁也不挡；读不到 koishi.yml：提示手动核', () => {
         assert.deepEqual(switchMergeCheck({ qzone: 'on', bilibili: 'on' }), { migrating: [], unrepresentable: [] });
         assert.match(goLiveReport({ ...base, switches: 'unreadable' }).notes.join(), /开关合并预检没做/);
+    });
+});
+
+describe('上线前的男朋友档个数预检（决定单第 28 条：新代码只允许一个）', () => {
+    const base = { liveHead: 'a1', targetHead: 'b2', dirty: false, commits: ['b2 x'], exposed: [], changes: classifyChanges(['packages/bot/src/a.ts']) };
+
+    test('koishi.yml 里两个男朋友档：挡路，只说个数不带 QQ 号；一个或读不到不挡', () => {
+        const contacts = [{ qq: 10001, name: '合成甲', tier: 'boyfriend' }, { qq: 10002, name: '合成乙', tier: 'boyfriend' }, { qq: 10003, name: '合成丙', tier: 'classmate' }, null, 'x'];
+        assert.equal(boyfriendCount(contacts), 2);
+        const report = goLiveReport({ ...base, boyfriends: boyfriendCount(contacts) });
+        assert.equal(report.blockers.length, 1);
+        assert.match(report.blockers[0]!, /2 个男朋友档.*只允许一个/);
+        assert.doesNotMatch(report.blockers.join(), /1000\d|合成/);
+        assert.equal(goLiveReport({ ...base, boyfriends: 1 }).blockers.length, 0);
+        assert.equal(goLiveReport({ ...base, boyfriends: 0 }).blockers.length, 0);
+        assert.equal(goLiveReport(base).blockers.length, 0, '读不到 koishi.yml 不查');
     });
 });
 

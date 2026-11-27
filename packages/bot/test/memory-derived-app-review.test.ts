@@ -11,7 +11,7 @@ import { DerivedState } from '../src/memory/derived-state.ts';
 import { fileOps } from '../src/memory/json-file.ts';
 import type { HindsightApi } from '../src/memory/hindsight.ts';
 
-const A = { qq: 10001, tier: 'boyfriend', name: '合成甲' }, B = { qq: 10002, tier: 'boyfriend', name: '合成乙' };
+const A = { qq: 10001, tier: 'bestie', name: '合成甲' }, B = { qq: 10002, tier: 'bestie', name: '合成乙' };
 const OWNER = { qq: 10003, tier: 'boyfriend', name: '合成设备所有者' };
 const POISON = 'SYNTHETIC_STALE_DERIVED';
 const roots: string[] = [], apps: App[] = [], releases: (() => void)[] = [];
@@ -44,7 +44,7 @@ const tick = () => new Promise<void>(done => setImmediate(done));
 async function until(check: () => boolean) { const end = Date.now() + 4000; while (!check()) { if (Date.now() > end) assert.fail('synthetic timeout'); await new Promise(done => setTimeout(done, 5)); } }
 async function fixture(content = `合成乙 ${POISON}`) {
     const root = mkdtempSync(join(tmpdir(), 'qqbot-derived-app-')); roots.push(root); const dataDir = join(root, 'bot'); mkdirSync(dataDir); const memoryDir = join(dataDir, 'memory');
-    for (const tier of ['classmate', 'classmate-open', 'boyfriend', 'boyfriend-open']) writeFileSync(join(root, `${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
+    for (const tier of ['classmate', 'classmate-open', 'bestie', 'bestie-open', 'boyfriend', 'boyfriend-open']) writeFileSync(join(root, `${tier}.json`), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色' } }));
     const config = parseAppConfig({ llm: { baseUrl: 'http://synthetic.invalid', model: 'synthetic' }, characterCard: join(root, '{tier}.json'), dataDir, contacts: [OWNER, A, B],
         memory: { baseUrl: 'http://synthetic.invalid', bankPrefix: 'synthetic', timeoutMs: 1000, recallTimeoutMs: 100 }, recalls: true,
         schedule: false, moody: false, speechCheck: false, herDays: false, realWorld: false, proactive: 'off',
