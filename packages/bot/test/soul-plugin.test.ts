@@ -93,6 +93,19 @@ test('没有经过确认的私聊不提供私有上下文或工具写入', async
     assert.equal(existsSync(h.f('LEDGER.md')), false);
 });
 
+test('DSH 核心俏皮人设只加入已确认的私聊', () => {
+    const original = process.env.QQBOT_PLAYFUL_PERSONA;
+    try {
+        process.env.QQBOT_PLAYFUL_PERSONA = '1';
+        const trusted = boot();
+        assert.match(trusted.contexts.map(entry => entry.text()).join('\n'), /你逗人的分寸.*先递一句.*回撩会害臊/);
+        const other = boot({ ownerPrivateSessions: [] });
+        assert.ok(other.contexts.every(entry => !entry.text()));
+    } finally {
+        if (original === undefined) delete process.env.QQBOT_PLAYFUL_PERSONA; else process.env.QQBOT_PLAYFUL_PERSONA = original;
+    }
+});
+
 test('DSH 主人私聊重开后读到 QQ 更新的理解，未确认的窗口不读取', async () => {
     const file = boot().f('UNDERSTANDING.json');
     const original = '行，你去忙吧。';

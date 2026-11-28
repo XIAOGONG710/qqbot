@@ -19,6 +19,7 @@ import { parseExampleIntoIndividual, parseMesExamples } from '.././st/examples.t
 import { substituteMacros } from '.././st/macros.ts';
 import { timeMacros } from '.././st/time-macros.ts';
 import { checkWorldInfo, type WorldInfoEntry, type WorldInfoSettings } from '.././st/world-info.ts';
+import { PLAYFUL_PERSONA } from '../../../../dsh-plugins/dsh-linmengyao-memory/playful-persona.mjs';
 
 /** Default.json 里用到的预设文本 */
 export const ST_DEFAULT_PRESET = {
@@ -158,6 +159,7 @@ export function buildPrompt(input: PromptInput): PromptResult {
         system(personaDescription),
         system(sub(character.description)),
         system(personality),
+        system(process.env.QQBOT_PLAYFUL_PERSONA === '1' ? PLAYFUL_PERSONA : ''),
         system(scenario),
         system(sub(ST_DEFAULT_PRESET.nsfw)),
         system(wi.after),

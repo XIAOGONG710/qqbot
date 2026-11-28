@@ -28,6 +28,26 @@ function build(history: ChatMessage[], overrides: Partial<PromptInput> = {}) {
 const minimalCard = (data: Record<string, unknown>): Character =>
     parseCharacterCard({ spec: 'chara_card_v2', data: { name: '小红', ...data } });
 
+test('合成私聊的系统人设保留先逗、被回撩时害臊和及时收住', () => {
+    const original = process.env.QQBOT_PLAYFUL_PERSONA;
+    const history: ChatMessage[] = [
+        { role: 'user', content: '该睡了' }, { role: 'assistant', content: '你要单独跟我说晚安。' },
+        { role: 'user', content: '那你也哄我一下' },
+    ];
+    try {
+        delete process.env.QQBOT_PLAYFUL_PERSONA;
+        assert.ok(!build(history).messages.some(message => message.content.includes('你逗人的分寸')));
+        process.env.QQBOT_PLAYFUL_PERSONA = '1';
+        const { messages } = build(history);
+        const persona = messages.find(message => message.content.includes('你逗人的分寸'));
+        assert.equal(persona?.role, 'system');
+        assert.match(persona!.content, /先递一句.*认真回撩会害臊.*转话题.*就停.*别硬撩/);
+        assert.ok(messages.some(message => message.role === 'user' && message.content === '那你也哄我一下'));
+    } finally {
+        if (original === undefined) delete process.env.QQBOT_PLAYFUL_PERSONA; else process.env.QQBOT_PLAYFUL_PERSONA = original;
+    }
+});
+
 describe('用合成角色卡拼提示词', () => {
     test('消息顺序同 ST 默认预设，宏已替换', () => {
         const { messages } = build([{ role: 'user', content: '宝宝在干嘛' }]);

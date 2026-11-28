@@ -11,6 +11,7 @@ import { appendTail, closeTurn, sessionBridgeText } from './session-tail.js'
 import { FOCUS_CHECKPOINT_FILE, focusCheckpoint } from './focus-checkpoints.mjs'
 import { UNDERSTANDING_EXPORT, sharedUnderstandingLine } from './shared-understanding.mjs'
 import { homeActivities, homePlaces, publishHomeStatus } from './home-status.js'
+import { PLAYFUL_PERSONA } from './playful-persona.mjs'
 
 export const name = 'dsh-linmengyao-memory'
 
@@ -1512,8 +1513,9 @@ export function apply(ctx, config = {}) {
             if (!privateTurn()) return ''
             const persona = readPersona(cfg)
             if (persona) warnIfPersonaStale(cfg)
-            return persona ? `[她的设定]
-${persona}` : ''
+            const core = [persona, process.env.QQBOT_PLAYFUL_PERSONA === '1' ? PLAYFUL_PERSONA : ''].filter(Boolean).join('\n\n')
+            return core ? `[她的设定]
+${core}` : ''
           },
         }))
         disposers.push(sp.context({

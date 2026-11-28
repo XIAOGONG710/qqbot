@@ -3761,6 +3761,49 @@ describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不
         }
     });
 
+    test('核心人设让她对熟面孔先逗一句，陌生人和没接话时保持分寸', async () => {
+        const original = process.env.QQBOT_PLAYFUL_PERSONA;
+        process.env.QQBOT_PLAYFUL_PERSONA = '1';
+        try {
+            const clock = new VirtualClock(virtualStart);
+            const cfg = config({ contacts: bf, groupChat: 'on', groups: [{ id: 555, name: '合成群' }] });
+            const room = groupLog(cfg.dataDir);
+            for (const [offset, id] of [[25, 10], [1, 12]] as const) {
+                const time = new Date(+virtualStart - offset * 3_600_000).toISOString();
+                room.append(555, { from: 10002, name: '熟面孔', time, content: '聊过摄影', messageId: id });
+                room.append(555, { from: SELF, name: '你', time, content: '好呀', messageId: id + 1, mine: true, replyTo: id });
+            }
+            const prompts: string[] = [], sent: string[] = [];
+            const { app } = setup(cfg, {}, { clock, extra: { sendGroupText: async (_group, text) => { sent.push(text); return 900 + sent.length; } },
+                generate: messages => {
+                    const prompt = messages.map(message => message.content).join('\n');
+                    prompts.push(prompt);
+                    if (prompt.includes('现在收住')) return '别装了，再叫一声\n好，聊照片。';
+                    if (prompt.includes('初见或普通群友')) return '叫声姐姐听听\n好，晚安。';
+                    return '都叫去睡啊，怎么不给我留一句？\n叫声姐姐听听';
+                } });
+            await app.connected(SELF);
+            const submit = (qq: number, id: number, content: string, replyTo?: number) => app.receiveGroup({
+                ...event(qq, id, content, qq === 10002 ? '熟面孔' : '新群友'), time: Math.floor(clock.now() / 1000),
+                message_type: 'group', sub_type: 'normal', group_id: 555,
+                message: [replyTo === undefined ? { type: 'at', data: { qq: String(SELF) } } : { type: 'reply', data: { id: String(replyTo) } },
+                    { type: 'text', data: { text: content } }],
+            } as GroupMessageEvent);
+            submit(10003, 101, '都早点睡');
+            await until(() => sent.length === 1);
+            submit(10002, 102, '都早点睡');
+            await until(() => sent.length === 2);
+            submit(10002, 103, '嗯。说回照片吧。', 902);
+            await until(() => sent.length === 3);
+            assert.deepEqual(sent, ['好，晚安。', '都叫去睡啊，怎么不给我留一句？', '好，聊照片。']);
+            assert.match(prompts[0]!, /初见或普通群友/);
+            assert.match(prompts[1]!, /你逗人的分寸[\s\S]*围绕当下先轻轻逗一句/);
+            assert.match(prompts[2]!, /没接住或请你停下/);
+        } finally {
+            if (original === undefined) delete process.env.QQBOT_PLAYFUL_PERSONA; else process.env.QQBOT_PLAYFUL_PERSONA = original;
+        }
+    });
+
     test('J 合成私聊用已验证的笔记排序，流水查日期，单次反馈只进当轮语气', async () => {
         const previous = process.env.QQBOT_NOTEBOOK_LEARNING;
         process.env.QQBOT_NOTEBOOK_LEARNING = '1';

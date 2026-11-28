@@ -355,6 +355,8 @@ export const FEATURES: readonly FeatureDef[] = [
 export interface EnvSwitchDef { env: string; label: string; group: FeatureGroup; adr?: string; requires?: readonly string[]; description: string }
 
 export const ENV_SWITCHES: readonly EnvSwitchDef[] = [
+    { env: 'QQBOT_PLAYFUL_PERSONA', label: '主动接梗和挑逗的人设', group: '说话',
+        description: '同一段核心人设用于 QQ 私聊、群聊和 DSH 私聊；群聊同时启用公开熟悉度和玩笑边界。' },
     { env: 'QQBOT_FEELING_RECOVERY', label: '道歉后难过回落快一点', group: '说话', adr: '0328', requires: ['herFeelings', '设备所有者的私聊'],
         description: '他明确道歉或解释后，最近一条被晾着的感受按证据加快回落；单纯哄一句不算。私聊来由不进群提示词。' },
     { env: 'QQBOT_SHARED_UNDERSTANDING', label: 'QQ 和桌面共享她没把握的理解', group: '记忆和安全', adr: '0347', requires: ['selfDirectedMemory', '他亲手打的私聊'],
