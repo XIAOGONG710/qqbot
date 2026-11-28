@@ -138,6 +138,83 @@ voice:
 
 结论是接线和回退路径通过验证，真实判断仍有两处主要缺口：玩笑形式的求哄会被两个入口共同误认，连续消息中的引文在 QQ 回退时会被当成本人的请求。开关保持默认关闭。按本轮仅复验的范围，没有改语义判断、回退或记忆阈值代码。
 
+## 第三批 · 记忆、遗忘和技能（I、J）：记忆阈值
+
+### 完成记录（2026-11-28，Claude）
+
+用户授权：「你只做硬编码改造」「继续往下做就行，不用问她，把所有的硬编码拆解开」，所以这一批没跑 `ask-her`。这一批分两部分。第一部分把阈值统一放进配置：默认值就是原来写死的数，一个都没改。第二部分是一项模型判断，挑「想起来的这几条里哪几条和他此刻说的有关」，放在新开关后面，默认关。两个开关都关着时，行为基线 39/39 逐字一致，没有更新快照。
+
+**一张表**：`dsh-plugins/dsh-linmengyao-memory/memory-thresholds.mjs`（加上 `.d.mts`），QQ 和 DSH 都从这里拿数。QQ 经 `packages/bot/src/memory/thresholds.ts` 读，DSH 由插件 `index.js` 直接 import。每一项写了默认值、允许范围、谁读、原来写在哪、是什么意思。readers 里同时有 qq 和 dsh 的项，就是两边共用的同一个概念，两边只有这一个数。
+
+**要调**：环境变量 `QQBOT_MEMORY_THRESHOLDS` 指向一个 JSON 文件，只写要改的键，例如 `{"clearDays": 10}`。这个变量已登记在 `features.ts` 的 `ENV_SETTINGS`，它是一个路径，不是开关。QQ 和 DSH 读同一个变量、同一个文件，都经 `loadMemoryThresholds` 解析。解析是严格的：文件读不了、不是 JSON 对象、有不认识的键、值不是整数、超出范围、clearDays 大于 vagueDays，只要有一样不对，**整个文件都不用**，两边一起退回默认值，不会出现一边用新数、一边用旧数。进程启动时读一次，所以改了要重启 Koishi，并重开 DSH 插件。DSH 只在调过或文件没用上时记一行日志，内容是键名和数，不写路径和文件内容；全部默认时不记，和原来一样。
+
+**原来写死在哪 → 表里的键**（默认值）：
+
+| 键 | 默认 | QQ 原来在 | DSH 原来在 |
+| --- | --- | --- | --- |
+| `clearDays` / `vagueDays` | 7 / 30 天 | `fading.ts` CLEAR_DAYS / VAGUE_DAYS | `index.js` MEMORY_CLEAR_DAYS / MEMORY_VAGUE_DAYS |
+| `crossWindowMs` | 6 小时 | `cross-recent.ts` CROSS_WINDOW_MS | `index.js` CROSS_WINDOW_MS |
+| `crossLineChars` | 200 字 | `cross-recent.ts` CROSS_LINE_CHARS | `index.js` CROSS_LINE_CHARS |
+| `crossTailBytes` | 64 KiB | `cross-recent.ts` TAIL_BYTES | `index.js` CROSS_TAIL_BYTES |
+| `desktopKeepMs` | 14 天 | `desktop-log.ts` DESKTOP_LOG_KEEP_MS | `index.js` DESKTOP_KEEP_MS |
+| `desktopTextChars` | 600 字 | `desktop-log.ts` DESKTOP_LOG_TEXT_CHARS | `index.js` recordDesktopTurn 的 600 |
+| `inboxMaxAgeMs` | 30 天 | `dsh-inbox.ts` INBOX_MAX_AGE_MS | `index.js` INBOX_MAX_AGE_MS |
+| `recallTimeoutMs` | 3 秒 | `config.ts` DEFAULTS.memory.recallTimeoutMs（`modules/memory.ts` 的兜底也读它） | `index.js` recallAll 的 3000 |
+| `feelingCoarseAfterDays` | 90 天 | `emotion/feeling-ledger.ts` COARSE_AFTER_DAYS | `index.js` FEELING_COARSE_AFTER_DAYS |
+| `rawMessages` | 80 条 | `fading.ts` RAW_MESSAGES | — |
+| `maxRecalled` / `sharedRecalled` / `personRecalled` / `todayOthers` / `sameThingRecalled` | 12 / 6 / 6 / 3 / 2 条 | `long-term.ts` 同名常量 | — |
+| `recallTokens` / `dayRecallTokens` | 1000 / 2000 | `long-term.ts` RECALL_TOKENS / DAY_RECALL_TOKENS | — |
+| `maxQueryChars` | 300 字（只能往小调） | `long-term.ts` MAX_QUERY_CHARS | — |
+| `recalledLineChars` | 200 字 | `long-term.ts` formatRecalled 的 200（新常量 RECALLED_LINE_CHARS） | — |
+| `recallBreakerTimeouts` / `recallBreakerMs` | 2 次 / 60 秒 | `long-term.ts` RECALL_BREAKER_*（熔断 4d6a0ff6 照旧） | — |
+| `memoryTimeoutMs` | 30 秒 | `config.ts` DEFAULTS.memory.timeoutMs | — |
+| `desktopMaxTurns` | 3 轮 | `cross-recent.ts` DESKTOP_MAX_TURNS | — |
+| `notebookMaxAttempts` / `notebookMaxAgeMs` | 80 次 / 30 天 | `life/notebook-learning.ts` MAX_ATTEMPTS / MAX_AGE | — |
+| `desktopPick` / `desktopMaxChars` | 6 条 / 1400 字 | — | `index.js` DEFAULTS.pick / maxChars |
+| `desktopRecallTokens` | 1200 | — | `index.js` recallBank 的 max_tokens |
+| `bankListTimeoutMs` | 2.5 秒 | — | `index.js` allBanks 的 2500 |
+| `qqRecentLines` | 10 句 | — | `index.js` qqRecentBlock 的 10 |
+
+原来的常量名都还在，只是改为从表里取值，别处的引用一处没动。各端自己的配置仍然优先：QQ 的 `config.json` 里写了 `memory.timeoutMs` / `memory.recallTimeoutMs`，就以 config.json 为准（控制台表单的默认值跟着表走）；DSH profile 里写了 `pick` / `maxChars`，也以 profile 为准。所以 `recallTimeoutMs` 只有在 config.json 没写的时候，才保证两边是同一个数。
+
+**留在代码里、不进这张表的**：这些是保护，不是调参。包括 Hindsight 回应的字节上限和条数上限（`hindsight.ts`）、撤回清单留多少个（`history.ts` 的 200）、收件箱去重留多少个 id、两台钟差的 60 秒容忍、`MAX_QUERY_CHARS` 的 300 上限本身，以及 `IMPORTANT_TOPICS` 正则和 `MEMORY_IGNORED_ENTITIES` 名单（这两项是规则，不是数）。另外有几项属于运维或别的模块，留给后面的批次：记忆对账的间隔（`RECONCILE_*`）、关系概况和实体名多久重读、`OPEN_EPISODE_STEP`、补回（backfill）、DSH 的 `invalidateSimilar` 那两处 3 秒和 `limit=500`、bank 列表缓存 60 秒、`SELF_SAID_CHARS`、在场租约、`memoryDistance` 的远近分档。
+
+**记忆相关性判断**（新开关 `QQBOT_MEMORY_RELEVANCE=1`，默认关，已登记在 `ENV_SWITCHES`，QQ 和 DSH 读同一个开关）：
+
+1. 模型的理解：共用约定放在 `dsh-plugins/dsh-linmengyao-memory/memory-relevance.mjs`（加上 `.d.mts`），管提示词、候选整理、严格解析、取舍和日志那一行。对话整理沿用第一批的 `judgmentConversation`，那一份约定没改。候选整理是去掉开头的「- 」和 `<<…>>` 标记，每条截到 160 字，最多给模型看 12 条，超出的照规则留着。模型只回 `{"keep":[编号],"uncertainty":0–1}`。严格解析的要求：只能有这两个字段；编号是不重复的整数，并且都在候选范围内；不确定性超过 0.5 不用。
+2. 程序允许做的：只能从规则已经挑好、准许放给她的那几条里**去掉**几条，不加、不换、不改字。账号隔离（ownerBank / scope）、撤回、变淡、同一件事别太多，这些在召回时就已经算过，所以模型怎么挑，都挑不进她本来读不到的东西。判断不当权限，不写进事实或记忆，也不作为对外发送的凭据。模型说一条都没关系时，这一段就不放。
+3. 最终怎么说由她决定。
+
+QQ 侧：`modules/memory-relevance.ts` 排在记忆模块后面。在 `decideAt.recall` 召回完之后发出调用，和后面几步并行，到 `decideAt.deliberate` 取回结果，只改他的私人记忆那一段（`facts.recall.recalled`）。公共记忆、被提起的人的记忆、工作房、桌面这几段都不动。只对男朋友档的私聊发起；危机、主动找他、只想一想、快照这几种轮次不问。调用沿用执行器的小调用（`semanticAsk`），上限是 120 token、2.5 秒；`turn-modules.ts` 加了一行接线，app.ts 没改。
+DSH 侧：只在已确认的主人私聊里，他刚开口的那一步（最后一条是他说的）才问；工具步骤照规则。调用用 `QQBOT_LLM_API_KEY` 请求 `judgmentBaseUrl` / `judgmentModel`，和语义判断用同一个接口，没有密钥就不判断。DSH 这一步排在召回后面，没有和别的步骤并行，所以开着时每轮最多慢 2.5 秒。
+
+**回退**：超时、出错、回答读不懂、编号越界或重复、不确定性超过 0.5、他没说话、没有候选，这几种情况一律照规则全放，和关着时一样。
+
+**日志**：只记候选几条、留了几条、不确定性和退回原因。不记记忆内容，不记原话，也不带 QQ 号。
+
+**验收证据**（只用合成角色和合成记忆；Hindsight 和模型都是假的，不连真服务）：
+
+- `test/memory-thresholds.test.ts`：把改造前写死的数逐个抄下来，核对默认值一模一样，没有多也没有少；QQ 各处的常量、`DEFAULTS.memory`、DSH 插件导出的值在没设变量时都是默认值；源码检查表里每一项都真的接上了，QQ 读的在 `packages/bot/src` 里用到，DSH 读的在 `index.js` 里用到，共用的两边都用到；严格解析覆盖 9 种不认的情况，日志不写路径和文件内容。**两边一致**：新开一个进程，设好 `QQBOT_MEMORY_THRESHOLDS` 指向临时文件，QQ 和 DSH 读到的整张表相同；对同几条合成旧事，QQ 的 `clarity` 和 DSH 的 `desktopMemoryClarity` 给出相同结果，调成 10 / 20 天以后两边一起变；DSH 写桌面回合截的字数等于 QQ 认的上限。文件里有不认识的键时，两边一起退回默认。
+- `test/memory-relevance.test.ts`：覆盖严格解析的 19 种不认的情况；回退原因七种；候选超过上限时只问前 12 条；日志不带内容和账号；QQ 模块只改私人记忆那一段，别的几段一个字不动；资格条件；开关关着时 `buildTurnModules` 不挂这个模块，开着时排在记忆模块之后。
+- `test/soul-plugin.test.ts`「记忆相关性判断：QQ 和 DSH……」：同一段合成对话、同几条记忆，两边给模型的消息逐字相同，留下的相同，日志相同。还核对了：开关关着不问、照规则全放；工具步骤不再问；没确认的窗口不问；答非所问和编号越界时照规则全放；模型一直不回时到点照规则全放，这一轮照常；别人 bank 里的不查，也挑不进来。
+- `test/memory-relevance-app.test.ts`：经 app.ts 和执行器跑一轮。开着时只问一次，提示词里只剩挑中的两条，日志一行；关着时不问、全放；模型想挑进第 4 条时照规则全放；另一个账号（闺蜜档）只读她自己的 bank，读不到男朋友的，也不问相关性；**记忆超时时照常回复**，不带记忆，也不问相关性。
+- 要求保留的几条，原有用例照旧通过：熔断（`memory-recall-breaker-review.test.ts`）；撤回传播、派生摘要失效、**重启后旧摘要不复活**（`memory-derived-app-review.test.ts`「重启迁移真实recalled元数据……」）；**换账号读不到**（`soul-plugin.test.ts`「同一个她」那一组、`app.test.ts`「隔天接续……换账号问同一句读不到」）；**经验只改变对应场景**（`notebook-learning.test.ts`「……偏好按场景……」，上限现在从表里读）；召回标记拆除（b8c6f7bd 的用例）。
+- `npm test -w @qqbot/bot`、`npm run test:scripts`（232）、`npm test -w koishi-plugin-qqbot`（115）、`npm run typecheck`、`npm run baseline:fast -w @qqbot/bot`（39/39）都通过。`docs/modules/memory.md` 已重新生成。
+
+**未结项**：
+
+- **另一台未提交的调参还没对照**：盘点时另一台的工作区有一份尚未提交的记忆窗口调整，这台看不到。请 DSH 那台拿这张表的键逐个对照：要保留的，写成一份 `QQBOT_MEMORY_THRESHOLDS` 覆盖文件，不要再改源码里的数；或者在信箱里把键和值告诉 Claude。对照之前，表里的值仍然是已提交版本的值。
+- DSH 的相关性调用沿用 `createJudgmentAsk`，输出上限是 160 token；QQ 是 120。回答只有一行 JSON，影响不大，但两边不完全一样。
+- 这一批只做了「相关性」这一项判断。下面几项还靠固定规则，留作后续：「一提就想起」靠实体名字面包含（`fading.ts` 的 `recognizes`，DSH 同一条）；公共记忆和被提起的人的记忆没有相关性判断；「引用还是只当背景」没有分开；DSH 的 `IMPORTANT_TOPICS` 正则；读书笔记经验的保留规则（`notebook-learning.ts` 的 `learned()`：先按日期没找到、后按主题找到才记成经验）和请求识别的那几条正则。
+- 相关性判断的准确率只用假模型核对过接线和回退，还没用真模型在合成对话上跑过。
+
+**要用户决定才能开**：
+
+- `QQBOT_MEMORY_RELEVANCE` 会改变她想起什么，按规矩应先 `ask-her`，再由用户同意。本批按用户授权没问，但开关要不要开由用户定。
+- 开着时，每轮私聊多一次模型调用：QQ 按 chat 计入每日调用额度；DSH 直接请求接口，每轮最多多等 2.5 秒。
+- 上线前要不要先用真模型跑一次准确率（要调真模型，需用户同意）。
+- 要不要写 `QQBOT_MEMORY_THRESHOLDS` 覆盖文件、改哪几个数（例如接受另一台的窗口调整）。改了要重启 Koishi，DSH 要重开插件，属于「改线上开关 / 重启」，需要用户点头。线上和 DSH 那台这一批都没重启、没重载。
+
 ## 全部模块清单
 
 | 模块 | 要改的内容 | 保留的边界与验收 |
@@ -149,7 +226,7 @@ voice:
 | 世界与事实 | 地域日历、日常活动素材和个人偏好归到资料；让她选关注与讲述的真实事件。 | 保留事实源、合法行动、结算和可重放队列。验证不凭一句台词补造行动结果，变更偏好不会改写历史。入口见 `world/festivals.ts`、`world/events.ts`。 |
 | 主动、留话、承诺与恢复（G） | 主动频率、冷却、业务期限可配置；话题意愿、承不承诺和如何表述交给她。区分程序状态通知和角色口气。 | 保留明确证据、改口单次结算、出站去重、未决投递与回执、取消后下一件能继续。验证丢回执、跨端、重启及到期。入口见 `proactive.ts`、`outbox.ts`、`promises.ts`、`work-handoff.ts`。 |
 | 群聊与关系（H） | 群分寸、公开禁区和普通会话的频率设置归一处；交给她判断该不该接、玩笑接没接住。 | 私聊亲密和矛盾不得泄到群里；保留引用归属、已证实的公开关系和对外发送硬上限。验证熟人与陌生人、转场和跨会话。入口见 `group-boundaries.ts`、`group-self.ts`、`group-chat.ts`。 |
-| 记忆、遗忘和技能（I、J） | 统一 QQ 和 DSH 的衰减、保留期、文本预算与超时配置，先对照已提交版本和另一台未提交调参。由她判断相关性、是否引用、哪些有证据的经验值得保留。 | 保留账号隔离、撤回传播、派生摘要失效、来源与旧记录兼容。验证超时仍能聊，换账号读不到，重启后旧摘要不复活，经验只改变对应场景。入口见 `fading.ts`、`cross-recent.ts`、`notebook-learning.ts`。 |
+| 记忆、遗忘和技能（I、J）（第三批做了阈值表和相关性判断，余项见上） | 统一 QQ 和 DSH 的衰减、保留期、文本预算与超时配置，先对照已提交版本和另一台未提交调参。由她判断相关性、是否引用、哪些有证据的经验值得保留。 | 保留账号隔离、撤回传播、派生摘要失效、来源与旧记录兼容。验证超时仍能聊，换账号读不到，重启后旧摘要不复活，经验只改变对应场景。入口见 `fading.ts`、`cross-recent.ts`、`notebook-learning.ts`。 |
 | 视觉、语音、唱歌 | 预算、声音、片段长度可配。由她判断是否需要看、听或调用工具，以及结果怎么说。 | 文件大小硬上限、能力限制、照片审核和出站留在程序。验证超出上限、模型超时或未获审核无越权输出。入口见 `vision/media.ts`、`ai-photo-quality.ts`、`voice-out.ts`、`voice/sing.ts`。 |
 | B 站与其他公开平台 | 兴趣主题、可用语言、轮询和普通频率可配；由她选择候选素材与草稿内容。 | 账号授权、平台协议、公开发布审批和审计由程序控制。验证合成草稿不触发实际发布。入口见 `bilibili-feed.ts`、`bilibili-comment.ts`、`bilibili-replies.ts`、`external-drafts.ts`。 |
 | Koishi、设备与常驻 | 部署路径、profile、端口、可调资源预算归配置；由她拆分获准任务并选择可用工具。遵循现有指令收敛。 | 主人校验、转发文本无指令权限、设备审批、任务 ID、回执检查留在程序。验证断线、丢回执、重复派发和未经授权零调用。入口见 `instruction-source.ts`、`device-actions.ts`、`her-resident.mjs`。 |
