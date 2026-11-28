@@ -367,6 +367,8 @@ export const ENV_SWITCHES: readonly EnvSwitchDef[] = [
         description: '按同群近 30 天跨日的公开往来算熟悉度；陌生人起哄要她追着逗会被拦，熟人明确邀请也只接一句；私聊关系标签不进群。' },
     { env: 'QQBOT_FOCUS_WORK', label: '工作模式的共享检查点', group: '工具', adr: '0347',
         description: '他私聊的工作模式把任务 ID 和进度记进灵魂目录的检查点，重启或中断后同一条消息不重复领、能接着干。' },
+    { env: 'QQBOT_SEMANTIC_JUDGMENT', label: '私聊里先读懂他是求关心、接梗还是想收住', group: '说话', requires: ['男朋友档的私聊（QQ）/ 已确认的主人私聊（DSH）', 'QQBOT_LLM_API_KEY（DSH 那边）', '出口检查的重写选择还要 QQBOT_PLAYFUL_PERSONA'],
+        description: '每轮多问一次小模型（不开思考、2.5 秒超时）：他最后那几句是认真求关心、轻松接梗、没接就收还是都不是，带依据和不确定性。QQ 和 DSH 用同一份约定，能用的判断只放一句「你对他这几句的理解」进她的提示词、并替代关键词认求哄 / 转话题；超时、读不懂、拿不准就照旧按关键词。不当权限、不落事实、不当发送凭据，日志不记原话。' },
     { env: 'QQBOT_DECISION_AUDIT', label: '判断审计和不安全回复拦截', group: '记忆和安全',
         description: '记下她每轮的判断依据（不带正文和账号），质量检查不过的回复拦下不发；导出用 scripts/export-decision-audit.mjs。' },
 ];

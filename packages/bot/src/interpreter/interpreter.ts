@@ -42,6 +42,7 @@ import type { PromiseKeeper } from '../life/promises.ts';
 import type { ReviewOptions } from '../language/exit-check.ts';
 import type { PickRules } from '../language/candidates.ts';
 import type { TurnWeight } from '../language/turn-weight.ts';
+import type { Judgment } from '../../../../dsh-plugins/dsh-linmengyao-memory/semantic-judgment.mjs';
 import type { StoredMessage } from '../memory/history.ts';
 import type { TypoRecall } from '../language/expression.ts';
 import type { Summarizer, TurnWindow } from '../language/context-window.ts';
@@ -182,6 +183,9 @@ export interface TurnFacts {
     photoUnavailable?: boolean;
     /** 这一轮挑候选的规则（ADR 0041，modules/candidates.ts 在 contribute 时写）：他难过、说亲密话、收尾的轮次才有；联系人流水线生成时经 candidatePlan 问 */
     pick?: PickRules;
+    /** 私聊语义判断（QQBOT_SEMANTIC_JUDGMENT，modules/semantic-judgment.ts 的 decideAt.deliberate 写）：模型对他最后那几句的理解，只有能用的（不是拿不准、把握够）才写。
+     *  只放进 judgment 槽、只影响出口检查已有的重写选择；不当权限、不落事实、不当发送凭据。没开、退回关键词时没有 */
+    semanticJudgment?: Judgment;
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */

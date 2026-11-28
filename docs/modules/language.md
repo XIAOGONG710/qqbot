@@ -115,6 +115,7 @@
 - `modules/review-pull.ts`
 - `modules/review-exit.ts`
 - `modules/review-facts.ts`
+- `modules/semantic-judgment.ts`
 - `st/`
 
 ## 开关

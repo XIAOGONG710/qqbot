@@ -781,6 +781,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         worldState: () => sharedWorld ?? undefined,
         appointmentsAt: at => promises?.appointmentsAt?.(at),
         promises: () => promises ?? undefined,
+        semanticAsk: (messages, limits) => exec.llm({ purpose: 'chat', config: { ...quietLlm, ...limits }, messages }, log),
         mediaDiscovery: () => ({
             ...(photos ? { photos: discoverPhotos } : {}),
             ...(collectingStickers ? { stickers: discoverStickers } : {}),
@@ -1135,10 +1136,9 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         log(`记忆账本：${check.ok ? `验过了（${check.count} 条）` : `验不过：${check.reason}`}`);
         if (!check.ok) ownerNotices.push(`（记忆账本验不过：${check.reason}，从第 ${check.brokenAt} 条起。）`);
     }
-    // 小调用（摘录、分类、回头看）：不开思考，温度 0；测试里换成假的
+    // 小调用（摘录、分类、回头看、私聊语义判断）：不开思考，温度 0；测试里换成假的
     const { reasoning_effort: _effort, ...llmExtra } = config.llm.extraBody as Record<string, unknown>;
     const quietLlm = { ...forExtraction(config.llm), temperature: 0, extraBody: { ...llmExtra, thinking: { type: 'disabled' } } };
-    const askSmall = (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => (exec.llm({ purpose: 'background', config: quietLlm, messages }, log));
     // 语义路由（ADR 0202）：deliberation 是 routed 才建；小调用不开思考、温度 0、几十个 token，超时由 createTurnWeigher 管
     const turnWeigher = config.deliberation === 'routed'
         ? createTurnWeigher({
@@ -1148,7 +1148,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         : undefined;
     const web = config.webLookup !== 'off'
         ? new WebLookup({
-            mode: config.webLookup, dataDir: config.dataDir, ask: askSmall, now: clockNow,
+            mode: config.webLookup, dataDir: config.dataDir, ask: messages => exec.llm({ purpose: 'background', config: quietLlm, messages }, log), now: clockNow,
             log: message => { if (!stopped && !passiveLifetime.signal.aborted) log(message); },
             ...(readWebSecrets(join(config.dataDir, 'secrets', 'web.json')) ? { secrets: readWebSecrets(join(config.dataDir, 'secrets', 'web.json'))! } : {}),
             onDone: e => { if (!stopped && !passiveLifetime.signal.aborted) noteTimeline({ channel: 'web', kind: e.kind, summary: e.summary, ok: e.ok }); },

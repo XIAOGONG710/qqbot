@@ -42,7 +42,7 @@ export const NOW_SLOTS = [
     'memeDict', 'register', 'selfThread', 'shell', 'scene', 'askHint', 'voice', 'question', 'opinion', 'unsure', 'dreams',
     'shellIntent', 'reading', 'speechNote', 'review', 'insight', 'takes', 'thoughts', 'guesses',
     'watched', 'continuity', 'interrupt', 'devices', 'sticker', 'photo',
-    'intent', 'lastUser', 'understanding', 'traces', 'person', 'directAnswer', 'noOverthink', 'selfMemory', 'refusal', 'rating', 'life', 'wake', 'herAsk',
+    'intent', 'lastUser', 'understanding', 'judgment', 'traces', 'person', 'directAnswer', 'noOverthink', 'selfMemory', 'refusal', 'rating', 'life', 'wake', 'herAsk',
     'workRequest', 'workJudge', 'workMode',
     'deliberate', 'routedHint', 'length', 'quote', 'crutch', 'told', 'opener', 'inner', 'transcript', 'solveFrame', 'initiateNote',
 ] as const;

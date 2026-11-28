@@ -43,6 +43,7 @@ const APP_ONLY: Record<string, string> = {
     memeDict: '梗百科词库（模拟器没有词库）',
     mediaDiscovery: '货架周期发现：模拟器不扫描外部来源',
     syncedJobs: '补回后的周期任务：模拟器不刷 B 站、不抓热梗、不生成周报',
+    semanticAsk: '私聊语义判断的那次小调用（QQBOT_SEMANTIC_JUDGMENT，默认关）：模拟器不多调一次模型',
 };
 /** 只有模拟器给的，和为什么 */
 const SIM_ONLY: Record<string, string> = {

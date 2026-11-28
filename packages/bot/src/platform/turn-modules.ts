@@ -52,6 +52,7 @@ import { reviewFinalizeModule } from '../modules/review-finalize.ts';
 import { reviewPullModule, type ReviewPullOptions } from '../modules/review-pull.ts';
 import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
 import { scenesModule } from '../modules/scenes.ts';
+import { JUDGMENT_LIMITS, semanticJudgmentModule, semanticJudgmentOn } from '../modules/semantic-judgment.ts';
 import { selfMemoryModule, type SelfMemoryOptions } from '../modules/self-memory.ts';
 import { selfNotesModule, type SelfNotesModuleOptions } from '../modules/self-notes.ts';
 import { shellModule, type ShellModuleOptions } from '../modules/shell.ts';
@@ -67,6 +68,7 @@ import { watchedModule } from '../modules/watched.ts';
 import { workModeModule } from '../modules/work-mode.ts';
 import type { WorldState } from '../world/world.ts';
 import type { Log } from './log.ts';
+import type { JudgmentMessage } from '../../../../dsh-plugins/dsh-linmengyao-memory/semantic-judgment.mjs';
 
 export interface TurnModuleDeps {
     /** 模块的日志（前面的 [QQ] 由模块自己加）。App：App 的日志；模拟器：只记当前这个回复器的（重建之后旧的不再写 sim.log） */
@@ -132,6 +134,8 @@ export interface TurnModuleDeps {
     memes?: Parameters<typeof memesModule>[0];
     watched?: Parameters<typeof watchedModule>[0];
     memeDict?: Parameters<typeof memeDictModule>[0];
+    /** 私聊语义判断的那次小调用（App 给；limits 是输出上限和超时）。环境变量 QQBOT_SEMANTIC_JUDGMENT=1 时才挂模块，关着时不挂、一个字不变 */
+    semanticAsk?: (messages: JudgmentMessage[], limits: typeof JUDGMENT_LIMITS) => Promise<string>;
 }
 
 /** 一轮回复的模块，按先后；App 在最前面再加「旧逻辑」那一个（事件分发），模拟器原样交给联系人流水线 */
@@ -199,5 +203,7 @@ export function buildTurnModules(d: TurnModuleDeps): Module[] {
         ...(d.watched ? [watchedModule(d.watched, log)] : []),
         ...(d.memeDict ? [memeDictModule(d.memeDict, log)] : []),
         ...(d.mediaDiscovery ? [mediaDiscoveryModule(d.mediaDiscovery)] : []),
+        // 挂在最后：assess 时危机已经判过；decideAt.deliberate 排在深思之后
+        ...(d.semanticAsk && semanticJudgmentOn() ? [semanticJudgmentModule({ ask: messages => d.semanticAsk!(messages, JUDGMENT_LIMITS), log })] : []),
     ];
 }

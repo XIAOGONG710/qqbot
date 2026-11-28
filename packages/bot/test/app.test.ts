@@ -346,6 +346,47 @@ describe('编排（app.ts）', () => {
         assert.equal(crisis.calls[0]!.model, undefined);
     });
 
+    test('私聊语义判断（QQBOT_SEMANTIC_JUDGMENT=1）：经执行器的小调用问一次，能用的只放一句理解进提示词；关着、别的档位、答非所问都不放，日志不记原话和 QQ 号', async () => {
+        const JUDGE = '你只判断他的意思，不回复他';
+        const original = process.env.QQBOT_SEMANTIC_JUDGMENT;
+        const run = async (env: string | undefined, tier: 'boyfriend' | 'classmate', judge: string) => {
+            if (env === undefined) delete process.env.QQBOT_SEMANTIC_JUDGMENT; else process.env.QQBOT_SEMANTIC_JUDGMENT = env;
+            const cfg = config({ contacts: [{ qq: 10001, name: '阿明', tier }] });
+            const prompts: string[] = [];
+            let asked = 0;
+            const { app, sent, logs } = setup(cfg, {}, { generate: messages => {
+                const text = messages.map(m => m.content).join('\n');
+                if (text.includes(JUDGE)) { asked++; return judge; }
+                prompts.push(text);
+                return '嗯，我在';
+            } });
+            app.receive(event(10001, 1, '今天被骂了一天，你能不能好好跟我说两句'));
+            await until(() => sent.length >= 1);
+            await app.stop();
+            return { prompts, asked, logs };
+        };
+        const care = '{"category":"care","evidence":[{"line":1,"quote":"好好跟我说两句"}],"uncertainty":0.1}';
+        try {
+            const on = await run('1', 'boyfriend', care);
+            assert.equal(on.asked, 1);
+            assert.match(on.prompts[0]!, /你对他这几句的理解：他像是认真想让你在意他一下.*把握：较大/);
+            const line = on.logs.find(entry => entry.includes('语义判断'));
+            assert.match(line ?? '', /语义判断：care（认真求关心），不确定性 0\.1，依据 1 处/);
+            assert.doesNotMatch(line!, /10001|被骂|说两句/);
+            const off = await run(undefined, 'boyfriend', care);
+            assert.equal(off.asked, 0);
+            assert.doesNotMatch(off.prompts[0]!, /你对他这几句的理解/);
+            const friend = await run('1', 'classmate', care);
+            assert.equal(friend.asked, 0);
+            const bad = await run('1', 'boyfriend', '他大概是想被哄');
+            assert.equal(bad.asked, 1);
+            assert.doesNotMatch(bad.prompts[0]!, /你对他这几句的理解/);
+            assert.ok(bad.logs.some(entry => entry.includes('语义判断：退回关键词（回答读不懂）')));
+        } finally {
+            if (original === undefined) delete process.env.QQBOT_SEMANTIC_JUDGMENT; else process.env.QQBOT_SEMANTIC_JUDGMENT = original;
+        }
+    });
+
     test('读完看完的想法（ADR 0204，readingTakes）：聊到那本书或问最近看了什么才放最多两条（只男朋友档、危机不放）；没聊到、没开都没有；她写的这些没有命令念给他', async () => {
         const seed = (dir: string) => writeFileSync(join(dir, 'reading-takes.json'), JSON.stringify({
             takes: [
