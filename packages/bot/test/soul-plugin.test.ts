@@ -15,6 +15,9 @@ import { renderDshState } from '../src/dsh-state-export.ts';
 import { ingestDesktopRecent, readDesktopLog } from '../src/memory/desktop-log.ts';
 import { recordUnderstandingTurn } from '../src/life/understanding.ts';
 import { isPresenceLease, leaseActive, presenceAt, PRESENCE_TTL_MAX_MS, PRESENCE_TTL_MIN_MS, type PresenceLease } from '../src/life/desktop-presence.ts';
+import type { Turn } from '../src/interpreter/interpreter.ts';
+import { semanticJudgmentModule } from '../src/modules/semantic-judgment.ts';
+import { judgmentConversation, parseJudgment } from '../../../dsh-plugins/dsh-linmengyao-memory/semantic-judgment.mjs';
 
 // 林梦瑶的 DSH 记忆桥（dsh-plugins/dsh-linmengyao-memory）：灵魂模块 1245 行里原来一条测试都没有。
 // 这里用一个假的 Cordis 上下文驱动真插件的工具，全部落在临时目录里，不碰她真正的灵魂目录。
@@ -119,6 +122,60 @@ test('DSH 主人私聊重开后读到 QQ 更新的理解，未确认的窗口不
     recordUnderstandingTurn(file, 'second', '我当时在赶车，想让你先忙，没有生气。', now);
     assert.match(await prompt(boot({ understandingFile: file })), /理解已澄清[^]*我当时在赶车/);
     assert.doesNotMatch(await prompt(boot({ understandingFile: file, ownerPrivateSessions: [] })), /理解已澄清|赶车/);
+});
+
+test('私聊语义判断：QQ 和 DSH 对同一段合成对话读到同一份判断（同一份提示词、同一行理解、同一条日志）', async () => {
+    const original = process.env.QQBOT_SEMANTIC_JUDGMENT;
+    const conversation = [
+        { role: 'user' as const, content: '今天好累' }, { role: 'assistant' as const, content: '辛苦啦' },
+        { role: 'user' as const, content: '今天被骂了一天，你能不能好好跟我说两句' },
+    ];
+    const reply = JSON.stringify({ category: 'care', evidence: [{ line: 3, quote: '好好跟我说两句' }], uncertainty: 0.1 });
+    const asked = { qq: [] as unknown[], dsh: [] as unknown[] };
+    const dshAsk = async (messages: unknown) => { asked.dsh.push(messages); return reply; };
+    // DSH 那边的消息是 Cordis 的样子（content 是分段数组）
+    const dshMessages = conversation.map(message => ({ role: message.role, content: [{ type: 'text', text: message.content }] }));
+    const step = async (app: ReturnType<typeof boot>) => {
+        await app.handlers['agent/pre-step']!({ messages: dshMessages }, async () => undefined);
+        return app.contexts.map(entry => entry.text()).join('\n');
+    };
+    try {
+        delete process.env.QQBOT_SEMANTIC_JUDGMENT;
+        assert.doesNotMatch(await step(boot({ judgmentAsk: dshAsk })), /你对他这几句的理解/);
+        assert.equal(asked.dsh.length, 0, '开关关着：不问');
+        process.env.QQBOT_SEMANTIC_JUDGMENT = '1';
+
+        const qqLogs: string[] = [];
+        const module = semanticJudgmentModule({ ask: async messages => { asked.qq.push(messages); return reply; }, log: line => qqLogs.push(line) });
+        const turn: Turn = { contact: { qq: 10001, name: '阿明', tier: 'boyfriend' }, at: new Date(), history: conversation, thinking: false, facts: {} };
+        module.assess!(turn);
+        await module.decideAt!.deliberate!(turn, { history: () => [], log: () => {} });
+        const qqLine = (await module.contribute!(turn))[0]!.text;
+
+        const app = boot({ judgmentAsk: dshAsk });
+        const dshPrompt = await step(app);
+        assert.deepEqual(asked.dsh, asked.qq, '给模型的是同一份');
+        assert.ok(dshPrompt.includes(qqLine), '放给她的是同一行');
+        assert.deepEqual(turn.facts.semanticJudgment, parseJudgment(reply, judgmentConversation(dshMessages.map(m => ({ role: m.role, content: m.content[0]!.text })))));
+        const dshLogs = app.text('plugin.log').split('\n').filter(line => line.includes('语义判断')).map(line => line.slice(line.indexOf(' ') + 1));
+        assert.deepEqual(dshLogs, qqLogs, '日志同一条（不带原话）');
+        assert.doesNotMatch(dshLogs.join('\n'), /被骂|说两句/);
+        // 同一轮的工具步骤沿用、不再问；这一轮结束就清掉
+        await app.handlers['agent/pre-step']!({ messages: [...dshMessages, { role: 'tool', content: 'ok' }] }, async () => undefined);
+        assert.equal(asked.dsh.length, 1);
+        await app.handlers['agent/turn-stopping']!();
+        assert.doesNotMatch(app.contexts.map(entry => entry.text()).join('\n'), /你对他这几句的理解/);
+        // 没确认的窗口：不问、不放
+        const other = boot({ ownerPrivateSessions: [], judgmentAsk: dshAsk });
+        assert.doesNotMatch(await step(other), /你对他这几句的理解/);
+        assert.equal(asked.dsh.length, 1);
+        // 模型答非所问：退回，不放这一行
+        const bad = boot({ judgmentAsk: async () => '他想被哄' });
+        assert.doesNotMatch(await step(bad), /你对他这几句的理解/);
+        assert.match(bad.text('plugin.log'), /语义判断：退回关键词（回答读不懂）/);
+    } finally {
+        if (original === undefined) delete process.env.QQBOT_SEMANTIC_JUDGMENT; else process.env.QQBOT_SEMANTIC_JUDGMENT = original;
+    }
 });
 
 test('只有确认的桌面私聊可发布或收回她的家公开状态，正文不可发布', () => {

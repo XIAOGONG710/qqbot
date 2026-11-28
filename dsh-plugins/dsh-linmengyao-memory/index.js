@@ -12,6 +12,7 @@ import { FOCUS_CHECKPOINT_FILE, focusCheckpoint } from './focus-checkpoints.mjs'
 import { UNDERSTANDING_EXPORT, sharedUnderstandingLine } from './shared-understanding.mjs'
 import { homeActivities, homePlaces, publishHomeStatus } from './home-status.js'
 import { PLAYFUL_PERSONA } from './playful-persona.mjs'
+import { createJudgmentAsk, judgeTurn, judgmentConversation, judgmentLine, judgmentLogLine } from './semantic-judgment.mjs'
 
 export const name = 'dsh-linmengyao-memory'
 
@@ -97,6 +98,13 @@ const DEFAULTS = {
   // SOUL.md 每轮整份注入提示词：超过这个字数，最老的追加段落搬进 SOUL.archive.md（不再注入）；24 小时内最多写几次
   soulMaxChars: 6000,
   soulMaxPerDay: 2,
+  /**
+   * 私聊语义判断（硬编码改造第一优先级；环境变量 QQBOT_SEMANTIC_JUDGMENT=1 才开，默认关，和 QQ 同一个开关、同一份约定 semantic-judgment.mjs）：
+   * 已确认的主人私聊里，他最后那几句是认真求关心、轻松接梗还是没接就收。用 QQBOT_LLM_API_KEY 请求这里的接口和模型；没有密钥就不判断。
+   * judgmentAsk 只给测试换成假的模型（函数），配置文件里不写
+   */
+  judgmentBaseUrl: 'https://api.deepseek.com',
+  judgmentModel: 'deepseek-flash',
 }
 
 // 和 QQ 侧 packages/bot/src/memory/fading.ts 保持同一套遗忘语义，避免她换到桌面后
@@ -1295,6 +1303,11 @@ export function apply(ctx, config = {}) {
   const allow = new Set(Array.isArray(cfg.presets) && cfg.presets.length ? cfg.presets : DEFAULTS.presets)
   const privateSessions = new Set(Array.isArray(cfg.ownerPrivateSessions) ? cfg.ownerPrivateSessions : [])
   log(cfg, `apply presets=${[...allow].join(',')}`)
+  // 私聊语义判断：只认 '1'；判断只放一句「你对他这几句的理解」进提示词，不当权限、不落事实、不当发送凭据
+  const judgmentAsk = process.env.QQBOT_SEMANTIC_JUDGMENT === '1'
+    ? (typeof cfg.judgmentAsk === 'function' ? cfg.judgmentAsk : createJudgmentAsk({ key: process.env.QQBOT_LLM_API_KEY, baseUrl: cfg.judgmentBaseUrl, model: cfg.judgmentModel }))
+    : undefined
+  if (process.env.QQBOT_SEMANTIC_JUDGMENT === '1' && !judgmentAsk) log(cfg, '语义判断：没有 QQBOT_LLM_API_KEY，不判断')
 
   ctx.on('agent/created', ({ agent }) => {
     let preset = ''
@@ -1307,7 +1320,7 @@ export function apply(ctx, config = {}) {
 
     // self：这一步放进「此刻的你」的 SELF（selfBlock 的结果，没有就是 null）；selfShown / selfAt：这一轮放给她看过的攒着的事，turn-stopping 写回执后清空
     // userAt：本轮第一次记下他原话（cache.user）的时刻，turn-stopping 清空
-    const cache = { text: '', preset, user: '', userAt: undefined, assistant: '', outbox: 0, self: null, selfShown: new Set(), selfAt: '', scope: undefined, firstStep: true }
+    const cache = { text: '', preset, user: '', userAt: undefined, assistant: '', outbox: 0, self: null, selfShown: new Set(), selfAt: '', scope: undefined, firstStep: true, judging: undefined, judgment: undefined }
 
     const off = agent.ctx.effect(() => {
       const disposers = []
@@ -1332,6 +1345,8 @@ export function apply(ctx, config = {}) {
           cache.userAt = undefined
           cache.assistant = ''
           cache.selfShown.clear()
+          cache.judging = undefined
+          cache.judgment = undefined
         }
       }))
 
@@ -1376,6 +1391,11 @@ export function apply(ctx, config = {}) {
               cache.userAt = Date.now()
               // 只有他开口才续；工具步骤和回复完成都不是新的在场证据。
               try { if (touchPresence(cfg, cache.userAt)) log(cfg, '在场：续了桌面租约') } catch (e) { log(cfg, `presence error ${e}`) }
+              // 私聊语义判断：本轮第一次见到他原话时发出去，和召回并行；同一轮后面的工具步骤沿用，不再问
+              if (judgmentAsk) {
+                const conversation = judgmentConversation(messages.map((message) => ({ role: message?.role, content: textOf(message) })))
+                cache.judging = judgeTurn({ conversation, ask: judgmentAsk }).then((result) => ({ result, conversation }))
+              }
             }
           }
           if (query) {
@@ -1430,6 +1450,15 @@ export function apply(ctx, config = {}) {
             log(cfg, `recall items=${all.length} selected=${Math.min(cfg.pick, all.length)} memoryChars=${text.length} important=${important} failedBanks=${failedBanks}`)
           }
         } catch { if (scope !== continuityScope(cfg)) cache.text = ''; log(cfg, 'recall error') }
+        if (cache.judging) {
+          const judging = cache.judging
+          cache.judging = undefined
+          const { result, conversation } = await judging
+          if (version === inputVersion && privateTurn()) {
+            log(cfg, judgmentLogLine(result, conversation))
+            cache.judgment = result.fallback ? undefined : result.judgment
+          }
+        }
         return next()
       }))
 
@@ -1457,6 +1486,8 @@ export function apply(ctx, config = {}) {
         cache.assistant = ''
         cache.selfShown = new Set()
         cache.selfAt = ''
+        cache.judging = undefined
+        cache.judgment = undefined
         if (!canRemember || !user || cache.scope === null || cache.scope !== continuityScope(cfg)) return
         let p = cache.preset
         if (!p) {
@@ -1539,6 +1570,12 @@ ${now}` : ''
           name: 'linmengyao-understanding',
           order: 76,
           text: () => privateTurn() ? desktopUnderstanding(cfg, cache.user) : '',
+        }))
+        // 私聊语义判断（QQBOT_SEMANTIC_JUDGMENT）：和 QQ 同一行「你对他这几句的理解」；拿不准、退回时没有
+        disposers.push(sp.context({
+          name: 'linmengyao-judgment',
+          order: 77,
+          text: () => privateTurn() ? judgmentLine(cache.judgment) : '',
         }))
         disposers.push(sp.context({
           name: 'linmengyao-bridge-rules',
