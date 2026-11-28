@@ -63,11 +63,70 @@ DSH 侧：只在已确认的主人私聊里，本轮第一次见到他原话时�
 - 这张对照表用的是假模型。上线前要用真模型在合成说法上跑一次准确率，这也要用户同意才能调。
 - 待后续批次（C、D、H）再做：「累了又求哄就别催睡」那一条还是靠正则判断他前一句累没累；求哄 / 转话题以外的已有正则（`isApologyText`、`isExplanationText`、意图阶梯）没动。
 
+## 第二批 · 人设、角色卡、DSH preset（跨端人设来源）
+
+### 完成记录（2026-11-28，Claude）
+
+用户授权：「你只做硬编码改造」「继续往下做就行，不用问她，把所有的硬编码拆解开」，所以这一批没跑 `ask-her`。行为不变：资料里没写新字段时，各端读到的文字和改造前一字不差。决策写在 [ADR 0353](../../docs/adr/0353-voice-single-source.md)。
+
+**原来写死在哪 → 现在在哪**（资料里一处：`persona.yml` 新增可选的 `voice` 段；转换器写进卡的 `extensions.qqbot.voice`；原来的常量留在原处当内置默认）：
+
+| 原来写死的 | 新的资料字段 | 卡上的键 | 谁读 | 内置默认（卡上没有这个键时） |
+| --- | --- | --- | --- | --- |
+| `playful-persona.mjs` 的 `PLAYFUL_PERSONA`（逗人的分寸） | `voice.playful` | `playful` | QQ 私聊（`language/prompt.ts`）、QQ 群聊（`social/group-room.ts`，同学档的卡）、DSH 已确认的主人私聊（记忆插件 `index.js` 的 `playfulPersonaOf`，读 `personaCardFile`） | 原常量 |
+| `prompt.ts` 的 `QQ_PLAYFUL_STYLE`（QQ 私聊里的口气） | `voice.qq_private` | `qqPrivate` | 只有 QQ 私聊 | 原常量（改为导出） |
+| `persona-to-card.ts` 的 `OUTPUT_RULE` 后三句（讲题、对方难过时、身材雷区） | `voice.card_notes` | 不上卡的 voice，转换时接在输出规则后面写进 post_history_instructions | QQ 私聊、DSH 的 PERSONA.md | `DEFAULT_CARD_NOTES` |
+| `persona-render.ts` 的 `CASUAL_CHAT_NOTE`（桌面闲聊约定） | `voice.desktop_chat` | `desktopChat` | 只有 DSH 的 PERSONA.md（`scripts/build-dsh-persona.mjs`） | 原常量（改为导出） |
+| `presets.cjs` 四个模式写死的 persona prefix；`scripts/dsh/her-identity.txt` | `voice.desktop_identity` | `desktopIdentity` | DSH preset：新文件 `dsh-plugins/dsh-linmengyao-preset/her-prefix.cjs` 在组 preset 时现读卡，`presets.cjs` 里只剩 `require("./her-prefix.cjs").herPrefix()`；`scripts/dsh/apply-her-prefix.mjs`、`check-her-identity.mjs` 先认卡（加了 `--card`） | presets：`FALLBACK_PREFIX`（和 `cordis.patch.yml` 那一座的 prefix 一字不差）；apply / check：`her-identity.txt` |
+| `build-dsh-persona.mjs` 的 `user: '宝宝'` | `voice.calls_him` | `callsHim` | 只有 DSH 的 PERSONA.md（`{{user}}`） | 「宝宝」 |
+
+**回退规则**：卡上没有这个键（资料没写、旧卡、卡读不到）用内置默认；有这个键但是空串，说明这一档看不到，就不放，也不退回内置默认。`desktopIdentity`、`callsHim` 不能为空，空串也用内置默认。
+
+**留在代码里、不归资料管的**：做不到的事和格式（`OUTPUT_RULE` 前四句、`FEWER_RULES_BASICS`）、system_prompt 那句框架、段落标题、QQ 只注入哪几段事实（`contact.ts` 的 `PERSONA_FACT_SECTIONS`）、出口检查的禁词。规则的先后不变：做不到的事和格式在前，表达偏好其次，档位分寸最后；QQ 私聊的口气仍排在卡末尾那段之后。
+
+**按档位披露**：`voice` 每条都要写 `tiers`，校验、档位引用检查和隐私检查（这一档的禁用词）都覆盖这一段。QQ 私聊只读 `playful`、`qqPrivate`，群聊只读 `playful`，DSH 只读 `playful`、`desktopChat`、`callsHim`、`desktopIdentity`，谁都不读别人那几条。
+
+**顺手修的**：`build-presets.mjs` 原来取 `insert[0]`，加了 `guard.js` 那一行以后就取错了（再跑会抛错）；改成按 `config.plugins` 找，并在生成前核对 `FALLBACK_PREFIX` 和 `cordis.patch.yml` 一致。`soul-plugin.test.ts` 的 `boot()` 原来不给 `personaCardFile`，会去读本机的真实卡；现在默认指到临时目录。
+
+**验收证据**（只用合成角色，不调真模型）：
+
+- 合成 `source/persona.yml` 写了 voice 段，值就是上面这些内置默认（桌面身份里名字换成「测试角色」）。`npm run convert:synthetic` 重新生成后，`st/` 的 13 张卡只多了 `extensions.qqbot.voice`，post_history_instructions 一字没变。
+- 行为基线 `npm run baseline:fast -w @qqbot/bot` 39/39 逐字一致，没有更新快照。
+- `packages/character-tools/test/voice.test.ts`：生成物和提交的 `st/` 逐字节相同；不写 voice 时卡里除了没有 voice 键，其他内容和写了内置默认时完全一样；按档位给的时候，看不到的档位是空串，card_notes 能按档位改写，看不到的就不带；不认识的键、没写 tiers、档位名写错都会报错；存回去不丢；禁用词写进 voice 时隐私检查能查出来。
+- `packages/bot/test/persona-voice.test.ts`：合成卡的 voice 等于内置默认；7 个档位在开关开着时，有 voice 和没 voice 拼出的 QQ 提示词逐条相同；QQ 私聊用卡上的文字，空串不放，桌面那几条不读；PERSONA.md 只读 `desktopChat` 和 `callsHim`，不带 QQ 口气；`herPrefix` 的回退和 `QQBOT_PERSONA_CARD`；`presets.cjs` 四处都是现读；卡上 voice 类型不对会报错。
+- `soul-plugin.test.ts`「跨端人设来源」：DSH 的 `[她的设定]` 读卡上的 `playful`，没有卡用内置默认，空串不放，QQ 口气和桌面闲聊约定不进这一块。
+- `app.test.ts`「跨端人设来源」：经 app.ts 走一遍。分寸只给男朋友档和同学档，QQ 口气和桌面三条只给男朋友档。男朋友档私聊拿到分寸和 QQ 口气，陌生人档私聊两样都没有，群聊（同学档承认版卡）只有分寸；三处都读不到桌面三条，也读不到内置默认。
+- `npm test -w @qqbot/bot`、`npm test -w @qqbot/character-tools`、`npm run test:scripts`、`npm test -w koishi-plugin-qqbot`、`npm run typecheck` 都通过。
+
+**用户写人设 / 自传时要填的字段**（填在本机 `characters/linmengyao/source/persona.yml` 顶层，和 `social` 同级，这里只写字段名和含义，不写内容）：
+
+```yaml
+voice:
+  playful:            # 逗人的分寸：气氛对了先逗一句、被回撩时害臊、没接就收住。QQ 私聊、QQ 群、DSH 私聊都读（QQBOT_PLAYFUL_PERSONA 开着时）
+    text: …
+    tiers: [...]      # 给哪些档；群里用同学档的卡，想让群里也有就要含 classmate
+  qq_private:         # 只给 QQ 私聊的口气，排在卡末尾那段之后（同一开关）
+  card_notes:         # 卡末尾输出规则后面的表达偏好（今天是讲题、对方难过时、身材雷区三句）；写了就替换那三句
+  desktop_chat:       # 只给 DSH 桌面人设（PERSONA.md）末尾的闲聊约定，一般只给 boyfriend
+  desktop_identity:   # DSH preset 的身份前缀（presets.cjs 四个模式和 apply-her-prefix.mjs 都用它），只给 boyfriend
+  calls_him:          # DSH 桌面人设里她对他的称呼（{{user}} 换成它），只给 boyfriend
+```
+
+每条和人设别的字段一样，可以写 `variants`（按档位改写）和 `note`。哪条不写，那一端就照旧用内置默认；写了就换成资料里的，看不到的档位就不放。填完以后依次：`npm run convert -w @qqbot/character-tools`（生成本机的卡，隐私检查会查禁用词）、`npm run test:real`、`node scripts/build-dsh-persona.mjs`（重新生成 PERSONA.md）。要让 DSH 那台的 profile 也换成新身份，就跑 `node scripts/dsh/apply-her-prefix.mjs`，再按 ADR 0346 整个退出应用重开。
+
+**要用户确认 / 决定的**：
+
+- 填了 `desktop_identity` 以后，四个内置模式（presets.cjs）和 profile 里的 preset-cordis（apply-her-prefix）会用同一段身份。今天这两处是两段不同的文字：短的那段，和 A4（her-identity.txt）。这样就统一了，也就是 ADR 0346 说的「两处文案单一来源」。用哪一段的内容来填，由用户定。
+- `scripts/dsh/her-identity.txt` 里有真实姓名，而仓库是公开的。填进资料以后，这个文件只是回退用；要不要删、怎么处理，由用户定。这一批没动它。
+- 线上和 DSH 那台都没重启、没重载。presets.cjs 的改动要等 DSH 重新组 preset（新开会话或整应用重开）才生效，生效后文字不变。
+
+**还写在代码里、归后面模块的称呼**：群里认她的名字 `social/group-chat.ts` 的 `HER_NAMES`（群聊 H）；记忆插件存对话用的「宝宝：」「林梦瑶：」和 `MEMORY_IGNORED_ENTITIES`（记忆 I/J）；`scripts/dsh/set-user-alias-hint.mjs` 那句别名提示；`cordis.patch.yml` 里 linmengyao 那一座的 prefix（要在 DSH 桌面上验过 `!!js` 现读以后再改）。控制台「林梦瑶」页面还没有 voice 这一页，存别的部分时这一段原样保留。另外，出口检查（`modules/review-exit.ts`）在认真求哄时会重写「行吧」「笨」这类口头禅。这条规则和今天 `qq_private` 里的「别用「行吧」「笨蛋」或「笨」」是配套的，仍然写死在代码里。用户改了 `qq_private` 以后，出口检查不会跟着变，这一项留给「语言与理解（C）」那一批处理。
+
 ## 全部模块清单
 
 | 模块 | 要改的内容 | 保留的边界与验收 |
 | --- | --- | --- |
-| 人设、角色卡、DSH preset | 把散在源码、QQ 专用表达层、DSH preset 前缀和角色卡渲染物里的性格、称呼、表达偏好归到角色资料的一处来源。两端从同一版本渲染。 | 保留按档位披露、诚实说明能力和规则优先级。合成角色验证 QQ 私聊、群聊和 DSH 各只注入自己有权读的内容。入口见 `persona-to-card.ts`、`contact.ts`、`build-presets.mjs`。 |
+| 人设、角色卡、DSH preset（第二批已做，见上） | 把散在源码、QQ 专用表达层、DSH preset 前缀和角色卡渲染物里的性格、称呼、表达偏好归到角色资料的一处来源。两端从同一版本渲染。 | 保留按档位披露、诚实说明能力和规则优先级。合成角色验证 QQ 私聊、群聊和 DSH 各只注入自己有权读的内容。入口见 `persona-to-card.ts`、`contact.ts`、`build-presets.mjs`。 |
 | 语言与理解（C） | 分开会话意图、软风格规则、硬出口检查。让她判断求关心、拒绝、转场和理解纠正，把自然接法还给生成。风格严厉程度可配置，逐项核对旧正则是否仍有兼容价值。 | 原话、猜测、确认和修正分开。保留事实证据、撤回屏障、风险输出约束与故障兜底。用歧义加隔天澄清、撤回与重放验证两端。入口见 `prompt.ts`、`review-exit.ts`、`understanding.ts`。 |
 | 心境与恢复（D） | 将一般情绪的衰减与灵敏度归为参数；让她依据当轮证据判断道歉或解释是否接住了这件事，并自己选措辞。 | 危机规则和固定兜底留在程序，私聊情绪原因不进群。验证道歉不会瞬间清零、自然恢复、私聊隔离。入口见 `affect.ts`、`feelings.ts`。 |
 | 生活、兴趣、注意力（F、B） | 作息、兴趣、精力、活动时长归为生活资料；把当下选什么和是否延后交给她在可行选项内判断。 | 程序管时间冲突、进度共享、恢复和幂等。验证忙时延后、查错中断、等待续读、重启后接续。入口见 `life/actions.ts`、`world/life-selector.ts`。 |
