@@ -22,10 +22,15 @@ export function exitOptionsOf(turn: Turn, ctx: ReviewCtx): ReviewOptions | undef
     if (!given) return undefined;
     const { facts, contact } = turn;
     const history = ctx.history ?? (() => []);
+    const latest = turn.history.at(-1);
+    const sincereComfort = process.env.QQBOT_PLAYFUL_PERSONA === '1' && !facts.crisis && !turn.initiate && !turn.thinking
+        && latest?.role === 'user' && /^(?:我)?(?:是)?认真(?:地)?想听你哄我(?:一下|一句)?[。！!?？\s]*$/u.test(latest.content.trim());
+    const banned = fewerRules() && !facts.crisis ? [...(turn.card?.banned ?? [])] : [...(turn.card?.banned ?? []), ...ODD_BODY_WORDS, ...STILTED_WORDS];
+    if (sincereComfort) banned.push('行吧', '笨', '认真想听你哄我');
     return {
         // 角色卡的禁用词 + 医书里的词（“肚子坠着”之类，expression.ts 的 ODD_BODY_WORDS）：出了就让她重写
         // 少规矩（ADR 0342）：只留卡上的红线，医书词和书面腔不再让她重写
-        banned: fewerRules() && !facts.crisis ? [...(turn.card?.banned ?? [])] : [...(turn.card?.banned ?? []), ...ODD_BODY_WORDS, ...STILTED_WORDS],
+        banned,
         userName: contact.name,
         ...(given.speechCheck ? { speech: { ...speechContext(history()), ...(facts.sulk ? { allowGrievance: true } : {}), ...(ctx.allowRepeat ? { allowRepeat: true } : {}) } } : {}),
         ...(facts.books?.context ? { books: facts.books.context } : {}),

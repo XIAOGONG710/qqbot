@@ -264,4 +264,23 @@ describe('出口检查的上下文自己算（exitOptionsOf，2026-11-16）', as
         await exit('好呀', turnOf(), seeded.ctx);
         assert.equal(seeded.ctx.scratch.exitOptions, mine);
     });
+
+    test('QQ 认真求哄只重写当前回合的口头禅和照抄，不限制普通收尾', async () => {
+        const original = process.env.QQBOT_PLAYFUL_PERSONA;
+        process.env.QQBOT_PLAYFUL_PERSONA = '1';
+        try {
+            const requested: Turn = { ...turnOf(), history: [{ role: 'user', content: '我认真想听你哄我一下。' }] };
+            for (const draft of ['行吧，逗你呢。', '你呀，笨。', '我认真想听你哄我一下。']) {
+                let rewrites = 0;
+                const { ctx } = ctxOf({ regenerate: async () => { rewrites++; return '我也喜欢你刚才笑出声那一下。'; } });
+                assert.equal(await exit(draft, requested, ctx), '我也喜欢你刚才笑出声那一下。');
+                assert.equal(rewrites, 1);
+            }
+            const { ctx } = ctxOf();
+            const ending: Turn = { ...requested, history: [...requested.history, { role: 'user', content: '嗯，我先睡了。' }] };
+            assert.equal(await exit('行吧，晚安。', ending, ctx), '行吧，晚安。');
+        } finally {
+            if (original === undefined) delete process.env.QQBOT_PLAYFUL_PERSONA; else process.env.QQBOT_PLAYFUL_PERSONA = original;
+        }
+    });
 });
