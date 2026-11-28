@@ -44,11 +44,14 @@ test('合成私聊的系统人设保留先逗、被回撩时害臊和及时收�
         assert.match(persona!.content, /先递一句.*认真回撩会害臊.*转话题.*就停.*别硬撩/);
         assert.equal(messages.at(-1)?.role, 'system');
         const qqStyle = messages.at(-1)!.content;
-        assert.match(qqStyle, /眼前的小事.*别总讨晚安/);
+        assert.match(qqStyle, /两个人之间.*特别待遇.*留给他选择接不接/);
         assert.match(qqStyle, /刚聊过的事里挑一个细节.*还在笑.*忙了一整天.*这一回别催睡/);
         assert.match(qqStyle, /别用「行吧」「笨蛋」或「笨」.*别复述对方的求哄原话/);
         assert.match(qqStyle, /顺势收尾.*转话题就只接新话题/);
         assert.ok(messages.some(message => message.role === 'user' && message.content === '那你也哄我一下'));
+        const shifted = [...history, { role: 'user' as const, content: '嗯。说回来，明天要下雨。' }];
+        assert.match(build(shifted).messages.at(-1)!.content, /已经翻篇.*只回应他新说的事/);
+        assert.match(build(shifted, { playfulClosing: false }).messages.at(-1)!.content, /QQ 私聊里的口气/);
     } finally {
         if (original === undefined) delete process.env.QQBOT_PLAYFUL_PERSONA; else process.env.QQBOT_PLAYFUL_PERSONA = original;
     }

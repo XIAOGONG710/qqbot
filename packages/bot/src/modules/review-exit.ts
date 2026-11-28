@@ -15,11 +15,11 @@ import type { Module, ReviewCtx, ReviewVerdict, Turn } from '../interpreter/inte
 import { crisisFallback, faceContext, reviewCrisisReply, reviewReply, type ReviewOptions } from '../language/exit-check.ts';
 import { ODD_BODY_WORDS, STILTED_WORDS } from '../language/expression.ts';
 import { speechContext } from '../language/speech-check.ts';
+import { keywordTopicShift } from '../language/prompt.ts';
+export { keywordTopicShift } from '../language/prompt.ts';
 
 /** 关键词认「他认真求哄」（兼容入口：没开语义判断、或判断退回时用；硬编码改造第一优先级，对照过了才考虑收掉） */
 export const keywordCareRequest = (said: string): boolean => /^(?:我)?(?:是)?认真(?:地)?想听你哄我(?:一下|一句)?[。！!?？\s]*$/u.test(said.trim());
-/** 关键词认「他转话题了」（同上） */
-export const keywordTopicShift = (said: string): boolean => /^(?:嗯[。！!，,\s]*)?(?:说回来|换个话题|说回正事)/u.test(said.trim());
 
 /** 出口检查那一刻的上下文；ctx.exit / ctx.history 没有时（不经联系人流水线）不算 */
 export function exitOptionsOf(turn: Turn, ctx: ReviewCtx): ReviewOptions | undefined {

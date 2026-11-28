@@ -26,9 +26,9 @@ import { PLAYFUL_PERSONA } from '../../../../dsh-plugins/dsh-linmengyao-memory/p
  * 卡上是空串（这一档看不到）就不放。DSH 和群聊不读这一段。逗人的分寸（PLAYFUL_PERSONA）同理读 voice.playful
  */
 export const QQ_PLAYFUL_STYLE = [
-    '【QQ 私聊里的口气】先看他最后一句。你们熟、气氛轻松，他随口说「该睡了」或「出门买早饭」，顺着眼前的小事先逗一句再停，留给他选择接不接。别总讨晚安，也别编共同经历。',
-    '对方认真回撩时，直接接住他的心意。认真求哄就从刚聊过的事里挑一个细节，说一句他此刻听得进去的话。还在笑，就顺着刚才一起笑的时刻，用你自己的得意轻轻接一句。刚忙了一整天，就把他今天费的劲接住，让他知道这份累有人在意，说完就停；这一回别催睡、别布置下一步，也别用晚安把心意带过。别预告要哄、讨奖励或再出题，也别评价他的笑点或用损人的昵称。别用「行吧」「笨蛋」或「笨」，也别复述对方的求哄原话。他认真说想带早饭，就接那份好意。害臊从口气里露出来，别写括号动作或加害羞表情。话留在当下，别随口承诺明早叫醒或用别的未来承诺岔开。',
-    '对方只应一声、已经要走要睡，就顺势收尾，不再开新问题或做新的约定。对方转话题就只接新话题，别回头再接旧梗。对方虽然累，但这一句还在认真求哄，就先接住这句话。',
+    '【QQ 私聊里的口气】先看他最后一句。你们熟、气氛轻松，他说的是大家都有份的好玩小事，就敢把话先挑到你们两个人之间，理直气壮地给自己争一点特别待遇，别只说收到或顺手问个细节。说一句就停，留给他选择接不接。别总讨晚安，也别编共同经历。',
+    '对方认真回撩、真给了你刚才要的一点偏心，你可以先卡一下或嘴硬半句，然后让他听出来这份好意真的说动了你，不用再占一次上风、出题或反问他。认真求哄就从刚聊过的事里挑一个细节，说一句他此刻听得进去的话。还在笑，就顺着刚才一起笑的时刻，用你自己的得意轻轻接一句。刚忙了一整天，就把他今天费的劲接住，让他知道这份累有人在意，说完就停；这一回别催睡、别布置下一步，也别用晚安把心意带过。别预告要哄、讨奖励或再出题，也别评价他的笑点或用损人的昵称。别用「行吧」「笨蛋」或「笨」，也别复述对方的求哄原话。他认真说想带早饭，就接那份好意。害臊从口气里露出来，别写括号动作或加害羞表情。话留在当下，别随口承诺明早叫醒或用别的未来承诺岔开。',
+    '对方只应一声、已经要走要睡，就顺势收尾，不再开新问题或做新的约定。对方转话题就只接新话题，别回头再接旧梗；不记账，也不讨下次的回应。对方虽然累，但这一句还在认真求哄，就先接住这句话。',
 ].join('\n');
 
 /** Default.json 里用到的预设文本 */
@@ -86,6 +86,8 @@ export interface PromptInput {
      * 顺序同时表示预算优先级：前面的较泛，后面的更贴近当前轮次；预算不足时先省略前面的，但始终保留最新聊天。
      */
     afterHistory?: string[];
+    /** 已有可用语义判断时，以它判断这一轮是否收尾。 */
+    playfulClosing?: boolean;
     /** 时间宏用的当前时间，默认现在 */
     now?: Date;
     settings: PromptSettings;
@@ -122,6 +124,9 @@ export function currentConversation(history: readonly ChatMessage[], now: Date):
 
 const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
+/** 没有可用语义判断时，兼容明确写出转场的说法。 */
+export const keywordTopicShift = (said: string): boolean => /^(?:嗯[。！!，,\s]*)?(?:说回来|换个话题|说回正事)/u.test(said.trim());
+
 /** 聊天记录里隔天的那一行（ADR 0049）：「10月5日 星期日」，不是今年的带年份 */
 export function chatDayLabel(date: Date, nowYear: number): string {
     return `${date.getFullYear() !== nowYear ? `${date.getFullYear()}年` : ''}${date.getMonth() + 1}月${date.getDate()}日 ${WEEKDAYS[date.getDay()]}`;
@@ -129,6 +134,7 @@ export function chatDayLabel(date: Date, nowYear: number): string {
 
 export function buildPrompt(input: PromptInput): PromptResult {
     const { character, history, settings, countTokens } = input;
+    const latest = history.at(-1);
     const names = { user: input.userName, char: character.name };
     const time = timeMacros(input.now ?? new Date(), history);
     const sub = (text: string, extra?: Record<string, string>) =>
@@ -166,6 +172,7 @@ export function buildPrompt(input: PromptInput): PromptResult {
     // 卡上写了就用卡上的（空串 = 这一档看不到，不放）；卡上没有用内置默认（ADR 0353）
     const playfulText = character.voice?.playful ?? PLAYFUL_PERSONA;
     const qqStyle = character.voice?.qqPrivate ?? QQ_PLAYFUL_STYLE;
+    const closing = input.playfulClosing ?? (latest?.role === 'user' && keywordTopicShift(latest.content));
     const head = [
         system(main),
         ...(input.afterMain ?? []).map(text => system(text)),
@@ -180,7 +187,9 @@ export function buildPrompt(input: PromptInput): PromptResult {
     ];
     const newChat = system(sub(ST_DEFAULT_PRESET.newChatPrompt));
     const afterHistoryCandidates = (input.afterHistory ?? []).map(text => system(text)).filter(message => message.content);
-    const tail = [system(jailbreak), ...(playful && qqStyle ? [system(qqStyle)] : [])];
+    const tail = [system(jailbreak), ...(playful && qqStyle ? [system(closing
+        ? '【QQ 私聊这一轮】对方已经翻篇。只回应他新说的事或自然道别。上一个玩笑到此为止，不记账、不讨回应。'
+        : qqStyle)] : [])];
 
     // 预算：上下文 - 回复预留 - 回复引导（ST 固定预留 3）- 固定部分；剩下的分给运行时背景、聊天记录和示例对话。
     // 最新一条聊天是这一轮真正要答的内容：先为它留位置，再按从后到前（当前轮次优先）保留运行时背景。
@@ -189,7 +198,6 @@ export function buildPrompt(input: PromptInput): PromptResult {
     const nowYear = (input.now ?? new Date()).getFullYear();
     const dayOf = (m: ChatMessage | undefined) => (m?.time ? chatDayLabel(new Date(m.time), nowYear) : undefined);
     const marker = (label: string) => system(`[${label}]`);
-    const latest = history.at(-1);
     const latestMessage = latest ? { role: latest.role, content: latest.content.replace(/\r/g, '') } satisfies OpenAIMessage : undefined;
     const latestDay = dayOf(latest);
     const latestReserve = (latestMessage ? cost(latestMessage) : 0) + (latestDay ? cost(marker(latestDay)) : 0);

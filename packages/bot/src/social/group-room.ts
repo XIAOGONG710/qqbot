@@ -481,7 +481,8 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         const system = `你是${card.character.name}，在 QQ 群里和大家聊天。${publicBoundaries ? '' : `下面是你的设定。\n${personaFacts(card.character.description)}`}${playfulPersona && playfulText ? `\n${playfulText}` : ''}`;
         const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, visibleBf)).join('\n');
         const question = reason === 'mentioned' ? extra.target : undefined;
-        const quotedTarget = reason === 'mentioned' || reason === 'defend' ? extra.target : undefined;
+        const topicPlay = reason === 'topic' && (boundary === 'light' || boundary === 'playful' || boundary === 'reciprocal');
+        const quotedTarget = reason === 'mentioned' || reason === 'defend' || topicPlay ? extra.target : undefined;
         const recalled = question
             ? groupScheduleRecall(groupLogs!.load, group.id, question.from, question.content, Date.parse(question.time)) : undefined;
         // 这个群里她认识谁（聊过就认得，改名也认得）；心情只说「这会儿怎么样」，不说来由（都在私聊里）
@@ -547,7 +548,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
                     log(`[群 ${group.id}] 有一条越过了她自己定的线（${LINE_LABEL[crossed]}），没发`);
                 }
                 return !crossed;
-            }).slice(0, boundary === 'light' || boundary === 'playful' || boundary === 'stop' ? 1 : undefined);
+            }).slice(0, boundary === 'light' || boundary === 'playful' || boundary === 'reciprocal' || boundary === 'stop' ? 1 : undefined);
         if (!parts.length) {
             if (lineBlocked && extra.trace) { extra.trace.passed = false; extra.trace.blockedBy = 'line'; }
             log(`[群 ${group.id}] 看了一眼，没说话（${reason}）`); return;
@@ -574,7 +575,7 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
                 : await transport.sendGroupText(group.id, part, replyTo);
             if (extra.trace) (extra.trace.deliveries ??= []).push({ messageId, ...(replyTo === undefined ? {} : { replyTo }) });
             groupLogs!.append(group.id, { time: new Date(worldNow()).toISOString(), from: selfId(), name: '你', content: part, messageId, mine: true,
-                ...(publicBoundaries && replyTo !== undefined ? { replyTo } : {}), ...(boundary === 'light' || boundary === 'playful' ? { playful: true } : {}) });
+                ...(publicBoundaries && replyTo !== undefined ? { replyTo } : {}), ...(boundary === 'light' || boundary === 'playful' || boundary === 'reciprocal' ? { playful: true } : {}) });
         }
         log(`[群 ${group.id}] 说了 ${parts.length} 条（${reason}；日志不记内容）`);
         // 接完话的小动作：顺手戳一下、给资料卡点个赞（不冲男朋友、危机回合不做）

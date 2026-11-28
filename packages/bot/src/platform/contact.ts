@@ -565,6 +565,7 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
                 userPersona: contact.persona,
                 afterMain,
                 afterHistory,
+                ...(turn.facts.semanticJudgment ? { playfulClosing: turn.facts.semanticJudgment.category === 'closing' } : {}),
                 now: time,
                 settings: {
                     maxContext: options.prompt.maxContext,

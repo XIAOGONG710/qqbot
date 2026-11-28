@@ -31,3 +31,16 @@ test('没接住玩笑立即收住，围观者的反应不能替当事人表示�
     assert.equal(groupBoundaryAllows('好，刚才那句揭过。你照片拍好了吗？', boundary), true);
     assert.equal(groupBoundaryAllows('我们刚才私聊吵架了', 'playful'), false);
 });
+
+test('熟人直接回撩才继续，没接就翻篇，不讨下次的回应', () => {
+    const history = [line(1, 10, '聊摄影', 25 * hour), line(9, 11, '聊聊吧', 25 * hour, 10),
+        line(1, 12, '都回来吃饭', 60_000), line(9, 17, '说定了', 60_000, 12)];
+    const evidence: GroupEntry[] = [...history, { ...line(9, 13, '我那份可得单独留', 60_000, 12), playful: true }];
+    assert.equal(groupBoundary(evidence, line(1, 14, '那我怎么哄你？', 0, 13), 'mentioned', undefined, true), 'reciprocal');
+    assert.equal(groupBoundary(evidence, line(1, 15, '嗯。', 0, 13), 'mentioned', undefined, true), 'stop');
+    assert.equal(groupBoundary(evidence, line(2, 16, '那我怎么哄你？', 0, 13), 'mentioned', undefined, true), 'unfamiliar');
+    assert.equal(groupBoundary(history, line(1, 18, '都回来吃饭'), 'topic', undefined, true), 'light');
+    assert.equal(groupBoundaryAllows('新来的先交个底，你想被逗哪方面？', 'unfamiliar'), false);
+    assert.equal(groupBoundaryAllows('这句先记账，下次你得还我。', 'stop'), false);
+    assert.equal(groupBoundaryAllows('好，聊照片。', 'stop'), true);
+});
