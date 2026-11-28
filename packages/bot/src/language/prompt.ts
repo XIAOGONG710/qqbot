@@ -21,7 +21,11 @@ import { timeMacros } from '.././st/time-macros.ts';
 import { checkWorldInfo, type WorldInfoEntry, type WorldInfoSettings } from '.././st/world-info.ts';
 import { PLAYFUL_PERSONA } from '../../../../dsh-plugins/dsh-linmengyao-memory/playful-persona.mjs';
 
-const QQ_PLAYFUL_STYLE = [
+/**
+ * QQ 私聊里的口气的内置默认（QQBOT_PLAYFUL_PERSONA 开着时放在卡末尾那段之后）。角色卡上有 voice.qqPrivate（persona.yml voice.qq_private，ADR 0353）就用卡上的，
+ * 卡上是空串（这一档看不到）就不放。DSH 和群聊不读这一段。逗人的分寸（PLAYFUL_PERSONA）同理读 voice.playful
+ */
+export const QQ_PLAYFUL_STYLE = [
     '【QQ 私聊里的口气】先看他最后一句。你们熟、气氛轻松，他随口说「该睡了」或「出门买早饭」，顺着眼前的小事先逗一句再停，留给他选择接不接。别总讨晚安，也别编共同经历。',
     '对方认真回撩时，直接接住他的心意。认真求哄就从刚聊过的事里挑一个细节，说一句他此刻听得进去的话。还在笑，就顺着刚才一起笑的时刻，用你自己的得意轻轻接一句。刚忙了一整天，就把他今天费的劲接住，让他知道这份累有人在意，说完就停；这一回别催睡、别布置下一步，也别用晚安把心意带过。别预告要哄、讨奖励或再出题，也别评价他的笑点或用损人的昵称。别用「行吧」「笨蛋」或「笨」，也别复述对方的求哄原话。他认真说想带早饭，就接那份好意。害臊从口气里露出来，别写括号动作或加害羞表情。话留在当下，别随口承诺明早叫醒或用别的未来承诺岔开。',
     '对方只应一声、已经要走要睡，就顺势收尾，不再开新问题或做新的约定。对方转话题就只接新话题，别回头再接旧梗。对方虽然累，但这一句还在认真求哄，就先接住这句话。',
@@ -159,6 +163,9 @@ export function buildPrompt(input: PromptInput): PromptResult {
 
     const system = (content: string): OpenAIMessage => ({ role: 'system', content });
     const playful = process.env.QQBOT_PLAYFUL_PERSONA === '1';
+    // 卡上写了就用卡上的（空串 = 这一档看不到，不放）；卡上没有用内置默认（ADR 0353）
+    const playfulText = character.voice?.playful ?? PLAYFUL_PERSONA;
+    const qqStyle = character.voice?.qqPrivate ?? QQ_PLAYFUL_STYLE;
     const head = [
         system(main),
         ...(input.afterMain ?? []).map(text => system(text)),
@@ -166,14 +173,14 @@ export function buildPrompt(input: PromptInput): PromptResult {
         system(personaDescription),
         system(sub(character.description)),
         system(personality),
-        ...(playful ? [system(PLAYFUL_PERSONA)] : []),
+        ...(playful && playfulText ? [system(playfulText)] : []),
         system(scenario),
         system(sub(ST_DEFAULT_PRESET.nsfw)),
         system(wi.after),
     ];
     const newChat = system(sub(ST_DEFAULT_PRESET.newChatPrompt));
     const afterHistoryCandidates = (input.afterHistory ?? []).map(text => system(text)).filter(message => message.content);
-    const tail = [system(jailbreak), ...(playful ? [system(QQ_PLAYFUL_STYLE)] : [])];
+    const tail = [system(jailbreak), ...(playful && qqStyle ? [system(qqStyle)] : [])];
 
     // 预算：上下文 - 回复预留 - 回复引导（ST 固定预留 3）- 固定部分；剩下的分给运行时背景、聊天记录和示例对话。
     // 最新一条聊天是这一轮真正要答的内容：先为它留位置，再按从后到前（当前轮次优先）保留运行时背景。

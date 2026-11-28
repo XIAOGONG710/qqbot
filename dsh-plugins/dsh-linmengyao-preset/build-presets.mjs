@@ -1,5 +1,8 @@
 // 生成 presets.cjs：把 DSH 自带的四个模式（标准 / PTC / 极简 / 创造）的插件表抄下来，
-// 只把人格那一条换成林梦瑶的 prefix，让她勾哪个模式都是她自己。
+// 只把人格那一条的 prefix 换成她的身份，让她勾哪个模式都是她自己。
+// 身份文字不写进 presets.cjs（ADR 0353）：生成的是 `require("./her-prefix.cjs").herPrefix()`，组 preset 时现读角色卡的
+// voice.desktopIdentity（persona.yml voice.desktop_identity），卡上没有用 her-prefix.cjs 的 FALLBACK_PREFIX。
+// 生成前核对 FALLBACK_PREFIX 和 cordis.patch.yml 里 linmengyao 那一座的 prefix 一字不差，不一致就停。
 //
 // 为什么要抄：内置 preset 的 id 不能重复注册（registry.register 撞 id 直接抛
 // Duplicate agent preset），profile patch 只能整表覆盖 config.plugins；
@@ -9,7 +12,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import yaml from 'js-yaml';
+
+const { FALLBACK_PREFIX } = createRequire(import.meta.url)('./her-prefix.cjs');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ASAR = 'C:/Users/22601/AppData/Local/Programs/DeepSeek Harness/resources/app.asar';
@@ -46,10 +52,12 @@ const jsType = new yaml.Type('tag:yaml.org,2002:js', {
 const SCHEMA = yaml.DEFAULT_SCHEMA.extend([jsType]);
 
 const herPatch = yaml.load(fs.readFileSync(path.join(here, 'cordis.patch.yml'), 'utf8'), { schema: SCHEMA });
-const herPlugins = herPatch[0].insert[0].config.plugins;
-const personaRow = herPlugins.find((r) => r.id === 'persona');
+// insert 里第一行是 guard.js（没有 config），按 config.plugins 找 preset 那一行
+const herPlugins = herPatch[0].insert.find((row) => row.config?.plugins)?.config.plugins;
+const personaRow = herPlugins?.find((r) => r.id === 'persona');
 if (!personaRow) throw new Error('她的 preset 里没找到 persona 行');
-const HER_PREFIX = personaRow.config.prefix;
+if (personaRow.config.prefix !== FALLBACK_PREFIX) throw new Error('cordis.patch.yml 的 persona.prefix 和 her-prefix.cjs 的 FALLBACK_PREFIX 不一致，先对齐');
+const HER_PREFIX = { __js: 'require("./her-prefix.cjs").herPrefix()' };
 
 const MODES = ['standard', 'ptc', 'minimal', 'cordis'];
 
@@ -79,7 +87,7 @@ function emit(value, ind = '') {
 
 const out = [];
 out.push('// 由 build-presets.mjs 生成，别手改。');
-out.push('// 四个内置模式的插件表照抄 DSH 自带 preset，只把 persona 的 prefix 换成林梦瑶。');
+out.push('// 四个内置模式的插件表照抄 DSH 自带 preset，只把 persona 的 prefix 换成她的身份：组 preset 时由 her-prefix.cjs 现读角色卡（ADR 0353）。');
 out.push('// 生成时间见 git 提交说明；DSH 升级后重跑：node dsh-plugins/dsh-linmengyao-preset/build-presets.mjs');
 out.push('"use strict";');
 out.push('');

@@ -1,9 +1,13 @@
-// 把 scripts/dsh/her-identity.txt 写进 profile 补丁里 preset-cordis 的 persona.prefix。
+// 把她的桌面身份写进 profile 补丁里 preset-cordis 的 persona.prefix。
+// 文字来源（ADR 0353）：角色卡上的 voice.desktopIdentity（persona.yml voice.desktop_identity）；卡上没写就用 scripts/dsh/her-identity.txt（改造前的来源）。
 // 只改这一处文本；插件表、system-prompt 行、默认座位都不动（见 docs/adr/0346）。
-// 用法：node scripts/dsh/apply-her-prefix.mjs [--profile <profileId>] [--profile-dir <dir>]
+// 用法：node scripts/dsh/apply-her-prefix.mjs [--profile <profileId>] [--profile-dir <dir>] [--card <卡>]
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { createRequire } from 'node:module';
+
+const { cardDesktopIdentity } = createRequire(import.meta.url)('../../dsh-plugins/dsh-linmengyao-preset/her-prefix.cjs');
 
 const argv = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -18,7 +22,8 @@ const profileDir = opt('profile-dir', path.join(os.homedir(), '.dsh', 'profiles'
 const patchPath = path.join(profileDir, 'cordis.patch.yml');
 const textPath = path.join(repoRoot, 'scripts', 'dsh', 'her-identity.txt');
 
-const text = fs.readFileSync(textPath, 'utf8').replace(/\r\n/g, '\n').replace(/\s+$/, '');
+const fromCard = cardDesktopIdentity(opt('card', undefined));
+const text = (fromCard ?? fs.readFileSync(textPath, 'utf8')).replace(/\r\n/g, '\n').replace(/\s+$/, '');
 const src = fs.readFileSync(patchPath, 'utf8');
 const lines = src.split('\n');
 
@@ -47,4 +52,5 @@ fs.renameSync(`${patchPath}.tmp`, patchPath);
 
 console.log(`已写入 ${patchPath}`);
 console.log(`备份 ${backup}`);
+console.log(`来源 ${fromCard === undefined ? textPath : '角色卡 voice.desktopIdentity'}`);
 console.log(`prefix 行数 ${text.split('\n').length}，字数 ${[...text].length}`);

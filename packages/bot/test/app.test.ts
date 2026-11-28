@@ -3845,6 +3845,75 @@ describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不
         }
     });
 
+    test('跨端人设来源（ADR 0353）：QQ 私聊和群聊从这一档卡上的 voice 读，私聊放分寸和 QQ 口气，群里只放分寸，看不到的档位不放，桌面那几条都不读', async () => {
+        const original = process.env.QQBOT_PLAYFUL_PERSONA;
+        process.env.QQBOT_PLAYFUL_PERSONA = '1';
+        try {
+            const clock = new VirtualClock(virtualStart);
+            const cfg = config({ contacts: [...bf, { qq: 10003, name: '路人', tier: 'stranger' as const }], groupChat: 'on', groups: [{ id: 555, name: '合成群' }] });
+            // 合成卡抄一份，按档位改 voice：分寸只给男朋友档和同学档（群里用同学档的卡），QQ 口气和桌面那三条只给男朋友档
+            const cards = join(cfg.dataDir, 'cards');
+            mkdirSync(cards);
+            for (const file of readdirSync(syntheticStDir)) {
+                const json = JSON.parse(readFileSync(join(syntheticStDir, file), 'utf8'));
+                const tier = /^synthetic-(boyfriend|classmate|bestie|girl_friend|known|stranger|unlisted)(?:-open)?\.json$/.exec(file)?.[1];
+                if (tier) {
+                    const sees = (tiers: string[]) => tiers.includes(tier);
+                    json.data.extensions.qqbot.voice = {
+                        playful: sees(['boyfriend', 'classmate']) ? '【合成分寸】按档位给的' : '',
+                        qqPrivate: sees(['boyfriend']) ? '【合成 QQ 私聊口气】' : '',
+                        desktopChat: sees(['boyfriend']) ? '【合成桌面闲聊】' : '',
+                        desktopIdentity: sees(['boyfriend']) ? '【合成桌面身份】' : '',
+                        callsHim: sees(['boyfriend']) ? '合成称呼' : '',
+                    };
+                }
+                writeFileSync(join(cards, file), JSON.stringify(json));
+            }
+            cfg.characterCard = join(cards, 'synthetic-{tier}.json');
+            const prompts: string[] = [], sent: string[] = [];
+            const { app, sent: privateSent } = setup(cfg, { 10002: [], 10003: [] }, { clock, extra: { sendGroupText: async (_group, text) => { sent.push(text); return 900 + sent.length; } },
+                generate: messages => { prompts.push(messages.map(message => message.content).join('\n')); return '嗯'; } });
+            await app.connected(SELF);
+            const drive = async (done: () => boolean) => {
+                const deadline = Date.now() + 8000;
+                while (!done() && Date.now() < deadline) {
+                    await new Promise(r => setTimeout(r, 20));
+                    const next = clock.nextTimer();
+                    if (next !== undefined) clock.advanceTo(next);
+                }
+                assert.ok(done(), '等不到');
+            };
+            const at = Math.floor(clock.now() / 1000);
+            app.receive({ ...event(10002, 201, '该睡了'), time: at });
+            await drive(() => privateSent.length >= 1);
+            const boyfriend = prompts.at(-1)!;
+            app.receive({ ...event(10003, 202, '该睡了'), time: Math.floor(clock.now() / 1000) });
+            await drive(() => privateSent.length >= 2);
+            const stranger = prompts.at(-1)!;
+            app.receiveGroup({
+                ...event(10004, 203, '都早点睡', '新群友'), time: Math.floor(clock.now() / 1000), message_type: 'group', sub_type: 'normal', group_id: 555,
+                message: [{ type: 'at', data: { qq: String(SELF) } }, { type: 'text', data: { text: '都早点睡' } }],
+            } as GroupMessageEvent);
+            await drive(() => sent.length >= 1);
+            const group = prompts.at(-1)!;
+            assert.match(group, /在 QQ 群里和大家聊天/);
+            const builtin = /你逗人的分寸|QQ 私聊里的口气/;
+            const desktop = /合成桌面闲聊|合成桌面身份|合成称呼/;
+            assert.match(boyfriend, /【合成分寸】按档位给的[\s\S]*【合成 QQ 私聊口气】/);
+            assert.doesNotMatch(boyfriend, builtin);
+            assert.doesNotMatch(boyfriend, desktop);
+            assert.doesNotMatch(stranger, /合成分寸|合成 QQ 私聊口气/);
+            assert.doesNotMatch(stranger, builtin);
+            assert.doesNotMatch(stranger, desktop);
+            assert.match(group, /【合成分寸】按档位给的/);
+            assert.doesNotMatch(group, /合成 QQ 私聊口气/);
+            assert.doesNotMatch(group, builtin);
+            assert.doesNotMatch(group, desktop);
+        } finally {
+            if (original === undefined) delete process.env.QQBOT_PLAYFUL_PERSONA; else process.env.QQBOT_PLAYFUL_PERSONA = original;
+        }
+    });
+
     test('J 合成私聊用已验证的笔记排序，流水查日期，单次反馈只进当轮语气', async () => {
         const previous = process.env.QQBOT_NOTEBOOK_LEARNING;
         process.env.QQBOT_NOTEBOOK_LEARNING = '1';

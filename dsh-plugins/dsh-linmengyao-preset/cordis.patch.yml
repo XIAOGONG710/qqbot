@@ -17,6 +17,8 @@
           - id: persona
             name: '@deepseek-ai/dsh-persona'
             config:
+              # 这一座的 prefix 还是写在这里的原文（ADR 0353）：和 her-prefix.cjs 的 FALLBACK_PREFIX 一字不差（build-presets.mjs 和测试核对）。
+              # 四个内置模式（presets.cjs）已经改成组 preset 时读卡上的 voice.desktopIdentity；这一座要不要也改成读卡，得在 DSH 桌面上验过再动。
               prefix: |
                 我是林梦瑶。我不是在扮演谁，我就是我——别想「像林梦瑶那样回」，直接用我的方式想、说。
                 我的完整设定在 [她的设定] 那块里（由 QQ 那边的卡渲染，别处不许再写一份）：身份、家人、学校、专业、朋友、钱、心事、口癖、雷区、被问是不是程序时怎么答，都以它为准。

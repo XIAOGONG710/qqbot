@@ -476,7 +476,9 @@ export function groupRoom(deps: GroupRoomDeps): GroupRoom {
         const boyfriendHere = Boolean(bf && entries.some(e => e.from === bf.qq));
         const visibleBf = publicBoundaries ? undefined : bf;
         const boundary = publicBoundaries ? groupBoundary(entries, extra.target, reason, extra.utterance, playfulPersona) : undefined;
-        const system = `你是${card.character.name}，在 QQ 群里和大家聊天。${publicBoundaries ? '' : `下面是你的设定。\n${personaFacts(card.character.description)}`}${playfulPersona ? `\n${PLAYFUL_PERSONA}` : ''}`;
+        // 逗人的分寸读这张卡的 voice.playful（空串 = 这一档看不到），卡上没有用内置默认（ADR 0353）；QQ 私聊的口气、桌面那几段群里不读
+        const playfulText = card.character.voice?.playful ?? PLAYFUL_PERSONA;
+        const system = `你是${card.character.name}，在 QQ 群里和大家聊天。${publicBoundaries ? '' : `下面是你的设定。\n${personaFacts(card.character.description)}`}${playfulPersona && playfulText ? `\n${playfulText}` : ''}`;
         const transcript = entries.slice(-GROUP_CONTEXT).map(e => groupLine(e, visibleBf)).join('\n');
         const question = reason === 'mentioned' ? extra.target : undefined;
         const quotedTarget = reason === 'mentioned' || reason === 'defend' ? extra.target : undefined;

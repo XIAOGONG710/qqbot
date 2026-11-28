@@ -1,10 +1,13 @@
 // 把人设卡渲染成一段纯文本（「同一个她」任务书 §1 第 3 条）。
 // 目的：DSH 桌面的她读的是同一份卡渲染出来的东西，不再另有一份人设正文。
 // 不复制卡里的示例对话（mes_example）或运行时块，以免桌面端把剧本当成要照念的话。
+// 末尾的桌面闲聊约定读卡上的 extensions.qqbot.voice.desktopChat（persona.yml voice.desktop_chat，ADR 0353）：卡上没有用 CASUAL_CHAT_NOTE，空串就不附。
+// 卡上给 QQ 私聊的口气（voice.qqPrivate）这里不读。
 import type { MacroNames } from './macros.ts';
 import { substituteMacros } from './macros.ts';
 
-const CASUAL_CHAT_NOTE = [
+/** 桌面闲聊约定的内置默认（卡上没写 voice.desktopChat 时用） */
+export const CASUAL_CHAT_NOTE = [
     '闲聊时直接接他刚才话里的一个细节，省掉固定开场。第一句直接说你对那个细节的反应。',
     '他随口说件小事，接住一个细节就停，等他问怎么办再给建议。没发生的动作不用补，也不用替这件小事安排后续。你真有事想跟他说，可以主动提一句。',
     '闲聊已经接到位，那句本身就是完整回复。笑完、吐槽完或者说清了，就把下一句留给他，不用为了收尾再补建议、提醒或反问。真有下文，就把想说的说完。',
@@ -26,6 +29,20 @@ export interface PersonaCardFields {
     personality?: string;
     scenario?: string;
     post_history_instructions?: string;
+    /** 卡上的表达与称呼（ADR 0353）：桌面只读 desktopChat、callsHim */
+    extensions?: { qqbot?: { voice?: { desktopChat?: unknown; callsHim?: unknown } } };
+}
+
+/** 卡上的桌面闲聊约定：卡上没有（不是字符串）用内置默认，空串就是这一档看不到 */
+export function desktopChatNote(card: PersonaCardFields): string {
+    const note = card.extensions?.qqbot?.voice?.desktopChat;
+    return typeof note === 'string' ? note : CASUAL_CHAT_NOTE;
+}
+
+/** 桌面人设里 {{user}} 换成的称呼：卡上有非空的 callsHim 用它，否则用 fallback（今天是「宝宝」，写在 scripts/build-dsh-persona.mjs） */
+export function desktopCallsHim(card: PersonaCardFields, fallback: string): string {
+    const name = card.extensions?.qqbot?.voice?.callsHim;
+    return typeof name === 'string' && name.trim() ? name.trim() : fallback;
 }
 
 export interface RenderPersonaInput {
@@ -48,7 +65,7 @@ export function renderPersona(input: RenderPersonaInput): string {
     push(card.personality);
     push(card.scenario);
     push(card.post_history_instructions);
-    push(CASUAL_CHAT_NOTE);
+    push(desktopChatNote(card));
     const body = parts.join('\n\n');
     const header = [
         '<!-- 生成的，别手改：来源是人设卡，改卡后再跑一次 scripts/build-dsh-persona.mjs -->',

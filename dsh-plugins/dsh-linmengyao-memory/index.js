@@ -1005,6 +1005,29 @@ function readPersona(cfg) {
   } catch { return '' }
 }
 
+let cardVoiceCache = { path: '', at: 0, voice: undefined }
+
+/**
+ * 人设卡上的表达与称呼（persona.yml voice 段转出来的 extensions.qqbot.voice，ADR 0353）：卡改了就重读；卡不在、读不懂、没有这一块都是 undefined。
+ * 这里只读 playful（逗人的分寸，QQ 私聊、群聊也读同一条）；给 QQ 私聊的 qqPrivate 桌面不读。
+ */
+function cardVoiceOf(cfg) {
+  try {
+    const stat = fs.statSync(cfg.personaCardFile)
+    if (cardVoiceCache.path !== cfg.personaCardFile || cardVoiceCache.at !== stat.mtimeMs) {
+      const voice = JSON.parse(fs.readFileSync(cfg.personaCardFile, 'utf8'))?.data?.extensions?.qqbot?.voice
+      cardVoiceCache = { path: cfg.personaCardFile, at: stat.mtimeMs, voice: voice && typeof voice === 'object' ? voice : undefined }
+    }
+    return cardVoiceCache.voice
+  } catch { return undefined }
+}
+
+/** 逗人的分寸：卡上有就用卡上的（空串 = 这一档看不到，不放），卡上没有用 playful-persona.mjs 的内置默认 */
+export function playfulPersonaOf(cfg) {
+  const text = cardVoiceOf(cfg)?.playful
+  return typeof text === 'string' ? text : PLAYFUL_PERSONA
+}
+
 /**
  * 她翻自己的日记写下的对自己的认识（ADR 0194）：QQ 那边写 INSIGHTS.json，这里只读。
  * 文件里每条带「里面有意义的二字词」（QQ 那边去掉了太常见的），这里只拿他这句话的二字词和它取交集——停用词表只有 QQ 那一份。
@@ -1544,7 +1567,8 @@ export function apply(ctx, config = {}) {
             if (!privateTurn()) return ''
             const persona = readPersona(cfg)
             if (persona) warnIfPersonaStale(cfg)
-            const core = [persona, process.env.QQBOT_PLAYFUL_PERSONA === '1' ? PLAYFUL_PERSONA : ''].filter(Boolean).join('\n\n')
+            // 逗人的分寸和 QQ 读同一张卡的同一条（ADR 0353），卡上没有用内置默认
+            const core = [persona, process.env.QQBOT_PLAYFUL_PERSONA === '1' ? playfulPersonaOf(cfg) : ''].filter(Boolean).join('\n\n')
             return core ? `[她的设定]
 ${core}` : ''
           },

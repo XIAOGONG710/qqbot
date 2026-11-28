@@ -68,6 +68,8 @@ function boot(extra: Record<string, unknown> = {}, subagents: { rootOf: (agent: 
         timelineInboxFile: f('timeline-inbox.jsonl'), worldInboxFile: f('world-inbox.jsonl'), selfFile: f(SELF_FILE), selfReceiptsFile: f(SELF_RECEIPTS_FILE),
         // 人设也指到临时目录：不给的话插件按默认去读她真正的 PERSONA.md，测试就把真实人设整段注入进提示词
         personaFile: f('PERSONA.md'), homeStatusFile: f('HOME-PUBLIC.json'),
+        // 人设卡同理（ADR 0353 起逗人的分寸从卡上读）：默认指到临时目录里不存在的文件，要卡的测试自己写一张合成卡
+        personaCardFile: f('persona-card.json'),
         // 在场租约也落在临时目录里：不给的话插件按默认写到她真正的灵魂目录（~/.dsh/linmengyao）
         presenceFile: f('desktop-presence.json'), sessionTailsFile: f('session-tails.jsonl'),
         // 「我现在的样子」也指到临时目录：不给的话插件按默认去读她真正的 PORTRAIT.json
@@ -104,6 +106,30 @@ test('DSH 核心俏皮人设只加入已确认的私聊', () => {
         assert.match(trusted.contexts.map(entry => entry.text()).join('\n'), /你逗人的分寸.*先递一句.*回撩会害臊/);
         const other = boot({ ownerPrivateSessions: [] });
         assert.ok(other.contexts.every(entry => !entry.text()));
+    } finally {
+        if (original === undefined) delete process.env.QQBOT_PLAYFUL_PERSONA; else process.env.QQBOT_PLAYFUL_PERSONA = original;
+    }
+});
+
+test('跨端人设来源（ADR 0353）：DSH 的逗人分寸读人设卡的 voice.playful，卡上没有用内置默认，空串不放；QQ 私聊的口气不读', () => {
+    const original = process.env.QQBOT_PLAYFUL_PERSONA;
+    const persona = (voice?: Record<string, string>) => {
+        const app = boot();
+        if (voice) writeFileSync(app.f('persona-card.json'), JSON.stringify({ spec: 'chara_card_v2', data: { name: '合成角色', extensions: { qqbot: { banned: [], voice } } } }));
+        return app.contexts.map(entry => entry.text()).join('\n');
+    };
+    try {
+        process.env.QQBOT_PLAYFUL_PERSONA = '1';
+        const fromCard = persona({ playful: '【合成逗人分寸】只在卡上', qqPrivate: '【合成 QQ 私聊口气】不该到桌面', desktopChat: '桌面闲聊另走 PERSONA.md' });
+        assert.match(fromCard, /\[她的设定\][\s\S]*【合成逗人分寸】只在卡上/);
+        assert.doesNotMatch(fromCard, /你逗人的分寸|合成 QQ 私聊口气|桌面闲聊另走/);
+        // 卡不在、卡上没写 voice：和改造前一样用 playful-persona.mjs 的那段
+        assert.match(persona(), /你逗人的分寸.*先递一句.*回撩会害臊/);
+        assert.match(persona({ qqPrivate: '只有 QQ 口气' }), /你逗人的分寸/);
+        // 写了但这一档看不到（空串）：不放，也不退回内置默认
+        assert.doesNotMatch(persona({ playful: '' }), /你逗人的分寸|\[她的设定\]/);
+        delete process.env.QQBOT_PLAYFUL_PERSONA;
+        assert.doesNotMatch(persona({ playful: '【合成逗人分寸】只在卡上' }), /合成逗人分寸/);
     } finally {
         if (original === undefined) delete process.env.QQBOT_PLAYFUL_PERSONA; else process.env.QQBOT_PLAYFUL_PERSONA = original;
     }

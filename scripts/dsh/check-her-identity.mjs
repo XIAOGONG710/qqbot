@@ -1,8 +1,12 @@
-// 体检：profile 补丁里她的身份三段是否在位、文案是否和 scripts/dsh/her-identity.txt 一致。
-// 用法：node scripts/dsh/check-her-identity.mjs [--profile desktop] [--profile-dir <dir>]
+// 体检：profile 补丁里她的身份三段是否在位、文案是否和来源一致。
+// 来源和 apply-her-prefix.mjs 一样（ADR 0353）：角色卡上的 voice.desktopIdentity，卡上没写就是 scripts/dsh/her-identity.txt。
+// 用法：node scripts/dsh/check-her-identity.mjs [--profile desktop] [--profile-dir <dir>] [--card <卡>]
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { createRequire } from 'node:module';
+
+const { cardDesktopIdentity } = createRequire(import.meta.url)('../../dsh-plugins/dsh-linmengyao-preset/her-prefix.cjs');
 
 const argv = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -27,9 +31,9 @@ report.push(['tool-cordis 行在位', /id:\s*tool-cordis/.test(src)]);
 report.push(['tool-pwsh 行在位', /id:\s*tool-pwsh/.test(src)]);
 report.push(['tool-plugin-manager 行在位', /id:\s*tool-plugin-manager/.test(src)]);
 
-const text = fs.readFileSync(path.join(repoRoot, 'scripts', 'dsh', 'her-identity.txt'), 'utf8').trim();
+const text = (cardDesktopIdentity(opt('card', undefined)) ?? fs.readFileSync(path.join(repoRoot, 'scripts', 'dsh', 'her-identity.txt'), 'utf8')).trim();
 const firstLine = text.split('\n')[0].trim();
-report.push(['persona 文案与 her-identity.txt 一致', src.includes(firstLine) && src.includes(text.split('\n')[2]?.trim() ?? firstLine)]);
+report.push(['persona 文案与来源一致', src.includes(firstLine) && src.includes(text.split('\n')[2]?.trim() ?? firstLine)]);
 
 let bad = 0;
 for (const [name, ok] of report) {

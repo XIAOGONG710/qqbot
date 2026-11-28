@@ -42,7 +42,23 @@ export interface Character {
     herWorld?: World;
     /** 她的过去（extensions.qqbot.biography，ADR 0022）：作者定稿的自传切好的块，有线索才想起；旧卡没有 */
     biography?: Biography;
+    /** 跨端的表达与称呼（extensions.qqbot.voice，ADR 0353）：资料写了的键才有，空串是这一档看不到；没有的键由读的地方用内置默认 */
+    voice?: CharacterVoice;
 }
+
+/**
+ * 卡上的表达与称呼（persona.yml voice 段转出来的，ADR 0353）。QQ 只读 playful（私聊、群聊）和 qqPrivate（私聊）；
+ * desktopChat、desktopIdentity、callsHim 只给 DSH（scripts/build-dsh-persona.mjs、dsh-plugins/dsh-linmengyao-preset/her-prefix.cjs 直接读卡），这里只校验类型
+ */
+export interface CharacterVoice {
+    playful?: string;
+    qqPrivate?: string;
+    desktopChat?: string;
+    desktopIdentity?: string;
+    callsHim?: string;
+}
+
+const VOICE_FIELDS = ['playful', 'qqPrivate', 'desktopChat', 'desktopIdentity', 'callsHim'] as const;
 
 export function parseCharacterCard(json: unknown, source = '角色卡'): Character {
     const card = json as { spec?: unknown; data?: Record<string, unknown> };
@@ -77,7 +93,22 @@ export function parseCharacterCard(json: unknown, source = '角色卡'): Charact
         books: parseBooks((extensions.qqbot as { books?: unknown } | undefined)?.books, source),
         ...readWorld(extensions.qqbot, source),
         ...readBiography(extensions.qqbot, source),
+        ...readVoice(extensions.qqbot, source),
     };
+}
+
+function readVoice(qqbot: unknown, source: string): { voice?: CharacterVoice } {
+    const voice = (qqbot as { voice?: unknown } | undefined)?.voice;
+    if (voice === undefined) return {};
+    if (typeof voice !== 'object' || voice === null || Array.isArray(voice)) throw new Error(`${source}：extensions.qqbot.voice 应为对象`);
+    const parsed: CharacterVoice = {};
+    for (const key of VOICE_FIELDS) {
+        const text = (voice as Record<string, unknown>)[key];
+        if (text === undefined) continue;
+        if (typeof text !== 'string') throw new Error(`${source}：extensions.qqbot.voice.${key} 应为字符串`);
+        parsed[key] = text;
+    }
+    return { voice: parsed };
 }
 
 function parsePace(qqbot: unknown, source: string): number {
