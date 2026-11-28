@@ -23,10 +23,19 @@ export function exitOptionsOf(turn: Turn, ctx: ReviewCtx): ReviewOptions | undef
     const { facts, contact } = turn;
     const history = ctx.history ?? (() => []);
     const latest = turn.history.at(-1);
-    const sincereComfort = process.env.QQBOT_PLAYFUL_PERSONA === '1' && !facts.crisis && !turn.initiate && !turn.thinking
-        && latest?.role === 'user' && /^(?:我)?(?:是)?认真(?:地)?想听你哄我(?:一下|一句)?[。！!?？\s]*$/u.test(latest.content.trim());
+    const playfulReply = process.env.QQBOT_PLAYFUL_PERSONA === '1' && !facts.crisis && !turn.initiate && !turn.thinking && latest?.role === 'user';
     const banned = fewerRules() && !facts.crisis ? [...(turn.card?.banned ?? [])] : [...(turn.card?.banned ?? []), ...ODD_BODY_WORDS, ...STILTED_WORDS];
-    if (sincereComfort) banned.push('行吧', '笨', '认真想听你哄我');
+    const precedingUser = playfulReply ? turn.history.slice(0, -1).findLast(message => message.role === 'user') : undefined;
+    if (playfulReply && /^(?:我)?(?:是)?认真(?:地)?想听你哄我(?:一下|一句)?[。！!?？\s]*$/u.test(latest.content.trim())) {
+        banned.push('行吧', '笨', '认真想听你哄我', 're:笑点[^。！？]{0,5}低');
+        if (precedingUser && /忙了(?:一?整|一)天|累[了得坏]|(?:今天|这会儿).{0,8}(?:很累|太累|好累|挺累|累死)/u.test(precedingUser.content)) {
+            banned.push('re:晚安|早点睡|抓紧睡|赶紧睡|快睡|去睡|睡吧|好好睡|哄(?:你|他)睡|(?:闭眼|躺下)(?:就)?睡');
+        }
+    }
+    if (playfulReply && /^(?:嗯[。！!，,\s]*)?(?:说回来|换个话题|说回正事)/u.test(latest.content.trim())) {
+        banned.push('re:笑点[^。！？]{0,5}低');
+        if (precedingUser?.content.includes('笑话') && !latest.content.includes('笑')) banned.push('re:笑话|笑点|笑(?:到|成|够)');
+    }
     return {
         // 角色卡的禁用词 + 医书里的词（“肚子坠着”之类，expression.ts 的 ODD_BODY_WORDS）：出了就让她重写
         // 少规矩（ADR 0342）：只留卡上的红线，医书词和书面腔不再让她重写

@@ -270,7 +270,7 @@ describe('出口检查的上下文自己算（exitOptionsOf，2026-11-16）', as
         process.env.QQBOT_PLAYFUL_PERSONA = '1';
         try {
             const requested: Turn = { ...turnOf(), history: [{ role: 'user', content: '我认真想听你哄我一下。' }] };
-            for (const draft of ['行吧，逗你呢。', '你呀，笨。', '我认真想听你哄我一下。']) {
+            for (const draft of ['行吧，逗你呢。', '你呀，笨。', '我认真想听你哄我一下。', '你笑点也太低了。']) {
                 let rewrites = 0;
                 const { ctx } = ctxOf({ regenerate: async () => { rewrites++; return '我也喜欢你刚才笑出声那一下。'; } });
                 assert.equal(await exit(draft, requested, ctx), '我也喜欢你刚才笑出声那一下。');
@@ -279,6 +279,24 @@ describe('出口检查的上下文自己算（exitOptionsOf，2026-11-16）', as
             const { ctx } = ctxOf();
             const ending: Turn = { ...requested, history: [...requested.history, { role: 'user', content: '嗯，我先睡了。' }] };
             assert.equal(await exit('行吧，晚安。', ending, ctx), '行吧，晚安。');
+
+            const tired: Turn = { ...requested, history: [
+                { role: 'user', content: '今天忙了一整天，想放下手机。' },
+                { role: 'assistant', content: '明早别赖床啊。' },
+                ...requested.history,
+            ] };
+            const care = ctxOf({ regenerate: async () => '今天这么多事都扛下来了，你累得有道理。' });
+            assert.equal(await exit('那你早点睡，晚安。', tired, care.ctx), '今天这么多事都扛下来了，你累得有道理。');
+            assert.equal(await exit('我哄你睡。', tired, ctxOf({ regenerate: care.ctx.regenerate }).ctx), '今天这么多事都扛下来了，你累得有道理。');
+            const signoff: Turn = { ...tired, history: [...tired.history, { role: 'user', content: '嗯，我先睡了。' }] };
+            assert.equal(await exit('晚安。', signoff, ctxOf().ctx), '晚安。');
+            const shifted: Turn = { ...requested, history: [
+                { role: 'user', content: '刚才那个笑话我还在笑。' },
+                { role: 'assistant', content: '小心梦里都接着笑。' },
+                { role: 'user', content: '嗯。说回来，照片明早再发。' },
+            ] };
+            const backToTopic = ctxOf({ regenerate: async () => '好，照片明早发就行。' });
+            assert.equal(await exit('笑到半夜别赖我。', shifted, backToTopic.ctx), '好，照片明早发就行。');
         } finally {
             if (original === undefined) delete process.env.QQBOT_PLAYFUL_PERSONA; else process.env.QQBOT_PLAYFUL_PERSONA = original;
         }
