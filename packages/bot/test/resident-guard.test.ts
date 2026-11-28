@@ -144,9 +144,36 @@ describe('隔离常驻进程的守卫和工作回执', () => {
         writeFileSync(join(dir, 'NOW.md'), freshNow);
         const fakeBin = join(dir, 'synthetic.mjs');
         const calls = join(dir, 'calls');
-        writeFileSync(fakeBin, `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(calls)}, 'run\\n');\nconsole.log('合成结果');\nif (process.argv.at(-1).includes('模拟中断')) process.exitCode = 1;`);
+        const dshBin = process.env.QQBOT_DRILL_DSH_BIN;
+        writeFileSync(fakeBin, `import { appendFileSync } from 'node:fs';
+import net from 'node:net';
+import { pathToFileURL } from 'node:url';
+appendFileSync(${JSON.stringify(calls)}, 'run\\n');
+if (process.argv.at(-1).includes('模拟中断')) {
+    console.log('合成结果');
+    process.exitCode = 1;
+} else if (${JSON.stringify(Boolean(dshBin))}) {
+    net.Socket.prototype.connect = () => { throw Error('unexpected drill socket'); };
+    globalThis.fetch = async input => {
+        const target = new URL(input.url ?? input);
+        if (target.hostname !== '127.0.0.1' || !target.pathname.endsWith('/chat/completions')) throw Error('unexpected drill fetch');
+        const chunk = { id: 'synthetic', object: 'chat.completion.chunk', model: 'deepseek-v4-flash', created: 1 };
+        const frames = [
+            { ...chunk, choices: [{ index: 0, delta: { role: 'assistant', content: 'Synthetic DSH result' }, finish_reason: null }] },
+            { ...chunk, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+        ].map(frame => 'data: ' + JSON.stringify(frame) + '\\n\\n').join('');
+        return new Response(frames + 'data: [DONE]\\n\\n', { headers: { 'content-type': 'text/event-stream' } });
+    };
+    process.argv[1] = ${JSON.stringify(dshBin ?? '')};
+    const { runCli } = await import(pathToFileURL(process.argv[1]).href);
+    await runCli();
+} else {
+    console.log('合成结果');
+}`);
         const start = () => spawn(process.execPath, [script], {
-            env: { ...process.env, HER_PORT: String(port), HER_DIR: dir, HER_SOUL_DIR: dir, QQBOT_SOUL_DIR: dir, HER_CWD: dir, DSH_BIN: fakeBin, QQBOT_LLM_API_KEY: '', QQBOT_DECISION_AUDIT: '1' },
+            env: { ...process.env, HER_PORT: String(port), HER_DIR: dir, HER_SOUL_DIR: dir, QQBOT_SOUL_DIR: dir, HER_CWD: dir, DSH_BIN: fakeBin, QQBOT_LLM_API_KEY: '', QQBOT_DECISION_AUDIT: '1',
+                ...(dshBin ? { DSH_HOME: join(dir, 'dsh'), HER_PROFILE: 'headless', HER_PERMISSION_MODE: 'read-only',
+                    DEEPSEEK_API_KEY: 'synthetic-fixture', DEEPSEEK_BASE_URL: 'http://127.0.0.1:1' } : {}) },
             stdio: 'ignore', windowsHide: true,
         });
         let child = start();
@@ -186,7 +213,7 @@ describe('隔离常驻进程的守卫和工作回执', () => {
             assert.equal((await call(port, { method: 'GET', path: '/health' })).status, 200);
             assert.match(readFileSync(join(dir, 'resident.log'), 'utf8'), /rejected HTTP 401/);
             const file = join(dir, 'focus-checkpoints.json');
-            const submit = (checkpoint: { taskId: string; operationId: string; claimId: string }, task: string) => call(port, {
+            const submit = (checkpoint: { taskId: string; operationId: string; claimId: string }, task: string, endpoint = port) => call(endpoint, {
                 method: 'POST', path: '/task', headers: { ...json, [TOKEN_HEADER]: token }, body: JSON.stringify({ task, checkpoint }),
             });
             const claim = (key: string) => {
@@ -195,7 +222,30 @@ describe('隔离常驻进程的守卫和工作回执', () => {
                 return { taskId, operationId, claimId };
             };
             const confirmed = claim('a');
-            await submit(confirmed, '查合成日志'); // Discard the HTTP reply and reconstruct from storage.
+            let receipt: { ok?: boolean; reply?: string; error?: string } | undefined;
+            const drop = http.createServer((request, response) => {
+                const upstream = http.request({ host: '127.0.0.1', port, path: '/task', method: 'POST',
+                    headers: { ...request.headers, host: `127.0.0.1:${port}` } }, result => {
+                    let body = '';
+                    result.setEncoding('utf8').on('data', chunk => { body += chunk; });
+                    result.on('end', () => {
+                        receipt = JSON.parse(body);
+                        response.destroy();
+                    });
+                });
+                upstream.on('error', () => response.destroy());
+                request.pipe(upstream);
+            });
+            await new Promise<void>(ready => drop.listen(0, '127.0.0.1', ready));
+            try {
+                const address = drop.address();
+                assert.ok(address && typeof address === 'object');
+                await assert.rejects(submit(confirmed, '查合成日志', address.port), { code: 'ECONNRESET' });
+                assert.equal(receipt?.ok, true, receipt?.error);
+                if (dshBin) assert.equal(receipt?.reply, 'Synthetic DSH result');
+            } finally {
+                await new Promise<void>(done => drop.close(() => done()));
+            }
             const interrupted = claim('b');
             assert.equal(focusCheckpoint(file, { action: 'finish', taskId: interrupted.taskId, operationId: 'desktop-finish' }).status, 'active');
             assert.equal(JSON.parse((await submit(interrupted, '模拟中断')).body).ok, false, '有输出但非正常退出，不能用作完成回执');
