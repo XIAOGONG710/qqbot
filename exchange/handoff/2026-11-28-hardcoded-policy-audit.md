@@ -302,13 +302,103 @@ DSH 侧：只在已确认的主人私聊里，他刚开口的那一步（最后�
 - 要不要写 `QQBOT_STYLE_RULES` 覆盖文件、调到哪一档。改了要重启 Koishi，属于「改线上开关 / 重启」，需要用户点头。线上这一批没有重启、没有重载。
 - 意图阶梯要不要等判断（见上，涉及每轮延迟）。
 
+## 第五批 · 心境与恢复（D）
+
+### 完成记录（2026-11-28，Claude）
+
+用户授权：「你只做硬编码改造」「继续往下做就行，不用问她，把所有的硬编码拆解开」，所以这一批没跑 `ask-her`。做了两件事：一是把一般情绪的衰减和灵敏度收进一张心境参数表，默认值就是原来写死的数；二是「他的道歉 / 解释有没有接住那件事」在新开关后面交给共用判断来认，原来的正则留作兼容回退。开关都关着、也没设覆盖文件时，行为基线 39/39 逐字一致，没有更新快照。
+
+**盘点**（入口文件里写死的数、说法正则和判断）。分类：(a) 规则，留在代码；(b) 参数和软偏好，挪进表，默认值等于今天的值；(c) 固定规则做的判断，在新开关后面交给模型，原规则留作回退。
+
+| 文件 | 条目 | 类 | 这一批怎么处理 |
+| --- | --- | --- | --- |
+| `emotion/feelings.ts` | 六种感受的默认半衰期 `HALF_LIFE_H`、起始分量 `AMPLITUDE`、三档门槛 `FAINT` / `CLEAR` / `STRONG`、上限 `KIND_CAP`、`HALF_LIVES_KEPT`、往回看 `HISTORY_WINDOW_MS`、「一直没回」的 4 小时 | b | 进表。常量名都在，改为从表里取值 |
+| `emotion/feelings.ts` | 每件事自己的轻重和半衰期（他说想你 3 小时、认真道歉 4 小时、被晾着 5 小时、一直没回 6 小时；小测出分 14 / 8、相机 14、猫 3、作业 18 / 6 小时；梦、追求那几条） | b | 未动。这是「什么事算多重」的事实到感受的映射，比一般衰减细，留作后续 |
+| `emotion/feelings.ts` | 她最近说过这种感受（3 小时内最后 6 条，`VOICED` 正则）、哭过（6 小时内 8 条）、`asksAfterHer` 他在关心她 | b / c | 未动，见未结项 |
+| `emotion/feelings.ts` | `describeFeelings` 各种感受怎么露出来的方向文字 | 人设文字 | 未动，应进角色资料，和第二批 voice 同类 |
+| `emotion/feelings.ts` | `audienceOf` / `feltForAudience`：私聊来由不进群 | a | 留在代码 |
+| `emotion/recovery.ts` | 修复后半衰期 `RECOVERY_HALF_LIFE_H`（1 小时）、被晾着之后多久以内的道歉算这一次（12 小时，新常量 `RECOVERY_WINDOW_MS`） | b | 进表 |
+| `emotion/recovery.ts` | 只带下难过 / 烦 / 担心，只对准 `him:ignored` / `him:silent` 那一条 | a | 留在代码 |
+| `emotion/recovery.ts` | `repairFromHistory` 用 `isExplanationText` 认哪句算修复 | c | 开了 `QQBOT_REPAIR_JUDGMENT` 时判过的按判的；没判过照旧按正则 |
+| `emotion/feelings.ts` | 回来第一句就道歉时（`trackRepairedReturn`），只有 `isExplanationText` 认的才留下那条等待的难过 | c | 判过的：只要她确实等了，这条难过就在（说了「抱抱」也不清零）；接住了才从他这句加快回落 |
+| `emotion/feelings.ts` | `warmSignal` 是 repair 就加一条「他在认真道歉、哄你」的松口气 | c | 判过没接住的不加；没判过照旧 |
+| `emotion/affect.ts` | 余温几轮 `AFFECT_REPLIES` | b | 进表 |
+| `emotion/affect.ts` | `REPAIR` / `COMFORT` / `AFFECTION` 正则、`hasAffirmedSignal`、`isApologyText` | c | 保留作兼容回退，没改。余温（`warmAffect`）仍只按正则，见未结项 |
+| `emotion/grievance.ts` | `GRIEVANCE_GAP_MS` / `GRIEVANCE_ROUNDS` / `GRIEVANCE_WINDOW_MS` / `BURST_GAP_MS` / `IGNORED_GAP_MS` / `IGNORED_MAX_MS` | b | 进表 |
+| `emotion/grievance.ts` | `NOTICE` / `EXPLAIN` / `EXTRA_REPAIR` / `FEELING` / `APOLOGY_OR_COMFORT` 正则，`isRepairText`、`isExplanationText` | c | `isExplanationText` 在心境回落里被判断替代（开关后面），正则本身没动。小别扭的和好（`grievanceNow` 的 makeup）、被晾着该不该发火（`ignoredNow`）还按正则，见未结项 |
+| `emotion/grievance.ts` | `describeGrievance` 的方向文字（「你气顺了：软下来，明显是原谅他了」等） | 人设文字 | 未动，见未结项 |
+| `emotion/feeling-export.ts` + DSH `index.js` | 心境多久算过期：QQ `FEELINGS_STALE_MS`，DSH `DEFAULTS.feelingsStaleMs`，两边各写一个 3 小时 | b（共用） | 进表 `feelingsStaleMs`，两边读同一个数（DSH 面板 `her-inner.js` / `her-state.js` 本来就读 QQ 的常量） |
+| `emotion/feeling-export.ts` | 内容不变时 10 分钟重写一次时间戳 | 运维 | 未动 |
+| `emotion/feeling-ledger.ts` | 疼和她妈那块的慌换说法、开心松口气不降粗、因为他的只说「有点」 | a（她定下的） | 留在代码；变粗的天数第三批已进记忆阈值表 |
+| `emotion/crisis.ts`、`crisis-state.ts`、`exit-check.ts` 的危机兜底 | 危机规则、固定兜底 | a | 留在代码，危机回合不算心境（`modules/feelings.ts`），判断模块也不问 |
+| `emotion/express.ts` | 心情 → 气泡数和话多话少（`low >= 2` 等） | b | 未动，见未结项 |
+| `modules/feelings.ts` | 只给男朋友档、危机不算、小别扭那一轮不写心境 | a | 留在代码 |
+
+**一张表**：`dsh-plugins/dsh-linmengyao-memory/feeling-params.mjs`（加上 `.d.mts`），QQ 经 `packages/bot/src/emotion/feeling-params.ts` 读，DSH 插件 `index.js` 直接 import（导出 `DESKTOP_FEELINGS_STALE_MS`，`DEFAULTS.feelingsStaleMs` 用它）。每一项写了默认值、范围、是否整数、谁读、原来写在哪、是什么意思。
+
+| 键 | 默认 | 谁读 | 原来在 |
+| --- | --- | --- | --- |
+| `feelingsStaleMs` | 3 小时 | QQ + DSH | `feeling-export.ts` FEELINGS_STALE_MS；`index.js` DEFAULTS.feelingsStaleMs |
+| `joyHalfLifeH` / `reliefHalfLifeH` / `worryHalfLifeH` / `sadHalfLifeH` / `annoyedHalfLifeH` / `tiredHalfLifeH` | 5 / 3 / 8 / 8 / 4 / 5 小时 | QQ | `feelings.ts` HALF_LIFE_H |
+| `halfLivesKept` | 4 | QQ | `feelings.ts` HALF_LIVES_KEPT |
+| `historyWindowMs` | 30 小时 | QQ | `feelings.ts` HISTORY_WINDOW_MS |
+| `silentAfterMs` | 4 小时 | QQ | `feelings.ts` historyAppraisals 的 4 * HOUR |
+| `smallAmplitude` / `mediumAmplitude` / `bigAmplitude` | 0.8 / 1.5 / 2.6 | QQ | `feelings.ts` AMPLITUDE |
+| `faintAt` / `clearAt` / `strongAt` | 0.6 / 1.2 / 2.2 | QQ | `feelings.ts` FAINT / CLEAR / STRONG |
+| `kindCap` | 3.4 | QQ | `feelings.ts` KIND_CAP |
+| `warmAffectReplies` | 3 轮 | QQ | `affect.ts` AFFECT_REPLIES |
+| `recoveryHalfLifeH` | 1 小时 | QQ | `recovery.ts` RECOVERY_HALF_LIFE_H |
+| `recoveryWindowMs` | 12 小时 | QQ | `recovery.ts` privateConversationRecovery 的 12 * 3_600_000 |
+| `grievanceGapMs` / `grievanceRounds` / `grievanceWindowMs` | 72 小时 / 2 轮 / 3 小时 | QQ | `grievance.ts` 同名常量 |
+| `burstGapMs` | 20 分钟 | QQ | `grievance.ts` BURST_GAP_MS |
+| `ignoredGapMs` / `ignoredMaxMs` | 45 分钟 / 6 小时 | QQ | `grievance.ts` IGNORED_GAP_MS / IGNORED_MAX_MS |
+
+**要调**：环境变量 `QQBOT_FEELING_PARAMS` 指向一个 JSON 文件，只写要改的键，例如 `{"sadHalfLifeH": 6}`。已登记在 `features.ts` 的 `ENV_SETTINGS`（是路径，不是开关）。QQ 和 DSH 读同一个变量、同一个文件，都经 `loadFeelingParams` 解析。解析是严格的：读不了、不是 JSON 对象、不认识的键、不是数、该是整数的不是整数、超出范围、三档门槛不是从小到大、`strongAt` 大于 `kindCap`、起始分量不是从小到大、`ignoredGapMs` 不小于 `ignoredMaxMs`，只要有一样不对，**整个文件都不用**，两边一起退回默认。进程启动时读一次，改了要重启 Koishi、重开 DSH 插件。调过或文件没用上时，QQ 第一次算心境、DSH 插件 apply 时各记一行，只写键名和数，不写路径和内容；全部默认时不记。DSH profile 里写了 `feelingsStaleMs` 时，桌面插件仍以 profile 为准。
+
+**道歉 / 解释接没接住**（新开关 `QQBOT_REPAIR_JUDGMENT=1`，默认关，已登记在 `ENV_SWITCHES`；还要 `QQBOT_SEMANTIC_JUDGMENT`、`QQBOT_FEELING_RECOVERY`、`herFeelings`、设备所有者的私聊）：
+
+1. 模型的理解：沿用第一批的共用约定 `semantic-judgment.mjs`，没有另起一份。加了两类：`repair`（前面有让她不舒服的事，他为这件事道歉或解释，而且说到了那件事上）、`brushoff`（嘴上道歉或给了理由，但没说到那件事上：随口一句就转开、搪塞、反过来怪她、只哄一句）。两类都在 `JUDGMENT_INTENTS` 里，依据必须落在他最后那几行。提示词里写明：前面没有那样一件事时，客气的「不好意思」「抱歉打扰」两类都不算；一边道歉一边求关心或开玩笑，看主要在做什么。放给她的那一行多了两种说法，后面加一句「气消没消、软不软、怎么回，由你自己定」。DSH 直接读这一行，插件代码没改。
+2. 程序允许做的：只有一样——心境里那件事回落得快不快。`emotion/repair-judgment.ts` 把这一轮的判断落到他最后那几句上：`repair` 时依据落在的那几条算接住了，同一串里其余的不算；别的能用的类别（brushoff、none、care……）这一串都不算修复。`modules/repair-judgment.ts` 挂在心境模块前面，在 `decideAt.feelings` 先把语义判断取回来（语义判断模块多了 `settle`，取过一次 `deliberate` 就不再取），写进 `turn.facts.repairVerdicts`。心境模块按它认修复证据（`recovery.ts`、`feelings.ts` 回来那一句），只在 `feelingRecovery` 开着时看。判过的那几条在进程里记着（键是时刻加内容摘要，不存原话，最多 200 条），后几轮同一句话按同一个结论，不会这一轮判没接住、下一轮又被正则当成道歉。判断不当权限、不落事实；**只靠判断才算上的回落（正则不认、判断认）不写进感觉账**（`Recovery.judged`，`modules/feelings.ts` 交给 `onFeelings` 前去掉）。
+3. 最终怎么说由她决定：她读到那一行理解和自己的心境，自己选措辞。
+
+**回退**：没开、没判过、判断用不上（超时、出错、读不懂、依据对不上、拿不准、他没说话）、重启之后记着的没了，一律照旧按 `isExplanationText` / `warmSignal` 的正则，和关着时一样。
+
+**代价**：开着时算心境那一步先等判断。判断本来在 assess 时发出、和召回等几步并行，最慢的一轮在这里多等，最多 2.5 秒（判断的时限）。`contact.ts` 在 feelings 那一步加了「是 promise 才等」，关着时同步返回，不多等一个微任务。
+
+**日志**：「道歉判断：他这几句接住了那件事（N 条算修复）/ 不算修复，记着 M 条」，不记原话，不带 QQ 号（用模块自己的日志）。
+
+**验收证据**（只用合成对话；模型都是按剧本回答的假模型，不调真模型、不连网）：
+
+- `test/mood-recovery.test.ts`（16 项）：表的默认值和改造前写死的逐个相同，没有多也没有少；QQ 各处常量、DSH 插件导出的值在没设变量时都是默认值，全部默认时不记日志；源码检查每一项都真的接上了（QQ 读的在 `src` 里有 `FEELING_PARAMS.键`，DSH 读的在 `index.js` 里有）；严格解析覆盖 13 种不认的情况，另有读不了 / 不是 JSON，日志不写路径和内容。**两边一致**：另开一个进程设 `QQBOT_FEELING_PARAMS`，QQ 和 DSH 读到的整张表相同，桌面插件的过期时间和 QQ 的 `FEELINGS_STALE_MS` 同一个数，难过按新半衰期散；键写错时两边一起退回默认。判断约定：两类的解析（只引她的话不认）、那一行的说法和「由你自己定」。**道歉不会瞬间清零**：关着时逐字照旧（空的判定表和没开完全一样）；嘴上道歉判成没接住，当刻明显、一小时后仍明显、过一天自然散，不给「他在认真道歉」那点松口气；没说对不起的认真解释判成接住了，当刻仍明显、一小时后落到明显以下，回落带 `judged`，关键词也认的那种不带。**自然恢复**：没接住时照常按半衰期回落。跨轮：上一轮判没接住的「对不起」下一轮不被正则重新当成道歉；没记着（重启）时退回正则。**私聊隔离**：判过以后群里那一行只有语气，没有私聊原因、原话和导师那件事。接线：关着不挂，开着挂在心境前面，没开语义判断不挂；判断用不上时不写这一轮的判定。
+- `test/app.test.ts`「心境与恢复（第五批……）」：经 app.ts 和执行器跑两段。嘴上「对不起嘛。」判成没接住：每轮问一次，当轮 FEELINGS.json 里难过还在，提示词里有那一行理解，一小时后难过仍在（关着时的 D 用例这里已经落下去了），不记回落行，日志不记原话和 QQ 号，**群提示词里没有私聊原因**。没说对不起的认真解释判成接住了：当轮难过还在，一小时后落到明显以下，这条只靠判断的回落没写进感觉账。
+- `test/soul-plugin.test.ts`「心境与恢复（第五批）……」：接住了 / 没接住两类，QQ 和 DSH 给模型的消息逐字相同，放给她的那一行相同。
+- `test/language-understanding.test.ts`：共用类别清单跟着加了两类（这是有意的约定扩展）；第一批的对照表、第四批的用例数字没变。
+- 原有用例照旧通过：`emotion-recovery.test.ts`（D 模块原来两条验收）、`app.test.ts`「D 合成私聊道歉后逐渐恢复……」、`grievance.test.ts`、`emotion-feelings-review.test.ts`、`env-switches.test.ts`。
+- `npm test -w @qqbot/bot`、`npm run test:scripts`、`npm test -w koishi-plugin-qqbot`、`npm run typecheck`、`npm run baseline:fast -w @qqbot/bot`（39/39）结果见提交说明。`docs/modules/emotion.md` 已重新生成。
+
+**未结项**：
+
+- 小别扭的和好（`grievanceNow` 的 makeup 那一行「你气顺了……明显是原谅他了」）和被晾着该不该发火（`ignoredNow`）还按正则，没接判断：它们在 `decideAt.intent` 算，比判断取回早。要接就得把判断再往前挪到 intent 之前（和第四批意图阶梯是同一个决定）。另外 makeup 那一行替她定了「原谅」，要让她自己选，那段文字应改成只给事实、不给结论，这属于人设文字，留给人设那边一起定。
+- 余温（`warmAffect`，道歉 / 安慰 / 想念之后软两三轮）、他在关心她（`asksAfterHer`）、她说过 / 哭过的窗口，仍按正则和固定窗口。
+- 每件事自己的轻重和半衰期、心情到气泡数和话多话少的门槛（`express.ts`）没进表。
+- 判过的结论只记在进程里，重启后退回正则；这是有意的（判断不落盘），但重启前后同一句「对不起」的效果可能不一样。
+- 感觉账里「明显以上的感受」那几行本身会受判断影响（没接住时难过保持明显更久，就会被记进感觉账）。记的是她的感受，不是关于他的事实，所以留着；只靠判断的回落行不记。
+- 判得准不准只用假模型核对过接线和回退，还没用真模型在合成说法上跑过。
+
+**要用户决定才能开 / 改**：
+
+- `QQBOT_REPAIR_JUDGMENT` 会改变她心里那件事散得快不快，按规矩应先 `ask-her`，再由用户同意；本批按授权没问。开关默认关。
+- 共用判断约定加了两类，开着 `QQBOT_SEMANTIC_JUDGMENT` 时提示词和那一行就会变（哪怕没开 `QQBOT_REPAIR_JUDGMENT`）。这一点和第四批一样，开之前要用真模型在合成说法上复跑一次（含道歉接住 / 没接住、客气的「不好意思」），需要用户同意才能调真模型。
+- 开着时每轮算心境那一步最多多等 2.5 秒。
+- 要不要写 `QQBOT_FEELING_PARAMS` 覆盖文件、调哪几个数。改了要重启 Koishi、重开 DSH 插件，属于「改线上开关 / 重启」，需要用户点头。线上和 DSH 那台这一批都没重启、没重载。
+
 ## 全部模块清单
 
 | 模块 | 要改的内容 | 保留的边界与验收 |
 | --- | --- | --- |
 | 人设、角色卡、DSH preset（第二批已做，见上） | 把散在源码、QQ 专用表达层、DSH preset 前缀和角色卡渲染物里的性格、称呼、表达偏好归到角色资料的一处来源。两端从同一版本渲染。 | 保留按档位披露、诚实说明能力和规则优先级。合成角色验证 QQ 私聊、群聊和 DSH 各只注入自己有权读的内容。入口见 `persona-to-card.ts`、`contact.ts`、`build-presets.mjs`。 |
 | 语言与理解（C）（第四批做了软风格规则表、判断约定加两类、补验的两处缺口，余项见上） | 分开会话意图、软风格规则、硬出口检查。让她判断求关心、拒绝、转场和理解纠正，把自然接法还给生成。风格严厉程度可配置，逐项核对旧正则是否仍有兼容价值。 | 原话、猜测、确认和修正分开。保留事实证据、撤回屏障、风险输出约束与故障兜底。用歧义加隔天澄清、撤回与重放验证两端。入口见 `prompt.ts`、`review-exit.ts`、`understanding.ts`。 |
-| 心境与恢复（D） | 将一般情绪的衰减与灵敏度归为参数；让她依据当轮证据判断道歉或解释是否接住了这件事，并自己选措辞。 | 危机规则和固定兜底留在程序，私聊情绪原因不进群。验证道歉不会瞬间清零、自然恢复、私聊隔离。入口见 `affect.ts`、`feelings.ts`。 |
+| 心境与恢复（D）（第五批做了心境参数表和道歉 / 解释接没接住的判断，余项见上） | 将一般情绪的衰减与灵敏度归为参数；让她依据当轮证据判断道歉或解释是否接住了这件事，并自己选措辞。 | 危机规则和固定兜底留在程序，私聊情绪原因不进群。验证道歉不会瞬间清零、自然恢复、私聊隔离。入口见 `affect.ts`、`feelings.ts`。 |
 | 生活、兴趣、注意力（F、B） | 作息、兴趣、精力、活动时长归为生活资料；把当下选什么和是否延后交给她在可行选项内判断。 | 程序管时间冲突、进度共享、恢复和幂等。验证忙时延后、查错中断、等待续读、重启后接续。入口见 `life/actions.ts`、`world/life-selector.ts`。 |
 | 世界与事实 | 地域日历、日常活动素材和个人偏好归到资料；让她选关注与讲述的真实事件。 | 保留事实源、合法行动、结算和可重放队列。验证不凭一句台词补造行动结果，变更偏好不会改写历史。入口见 `world/festivals.ts`、`world/events.ts`。 |
 | 主动、留话、承诺与恢复（G） | 主动频率、冷却、业务期限可配置；话题意愿、承不承诺和如何表述交给她。区分程序状态通知和角色口气。 | 保留明确证据、改口单次结算、出站去重、未决投递与回执、取消后下一件能继续。验证丢回执、跨端、重启及到期。入口见 `proactive.ts`、`outbox.ts`、`promises.ts`、`work-handoff.ts`。 |
