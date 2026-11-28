@@ -264,6 +264,8 @@ export interface ReviewOptions {
     textIntimacy?: boolean;
     /** ADR 0063：开着时允许说“发个表情包”；照片、普通图片仍然拦。 */
     imageStickers?: boolean;
+    /** 软风格规则表（style-rules.ts，QQBOT_STYLE_RULES）关掉的说话毛病：这几类不查、不重写。不传就全查（和原来一样） */
+    skip?: ReadonlySet<string>;
     /** 在原来的提示词末尾加上这句说明重新生成，返回清理过的回复 */
     regenerate: (note: string) => Promise<string>;
     onRewriteAccepted?: () => void;
@@ -298,7 +300,8 @@ function strip(reply: string, options: ReviewOptions): { reply: string; issues: 
     if (tidy.notes.length) options.log(`出口检查：小黄脸——${tidy.notes.join('；')}，去掉`);
     let text = tidy.reply;
     for (let round = 0; ; round++) {
-        const issues = inspectReply(text, options.banned, options.speech, options.books, options.faces, options.textIntimacy, options.imageStickers);
+        const found = inspectReply(text, options.banned, options.speech, options.books, options.faces, options.textIntimacy, options.imageStickers);
+        const issues = options.skip?.size ? found.filter(issue => !options.skip!.has(issue.kind)) : found;
         const removable = issues.filter(strippable);
         if (removable.length === 0 || round === 2) return { reply: text, issues: issues.filter(i => !strippable(i)) };
         const next = stripOpeners(text, removable);

@@ -16,6 +16,7 @@
 - `language/exit-check.ts`
 - `language/fact-check.ts`
 - `language/speech-check.ts`
+- `language/style-rules.ts`
 - `language/unfinished.ts`
 - `language/candidates.ts`
 - `modules/candidates.ts`

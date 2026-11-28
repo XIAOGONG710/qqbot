@@ -205,6 +205,40 @@ test('私聊语义判断：QQ 和 DSH 对同一段合成对话读到同一份判
     }
 });
 
+test('语言与理解（第四批）：纠正理解、推掉两类在 QQ 和 DSH 读到同一行理解；DSH 的理解记录照旧来自原话，不看判断', async () => {
+    const original = process.env.QQBOT_SEMANTIC_JUDGMENT;
+    const ambiguous = '行，你去忙吧。';
+    const clarify = '我当时在赶车，想让你先忙，没有生气。';
+    const cases = [
+        { conversation: [{ role: 'user' as const, content: ambiguous }, { role: 'assistant' as const, content: '好' }, { role: 'user' as const, content: clarify }], category: 'correction', quote: '想让你先忙', line: /他像是在纠正你刚才对他的话的理解/ },
+        { conversation: [{ role: 'assistant' as const, content: '周末一起去爬山吧？' }, { role: 'user' as const, content: '不了，这周想在家躺着' }], category: 'refusal', quote: '不了', line: /他像是在推掉或者不想要你刚才提的事/ },
+    ];
+    try {
+        process.env.QQBOT_SEMANTIC_JUDGMENT = '1';
+        for (const c of cases) {
+            const reply = JSON.stringify({ category: c.category, evidence: [{ line: c.conversation.length, quote: c.quote }], uncertainty: 0.1 });
+            const asked = { qq: [] as unknown[], dsh: [] as unknown[] };
+            const module = semanticJudgmentModule({ ask: async messages => { asked.qq.push(messages); return reply; }, log: () => {} });
+            const turn: Turn = { contact: { qq: 10001, name: '阿明', tier: 'boyfriend' }, at: new Date(), history: c.conversation, thinking: false, facts: {} };
+            module.assess!(turn);
+            await module.decideAt!.deliberate!(turn, { history: () => [], log: () => {} });
+            const qqLine = (await module.contribute!(turn))[0]!.text;
+            assert.match(qqLine, c.line);
+            const app = boot({ judgmentAsk: async (messages: unknown) => { asked.dsh.push(messages); return reply; } });
+            const file = app.f('UNDERSTANDING.json');
+            recordUnderstandingTurn(file, 'first', ambiguous, Date.now() - 86_400_000);
+            await app.handlers['agent/pre-step']!({ messages: c.conversation.map(m => ({ role: m.role, content: [{ type: 'text', text: m.content }] })) }, async () => undefined);
+            const dshPrompt = app.contexts.map(entry => entry.text()).join('\n');
+            assert.deepEqual(asked.dsh, asked.qq, `${c.category}：给模型的是同一份`);
+            assert.ok(dshPrompt.includes(qqLine), `${c.category}：放给她的是同一行`);
+            // 判断成纠正不会把待确认的记录改成已澄清：记录只在 QQ 收到他的原话时按规则改
+            assert.equal(JSON.parse(readFileSync(file, 'utf8')).entries[0].status, 'tentative');
+        }
+    } finally {
+        if (original === undefined) delete process.env.QQBOT_SEMANTIC_JUDGMENT; else process.env.QQBOT_SEMANTIC_JUDGMENT = original;
+    }
+});
+
 test('只有确认的桌面私聊可发布或收回她的家公开状态，正文不可发布', () => {
     const denied = boot({ ownerPrivateSessions: [] });
     assert.throws(() => denied.tools.home_publish!.execute({ place: 'study', doing: 'reading' }), /私聊/);

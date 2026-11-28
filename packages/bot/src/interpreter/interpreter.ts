@@ -42,7 +42,7 @@ import type { PromiseKeeper } from '../life/promises.ts';
 import type { ReviewOptions } from '../language/exit-check.ts';
 import type { PickRules } from '../language/candidates.ts';
 import type { TurnWeight } from '../language/turn-weight.ts';
-import type { Judgment } from '../../../../dsh-plugins/dsh-linmengyao-memory/semantic-judgment.mjs';
+import type { Judgment, JudgmentFallback } from '../../../../dsh-plugins/dsh-linmengyao-memory/semantic-judgment.mjs';
 import type { StoredMessage } from '../memory/history.ts';
 import type { TypoRecall } from '../language/expression.ts';
 import type { Summarizer, TurnWindow } from '../language/context-window.ts';
@@ -186,6 +186,8 @@ export interface TurnFacts {
     /** 私聊语义判断（QQBOT_SEMANTIC_JUDGMENT，modules/semantic-judgment.ts 的 decideAt.deliberate 写）：模型对他最后那几句的理解，只有能用的（不是拿不准、把握够）才写。
      *  只放进 judgment 槽、只影响出口检查已有的重写选择；不当权限、不落事实、不当发送凭据。没开、退回关键词时没有 */
     semanticJudgment?: Judgment;
+    /** 开着语义判断、这一轮问了但没用上（超时、读不懂、拿不准……）：退回关键词时多看一眼是不是在转述别人的话（第四批，modules/semantic-judgment.ts 的 recognizes）。没开时没有 */
+    semanticJudgmentFallback?: JudgmentFallback;
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */

@@ -854,7 +854,7 @@ function createApp({ config, transport: rawTransport, log, pipeline, media, visi
         // 她自己决定记不记（selfDirectedMemory，DSH 10-30 / 10-31）：「记忆由你自己决定」、理解偏过、他最近的事
         ...(config.selfDirectedMemory ? { selfMemory: {
             understanding: hisWords => understandingLine(config.dataDir, hisWords, worldNow()),
-            immediateCorrection: (contact, hisWords) => deviceOwner && contact.qq === deviceOwner.qq ? understanding.read(hisWords, worldNow()) ?? correctionReplyLine(hisWords) : undefined,
+            immediateCorrection: (contact, hisWords, judged) => deviceOwner && contact.qq === deviceOwner.qq ? understanding.read(hisWords, worldNow()) ?? correctionReplyLine(hisWords, judged) : undefined,
             traces: () => tracesLine(config.dataDir, worldNow()),
         } } : {}),
         // 工作模式的三行（DSH 10-29 / 10-30）：按他现在的状态放其中一行；只给男朋友档

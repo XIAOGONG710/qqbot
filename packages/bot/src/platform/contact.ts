@@ -18,7 +18,8 @@ import type { ChatHistory, StoredMessage } from '.././memory/history.ts';
 import { chatCompletion, completionMaxTokens } from '.././language/llm.ts';
 import type { Log } from './log.ts';
 import type { LongTermMemory } from '.././memory/long-term.ts';
-import { buildPrompt, type ChatMessage, type OpenAIMessage, type PromptResult } from '.././language/prompt.ts';
+import { buildPrompt, keywordTopicShift, type ChatMessage, type OpenAIMessage, type PromptResult } from '.././language/prompt.ts';
+import { recognizes } from '../modules/semantic-judgment.ts';
 import { cleanUpReply } from '.././language/reply.ts';
 import { stripDeviceTokens, type DeviceControl } from './device-actions.ts';
 import { createResponder, DEFAULT_SETTLE, RETRY_AFTER_MS, type Responder } from '.././social/responder.ts';
@@ -565,7 +566,8 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
                 userPersona: contact.persona,
                 afterMain,
                 afterHistory,
-                ...(turn.facts.semanticJudgment ? { playfulClosing: turn.facts.semanticJudgment.category === 'closing' } : {}),
+                // 有判断按判断；开着但退回了按关键词、分几条发的转述不认（modules/semantic-judgment.ts recognizes）；没开不传，prompt.ts 照旧按关键词
+                ...(turn.facts.semanticJudgment || turn.facts.semanticJudgmentFallback ? { playfulClosing: recognizes(turn, 'closing', keywordTopicShift) } : {}),
                 now: time,
                 settings: {
                     maxContext: options.prompt.maxContext,

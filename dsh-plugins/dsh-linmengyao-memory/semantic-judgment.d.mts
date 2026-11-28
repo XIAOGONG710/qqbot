@@ -1,4 +1,4 @@
-export type JudgmentCategory = 'care' | 'banter' | 'closing' | 'none' | 'unclear';
+export type JudgmentCategory = 'care' | 'banter' | 'closing' | 'refusal' | 'correction' | 'none' | 'unclear';
 export interface JudgmentLine { role: 'user' | 'assistant'; content: string }
 export interface JudgmentEvidence { line: number; speaker: 'him' | 'her'; quote: string }
 export interface Judgment { category: JudgmentCategory; evidence: JudgmentEvidence[]; uncertainty: number }
@@ -9,6 +9,7 @@ export type JudgmentAsk = (messages: JudgmentMessage[]) => Promise<string>;
 
 export const JUDGMENT_CATEGORIES: readonly JudgmentCategory[];
 export const JUDGMENT_LABELS: Record<JudgmentCategory, string>;
+export const JUDGMENT_INTENTS: readonly JudgmentCategory[];
 export const JUDGMENT_CONTEXT: number;
 export const JUDGMENT_LINE_MAX: number;
 export const JUDGMENT_QUOTE_MAX: number;
@@ -24,6 +25,7 @@ export function parseJudgment(raw: unknown, conversation: readonly JudgmentLine[
 export function usableJudgment(judgment: Judgment | undefined): judgment is Judgment;
 export function judgeTurn(input: { conversation: readonly JudgmentLine[]; ask: JudgmentAsk; timeoutMs?: number }): Promise<JudgmentResult>;
 export function judgmentLine(judgment: Judgment | undefined): string;
+export function reportedSpeech(conversation: readonly JudgmentLine[]): boolean;
 export function judgmentLogLine(result: JudgmentResult, conversation: readonly JudgmentLine[]): string;
 export function createJudgmentAsk(options?: {
     key?: string; baseUrl?: string; model?: string; extraBody?: Record<string, unknown>;

@@ -10,7 +10,7 @@
 
 import type { CandidatePlan, Module } from '../interpreter/interpreter.ts';
 import { describePick, pickBest, PICKED_INTENTS } from '../language/candidates.ts';
-import { ODD_BODY_WORDS, STILTED_WORDS } from '../language/expression.ts';
+import { styleBannedWords } from '../language/style-rules.ts';
 import { speechContext } from '../language/speech-check.ts';
 import type { StoredMessage } from '../memory/history.ts';
 import { heardSinceReply } from '../memory/long-term.ts';
@@ -31,7 +31,7 @@ export function candidatesModule(options: CandidatesModuleOptions): Module {
             const picked = options.count > 1 && facts.intent && !turn.initiate ? PICKED_INTENTS.find(p => p.pattern.test(facts.intent!)) : undefined;
             if (!picked) return [];
             facts.pick = {
-                kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(turn.history), banned: [...(turn.card?.banned ?? []), ...ODD_BODY_WORDS, ...STILTED_WORDS],
+                kind: picked.kind, maxLines: picked.maxLines, heard: heardSinceReply(turn.history), banned: [...(turn.card?.banned ?? []), ...styleBannedWords()],
                 // 她自己生活里的东西：猫、相机、在读的书、手上的爱好（DSH 诊断 1.2、ADR 0036 的四类）
                 own: [...(facts.world?.cat ? [facts.world.cat.name] : []), '相机', ...(turn.card?.books ?? []).map(book => book.title), '追剧', '调色', '构图', '修片', '摄影区'],
                 ...(options.speechCheck ? { speech: speechContext(options.history(turn.contact.qq)) } : {}),

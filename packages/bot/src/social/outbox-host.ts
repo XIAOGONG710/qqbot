@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { ODD_BODY_WORDS, STILTED_WORDS } from '../language/expression.ts';
+import { styleBannedWords } from '../language/style-rules.ts';
 import { inspectReply, summarizeIssues, type ExitIssue } from '../language/exit-check.ts';
 import { asleepSince } from '../life/bedtime.ts';
 import { outboxDesktopBlock, type DesktopNowSource } from '../life/desktop-now.ts';
@@ -71,7 +71,7 @@ export function outboxHost({ config, owner: deviceOwner, file: outboxFile, cardF
                 : desktopSource ? outboxDesktopBlock(desktopSource, now)
                 : undefined,
             inspect: text => {
-                const issues = inspectReply(text, [...character.banned, ...ODD_BODY_WORDS, ...STILTED_WORDS]).filter(issue => OUTBOX_BLOCKING.has(issue.kind));
+                const issues = inspectReply(text, [...character.banned, ...styleBannedWords()]).filter(issue => OUTBOX_BLOCKING.has(issue.kind));
                 return issues.length ? summarizeIssues(issues) : undefined;
             },
             scope: `${account}:${owner.qq}`,

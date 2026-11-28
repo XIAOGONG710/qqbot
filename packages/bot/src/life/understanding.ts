@@ -85,9 +85,13 @@ export function isCorrection(text: string): boolean {
     return CORRECTION.test(String(text || ''));
 }
 
-/** 用户当场纠正时只给这一轮的回复提示；不添加历史事件，也不推断她为什么接错。 */
-export function correctionReplyLine(text: string): string | undefined {
-    if (!isCorrection(text)) return undefined;
+/**
+ * 用户当场纠正时只给这一轮的回复提示；不添加历史事件，也不推断她为什么接错。
+ * judged：私聊语义判断（第四批）认没认成「他在纠正」；有能用的判断就按它，没有（undefined）照旧按 CORRECTION 关键词。
+ * 只换「这一轮放不放提示」：记下纠正（recordCorrection，app.ts 收消息时）照旧只按关键词和他的原话，不看判断。
+ */
+export function correctionReplyLine(text: string, judged?: boolean): string | undefined {
+    if (!(judged ?? isCorrection(text))) return undefined;
     return '[他正在纠正你刚才的理解。先就这次回应：把你听懂的具体意思简短复述，并确认是否理解对；如果仍没听清或没看懂，直接请他再说一遍，不要硬猜。若确认刚才确实说错，就承认并修正那一点；不要默认自己一定错，不要把他没告诉过你的事说成你记错了，不要编造误解原因，也不要翻旧账。]';
 }
 

@@ -3702,6 +3702,101 @@ describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不
         }
     });
 
+    test('语言与理解（第四批）：开着语义判断时，歧义、隔天澄清、撤回、重放在 QQ 和 DSH 读到的一样；判断只换这一轮的理解，记下的照旧只按原话', async () => {
+        const soul = mkdtempSync(join(tmpdir(), 'qqbot-understanding-judged-'));
+        dirs.push(soul);
+        const keys = ['QQBOT_SOUL_DIR', 'QQBOT_SHARED_UNDERSTANDING', 'QQBOT_SEMANTIC_JUDGMENT'] as const;
+        const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+        Object.assign(process.env, { QQBOT_SOUL_DIR: soul, QQBOT_SHARED_UNDERSTANDING: '1', QQBOT_SEMANTIC_JUDGMENT: '1' });
+        try {
+            const dsh = await import(pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), '../../../dsh-plugins/dsh-linmengyao-memory/index.js')).href) as {
+                desktopUnderstanding(cfg: object, query: string, at: number): string;
+            };
+            const dshCfg = { understandingFile: join(soul, 'UNDERSTANDING.json') };
+            const ambiguous = '行，你去忙吧。';
+            const evidence = '我当时在赶车，想让你先忙，没有生气。';
+            // 假模型按他最后那一行给判断（quote 在那一行里）；没写的给拿不准
+            const verdicts: Record<string, [string, string]> = {
+                [evidence]: ['correction', '想让你先忙'],
+                '不是，我是说周末那个不急': ['correction', '我是说周末那个不急'],
+                '我说的是下周的事': ['none', ''],
+            };
+            let judged = 0;
+            const judge = (content: string) => {
+                judged++;
+                const last = content.split('\n').map(line => /^(\d+) 他：(.*)$/u.exec(line)).filter(Boolean).at(-1)!;
+                const [category, quote] = verdicts[last[2]!] ?? ['unclear', ''];
+                return JSON.stringify({ category, evidence: quote ? [{ line: Number(last[1]), quote }] : [], uncertainty: category === 'unclear' ? 0.7 : 0.1 });
+            };
+            const cfg = config({ contacts: bf, selfDirectedMemory: true, recalls: true });
+            const clock = new VirtualClock(virtualStart);
+            const prompts: string[] = [];
+            const { app, sent } = setup(cfg, {}, { clock, generate: messages => {
+                const text = messages.map(m => m.content).join('\n');
+                if (text.includes('你只判断他的意思，不回复他')) return judge(messages[1]!.content);
+                prompts.push(text);
+                return '嗯';
+            } });
+            const records = () => JSON.parse(readFileSync(join(soul, 'UNDERSTANDING.json'), 'utf8')) as { entries: { id: string; status: string; revision?: { id: string; evidence: string; interpretation: string } }[]; withdrawn: string[] };
+            // 第一天：歧义原话。模型拿不准，不放判断；记成待确认（只记原话和两种可能）
+            app.receive(event(10002, 301, ambiguous));
+            await drive(clock, () => sent.length === 1);
+            assert.equal(judged, 1);
+            assert.match(prompts.at(-1)!, /理解待确认[^]*语气和动机未确认/);
+            assert.doesNotMatch(prompts.at(-1)!, /你对他这几句的理解/);
+            assert.match(dsh.desktopUnderstanding(dshCfg, ambiguous, clock.now()), /理解待确认/);
+            // 隔天澄清，她还没回就撤回了：两边都退回待确认；同一条再来一遍（重放）不复活
+            clock.advance(86_400_000);
+            app.receive(event(10002, 302, evidence));
+            assert.match(dsh.desktopUnderstanding(dshCfg, ambiguous, clock.now()), /理解已澄清[^]*赶车/);
+            app.receiveRecall({ post_type: 'notice', notice_type: 'friend_recall', self_id: SELF, user_id: 10002, message_id: 302, time: Math.floor(clock.now() / 1000) });
+            assert.doesNotMatch(dsh.desktopUnderstanding(dshCfg, ambiguous, clock.now()), /赶车|已澄清/);
+            assert.match(dsh.desktopUnderstanding(dshCfg, ambiguous, clock.now()), /理解待确认/);
+            app.receive(event(10002, 302, evidence));
+            app.receive(event(10002, 301, ambiguous));
+            for (let i = 0; i < 15; i++) {
+                await new Promise(done => setTimeout(done, 20));
+                const due = clock.nextTimer();
+                if (due !== undefined) clock.advanceTo(due);
+            }
+            assert.deepEqual(records().entries.map(entry => entry.status), ['tentative'], '重放的撤回那条不复活，重放的原话不重复记');
+            assert.ok(records().withdrawn.includes('302'));
+            assert.doesNotMatch(dsh.desktopUnderstanding(dshCfg, ambiguous, clock.now()), /赶车|已澄清/);
+            assert.ok(prompts.every(prompt => !prompt.includes('赶车')), '撤回的那条她读不到');
+            // 再说一遍澄清（新的一条）：模型判成纠正理解，这一轮多一句理解；记下的「已澄清」照旧是他的原话和固定的那句解释，不是模型的话
+            const answered = sent.length;
+            clock.advance(60_000);
+            app.receive(event(10002, 303, evidence));
+            await drive(clock, () => sent.length > answered && prompts.at(-1)!.includes('赶车'));
+            assert.match(prompts.at(-1)!, /理解已澄清[^]*他说自己是想让你先忙，当时没有生气/);
+            assert.match(prompts.at(-1)!, /你对他这几句的理解：他像是在纠正你刚才对他的话的理解（依据：他说的「想让你先忙」/);
+            const corrected = records().entries;
+            assert.equal(corrected.length, 1);
+            assert.deepEqual({ status: corrected[0]!.status, id: corrected[0]!.revision?.id, evidence: corrected[0]!.revision?.evidence, interpretation: corrected[0]!.revision?.interpretation },
+                { status: 'corrected', id: '303', evidence, interpretation: '他说自己是想让你先忙，当时没有生气' });
+            assert.doesNotMatch(JSON.stringify(records()), /你对他这几句的理解|像是在纠正|correction/);
+            assert.match(dsh.desktopUnderstanding(dshCfg, ambiguous, clock.now()), /理解已澄清[^]*赶车/);
+            // 关键词认不出、判断认成纠正：这一轮放修复提示；但不记成纠正（落盘只按关键词和原话）
+            const before = sent.length;
+            clock.advance(60_000);
+            app.receive(event(10002, 304, '不是，我是说周末那个不急'));
+            await drive(clock, () => sent.length > before);
+            assert.match(prompts.at(-1)!, /\[他正在纠正你刚才的理解/);
+            assert.equal(existsSync(join(cfg.dataDir, 'understanding.json')), false);
+            // 关键词认出、判断说不是：这一轮不放修复提示；纠正照旧按原话记下
+            const next = sent.length;
+            clock.advance(60_000);
+            app.receive(event(10002, 305, '我说的是下周的事'));
+            await drive(clock, () => sent.length > next);
+            assert.doesNotMatch(prompts.at(-1)!, /\[他正在纠正你刚才的理解/);
+            const kept = JSON.parse(readFileSync(join(cfg.dataDir, 'understanding.json'), 'utf8')) as { corrections: { fix: string }[] };
+            assert.deepEqual(kept.corrections.map(item => item.fix), ['我说的是下周的事']);
+            await app.stop();
+        } finally {
+            for (const key of keys) if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key];
+        }
+    });
+
     test('D 合成私聊道歉后逐渐恢复，群聊只读状态不读私聊原因', async () => {
         const soul = mkdtempSync(join(tmpdir(), 'qqbot-emotion-app-'));
         dirs.push(soul);
