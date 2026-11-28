@@ -13,6 +13,7 @@ import { UNDERSTANDING_EXPORT, sharedUnderstandingLine } from './shared-understa
 import { homeActivities, homePlaces, publishHomeStatus } from './home-status.js'
 import { PLAYFUL_PERSONA } from './playful-persona.mjs'
 import { createJudgmentAsk, judgeTurn, judgmentConversation, judgmentLine, judgmentLogLine } from './semantic-judgment.mjs'
+import { applyRelevance, judgeRelevance, RELEVANCE_TIMEOUT_MS, relevanceCandidates, relevanceLogLine } from './memory-relevance.mjs'
 import { loadMemoryThresholds, MEMORY_THRESHOLD_DEFAULTS as DEFAULT_THRESHOLDS, memoryThresholdsLogLine } from './memory-thresholds.mjs'
 
 export const name = 'dsh-linmengyao-memory'
@@ -1344,6 +1345,11 @@ export function apply(ctx, config = {}) {
     ? (typeof cfg.judgmentAsk === 'function' ? cfg.judgmentAsk : createJudgmentAsk({ key: process.env.QQBOT_LLM_API_KEY, baseUrl: cfg.judgmentBaseUrl, model: cfg.judgmentModel }))
     : undefined
   if (process.env.QQBOT_SEMANTIC_JUDGMENT === '1' && !judgmentAsk) log(cfg, '语义判断：没有 QQBOT_LLM_API_KEY，不判断')
+  // 记忆相关性判断：只认 '1'；和语义判断用同一个接口和模型（judgmentBaseUrl / judgmentModel），自己的超时。relevanceAsk 只给测试换成假的
+  const relevanceAsk = process.env.QQBOT_MEMORY_RELEVANCE === '1'
+    ? (typeof cfg.relevanceAsk === 'function' ? cfg.relevanceAsk : createJudgmentAsk({ key: process.env.QQBOT_LLM_API_KEY, baseUrl: cfg.judgmentBaseUrl, model: cfg.judgmentModel, timeoutMs: RELEVANCE_TIMEOUT_MS }))
+    : undefined
+  if (process.env.QQBOT_MEMORY_RELEVANCE === '1' && !relevanceAsk) log(cfg, '记忆相关性：没有 QQBOT_LLM_API_KEY，照规则全放')
 
   ctx.on('agent/created', ({ agent }) => {
     let preset = ''
@@ -1439,6 +1445,16 @@ export function apply(ctx, config = {}) {
             if (version !== inputVersion || !privateTurn()) return next()
             if (scope !== continuityScope(cfg)) { cache.text = ''; return next() }
             let shown = all.slice(0, cfg.pick)
+            // 记忆相关性判断（QQBOT_MEMORY_RELEVANCE=1，默认关；和 QQ 同一份约定 memory-relevance.mjs）：只在他刚开口的那一步问（工具步骤照规则），
+            // 只能从这几条里去掉，不加、不换、不改字；超时、读不懂、拿不准就照规则全放
+            if (relevanceAsk && shown.length && messages.at(-1)?.role === 'user') {
+              const conversation = judgmentConversation(messages.map((message) => ({ role: message?.role, content: textOf(message) })))
+              const relevance = await judgeRelevance({ conversation, candidates: relevanceCandidates(shown.map((item) => item.text)), ask: relevanceAsk })
+              if (version !== inputVersion || !privateTurn()) return next()
+              if (scope !== continuityScope(cfg)) { cache.text = ''; return next() }
+              log(cfg, relevanceLogLine(relevance, shown.length))
+              shown = applyRelevance(shown, relevance)
+            }
             // 第 5 层：她自己的口气 + 多久以前（ADR 0347）。原来原样贴「林梦瑶……」，
             // 她说那读起来像在翻别人的日记；这里只换人称和加远近，事实一个字不加。
             const voice = cfg.memoryVoice === true

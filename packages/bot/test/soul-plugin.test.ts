@@ -17,6 +17,7 @@ import { recordUnderstandingTurn } from '../src/life/understanding.ts';
 import { isPresenceLease, leaseActive, presenceAt, PRESENCE_TTL_MAX_MS, PRESENCE_TTL_MIN_MS, type PresenceLease } from '../src/life/desktop-presence.ts';
 import type { Turn } from '../src/interpreter/interpreter.ts';
 import { semanticJudgmentModule } from '../src/modules/semantic-judgment.ts';
+import { memoryRelevanceModule } from '../src/modules/memory-relevance.ts';
 import { judgmentConversation, parseJudgment } from '../../../dsh-plugins/dsh-linmengyao-memory/semantic-judgment.mjs';
 
 // 林梦瑶的 DSH 记忆桥（dsh-plugins/dsh-linmengyao-memory）：灵魂模块 1245 行里原来一条测试都没有。
@@ -2080,4 +2081,76 @@ describe('桌面读 PORTRAIT.json：和 QQ 同一份「现在的我」', () => {
             });
         } finally { fake.restore(); }
     });
+});
+
+test('记忆相关性判断：QQ 和 DSH 对同一段对话、同几条记忆给模型的一样、留下的一样、日志一样；只会变少，别人的读不到', async () => {
+    const original = process.env.QQBOT_MEMORY_RELEVANCE;
+    const conversation = [
+        { role: 'user' as const, content: '周末想去爬山' }, { role: 'assistant' as const, content: '好呀，去哪' },
+        { role: 'user' as const, content: '还没想好，你上次说怕晒' },
+    ];
+    const texts = ['合成对象说过周末想爬山', '合成对象的猫又把杯子打翻了', '你说过怕晒'];
+    const items = texts.map((text, i) => ({ id: `rel-${i}`, document_id: `ep-${i + 1}`, type: 'world', text }));
+    const secret = { id: 'other-1', document_id: 'ep-9', type: 'world', text: '别人私聊里的合成秘密' };
+    const reply = JSON.stringify({ keep: [1, 3], uncertainty: 0.1 });
+    const asked = { qq: [] as unknown[], dsh: [] as unknown[] };
+    const dshAsk = async (messages: unknown) => { asked.dsh.push(messages); return reply; };
+    const dshMessages = conversation.map(message => ({ role: message.role, content: [{ type: 'text', text: message.content }] }));
+    const fake = fakeHindsight({ banks: ALL_BANKS, recall: { [OWNER]: items, 'linmengyao-bbbb444455556666': [secret] } });
+    const bootWith = (extra: Record<string, unknown> = {}) => boot({ baseUrl: `http://hs-${++urlCounter}`, ownerBankFile: ownerFile({ ownerBank: OWNER, commonBank: 'linmengyao-common' }), ...extra });
+    const step = async (app: ReturnType<typeof boot>, messages: unknown[] = dshMessages) => {
+        await app.handlers['agent/pre-step']!({ messages }, async () => undefined);
+        return app.contexts.map(entry => entry.text()).join('\n');
+    };
+    try {
+        delete process.env.QQBOT_MEMORY_RELEVANCE;
+        const off = await step(bootWith({ relevanceAsk: dshAsk }));
+        assert.equal(asked.dsh.length, 0, '开关关着：不问');
+        for (const text of texts) assert.ok(off.includes(text), '关着时照规则全放');
+        process.env.QQBOT_MEMORY_RELEVANCE = '1';
+
+        const qqLogs: string[] = [];
+        const module = memoryRelevanceModule({ ask: async messages => { asked.qq.push(messages); return reply; }, log: line => qqLogs.push(line) });
+        const recalled = ['[你们以前聊过的事]', ...texts.map(text => `- ${text}`)].join('\n');
+        const turn: Turn = { contact: { qq: 10001, name: '阿明', tier: 'boyfriend' }, at: new Date(), history: conversation, thinking: false, facts: { recall: { recalled } } };
+        const ctx = { history: () => [], log: () => {} };
+        await module.decideAt!.recall!(turn, ctx);
+        await module.decideAt!.deliberate!(turn, ctx);
+
+        const app = bootWith({ relevanceAsk: dshAsk });
+        const dshPrompt = await step(app);
+        assert.deepEqual(asked.dsh, asked.qq, '给模型的是同一份');
+        assert.equal(turn.facts.recall?.recalled, ['[你们以前聊过的事]', `- ${texts[0]}`, `- ${texts[2]}`].join('\n'));
+        assert.ok(dshPrompt.includes(texts[0]!) && dshPrompt.includes(texts[2]!));
+        assert.ok(!dshPrompt.includes(texts[1]!), 'DSH 也去掉了没关系的那条');
+        assert.ok(!dshPrompt.includes(secret.text), '别人的 bank 不查，模型也挑不进来');
+        const dshLogs = app.text('plugin.log').split('\n').filter(line => line.includes('记忆相关性')).map(line => line.slice(line.indexOf(' ') + 1));
+        assert.deepEqual(dshLogs, qqLogs, '日志同一条（不带内容）');
+        assert.match(app.text('plugin.log'), /recall items=3 selected=2 /);
+        assert.doesNotMatch(dshLogs.join('\n'), /爬山|怕晒|猫/);
+        // 工具步骤：不再问，照规则
+        const tool = await step(app, [...dshMessages, { role: 'tool', content: 'ok' }]);
+        assert.equal(asked.dsh.length, 1);
+        assert.ok(tool.includes(texts[1]!));
+        // 没确认的窗口：不问
+        await step(bootWith({ ownerPrivateSessions: [], relevanceAsk: dshAsk }));
+        assert.equal(asked.dsh.length, 1);
+        // 答非所问 / 编号越界：照规则全放
+        for (const bad of ['第一条和第三条', JSON.stringify({ keep: [1, 5], uncertainty: 0.1 })]) {
+            const h = bootWith({ relevanceAsk: async () => bad });
+            const text = await step(h);
+            for (const item of texts) assert.ok(text.includes(item), bad);
+            assert.match(h.text('plugin.log'), /记忆相关性：照规则全放（回答读不懂）/);
+        }
+        // 模型一直不回：到点照规则全放，这一轮照常
+        const slow = bootWith({ relevanceAsk: () => new Promise<string>(() => undefined) });
+        const started = Date.now();
+        const text = await step(slow);
+        assert.ok(Date.now() - started < 3900, '超时也不卡住这一轮');
+        for (const item of texts) assert.ok(text.includes(item));
+        assert.match(slow.text('plugin.log'), /记忆相关性：照规则全放（超时）/);
+    } finally {
+        fake.restore();
+        if (original === undefined) delete process.env.QQBOT_MEMORY_RELEVANCE; else process.env.QQBOT_MEMORY_RELEVANCE = original;
+    }
 });

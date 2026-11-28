@@ -240,7 +240,7 @@ export const MODULES: readonly ModuleDef[] = [
     {
         id: 'memory', name: '记忆与数据',
         scope: '长期记忆（Hindsight）、聊天记录、状态文件的读写和校验、归档、遗忘、隐私审计。',
-        files: ['local-date.ts', 'memory/', 'modules/memory.ts', 'memory/history.ts', 'memory/archive.ts', 'memory/backfill.ts', 'memory/state-schema.ts', 'memory/tier-record.ts', 'memory/json-file.ts', 'memory/transient-io.ts', 'memory/privacy-audit.ts', 'memory/privacy-forget.ts',
+        files: ['local-date.ts', 'memory/', 'modules/memory.ts', 'modules/memory-relevance.ts', 'memory/history.ts', 'memory/archive.ts', 'memory/backfill.ts', 'memory/state-schema.ts', 'memory/tier-record.ts', 'memory/json-file.ts', 'memory/transient-io.ts', 'memory/privacy-audit.ts', 'memory/privacy-forget.ts',
             'memory/ledger.ts', 'memory/identity.ts', 'memory/memory-audit.ts', 'memory/timeline.ts', 'memory/dsh-inbox.ts', 'memory/self-receipts.ts', 'memory/desktop-log.ts', 'memory/thresholds.ts', 'memory/owner-day-view.ts', 'memory/dormancy.ts', 'memory/dormancy-commands.ts'],
         groups: ['记忆和安全'],
         metrics: '状态页「长期记忆」；ops/state-check-cli；ops/continuity-cli（设定账本 / 记忆账本）；聊天里发 /设定',

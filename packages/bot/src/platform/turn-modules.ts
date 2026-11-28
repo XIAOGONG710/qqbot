@@ -53,6 +53,7 @@ import { reviewPullModule, type ReviewPullOptions } from '../modules/review-pull
 import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
 import { scenesModule } from '../modules/scenes.ts';
 import { JUDGMENT_LIMITS, semanticJudgmentModule, semanticJudgmentOn } from '../modules/semantic-judgment.ts';
+import { memoryRelevanceModule, memoryRelevanceOn, RELEVANCE_LIMITS } from '../modules/memory-relevance.ts';
 import { selfMemoryModule, type SelfMemoryOptions } from '../modules/self-memory.ts';
 import { selfNotesModule, type SelfNotesModuleOptions } from '../modules/self-notes.ts';
 import { shellModule, type ShellModuleOptions } from '../modules/shell.ts';
@@ -134,7 +135,10 @@ export interface TurnModuleDeps {
     memes?: Parameters<typeof memesModule>[0];
     watched?: Parameters<typeof watchedModule>[0];
     memeDict?: Parameters<typeof memeDictModule>[0];
-    /** 私聊语义判断的那次小调用（App 给；limits 是输出上限和超时）。环境变量 QQBOT_SEMANTIC_JUDGMENT=1 时才挂模块，关着时不挂、一个字不变 */
+    /**
+     * 私聊语义判断的那次小调用（App 给；limits 是输出上限和超时）。环境变量 QQBOT_SEMANTIC_JUDGMENT=1 时才挂模块，关着时不挂、一个字不变。
+     * 记忆相关性判断（QQBOT_MEMORY_RELEVANCE=1）用同一个小调用、自己的上限
+     */
     semanticAsk?: (messages: JudgmentMessage[], limits: typeof JUDGMENT_LIMITS) => Promise<string>;
 }
 
@@ -205,5 +209,7 @@ export function buildTurnModules(d: TurnModuleDeps): Module[] {
         ...(d.mediaDiscovery ? [mediaDiscoveryModule(d.mediaDiscovery)] : []),
         // 挂在最后：assess 时危机已经判过；decideAt.deliberate 排在深思之后
         ...(d.semanticAsk && semanticJudgmentOn() ? [semanticJudgmentModule({ ask: messages => d.semanticAsk!(messages, JUDGMENT_LIMITS), log })] : []),
+        // 记忆相关性判断：decideAt.recall 排在记忆模块召回之后，decideAt.deliberate 取回、只从他的私人记忆那一段里去掉几行
+        ...(d.semanticAsk && memoryRelevanceOn() ? [memoryRelevanceModule({ ask: messages => d.semanticAsk!(messages, RELEVANCE_LIMITS), log })] : []),
     ];
 }
