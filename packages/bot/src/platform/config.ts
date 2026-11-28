@@ -9,6 +9,7 @@ import { adultSiteUrls } from '../proactive/adult-sites.ts';
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { MEDIA_TIMEOUTS } from '.././vision/media.ts';
+import { MEMORY_THRESHOLDS } from '../memory/thresholds.ts';
 import { FESTIVAL_MODES, type FestivalMode } from '.././world/festivals.ts';
 import { FACT_CHECK_MODES, type FactCheckMode } from '.././language/fact-check.ts';
 import { ACCOUNT_MODES, type ControlMode, type FriendGate } from '.././social/account.ts';
@@ -53,7 +54,8 @@ export const DEFAULTS = {
     dsh: { enabled: false },
     externalPlatforms: { tieba: 'off' as ExternalPlatformMode, douyin: 'off' as ExternalPlatformMode, xiaohongshu: 'off' as ExternalPlatformMode },
     prompt: { maxContext: 8192, pinExamples: false, worldInfo: DEFAULT_WORLD_INFO_SETTINGS },
-    memory: { timeoutMs: 30_000, recallTimeoutMs: 3000, bankPrefix: 'linmengyao' },
+    // 两个超时的默认值在记忆阈值表里（memoryTimeoutMs 30 秒 / recallTimeoutMs 3 秒，后者和 DSH 每轮召回的截止同一个数）；config.json 写了数仍以它为准
+    memory: { timeoutMs: MEMORY_THRESHOLDS.memoryTimeoutMs, recallTimeoutMs: MEMORY_THRESHOLDS.recallTimeoutMs, bankPrefix: 'linmengyao' },
     vision: { provider: 'deepseek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', timeoutMs: MEDIA_TIMEOUTS.vision },
     schedule: true,
     moody: true,

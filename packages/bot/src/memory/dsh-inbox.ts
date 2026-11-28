@@ -4,6 +4,7 @@
 import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from './json-file.ts';
+import { MEMORY_THRESHOLDS } from './thresholds.ts';
 import type { Timeline } from './timeline.ts';
 import type { LifeEventDraft } from '../world/life-events.ts';
 import type { WorldState } from '../world/world.ts';
@@ -30,7 +31,8 @@ export interface DshWorldInboxEntry {
     seen?: boolean;
 }
 
-const INBOX_MAX_AGE_MS = 30 * 86_400_000;
+/** 多久以前的不收（默认 30 天，记忆阈值表 inboxMaxAgeMs，和插件写收件箱时的检查同一个数） */
+const INBOX_MAX_AGE_MS = MEMORY_THRESHOLDS.inboxMaxAgeMs;
 const FUTURE_GRACE_MS = 60_000;
 const KEEP_IDS = 2_000;
 const ID_RE = /^[A-Za-z0-9:_-]{8,160}$/;

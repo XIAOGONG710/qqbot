@@ -9,15 +9,17 @@
 
 import { closeSync, existsSync, openSync, readSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { MEMORY_THRESHOLDS } from './thresholds.ts';
 
-/** 只看最近这么久的（更早的靠语义召回） */
-export const CROSS_WINDOW_MS = 6 * 3_600_000;
-/** QQ 这边最多放几轮桌面对话 */
-export const DESKTOP_MAX_TURNS = 3;
-/** 每一边每句最多放多少字 */
-export const CROSS_LINE_CHARS = 200;
-/** 从文件尾部最多读这么多字节（文件只追加，不整个读） */
-const TAIL_BYTES = 64 * 1024;
+// 下面几个数在记忆阈值表里（memory/thresholds.ts，和 DSH 共用一张），默认值就是原来写死的数
+/** 只看最近这么久的（更早的靠语义召回；默认 6 小时，crossWindowMs，和 DSH 同一个数） */
+export const CROSS_WINDOW_MS = MEMORY_THRESHOLDS.crossWindowMs;
+/** QQ 这边最多放几轮桌面对话（默认 3，desktopMaxTurns） */
+export const DESKTOP_MAX_TURNS = MEMORY_THRESHOLDS.desktopMaxTurns;
+/** 每一边每句最多放多少字（默认 200，crossLineChars，和 DSH 同一个数） */
+export const CROSS_LINE_CHARS = MEMORY_THRESHOLDS.crossLineChars;
+/** 从文件尾部最多读这么多字节（文件只追加，不整个读；默认 64 KiB，crossTailBytes，和 DSH 同一个数） */
+const TAIL_BYTES = MEMORY_THRESHOLDS.crossTailBytes;
 
 export interface DesktopTurn {
     /** 毫秒时间戳 */

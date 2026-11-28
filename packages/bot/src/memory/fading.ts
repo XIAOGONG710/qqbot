@@ -13,12 +13,13 @@ import { EPISODE_GAP_MS } from './episodes.ts';
 import type { RecallResult } from './hindsight.ts';
 import { calendarDate } from './state-schema.ts';
 import { civilDayInWindow, civilDayNumber, providerTime } from './civil-time.ts';
+import { MEMORY_THRESHOLDS } from './thresholds.ts';
 
-/** 只提过一次的：几天以内清楚、几天以内记个大概 */
-export const CLEAR_DAYS = 7;
-export const VAGUE_DAYS = 30;
-/** 提示词里的原始聊天最多几条（ADR 0036 决策 3） */
-export const RAW_MESSAGES = 80;
+/** 只提过一次的：几天以内清楚、几天以内记个大概（默认 7 / 30，记忆阈值表的 clearDays / vagueDays，和 DSH 读同一个数） */
+export const CLEAR_DAYS = MEMORY_THRESHOLDS.clearDays;
+export const VAGUE_DAYS = MEMORY_THRESHOLDS.vagueDays;
+/** 提示词里的原始聊天最多几条（ADR 0036 决策 3；默认 80，阈值表 rawMessages） */
+export const RAW_MESSAGES = MEMORY_THRESHOLDS.rawMessages;
 /** Hindsight 写入时给重要的事标的记号（写入说明里的规则，见 long-term.ts 的 missions） */
 export const IMPORTANT = '【重要】';
 /** 一直成立的事（偏好、习惯、身份、一直在做的事）的记号，同上 */

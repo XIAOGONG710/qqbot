@@ -35,6 +35,7 @@ import { ledgerNote } from '../emotion/feeling-ledger.ts';
 import { askedWindow, ASKS_PAST, asksPast, commonCue, describePerson, holidayWords, lingering, mentionedPeople } from '../life/people.ts';
 import { initiateQuery, PERSON_RECALLED, secondPerson } from '../memory/long-term.ts';
 import { recentChat } from '../memory/fading.ts';
+import { MEMORY_THRESHOLDS } from '../memory/thresholds.ts';
 import { turnCut } from '../language/context-window.ts';
 
 const DAY_MS = 86_400_000;
@@ -82,7 +83,7 @@ async function recall(turn: Turn, ctx: DecideCtx): Promise<void> {
     // 长期记忆只给名单里的人（流水线只在名单里的人才给 memory）；主动找他时没有「他这次说的」：查想知道的事 + 最后两句，带前 3 天到后 2 天的时间窗（ADR 0012 决策 1 第 7 条）
     const memory = options.memory;
     const remembers = memory;
-    const timeout = memory?.recallBudgetMs ?? 3000;
+    const timeout = memory?.recallBudgetMs ?? MEMORY_THRESHOLDS.recallTimeoutMs;
     const deadline = memory ? AbortSignal.timeout(Number.isSafeInteger(timeout) && timeout > 0 && timeout <= 2_147_483_647 ? timeout : 0) : undefined;
     const recallOptions = initiate
         ? { query: initiateQuery(chat, initiate.topic), window: { start: new Date(time.getTime() - 3 * DAY_MS), end: new Date(time.getTime() + 2 * DAY_MS) } }

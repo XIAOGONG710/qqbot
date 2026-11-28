@@ -1,11 +1,13 @@
 import { join } from 'node:path';
 import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
+import { MEMORY_THRESHOLDS } from '../memory/thresholds.ts';
 import { loadTakesState, type Take } from './reading-takes.ts';
 
 type Method = 'date' | 'topic';
 type Attempt = { id: string; key: string; at: number; method: Method; hits: string[] };
-const MAX_ATTEMPTS = 80;
-const MAX_AGE = 30 * 86_400_000;
+/** 经验最多留几次尝试、多久以前的不再用（默认 80 次 / 30 天，记忆阈值表 notebookMaxAttempts / notebookMaxAgeMs） */
+const MAX_ATTEMPTS = MEMORY_THRESHOLDS.notebookMaxAttempts;
+const MAX_AGE = MEMORY_THRESHOLDS.notebookMaxAgeMs;
 
 function notebookRequest(text: string) {
     if (text.length > 240 || !/读书笔记/.test(text) || !/检索|找|查|翻|看看|整理/.test(text)) return undefined;

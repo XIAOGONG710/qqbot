@@ -39,6 +39,7 @@ import { clarity, IMPORTANT, isSummary, LASTING, lastTouchedDay, withoutMark, ty
 import { civilDayInWindow, providerTime } from './civil-time.ts';
 import { WrittenRetainStore, writtenRequestHash, type WrittenOperation, type WrittenRetainOptions, type WrittenSourceIntent } from './written-retain.ts';
 import type { BankConfig, HindsightApi, MemoryItem, MentalModelRequest, RecallRequest, RecallResult } from './hindsight.ts';
+import { MEMORY_THRESHOLDS } from './thresholds.ts';
 
 /** 进行中的片段每多这么多条就整段重写一次 */
 export const OPEN_EPISODE_STEP = 30;
@@ -57,21 +58,24 @@ export const RELATIONSHIP_REFRESH_MS = 10 * 60_000;
  * 它常排在第 8–10 条，取 8 条会被截掉。12 条约 500 token，在调研方案 6.4「按需召回 300–800」之内。
  * ADR 0018 之后召回取 RECALL_TOKENS（1000），想不起来的筛掉之后仍最多放 12 条。
  */
-export const MAX_RECALLED = 12;
-/** 公共记忆、被提起的人的记忆各注入几条（ADR 0016：各约 250 token） */
-export const SHARED_RECALLED = 6;
-/** 一段新对话里给亲密联系人看的「今天跟别人聊过的」最多几条 */
-export const TODAY_OTHERS = 3;
-export const PERSON_RECALLED = 6;
+// 下面几个条数和 token 数在记忆阈值表里（memory/thresholds.ts，硬编码改造第三批），默认值就是原来写死的数
+export const MAX_RECALLED = MEMORY_THRESHOLDS.maxRecalled;
+/** 公共记忆、被提起的人的记忆各注入几条（ADR 0016：各约 250 token；默认 6，sharedRecalled / personRecalled） */
+export const SHARED_RECALLED = MEMORY_THRESHOLDS.sharedRecalled;
+/** 一段新对话里给亲密联系人看的「今天跟别人聊过的」最多几条（默认 3，todayOthers） */
+export const TODAY_OTHERS = MEMORY_THRESHOLDS.todayOthers;
+export const PERSON_RECALLED = MEMORY_THRESHOLDS.personRecalled;
 /**
  * 同一个人和事（召回结果的实体）一次最多放几条（DSH 诊断 1.2）：同学档 10-08 召回 8 条里 3 条是猫（10-05 一条、10-07 两条，说的是一件事），
- * 他前一天刚嫌过「你怎么总说它的事」，她还是接着说猫。他这次说到的不限
+ * 他前一天刚嫌过「你怎么总说它的事」，她还是接着说猫。他这次说到的不限（默认 2，sameThingRecalled）
  */
-export const SAME_THING_RECALLED = 2;
-/** 召回取多少（ADR 0018：想不起来的筛掉之后还要够 MAX_RECALLED 条；以前是 600） */
-export const RECALL_TOKENS = 1000;
-/** 公共记忆问到某一天时多取一些（之后只留那天的） */
-export const DAY_RECALL_TOKENS = 2000;
+export const SAME_THING_RECALLED = MEMORY_THRESHOLDS.sameThingRecalled;
+/** 召回取多少（ADR 0018：想不起来的筛掉之后还要够 MAX_RECALLED 条；以前是 600；默认 1000，recallTokens） */
+export const RECALL_TOKENS = MEMORY_THRESHOLDS.recallTokens;
+/** 公共记忆问到某一天时多取一些（之后只留那天的；默认 2000，dayRecallTokens） */
+export const DAY_RECALL_TOKENS = MEMORY_THRESHOLDS.dayRecallTokens;
+/** 召回的每条记忆最多放多少字（默认 200，recalledLineChars） */
+export const RECALLED_LINE_CHARS = MEMORY_THRESHOLDS.recalledLineChars;
 /** 公共库的实体名（有线索才想起，ADR 0017）多久重读一次；公共库写入之后也重读 */
 export const ENTITIES_REFRESH_MS = 10 * 60_000;
 
@@ -373,10 +377,10 @@ const MEMORY_STOPPED = Symbol('memory stopped');
 const MEMORY_PAUSED = Symbol('memory paused');
 /**
  * Hindsight 卡住时的熔断（决定单第 26 条，记忆审查 U1）：每一轮的查询连续这么多次超时，就这么久之内不查，这几轮照出错时一样不带记忆；
- * 到点后先试一次：还超时就再停这么久，有回应（成功或很快报错）就恢复。
+ * 到点后先试一次：还超时就再停这么久，有回应（成功或很快报错）就恢复。（默认 2 次 / 60 秒，记忆阈值表 recallBreakerTimeouts / recallBreakerMs）
  */
-export const RECALL_BREAKER_TIMEOUTS = 2;
-export const RECALL_BREAKER_MS = 60_000;
+export const RECALL_BREAKER_TIMEOUTS = MEMORY_THRESHOLDS.recallBreakerTimeouts;
+export const RECALL_BREAKER_MS = MEMORY_THRESHOLDS.recallBreakerMs;
 
 /** 一次写入或召回的结果 */
 export interface MemoryEvent {
@@ -1673,8 +1677,8 @@ export class LongTermMemory {
     }
 }
 
-/** 查询最多多少字：超过 500 token 时 Hindsight 直接返回 400（ADR 0012 问题 8） */
-export const MAX_QUERY_CHARS = 300;
+/** 查询最多多少字：超过 500 token 时 Hindsight 直接返回 400（ADR 0012 问题 8；默认 300，阈值表 maxQueryChars，只能往小调） */
+export const MAX_QUERY_CHARS = MEMORY_THRESHOLDS.maxQueryChars;
 
 /** 查询：她上一句 + 之后对方发的几条（调研方案 9.5：要带上这次的话题和指代），留最后 MAX_QUERY_CHARS 字 */
 export function recallQuery(chat: readonly ChatMessage[]): string {
@@ -1829,7 +1833,7 @@ export function formatRecalled(
         const notes = [options.source?.(r), future ? `打算 ${day(future)}` : undefined, faded, felt].filter(Boolean);
         const prefix = `${when ? day(when) : ''}${notes.length ? `（${notes.join('，')}）` : ''}`;
         const reference = options.reference?.(r);
-        return `- ${prefix ? `${prefix}：` : ''}${text.length > 200 ? `${text.slice(0, 200)}…` : text}${reference ? ` <<记忆引用:${reference}>>` : ''}`;
+        return `- ${prefix ? `${prefix}：` : ''}${text.length > RECALLED_LINE_CHARS ? `${text.slice(0, RECALLED_LINE_CHARS)}…` : text}${reference ? ` <<记忆引用:${reference}>>` : ''}`;
     });
     if (lines.length === 0) return undefined;
     const header = options.header ?? RECALLED_HEADER;

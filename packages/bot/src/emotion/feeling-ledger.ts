@@ -17,11 +17,12 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FEELING_KINDS, FEELING_NAME, type Felt, type FeelingKind } from './feelings.ts';
 import type { Recovery } from './recovery.ts';
+import { MEMORY_THRESHOLDS } from '../memory/thresholds.ts';
 
 export const LEDGER_FILE = 'feeling-ledger.jsonl';
 export const ledgerPath = (soulDir: string) => join(soulDir, LEDGER_FILE);
-/** 超过这么久就只剩个大概（不删） */
-export const COARSE_AFTER_DAYS = 90;
+/** 超过这么久就只剩个大概（不删；默认 90 天，记忆阈值表 feelingCoarseAfterDays，和桌面插件同一个数） */
+export const COARSE_AFTER_DAYS = MEMORY_THRESHOLDS.feelingCoarseAfterDays;
 export const DAY_MS = 86_400_000;
 
 /** 她不想原样带上的两类；'' 就是照原样记 */

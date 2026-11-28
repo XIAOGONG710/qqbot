@@ -9,6 +9,6 @@
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
-  "files": ["index.js", "focus-checkpoints.mjs", "shared-understanding.mjs", "playful-persona.mjs", "semantic-judgment.mjs", "session-tail.js", "home-status.js", "cordis.patch.yml", "locale/*.json", "icon.svg"],
+  "files": ["index.js", "focus-checkpoints.mjs", "shared-understanding.mjs", "playful-persona.mjs", "semantic-judgment.mjs", "memory-thresholds.mjs", "session-tail.js", "home-status.js", "cordis.patch.yml", "locale/*.json", "icon.svg"],
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
 }

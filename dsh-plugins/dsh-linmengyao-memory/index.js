@@ -13,12 +13,21 @@ import { UNDERSTANDING_EXPORT, sharedUnderstandingLine } from './shared-understa
 import { homeActivities, homePlaces, publishHomeStatus } from './home-status.js'
 import { PLAYFUL_PERSONA } from './playful-persona.mjs'
 import { createJudgmentAsk, judgeTurn, judgmentConversation, judgmentLine, judgmentLogLine } from './semantic-judgment.mjs'
+import { loadMemoryThresholds, MEMORY_THRESHOLD_DEFAULTS as DEFAULT_THRESHOLDS, memoryThresholdsLogLine } from './memory-thresholds.mjs'
 
 export const name = 'dsh-linmengyao-memory'
 
 // 灵魂目录：和 packages/bot 的 soulDir() 一致（环境变量 QQBOT_SOUL_DIR，默认当前用户的 ~/.dsh/linmengyao），换机器不会静默失效
 const SOUL_DIR = process.env.QQBOT_SOUL_DIR || path.join(os.homedir(), '.dsh', 'linmengyao')
 const soulPath = (file) => path.join(SOUL_DIR, file)
+
+/**
+ * 记忆阈值（硬编码改造第三批）：和 QQ 共用 memory-thresholds.mjs 那一张表、读同一个环境变量 QQBOT_MEMORY_THRESHOLDS 指的文件，
+ * 共用的概念（变淡的天数、互读窗口、每句字数、桌面回合留多久和多少字、收件箱多久、召回截止、感觉账多久变粗）两边一定是同一个数。
+ * 插件载入时读一次；默认值就是原来写死的数。
+ */
+export const MEMORY_THRESHOLDS_RESULT = loadMemoryThresholds(process.env.QQBOT_MEMORY_THRESHOLDS)
+const THRESHOLDS = MEMORY_THRESHOLDS_RESULT.values
 
 export function desktopUnderstanding(cfg, query, now = Date.now()) {
   return cfg.sharedUnderstanding === true || typeof cfg.understandingFile === 'string'
@@ -31,8 +40,9 @@ const DEFAULTS = {
   presets: ['linmengyao'],
   // 由部署方确认仅本机私聊、没有转发的专用会话。
   ownerPrivateSessions: [],
-  pick: 6,
-  maxChars: 1400,
+  // 默认 6 条 / 1400 字（记忆阈值表 desktopPick / desktopMaxChars）；profile 里写了仍以它为准
+  pick: THRESHOLDS.desktopPick,
+  maxChars: THRESHOLDS.desktopMaxChars,
   // QQ 那边写的「他的 bank 在哪」（ADR 0176）；QQBOT_OWNER_BANK_FILE 可以改，默认是这个仓库的 runtime/bot/memory/owner-bank.json
   ownerBankFile: process.env.QQBOT_OWNER_BANK_FILE || fileURLToPath(new URL('../../runtime/bot/memory/owner-bank.json', import.meta.url)),
   soulFile: soulPath('SOUL.md'),
@@ -108,9 +118,9 @@ const DEFAULTS = {
 }
 
 // 和 QQ 侧 packages/bot/src/memory/fading.ts 保持同一套遗忘语义，避免她换到桌面后
-// 对同一件事突然记得更牢或更差。这里不能直接 import TS 源码，所以用同一组小而明确的规则并做契约测试。
-export const MEMORY_CLEAR_DAYS = 7
-export const MEMORY_VAGUE_DAYS = 30
+// 对同一件事突然记得更牢或更差。这里不能直接 import TS 源码，所以用同一组小而明确的规则并做契约测试；天数从共用的阈值表拿（默认 7 / 30）。
+export const MEMORY_CLEAR_DAYS = THRESHOLDS.clearDays
+export const MEMORY_VAGUE_DAYS = THRESHOLDS.vagueDays
 export const MEMORY_IMPORTANT = '【重要】'
 export const MEMORY_LASTING = '【长期】'
 const MEMORY_DAY_MS = 86_400_000
@@ -230,7 +240,7 @@ const herNameOf = (cfg) => {
  * 因为他而难过 / 烦 / 担心的不附（ADR 0218 的护栏）。
  */
 const FEELING_LEDGER_FILE = 'feeling-ledger.jsonl'
-const FEELING_COARSE_AFTER_DAYS = 90
+const FEELING_COARSE_AFTER_DAYS = THRESHOLDS.feelingCoarseAfterDays
 const FEELING_LOOSE = new Set(['joy', 'relief'])
 const FEELING_NAME = { joy: '开心', relief: '松了口气', worry: '担心', sad: '难过', annoyed: '烦', tired: '累' }
 /** 因为他而起的难过 / 烦 / 担心：她 11-22「会带一点……堵一会儿就过去了」——附，但最多到「有点」（和 QQ 的 ledgerNote 一样） */
@@ -582,11 +592,12 @@ export function ownerBanks(cfg) {
 
 // ───────── 同一个她·第 2 层（ADR 0177）：两边互读最近几轮 ─────────
 
-const CROSS_WINDOW_MS = 6 * 3_600_000
-const CROSS_TAIL_BYTES = 64 * 1024
-const CROSS_LINE_CHARS = 200
+// 这几个数和 QQ 的 cross-recent.ts / desktop-log.ts 从同一张阈值表拿（默认 6 小时、64 KiB、200 字、14 天）
+const CROSS_WINDOW_MS = THRESHOLDS.crossWindowMs
+const CROSS_TAIL_BYTES = THRESHOLDS.crossTailBytes
+const CROSS_LINE_CHARS = THRESHOLDS.crossLineChars
 // 与 QQ 桌面账的接收窗口一致。提示词仍只取最近几轮。
-const DESKTOP_KEEP_MS = 14 * 86_400_000
+const DESKTOP_KEEP_MS = THRESHOLDS.desktopKeepMs
 
 /** 这一轮是谁发起的：桌面上他自己在和她说话 = desktop；QQ 工作模式派的活 / 随机醒来 / 睡眠整合由派活的一方设 HER_CHANNEL，那些不算「桌面对话」 */
 const channel = () => process.env.HER_CHANNEL || 'desktop'
@@ -615,7 +626,7 @@ const WORLD_EVENT_KINDS = new Set([
   'sleep', 'eat', 'meet', 'attend_class', 'study', 'rest', 'read_book', 'leisure', 'work_on_project', 'interact_npc',
   'feed_cat', 'pick_parcel', 'finish_homework', 'family_call', 'receive_money',
 ])
-const INBOX_MAX_AGE_MS = 30 * 86_400_000
+const INBOX_MAX_AGE_MS = THRESHOLDS.inboxMaxAgeMs
 
 function appendInbox(cfg, file, row) {
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -709,7 +720,7 @@ export function qqRecentBlock(cfg, now = Date.now()) {
     } catch { /* 坏行 */ }
   }
   if (!rows.length) return ''
-  return `[你刚才在 QQ 上跟他聊的（最近几句）——同一个他、同一个你；接着聊就行，不用复述，也别说成「我在 QQ 上看到」]\n${rows.slice(-10).join('\n')}`
+  return `[你刚才在 QQ 上跟他聊的（最近几句）——同一个他、同一个你；接着聊就行，不用复述，也别说成「我在 QQ 上看到」]\n${rows.slice(-THRESHOLDS.qqRecentLines).join('\n')}`
 }
 
 /**
@@ -727,8 +738,8 @@ export function recordDesktopTurn(cfg, user, assistant, now = Date.now(), userAt
     at: now,
     ownerBank: owner.owner,
     ...(Number.isSafeInteger(userAt) && userAt <= now ? { userAt } : {}),
-    user: clipText(user, 600),
-    assistant: clipText(assistant, 600),
+    user: clipText(user, THRESHOLDS.desktopTextChars),
+    assistant: clipText(assistant, THRESHOLDS.desktopTextChars),
   }
   if (!row.user && !row.assistant) return false
   let previous = ''
@@ -822,7 +833,7 @@ export const writeBank = (cfg) => ownerBanks(cfg)?.owner ?? cfg.prefix
 async function allBanks(cfg, signal) {
   let existing = bankCache.ids
   if (!existing.length || bankCache.baseUrl !== cfg.baseUrl || Date.now() - bankCache.at >= 60_000) {
-    const res = await fetch(`${cfg.baseUrl}/v1/default/banks`, { signal: AbortSignal.any([signal, AbortSignal.timeout(2500)]) })
+    const res = await fetch(`${cfg.baseUrl}/v1/default/banks`, { signal: AbortSignal.any([signal, AbortSignal.timeout(THRESHOLDS.bankListTimeoutMs)]) })
     if (!res.ok) throw new Error(`banks ${res.status}`)
     const data = await res.json()
     signal.throwIfAborted()
@@ -843,7 +854,7 @@ async function recallBank(cfg, bank, query, signal, ownImportant = false) {
       types: ownImportant ? ['world', 'experience'] : ['world', 'experience', 'observation'],
       prefer_observations: !ownImportant,
       budget: 'low',
-      max_tokens: 1200,
+      max_tokens: THRESHOLDS.desktopRecallTokens,
       tags: ownImportant ? ['dsh', 'important'] : [],
       tags_match: ownImportant ? 'all_strict' : 'any',
       query_timestamp: new Date().toISOString(),
@@ -918,7 +929,7 @@ async function beforeRecallDeadline(signal, work) {
 
 /** 所有库做语义召回，合并去重后取前 pick 条。命中明确话题时给亲手记的相关项留一个位置。 */
 async function recallAll(cfg, query, currentUserText, checkImportant) {
-  const deadline = AbortSignal.timeout(3000)
+  const deadline = AbortSignal.timeout(THRESHOLDS.recallTimeoutMs)
   const within = work => beforeRecallDeadline(deadline, work)
   const initialScope = continuityScope(cfg)
   if (initialScope === null) return { items: [], important: 'not-queried', failedBanks: 0 }
@@ -1326,6 +1337,8 @@ export function apply(ctx, config = {}) {
   const allow = new Set(Array.isArray(cfg.presets) && cfg.presets.length ? cfg.presets : DEFAULTS.presets)
   const privateSessions = new Set(Array.isArray(cfg.ownerPrivateSessions) ? cfg.ownerPrivateSessions : [])
   log(cfg, `apply presets=${[...allow].join(',')}`)
+  // 记忆阈值：调过或文件没用上时记一行（只有键名和数，不写路径和文件内容）；全部默认时不记，和原来一样
+  if (MEMORY_THRESHOLDS_RESULT.issue || MEMORY_THRESHOLDS_RESULT.values !== DEFAULT_THRESHOLDS) log(cfg, memoryThresholdsLogLine(MEMORY_THRESHOLDS_RESULT))
   // 私聊语义判断：只认 '1'；判断只放一句「你对他这几句的理解」进提示词，不当权限、不落事实、不当发送凭据
   const judgmentAsk = process.env.QQBOT_SEMANTIC_JUDGMENT === '1'
     ? (typeof cfg.judgmentAsk === 'function' ? cfg.judgmentAsk : createJudgmentAsk({ key: process.env.QQBOT_LLM_API_KEY, baseUrl: cfg.judgmentBaseUrl, model: cfg.judgmentModel }))
@@ -1425,13 +1438,14 @@ export function apply(ctx, config = {}) {
             const { items: all, important, failedBanks } = await recallAll(cfg, query, cache.user, messages.at(-1)?.role === 'user')
             if (version !== inputVersion || !privateTurn()) return next()
             if (scope !== continuityScope(cfg)) { cache.text = ''; return next() }
+            let shown = all.slice(0, cfg.pick)
             // 第 5 层：她自己的口气 + 多久以前（ADR 0347）。原来原样贴「林梦瑶……」，
             // 她说那读起来像在翻别人的日记；这里只换人称和加远近，事实一个字不加。
             const voice = cfg.memoryVoice === true
             // 感觉账（ADR 0347 第 5 层）：几天以前的事那天感觉早散了、回想也记不下那么远，从账里配当时的感觉
             const felt = cfg.memoryFeelings === true ? readFeelingLedger() : []
             const herName = herNameOf(cfg)
-            let text = all.slice(0, cfg.pick).map((item) => {
+            let text = shown.map((item) => {
               if (!voice) return `- ${item.text}`
               const raw = String(item.text || '')
               const clarity = CLARITY_PREFIX.exec(raw)?.[1] || ''
@@ -1470,7 +1484,7 @@ export function apply(ctx, config = {}) {
               bridge,
             ].filter(Boolean).join('\n\n')
             cache.firstStep = false
-            log(cfg, `recall items=${all.length} selected=${Math.min(cfg.pick, all.length)} memoryChars=${text.length} important=${important} failedBanks=${failedBanks}`)
+            log(cfg, `recall items=${all.length} selected=${shown.length} memoryChars=${text.length} important=${important} failedBanks=${failedBanks}`)
           }
         } catch { if (scope !== continuityScope(cfg)) cache.text = ''; log(cfg, 'recall error') }
         if (cache.judging) {

@@ -16,16 +16,17 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { desktopRecentPath } from './cross-recent.ts';
+import { MEMORY_THRESHOLDS } from './thresholds.ts';
 import type { PresenceTurn } from '../life/desktop-presence.ts';
 
 export const DESKTOP_LOG_FILE = 'desktop-log.jsonl';
 export const DESKTOP_LOG_VERSION = 1;
-/** 账本只留这么久，也只收这么久以内的回合 */
-export const DESKTOP_LOG_KEEP_MS = 14 * 86_400_000;
+/** 账本只留这么久，也只收这么久以内的回合（默认 14 天，记忆阈值表 desktopKeepMs，和插件留 desktop-recent.jsonl 的同一个数） */
+export const DESKTOP_LOG_KEEP_MS = MEMORY_THRESHOLDS.desktopKeepMs;
 /** 比现在晚这么多以内当作两台钟没对齐，照收；再晚就跳过（下一次收的时候不再是未来了再收） */
 export const DESKTOP_LOG_FUTURE_SLACK_MS = 60_000;
-/** 每边最多存这么多字（插件写的是 600 字加一个省略号） */
-export const DESKTOP_LOG_TEXT_CHARS = 600;
+/** 每边最多存这么多字（插件写的是这么多字加一个省略号；默认 600，desktopTextChars，和插件同一个数） */
+export const DESKTOP_LOG_TEXT_CHARS = MEMORY_THRESHOLDS.desktopTextChars;
 /** 他开口到一轮结束最长算这么久；userAt 比这还早（或晚于 at）就当没有 userAt，免得一个错的时刻把会话开始拉到几天前 */
 export const DESKTOP_TURN_MAX_MS = 3 * 3_600_000;
 

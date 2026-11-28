@@ -25,6 +25,7 @@
 - `memory/dsh-inbox.ts`
 - `memory/self-receipts.ts`
 - `memory/desktop-log.ts`
+- `memory/thresholds.ts`
 - `memory/owner-day-view.ts`
 - `memory/dormancy.ts`
 - `memory/dormancy-commands.ts`
