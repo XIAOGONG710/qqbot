@@ -39,9 +39,29 @@ export interface CharacterCardV2 {
                 /** 她的世界（ADR 0021） */
                 world?: CardWorld;
                 biography?: CardBiography;
+                /** 跨端的表达与称呼（ADR 0353）：资料写了的键才有；这一档看不到是空串 */
+                voice?: CardVoice;
             };
         };
     };
+}
+
+/**
+ * 跨端的表达与称呼（ADR 0353，persona.yml voice 段）。没有这个键 = 资料没写，读的那一端用内置默认；
+ * 空串 = 资料写了但这一档看不到，不放（desktopIdentity、callsHim 不能为空，空串也用内置默认）。
+ * card_notes 在转换时就进了 post_history_instructions，不在这里。
+ */
+export interface CardVoice {
+    /** QQ 私聊、QQ 群聊、DSH 私聊共用：逗人的分寸 */
+    playful?: string;
+    /** 只有 QQ 私聊：口气 */
+    qqPrivate?: string;
+    /** 只有 DSH 桌面人设（PERSONA.md）：闲聊约定 */
+    desktopChat?: string;
+    /** 只有 DSH preset：人格前缀 */
+    desktopIdentity?: string;
+    /** 只有 DSH 桌面人设：{{user}} 换成的称呼 */
+    callsHim?: string;
 }
 
 /**

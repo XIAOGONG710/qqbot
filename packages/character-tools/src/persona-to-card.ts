@@ -1,10 +1,11 @@
 // source/ 的人设和档位 → 每个档位一张 SillyTavern 角色卡 V2（ADR 0003、0010）。
 //
 // 人设各段的字段只给 tiers 里的档位；某几档用改写过的文字（variants，按顺序取第一条含这一档的）。
-// 段落标题、字段标签、输出规则、system_prompt、正则脚本是代码里的常量，不在资料里。
+// 段落标题、字段标签、输出规则（做不到的事、格式、不编造）、system_prompt、正则脚本是代码里的常量，不在资料里。
+// 表达偏好和称呼（ADR 0353）在 persona.yml 的 voice 段：card_notes 进 post_history_instructions，其余写进 extensions.qqbot.voice 给各端读；没写就用内置默认。
 
-import { SECTION_KEYS, type CharacterSource, type SectionKey, type TextField } from './source.ts';
-import type { CardDate, CardProactive, CardSchedule, CharacterCardV2, RegexScript } from './st-format.ts';
+import { SECTION_KEYS, type CharacterSource, type SectionKey, type TextField, type VoiceKey } from './source.ts';
+import type { CardDate, CardProactive, CardSchedule, CardVoice, CharacterCardV2, RegexScript } from './st-format.ts';
 import { booksForTier, moodsForTier } from './her-days-to-card.ts';
 import { worldForTier } from './world-source.ts';
 import { biographyForTier } from './biography-to-card.ts';
@@ -49,10 +50,26 @@ const OUTPUT_RULE = [
     + '只有「[语音 8秒]」「[图片]」的，你不知道里面是什么：语音你这会儿听不了（在上课、在图书馆、宿舍有人在睡觉，看你现在在干什么）就像真人那样让对方打字，能听的时候就当听过了，顺着对方前后说的接，别编语音里说了什么；'
     + '图就问一句「这是啥」，或者就着对方说的话接，不假装看见了。你自己发不了语音、照片和普通图片，也不写「[语音…]」「[图片…]」这种方括号；运行时列出的收藏图片表情和小黄脸照各自规则用。',
     '不编造对方说过的话，也不编你们没一起经历过的事。',
+].join('\n');
+
+/**
+ * 输出规则后面那几句表达偏好（讲题、对方难过时、身材雷区的分寸）的内置默认：persona.yml 没写 voice.card_notes 时用（ADR 0353）。
+ * 写了就按档位取那条；这一档看不到就不放。做不到的事和格式（OUTPUT_RULE）不归资料管，排在它前面。
+ */
+export const DEFAULT_CARD_NOTES = [
     '被认真问到学习、技术上的事，像同学之间讲题：先一句话说清是什么，再打一个比方，讲到对方能接着往下想就停；对方追问再往细里讲。',
     '对方认真难过、生病或很累的时候，先别嘴硬开玩笑，直接关心。',
     '身材的雷区只针对拿体重、胖瘦、身高挑刺或说笑；聊吃的、关心你吃没吃饭不算，别因此冷下来。',
 ].join('\n');
+
+/** voice 段（除 card_notes）→ 卡上的键 */
+const CARD_VOICE_KEYS: Record<Exclude<VoiceKey, 'card_notes'>, keyof CardVoice> = {
+    playful: 'playful',
+    qq_private: 'qqPrivate',
+    desktop_chat: 'desktopChat',
+    desktop_identity: 'desktopIdentity',
+    calls_him: 'callsHim',
+};
 
 /**
  * 删掉整行括号和行首括号里的动作、心理活动（ADR 0006 决策 2）：输出规则写了不要，模型偶尔还是写。
@@ -138,8 +155,19 @@ export function personaToCard(source: CharacterSource, tierName: string, options
     }
     const scenario = [tier.user_is, social, tier.discreet ? source.tiers.discreet.text : ''].filter(Boolean).join('\n');
 
-    // post_history_instructions：说话方式放在聊天记录之后，离回复最近
-    const postHistory = [persona.reply_style, OUTPUT_RULE, tier.demeanor ?? ''].filter(Boolean).join('\n');
+    // 跨端的表达与称呼（ADR 0353）：资料写了的键按档位取，这一档看不到是空串；没写的键不出现，读的一端用内置默认
+    const voiceText = (key: VoiceKey): string | undefined => {
+        const field = persona.voice?.[key];
+        return field && (sees(field) ? textFor(field, tier.name) : '');
+    };
+    const voice: CardVoice = {};
+    for (const [key, cardKey] of Object.entries(CARD_VOICE_KEYS) as [Exclude<VoiceKey, 'card_notes'>, keyof CardVoice][]) {
+        const text = voiceText(key);
+        if (text !== undefined) voice[cardKey] = text;
+    }
+
+    // post_history_instructions：说话方式放在聊天记录之后，离回复最近。做不到的事和格式在前，表达偏好其次，档位分寸最后
+    const postHistory = [persona.reply_style, OUTPUT_RULE, voiceText('card_notes') ?? DEFAULT_CARD_NOTES, tier.demeanor ?? ''].filter(Boolean).join('\n');
 
     // 运行时用的日期和主动设置（ADR 0011）：日期跟着「重要的日子」那句文字的档位
     const dates: CardDate[] = Object.values(persona.sections.dates).filter(field => field.day && sees(field)).map(field => ({ ...field.day! }));
@@ -163,6 +191,7 @@ export function personaToCard(source: CharacterSource, tierName: string, options
         ...(books ? { books } : {}),
         ...(world ? { world } : {}),
         ...(biography ? { biography } : {}),
+        ...(Object.keys(voice).length ? { voice } : {}),
     };
 
     return {

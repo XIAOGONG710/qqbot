@@ -46,6 +46,7 @@ export function checkReferences(source: CharacterSource): void {
         for (const [name, field] of Object.entries(persona.sections[key])) checkField(field, `persona.yml sections.${key}.${name}`);
     }
     for (const [name, field] of Object.entries(persona.social)) checkField(field, `persona.yml social.${name}`);
+    for (const [name, field] of Object.entries(persona.voice ?? {})) checkField(field, `persona.yml voice.${name}`);
     checkField(source.tiers.discreet, 'tiers.yml discreet');
     source.moods?.moods.forEach((mood, i) => checkField(mood.style, `moods.yml moods[${i}].style`));
     source.books?.books.forEach((book, i) => {
@@ -118,6 +119,9 @@ export function checkPrivacy(built: Built, source: CharacterSource): Problem[] {
             scan(tier, '她的过去 年表', biography.timeline.join('\n'), banned);
             for (const chunk of biography.chunks) scan(tier, `她的过去 ${chunk.id}`, `${chunk.title}\n${chunk.text}`, banned);
         }
+        // 表达与称呼（ADR 0353）：各端会原样放进提示词
+        const voice = data.extensions.qqbot?.voice;
+        if (voice) for (const [key, text] of Object.entries(voice)) if (text) scan(tier, `表达与称呼 ${key}`, text, banned);
         for (const entry of Object.values(lorebook.entries)) {
             const id = /（([^（）]+)）$/.exec(entry.comment)?.[1] ?? entry.comment;
             scan(tier, `世界书 ${id}`, entry.content, banned);

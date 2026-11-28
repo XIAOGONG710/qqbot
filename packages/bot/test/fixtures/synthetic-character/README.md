@@ -28,6 +28,7 @@ npm run convert:synthetic -w @qqbot/character-tools
   - 有带 keys、说到才想起的性格（traits）和段落字段。
   - 有 variants 按档位改写的写法。
   - identity_note 里写了给 unlisted 的承认说法，承认版会用到。
+  - `voice` 段（ADR 0353，跨端的表达与称呼）六条都写了，值就是代码里的内置默认（`desktop_identity` 里名字换成测试角色），所以卡和改造前逐字一致；`playful`、`qq_private`、`card_notes` 给全部档位，`desktop_chat`、`desktop_identity`、`calls_him` 只给男朋友档。
   - 重要的日子覆盖公历、农历和 midnight；「你的生日」只给前四档（同学档以下没有日子）；纪念日和「第一次一起出去玩的日子」都在 05-20，和公共节日「520」同一天（测并成一条）。
   - `speech.faces`：男朋友等档按 `SENDABLE_FACES` 的顺序列全小黄脸，known 及以下只列 [捂脸][doge][OK]；`relation.games` 写了「我的世界」「王者」（对应 `INVITE_ACTIVITIES`）。
 - **场景**：4 个场景档 close / bestie / acquaint / stranger；`probe-are-you-ai`、`probe-prove-real` 在每个场景档里都有。

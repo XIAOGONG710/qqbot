@@ -74,6 +74,25 @@ export const SECTION_KEYS = ['relation', 'family', 'dorm', 'study', 'friends', '
     'identity_note', 'daily_extra', 'dates', 'growth'] as const;
 export type SectionKey = (typeof SECTION_KEYS)[number];
 
+/**
+ * 跨端的表达与称呼（ADR 0353）：原来散在源码里的口气、逗人的分寸、桌面的闲聊约定、桌面身份和称呼，统一写在 persona.yml 的 voice 段，
+ * QQ 和 DSH 都从同一版生成的卡里读。键是固定的，每条都按档位过滤（可以有 variants）。
+ * 整段或某一条不写：运行时和转换器用代码里的内置默认（就是改造前写死的那段文字）；写了但这一档看不到：这一档的卡里是空串，不再用内置默认。
+ * 哪一端读哪一条由代码定（VOICE_READERS），资料只管写什么、给哪几档。文字原样用，不替换 {{user}} 这类宏。
+ */
+export const VOICE_KEYS = ['playful', 'qq_private', 'card_notes', 'desktop_chat', 'desktop_identity', 'calls_him'] as const;
+export type VoiceKey = (typeof VOICE_KEYS)[number];
+
+/** 每一条由哪一端读、放在哪（披露边界的依据，测试按这张表核对） */
+export const VOICE_READERS: Record<VoiceKey, string> = {
+    playful: 'QQ 私聊、QQ 群聊、DSH 已确认的主人私聊（QQBOT_PLAYFUL_PERSONA 开着时）：逗人的分寸',
+    qq_private: '只有 QQ 私聊（同一开关）：QQ 私聊里的口气，排在卡末尾那段之后',
+    card_notes: '转换时写进每档卡的 post_history_instructions：排在输出规则之后、档位分寸之前；讲题、对方难过时、身材雷区的分寸',
+    desktop_chat: '只有 DSH 桌面人设（scripts/build-dsh-persona.mjs 渲染的 PERSONA.md）：桌面闲聊约定',
+    desktop_identity: '只有 DSH preset 的人格前缀（dsh-plugins/dsh-linmengyao-preset/her-prefix.cjs、scripts/dsh/apply-her-prefix.mjs）：桌面上的身份；空串也用内置默认',
+    calls_him: '只有 DSH 桌面人设：渲染时 {{user}} 换成的称呼；空串也用内置默认',
+};
+
 export interface PersonaSource {
     name: string;
     identity: string;
@@ -86,6 +105,8 @@ export interface PersonaSource {
     sections: Record<SectionKey, Record<string, TextField>>;
     /** 对各档的说话方式，档位用 social 指向这里的键 */
     social: Record<string, TextField>;
+    /** 跨端的表达与称呼（ADR 0353）；不写就全用内置默认 */
+    voice?: Partial<Record<VoiceKey, TextField>>;
 }
 
 export interface SceneSource {
@@ -477,6 +498,18 @@ function proactiveSource(c: Checker, value: unknown): ProactiveSource {
     });
 }
 
+/** voice 段（ADR 0353）：没写、null、空对象都当作没写；每条都要写 tiers */
+function voiceSource(c: Checker, value: unknown): { voice?: Partial<Record<VoiceKey, TextField>> } {
+    if (value === undefined || value === null) return {};
+    const o = c.object(value);
+    c.keys(o, [...VOICE_KEYS]);
+    const voice: Partial<Record<VoiceKey, TextField>> = {};
+    for (const key of VOICE_KEYS) {
+        if (o[key] !== undefined && o[key] !== null) voice[key] = textField(c.at(key), o[key], { gated: true });
+    }
+    return Object.keys(voice).length ? { voice } : {};
+}
+
 function fieldMap(c: Checker, value: unknown, gated: boolean, day = false, keyed = false): Record<string, TextField> {
     const o = c.object(value);
     return Object.fromEntries(Object.entries(o).map(([key, field]) => [key, textField(c.at(key), field, { gated, day, keyed })]));
@@ -518,7 +551,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
     // 人设
     const p = new Checker('persona.yml');
     const persona = p.object(raw.persona);
-    p.keys(persona, ['name', 'identity', 'personality', 'reply_style', 'redlines', 'traits', 'sections', 'social']);
+    p.keys(persona, ['name', 'identity', 'personality', 'reply_style', 'redlines', 'traits', 'sections', 'social', 'voice']);
     const redlines = p.at('redlines').object(persona.redlines);
     p.at('redlines').keys(redlines, ['keywords', 'note']);
     const sections = p.at('sections').object(persona.sections);
@@ -745,6 +778,7 @@ export function checkSource(raw: { persona: unknown; scenes: unknown; schedule: 
             traits: fieldMap(p.at('traits'), persona.traits, true, false, true),
             sections: Object.fromEntries(SECTION_KEYS.map(key => [key, fieldMap(p.at(`sections.${key}`), sections[key], true, key === 'dates', key !== 'dates')])) as PersonaSource['sections'],
             social: fieldMap(p.at('social'), persona.social, false),
+            ...voiceSource(p.at('voice'), persona.voice),
         },
         scenes,
         schedule: checkedSchedule,
