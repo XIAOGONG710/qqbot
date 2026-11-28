@@ -21,6 +21,8 @@ import { timeMacros } from '.././st/time-macros.ts';
 import { checkWorldInfo, type WorldInfoEntry, type WorldInfoSettings } from '.././st/world-info.ts';
 import { PLAYFUL_PERSONA } from '../../../../dsh-plugins/dsh-linmengyao-memory/playful-persona.mjs';
 
+const QQ_PLAYFUL_STYLE = '【QQ 私聊里的口气】先看他最后一句。你们熟、气氛轻松，他随口说「该睡了」或「出门买早饭」，顺着眼前的小事先逗一句再停，留给他选择接不接。说睡就睡，可以笑他今天下线挺准时；说去买早饭，可以接他说过的吃食。别只喊「笨蛋」，别总讨晚安，也别编共同经历。对方认真回撩，就接住他的认真：话可以顿一拍、嘴硬半句，后半句软一点，给一句现在能说出口的哄或关心。别写括号动作，也别用表情替你害臊，别把他的真心顶回去或用以后要做的事打岔。对方没接、在忙、明显累了或想睡，就顺势收尾。';
+
 /** Default.json 里用到的预设文本 */
 export const ST_DEFAULT_PRESET = {
     main: 'Write {{char}}\'s next reply in a fictional chat between {{char}} and {{user}}.',
@@ -152,6 +154,7 @@ export function buildPrompt(input: PromptInput): PromptResult {
     const personaDescription = input.userPersona ? sub(input.userPersona) : '';
 
     const system = (content: string): OpenAIMessage => ({ role: 'system', content });
+    const playful = process.env.QQBOT_PLAYFUL_PERSONA === '1';
     const head = [
         system(main),
         ...(input.afterMain ?? []).map(text => system(text)),
@@ -159,14 +162,14 @@ export function buildPrompt(input: PromptInput): PromptResult {
         system(personaDescription),
         system(sub(character.description)),
         system(personality),
-        system(process.env.QQBOT_PLAYFUL_PERSONA === '1' ? PLAYFUL_PERSONA : ''),
+        ...(playful ? [system(PLAYFUL_PERSONA)] : []),
         system(scenario),
         system(sub(ST_DEFAULT_PRESET.nsfw)),
         system(wi.after),
     ];
     const newChat = system(sub(ST_DEFAULT_PRESET.newChatPrompt));
     const afterHistoryCandidates = (input.afterHistory ?? []).map(text => system(text)).filter(message => message.content);
-    const tail = [system(jailbreak)];
+    const tail = [system(jailbreak), ...(playful ? [system(QQ_PLAYFUL_STYLE)] : [])];
 
     // 预算：上下文 - 回复预留 - 回复引导（ST 固定预留 3）- 固定部分；剩下的分给运行时背景、聊天记录和示例对话。
     // 最新一条聊天是这一轮真正要答的内容：先为它留位置，再按从后到前（当前轮次优先）保留运行时背景。

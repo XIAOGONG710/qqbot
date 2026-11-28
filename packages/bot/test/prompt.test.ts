@@ -42,6 +42,8 @@ test('合成私聊的系统人设保留先逗、被回撩时害臊和及时收�
         const persona = messages.find(message => message.content.includes('你逗人的分寸'));
         assert.equal(persona?.role, 'system');
         assert.match(persona!.content, /先递一句.*认真回撩会害臊.*转话题.*就停.*别硬撩/);
+        assert.equal(messages.at(-1)?.role, 'system');
+        assert.match(messages.at(-1)!.content, /QQ 私聊里的口气.*眼前的小事.*别总讨晚安.*嘴硬半句.*软一点.*顺势收尾/);
         assert.ok(messages.some(message => message.role === 'user' && message.content === '那你也哄我一下'));
     } finally {
         if (original === undefined) delete process.env.QQBOT_PLAYFUL_PERSONA; else process.env.QQBOT_PLAYFUL_PERSONA = original;
