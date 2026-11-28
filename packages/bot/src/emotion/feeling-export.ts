@@ -12,12 +12,13 @@ import { readJsonOr, writeJsonAtomic } from '../memory/json-file.ts';
 import { join } from 'node:path';
 import { CLEAR, FEELING_KINDS, STRONG, type Felt, type FeelingKind } from './feelings.ts';
 import type { Recovery } from './recovery.ts';
+import { FEELING_PARAMS } from './feeling-params.ts';
 
 export const FEELINGS_EXPORT_FILE = 'FEELINGS.json';
 export const FEELINGS_EXPORT_KIND = 'qq-feelings';
 export const feelingsExportPath = (soulDir: string) => join(soulDir, FEELINGS_EXPORT_FILE);
-/** 桌面超过这么久没刷新就不用 */
-export const FEELINGS_STALE_MS = 3 * 3_600_000;
+/** 桌面超过这么久没刷新就不用（默认 3 小时；心境参数表 feelingsStaleMs，桌面插件 index.js 读同一个数） */
+export const FEELINGS_STALE_MS = FEELING_PARAMS.feelingsStaleMs;
 /** 内容没变时，隔这么久也重写一次时间戳 */
 export const FEELINGS_REFRESH_MS = 10 * 60_000;
 

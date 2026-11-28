@@ -188,6 +188,9 @@ export interface TurnFacts {
     semanticJudgment?: Judgment;
     /** 开着语义判断、这一轮问了但没用上（超时、读不懂、拿不准……）：退回关键词时多看一眼是不是在转述别人的话（第四批，modules/semantic-judgment.ts 的 recognizes）。没开时没有 */
     semanticJudgmentFallback?: JudgmentFallback;
+    /** 判过的道歉 / 解释接没接住那件事（第五批，QQBOT_REPAIR_JUDGMENT，modules/repair-judgment.ts 的 decideAt.feelings 写，键见 emotion/repair-judgment.ts 的 repairKey）：
+     *  心境模块只拿它认修复证据（回落快不快），不当权限、不落事实。没开、没判过时没有 */
+    repairVerdicts?: ReadonlyMap<string, boolean>;
 }
 
 /** 一轮回复：谁、什么时候、聊天记录、这一轮是不是她主动找他 / 被吵醒 / 只想一想 */

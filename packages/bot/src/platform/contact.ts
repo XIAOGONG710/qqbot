@@ -504,7 +504,9 @@ export function createContactResponder(options: ContactPipelineOptions): Contact
             const grievanceActive = Boolean(turn.facts.grievanceActive);
             // 心境那一段（ADR 0102 / 0104 / 0106：她的追求 → 前一天她那边 → 感受 → 那一行、节奏 → 交给桌面上的她）是解释器的模块（modules/feelings.ts 的 decideAt.feelings）：
             // 在原位算（最终的意图、小别扭是否生效之后），按联系人给的那几样经 DecideCtx.feelings 递过去；写进 turn.facts.felt、feelingLine、paceLine，下面的 low、生成时最多几条读
-            decideStage(options.turnModules ?? [], 'feelings', turn, decideCtx);
+            // 开了 QQBOT_REPAIR_JUDGMENT 时这里先等语义判断（modules/repair-judgment.ts）；关着时同步返回，不多等
+            const feeling = decideStage(options.turnModules ?? [], 'feelings', turn, decideCtx);
+            if (feeling instanceof Promise) await feeling;
             const feltNow = turn.facts.felt ?? [];
             const moodNow = moodShape(feltNow);
             // 连续性（ADR 0157–0163：设定改动的背景 / QQ 以外做过的事 / 上网查到的 / 自己发现的口味 / 又见到的人）是连续性模块的 decideAt.continuity：

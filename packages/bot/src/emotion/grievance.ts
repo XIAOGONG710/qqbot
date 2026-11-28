@@ -5,18 +5,20 @@
 
 import { hasAffirmedSignal, isApologyText, warmSignal } from './affect.ts';
 import type { StoredMessage } from '../memory/history.ts';
+import { FEELING_PARAMS } from './feeling-params.ts';
 
 type Said = Pick<StoredMessage, 'role' | 'content'> & { time?: string | undefined };
 
 /** 消息的时间（毫秒）；没有时间的消息是 NaN，所有比较都不成立，等于不算 */
 const at = (message: Said) => Date.parse(message.time ?? '');
 
+// 下面几个数从心境参数表拿（硬编码改造第五批，feeling-params.ts；默认就是原来的 72 小时、2 轮、3 小时、20 分钟、45 分钟、6 小时）
 /** 他两条消息之间隔这么久才算「隔了很多天」 */
-export const GRIEVANCE_GAP_MS = 72 * 3_600_000;
+export const GRIEVANCE_GAP_MS = FEELING_PARAMS.grievanceGapMs;
 /** 他回来以后，她最多别扭这么多轮（之后不管有没有哄都散了：人不会一直别扭） */
-export const GRIEVANCE_ROUNDS = 2;
+export const GRIEVANCE_ROUNDS = FEELING_PARAMS.grievanceRounds;
 /** 他回来后这么久之内才算同一次（隔了一晚上再来，不接着上一次的别扭） */
-export const GRIEVANCE_WINDOW_MS = 3 * 3_600_000;
+export const GRIEVANCE_WINDOW_MS = FEELING_PARAMS.grievanceWindowMs;
 
 export type GrievanceStage = 'sulk' | 'makeup';
 /** 起因：away = 他隔了好几天才来（原来的）；ignored = 她倾诉了几条，他隔了很久才回（10-20 用户说「应该要生气，责怪对方玩游戏不理自己」） */
@@ -50,7 +52,7 @@ export function isExplanationText(text: string): boolean {
 
 const DAY_MS = 86_400_000;
 /** 她连着发的话，相隔这么久就算两串 */
-const BURST_GAP_MS = 20 * 60_000;
+const BURST_GAP_MS = FEELING_PARAMS.burstGapMs;
 
 /**
  * 这段间隔里她发出去、没人回的有几串：第一串是对他最后一句话的回复，不算；之后另起一串（她主动发的）才是发了没人回。
@@ -131,9 +133,9 @@ export function grievanceNow(history: readonly Said[]): Grievance | undefined {
 }
 
 /** 他隔了这么久才回她前面发的话，才算「被晾着」（再短是正常回得慢） */
-export const IGNORED_GAP_MS = 45 * 60_000;
+export const IGNORED_GAP_MS = FEELING_PARAMS.ignoredGapMs;
 /** 隔得再久（超过这么久）就不是「刚才被晾着」了：睡一觉再回、第二天才看到，不在这一档里算 */
-export const IGNORED_MAX_MS = 6 * 3_600_000;
+export const IGNORED_MAX_MS = FEELING_PARAMS.ignoredMaxMs;
 /** 她那一串话里至少有一句是在说自己的感受：难过、烦、委屈、被骂、累。「人呢」「睡了没」这类打招呼不算——她睡前主动发的那条没人回，不能被当成被晾着 */
 const FEELING = /烦|难受|难过|委屈|不开心|不高兴|郁闷|崩溃|气死|累死|心累|心情不好|被(?:老师|老板|导师|领导|教授)?(?:骂|批评|说了|训)|哭了|想哭/;
 

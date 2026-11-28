@@ -176,7 +176,7 @@ describe('软风格规则表（style-rules.ts，QQBOT_STYLE_RULES）', () => {
 
 describe('共用判断约定：加了「推掉 / 拒绝」「纠正理解」两类，严格解析照旧', () => {
     test('两类都要有依据落在他最后说的那几行；放给她的那一行只说理解', () => {
-        assert.deepEqual(JUDGMENT_CATEGORIES, ['care', 'banter', 'closing', 'refusal', 'correction', 'none', 'unclear']);
+        assert.deepEqual(JUDGMENT_CATEGORIES, ['care', 'banter', 'closing', 'refusal', 'correction', 'repair', 'brushoff', 'none', 'unclear']);
         const conversation = judgmentConversation([her('周末一起去爬山吧？'), user('不了，这周想在家躺着')]);
         const refusal = parseJudgment(JSON.stringify({ category: 'refusal', evidence: [{ line: 2, quote: '不了' }], uncertainty: 0.1 }), conversation);
         assert.deepEqual(refusal, { category: 'refusal', evidence: [{ line: 2, speaker: 'him', quote: '不了' }], uncertainty: 0.1 });

@@ -239,6 +239,36 @@ test('语言与理解（第四批）：纠正理解、推掉两类在 QQ 和 DSH
     }
 });
 
+test('心境与恢复（第五批）：道歉接住了 / 没接住两类，QQ 和 DSH 给模型的消息逐字相同，放给她的那一行相同（怎么回由她定）', async () => {
+    const original = process.env.QQBOT_SEMANTIC_JUDGMENT;
+    const waiting = [{ role: 'assistant' as const, content: '合成：今天被导师骂了，好难过' }, { role: 'assistant' as const, content: '你在吗' }];
+    const cases = [
+        { said: '刚在地铁上没信号，现在才看到你说被导师骂了，怎么回事？', category: 'repair', quote: '现在才看到你说被导师骂了', line: /而且说到了那件事上.*由你自己定/ },
+        { said: '对不起嘛，我去打游戏了', category: 'brushoff', quote: '对不起嘛', line: /没真说到让你不舒服的那件事上.*由你自己定/ },
+    ];
+    try {
+        process.env.QQBOT_SEMANTIC_JUDGMENT = '1';
+        for (const c of cases) {
+            const conversation = [...waiting, { role: 'user' as const, content: c.said }];
+            const reply = JSON.stringify({ category: c.category, evidence: [{ line: conversation.length, quote: c.quote }], uncertainty: 0.1 });
+            const asked = { qq: [] as unknown[], dsh: [] as unknown[] };
+            const module = semanticJudgmentModule({ ask: async messages => { asked.qq.push(messages); return reply; }, log: () => {} });
+            const turn: Turn = { contact: { qq: 10001, name: '阿明', tier: 'boyfriend' }, at: new Date(), history: conversation, thinking: false, facts: {} };
+            module.assess!(turn);
+            await module.decideAt!.deliberate!(turn, { history: () => [], log: () => {} });
+            const qqLine = (await module.contribute!(turn))[0]!.text;
+            assert.match(qqLine, c.line);
+            const app = boot({ judgmentAsk: async (messages: unknown) => { asked.dsh.push(messages); return reply; } });
+            await app.handlers['agent/pre-step']!({ messages: conversation.map(m => ({ role: m.role, content: [{ type: 'text', text: m.content }] })) }, async () => undefined);
+            const dshPrompt = app.contexts.map(entry => entry.text()).join('\n');
+            assert.deepEqual(asked.dsh, asked.qq, `${c.category}：给模型的是同一份`);
+            assert.ok(dshPrompt.includes(qqLine), `${c.category}：放给她的是同一行`);
+        }
+    } finally {
+        if (original === undefined) delete process.env.QQBOT_SEMANTIC_JUDGMENT; else process.env.QQBOT_SEMANTIC_JUDGMENT = original;
+    }
+});
+
 test('只有确认的桌面私聊可发布或收回她的家公开状态，正文不可发布', () => {
     const denied = boot({ ownerPrivateSessions: [] });
     assert.throws(() => denied.tools.home_publish!.execute({ place: 'study', doing: 'reading' }), /私聊/);

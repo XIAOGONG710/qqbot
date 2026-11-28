@@ -14,6 +14,8 @@
 - `emotion/felt-then.ts`
 - `emotion/feeling-ledger.ts`
 - `emotion/recovery.ts`
+- `emotion/feeling-params.ts`
+- `emotion/repair-judgment.ts`
 - `emotion/moments.ts`
 - `emotion/grievance.ts`
 - `emotion/crisis.ts`
@@ -24,6 +26,7 @@
 - `emotion/feedback-digest-cli.ts`
 - `modules/warm.ts`
 - `modules/feelings.ts`
+- `modules/repair-judgment.ts`
 
 ## 开关
 

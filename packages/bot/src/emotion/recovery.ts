@@ -9,10 +9,13 @@
 
 import type { StoredMessage } from '../memory/history.ts';
 import { isExplanationText } from './grievance.ts';
-import type { Appraisal, FeelingKind, Source } from './feelings.ts';
+import type { Appraisal, FeelingKind, RepairJudged, Source } from './feelings.ts';
+import { FEELING_PARAMS } from './feeling-params.ts';
 
-/** 修复之后负面分量按这个半衰期（小时）落回去：明显比本来的难过 8 小时、烦 4 小时、担心 8 小时快 */
-export const RECOVERY_HALF_LIFE_H = 1;
+/** 修复之后负面分量按这个半衰期（小时）落回去：明显比本来的难过 8 小时、烦 4 小时、担心 8 小时快（默认 1，心境参数表 recoveryHalfLifeH） */
+export const RECOVERY_HALF_LIFE_H = FEELING_PARAMS.recoveryHalfLifeH;
+/** 被晾着之后多久以内的道歉算在这一次上（默认 12 小时，心境参数表 recoveryWindowMs） */
+export const RECOVERY_WINDOW_MS = FEELING_PARAMS.recoveryWindowMs;
 
 /** 会被修复事件带下来的那几种；累 / 开心 / 松口气不在此列 */
 const NEGATIVE: ReadonlySet<FeelingKind> = new Set(['sad', 'annoyed', 'worry']);
@@ -31,29 +34,35 @@ export interface RepairEvent {
     /** 可审计的说法，不引对方原话 */
     cause: string;
     source: Source;
+    /** 只有模型判它接住了、关键词并不认（第五批，QQBOT_REPAIR_JUDGMENT）：这条回落只影响这一轮的分量，不写进感觉账（判断不落账） */
+    judged?: true;
 }
 
 type Said = Pick<StoredMessage, 'role' | 'content'> & { time?: string | undefined; messageId?: number; recalled?: boolean };
 
 /** 从聊天记录里认「道歉 / 说开了 / 解释清楚了」：判据和 grievance.ts 同源，但只用道歉和解释那一档，
  *  不算单纯哄一句、说句想念——那种话不该把此前所有难过一律拖下来 */
-export function repairFromHistory(history: readonly Said[], now: number): RepairEvent[] {
+export function repairFromHistory(history: readonly Said[], now: number, judged?: RepairJudged): RepairEvent[] {
     return history.flatMap(message => {
         if (message.role !== 'user' || message.recalled) return [];
         const at = Date.parse(message.time ?? '');
-        if (!Number.isFinite(at) || at > now || !isExplanationText(message.content)) return [];
+        if (!Number.isFinite(at) || at > now) return [];
+        // 判过的（第五批）按判的：接住了才算，没接住就算说了「对不起」也不算；没判过照旧按关键词（兼容回退）
+        const verdict = judged?.(message);
+        const keyword = isExplanationText(message.content);
+        if (!(verdict ?? keyword)) return [];
         const id = typeof message.messageId === 'number' && Number.isSafeInteger(message.messageId)
             ? `m${message.messageId}` : `him:repair:${Math.floor(at / 60_000)}`;
-        return [{ id, at, cause: '他道歉、解释或者哄你了', source: 'him' as const }];
+        return [{ id, at, cause: '他道歉、解释或者哄你了', source: 'him' as const, ...(verdict && !keyword ? { judged: true as const } : {}) }];
     });
 }
 
 /** 私聊道歉就近作用于这次被晾着的感受，不改作息、群聊或别的烦心事。 */
-export function privateConversationRecovery(list: readonly Appraisal[], history: readonly Said[], now: number) {
+export function privateConversationRecovery(list: readonly Appraisal[], history: readonly Said[], now: number, judged?: RepairJudged) {
     const recentConflict = list.filter(item => item.source === 'him' && item.aboutHim && /^(him:ignored:|him:silent:)/.test(item.id))
         .sort((a, b) => b.at - a.at);
-    const repairs = repairFromHistory(history, now).flatMap(event => {
-        const target = recentConflict.find(item => event.at > item.at && event.at - item.at <= 12 * 3_600_000);
+    const repairs = repairFromHistory(history, now, judged).flatMap(event => {
+        const target = recentConflict.find(item => event.at > item.at && event.at - item.at <= RECOVERY_WINDOW_MS);
         return target ? [{ ...event, target: target.id }] : [];
     });
     return applyRecovery(list, repairs);
@@ -70,6 +79,8 @@ export interface Recovery {
     /** 造成回落的证据 id */
     by: string;
     byCause: string;
+    /** 只靠模型判断才算上的回落（第五批）：不写进感觉账 */
+    judged?: true;
 }
 
 const validRepair = (event: RepairEvent | undefined): event is RepairEvent =>
@@ -93,7 +104,7 @@ export function applyRecovery(list: readonly Appraisal[], repairs: readonly Repa
             .sort((a, b) => a.at - b.at)[0];
         if (!repair) continue;
         item.repairedAt = repair.at;
-        recoveries.push({ at: repair.at, repaired: item.id, kind: item.kind, repairedCause: item.cause, by: repair.id, byCause: repair.cause });
+        recoveries.push({ at: repair.at, repaired: item.id, kind: item.kind, repairedCause: item.cause, by: repair.id, byCause: repair.cause, ...(repair.judged ? { judged: true as const } : {}) });
     }
     return { list: out, recoveries };
 }

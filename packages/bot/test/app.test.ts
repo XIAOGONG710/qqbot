@@ -3848,6 +3848,83 @@ describe('App 的「现在」都按 worldNow（模拟器是虚拟时钟），不
         }
     });
 
+    test('心境与恢复（第五批，QQBOT_REPAIR_JUDGMENT）：她按这一轮的原话看道歉接没接住——没接住的「对不起」不清零也不加快，没说对不起的认真解释接住了才加快；只靠判断的回落不记账，群里读不到私聊原因', async () => {
+        const keys = ['QQBOT_SOUL_DIR', 'QQBOT_FEELING_RECOVERY', 'QQBOT_SEMANTIC_JUDGMENT', 'QQBOT_REPAIR_JUDGMENT'] as const;
+        const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = async () => { throw new Error('合成验收禁止外部请求'); };
+        /** 假模型：按他最后那一行给判断（剧本里没写的给 none） */
+        const run = async (said: string, verdict: { category: string; quote: string }, group = false) => {
+            const soul = mkdtempSync(join(tmpdir(), 'qqbot-repair-judgment-'));
+            dirs.push(soul);
+            Object.assign(process.env, { QQBOT_SOUL_DIR: soul, QQBOT_FEELING_RECOVERY: '1', QQBOT_SEMANTIC_JUDGMENT: '1', QQBOT_REPAIR_JUDGMENT: '1' });
+            const start = +virtualStart;
+            const clock = new VirtualClock(virtualStart);
+            const cfg = config({ contacts: bf, herFeelings: true, ...(group ? { groupChat: 'on' as const, groups: [{ id: 555, name: '合成群' }] } : {}) });
+            const history = new ChatHistory(cfg.dataDir);
+            history.append(10002, { role: 'assistant', time: new Date(start - 61 * 60_000).toISOString(), content: '合成私事 ZXPRIVATE 被导师骂了，心里有点难过。' });
+            history.append(10002, { role: 'assistant', time: new Date(start - 60 * 60_000).toISOString(), content: '你现在有空听我说么？' });
+            const prompts: string[] = [];
+            let judged = 0;
+            const { app, sent, logs } = setup(cfg, {}, { clock, extra: { sendGroupText: async () => 999 }, generate: messages => {
+                const text = messages.map(message => message.content).join('\n');
+                if (text.includes('你只判断他的意思，不回复他')) {
+                    judged++;
+                    const last = messages[1]!.content.split('\n').map(line => /^(\d+) 他：(.*)$/u.exec(line)).filter(Boolean).at(-1)!;
+                    const [category, quote] = last[2] === said ? [verdict.category, verdict.quote] : ['none', ''];
+                    return JSON.stringify({ category, evidence: quote ? [{ line: Number(last[1]), quote }] : [], uncertainty: 0.1 });
+                }
+                prompts.push(text);
+                return '合成回复';
+            } });
+            await app.connected(SELF);
+            const receive = (id: number, content: string) => app.receive({ ...event(10002, id, content), time: Math.floor(clock.now() / 1000) });
+            const sadness = () => (JSON.parse(readFileSync(join(soul, 'FEELINGS.json'), 'utf8')).felt as Array<{ kind: string; cause: string }>).find(item => item.kind === 'sad');
+            const recoveryRows = () => (existsSync(join(soul, 'feeling-ledger.jsonl')) ? readFileSync(join(soul, 'feeling-ledger.jsonl'), 'utf8') : '').split('\n').filter(line => line.includes('"type":"recovery"'));
+            receive(301, said);
+            await drive(clock, () => sent.length >= 1);
+            const first = { sad: sadness(), prompt: prompts.at(-1)! };
+            let publicPrompt: string | undefined;
+            if (group) {
+                app.receiveGroup({ ...event(10002, 303, '在吗'), time: Math.floor(clock.now() / 1000), message_type: 'group', sub_type: 'normal', group_id: 555,
+                    message: [{ type: 'at', data: { qq: String(SELF) } }, { type: 'text', data: { text: '大家好' } }] } as GroupMessageEvent);
+                await until(() => prompts.some(prompt => prompt.includes('大家好') && prompt.includes('你这会儿')));
+                publicPrompt = prompts.find(prompt => prompt.includes('大家好') && prompt.includes('你这会儿'));
+            }
+            clock.advance(60 * 60_000);
+            receive(304, '回来继续聊。');
+            await drive(clock, () => sent.length >= 2);
+            const result = { first, later: sadness(), rows: recoveryRows(), judged, logs, publicPrompt };
+            await app.stop();
+            return result;
+        };
+        try {
+            // 嘴上一句「对不起嘛」（正则认它是道歉），判成没接住：当轮难过还在，一小时后仍明显（照常慢慢散，没有加快），也不记回落
+            const brushoff = await run('对不起嘛。', { category: 'brushoff', quote: '对不起嘛' }, true);
+            assert.equal(brushoff.judged, 2, '每轮问一次');
+            assert.match(brushoff.first.sad?.cause ?? '', /隔了很久才回/, '道歉当轮不清零');
+            assert.match(brushoff.first.prompt, /你对他这几句的理解：他像是嘴上道了歉或给了个理由，但没真说到让你不舒服的那件事上.*由你自己定/);
+            assert.ok(brushoff.later, '一小时后难过仍在明显以上（关着时这里已经落下去了）');
+            assert.deepEqual(brushoff.rows, []);
+            assert.ok(brushoff.logs.some(line => /道歉判断：他这几句不算修复/.test(line)));
+            assert.ok(brushoff.logs.filter(line => line.includes('道歉判断')).every(line => !/对不起|10002/.test(line)), '日志不记原话和 QQ 号');
+            // 私聊隔离：群里只读得到语气
+            assert.match(brushoff.publicPrompt ?? '', /你这会儿/);
+            assert.doesNotMatch(brushoff.publicPrompt ?? '', /ZXPRIVATE|隔了很久才回|对不起嘛|导师|由你自己定/);
+
+            // 没说「对不起」的认真解释（正则不认），判成接住了：当轮难过还在，一小时后已经落下去；这条回落只靠判断，不写进感觉账
+            const caught = await run('刚在地铁上没信号，现在才看到你说被导师骂了，怎么回事？', { category: 'repair', quote: '现在才看到你说被导师骂了' });
+            assert.match(caught.first.sad?.cause ?? '', /隔了很久才回/, '接住了也不瞬间清零');
+            assert.match(caught.first.prompt, /他像是在为让你不舒服的那件事道歉或解释，而且说到了那件事上/);
+            assert.equal(caught.later, undefined, '一小时后落到明显以下');
+            assert.deepEqual(caught.rows, [], '只靠判断才算上的回落不记账');
+            assert.ok(caught.logs.some(line => /道歉判断：他这几句接住了那件事（1 条算修复）/.test(line)));
+        } finally {
+            globalThis.fetch = originalFetch;
+            for (const key of keys) if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key];
+        }
+    });
+
     test('H 合成群聊按公开熟悉度接梗，没接住就停，私聊关系和矛盾不进群', async () => {
         const previous = process.env.QQBOT_GROUP_BOUNDARIES;
         process.env.QQBOT_GROUP_BOUNDARIES = '1';

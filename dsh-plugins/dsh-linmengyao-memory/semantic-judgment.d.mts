@@ -1,4 +1,4 @@
-export type JudgmentCategory = 'care' | 'banter' | 'closing' | 'refusal' | 'correction' | 'none' | 'unclear';
+export type JudgmentCategory = 'care' | 'banter' | 'closing' | 'refusal' | 'correction' | 'repair' | 'brushoff' | 'none' | 'unclear';
 export interface JudgmentLine { role: 'user' | 'assistant'; content: string }
 export interface JudgmentEvidence { line: number; speaker: 'him' | 'her'; quote: string }
 export interface Judgment { category: JudgmentCategory; evidence: JudgmentEvidence[]; uncertainty: number }

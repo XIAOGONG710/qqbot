@@ -54,6 +54,8 @@ import { reviewUnfinishedModule } from '../modules/review-unfinished.ts';
 import { scenesModule } from '../modules/scenes.ts';
 import { JUDGMENT_LIMITS, semanticJudgmentModule, semanticJudgmentOn } from '../modules/semantic-judgment.ts';
 import { memoryRelevanceModule, memoryRelevanceOn, RELEVANCE_LIMITS } from '../modules/memory-relevance.ts';
+import { repairJudgmentModule } from '../modules/repair-judgment.ts';
+import { repairJudgmentOn } from '../emotion/repair-judgment.ts';
 import { selfMemoryModule, type SelfMemoryOptions } from '../modules/self-memory.ts';
 import { selfNotesModule, type SelfNotesModuleOptions } from '../modules/self-notes.ts';
 import { shellModule, type ShellModuleOptions } from '../modules/shell.ts';
@@ -145,6 +147,7 @@ export interface TurnModuleDeps {
 /** 一轮回复的模块，按先后；App 在最前面再加「旧逻辑」那一个（事件分发），模拟器原样交给联系人流水线 */
 export function buildTurnModules(d: TurnModuleDeps): Module[] {
     const { log, herDays } = d;
+    const judgment = d.semanticAsk && semanticJudgmentOn() ? semanticJudgmentModule({ ask: messages => d.semanticAsk!(messages, JUDGMENT_LIMITS), log }) : undefined;
     return [
         ...(d.syncedJobs ? [syncedJobsModule(d.syncedJobs)] : []),
         herNowModule({
@@ -189,6 +192,8 @@ export function buildTurnModules(d: TurnModuleDeps): Module[] {
         ...(d.group ? [groupModule()] : []),
         memoryModule(),
         warmModule({ log }),
+        // 道歉 / 解释接没接住（第五批）：挂在心境前面，decideAt.feelings 先取回语义判断
+        ...(judgment && repairJudgmentOn() ? [repairJudgmentModule({ settle: judgment.settle, log })] : []),
         feelingsModule(),
         timeNotesModule(),
         mediaOffersModule(),
@@ -208,7 +213,7 @@ export function buildTurnModules(d: TurnModuleDeps): Module[] {
         ...(d.memeDict ? [memeDictModule(d.memeDict, log)] : []),
         ...(d.mediaDiscovery ? [mediaDiscoveryModule(d.mediaDiscovery)] : []),
         // 挂在最后：assess 时危机已经判过；decideAt.deliberate 排在深思之后
-        ...(d.semanticAsk && semanticJudgmentOn() ? [semanticJudgmentModule({ ask: messages => d.semanticAsk!(messages, JUDGMENT_LIMITS), log })] : []),
+        ...(judgment ? [judgment] : []),
         // 记忆相关性判断：decideAt.recall 排在记忆模块召回之后，decideAt.deliberate 取回、只从他的私人记忆那一段里去掉几行
         ...(d.semanticAsk && memoryRelevanceOn() ? [memoryRelevanceModule({ ask: messages => d.semanticAsk!(messages, RELEVANCE_LIMITS), log })] : []),
     ];

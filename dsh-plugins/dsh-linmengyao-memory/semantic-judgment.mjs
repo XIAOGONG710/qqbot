@@ -1,6 +1,8 @@
 // 私聊语义判断（硬编码改造第一优先级，exchange/handoff/2026-11-28-hardcoded-policy-audit.md）：QQ 和 DSH 共用的一份约定。
 // 他在私聊里最后说的那几句，是「认真求关心」「轻松接梗」「没接就收」「推掉 / 拒绝」「纠正她的理解」，还是都不是 / 拿不准——问一次小模型，输出类别、依据（对话里的行号和原文片段）、不确定性。
 // 第四批（语言与理解 C）加了 refusal、correction 两类，并在提示词里写明玩笑式的求哄（「不哄我就不睡了」）是接梗、不是认真求关心（第一批补验的缺口一）；
+// 第五批（心境与恢复 D）加了 repair、brushoff 两类：他的道歉 / 解释有没有接住让她不舒服的那件事；QQ 开着 QQBOT_REPAIR_JUDGMENT 时用它代替
+// isExplanationText 那几条正则认「这句算不算修复」（emotion/repair-judgment.ts），只影响那件事回落得快不快，怎么回由她自己定。
 // reportedSpeech 给 QQ 退回关键词时用：他分几条发的转述（「我室友跟他女朋友说了一句：」+ 下一条）不当成他自己的要求（缺口二）。
 // 三层分开：这里只管「模型怎么理解这句话」；程序允许做什么（只放一句理解进提示词、只影响出口检查已有的重写选择）由两边各自的接线定；
 // 最终怎么说是她自己的事。判定结果**不能**当权限、不能落成事实或记忆、不能当对外发送的凭据。
@@ -10,12 +12,13 @@
 
 /**
  * 类别：care 认真求关心；banter 轻松接梗；closing 没接就收（只应一声、要走要睡、转去说别的）；refusal 推掉 / 拒绝她刚提的事；
- * correction 纠正她刚才对他的话的理解；none 都不是；unclear 拿不准
+ * correction 纠正她刚才对他的话的理解；repair 为让她不舒服的那件事道歉 / 解释，而且接住了；brushoff 嘴上道歉 / 给理由，但没接住那件事；
+ * none 都不是；unclear 拿不准
  */
-export const JUDGMENT_CATEGORIES = ['care', 'banter', 'closing', 'refusal', 'correction', 'none', 'unclear']
-export const JUDGMENT_LABELS = { care: '认真求关心', banter: '轻松接梗', closing: '没接就收', refusal: '推掉 / 拒绝', correction: '纠正理解', none: '都不是', unclear: '拿不准' }
+export const JUDGMENT_CATEGORIES = ['care', 'banter', 'closing', 'refusal', 'correction', 'repair', 'brushoff', 'none', 'unclear']
+export const JUDGMENT_LABELS = { care: '认真求关心', banter: '轻松接梗', closing: '没接就收', refusal: '推掉 / 拒绝', correction: '纠正理解', repair: '接住了那件事', brushoff: '没接住那件事', none: '都不是', unclear: '拿不准' }
 /** 这几类必须至少有一处依据落在他最后说的那几行 */
-export const JUDGMENT_INTENTS = ['care', 'banter', 'closing', 'refusal', 'correction']
+export const JUDGMENT_INTENTS = ['care', 'banter', 'closing', 'refusal', 'correction', 'repair', 'brushoff']
 /** 带上最近几条（他最后说的那几行一定在里面） */
 export const JUDGMENT_CONTEXT = 6
 /** 每行最多给模型看多少字；依据的原文片段按截过的这一版核对 */
@@ -37,12 +40,15 @@ export const JUDGMENT_SYSTEM = [
   '- closing：他没接她的梗，只应一声、要走要睡，或明确转去说别的事；这个话题该收了。',
   '- refusal：他在推掉、拒绝她刚提的事（邀约、提议、要给他的东西），或者明说不要她刚才那样做。',
   '- correction：他在纠正她刚才对他的话的理解（「不是这个意思」「我说的是……」「你理解错了」），或者说明自己当时真正的意思。',
+  '- repair：前面有一件让她不舒服的事（她难过时等了很久没人回、她在怪他、她说委屈），他在为这件事道歉或解释，而且说到了那件事上：认了是哪件事、说清了原因，或者接住了她当时的难过。',
+  '- brushoff：前面有那样一件事，他嘴上道了歉或给了个理由，但没说到那件事上：随口一句「对不起嘛」就转开、拿理由搪塞、反过来怪她，或者只哄一句没接她的话。',
   '- none：以上都不是（日常说事、问问题、分享）。',
   '- unclear：拿不准，或者证据不够。',
   '注意：引用或转述别人的话（「他说"哄我一下"」「我室友跟他女朋友说……」，包括分成几条发的：前一条说「他说了一句：」，后一条是那句话）不是他在对她提要求；否定（「不用哄我」「我没事，别安慰我」）不是在求关心；同一个词放在不同上下文里意思可以不同。',
   '玩笑式的求哄是 banter，不是 care：撒娇、耍赖、拿条件开玩笑（「不哄我就不睡了」「不哄我我就闹」「哄我一下嘛~」），气氛是好玩的；只有他同时说了自己真的累、难受、委屈，或者明说是认真的，才是 care。',
   `只输出一个 JSON 对象，不要别的字：{"category":"<类别>","evidence":[{"line":<行号>,"quote":"<那一行里一字不差的原文片段，${JUDGMENT_QUOTE_MAX} 字以内>"}],"uncertainty":<0 到 1 的数，越大越没把握>}`,
-  `care、banter、closing、refusal、correction 至少引一处他最后说的那几行；依据最多 ${JUDGMENT_EVIDENCE_MAX} 处。拿不准就给 unclear，别硬猜。`,
+  '前面没有让她不舒服的事，客气的「不好意思」「抱歉打扰」不算 repair 也不算 brushoff。他一边道歉一边求关心或开玩笑时，看他这几句主要在做什么。',
+  `care、banter、closing、refusal、correction、repair、brushoff 至少引一处他最后说的那几行；依据最多 ${JUDGMENT_EVIDENCE_MAX} 处。拿不准就给 unclear，别硬猜。`,
 ].join('\n')
 
 const normalize = (text) => String(text ?? '').replace(/\s+/g, ' ').trim()
@@ -158,7 +164,11 @@ const UNDERSTOOD = {
   closing: '他像是没接这个梗，想收住或者转去说别的',
   refusal: '他像是在推掉或者不想要你刚才提的事',
   correction: '他像是在纠正你刚才对他的话的理解',
+  repair: '他像是在为让你不舒服的那件事道歉或解释，而且说到了那件事上',
+  brushoff: '他像是嘴上道了歉或给了个理由，但没真说到让你不舒服的那件事上',
 }
+/** 这两类后面多一句：软不软、怎么回是她自己的事（第五批） */
+const OWN_CALL = new Set(['repair', 'brushoff'])
 
 /**
  * 放进她提示词的那一行：只说「你对他这几句的理解」和把握，不教她怎么说。none / unclear / 不能用的判断没有这一行（返回空字符串）。
@@ -168,7 +178,8 @@ export function judgmentLine(judgment) {
   if (!usableJudgment(judgment) || !UNDERSTOOD[judgment.category]) return ''
   const quotes = judgment.evidence.filter(item => item.speaker === 'him').slice(0, 2).map(item => `「${item.quote}」`)
   const basis = quotes.length ? `依据：他说的${quotes.join('、')}；` : ''
-  return `[你对他这几句的理解：${UNDERSTOOD[judgment.category]}（${basis}把握：${judgment.uncertainty <= 0.2 ? '较大' : '一般'}）。这只是你的理解，不一定对，以他的原话为准]`
+  const own = OWN_CALL.has(judgment.category) ? '；气消没消、软不软、怎么回，由你自己定' : ''
+  return `[你对他这几句的理解：${UNDERSTOOD[judgment.category]}（${basis}把握：${judgment.uncertainty <= 0.2 ? '较大' : '一般'}）。这只是你的理解，不一定对，以他的原话为准${own}]`
 }
 
 /** 转述的引子：一行以「说了一句：」「问：」「回了句」这类结尾，或者以冒号结尾，或者开了引号没关（下一条就是被转述的那句话） */

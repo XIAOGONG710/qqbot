@@ -15,8 +15,11 @@ import { worldNews, type WorldNow } from '../world/world.ts';
 import { NEWS_KINDS } from '../proactive/proactive.ts';
 import { stateTimestamp } from '../memory/state-schema.ts';
 import { applyRecovery, RECOVERY_HALF_LIFE_H, type RepairEvent } from './recovery.ts';
+import { FEELING_PARAMS } from './feeling-params.ts';
 
 type Said = Pick<StoredMessage, 'role' | 'content'> & { time?: string | undefined };
+/** 判过的道歉 / 解释：true 接住了那件事、false 没接住；没判过是 undefined（第五批，emotion/repair-judgment.ts） */
+export type RepairJudged = (message: Said) => boolean | undefined;
 
 const HOUR = 3_600_000;
 
@@ -24,21 +27,28 @@ export const FEELING_KINDS = ['joy', 'relief', 'worry', 'sad', 'annoyed', 'tired
 export type FeelingKind = (typeof FEELING_KINDS)[number];
 export const FEELING_NAME: Record<FeelingKind, string> = { joy: '开心', relief: '松了口气', worry: '担心', sad: '难过', annoyed: '烦', tired: '累' };
 
+// 下面这些数从心境参数表拿（硬编码改造第五批，feeling-params.ts；默认值就是原来写死的：半衰期 5/3/8/8/4/5 小时、分量 0.8/1.5/2.6、
+// 门槛 0.6/1.2/2.2、上限 3.4、4 个半衰期、往回看 30 小时、4 小时没回）。要调写 QQBOT_FEELING_PARAMS 指的文件，不改这里。
 /** 默认半衰期（小时）：开心散得快，担心和难过留得久 */
-const HALF_LIFE_H: Record<FeelingKind, number> = { joy: 5, relief: 3, worry: 8, sad: 8, annoyed: 4, tired: 5 };
-/** 一条评估的起始分量：小事 0.8（不到“明显”）、一般 1.5（明显）、大事 2.6（很重） */
-const AMPLITUDE = { 1: 0.8, 2: 1.5, 3: 2.6 } as const;
+const HALF_LIFE_H: Record<FeelingKind, number> = {
+    joy: FEELING_PARAMS.joyHalfLifeH, relief: FEELING_PARAMS.reliefHalfLifeH, worry: FEELING_PARAMS.worryHalfLifeH,
+    sad: FEELING_PARAMS.sadHalfLifeH, annoyed: FEELING_PARAMS.annoyedHalfLifeH, tired: FEELING_PARAMS.tiredHalfLifeH,
+};
+/** 一条评估的起始分量：小事（默认 0.8，不到“明显”）、一般（1.5，明显）、大事（2.6，很重） */
+const AMPLITUDE: Record<1 | 2 | 3, number> = { 1: FEELING_PARAMS.smallAmplitude, 2: FEELING_PARAMS.mediumAmplitude, 3: FEELING_PARAMS.bigAmplitude };
 export type Strength = keyof typeof AMPLITUDE;
 /** 当下分量到这几档：刚能察觉（小事，单独一件不会表现出来）、明显（写进提示词）、很重 */
-export const FAINT = 0.6;
-export const CLEAR = 1.2;
-export const STRONG = 2.2;
+export const FAINT = FEELING_PARAMS.faintAt;
+export const CLEAR = FEELING_PARAMS.clearAt;
+export const STRONG = FEELING_PARAMS.strongAt;
 /** 同一种感受加起来的上限（连着很多件事也不会无限大） */
-const KIND_CAP = 3.4;
+const KIND_CAP = FEELING_PARAMS.kindCap;
 /** 过了这么多个半衰期就当散了 */
-const HALF_LIVES_KEPT = 4;
+const HALF_LIVES_KEPT = FEELING_PARAMS.halfLivesKept;
 /** 聊天记录往回看多久（他做的事引起的感受） */
-const HISTORY_WINDOW_MS = 30 * HOUR;
+const HISTORY_WINDOW_MS = FEELING_PARAMS.historyWindowMs;
+/** 她发的话他一直没回：过了这么久才算 */
+const SILENT_AFTER_MS = FEELING_PARAMS.silentAfterMs;
 
 /** world：她那边的事；him：他的态度；author：作者写下的大事；self：她自己夜里回想、指出了依据的（ADR 0197）；group：群里的遭遇（2026-11-14） */
 export type Source = 'world' | 'him' | 'author' | 'self' | 'group' | 'desktop';
@@ -98,6 +108,8 @@ export interface FeelingFacts {
     repairs?: readonly RepairEvent[];
     /** 已经受影响的等待可以在回来第一句道歉时开始恢复。 */
     trackRepairedReturn?: boolean;
+    /** 他这条话的道歉 / 解释有没有接住那件事（第五批，QQBOT_REPAIR_JUDGMENT，只在 trackRepairedReturn 时看）：判过的按判的，没判过（undefined）照旧按关键词 */
+    repairJudged?: RepairJudged;
 }
 
 const atOf = (message: Said): number => Date.parse(message.time ?? '');
@@ -141,7 +153,7 @@ function worldAppraisals(world: WorldNow, now: number): Appraisal[] {
 }
 
 /** 他做的事：哄她 / 想她、认真道歉、说他不舒服、有好事、她难过时晾了她很久、她发的话他一直没回 */
-function historyAppraisals(history: readonly Said[], now: number, trackRepairedReturn = false): Appraisal[] {
+function historyAppraisals(history: readonly Said[], now: number, trackRepairedReturn = false, judged?: RepairJudged): Appraisal[] {
     // 未来消息还没有改变等待/回应关系；无时间记录保留为未知，不能据此推断一直没回。
     history = history.filter(message => !(atOf(message) > now));
     const out: Appraisal[] = [];
@@ -153,9 +165,11 @@ function historyAppraisals(history: readonly Said[], now: number, trackRepairedR
         if (message.role !== 'user') return;
         const bucket = hourBucket(at);
         const warm = warmSignal(message.content);
+        // 判过「没接住」的道歉（第五批，QQBOT_REPAIR_JUDGMENT）：不算「他在认真道歉」，不给那点松口气；没判过照旧按关键词
+        const verdict = judged?.(message);
         if (warm === 'affection') add({ id: `him:affection:${bucket}`, at, kind: 'joy', strength: 1, cause: '他说了想你 / 喜欢你', source: 'him', aboutHim: true, halfLifeH: 3 });
         else if (warm === 'comfort') add({ id: `him:comfort:${bucket}`, at, kind: 'relief', strength: 1, cause: '他在关心你、安慰你', source: 'him', aboutHim: true });
-        else if (warm === 'repair') add({ id: `him:repair:${bucket}`, at, kind: 'relief', strength: 2, cause: '他在认真道歉、哄你', source: 'him', aboutHim: true, halfLifeH: 4 });
+        else if (warm === 'repair' && verdict !== false) add({ id: `him:repair:${bucket}`, at, kind: 'relief', strength: 2, cause: '他在认真道歉、哄你', source: 'him', aboutHim: true, halfLifeH: 4 });
         // 他在哄她（“别难过”“抱抱”）不是他自己在难过：带了哄她 / 想她的话就不算他递情绪
         if (!warm && needsCareText(message.content)) add({ id: `him:down:${bucket}`, at, kind: 'worry', strength: 2, cause: '他说他难受 / 不舒服 / 累', source: 'him', aboutHim: true });
         if (goodNewsText(message.content)) add({ id: `him:good:${bucket}`, at, kind: 'joy', strength: 1, cause: '他有好消息', source: 'him', aboutHim: true, halfLifeH: 4 });
@@ -164,6 +178,15 @@ function historyAppraisals(history: readonly Said[], now: number, trackRepairedR
         if (before?.role === 'assistant' && at - atOf(before) >= IGNORED_GAP_MS && at - atOf(before) <= IGNORED_MAX_MS) {
             const beforeReturn = history.slice(0, index);
             const ignored = ignoredNow([...beforeReturn, message]);
+            if (trackRepairedReturn && verdict !== undefined) {
+                // 判过的（第五批）：她被晾着这件事不因为他说了句「对不起」「抱抱」就没了。她确实等了（不看他这句说了什么），这条难过就在；
+                // 接住了就从等的那一刻算起、之后由他这句开始加快回落（recovery.ts），没接住就照常慢慢散
+                const waited = ignored || (at > atOf(before) + IGNORED_GAP_MS && ignoredNow([...beforeReturn, { ...message, content: '' }]));
+                if (waited) add({ id: `him:ignored:${Math.floor(at / 60_000)}`,
+                    at: ignored && !verdict ? at : atOf(before) + IGNORED_GAP_MS,
+                    kind: 'sad', strength: 2, cause: '你难过的时候他隔了很久才回', source: 'him', aboutHim: true, halfLifeH: 5 });
+                return;
+            }
             const repairedOnReturn = !ignored && trackRepairedReturn && isExplanationText(message.content)
                 && at > atOf(before) + IGNORED_GAP_MS && ignoredNow([...beforeReturn, { ...message, content: '' }]);
             if (ignored || repairedOnReturn) add({ id: `him:ignored:${Math.floor(at / 60_000)}`,
@@ -178,7 +201,7 @@ function historyAppraisals(history: readonly Said[], now: number, trackRepairedR
         while (start > 0 && history[start - 1]!.role === 'assistant') start--;
         const hisLast = history[start - 1];
         const lastAt = atOf(last);
-        const waitedUntil = lastAt + 4 * HOUR;
+        const waitedUntil = lastAt + SILENT_AFTER_MS;
         if (hisLast && waitedUntil <= now && now - lastAt <= HISTORY_WINDOW_MS && !endingText(hisLast.content)) {
             add({ id: `him:silent:${Math.floor(lastAt / 60_000)}`, at: waitedUntil, kind: 'sad', strength: 1, cause: '你发的话他一直没回', source: 'him', aboutHim: true, halfLifeH: 6 });
         }
@@ -200,7 +223,7 @@ export function appraisals(facts: FeelingFacts): Appraisal[] {
         ...(facts.world ? worldAppraisals(facts.world, facts.now) : []),
         ...(facts.world ? eventAppraisals(facts.world) : []),
         ...(facts.previousWorld ? eventAppraisals(facts.previousWorld) : []),
-        ...historyAppraisals(facts.history, facts.now, facts.trackRepairedReturn),
+        ...historyAppraisals(facts.history, facts.now, facts.trackRepairedReturn, facts.trackRepairedReturn ? facts.repairJudged : undefined),
         ...momentAppraisals(facts.moments ?? []),
         ...(facts.extra ?? []),
     ];

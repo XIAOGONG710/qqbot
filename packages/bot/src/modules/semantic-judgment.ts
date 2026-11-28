@@ -48,9 +48,21 @@ export interface SemanticJudgmentOptions {
     timeoutMs?: number;
 }
 
-export function semanticJudgmentModule(options: SemanticJudgmentOptions): Module {
+/** settle：取回这一轮的判断（只取一次）。平时在 decideAt.deliberate 取；开了 QQBOT_REPAIR_JUDGMENT 时 modules/repair-judgment.ts 在 decideAt.feelings 提前取（第五批） */
+export function semanticJudgmentModule(options: SemanticJudgmentOptions): Module & { settle(turn: Turn): Promise<void> | undefined } {
     const pending = new WeakMap<TurnFacts, Promise<{ result: JudgmentResult; conversation: JudgmentLine[] }>>();
+    const settle = (turn: Turn): Promise<void> | undefined => {
+        const asked = pending.get(turn.facts);
+        if (!asked) return undefined;
+        pending.delete(turn.facts);
+        return asked.then(({ result, conversation }) => {
+            options.log(judgmentLogLine(result, conversation));
+            if (result.judgment && !result.fallback) turn.facts.semanticJudgment = result.judgment;
+            else if (result.fallback) turn.facts.semanticJudgmentFallback = result.fallback;
+        });
+    };
     return {
+        settle,
         id: 'semantic-judgment',
         assess(turn) {
             const { facts } = turn;
@@ -60,16 +72,7 @@ export function semanticJudgmentModule(options: SemanticJudgmentOptions): Module
                 .then(result => ({ result, conversation })));
         },
         decideAt: {
-            deliberate(turn) {
-                const asked = pending.get(turn.facts);
-                if (!asked) return undefined;
-                pending.delete(turn.facts);
-                return asked.then(({ result, conversation }) => {
-                    options.log(judgmentLogLine(result, conversation));
-                    if (result.judgment && !result.fallback) turn.facts.semanticJudgment = result.judgment;
-                    else if (result.fallback) turn.facts.semanticJudgmentFallback = result.fallback;
-                });
-            },
+            deliberate: turn => settle(turn),
         },
         contribute(turn) {
             const line = judgmentLine(turn.facts.semanticJudgment);

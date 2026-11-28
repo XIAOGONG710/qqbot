@@ -21,8 +21,12 @@ import { appraisals, asksAfterHer, criedRecently, describeFeelings, FEELING_NAME
 import { pursuitViews } from '../life/pursuits.ts';
 import { herDay } from '../life/schedule.ts';
 import { privateConversationRecovery } from '../emotion/recovery.ts';
+import { judgedBy } from '../emotion/repair-judgment.ts';
+import { feelingParamsLine } from '../emotion/feeling-params.ts';
 
 export function feelingsModule(): Module {
+    // 心境参数表（第五批）调过或文件没用上时，第一次算心境记一行（只写键名和数）；全部默认时不记
+    let paramsLogged = false;
     return {
         id: 'feelings',
         // 心境那一段（ADR 0336「判断那一串」，2026-11-16）：在联系人流水线原来的位置算（最终的意图、小别扭是否生效之后、图片表情之前），不是 assess——
@@ -40,6 +44,11 @@ export function feelingsModule(): Module {
             feelings: (turn, ctx) => {
                 const given = ctx.feelings;
                 if (!given) return;
+                if (!paramsLogged) {
+                    paramsLogged = true;
+                    const line = feelingParamsLine();
+                    if (line) ctx.log(line);
+                }
                 const { contact, facts, history: chat, at: time, card } = turn;
                 const boyfriend = contact.tier === 'boyfriend';
                 const around = facts.world;
@@ -55,10 +64,14 @@ export function feelingsModule(): Module {
                     : undefined;
                 // 心境（ADR 0102）：事实 → 带来由的评估 → 按半衰期衰减的感受，不落盘、每一轮重算；只给男朋友档，危机回合不算
                 const at = time.getTime();
+                // 道歉 / 解释接没接住（第五批，QQBOT_REPAIR_JUDGMENT）：只在开着回落（feelingRecovery）时看；没判过的照旧按正则
+                const judged = given.feelingRecovery ? judgedBy(facts.repairVerdicts) : undefined;
                 const entries = given.herFeelings && boyfriend && !facts.crisis
-                    ? appraisals({ now: at, history: chat, trackRepairedReturn: given.feelingRecovery ?? false, ...(around ? { world: around } : {}), ...(previous ? { previousWorld: previous } : {}), moments: given.moments?.() ?? [], extra: [...views.flatMap(view => view.appraisals), ...(given.feelingReview?.() ?? []), ...(given.groupMood?.() ?? []), ...(given.desktopMood?.() ?? []), ...(facts.dreamAppraisals ?? [])] })
+                    ? appraisals({ now: at, history: chat, trackRepairedReturn: given.feelingRecovery ?? false, ...(judged ? { repairJudged: judged } : {}), ...(around ? { world: around } : {}), ...(previous ? { previousWorld: previous } : {}), moments: given.moments?.() ?? [], extra: [...views.flatMap(view => view.appraisals), ...(given.feelingReview?.() ?? []), ...(given.groupMood?.() ?? []), ...(given.desktopMood?.() ?? []), ...(facts.dreamAppraisals ?? [])] })
                     : [];
-                const recovery = given.feelingRecovery && entries.length ? privateConversationRecovery(entries, chat, at) : undefined;
+                const recovery = given.feelingRecovery && entries.length ? privateConversationRecovery(entries, chat, at, judged) : undefined;
+                // 只靠判断才算上的回落不写进感觉账（判断不落账）：交出去的只有关键词也认的那几条
+                const ledgered = recovery?.recoveries.filter(item => !item.judged) ?? [];
                 const felt = feelingsAt(recovery?.list ?? entries, at);
                 if (given.herFeelings && boyfriend && !facts.crisis) facts.felt = felt;
                 const shown = felt.length > 0 && !facts.grievanceActive;
@@ -74,7 +87,7 @@ export function feelingsModule(): Module {
                     const neutral = shown
                         ? describeFeelings(felt, contact.name, { melt: false, voiced: voicedKinds(chat, time.getTime()), mayCry: !criedRecently(chat, time.getTime()) })
                         : undefined;
-                    try { given.onFeelings({ at, felt, line: neutral, ...(recovery?.recoveries.length ? { recoveries: recovery.recoveries } : {}) }); } catch (error) { ctx.log(`心境：没能交给桌面上的她（${error instanceof Error ? error.message : String(error)}）`); }
+                    try { given.onFeelings({ at, felt, line: neutral, ...(ledgered.length ? { recoveries: ledgered } : {}) }); } catch (error) { ctx.log(`心境：没能交给桌面上的她（${error instanceof Error ? error.message : String(error)}）`); }
                 }
                 if (feelingLine) ctx.log(`心境：${felt.filter(item => item.level !== 'faint').slice(0, 2).map(item => `${FEELING_NAME[item.kind]}·${item.level === 'strong' ? '很重' : '明显'}（${item.source === 'world' ? '她那边的事' : item.source === 'him' ? '他的态度' : item.source === 'self' ? '她自己回想的' : '作者写下的事'}）`).join('、')}（日志不记内容）`);
                 if (feelingLine) facts.feelingLine = feelingLine;

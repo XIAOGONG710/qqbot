@@ -15,6 +15,7 @@ import { PLAYFUL_PERSONA } from './playful-persona.mjs'
 import { createJudgmentAsk, judgeTurn, judgmentConversation, judgmentLine, judgmentLogLine } from './semantic-judgment.mjs'
 import { applyRelevance, judgeRelevance, RELEVANCE_TIMEOUT_MS, relevanceCandidates, relevanceLogLine } from './memory-relevance.mjs'
 import { loadMemoryThresholds, MEMORY_THRESHOLD_DEFAULTS as DEFAULT_THRESHOLDS, memoryThresholdsLogLine } from './memory-thresholds.mjs'
+import { feelingParamsLogLine, loadFeelingParams } from './feeling-params.mjs'
 
 export const name = 'dsh-linmengyao-memory'
 
@@ -29,6 +30,14 @@ const soulPath = (file) => path.join(SOUL_DIR, file)
  */
 export const MEMORY_THRESHOLDS_RESULT = loadMemoryThresholds(process.env.QQBOT_MEMORY_THRESHOLDS)
 const THRESHOLDS = MEMORY_THRESHOLDS_RESULT.values
+/**
+ * 心境参数（硬编码改造第五批）：和 QQ 共用 feeling-params.mjs 那一张表、读同一个环境变量 QQBOT_FEELING_PARAMS 指的文件。
+ * 这边只读共用的那一个：QQ 算好的心境（FEELINGS.json）多久算过期。插件载入时读一次；默认值就是原来写死的 3 小时。
+ */
+export const FEELING_PARAMS_RESULT = loadFeelingParams(process.env.QQBOT_FEELING_PARAMS)
+const FEELING_PARAMS = FEELING_PARAMS_RESULT.values
+/** QQ 算好的心境多久算过期（DEFAULTS.feelingsStaleMs 用它；和 QQ 的 FEELINGS_STALE_MS 同一个数） */
+export const DESKTOP_FEELINGS_STALE_MS = FEELING_PARAMS.feelingsStaleMs
 
 export function desktopUnderstanding(cfg, query, now = Date.now()) {
   return cfg.sharedUnderstanding === true || typeof cfg.understandingFile === 'string'
@@ -81,7 +90,7 @@ const DEFAULTS = {
   portraitStaleMs: 6 * 60 * 60 * 1000,
   /** QQ 那边每次给他算完心境写的（ADR 0197）；超过 feelingsStaleMs 没刷新就不用 */
   feelingsFile: soulPath('FEELINGS.json'),
-  feelingsStaleMs: 3 * 60 * 60 * 1000,
+  feelingsStaleMs: DESKTOP_FEELINGS_STALE_MS,
   /** QQ 那边用拼提示词的同一批模块算好的「此刻的她」（ADR 0347 第 2 层）；格式见 packages/bot/src/life/self-types.ts */
   selfFile: soulPath('SELF.json'),
   /** 她在桌面上把攒着的话说出口之后，插件只追加回执，QQ 那边消费 */
@@ -1340,6 +1349,7 @@ export function apply(ctx, config = {}) {
   log(cfg, `apply presets=${[...allow].join(',')}`)
   // 记忆阈值：调过或文件没用上时记一行（只有键名和数，不写路径和文件内容）；全部默认时不记，和原来一样
   if (MEMORY_THRESHOLDS_RESULT.issue || MEMORY_THRESHOLDS_RESULT.values !== DEFAULT_THRESHOLDS) log(cfg, memoryThresholdsLogLine(MEMORY_THRESHOLDS_RESULT))
+  if (feelingParamsLogLine(FEELING_PARAMS_RESULT)) log(cfg, feelingParamsLogLine(FEELING_PARAMS_RESULT))
   // 私聊语义判断：只认 '1'；判断只放一句「你对他这几句的理解」进提示词，不当权限、不落事实、不当发送凭据
   const judgmentAsk = process.env.QQBOT_SEMANTIC_JUDGMENT === '1'
     ? (typeof cfg.judgmentAsk === 'function' ? cfg.judgmentAsk : createJudgmentAsk({ key: process.env.QQBOT_LLM_API_KEY, baseUrl: cfg.judgmentBaseUrl, model: cfg.judgmentModel }))

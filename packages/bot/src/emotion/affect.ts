@@ -2,6 +2,7 @@
 // 明确的关心、安慰、道歉和亲近，会让她接下来两三次回复自然软一点；过了就散。
 
 import type { StoredMessage } from '../memory/history.ts';
+import { FEELING_PARAMS } from './feeling-params.ts';
 
 export type WarmAffectKind = 'repair' | 'comfort' | 'affection';
 
@@ -13,8 +14,8 @@ export interface WarmAffect {
     remaining: number;
 }
 
-/** 一句明确表达可以留几轮余温。 */
-export const AFFECT_REPLIES = 3;
+/** 一句明确表达可以留几轮余温（默认 3，心境参数表 warmAffectReplies）。 */
+export const AFFECT_REPLIES = FEELING_PARAMS.warmAffectReplies;
 
 const REPAIR = /对不起|抱歉|是我不好|我错了|别生气|原谅我/;
 const COMFORT = /抱抱|抱一下|我在(?:呢)?(?=\s*(?:$|[，,。.!！?？~～…]))|别难过|别怕|心疼你|揉揉|好好休息|早点睡|多喝(?:点)?热水|照顾好自己|我陪你/;
