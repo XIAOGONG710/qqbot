@@ -45,8 +45,8 @@ test('合成私聊的系统人设保留先逗、被回撩时害臊和及时收�
         assert.equal(messages.at(-1)?.role, 'system');
         const qqStyle = messages.at(-1)!.content;
         assert.match(qqStyle, /眼前的小事.*别总讨晚安/);
-        assert.match(qqStyle, /嘴硬半句.*软一点/);
-        assert.match(qqStyle, /拿掉开头惯用的「行吧」和顺口的「笨蛋」.*别写括号动作或加害羞表情.*别随口承诺明早叫醒/);
+        assert.match(qqStyle, /从前面真实聊过的事选一个细节，只接一句具体的话.*刚笑过.*忙了一天.*别每次用同一句安慰/);
+        assert.match(qqStyle, /不要出现「行吧」或「笨蛋」.*别写括号动作或加害羞表情.*别随口承诺明早叫醒/);
         assert.match(qqStyle, /对方没接.*顺势收尾/);
         assert.ok(messages.some(message => message.role === 'user' && message.content === '那你也哄我一下'));
     } finally {
